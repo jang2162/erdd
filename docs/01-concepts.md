@@ -43,10 +43,9 @@
 
 | 엔티티 | 설명 | 주요 속성 |
 |---|---|---|
-| User | 서비스 계정 | 이메일, 이름, 인증 정보 |
+| User | 서비스 계정 | 이메일, 이름, 인증 정보, 서비스 역할(admin/user), 활성 여부 |
 | Organization | 과금·멤버 관리 단위 | 이름, 종류(개인/팀), 플랜 |
 | Member | 조직 소속 | User 참조, 조직 역할(Owner/Admin/Member) |
-| Invitation | 조직 초대 | 대상 이메일, 역할, 상태(pending/accepted/expired), 만료 시각 |
 | Project | ERD 작업 단위 | 이름, 설명, 명명 규칙 설정, 대상 DB 방언(복수) |
 | ProjectMember | 프로젝트 참여 | Member 참조, 프로젝트 역할(Admin/Editor/Viewer) |
 | ApiToken | CLI 인증용 토큰 | 프로젝트 범위, 권한(read/write), 만료 |

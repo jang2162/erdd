@@ -19,7 +19,7 @@
 | [15-custom-fields](docs/15-custom-fields.md) | 커스텀 항목 정의와 활용 범위 |
 | [16-cli](docs/16-cli.md) | npm 패키지, 스키마 파일 포맷, pull/push/diff, 에이전트 스킬 |
 | [17-import-export](docs/17-import-export.md) | DDL/Excel/이미지 내보내기, DDL 역설계, Excel 업로드 |
-| [18-account](docs/18-account.md) | 계정, 개인/팀 조직, 초대, 온보딩 |
+| [18-account](docs/18-account.md) | 계정(관리자 생성), 개인/팀 조직, 멤버 관리, 온보딩 |
 | [90-roadmap](docs/90-roadmap.md) | 단계별 로드맵 |
 | [91-checklist](docs/91-checklist.md) | 구현 전 구체화 체크리스트 |
 
