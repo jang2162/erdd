@@ -6,7 +6,7 @@
 
 혼자서 ERD를 설계하고 DDL을 뽑을 수 있는 최소 제품.
 
-- 계정 / 조직 / 프로젝트 / 멤버·권한 ([01-concepts](01-concepts.md))
+- 계정 / 조직 / 프로젝트 / 멤버·권한 ([01-concepts](01-concepts.md), [18-account](18-account.md))
 - GUI 에디터: 테이블·컬럼·관계·인덱스·메모, 편집 패널, 보기 모드, 검색, 실행 취소 ([10-editor](10-editor.md))
 - 그룹핑: 그룹 관리, 전체 뷰 색상 영역, 그룹 뷰 독립 배치, 외부 참조 테이블 ([12-grouping](12-grouping.md))
 - 버전: Revision 자동 이력, 스냅샷 생성·열람·복원 ([11-collaboration](11-collaboration.md))
@@ -38,6 +38,7 @@
 ## 추후 검토 (현재 비범위)
 
 - 발주처별 Excel 양식 템플릿 커스터마이징
+- 소셜 로그인(Google OAuth 등)
 - MCP 서버 제공(CLI + 스킬로 우선 대응)
 - 프로젝트당 복수 스키마/복수 다이어그램
 - 실제 DB 접속 스키마 스캔(현재는 DDL 텍스트 가져오기만)

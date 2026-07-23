@@ -9,7 +9,7 @@
 └─ 공용 리소스: 표준 단어사전(행안부 등), 표준 용어사전, 표준 도메인 세트
      │  (복사/fork + 이후 재동기화)
      ▼
-조직 (Organization) ── 과금·멤버 관리 단위
+조직 (Organization) ── 과금·멤버 관리 단위 (개인/팀 — 가입 시 개인 조직 자동 생성)
 ├─ 조직 공용 리소스: 조직 표준 단어/용어/도메인 사전, 커스텀 항목 템플릿
 │    │  (복사/fork + 재동기화)
 │    ▼
@@ -44,8 +44,9 @@
 | 엔티티 | 설명 | 주요 속성 |
 |---|---|---|
 | User | 서비스 계정 | 이메일, 이름, 인증 정보 |
-| Organization | 과금·멤버 관리 단위 | 이름, 플랜 |
+| Organization | 과금·멤버 관리 단위 | 이름, 종류(개인/팀), 플랜 |
 | Member | 조직 소속 | User 참조, 조직 역할(Owner/Admin/Member) |
+| Invitation | 조직 초대 | 대상 이메일, 역할, 상태(pending/accepted/expired), 만료 시각 |
 | Project | ERD 작업 단위 | 이름, 설명, 명명 규칙 설정, 대상 DB 방언(복수) |
 | ProjectMember | 프로젝트 참여 | Member 참조, 프로젝트 역할(Admin/Editor/Viewer) |
 | ApiToken | CLI 인증용 토큰 | 프로젝트 범위, 권한(read/write), 만료 |
