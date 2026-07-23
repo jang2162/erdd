@@ -1,0 +1,45 @@
+# 로드맵
+
+차별화 기능(명명 체계·산출물, Phase 2)을 실시간 협업(Phase 3)보다 앞에 둔다. dbdiagram.io 대비 경쟁력이 명명 체계·산출물에서 나오고, 실시간 협업은 기술 난도가 높아 기반만 먼저 깔고 완성은 뒤로 미루는 것이 리스크가 적다.
+
+## Phase 1 — 핵심 에디터 (MVP)
+
+혼자서 ERD를 설계하고 DDL을 뽑을 수 있는 최소 제품.
+
+- 계정 / 조직 / 프로젝트 / 멤버·권한 ([01-concepts](01-concepts.md))
+- GUI 에디터: 테이블·컬럼·관계·인덱스·메모, 편집 패널, 보기 모드, 검색, 실행 취소 ([10-editor](10-editor.md))
+- 그룹핑: 그룹 관리, 전체 뷰 색상 영역, 그룹 뷰 독립 배치, 외부 참조 테이블 ([12-grouping](12-grouping.md))
+- 버전: Revision 자동 이력, 명명 스냅샷 생성·열람·복원 ([11-collaboration](11-collaboration.md))
+- 내보내기: DDL(4개 방언), 이미지(PNG/SVG) ([17-import-export](17-import-export.md))
+- 컬럼 직접 타입 입력 ([14-domain](14-domain.md))
+
+> 아키텍처 전제: 데이터 계층은 Phase 1부터 이벤트(작업 로그) 기반으로 설계해 Phase 3 실시간 협업의 기반을 만든다. CLI 파일 포맷 명세도 내부적으로 함께 정의한다.
+
+## Phase 2 — 명명 체계와 산출물 (한국 실무 차별화)
+
+- 단어/용어 사전, 물리명 자동생성, 경고 체계, 명명 검사 화면 ([13-naming](13-naming.md))
+- 도메인 정의·지정·일괄 반영 ([14-domain](14-domain.md))
+- 커스텀 항목 ([15-custom-fields](15-custom-fields.md))
+- 서비스 전역·조직 공용 리소스와 fork/재동기화 ([01-concepts](01-concepts.md))
+- Excel 산출물 내보내기, Excel 사전 업로드, 그룹 단위 내보내기 ([17-import-export](17-import-export.md))
+
+## Phase 3 — 협업 완성
+
+- 실시간 동시편집: presence, 즉시 반영, 충돌 정책 ([11-collaboration](11-collaboration.md))
+- 스냅샷 diff, 변경분 정의서 ([11-collaboration](11-collaboration.md), [17-import-export](17-import-export.md))
+- 권한 세분화(필요 시 그룹 단위 편집 권한 등 검토)
+
+## Phase 4 — 생태계·수익화
+
+- CLI: pull/push/diff, 파일 포맷 공개, 에이전트 스킬 ([16-cli](16-cli.md))
+- DDL 가져오기(역설계) ([17-import-export](17-import-export.md))
+- 과금 플랜 설계·결제 ([00-vision](00-vision.md))
+
+## 추후 검토 (현재 비범위)
+
+- 발주처별 Excel 양식 템플릿 커스터마이징
+- MCP 서버 제공(CLI + 스킬로 우선 대응)
+- 프로젝트당 복수 스키마/복수 다이어그램
+- 실제 DB 접속 스키마 스캔(현재는 DDL 텍스트 가져오기만)
+- N:M 관계의 교차 테이블 자동 생성
+- 공개 프로젝트/커뮤니티 공유 기능
