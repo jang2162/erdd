@@ -1,0 +1,68 @@
+import { describe, expect, it } from 'vitest'
+import { applyOps } from './op.js'
+import { deepEqual } from './equal.js'
+import { diffModels } from './diff.js'
+import { buildSampleModel } from './testing/fixtures.js'
+import { createEmptyModel } from './model.js'
+
+describe('deepEqual', () => {
+  it('compares JSON-safe values structurally', () => {
+    expect(deepEqual({ a: [1, { b: null }] }, { a: [1, { b: null }] })).toBe(true)
+    expect(deepEqual({ a: 1 }, { a: 2 })).toBe(false)
+    expect(deepEqual([1, 2], [2, 1])).toBe(false)
+    expect(deepEqual(null, {})).toBe(false)
+    expect(deepEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false)
+  })
+})
+
+describe('diffModels', () => {
+  it('returns [] for identical models', () => {
+    expect(diffModels(buildSampleModel(), buildSampleModel())).toEqual([])
+  })
+
+  it('emits update ops with per-property from/to', () => {
+    const base = buildSampleModel()
+    const target = buildSampleModel()
+    target.columns.c3!.logicalName = '고객명'
+    target.columns.c3!.order = 9
+    const ops = diffModels(base, target)
+    expect(ops).toEqual([
+      {
+        action: 'update', entity: 'column', entityId: 'c3',
+        changes: {
+          logicalName: { from: '회원명', to: '고객명' },
+          order: { from: 1, to: 9 },
+        },
+      },
+    ])
+  })
+
+  it('orders creates parent-first and deletes child-first (round-trip both ways)', () => {
+    const empty = createEmptyModel()
+    const full = buildSampleModel()
+
+    const createOps = diffModels(empty, full)
+    const kinds = createOps.map((o) => `${o.action}:${o.entity}`)
+    // create: tableGroup → table → column → relationship → index → note 순서
+    expect(kinds.indexOf('create:table')).toBeGreaterThan(kinds.indexOf('create:tableGroup'))
+    expect(kinds.indexOf('create:column')).toBeGreaterThan(kinds.lastIndexOf('create:table'))
+    expect(kinds.indexOf('create:relationship')).toBeGreaterThan(kinds.lastIndexOf('create:column'))
+    expect(applyOps(empty, createOps)).toEqual(full)
+
+    const deleteOps = diffModels(full, empty)
+    expect(applyOps(full, deleteOps)).toEqual(empty)
+  })
+
+  it('round-trips a mixed change set: apply(base, diff(base,target)) equals target', () => {
+    const base = buildSampleModel()
+    const target = buildSampleModel()
+    // 수정
+    target.tables.t2!.comment = '변경된 설명'
+    // 삭제 (인덱스)
+    delete target.indexes.i1
+    // 추가 (메모)
+    target.notes.n2 = { id: 'n2', content: '추가', position: { x: 5, y: 5 }, color: '#EEE' }
+    const ops = diffModels(base, target)
+    expect(applyOps(base, ops)).toEqual(target)
+  })
+})
