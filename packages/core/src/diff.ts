@@ -6,6 +6,9 @@ import { deepEqual } from './equal.js'
  * base → target으로 가는 op 배치.
  * 순서 보장: create는 ENTITY_KINDS(부모 우선) 순, update는 그 다음, delete는 역순(자식 우선)
  * — applyOps(base, diffModels(base, target))가 무결성 검사를 항상 통과하도록.
+ * 전제: target은 무결성이 유효한 모델이어야 한다(validateModelIntegrity(target) === []).
+ * 반환하는 op의 payload(data/changes의 from·to)는 base·target 엔티티의 참조를 그대로
+ * 공유한다(딥클론하지 않음) — 호출 측은 base와 target을 이후 불변 값으로 다뤄야 한다.
  */
 export function diffModels(base: ProjectModel, target: ProjectModel): Op[] {
   const creates: Op[] = []
@@ -17,22 +20,24 @@ export function diffModels(base: ProjectModel, target: ProjectModel): Op[] {
     const targetCol = target[COLLECTION_BY_KIND[kind]] as Record<string, Record<string, unknown>>
 
     for (const [id, entity] of Object.entries(targetCol)) {
-      const existing = baseCol[id]
-      if (!existing) {
+      if (!Object.hasOwn(baseCol, id)) {
         creates.push({ action: 'create', entity: kind, entityId: id, data: entity })
-      } else if (!deepEqual(existing, entity)) {
-        const changes: Record<string, { from: unknown; to: unknown }> = {}
-        for (const prop of Object.keys(entity)) {
-          if (!deepEqual(existing[prop], entity[prop])) {
-            changes[prop] = { from: existing[prop], to: entity[prop] }
+      } else {
+        const existing = baseCol[id]!
+        if (!deepEqual(existing, entity)) {
+          const changes: Record<string, { from: unknown; to: unknown }> = {}
+          for (const prop of Object.keys(entity)) {
+            if (!deepEqual(existing[prop], entity[prop])) {
+              changes[prop] = { from: existing[prop], to: entity[prop] }
+            }
           }
+          updates.push({ action: 'update', entity: kind, entityId: id, changes })
         }
-        updates.push({ action: 'update', entity: kind, entityId: id, changes })
       }
     }
 
     for (const [id, entity] of Object.entries(baseCol)) {
-      if (!targetCol[id]) {
+      if (!Object.hasOwn(targetCol, id)) {
         deletes.push({ action: 'delete', entity: kind, entityId: id, before: entity })
       }
     }

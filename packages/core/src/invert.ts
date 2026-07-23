@@ -1,6 +1,9 @@
 import type { Op } from './op.js'
 
-/** 단일 op의 역연산. update의 from/to를 교환하고, create↔delete를 서로 바꾼다. */
+/**
+ * 단일 op의 역연산. update의 from/to를 교환하고, create↔delete를 서로 바꾼다.
+ * 반환하는 op의 data/before는 입력 op의 data/before와 참조를 공유한다(딥클론하지 않음).
+ */
 export function invertOp(op: Op): Op {
   if (op.action === 'create') {
     return { action: 'delete', entity: op.entity, entityId: op.entityId, before: op.data }

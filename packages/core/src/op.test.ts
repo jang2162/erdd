@@ -86,4 +86,40 @@ describe('applyOps', () => {
     expect(next.tables.t2).toBeUndefined()
     expect(Object.keys(next.columns)).toEqual(['c1'])
   })
+
+  it('rejects deleting a missing entity', () => {
+    const base = buildSampleModel()
+    expect(() =>
+      applyOps(base, [{ action: 'delete', entity: 'note', entityId: 'missing', before: null }]),
+    ).toThrow(OpApplyError)
+  })
+
+  it('treats prototype property names as ordinary ids', () => {
+    const base = buildSampleModel()
+    const data = { id: 'constructor', content: 'x', position: { x: 0, y: 0 }, color: '#fff' }
+    const next = applyOps(base, [{ action: 'create', entity: 'note', entityId: 'constructor', data }])
+    expect(next.notes['constructor']?.content).toBe('x')
+    expect(() =>
+      applyOps(base, [{ action: 'delete', entity: 'note', entityId: 'toString', before: null }]),
+    ).toThrow(OpApplyError)
+  })
+
+  it('rejects __proto__ as an entityId on create', () => {
+    const base = buildSampleModel()
+    const data = { id: '__proto__', content: 'x', position: { x: 0, y: 0 }, color: '#fff' }
+    expect(() =>
+      applyOps(base, [{ action: 'create', entity: 'note', entityId: '__proto__', data }]),
+    ).toThrow(OpApplyError)
+  })
+
+  it('applies an update with empty changes as a no-op and rejects unknown properties', () => {
+    const base = buildSampleModel()
+    const next = applyOps(base, [{ action: 'update', entity: 'note', entityId: 'n1', changes: {} }])
+    expect(next).toEqual(base)
+    expect(() =>
+      applyOps(base, [
+        { action: 'update', entity: 'note', entityId: 'n1', changes: { nope: { from: null, to: 1 } } },
+      ]),
+    ).toThrow(OpApplyError)
+  })
 })

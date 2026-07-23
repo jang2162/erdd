@@ -39,4 +39,18 @@ describe('validateModelIntegrity', () => {
     m.indexes.i1!.columns = [{ columnId: 'c1', direction: 'asc' }]
     expect(validateModelIntegrity(m)).toHaveLength(1)
   })
+
+  it('flags a record whose key does not match entity.id', () => {
+    const m = buildSampleModel()
+    m.notes.nX = { id: 'n1', content: 'x', position: { x: 0, y: 0 }, color: '#fff' }
+    const issues = validateModelIntegrity(m)
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({ entity: 'note', entityId: 'nX' })
+  })
+
+  it('flags a groupId that collides with a prototype property name', () => {
+    const m = buildSampleModel()
+    m.tables.t1!.groupId = 'constructor'
+    expect(validateModelIntegrity(m)).toHaveLength(1)
+  })
 })
