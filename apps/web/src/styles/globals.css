@@ -1,0 +1,68 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'pretendard/dist/web/variable/pretendardvariable.css';
+@import '@fontsource-variable/jetbrains-mono';
+
+:root {
+  /* 데이터 도면 팔레트 */
+  --background: #f7f8fa;          /* 페이퍼 */
+  --foreground: #1a2340;          /* 잉크 */
+  --card: #ffffff;
+  --card-foreground: #1a2340;
+  --popover: #ffffff;
+  --popover-foreground: #1a2340;
+  --primary: #0e7a6c;             /* 청록 */
+  --primary-foreground: #ffffff;
+  --secondary: #eef0f3;
+  --secondary-foreground: #1a2340;
+  --muted: #eef0f3;
+  --muted-foreground: #5b6478;
+  --accent: #eef0f3;
+  --accent-foreground: #1a2340;
+  --destructive: #c4453c;
+  --destructive-foreground: #ffffff;
+  --border: #e2e5ea;
+  --input: #e2e5ea;
+  --ring: #0e7a6c;
+  --key: #c89b3c;                 /* 키 골드 — PK·강조 전용 */
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-key: var(--key);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: 'Pretendard Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  body { @apply bg-background text-foreground font-sans antialiased; }
+}
+
+/* 시그니처: 모눈(도면) 배경 — 로그인·빈 상태 전용 */
+.bg-dotgrid {
+  background-image: radial-gradient(circle, #d3d8e0 1px, transparent 1px);
+  background-size: 20px 20px;
+}
