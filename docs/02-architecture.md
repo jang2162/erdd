@@ -60,7 +60,7 @@ IO 없는 순수 TypeScript 패키지에 도메인 로직을 모두 모은다.
 
 ### 배포 구성
 
-단일 Docker 이미지(server가 web 정적 파일 서빙 + API + Phase 3의 WebSocket) + 관리형 PostgreSQL. 1인 운영 최소형으로 시작하고, 트래픽이 늘면 web 분리·다중 인스턴스(Redis pub/sub)로 확장한다.
+단일 Docker 이미지(server가 web 정적 파일 서빙 + API + Phase 3의 WebSocket) + 관리형 PostgreSQL. 1인 운영 최소형으로 시작하고, 트래픽이 늘면 web 분리·다중 인스턴스(Redis pub/sub)로 확장한다. 운영 배포는 HTTPS를 전제로 한다(세션 쿠키가 production에서 secure 플래그를 사용하므로 TLS 종료가 없는 환경에서는 로그인이 동작하지 않는다 — 리버스 프록시에서 TLS를 종료할 것).
 
 ## 데이터 계층
 

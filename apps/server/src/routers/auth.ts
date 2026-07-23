@@ -4,17 +4,25 @@ import { and, eq, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { sessions, users } from '../db/schema.js'
 import { hashPassword, verifyPassword } from '../auth/password.js'
+import { normalizeEmail } from '../services/accounts.js'
 import { SESSION_COOKIE } from '../context.js'
 import { authedProcedure, dbProcedure, router } from '../trpc.js'
 
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000
 
+// 계정 미존재/비활성 시에도 항상 scrypt 검증을 수행해 타이밍으로 계정 존재 여부가
+// 누출되지 않도록 한다(top-level await, ESM에서 허용).
+const DUMMY_HASH = await hashPassword('erdd-timing-dummy')
+
 export const authRouter = router({
   login: dbProcedure
     .input(z.object({ email: z.string(), password: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const user = (await ctx.db.select().from(users).where(eq(users.email, input.email)))[0]
-      const ok = user && user.isActive && (await verifyPassword(input.password, user.passwordHash))
+      const user = (
+        await ctx.db.select().from(users).where(eq(users.email, normalizeEmail(input.email)))
+      )[0]
+      const valid = await verifyPassword(input.password, user?.passwordHash ?? DUMMY_HASH)
+      const ok = user !== undefined && user.isActive && valid
       if (!ok) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: '이메일 또는 비밀번호가 올바르지 않습니다' })
       }

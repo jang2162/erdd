@@ -68,4 +68,14 @@ describe.skipIf(!url)('auth', () => {
     delete process.env.ADMIN_EMAIL
     delete process.env.ADMIN_PASSWORD
   })
+
+  it('normalizes email case on create and login', async () => {
+    await createAccount(app.db!, {
+      email: 'Mixed@Case.Dev', name: '혼합', password: 'password-9', role: 'user',
+    })
+    await loginAs(app, 'mixed@case.dev', 'password-9') // 소문자로 로그인 성공
+    await expect(
+      createAccount(app.db!, { email: 'MIXED@CASE.DEV', name: '중복', password: 'password-9', role: 'user' }),
+    ).rejects.toThrow() // 대소문자만 다른 중복은 unique 위반
+  })
 })

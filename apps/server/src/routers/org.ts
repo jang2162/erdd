@@ -4,6 +4,7 @@ import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import { members, organizations, users } from '../db/schema.js'
 import { getOrgMember } from '../services/perm.js'
+import { normalizeEmail } from '../services/accounts.js'
 import { authedProcedure, router } from '../trpc.js'
 
 async function requireOrgManager(
@@ -85,7 +86,7 @@ export const orgRouter = router({
         }
         const user = (
           await ctx.db.select().from(users)
-            .where(and(eq(users.email, input.email), eq(users.isActive, true)))
+            .where(and(eq(users.email, normalizeEmail(input.email)), eq(users.isActive, true)))
         )[0]
         if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: '해당 이메일의 사용자가 없습니다' })
         const existing = await getOrgMember(ctx.db, input.orgId, user.id)

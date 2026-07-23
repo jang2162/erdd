@@ -100,4 +100,17 @@ describe.skipIf(!url)('org', () => {
     })
     expect(remove.statusCode).toBe(400)
   })
+
+  it('org admin (non-owner) cannot grant owner role', async () => {
+    const orgId = await createTeam()
+    await post(app, 'org.members.add', ownerToken, { orgId, email: 'p@test.dev', role: 'admin' })
+    const orgMembers = (await get(app, 'org.members.list', ownerToken, { orgId }))
+      .json().result.data as Array<{ id: string; email: string }>
+    const p = orgMembers.find((m) => m.email === 'p@test.dev')!
+
+    const res = await post(app, 'org.members.setRole', plainToken, {
+      orgId, memberId: p.id, role: 'owner',
+    })
+    expect(res.statusCode).toBe(403)
+  })
 })

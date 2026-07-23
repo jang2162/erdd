@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { createDb } from './client.js'
 import { resetDb, TEST_TABLES } from '../testing/db.js'
 

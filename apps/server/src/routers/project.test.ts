@@ -96,4 +96,35 @@ describe.skipIf(!url)('project', () => {
     const list = (await get(app, 'project.list', ownerToken, { orgId })).json().result.data
     expect(list).toHaveLength(0)
   })
+
+  it('project member with editor role can read but not change settings', async () => {
+    const projectId = await createProject()
+    const orgMembers = (await get(app, 'org.members.list', ownerToken, { orgId }))
+      .json().result.data as Array<{ id: string; email: string }>
+    const m = orgMembers.find((x) => x.email === 'm@test.dev')!
+
+    await post(app, 'project.members.add', ownerToken, {
+      projectId, memberId: m.id, role: 'editor',
+    })
+    const got = await get(app, 'project.get', memberToken, { projectId })
+    expect(got.statusCode).toBe(200)
+    expect(got.json().result.data.myRole).toBe('editor')
+
+    const upd = await post(app, 'project.update', memberToken, { projectId, name: '변경' })
+    expect(upd.statusCode).toBe(403)
+  })
+
+  it('rejects a memberId that belongs to a different organization', async () => {
+    const projectId = await createProject()
+    const otherOrgId = (await post(app, 'org.create', ownerToken, { name: '팀B' }))
+      .json().result.data.id as string
+    const otherOrgMembers = (await get(app, 'org.members.list', ownerToken, { orgId: otherOrgId }))
+      .json().result.data as Array<{ id: string }>
+    const otherMemberId = otherOrgMembers[0]!.id
+
+    const res = await post(app, 'project.members.add', ownerToken, {
+      projectId, memberId: otherMemberId, role: 'viewer',
+    })
+    expect(res.statusCode).toBe(404)
+  })
 })
