@@ -7,3 +7,5 @@ export {
 export type {
   Position, Table, Column, Relationship, IndexDef, Note, TableGroup, ProjectModel,
 } from './model.js'
+export { validateModelIntegrity } from './integrity.js'
+export type { IntegrityIssue } from './integrity.js'
