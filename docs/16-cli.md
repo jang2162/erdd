@@ -50,17 +50,19 @@ schemantic/
 테이블 파일 예:
 
 ```yaml
+id: 018f6b0e-…            # 서버 발급 UUIDv7 — 수정하지 않는다
 name: MBR
 logicalName: 회원
 group: 회원관리
 comment: 서비스 가입 회원
 columns:
-  - name: MBR_NO
+  - id: 018f6b0e-…
+    name: MBR_NO
     logicalName: 회원번호
     domain: 번호
     pk: true
     nullable: false
-  - name: MBR_NM
+  - name: MBR_NM          # id 없음 = 로컬에서 새로 만든 컬럼 → push 시 서버가 발급
     logicalName: 회원명
     domain: 명
     nullable: false
@@ -77,6 +79,9 @@ relations:
     identifying: false
 ```
 
+- 모든 객체는 서버 발급 `id`(UUIDv7)를 가진다. 물리명 변경은 id로 추적되므로 삭제+추가로 오인되지 않는다(→ [02-architecture](02-architecture.md)).
+- 로컬에서 새로 만든 객체는 `id` 없이 작성하고, push 시 서버가 발급해 다음 pull에서 채워진다.
+- 파일명(=테이블 물리명)은 조회 편의일 뿐 identity가 아니다. 물리명이 바뀌면 pull이 파일명을 갱신한다.
 - 배치 좌표 등 표현 정보는 파일에 포함하지 않는다(서버만 관리). 파일은 스키마의 의미 정보만 담아 diff를 깨끗하게 유지한다.
 - 포맷 상세 스키마(JSON Schema)는 구현 시점에 확정한다.
 
