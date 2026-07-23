@@ -3,6 +3,7 @@ import { parseLogicalType } from '@erdd/core'
 import { authRouter } from './routers/auth.js'
 import { adminRouter } from './routers/admin.js'
 import { orgRouter } from './routers/org.js'
+import { projectRouter } from './routers/project.js'
 import { publicProcedure, router } from './trpc.js'
 
 export const appRouter = router({
@@ -15,6 +16,7 @@ export const appRouter = router({
   auth: authRouter,
   admin: adminRouter,
   org: orgRouter,
+  project: projectRouter,
 })
 
 export type AppRouter = typeof appRouter
