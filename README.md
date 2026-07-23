@@ -10,6 +10,7 @@
 |---|---|
 | [00-vision](docs/00-vision.md) | 비전, 타깃 사용자, 경쟁 분석, 차별화 포인트 |
 | [01-concepts](docs/01-concepts.md) | 개념 도메인 모델 — 계층 구조, 엔티티, 공용 리소스 패턴 (허브 문서) |
+| [02-architecture](docs/02-architecture.md) | 기술 스택, 시스템 구성, 데이터 계층(op 로그, 스냅샷, diff) |
 | [10-editor](docs/10-editor.md) | ERD 에디터 (캔버스, 편집 패널, 보기 모드) |
 | [11-collaboration](docs/11-collaboration.md) | 실시간 협업, 이력/스냅샷/diff, 권한 |
 | [12-grouping](docs/12-grouping.md) | 테이블 그룹핑, 그룹 뷰와 독립 배치 |

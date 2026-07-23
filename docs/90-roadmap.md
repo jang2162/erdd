@@ -9,11 +9,11 @@
 - 계정 / 조직 / 프로젝트 / 멤버·권한 ([01-concepts](01-concepts.md))
 - GUI 에디터: 테이블·컬럼·관계·인덱스·메모, 편집 패널, 보기 모드, 검색, 실행 취소 ([10-editor](10-editor.md))
 - 그룹핑: 그룹 관리, 전체 뷰 색상 영역, 그룹 뷰 독립 배치, 외부 참조 테이블 ([12-grouping](12-grouping.md))
-- 버전: Revision 자동 이력, 명명 스냅샷 생성·열람·복원 ([11-collaboration](11-collaboration.md))
+- 버전: Revision 자동 이력, 스냅샷 생성·열람·복원 ([11-collaboration](11-collaboration.md))
 - 내보내기: DDL(4개 방언), 이미지(PNG/SVG) ([17-import-export](17-import-export.md))
 - 컬럼 직접 타입 입력 ([14-domain](14-domain.md))
 
-> 아키텍처 전제: 데이터 계층은 Phase 1부터 이벤트(작업 로그) 기반으로 설계해 Phase 3 실시간 협업의 기반을 만든다. CLI 파일 포맷 명세도 내부적으로 함께 정의한다.
+> 아키텍처 전제: 데이터 계층은 Phase 1부터 이벤트(작업 로그) 기반으로 설계해 Phase 3 실시간 협업의 기반을 만든다. CLI 파일 포맷 명세도 내부적으로 함께 정의한다. 구체 설계는 [02-architecture](02-architecture.md) 참조.
 
 ## Phase 2 — 명명 체계와 산출물 (한국 실무 차별화)
 

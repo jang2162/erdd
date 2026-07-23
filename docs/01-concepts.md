@@ -18,7 +18,7 @@
    ├─ TableGroup — 그룹핑과 그룹별 배치
    ├─ 프로젝트 사전: Word(단어) / Term(용어) / Domain(도메인)
    ├─ CustomField — 커스텀 항목 정의
-   └─ 버전: Revision(자동 이력) + Snapshot(명명 스냅샷)
+   └─ 버전: Revision(자동 이력) + Snapshot(시점 스냅샷)
 ```
 
 - **프로젝트 = 하나의 DB 스키마 모델**이다. 복수 스키마·복수 다이어그램은 현재 범위가 아니다(로드맵의 "추후 검토" 참조). 업무 영역 분리는 TableGroup으로 해결한다.
@@ -88,7 +88,7 @@
 | 엔티티 | 설명 | 주요 속성 |
 |---|---|---|
 | Revision | 자동 변경 이력 | 순번, 작업자, 시각, 작업 유형, 대상 객체, 변경 내용(before/after) |
-| Snapshot | 명명 스냅샷 | 이름(예: "v1.0 오픈"), 설명, 기준 Revision, 생성자, 시각 |
+| Snapshot | 시점 스냅샷 | 이름(예: "v1.0 오픈"), 설명, 기준 Revision, 생성자, 시각 |
 
 - 모든 편집은 Revision으로 기록된다. Snapshot은 특정 Revision 시점에 이름을 붙인 것이다.
 - 스냅샷 간(또는 스냅샷↔현재) diff와 복원을 제공한다(→ [11-collaboration](11-collaboration.md)).
