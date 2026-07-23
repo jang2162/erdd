@@ -2,7 +2,7 @@
 
 ## 제품 정의
 
-**Schemantic**(서비스명 가칭)은 웹 기반 ERD 협업 SaaS다.
+**ERDD**은 웹 기반 ERD 협업 SaaS다.
 
 > 웹에서 ERD를 실시간 협업으로 설계하고, 한국 실무의 명명 체계(단어·용어·도메인)와 산출물까지 관리하며, CLI로 코드베이스와 AI agent에 연결된다.
 
@@ -37,7 +37,7 @@
 | AI agent 연동 | 없음 | 없음 | 없음 | 없음 |
 | 형태 | SaaS | SaaS(무료 중심) | 유료 설치형 | 오픈소스 웹 |
 
-Schemantic은 **"ERDCloud의 접근성 + DA#의 명명·산출물 체계 + dbdiagram.io에도 없는 코드베이스/AI 연동"** 조합을 노린다.
+ERDD은 **"ERDCloud의 접근성 + DA#의 명명·산출물 체계 + dbdiagram.io에도 없는 코드베이스/AI 연동"** 조합을 노린다.
 
 ## 차별화 포인트
 
