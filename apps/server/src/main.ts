@@ -1,11 +1,16 @@
 import { buildServer } from './server.js'
+import { ensureBootstrapAdmin } from './services/accounts.js'
 
-const app = buildServer()
+const app = buildServer({ databaseUrl: process.env.DATABASE_URL })
 const port = Number(process.env.PORT ?? 3000)
 
-app.listen({ port, host: '0.0.0.0' }).then(() => {
+async function start() {
+  if (app.db) await ensureBootstrapAdmin(app.db)
+  await app.listen({ port, host: '0.0.0.0' })
   console.log(`ERDD server listening on :${port}`)
-}).catch((err) => {
+}
+
+start().catch((err) => {
   console.error(err)
   process.exit(1)
 })

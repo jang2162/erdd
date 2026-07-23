@@ -1,16 +1,16 @@
-import { initTRPC } from '@trpc/server'
 import { z } from 'zod'
 import { parseLogicalType } from '@erdd/core'
+import { authRouter } from './routers/auth.js'
+import { publicProcedure, router } from './trpc.js'
 
-const t = initTRPC.create()
-
-export const appRouter = t.router({
-  health: t.router({
-    ping: t.procedure.query(() => ({ ok: true as const, version: '0.1.0' })),
+export const appRouter = router({
+  health: router({
+    ping: publicProcedure.query(() => ({ ok: true as const, version: '0.1.0' })),
   }),
-  logicalType: t.router({
-    parse: t.procedure.input(z.string()).query(({ input }) => parseLogicalType(input)),
+  logicalType: router({
+    parse: publicProcedure.input(z.string()).query(({ input }) => parseLogicalType(input)),
   }),
+  auth: authRouter,
 })
 
 export type AppRouter = typeof appRouter
