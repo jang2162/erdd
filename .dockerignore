@@ -3,3 +3,7 @@ node_modules
 **/dist
 .git
 .env
+docs
+.idea
+.codegraph
+.superpowers

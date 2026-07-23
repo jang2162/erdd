@@ -10,4 +10,4 @@ COPY . .
 RUN pnpm --filter @erdd/web build
 ENV NODE_ENV=production
 EXPOSE 3000
-CMD ["pnpm", "--filter", "@erdd/server", "start"]
+CMD ["apps/server/node_modules/.bin/tsx", "apps/server/src/main.ts"]

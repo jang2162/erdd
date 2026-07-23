@@ -17,7 +17,7 @@ export function buildServer(): FastifyInstance {
   if (fs.existsSync(webDist)) {
     app.register(fastifyStatic, { root: webDist })
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/trpc')) return reply.code(404).send({ error: 'not found' })
+      if (req.url === '/trpc' || req.url.startsWith('/trpc/')) return reply.code(404).send({ error: 'not found' })
       return reply.sendFile('index.html')
     })
   }

@@ -36,4 +36,16 @@ describe('parseLogicalType', () => {
       raw: 'geometry(Point,4326)',
     })
   })
+
+  it('accepts NUMERIC as alias of DECIMAL', () => {
+    expect(parseLogicalType('NUMERIC(10,2)')).toMatchObject({ ok: true, canonical: 'DECIMAL(10,2)' })
+  })
+
+  it('parses DECIMAL directly', () => {
+    expect(parseLogicalType('DECIMAL(8,3)')).toEqual({
+      ok: true,
+      type: { kind: 'DECIMAL', precision: 8, scale: 3 },
+      canonical: 'DECIMAL(8,3)',
+    })
+  })
 })
