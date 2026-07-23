@@ -8,6 +8,13 @@
       "when": 1784795420534,
       "tag": "0000_red_fenris",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784814756749,
+      "tag": "0001_quiet_darkstar",
+      "breakpoints": true
     }
   ]
 }
