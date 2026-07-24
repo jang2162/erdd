@@ -47,10 +47,14 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
         <div className="grid gap-1.5">
           <Label>카디널리티</Label>
           <select className="h-9 rounded-md border bg-background px-2 text-sm" value={rel.cardinality}
-            onChange={(e) => void mutate((m) => {
-              const r = m.relationships[relId]!
-              return { ...m, relationships: { ...m.relationships, [relId]: { ...r, cardinality: e.target.value as '1:1' | '1:N' } } }
-            })}>
+            onChange={(e) => {
+              const cardinality = e.target.value as '1:1' | '1:N'
+              void mutate((m) => {
+                const r = m.relationships[relId]
+                if (!r) return m
+                return { ...m, relationships: { ...m.relationships, [relId]: { ...r, cardinality } } }
+              })
+            }}>
             <option value="1:N">1 : N</option>
             <option value="1:1">1 : 1</option>
           </select>
@@ -58,7 +62,12 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
 
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={rel.identifying}
-            onChange={(e) => void mutate((m) => setRelationshipIdentifying(m, relId, e.target.checked), { summary: '식별 관계 전환' })} />
+            onChange={(e) => {
+              // e.target 값은 호출 시점에 즉시 읽는다. producer는 직렬화로 마이크로태스크에 지연
+              // 실행되는데, 그 사이 controlled input이 리셋되어 지연 읽기는 옛 값을 본다.
+              const identifying = e.target.checked
+              void mutate((m) => setRelationshipIdentifying(m, relId, identifying), { summary: '식별 관계 전환' })
+            }} />
           식별 관계 (자식 기본 키 편입)
         </label>
 
@@ -69,7 +78,8 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
             onBlur={(e) => {
               const v = e.target.value.trim() === '' ? null : e.target.value
               if (v !== rel.name) void mutate((m) => {
-                const r = m.relationships[relId]!
+                const r = m.relationships[relId]
+                if (!r) return m
                 return { ...m, relationships: { ...m.relationships, [relId]: { ...r, name: v } } }
               })
             }} />
@@ -83,7 +93,10 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
               return (
                 <li key={mm.parentColumnId} className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-xs">
                   <select className="h-8 rounded border bg-background px-1 font-mono" value={mm.childColumnId}
-                    onChange={(e) => void mutate((m) => remapRelationshipChildColumn(m, { relationshipId: relId, parentColumnId: mm.parentColumnId, newChildColumnId: e.target.value }), { summary: '매핑 변경' })}>
+                    onChange={(e) => {
+                      const newChildColumnId = e.target.value
+                      void mutate((m) => remapRelationshipChildColumn(m, { relationshipId: relId, parentColumnId: mm.parentColumnId, newChildColumnId }), { summary: '매핑 변경' })
+                    }}>
                     {childColumns.map((c) => <option key={c.id} value={c.id}>{c.physicalName}</option>)}
                   </select>
                   <span className="text-muted-foreground">→</span>
