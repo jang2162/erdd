@@ -44,9 +44,11 @@ export function Canvas({ projectId }: { projectId: string }) {
       onNodesChange={onNodesChange as (c: NodeChange[]) => void}
       onNodeClick={(_, node) => select(node.id)}
       onPaneClick={() => select(null)}
-      onNodeDragStop={(_, node) =>
-        void mutate((m) => moveTable(m, node.id, { x: node.position.x, y: node.position.y }),
-          { summary: '테이블 이동' })}
+      onNodeDragStop={(_, __, nodes) =>
+        void mutate(
+          (m) => nodes.reduce((acc, n) => moveTable(acc, n.id, { x: n.position.x, y: n.position.y }), m),
+          { summary: '테이블 이동' },
+        )}
       fitView
       proOptions={{ hideAttribution: true }}
     >

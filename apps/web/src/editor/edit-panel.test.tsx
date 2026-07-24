@@ -26,14 +26,14 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().re
 
 describe('EditPanel', () => {
   it('prompts to select a table when nothing is selected', () => {
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1)
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     renderPanel()
     expect(screen.getByText(/테이블을 선택/)).toBeInTheDocument()
   })
 
   it('edits the table physical name and sends a mutation', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1)
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     useEditorStore.getState().select('t2')
     renderPanel()
     const input = screen.getByLabelText('테이블 물리명') as HTMLInputElement
@@ -45,7 +45,7 @@ describe('EditPanel', () => {
 
   it('adds a column via the add button', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1)
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     useEditorStore.getState().select('t1')
     renderPanel()
     const before = Object.values(useEditorStore.getState().model.columns)

@@ -9,7 +9,9 @@ export function addColumn(
 ): ProjectModel {
   const siblings = tableColumns(model, tableId)
   const order = siblings.length === 0 ? 0 : Math.max(...siblings.map((c) => c.order)) + 1
-  const n = siblings.length + 1
+  const used = new Set(siblings.map((c) => c.physicalName))
+  let n = 1
+  while (used.has(`COL_${n}`)) n++
   const column: Column = {
     id, tableId, logicalName: `컬럼${n}`, physicalName: `COL_${n}`,
     type: 'VARCHAR(255)', isPk: false, autoIncrement: false, nullable: true,

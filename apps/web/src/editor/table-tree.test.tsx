@@ -9,7 +9,7 @@ afterEach(() => { cleanup(); useEditorStore.getState().reset() })
 
 describe('TableTree', () => {
   it('lists tables and filters by search (logical or physical)', async () => {
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1)
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     render(<TableTree />)
     expect(screen.getByText('MBR')).toBeInTheDocument()
     expect(screen.getByText('MBR_GRD')).toBeInTheDocument()
@@ -19,7 +19,7 @@ describe('TableTree', () => {
   })
 
   it('selects and focuses a table on click', async () => {
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1)
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     render(<TableTree />)
     await userEvent.click(screen.getByText('MBR'))
     expect(useEditorStore.getState().selectedTableId).toBe('t2')

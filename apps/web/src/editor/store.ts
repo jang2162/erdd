@@ -7,10 +7,11 @@ type EditorState = {
   model: ProjectModel
   seq: number
   loaded: boolean
+  loadedProjectId: string | null
   viewMode: ViewMode
   selectedTableId: string | null
   focusTableId: string | null
-  setLoaded: (model: ProjectModel, seq: number) => void
+  setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
   setModel: (model: ProjectModel) => void
   setSeq: (seq: number) => void
   setViewMode: (viewMode: ViewMode) => void
@@ -24,10 +25,11 @@ export const useEditorStore = create<EditorState>((set) => ({
   model: createEmptyModel(),
   seq: 0,
   loaded: false,
+  loadedProjectId: null,
   viewMode: 'physical',
   selectedTableId: null,
   focusTableId: null,
-  setLoaded: (model, seq) => set({ model, seq, loaded: true }),
+  setLoaded: (model, seq, projectId) => set({ model, seq, loaded: true, loadedProjectId: projectId }),
   setModel: (model) => set({ model }),
   setSeq: (seq) => set({ seq }),
   setViewMode: (viewMode) => set({ viewMode }),
@@ -35,6 +37,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   focus: (id) => set({ focusTableId: id, selectedTableId: id }),
   consumeFocus: () => set({ focusTableId: null }),
   reset: () => set({
-    model: createEmptyModel(), seq: 0, loaded: false, selectedTableId: null, focusTableId: null,
+    model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
+    selectedTableId: null, focusTableId: null,
   }),
 }))

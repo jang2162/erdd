@@ -17,6 +17,7 @@ function CommitInput(props: {
   return (
     <Input
       id={props.id}
+      aria-label={props.label ? props.label : undefined}
       defaultValue={props.value}
       key={props.value}
       className={props.mono ? 'font-mono' : undefined}

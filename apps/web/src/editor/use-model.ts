@@ -11,10 +11,10 @@ export function useModelLoader(projectId: string) {
   const setLoaded = useEditorStore((s) => s.setLoaded)
   const query = useQuery(trpc.model.get.queryOptions({ projectId }))
   useEffect(() => {
-    if (query.data && !useEditorStore.getState().loaded) {
-      setLoaded(query.data.model, query.data.seq)
+    if (query.data && useEditorStore.getState().loadedProjectId !== projectId) {
+      setLoaded(query.data.model, query.data.seq, projectId)
     }
-  }, [query.data, setLoaded])
+  }, [query.data, setLoaded, projectId])
   return query
 }
 
@@ -48,8 +48,12 @@ export function useModelMutation(projectId: string) {
       } catch (err) {
         const message = err instanceof Error ? err.message : '변경을 저장하지 못했습니다'
         toast.error(message)
-        const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
-        useEditorStore.getState().setLoaded(fresh.model, fresh.seq)
+        try {
+          const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
+          useEditorStore.getState().setLoaded(fresh.model, fresh.seq, projectId)
+        } catch {
+          toast.error('서버 상태를 복구하지 못했습니다. 새로고침해 주세요.')
+        }
       }
     },
     [projectId, mutation, queryClient, trpc],
