@@ -92,16 +92,19 @@ export function remapRelationshipChildColumn(
       ? { childColumnId: args.newChildColumnId, parentColumnId: m.parentColumnId }
       : m,
   )
-  // 이전 자식 컬럼이 다른 매핑에서도 안 쓰이면 삭제(자동생성 FK 정리).
-  const stillUsed = columnMappings.some((m) => m.childColumnId === oldChildId)
-  const columns = { ...model.columns }
-  if (!stillUsed) delete columns[oldChildId]
+  const relationships = { ...model.relationships, [rel.id]: { ...rel, columnMappings } }
 
-  return {
-    ...model,
-    columns,
-    relationships: { ...model.relationships, [rel.id]: { ...rel, columnMappings } },
-  }
+  // 새로 매핑된 컬럼의 isPk를 관계의 식별 상태에 맞춘다(setRelationshipIdentifying과 동일 규칙).
+  const columns = { ...model.columns, [args.newChildColumnId]: { ...newChild, isPk: rel.identifying } }
+
+  // 이전 자식 컬럼이 어떤 관계 매핑·인덱스에서도 더 쓰이지 않을 때만 삭제(자동생성 FK 정리).
+  const referencedElsewhere = Object.values(relationships).some((r) =>
+    r.columnMappings.some((m) => m.childColumnId === oldChildId || m.parentColumnId === oldChildId))
+  const inIndex = Object.values(model.indexes).some((ix) =>
+    ix.columns.some((ic) => ic.columnId === oldChildId))
+  if (!referencedElsewhere && !inIndex) delete columns[oldChildId]
+
+  return { ...model, columns, relationships }
 }
 
 export function setRelationshipIdentifying(
@@ -158,7 +161,8 @@ export function deleteColumnCascade(model: ProjectModel, columnId: string): Proj
       (m) => m.childColumnId !== columnId && m.parentColumnId !== columnId,
     )
     if (columnMappings.length === 0) continue // 매핑이 비면 관계 삭제
-    relationships[rel.id] = columnMappings === rel.columnMappings ? rel : { ...rel, columnMappings }
+    relationships[rel.id] =
+      columnMappings.length === rel.columnMappings.length ? rel : { ...rel, columnMappings }
   }
 
   // 삭제된 컬럼을 참조하던 인덱스 컬럼도 정리(무결성 유지).

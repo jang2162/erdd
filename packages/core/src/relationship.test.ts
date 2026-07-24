@@ -123,6 +123,39 @@ describe('remapRelationshipChildColumn', () => {
     expect(next.columns['USER_REF']).toBeDefined()
     expect(validateModelIntegrity(next)).toEqual([])
   })
+
+  it('식별 관계를 기존 컬럼으로 재매핑하면 그 컬럼이 PK가 된다', () => {
+    const m = baseModel()
+    m.columns['USER_REF'] = col('USER_REF', 'C', 'USER_REF', { type: 'BIGINT', order: 0, isPk: false })
+    const created = createRelationshipFromParentPk(m, {
+      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'], identifying: true,
+    })
+    const next = remapRelationshipChildColumn(created, {
+      relationshipId: 'R', parentColumnId: 'P_ID', newChildColumnId: 'USER_REF',
+    })
+    expect(next.columns['USER_REF']!.isPk).toBe(true)
+    expect(validateModelIntegrity(next)).toEqual([])
+  })
+
+  it('이전 자식 컬럼이 다른 관계에서 쓰이면 삭제하지 않는다', () => {
+    const m = baseModel()
+    m.tables['P2'] = tbl('P2', 'ROLES')
+    m.columns['P2_ID'] = col('P2_ID', 'P2', 'RID', { isPk: true, nullable: false, order: 0, type: 'BIGINT' })
+    m.columns['SHARED'] = col('SHARED', 'C', 'SHARED', { type: 'BIGINT', order: 0 })
+    m.columns['OTHER'] = col('OTHER', 'C', 'OTHER', { type: 'BIGINT', order: 1 })
+    m.relationships['R1'] = { id: 'R1', parentTableId: 'P', childTableId: 'C',
+      columnMappings: [{ childColumnId: 'SHARED', parentColumnId: 'P_ID' }],
+      cardinality: '1:N', identifying: false, name: null }
+    m.relationships['R2'] = { id: 'R2', parentTableId: 'P2', childTableId: 'C',
+      columnMappings: [{ childColumnId: 'SHARED', parentColumnId: 'P2_ID' }],
+      cardinality: '1:N', identifying: false, name: null }
+    const next = remapRelationshipChildColumn(m, {
+      relationshipId: 'R1', parentColumnId: 'P_ID', newChildColumnId: 'OTHER',
+    })
+    expect(next.columns['SHARED']).toBeDefined()
+    expect(next.relationships['R1']!.columnMappings).toEqual([{ childColumnId: 'OTHER', parentColumnId: 'P_ID' }])
+    expect(validateModelIntegrity(next)).toEqual([])
+  })
 })
 
 describe('deleteRelationship', () => {
