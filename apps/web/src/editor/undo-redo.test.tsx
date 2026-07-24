@@ -32,6 +32,30 @@ describe('store 선택·히스토리', () => {
     expect(st.selectedRelationshipId).toBeNull()
   })
 
+  it('selectRelationship는 table/note 선택을 해제한다', () => {
+    act(() => {
+      useEditorStore.getState().select('T')
+      useEditorStore.getState().selectNote('N')
+      useEditorStore.getState().selectRelationship('R')
+    })
+    const st = useEditorStore.getState()
+    expect(st.selectedRelationshipId).toBe('R')
+    expect(st.selectedTableId).toBeNull()
+    expect(st.selectedNoteId).toBeNull()
+  })
+
+  it('selectNote는 table/relationship 선택을 해제한다', () => {
+    act(() => {
+      useEditorStore.getState().select('T')
+      useEditorStore.getState().selectRelationship('R')
+      useEditorStore.getState().selectNote('N')
+    })
+    const st = useEditorStore.getState()
+    expect(st.selectedNoteId).toBe('N')
+    expect(st.selectedTableId).toBeNull()
+    expect(st.selectedRelationshipId).toBeNull()
+  })
+
   it('recordEdit는 undo에 쌓고 redo를 비운다', () => {
     act(() => {
       useEditorStore.getState().recordEdit([{ action: 'create', entity: 'table', entityId: 'A', data: {} }])
@@ -91,5 +115,18 @@ describe('useUndoRedo (훅 통합)', () => {
       expect(useEditorStore.getState().redoStack).toHaveLength(1)
       expect(useEditorStore.getState().undoStack).toHaveLength(0)
     })
+  })
+
+  it('undo 역적용이 불가하면 스택을 이동하지 않는다', async () => {
+    // 현재 모델에 없는 테이블 생성 배치를 히스토리에 심으면 역적용(delete)이 throw → submit false.
+    act(() => {
+      useEditorStore.getState().recordEdit([
+        { action: 'create', entity: 'table', entityId: 'GHOST', data: {} },
+      ])
+    })
+    const { result } = renderHook(() => useUndoRedo('p1'), { wrapper: wrapper() })
+    await act(async () => { await result.current.undo() })
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+    expect(useEditorStore.getState().redoStack).toHaveLength(0)
   })
 })

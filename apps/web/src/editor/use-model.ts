@@ -5,6 +5,16 @@ import { applyOps, diffModels, invertOps, validateModelIntegrity, type ProjectMo
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
 
+// 모든 모델 mutation(정상 편집·undo·redo)을 전역으로 직렬화한다. 낙관적 갱신과 undo/redo
+// 히스토리 스택 조작이 await 경계에서 뒤섞여 잘못된 배치를 이동시키는 경쟁을 막는다
+// (서버도 프로젝트별 mutation을 직렬화하므로 동작 의미가 일치한다).
+let mutationChain: Promise<unknown> = Promise.resolve()
+function serializeMutation<T>(fn: () => Promise<T>): Promise<T> {
+  const run = mutationChain.then(fn, fn)
+  mutationChain = run.then(() => undefined, () => undefined)
+  return run
+}
+
 export function useModelLoader(projectId: string) {
   const trpc = useTRPC()
   const setLoaded = useEditorStore((s) => s.setLoaded)
@@ -71,7 +81,7 @@ export function useModelMutation(projectId: string) {
   const submit = useSubmit(projectId)
   return useCallback(
     (producer: (model: ProjectModel) => ProjectModel, opts?: { summary?: string }) =>
-      submit(producer, { summary: opts?.summary, record: true }).then(() => undefined),
+      serializeMutation(() => submit(producer, { summary: opts?.summary, record: true })).then(() => undefined),
     [submit],
   )
 }
@@ -81,21 +91,27 @@ export function useUndoRedo(projectId: string) {
   const undoStack = useEditorStore((s) => s.undoStack)
   const redoStack = useEditorStore((s) => s.redoStack)
 
-  const undo = useCallback(async () => {
-    const store = useEditorStore.getState()
-    const ops = store.undoStack[store.undoStack.length - 1]
-    if (!ops) return
-    const ok = await submit((m) => applyOps(m, invertOps(ops)), { summary: '실행 취소', record: false })
-    if (ok) useEditorStore.getState().moveUndoToRedo()
-  }, [submit])
+  const undo = useCallback(
+    () => serializeMutation(async () => {
+      const stack = useEditorStore.getState().undoStack
+      const ops = stack[stack.length - 1]
+      if (!ops) return
+      const ok = await submit((m) => applyOps(m, invertOps(ops)), { summary: '실행 취소', record: false })
+      if (ok) useEditorStore.getState().moveUndoToRedo()
+    }),
+    [submit],
+  )
 
-  const redo = useCallback(async () => {
-    const store = useEditorStore.getState()
-    const ops = store.redoStack[store.redoStack.length - 1]
-    if (!ops) return
-    const ok = await submit((m) => applyOps(m, ops), { summary: '다시 실행', record: false })
-    if (ok) useEditorStore.getState().moveRedoToUndo()
-  }, [submit])
+  const redo = useCallback(
+    () => serializeMutation(async () => {
+      const stack = useEditorStore.getState().redoStack
+      const ops = stack[stack.length - 1]
+      if (!ops) return
+      const ok = await submit((m) => applyOps(m, ops), { summary: '다시 실행', record: false })
+      if (ok) useEditorStore.getState().moveRedoToUndo()
+    }),
+    [submit],
+  )
 
   return { undo, redo, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 }
 }
