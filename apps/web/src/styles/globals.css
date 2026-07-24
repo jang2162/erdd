@@ -2,6 +2,7 @@
 @import 'tw-animate-css';
 @import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 @import '@fontsource-variable/jetbrains-mono';
+@import '@xyflow/react/dist/style.css';
 
 :root {
   /* 데이터 도면 팔레트 */

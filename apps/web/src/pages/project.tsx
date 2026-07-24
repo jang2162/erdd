@@ -1,7 +1,10 @@
 import { Link, useParams } from 'react-router'
+import { ReactFlowProvider } from '@xyflow/react'
 import { Settings } from 'lucide-react'
 import { useModelLoader } from '@/editor/use-model'
 import { useEditorStore } from '@/editor/store'
+import { Canvas } from '@/editor/canvas'
+import { ViewModeToggle } from '@/editor/view-mode-toggle'
 import { BrandWordmark } from '@/components/brand-mark'
 import { UserMenu } from '@/components/user-menu'
 import { Button } from '@/components/ui/button'
@@ -22,6 +25,7 @@ export function ProjectPage() {
           <Link to="/" aria-label="홈으로"><BrandWordmark /></Link>
         </div>
         <div className="flex items-center gap-2">
+          <ViewModeToggle />
           <Button variant="ghost" size="sm" asChild>
             <Link to={`/p/${projectId}/settings`}><Settings /> 설정</Link>
           </Button>
@@ -29,9 +33,13 @@ export function ProjectPage() {
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        {/* Task 5: 좌측 트리 · Task 2: 캔버스 · Task 4: 편집 패널 */}
+        {/* Task 5: 좌측 트리 · Task 4: 편집 패널 */}
         {loaded
-          ? <div className="flex-1" data-testid="editor-canvas-slot" />
+          ? (
+              <ReactFlowProvider>
+                <Canvas />
+              </ReactFlowProvider>
+            )
           : <div className="flex flex-1 items-center justify-center text-muted-foreground">불러오는 중…</div>}
       </div>
     </div>
