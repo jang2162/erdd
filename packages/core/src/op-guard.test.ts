@@ -40,4 +40,13 @@ describe('parseOps', () => {
     expect(() => parseOps([{ action: 'update', entity: 'note', entityId: UUID, changes: {} }]))
       .toThrow(OpParseError)
   })
+
+  it('rejects dangerous property names in changes', () => {
+    expect(() =>
+      parseOps([{
+        action: 'update', entity: 'note', entityId: UUID,
+        changes: JSON.parse('{"__proto__": {"from": 1, "to": 2}}'),
+      }]),
+    ).toThrow(OpParseError)
+  })
 })

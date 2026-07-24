@@ -47,8 +47,11 @@ export function parseOps(value: unknown): Op[] {
     if (!isRecord(changes) || Object.keys(changes).length === 0) {
       throw new OpParseError(`${label}: update에는 비어 있지 않은 changes가 필요합니다`)
     }
-    const parsed: Record<string, { from: unknown; to: unknown }> = {}
+    const parsed: Record<string, { from: unknown; to: unknown }> = Object.create(null)
     for (const [prop, change] of Object.entries(changes)) {
+      if (prop === '__proto__' || prop === 'constructor' || prop === 'prototype') {
+        throw new OpParseError(`${label}: 허용되지 않는 속성 이름(${prop})`)
+      }
       if (!isRecord(change) || !('from' in change) || !('to' in change)) {
         throw new OpParseError(`${label}: changes.${prop}에는 from/to가 필요합니다`)
       }
