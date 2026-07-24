@@ -5,6 +5,7 @@ import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { updateTable } from './model-edits.js'
 import { addColumn, removeColumn, reorderColumn, updateColumn } from './column-edits.js'
+import { RelationshipPanel } from './relationship-panel.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -31,8 +32,11 @@ function CommitInput(props: {
 export function EditPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
   const mutate = useModelMutation(projectId)
   const table = selectedTableId ? model.tables[selectedTableId] : undefined
+
+  if (selectedRelationshipId) return <RelationshipPanel projectId={projectId} />
 
   if (!table) {
     return (

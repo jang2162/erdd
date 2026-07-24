@@ -1,4 +1,4 @@
-import type { Column, ProjectModel } from '@erdd/core'
+import { deleteColumnCascade, type Column, type ProjectModel } from '@erdd/core'
 
 function tableColumns(model: ProjectModel, tableId: string): Column[] {
   return Object.values(model.columns).filter((c) => c.tableId === tableId)
@@ -30,9 +30,7 @@ export function updateColumn(
 }
 
 export function removeColumn(model: ProjectModel, id: string): ProjectModel {
-  const columns = { ...model.columns }
-  delete columns[id]
-  return { ...model, columns }
+  return deleteColumnCascade(model, id)
 }
 
 /** 같은 테이블 내 인접 컬럼과 order를 교환한다. dir: -1 위로, +1 아래로. */

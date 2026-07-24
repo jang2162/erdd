@@ -1,0 +1,91 @@
+import { Trash2 } from 'lucide-react'
+import { setRelationshipIdentifying, deleteRelationship, remapRelationshipChildColumn } from '@erdd/core'
+import { useEditorStore } from './store.js'
+import { useModelMutation } from './use-model.js'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+
+export function RelationshipPanel({ projectId }: { projectId: string }) {
+  const model = useEditorStore((s) => s.model)
+  const relId = useEditorStore((s) => s.selectedRelationshipId)!
+  const selectRelationship = useEditorStore((s) => s.selectRelationship)
+  const mutate = useModelMutation(projectId)
+  const rel = model.relationships[relId]
+  if (!rel) return null
+
+  const parent = model.tables[rel.parentTableId]
+  const child = model.tables[rel.childTableId]
+  const childColumns = Object.values(model.columns)
+    .filter((c) => c.tableId === rel.childTableId)
+    .sort((a, b) => a.order - b.order)
+
+  return (
+    <aside className="w-80 shrink-0 overflow-y-auto border-l bg-card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold">관계</h3>
+        <Button size="icon" variant="ghost" className="size-7 text-destructive" aria-label="관계 삭제"
+          onClick={() => { selectRelationship(null); void mutate((m) => deleteRelationship(m, relId), { summary: '관계 삭제' }) }}>
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
+
+      <p className="mb-4 text-xs text-muted-foreground">
+        <span className="font-mono">{child?.physicalName}</span> →{' '}
+        <span className="font-mono">{parent?.physicalName}</span>
+      </p>
+
+      <div className="grid gap-3">
+        <div className="grid gap-1.5">
+          <Label>카디널리티</Label>
+          <select className="h-9 rounded-md border bg-background px-2 text-sm" value={rel.cardinality}
+            onChange={(e) => void mutate((m) => {
+              const r = m.relationships[relId]!
+              return { ...m, relationships: { ...m.relationships, [relId]: { ...r, cardinality: e.target.value as '1:1' | '1:N' } } }
+            })}>
+            <option value="1:N">1 : N</option>
+            <option value="1:1">1 : 1</option>
+          </select>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={rel.identifying}
+            onChange={(e) => void mutate((m) => setRelationshipIdentifying(m, relId, e.target.checked), { summary: '식별 관계 전환' })} />
+          식별 관계 (자식 기본 키 편입)
+        </label>
+
+        <div className="grid gap-1.5">
+          <Label>관계명</Label>
+          <input className="h-9 rounded-md border bg-background px-2 text-sm" defaultValue={rel.name ?? ''}
+            key={rel.name ?? ''}
+            onBlur={(e) => {
+              const v = e.target.value.trim() === '' ? null : e.target.value
+              if (v !== rel.name) void mutate((m) => {
+                const r = m.relationships[relId]!
+                return { ...m, relationships: { ...m.relationships, [relId]: { ...r, name: v } } }
+              })
+            }} />
+        </div>
+
+        <div className="grid gap-1.5">
+          <Label>컬럼 매핑</Label>
+          <ul className="grid gap-2">
+            {rel.columnMappings.map((mm) => {
+              const p = model.columns[mm.parentColumnId]
+              return (
+                <li key={mm.parentColumnId} className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-xs">
+                  <select className="h-8 rounded border bg-background px-1 font-mono" value={mm.childColumnId}
+                    onChange={(e) => void mutate((m) => remapRelationshipChildColumn(m, { relationshipId: relId, parentColumnId: mm.parentColumnId, newChildColumnId: e.target.value }), { summary: '매핑 변경' })}>
+                    {childColumns.map((c) => <option key={c.id} value={c.id}>{c.physicalName}</option>)}
+                  </select>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="truncate font-mono text-muted-foreground">{p?.physicalName ?? '?'}</span>
+                </li>
+              )
+            })}
+            {rel.columnMappings.length === 0 && <li className="text-xs text-muted-foreground">매핑 없음</li>}
+          </ul>
+        </div>
+      </div>
+    </aside>
+  )
+}
