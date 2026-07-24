@@ -41,7 +41,7 @@ export function ProjectPage() {
           {loaded
             ? (
                 <>
-                  <TableTree />
+                  <TableTree projectId={projectId} />
                   <Canvas projectId={projectId} />
                   <EditPanel projectId={projectId} />
                 </>
