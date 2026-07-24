@@ -6,6 +6,7 @@ import { newId } from './uid.js'
 import { updateTable } from './model-edits.js'
 import { addColumn, removeColumn, reorderColumn, updateColumn } from './column-edits.js'
 import { RelationshipPanel } from './relationship-panel.js'
+import { NotePanel } from './note-panel.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,10 +34,13 @@ export function EditPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
   const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
+  const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const mutate = useModelMutation(projectId)
   const table = selectedTableId ? model.tables[selectedTableId] : undefined
 
   if (selectedRelationshipId) return <RelationshipPanel projectId={projectId} />
+
+  if (selectedNoteId) return <NotePanel projectId={projectId} />
 
   if (!table) {
     return (

@@ -7,14 +7,16 @@ import { toast } from 'sonner'
 import { useEditorStore } from './store.js'
 import { buildNodes } from './nodes.js'
 import { buildEdges, planConnection } from './edges.js'
-import { TableNode, type TableNodeData } from './table-node.js'
+import { TableNode } from './table-node.js'
+import { NoteNode, type NoteNodeData } from './note-node.js'
 import { RelationshipEdge, RelationshipMarkers } from './relationship-edge.js'
 import { useModelMutation } from './use-model.js'
 import { moveTable } from './model-edits.js'
+import { moveNote } from './note-edits.js'
 import { newId } from './uid.js'
 import { createRelationshipFromParentPk } from '@erdd/core'
 
-const nodeTypes = { table: TableNode }
+const nodeTypes = { table: TableNode, note: NoteNode }
 const edgeTypes = { relationship: RelationshipEdge }
 
 export function Canvas({ projectId }: { projectId: string }) {
@@ -22,18 +24,24 @@ export function Canvas({ projectId }: { projectId: string }) {
   const viewMode = useEditorStore((s) => s.viewMode)
   const selectedId = useEditorStore((s) => s.selectedTableId)
   const selectedRelId = useEditorStore((s) => s.selectedRelationshipId)
+  const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const select = useEditorStore((s) => s.select)
   const selectRelationship = useEditorStore((s) => s.selectRelationship)
+  const selectNote = useEditorStore((s) => s.selectNote)
   const focusTableId = useEditorStore((s) => s.focusTableId)
   const consumeFocus = useEditorStore((s) => s.consumeFocus)
   const mutate = useModelMutation(projectId)
   const rf = useReactFlow()
 
-  const derived = useMemo(
-    () => buildNodes(model, viewMode, selectedId),
-    [model, viewMode, selectedId],
-  )
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>(derived)
+  const derived = useMemo(() => {
+    const tableNodes = buildNodes(model, viewMode, selectedId)
+    const noteNodes: Node[] = Object.values(model.notes).map((note) => ({
+      id: note.id, type: 'note', position: note.position,
+      data: { note, selected: note.id === selectedNoteId } satisfies NoteNodeData,
+    }))
+    return [...tableNodes, ...noteNodes]
+  }, [model, viewMode, selectedId, selectedNoteId])
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.
   useEffect(() => { setNodes(derived) }, [derived, setNodes])
@@ -80,13 +88,16 @@ export function Canvas({ projectId }: { projectId: string }) {
         connectionMode={ConnectionMode.Loose}
         onNodesChange={onNodesChange as (c: NodeChange[]) => void}
         onConnect={onConnect}
-        onNodeClick={(_, node) => select(node.id)}
+        onNodeClick={(_, node) => (node.type === 'note' ? selectNote(node.id) : select(node.id))}
         onEdgeClick={(_, edge) => selectRelationship(edge.id)}
         onPaneClick={() => select(null)}
         onNodeDragStop={(_, __, dragged) =>
           void mutate(
-            (m) => dragged.reduce((acc, n) => moveTable(acc, n.id, { x: n.position.x, y: n.position.y }), m),
-            { summary: '테이블 이동' },
+            (m) => dragged.reduce(
+              (acc, n) => (n.type === 'note' ? moveNote(acc, n.id, n.position) : moveTable(acc, n.id, n.position)),
+              m,
+            ),
+            { summary: '이동' },
           )}
         fitView
         proOptions={{ hideAttribution: true }}

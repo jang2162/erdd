@@ -1,10 +1,11 @@
-import { Plus, Redo2, Trash2, Undo2 } from 'lucide-react'
+import { FileText, Plus, Redo2, Trash2, Undo2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { useEditorStore } from './store.js'
 import { useModelMutation, useUndoRedo } from './use-model.js'
 import { newId } from './uid.js'
 import { addTable, removeTable } from './model-edits.js'
+import { addNote } from './note-edits.js'
 import { Button } from '@/components/ui/button'
 
 export function Toolbar({ projectId }: { projectId: string }) {
@@ -12,6 +13,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
   const { undo, redo, canUndo, canRedo } = useUndoRedo(projectId)
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
   const select = useEditorStore((s) => s.select)
+  const selectNote = useEditorStore((s) => s.selectNote)
   const rf = useReactFlow()
 
   useEffect(() => {
@@ -40,10 +42,17 @@ export function Toolbar({ projectId }: { projectId: string }) {
     select(null)
     void mutate((m) => removeTable(m, id), { summary: '테이블 삭제' })
   }
+  const onAddNote = () => {
+    const id = newId()
+    const center = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+    void mutate((m) => addNote(m, { id, position: center }), { summary: '메모 추가' })
+    selectNote(id)
+  }
 
   return (
     <div className="flex items-center gap-2">
       <Button size="sm" onClick={onAdd}><Plus /> 테이블 추가</Button>
+      <Button size="sm" variant="outline" onClick={onAddNote}><FileText /> 메모</Button>
       <Button size="sm" variant="outline" disabled={!selectedTableId} onClick={onDelete}>
         <Trash2 /> 삭제
       </Button>
