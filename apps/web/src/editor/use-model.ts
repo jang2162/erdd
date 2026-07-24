@@ -1,11 +1,10 @@
 import { useCallback, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { diffModels, validateModelIntegrity, type ProjectModel } from '@erdd/core'
+import { applyOps, diffModels, invertOps, validateModelIntegrity, type ProjectModel } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
 
-/** model.get을 스토어에 적재한다. */
 export function useModelLoader(projectId: string) {
   const trpc = useTRPC()
   const setLoaded = useEditorStore((s) => s.setLoaded)
@@ -18,44 +17,85 @@ export function useModelLoader(projectId: string) {
   return query
 }
 
-/**
- * 모델 변경의 단일 경로. producer가 다음 모델을 만들면 diffModels로 op을 도출해
- * 낙관적으로 스토어에 반영하고 서버에 전송한다. 실패 시 서버 상태로 재로드한다.
- */
-export function useModelMutation(projectId: string) {
+/** 모델 변경의 저수준 단일 경로. 성공 시 true. record=true면 undo 스택에 기록. */
+function useSubmit(projectId: string) {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
   const mutation = useMutation(trpc.model.mutate.mutationOptions())
 
   return useCallback(
-    async (producer: (model: ProjectModel) => ProjectModel, opts?: { summary?: string }) => {
+    async (
+      producer: (model: ProjectModel) => ProjectModel,
+      opts: { summary?: string; record: boolean },
+    ): Promise<boolean> => {
       const store = useEditorStore.getState()
       const current = store.model
-      const next = producer(current)
+      let next: ProjectModel
+      try {
+        next = producer(current)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : '변경을 적용할 수 없습니다')
+        return false
+      }
       const ops = diffModels(current, next)
-      if (ops.length === 0) return
+      if (ops.length === 0) return false
 
       const issues = validateModelIntegrity(next)
       if (issues.length > 0) {
         toast.error(issues[0]!.message)
-        return
+        return false
       }
 
       store.setModel(next) // 낙관적
       try {
-        const { seq } = await mutation.mutateAsync({ projectId, ops, summary: opts?.summary })
+        const { seq } = await mutation.mutateAsync({ projectId, ops, summary: opts.summary })
         useEditorStore.getState().setSeq(seq)
+        if (opts.record) useEditorStore.getState().recordEdit(ops)
+        return true
       } catch (err) {
-        const message = err instanceof Error ? err.message : '변경을 저장하지 못했습니다'
-        toast.error(message)
+        toast.error(err instanceof Error ? err.message : '변경을 저장하지 못했습니다')
         try {
           const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
           useEditorStore.getState().setLoaded(fresh.model, fresh.seq, projectId)
         } catch {
           toast.error('서버 상태를 복구하지 못했습니다. 새로고침해 주세요.')
         }
+        return false
       }
     },
     [projectId, mutation, queryClient, trpc],
   )
+}
+
+export function useModelMutation(projectId: string) {
+  const submit = useSubmit(projectId)
+  return useCallback(
+    (producer: (model: ProjectModel) => ProjectModel, opts?: { summary?: string }) =>
+      submit(producer, { summary: opts?.summary, record: true }).then(() => undefined),
+    [submit],
+  )
+}
+
+export function useUndoRedo(projectId: string) {
+  const submit = useSubmit(projectId)
+  const undoStack = useEditorStore((s) => s.undoStack)
+  const redoStack = useEditorStore((s) => s.redoStack)
+
+  const undo = useCallback(async () => {
+    const store = useEditorStore.getState()
+    const ops = store.undoStack[store.undoStack.length - 1]
+    if (!ops) return
+    const ok = await submit((m) => applyOps(m, invertOps(ops)), { summary: '실행 취소', record: false })
+    if (ok) useEditorStore.getState().moveUndoToRedo()
+  }, [submit])
+
+  const redo = useCallback(async () => {
+    const store = useEditorStore.getState()
+    const ops = store.redoStack[store.redoStack.length - 1]
+    if (!ops) return
+    const ok = await submit((m) => applyOps(m, ops), { summary: '다시 실행', record: false })
+    if (ok) useEditorStore.getState().moveRedoToUndo()
+  }, [submit])
+
+  return { undo, redo, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 }
 }
