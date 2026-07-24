@@ -21,3 +21,5 @@ export {
   createRelationshipFromParentPk, remapRelationshipChildColumn, setRelationshipIdentifying,
   deleteRelationship, deleteTableCascade, deleteColumnCascade,
 } from './relationship.js'
+export { computeWarnings } from './warnings.js'
+export type { Warning } from './warnings.js'
