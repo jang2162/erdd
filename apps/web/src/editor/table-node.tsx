@@ -1,4 +1,5 @@
 import { KeyRound } from 'lucide-react'
+import { Handle, Position } from '@xyflow/react'
 import type { Column, Table } from '@erdd/core'
 import { cn } from '@/lib/utils'
 import type { ViewMode } from './store.js'
@@ -28,6 +29,10 @@ export function TableNode({ data }: { data: TableNodeData }) {
         selected && 'ring-2 ring-primary',
       )}
     >
+      <Handle id="l" type="source" position={Position.Left}
+        className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background" />
+      <Handle id="r" type="source" position={Position.Right}
+        className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background" />
       <div className="border-b bg-secondary/60 px-3 py-2">
         {mixed ? (
           <div className="flex items-baseline justify-between gap-2">

@@ -1,10 +1,20 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import { ReactFlowProvider } from '@xyflow/react'
 import { TableNode } from './table-node.js'
 
 afterEach(() => {
   cleanup()
 })
+
+// TableNode는 좌/우 연결 Handle을 렌더하므로 React Flow 컨텍스트가 필요하다.
+function renderNode(data: Parameters<typeof TableNode>[0]['data']) {
+  return render(
+    <ReactFlowProvider>
+      <TableNode data={data} />
+    </ReactFlowProvider>,
+  )
+}
 
 const DATA = {
   table: {
@@ -24,20 +34,20 @@ const DATA = {
 
 describe('TableNode', () => {
   it('shows physical names in physical mode', () => {
-    render(<TableNode data={{ ...DATA, viewMode: 'physical' }} />)
+    renderNode({ ...DATA, viewMode: 'physical' })
     expect(screen.getByText('MBR')).toBeInTheDocument()
     expect(screen.getByText('MBR_NO')).toBeInTheDocument()
     expect(screen.getByText('VARCHAR(100)')).toBeInTheDocument()
   })
 
   it('shows logical names in logical mode', () => {
-    render(<TableNode data={{ ...DATA, viewMode: 'logical' }} />)
+    renderNode({ ...DATA, viewMode: 'logical' })
     expect(screen.getByText('회원')).toBeInTheDocument()
     expect(screen.getByText('회원번호')).toBeInTheDocument()
   })
 
   it('shows both names in mixed mode and marks the PK column', () => {
-    render(<TableNode data={{ ...DATA, viewMode: 'mixed' }} />)
+    renderNode({ ...DATA, viewMode: 'mixed' })
     expect(screen.getByText('MBR')).toBeInTheDocument()
     expect(screen.getByText('회원')).toBeInTheDocument()
     // PK 컬럼은 접근성 레이블로 표시
