@@ -17,3 +17,7 @@ export { diffModels } from './diff.js'
 export { DIALECTS } from './dialect.js'
 export type { Dialect } from './dialect.js'
 export { OpParseError, parseOps } from './op-guard.js'
+export {
+  createRelationshipFromParentPk, remapRelationshipChildColumn, setRelationshipIdentifying,
+  deleteRelationship, deleteTableCascade, deleteColumnCascade,
+} from './relationship.js'
