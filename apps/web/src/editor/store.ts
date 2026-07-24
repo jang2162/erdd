@@ -13,6 +13,7 @@ type EditorState = {
   selectedTableId: string | null
   selectedRelationshipId: string | null
   selectedNoteId: string | null
+  selectedGroupId: string | null
   focusTableId: string | null
   undoStack: Op[][]
   redoStack: Op[][]
@@ -23,6 +24,7 @@ type EditorState = {
   select: (tableId: string | null) => void
   selectRelationship: (id: string | null) => void
   selectNote: (id: string | null) => void
+  selectGroup: (id: string | null) => void
   focus: (tableId: string) => void
   consumeFocus: () => void
   recordEdit: (ops: Op[]) => void
@@ -32,7 +34,7 @@ type EditorState = {
 }
 
 const CLEARED_SELECTION = {
-  selectedTableId: null, selectedRelationshipId: null, selectedNoteId: null,
+  selectedTableId: null, selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -44,6 +46,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectedTableId: null,
   selectedRelationshipId: null,
   selectedNoteId: null,
+  selectedGroupId: null,
   focusTableId: null,
   undoStack: [],
   redoStack: [],
@@ -55,6 +58,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   select: (selectedTableId) => set({ ...CLEARED_SELECTION, selectedTableId }),
   selectRelationship: (selectedRelationshipId) => set({ ...CLEARED_SELECTION, selectedRelationshipId }),
   selectNote: (selectedNoteId) => set({ ...CLEARED_SELECTION, selectedNoteId }),
+  selectGroup: (selectedGroupId) => set({ ...CLEARED_SELECTION, selectedGroupId }),
   focus: (id) => set({ ...CLEARED_SELECTION, focusTableId: id, selectedTableId: id }),
   consumeFocus: () => set({ focusTableId: null }),
   recordEdit: (ops) =>

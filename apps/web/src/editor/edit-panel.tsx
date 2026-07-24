@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
-import { computeWarnings, type Column, type Warning } from '@erdd/core'
+import { computeWarnings, setTableGroup, type Column, type Warning } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
@@ -8,6 +8,7 @@ import { updateTable } from './model-edits.js'
 import { addColumn, removeColumn, reorderColumn, updateColumn } from './column-edits.js'
 import { RelationshipPanel } from './relationship-panel.js'
 import { NotePanel } from './note-panel.js'
+import { GroupPanel } from './group-panel.js'
 import { WarningBadge } from './warning-badge.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +38,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
   const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
+  const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const mutate = useModelMutation(projectId)
   const table = selectedTableId ? model.tables[selectedTableId] : undefined
   const warnings = useMemo(() => computeWarnings(model), [model])
@@ -44,6 +46,8 @@ export function EditPanel({ projectId }: { projectId: string }) {
   if (selectedRelationshipId) return <RelationshipPanel projectId={projectId} />
 
   if (selectedNoteId) return <NotePanel projectId={projectId} />
+
+  if (selectedGroupId) return <GroupPanel projectId={projectId} />
 
   if (!table) {
     return (
@@ -70,6 +74,20 @@ export function EditPanel({ projectId }: { projectId: string }) {
           <Label htmlFor="tbl-physical">테이블 물리명</Label>
           <CommitInput id="tbl-physical" value={table.physicalName} mono
             onCommit={(v) => void mutate((m) => updateTable(m, tid, { physicalName: v }))} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="tbl-group">소속 그룹</Label>
+          <select id="tbl-group" className="h-9 rounded-md border bg-background px-2 text-sm"
+            value={table.groupId ?? ''}
+            onChange={(e) => {
+              const groupId = e.target.value === '' ? null : e.target.value
+              void mutate((m) => setTableGroup(m, tid, groupId), { summary: '그룹 배정' })
+            }}>
+            <option value="">미분류</option>
+            {Object.values(model.tableGroups).map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
