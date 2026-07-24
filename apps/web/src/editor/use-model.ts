@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { diffModels, validateModelIntegrity, type ProjectModel } from '@erdd/core'
@@ -10,9 +10,11 @@ export function useModelLoader(projectId: string) {
   const trpc = useTRPC()
   const setLoaded = useEditorStore((s) => s.setLoaded)
   const query = useQuery(trpc.model.get.queryOptions({ projectId }))
-  if (query.data && !useEditorStore.getState().loaded) {
-    setLoaded(query.data.model, query.data.seq)
-  }
+  useEffect(() => {
+    if (query.data && !useEditorStore.getState().loaded) {
+      setLoaded(query.data.model, query.data.seq)
+    }
+  }, [query.data, setLoaded])
   return query
 }
 
