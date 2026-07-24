@@ -6,7 +6,7 @@ import {
 import { toast } from 'sonner'
 import { useEditorStore } from './store.js'
 import { buildNodes } from './nodes.js'
-import { buildEdges } from './edges.js'
+import { buildEdges, planConnection } from './edges.js'
 import { TableNode, type TableNodeData } from './table-node.js'
 import { RelationshipEdge, RelationshipMarkers } from './relationship-edge.js'
 import { useModelMutation } from './use-model.js'
@@ -52,22 +52,21 @@ export function Canvas({ projectId }: { projectId: string }) {
   }, [focusTableId, rf, consumeFocus])
 
   const onConnect = (conn: Connection) => {
-    if (!conn.source || !conn.target || conn.source === conn.target) return
-    const parentTableId = conn.target // 부모
-    const childTableId = conn.source // 자식
-    const pkCount = Object.values(model.columns)
-      .filter((c) => c.tableId === parentTableId && c.isPk).length
-    if (pkCount === 0) {
-      toast.error('부모 테이블에 기본 키가 없습니다')
+    const plan = planConnection(model, conn, newId)
+    if (!plan.ok) {
+      if (plan.reason === 'no-parent-pk') toast.error('부모 테이블에 기본 키가 없습니다')
       return
     }
-    const relationshipId = newId()
-    const newColumnIds = Array.from({ length: pkCount }, () => newId())
     void mutate(
-      (m) => createRelationshipFromParentPk(m, { relationshipId, parentTableId, childTableId, newColumnIds }),
+      (m) => createRelationshipFromParentPk(m, {
+        relationshipId: plan.relationshipId,
+        parentTableId: plan.parentTableId,
+        childTableId: plan.childTableId,
+        newColumnIds: plan.newColumnIds,
+      }),
       { summary: '관계 생성' },
     )
-    selectRelationship(relationshipId)
+    selectRelationship(plan.relationshipId)
   }
 
   return (

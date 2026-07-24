@@ -23,3 +23,33 @@ export function buildEdges(model: ProjectModel): Edge[] {
     }
   })
 }
+
+export type ConnectionPlan =
+  | { ok: false; reason: 'invalid' | 'self' | 'no-parent-pk' }
+  | { ok: true; parentTableId: string; childTableId: string; relationshipId: string; newColumnIds: string[] }
+
+/**
+ * 캔버스 드래그(자식→부모)를 관계 생성 계획으로 변환한다. 순수 함수(genId 주입).
+ * source=자식, target=부모. 부모 PK가 없으면 no-parent-pk.
+ */
+export function planConnection(
+  model: ProjectModel,
+  conn: { source: string | null; target: string | null },
+  genId: () => string,
+): ConnectionPlan {
+  if (!conn.source || !conn.target) return { ok: false, reason: 'invalid' }
+  if (conn.source === conn.target) return { ok: false, reason: 'self' }
+  const parentTableId = conn.target
+  const childTableId = conn.source
+  const pkCount = Object.values(model.columns).filter(
+    (c) => c.tableId === parentTableId && c.isPk,
+  ).length
+  if (pkCount === 0) return { ok: false, reason: 'no-parent-pk' }
+  return {
+    ok: true,
+    parentTableId,
+    childTableId,
+    relationshipId: genId(),
+    newColumnIds: Array.from({ length: pkCount }, () => genId()),
+  }
+}
