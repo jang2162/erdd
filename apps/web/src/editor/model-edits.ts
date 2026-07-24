@@ -18,6 +18,15 @@ export function moveTable(model: ProjectModel, id: string, position: Position): 
   return { ...model, tables: { ...model.tables, [id]: { ...table, position } } }
 }
 
+export function updateTable(
+  model: ProjectModel, id: string,
+  patch: Partial<Pick<Table, 'logicalName' | 'physicalName' | 'comment'>>,
+): ProjectModel {
+  const table = model.tables[id]
+  if (!table) return model
+  return { ...model, tables: { ...model.tables, [id]: { ...table, ...patch } } }
+}
+
 /** 테이블과 그 소속 컬럼·인덱스를 제거한다(관계는 M4b). */
 export function removeTable(model: ProjectModel, id: string): ProjectModel {
   const columns = Object.fromEntries(

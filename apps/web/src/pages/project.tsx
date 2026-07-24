@@ -4,6 +4,7 @@ import { Settings } from 'lucide-react'
 import { useModelLoader } from '@/editor/use-model'
 import { useEditorStore } from '@/editor/store'
 import { Canvas } from '@/editor/canvas'
+import { EditPanel } from '@/editor/edit-panel'
 import { Toolbar } from '@/editor/toolbar'
 import { ViewModeToggle } from '@/editor/view-mode-toggle'
 import { BrandWordmark } from '@/components/brand-mark'
@@ -36,9 +37,14 @@ export function ProjectPage() {
           </div>
         </header>
         <div className="flex min-h-0 flex-1">
-          {/* Task 5: 좌측 트리 · Task 4: 편집 패널 */}
+          {/* Task 5: 좌측 트리 */}
           {loaded
-            ? <Canvas projectId={projectId} />
+            ? (
+                <>
+                  <Canvas projectId={projectId} />
+                  <EditPanel projectId={projectId} />
+                </>
+              )
             : <div className="flex flex-1 items-center justify-center text-muted-foreground">불러오는 중…</div>}
         </div>
       </ReactFlowProvider>
