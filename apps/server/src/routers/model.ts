@@ -6,7 +6,7 @@ import {
   applyOps, COLLECTION_BY_KIND, OpApplyError, OpParseError, parseOps,
   type EntityKind, type Op, type ProjectModel,
 } from '@erdd/core'
-import { projects, revisions } from '../db/schema.js'
+import { revisions } from '../db/schema.js'
 import { loadProjectModel, persistOps } from '../services/model-store.js'
 import { requireProjectAccess } from '../services/perm.js'
 import { authedProcedure, router } from '../trpc.js'
@@ -51,8 +51,13 @@ export const modelRouter = router({
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
-      const model = await loadProjectModel(ctx.db, input.projectId)
-      const seq = await currentSeq(ctx.db, input.projectId)
+      const { model, seq } = await ctx.db.transaction(
+        async (tx) => ({
+          model: await loadProjectModel(tx, input.projectId),
+          seq: await currentSeq(tx, input.projectId),
+        }),
+        { isolationLevel: 'repeatable read' },
+      )
       return { model, seq }
     }),
 
@@ -77,10 +82,10 @@ export const modelRouter = router({
 
       return ctx.db.transaction(async (tx) => {
         // 프로젝트별 mutation 직렬화 — 같은 프로젝트의 동시 mutate는 여기서 대기한다.
-        await tx.execute(sql`SELECT id FROM projects WHERE id = ${input.projectId} FOR UPDATE`)
-        const exists = await tx.select({ id: projects.id }).from(projects)
-          .where(eq(projects.id, input.projectId))
-        if (exists.length === 0) {
+        const locked = await tx.execute(
+          sql`SELECT id FROM projects WHERE id = ${input.projectId} FOR UPDATE`,
+        )
+        if (locked.rows.length === 0) {
           throw new TRPCError({ code: 'NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' })
         }
 
