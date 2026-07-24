@@ -5,14 +5,17 @@ import {
 import { useEditorStore } from './store.js'
 import { buildNodes } from './nodes.js'
 import { TableNode, type TableNodeData } from './table-node.js'
+import { useModelMutation } from './use-model.js'
+import { moveTable } from './model-edits.js'
 
 const nodeTypes = { table: TableNode }
 
-export function Canvas() {
+export function Canvas({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const viewMode = useEditorStore((s) => s.viewMode)
   const selectedId = useEditorStore((s) => s.selectedTableId)
   const select = useEditorStore((s) => s.select)
+  const mutate = useModelMutation(projectId)
 
   const derived = useMemo(
     () => buildNodes(model, viewMode, selectedId),
@@ -30,6 +33,9 @@ export function Canvas() {
       onNodesChange={onNodesChange as (c: NodeChange[]) => void}
       onNodeClick={(_, node) => select(node.id)}
       onPaneClick={() => select(null)}
+      onNodeDragStop={(_, node) =>
+        void mutate((m) => moveTable(m, node.id, { x: node.position.x, y: node.position.y }),
+          { summary: '테이블 이동' })}
       fitView
       proOptions={{ hideAttribution: true }}
     >
