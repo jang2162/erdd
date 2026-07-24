@@ -38,6 +38,9 @@ function useSubmit(projectId: string) {
       producer: (model: ProjectModel) => ProjectModel,
       opts: { summary?: string; record: boolean },
     ): Promise<boolean> => {
+      // mutation은 직렬화로 지연 실행될 수 있다. 프로젝트가 전환된 뒤 큐에 남은 producer가
+      // 새 프로젝트의 모델을 읽거나(옛 프로젝트로 전송) 새 프로젝트 상태를 오염시키는 것을 막는다.
+      if (useEditorStore.getState().loadedProjectId !== projectId) return false
       const store = useEditorStore.getState()
       const current = store.model
       let next: ProjectModel
@@ -59,16 +62,23 @@ function useSubmit(projectId: string) {
       store.setModel(next) // 낙관적
       try {
         const { seq } = await mutation.mutateAsync({ projectId, ops, summary: opts.summary })
+        // await 사이 프로젝트가 바뀌었으면 새 프로젝트의 seq/히스토리를 오염시키지 않는다.
+        if (useEditorStore.getState().loadedProjectId !== projectId) return false
         useEditorStore.getState().setSeq(seq)
         if (opts.record) useEditorStore.getState().recordEdit(ops)
         return true
       } catch (err) {
         toast.error(err instanceof Error ? err.message : '변경을 저장하지 못했습니다')
-        try {
-          const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
-          useEditorStore.getState().setLoaded(fresh.model, fresh.seq, projectId)
-        } catch {
-          toast.error('서버 상태를 복구하지 못했습니다. 새로고침해 주세요.')
+        // 여전히 이 프로젝트를 보고 있을 때만 서버 상태로 복구한다(다른 프로젝트 화면 덮어쓰기 방지).
+        if (useEditorStore.getState().loadedProjectId === projectId) {
+          try {
+            const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
+            if (useEditorStore.getState().loadedProjectId === projectId) {
+              useEditorStore.getState().setLoaded(fresh.model, fresh.seq, projectId)
+            }
+          } catch {
+            toast.error('서버 상태를 복구하지 못했습니다. 새로고침해 주세요.')
+          }
         }
         return false
       }

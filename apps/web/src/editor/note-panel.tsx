@@ -26,13 +26,20 @@ export function NotePanel({ projectId }: { projectId: string }) {
           <Label htmlFor="note-content">내용</Label>
           <textarea id="note-content" className="min-h-24 rounded-md border bg-background p-2 text-sm"
             defaultValue={note.content} key={note.content}
-            onBlur={(e) => { if (e.target.value !== note.content) void mutate((m) => updateNote(m, noteId, { content: e.target.value })) }} />
+            onBlur={(e) => {
+              // e.target 값은 호출 시점에 즉시 읽는다(직렬화 지연 실행 시 옛 DOM 값 방지).
+              const content = e.target.value
+              if (content !== note.content) void mutate((m) => updateNote(m, noteId, { content }))
+            }} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="note-color">색상</Label>
           <input id="note-color" type="color" className="h-9 w-16 rounded border bg-background"
             defaultValue={note.color} key={note.color}
-            onBlur={(e) => { if (e.target.value !== note.color) void mutate((m) => updateNote(m, noteId, { color: e.target.value })) }} />
+            onBlur={(e) => {
+              const color = e.target.value
+              if (color !== note.color) void mutate((m) => updateNote(m, noteId, { color }))
+            }} />
         </div>
       </div>
     </aside>

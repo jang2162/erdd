@@ -8,7 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { useEditorStore } from './store.js'
-import { useUndoRedo } from './use-model.js'
+import { useModelMutation, useUndoRedo } from './use-model.js'
 
 function wrapper() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -128,5 +128,25 @@ describe('useUndoRedo (훅 통합)', () => {
     await act(async () => { await result.current.undo() })
     expect(useEditorStore.getState().undoStack).toHaveLength(1)
     expect(useEditorStore.getState().redoStack).toHaveLength(0)
+  })
+})
+
+describe('프로젝트 전환 가드', () => {
+  it('loadedProjectId와 다른 프로젝트의 mutation은 무시한다', async () => {
+    // B가 로드된 상태에서 A용 mutate 호출 → producer 실행 전에 bail, 모델·히스토리 불변.
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, 'project-B')
+    const { result } = renderHook(() => useModelMutation('project-A'), { wrapper: wrapper() })
+    await act(async () => {
+      await result.current((m) => ({
+        ...m,
+        tables: { ...m.tables, X: {
+          id: 'X', logicalName: 'x', physicalName: 'X', comment: null,
+          groupId: null, position: { x: 0, y: 0 }, groupPosition: null,
+        } },
+      }))
+    })
+    expect(useEditorStore.getState().model.tables.X).toBeUndefined()
+    expect(useEditorStore.getState().undoStack).toHaveLength(0)
+    expect(useEditorStore.getState().loadedProjectId).toBe('project-B')
   })
 })
