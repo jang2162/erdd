@@ -5,13 +5,14 @@ import { resetDb, TEST_TABLES } from '../testing/db.js'
 const url = process.env.DATABASE_URL
 
 describe.skipIf(!url)('schema', () => {
-  it('has all six tables migrated', async () => {
+  it('has all account and model tables migrated', async () => {
     const { pool } = createDb(url!)
     const res = await pool.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
     )
     const names = res.rows.map((r) => r.table_name)
     for (const t of TEST_TABLES) expect(names).toContain(t)
+    expect(names).toContain('revisions')
     await pool.end()
   })
 
