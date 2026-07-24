@@ -5,6 +5,7 @@ import { useModelLoader } from '@/editor/use-model'
 import { useEditorStore } from '@/editor/store'
 import { Canvas } from '@/editor/canvas'
 import { EditPanel } from '@/editor/edit-panel'
+import { TableTree } from '@/editor/table-tree'
 import { Toolbar } from '@/editor/toolbar'
 import { ViewModeToggle } from '@/editor/view-mode-toggle'
 import { BrandWordmark } from '@/components/brand-mark'
@@ -37,10 +38,10 @@ export function ProjectPage() {
           </div>
         </header>
         <div className="flex min-h-0 flex-1">
-          {/* Task 5: 좌측 트리 */}
           {loaded
             ? (
                 <>
+                  <TableTree />
                   <Canvas projectId={projectId} />
                   <EditPanel projectId={projectId} />
                 </>

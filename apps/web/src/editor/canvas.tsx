@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import {
-  Background, Controls, MiniMap, ReactFlow, useNodesState, type Node, type NodeChange,
+  Background, Controls, MiniMap, ReactFlow, useNodesState, useReactFlow, type Node, type NodeChange,
 } from '@xyflow/react'
 import { useEditorStore } from './store.js'
 import { buildNodes } from './nodes.js'
@@ -15,7 +15,10 @@ export function Canvas({ projectId }: { projectId: string }) {
   const viewMode = useEditorStore((s) => s.viewMode)
   const selectedId = useEditorStore((s) => s.selectedTableId)
   const select = useEditorStore((s) => s.select)
+  const focusTableId = useEditorStore((s) => s.focusTableId)
+  const consumeFocus = useEditorStore((s) => s.consumeFocus)
   const mutate = useModelMutation(projectId)
+  const rf = useReactFlow()
 
   const derived = useMemo(
     () => buildNodes(model, viewMode, selectedId),
@@ -25,6 +28,14 @@ export function Canvas({ projectId }: { projectId: string }) {
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.
   useEffect(() => { setNodes(derived) }, [derived, setNodes])
+
+  // 트리에서 발행한 포커스 신호를 소비해 해당 테이블로 이동한다.
+  useEffect(() => {
+    if (!focusTableId) return
+    const node = rf.getNode(focusTableId)
+    if (node) rf.setCenter(node.position.x + 120, node.position.y + 60, { zoom: 1, duration: 400 })
+    consumeFocus()
+  }, [focusTableId, rf, consumeFocus])
 
   return (
     <ReactFlow
