@@ -5,6 +5,7 @@ import { adminRouter } from './routers/admin.js'
 import { orgRouter } from './routers/org.js'
 import { projectRouter } from './routers/project.js'
 import { modelRouter } from './routers/model.js'
+import { revisionRouter } from './routers/revision.js'
 import { publicProcedure, router } from './trpc.js'
 
 export const appRouter = router({
@@ -19,6 +20,7 @@ export const appRouter = router({
   org: orgRouter,
   project: projectRouter,
   model: modelRouter,
+  revision: revisionRouter,
 })
 
 export type AppRouter = typeof appRouter
