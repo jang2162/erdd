@@ -1,7 +1,9 @@
+import { useMemo } from 'react'
 import { Trash2 } from 'lucide-react'
-import { setRelationshipIdentifying, deleteRelationship, remapRelationshipChildColumn } from '@erdd/core'
+import { computeWarnings, setRelationshipIdentifying, deleteRelationship, remapRelationshipChildColumn } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
+import { WarningBadge } from './warning-badge.js'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
@@ -11,6 +13,10 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
   const selectRelationship = useEditorStore((s) => s.selectRelationship)
   const mutate = useModelMutation(projectId)
   const rel = model.relationships[relId]
+  const relWarnings = useMemo(
+    () => computeWarnings(model).filter((w) => w.scope === 'relationship' && w.entityId === relId),
+    [model, relId],
+  )
   if (!rel) return null
 
   const parent = model.tables[rel.parentTableId]
@@ -22,7 +28,10 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
   return (
     <aside className="w-80 shrink-0 overflow-y-auto border-l bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">관계</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold">관계</h3>
+          <WarningBadge warnings={relWarnings} />
+        </div>
         <Button size="icon" variant="ghost" className="size-7 text-destructive" aria-label="관계 삭제"
           onClick={() => { selectRelationship(null); void mutate((m) => deleteRelationship(m, relId), { summary: '관계 삭제' }) }}>
           <Trash2 className="size-4" />

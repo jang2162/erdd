@@ -14,7 +14,7 @@ import { useModelMutation } from './use-model.js'
 import { moveTable } from './model-edits.js'
 import { moveNote } from './note-edits.js'
 import { newId } from './uid.js'
-import { createRelationshipFromParentPk } from '@erdd/core'
+import { computeWarnings, createRelationshipFromParentPk } from '@erdd/core'
 
 const nodeTypes = { table: TableNode, note: NoteNode }
 const edgeTypes = { relationship: RelationshipEdge }
@@ -33,14 +33,16 @@ export function Canvas({ projectId }: { projectId: string }) {
   const mutate = useModelMutation(projectId)
   const rf = useReactFlow()
 
+  const warnings = useMemo(() => computeWarnings(model), [model])
+
   const derived = useMemo(() => {
-    const tableNodes = buildNodes(model, viewMode, selectedId)
+    const tableNodes = buildNodes(model, viewMode, selectedId, warnings)
     const noteNodes: Node[] = Object.values(model.notes).map((note) => ({
       id: note.id, type: 'note', position: note.position,
       data: { note, selected: note.id === selectedNoteId } satisfies NoteNodeData,
     }))
     return [...tableNodes, ...noteNodes]
-  }, [model, viewMode, selectedId, selectedNoteId])
+  }, [model, viewMode, selectedId, selectedNoteId, warnings])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.

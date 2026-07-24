@@ -1,5 +1,6 @@
+import { useMemo } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
-import type { Column } from '@erdd/core'
+import { computeWarnings, type Column, type Warning } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
@@ -7,6 +8,7 @@ import { updateTable } from './model-edits.js'
 import { addColumn, removeColumn, reorderColumn, updateColumn } from './column-edits.js'
 import { RelationshipPanel } from './relationship-panel.js'
 import { NotePanel } from './note-panel.js'
+import { WarningBadge } from './warning-badge.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -37,6 +39,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const mutate = useModelMutation(projectId)
   const table = selectedTableId ? model.tables[selectedTableId] : undefined
+  const warnings = useMemo(() => computeWarnings(model), [model])
 
   if (selectedRelationshipId) return <RelationshipPanel projectId={projectId} />
 
@@ -82,6 +85,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
         {columns.map((c, i) => (
           <ColumnRow
             key={c.id} column={c} isFirst={i === 0} isLast={i === columns.length - 1}
+            warnings={warnings.filter((w) => w.scope === 'column' && w.entityId === c.id)}
             onPatch={(patch) => void mutate((m) => updateColumn(m, c.id, patch))}
             onRemove={() => void mutate((m) => removeColumn(m, c.id), { summary: '컬럼 삭제' })}
             onMove={(dir) => void mutate((m) => reorderColumn(m, c.id, dir))}
@@ -94,16 +98,19 @@ export function EditPanel({ projectId }: { projectId: string }) {
 }
 
 function ColumnRow(props: {
-  column: Column; isFirst: boolean; isLast: boolean
+  column: Column; isFirst: boolean; isLast: boolean; warnings: Warning[]
   onPatch: (patch: Partial<Omit<Column, 'id' | 'tableId'>>) => void
   onRemove: () => void; onMove: (dir: -1 | 1) => void
 }) {
   const { column: c } = props
   return (
     <li className="grid gap-2 rounded-md border p-2">
-      <div className="grid grid-cols-2 gap-2">
-        <CommitInput label="논리명" value={c.logicalName} onCommit={(v) => props.onPatch({ logicalName: v })} />
-        <CommitInput label="물리명" value={c.physicalName} mono onCommit={(v) => props.onPatch({ physicalName: v })} />
+      <div className="flex items-center justify-between gap-2">
+        <div className="grid flex-1 grid-cols-2 gap-2">
+          <CommitInput label="논리명" value={c.logicalName} onCommit={(v) => props.onPatch({ logicalName: v })} />
+          <CommitInput label="물리명" value={c.physicalName} mono onCommit={(v) => props.onPatch({ physicalName: v })} />
+        </div>
+        <WarningBadge warnings={props.warnings} className="shrink-0" />
       </div>
       <CommitInput label="타입" value={c.type} mono onCommit={(v) => props.onPatch({ type: v })} />
       <div className="flex items-center gap-3 text-xs">
