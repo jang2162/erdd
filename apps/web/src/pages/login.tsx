@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTRPC } from '@/lib/trpc'
 import { BrandWordmark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
@@ -11,11 +11,15 @@ import { Label } from '@/components/ui/label'
 export function LoginPage() {
   const trpc = useTRPC()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const login = useMutation(
     trpc.auth.login.mutationOptions({
-      onSuccess: () => navigate('/', { replace: true }),
+      onSuccess: async () => {
+        await queryClient.clear()
+        navigate('/', { replace: true })
+      },
     }),
   )
 

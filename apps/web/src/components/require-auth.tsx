@@ -2,6 +2,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 import { Navigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useTRPC } from '@/lib/trpc'
+import { Button } from '@/components/ui/button'
 
 export type Me = { id: string; email: string; name: string; role: 'admin' | 'user' }
 
@@ -20,7 +21,15 @@ export function RequireAuth({ children, adminOnly }: { children: ReactNode; admi
   if (me.isPending) {
     return <div className="flex min-h-dvh items-center justify-center text-muted-foreground">불러오는 중…</div>
   }
-  if (me.isError) return <Navigate to="/login" replace />
+  if (me.isError) {
+    if (me.error.data?.code === 'UNAUTHORIZED') return <Navigate to="/login" replace />
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 text-center">
+        <p role="alert" className="text-destructive">연결에 문제가 있습니다</p>
+        <Button onClick={() => me.refetch()}>다시 시도</Button>
+      </div>
+    )
+  }
   if (adminOnly && me.data.role !== 'admin') return <Navigate to="/" replace />
   return <MeContext.Provider value={me.data}>{children}</MeContext.Provider>
 }

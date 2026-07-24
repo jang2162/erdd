@@ -73,7 +73,7 @@ export function HomePage() {
         {sorted.map((org) => (
           <Link key={org.id} to={`/org/${org.id}`}>
             <Card className="transition-colors hover:border-primary">
-              <CardHeader className="flex-row items-center gap-3">
+              <CardHeader className="flex flex-row items-center gap-3">
                 <Building2 className="size-5 text-muted-foreground" />
                 <CardTitle className="flex-1 text-base">{org.name}</CardTitle>
                 {org.kind === 'personal' && <Badge variant="secondary">개인 공간</Badge>}

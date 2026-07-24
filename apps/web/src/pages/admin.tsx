@@ -69,9 +69,9 @@ function CreateAccountDialog() {
               value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} />
           </div>
           <div className="grid gap-2">
-            <Label>역할</Label>
+            <Label htmlFor="new-role">역할</Label>
             <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'user')}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="new-role"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="user">일반</SelectItem>
                 <SelectItem value="admin">관리자</SelectItem>

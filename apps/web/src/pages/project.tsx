@@ -46,9 +46,9 @@ function ProjectMembers({ projectId, orgId }: { projectId: string; orgId: string
         onSubmit={(e) => { e.preventDefault(); if (memberId) add.mutate({ projectId, memberId, role }) }}
       >
         <div className="grid gap-1">
-          <Label className="text-xs">조직 멤버 추가</Label>
+          <Label htmlFor="add-member" className="text-xs">조직 멤버 추가</Label>
           <Select value={memberId} onValueChange={setMemberId}>
-            <SelectTrigger className="w-64"><SelectValue placeholder="멤버 선택" /></SelectTrigger>
+            <SelectTrigger id="add-member" className="w-64"><SelectValue placeholder="멤버 선택" /></SelectTrigger>
             <SelectContent>
               {candidates?.map((m) => (
                 <SelectItem key={m.id} value={m.id}>{m.name} ({m.email})</SelectItem>

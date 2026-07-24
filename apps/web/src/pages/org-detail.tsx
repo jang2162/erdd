@@ -196,6 +196,19 @@ export function OrgDetailPage() {
   const projects = useQuery(trpc.project.list.queryOptions({ orgId }))
   const org = orgs.data?.find((o) => o.id === orgId)
 
+  if (orgs.isSuccess && !org) {
+    return (
+      <div className="bg-dotgrid grid place-items-center rounded-lg border py-16 text-center">
+        <div className="grid gap-3">
+          <p className="font-medium">조직을 찾을 수 없습니다</p>
+          <Button asChild variant="outline">
+            <Link to="/">홈으로</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="grid gap-8">
       <div className="flex items-center justify-between">
@@ -208,7 +221,9 @@ export function OrgDetailPage() {
         <CreateProjectDialog orgId={orgId} />
       </div>
 
-      {projects.data?.length === 0 ? (
+      {projects.isError ? (
+        <p role="alert" className="text-destructive">{projects.error.message}</p>
+      ) : projects.data?.length === 0 ? (
         <div className="bg-dotgrid grid place-items-center rounded-lg border py-16 text-center">
           <div className="grid gap-3">
             <Database className="mx-auto size-8 text-muted-foreground" />
