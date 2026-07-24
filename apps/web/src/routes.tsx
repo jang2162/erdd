@@ -4,6 +4,8 @@ import { LoginPage } from '@/pages/login'
 import { AdminPage } from '@/pages/admin'
 import { HomePage } from '@/pages/home'
 import { OrgDetailPage } from '@/pages/org-detail'
+import { ProjectPage } from '@/pages/project'
+import { SettingsPage } from '@/pages/settings'
 import { RequireAuth } from '@/components/require-auth'
 import { AppShell } from '@/components/app-shell'
 import { UserMenu } from '@/components/user-menu'
@@ -16,15 +18,11 @@ function Protected({ children, adminOnly }: { children: ReactNode; adminOnly?: b
   )
 }
 
-function Placeholder({ name }: { name: string }) {
-  return <p className="text-muted-foreground">{name} — 준비 중</p>
-}
-
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/', element: <Protected><HomePage /></Protected> },
   { path: '/org/:orgId', element: <Protected><OrgDetailPage /></Protected> },
   { path: '/admin', element: <Protected adminOnly><AdminPage /></Protected> },
-  { path: '/settings', element: <Protected><Placeholder name="설정" /></Protected> },
-  { path: '/p/:projectId', element: <Protected><Placeholder name="프로젝트" /></Protected> },
+  { path: '/settings', element: <Protected><SettingsPage /></Protected> },
+  { path: '/p/:projectId', element: <Protected><ProjectPage /></Protected> },
 ])
