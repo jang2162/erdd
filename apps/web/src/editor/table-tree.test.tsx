@@ -66,7 +66,28 @@ describe('TableTree', () => {
       expect(groups).toHaveLength(2)
     })
     const newGroup = Object.values(useEditorStore.getState().model.tableGroups).find((g) => g.id !== 'g1')!
-    expect(newGroup.name).toBe('그룹2')
+    // 기존 그룹은 "회원관리"뿐이므로 미사용 최소 번호는 "그룹1".
+    expect(newGroup.name).toBe('그룹1')
     expect(useEditorStore.getState().selectedGroupId).toBe(newGroup.id)
+  })
+
+  it('삭제 후 재추가 시 이름이 충돌하지 않는다(미사용 최소 번호)', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    // 그룹1·그룹2가 있는 상태에서 그룹1을 지운 모델 → 추가 시 새 이름은 "그룹1"이어야 한다.
+    const model = buildSampleModel()
+    model.tableGroups = {
+      g2: { id: 'g2', name: '그룹2', color: '#000', comment: null },
+    }
+    model.tables = Object.fromEntries(
+      Object.entries(model.tables).map(([id, t]) => [id, { ...t, groupId: null }]),
+    )
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    renderTree()
+    await userEvent.click(screen.getByRole('button', { name: '그룹 추가' }))
+    await waitFor(() => {
+      expect(Object.values(useEditorStore.getState().model.tableGroups)).toHaveLength(2)
+    })
+    const added = Object.values(useEditorStore.getState().model.tableGroups).find((g) => g.id !== 'g2')!
+    expect(added.name).toBe('그룹1')
   })
 })

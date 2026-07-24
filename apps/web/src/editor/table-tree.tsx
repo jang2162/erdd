@@ -29,7 +29,10 @@ export function TableTree({ projectId }: { projectId: string }) {
 
   const onAddGroup = () => {
     const id = newId()
-    const n = Object.keys(model.tableGroups).length + 1
+    // 개수 기반이 아니라 미사용 최소 번호를 찾는다(삭제 후 재추가 시 이름 충돌 방지).
+    const usedNames = new Set(Object.values(model.tableGroups).map((g) => g.name))
+    let n = 1
+    while (usedNames.has(`그룹${n}`)) n++
     const usedColors = Object.values(model.tableGroups).map((g) => g.color)
     void mutate((m) => createGroup(m, { id, name: `그룹${n}`, color: nextGroupColor(usedColors) }), { summary: '그룹 추가' })
     selectGroup(id)
