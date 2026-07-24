@@ -4,21 +4,10 @@ import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import { DIALECTS } from '@erdd/core'
 import { members, projectMembers, projects, users } from '../db/schema.js'
-import { getOrgMember, getProjectAccess } from '../services/perm.js'
+import { getOrgMember, requireProjectAccess } from '../services/perm.js'
 import { authedProcedure, router } from '../trpc.js'
 
 const dialectSchema = z.array(z.enum(DIALECTS)).min(1)
-
-async function requireAccess(
-  db: Parameters<typeof getProjectAccess>[0], projectId: string, userId: string,
-  level: 'view' | 'manage',
-) {
-  const access = await getProjectAccess(db, projectId, userId)
-  if (!access) throw new TRPCError({ code: 'NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' })
-  const allowed = level === 'view' ? access.canView : access.canManage
-  if (!allowed) throw new TRPCError({ code: 'FORBIDDEN', message: '프로젝트 접근 권한이 없습니다' })
-  return access
-}
 
 export const projectRouter = router({
   create: authedProcedure
@@ -70,7 +59,7 @@ export const projectRouter = router({
   get: authedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const access = await requireAccess(ctx.db, input.projectId, ctx.user.id, 'view')
+      const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
       return {
         ...access.project,
         myRole: access.projectRole ?? null,
@@ -86,7 +75,7 @@ export const projectRouter = router({
       dialects: dialectSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
+      await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
       const { projectId, ...patch } = input
       if (Object.keys(patch).length === 0) return { ok: true as const }
       await ctx.db.update(projects).set(patch).where(eq(projects.id, projectId))
@@ -96,7 +85,7 @@ export const projectRouter = router({
   delete: authedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await requireAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
+      await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
       await ctx.db.delete(projects).where(eq(projects.id, input.projectId))
       return { ok: true as const }
     }),
@@ -105,7 +94,7 @@ export const projectRouter = router({
     list: authedProcedure
       .input(z.object({ projectId: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
-        await requireAccess(ctx.db, input.projectId, ctx.user.id, 'view')
+        await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
         return ctx.db.select({
           id: projectMembers.id, role: projectMembers.role,
           memberId: members.id, email: users.email, name: users.name,
@@ -124,7 +113,7 @@ export const projectRouter = router({
         role: z.enum(['admin', 'editor', 'viewer']),
       }))
       .mutation(async ({ ctx, input }) => {
-        const access = await requireAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
+        const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
         const orgMember = (
           await ctx.db.select().from(members)
             .where(and(eq(members.id, input.memberId), eq(members.orgId, access.project.orgId)))
@@ -149,7 +138,7 @@ export const projectRouter = router({
     remove: authedProcedure
       .input(z.object({ projectId: z.string().uuid(), projectMemberId: z.string().uuid() }))
       .mutation(async ({ ctx, input }) => {
-        await requireAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
+        await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
         await ctx.db.delete(projectMembers).where(and(
           eq(projectMembers.id, input.projectMemberId),
           eq(projectMembers.projectId, input.projectId),

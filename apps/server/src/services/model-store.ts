@@ -84,6 +84,9 @@ export async function persistOps(
     } else if (op.action === 'update') {
       const patch: Record<string, unknown> = {}
       for (const [prop, change] of Object.entries(op.changes)) patch[prop] = change.to
+      // 심층 방어 — applyOps 계약을 우회한 호출이 있어도 소유권/identity 필드는 불변
+      delete patch.id
+      delete patch.projectId
       await db.update(table).set(patch as never)
         .where(and(eq(table.id, op.entityId), eq(table.projectId, projectId)))
     } else {
