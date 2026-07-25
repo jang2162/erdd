@@ -1,22 +1,25 @@
-import { FileText, Plus, Redo2, Trash2, Undo2 } from 'lucide-react'
+import { FileText, LayoutGrid, Plus, Redo2, Trash2, Undo2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { setTableGroup } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation, useUndoRedo } from './use-model.js'
 import { newId } from './uid.js'
-import { addTable, removeTable } from './model-edits.js'
+import { addTable, moveTable, moveTableGroupPosition, removeTable } from './model-edits.js'
 import { addNote } from './note-edits.js'
+import { computeAutoLayout } from './auto-layout.js'
 import { Button } from '@/components/ui/button'
 
 export function Toolbar({ projectId }: { projectId: string }) {
   const mutate = useModelMutation(projectId)
   const { undo, redo, canUndo, canRedo } = useUndoRedo(projectId)
+  const model = useEditorStore((s) => s.model)
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const select = useEditorStore((s) => s.select)
   const selectNote = useEditorStore((s) => s.selectNote)
   const rf = useReactFlow()
+  const visibleTables = Object.values(model.tables).filter((t) => (activeGroupView ? t.groupId === activeGroupView : true))
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -55,11 +58,32 @@ export function Toolbar({ projectId }: { projectId: string }) {
     void mutate((m) => addNote(m, { id, position: center }), { summary: '메모 추가' })
     selectNote(id)
   }
+  const onAutoLayout = () => {
+    const agv = activeGroupView
+    if (visibleTables.length < 2) return
+    const ids = new Set(visibleTables.map((t) => t.id))
+    const nodes = visibleTables.map((t) => {
+      const n = rf.getNode(t.id)
+      return { id: t.id, width: n?.measured?.width ?? 260, height: n?.measured?.height ?? 120 }
+    })
+    const edges = Object.values(model.relationships)
+      .filter((r) => ids.has(r.parentTableId) && ids.has(r.childTableId))
+      .map((r) => ({ source: r.parentTableId, target: r.childTableId }))
+    const pos = computeAutoLayout(nodes, edges)
+    void mutate((m) => {
+      let n = m
+      for (const [id, p] of pos) n = agv ? moveTableGroupPosition(n, id, p) : moveTable(n, id, p)
+      return n
+    }, { summary: '자동 정렬' })
+  }
 
   return (
     <div className="flex items-center gap-2">
       <Button size="sm" onClick={onAdd}><Plus /> 테이블 추가</Button>
       <Button size="sm" variant="outline" disabled={!!activeGroupView} onClick={onAddNote}><FileText /> 메모</Button>
+      <Button size="sm" variant="outline" disabled={visibleTables.length < 2} onClick={onAutoLayout}>
+        <LayoutGrid /> 자동 정렬
+      </Button>
       <Button size="sm" variant="outline" disabled={!selectedTableId} onClick={onDelete}>
         <Trash2 /> 삭제
       </Button>
