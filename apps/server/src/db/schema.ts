@@ -1,7 +1,7 @@
 import {
   boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
-import type { Dialect, Op, ProjectModel } from '@erdd/core'
+import { DEFAULT_NAMING_RULES, type Dialect, type NamingRules, type Op, type ProjectModel } from '@erdd/core'
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(),
@@ -38,6 +38,7 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   dialects: jsonb('dialects').$type<Dialect[]>().notNull(),
+  namingRules: jsonb('naming_rules').$type<NamingRules>().notNull().default(DEFAULT_NAMING_RULES),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -107,6 +108,23 @@ export const modelDomains = pgTable('model_domains', {
     .$type<{ postgresql: string | null; mysql: string | null; oracle: string | null; mssql: string | null }>().notNull(),
   defaultValue: text('default_value'),
   allowedValues: jsonb('allowed_values').$type<string[]>().notNull(),
+  description: text('description'),
+})
+
+export const modelWords = pgTable('model_words', {
+  id: uuid('id').primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  logicalName: text('logical_name').notNull(),
+  abbreviation: text('abbreviation').notNull(),
+  description: text('description'),
+})
+
+export const modelTerms = pgTable('model_terms', {
+  id: uuid('id').primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  logicalName: text('logical_name').notNull(),
+  physicalName: text('physical_name').notNull(),
+  domainId: uuid('domain_id').references(() => modelDomains.id),
   description: text('description'),
 })
 

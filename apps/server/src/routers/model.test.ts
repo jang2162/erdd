@@ -122,18 +122,35 @@ describe.skipIf(!url)('model', () => {
     expect([403, 404]).toContain(got.statusCode)
   })
 
-  it('rejects word/term create with 400 (not 500) — persistOps throws OpApplyError', async () => {
-    // Regression test for Task 1: persistOps guard must throw OpApplyError, not plain Error.
-    // If it throws plain Error, the router doesn't catch it and responds 500 instead of 400.
+  it('mutates a word/term creation batch via model.mutate and reads back the model (Task 4)', async () => {
+    // Task 1은 model_words/model_terms 테이블이 없어 word/term op을 OpApplyError(400)로 막았다.
+    // Task 4가 테이블·TABLE_BY_KIND를 갖췄으므로 이제 일반 create 경로로 200 성공해야 한다.
     const wordId = '018f6b0e-5f2a-7c3d-9e4b-1a2b3c4d5e6f'
+    const termId = '018f6b0e-5f2a-7c3d-9e4b-1a2b3c4d5e70'
     const res = await post(app, 'model.mutate', editorToken, {
       projectId,
-      ops: [{
-        action: 'create', entity: 'word', entityId: wordId,
-        data: { id: wordId, logicalName: 'test_word', abbreviation: 'tw', description: null },
-      }],
+      ops: [
+        {
+          action: 'create', entity: 'word', entityId: wordId,
+          data: { id: wordId, logicalName: '주문', abbreviation: 'ORD', description: null },
+        },
+        {
+          action: 'create', entity: 'term', entityId: termId,
+          data: {
+            id: termId, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null,
+          },
+        },
+      ],
     })
-    // Must be 400 BAD_REQUEST, not 500 — verifies persistOps throws OpApplyError not plain Error
-    expect(res.statusCode).toBe(400)
+    expect(res.statusCode).toBe(200)
+
+    const got = await get(app, 'model.get', editorToken, { projectId })
+    expect(got.statusCode).toBe(200)
+    expect(got.json().result.data.model.words[wordId]).toEqual({
+      id: wordId, logicalName: '주문', abbreviation: 'ORD', description: null,
+    })
+    expect(got.json().result.data.model.terms[termId]).toEqual({
+      id: termId, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null,
+    })
   })
 })

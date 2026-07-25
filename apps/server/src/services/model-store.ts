@@ -1,13 +1,13 @@
 import { and, eq } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import {
-  OpApplyError, type Column, type Domain, type IndexDef, type Note, type Op, type ProjectModel,
-  type Relationship, type Table, type TableGroup,
+  type Column, type Domain, type IndexDef, type Note, type Op, type ProjectModel,
+  type Relationship, type Table, type TableGroup, type Term, type Word,
 } from '@erdd/core'
 import * as schema from '../db/schema.js'
 import {
   modelColumns, modelDomains, modelIndexes, modelNotes, modelRelationships, modelTableGroups,
-  modelTables,
+  modelTables, modelTerms, modelWords,
 } from '../db/schema.js'
 
 /** Db와 drizzle 트랜잭션 객체가 공유하는 쿼리 인터페이스. */
@@ -23,6 +23,8 @@ const TABLE_BY_KIND = {
   index: modelIndexes,
   note: modelNotes,
   domain: modelDomains,
+  word: modelWords,
+  term: modelTerms,
 } as const
 
 function keyed<T extends { id: string }>(rows: T[]): Record<string, T> {
@@ -44,6 +46,10 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
     .where(eq(modelNotes.projectId, projectId))
   const domainRows = await db.select().from(modelDomains)
     .where(eq(modelDomains.projectId, projectId))
+  const wordRows = await db.select().from(modelWords)
+    .where(eq(modelWords.projectId, projectId))
+  const termRows = await db.select().from(modelTerms)
+    .where(eq(modelTerms.projectId, projectId))
 
   return {
     tableGroups: keyed(groupRows.map((r): TableGroup => ({
@@ -76,9 +82,14 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
       dialectTypes: r.dialectTypes, defaultValue: r.defaultValue,
       allowedValues: r.allowedValues, description: r.description,
     }))),
-    // TODO(Task 4): model_words/model_terms 테이블에서 실로드로 교체.
-    words: {},
-    terms: {},
+    words: keyed(wordRows.map((r): Word => ({
+      id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
+      description: r.description,
+    }))),
+    terms: keyed(termRows.map((r): Term => ({
+      id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,
+      domainId: r.domainId, description: r.description,
+    }))),
   }
 }
 
@@ -91,10 +102,6 @@ export async function persistOps(
   db: DbLike, projectId: string, ops: readonly Op[],
 ): Promise<void> {
   for (const op of ops) {
-    if (op.entity === 'word' || op.entity === 'term') {
-      // TODO(Task 4): model_words/model_terms 테이블 추가 + TABLE_BY_KIND 등록.
-      throw new OpApplyError(`${op.entity} 영속화는 아직 구현되지 않음(Task 4)`)
-    }
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
     if (op.action === 'create') {

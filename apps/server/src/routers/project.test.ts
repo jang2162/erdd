@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
+import { DEFAULT_NAMING_RULES } from '@erdd/core'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
@@ -112,6 +113,27 @@ describe.skipIf(!url)('project', () => {
 
     const upd = await post(app, 'project.update', memberToken, { projectId, name: '변경' })
     expect(upd.statusCode).toBe(403)
+  })
+
+  it('project.get returns DEFAULT_NAMING_RULES when the project has no explicit override', async () => {
+    const projectId = await createProject()
+    const got = await get(app, 'project.get', ownerToken, { projectId })
+    expect(got.statusCode).toBe(200)
+    expect(got.json().result.data.namingRules).toEqual(DEFAULT_NAMING_RULES)
+  })
+
+  it('project.update persists namingRules and project.get reflects the new value', async () => {
+    const projectId = await createProject()
+    const customRules = { case: 'lower_snake' as const, separator: '' as const, maxLengthBytes: 63 }
+
+    const upd = await post(app, 'project.update', ownerToken, {
+      projectId, namingRules: customRules,
+    })
+    expect(upd.statusCode).toBe(200)
+
+    const got = await get(app, 'project.get', ownerToken, { projectId })
+    expect(got.statusCode).toBe(200)
+    expect(got.json().result.data.namingRules).toEqual(customRules)
   })
 
   it('rejects a memberId that belongs to a different organization', async () => {

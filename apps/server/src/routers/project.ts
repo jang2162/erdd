@@ -2,12 +2,17 @@ import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
-import { DIALECTS } from '@erdd/core'
+import { DEFAULT_NAMING_RULES, DIALECTS } from '@erdd/core'
 import { members, projectMembers, projects, users } from '../db/schema.js'
 import { getOrgMember, requireProjectAccess } from '../services/perm.js'
 import { authedProcedure, router } from '../trpc.js'
 
 const dialectSchema = z.array(z.enum(DIALECTS)).min(1)
+const namingRulesSchema = z.object({
+  case: z.enum(['UPPER_SNAKE', 'lower_snake']),
+  separator: z.enum(['_', '']),
+  maxLengthBytes: z.number().int().positive(),
+})
 
 export const projectRouter = router({
   create: authedProcedure
@@ -62,6 +67,7 @@ export const projectRouter = router({
       const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
       return {
         ...access.project,
+        namingRules: access.project.namingRules ?? DEFAULT_NAMING_RULES,
         myRole: access.projectRole ?? null,
         myOrgRole: access.orgRole ?? null,
       }
@@ -73,6 +79,7 @@ export const projectRouter = router({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
       dialects: dialectSchema.optional(),
+      namingRules: namingRulesSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
