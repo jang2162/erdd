@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -58,8 +58,12 @@ describe('IndexSection', () => {
     renderSection('t1')
 
     const addButton = screen.getByRole('button', { name: '인덱스 추가' })
-    await userEvent.click(addButton)
-    await userEvent.click(addButton)
+    // 재렌더 flush 없이 진짜 동시 호출을 재현한다. await userEvent 2회는 매 await마다
+    // 첫 mutation이 반영돼 버그(렌더스코프 이름 산정)에서도 IX_2가 되어 회귀를 못 잡는다.
+    await act(async () => {
+      fireEvent.click(addButton)
+      fireEvent.click(addButton)
+    })
 
     await waitFor(() => {
       const names = Object.values(useEditorStore.getState().model.indexes)

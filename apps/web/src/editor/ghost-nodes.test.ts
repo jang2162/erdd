@@ -36,6 +36,7 @@ describe('buildGhostNodes', () => {
     expect((log.data as { targetGroupId: string | null }).targetGroupId).toBeNull()
     expect(usr.type).toBe('ghost')
     expect(usr.draggable).toBe(false)
+    expect(usr.connectable).toBe(false)
   })
   it('한 외부 테이블이 여러 관계로 연결돼도 고스트는 하나다(dedup)', () => {
     const m = model()
