@@ -53,6 +53,44 @@ describe('diffModels', () => {
     expect(applyOps(full, deleteOps)).toEqual(empty)
   })
 
+  it('orders domain creates before referencing column creates, and column deletes before domain deletes (FK ordering regression)', () => {
+    // model_columns.domain_id → model_domains.id는 NOT DEFERRABLE FK다. 단일 배치 안에서
+    // domain이 column보다 뒤에 생성되거나 앞에 삭제되면 즉시 FK 위반이 난다.
+    const empty = createEmptyModel()
+    const target = buildSampleModel()
+    const domainId = 'dm1'
+    target.domains[domainId] = {
+      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null,
+    }
+    target.columns.c1!.domainId = domainId
+
+    const createOps = diffModels(empty, target)
+    const createDomainIdx = createOps.findIndex(
+      (o) => o.action === 'create' && o.entity === 'domain' && o.entityId === domainId,
+    )
+    const createColumnIdx = createOps.findIndex(
+      (o) => o.action === 'create' && o.entity === 'column' && o.entityId === 'c1',
+    )
+    expect(createDomainIdx).toBeGreaterThanOrEqual(0)
+    expect(createColumnIdx).toBeGreaterThanOrEqual(0)
+    expect(createDomainIdx).toBeLessThan(createColumnIdx)
+    expect(applyOps(empty, createOps)).toEqual(target)
+
+    const deleteOps = diffModels(target, empty)
+    const deleteDomainIdx = deleteOps.findIndex(
+      (o) => o.action === 'delete' && o.entity === 'domain' && o.entityId === domainId,
+    )
+    const deleteColumnIdx = deleteOps.findIndex(
+      (o) => o.action === 'delete' && o.entity === 'column' && o.entityId === 'c1',
+    )
+    expect(deleteDomainIdx).toBeGreaterThanOrEqual(0)
+    expect(deleteColumnIdx).toBeGreaterThanOrEqual(0)
+    expect(deleteColumnIdx).toBeLessThan(deleteDomainIdx)
+    expect(applyOps(target, deleteOps)).toEqual(empty)
+  })
+
   it('round-trips a mixed change set: apply(base, diff(base,target)) equals target', () => {
     const base = buildSampleModel()
     const target = buildSampleModel()

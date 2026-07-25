@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
-import { createEmptyModel, diffModels, type Domain } from '@erdd/core'
+import { applyOps, createEmptyModel, diffModels, type Domain } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { uuidv7 } from 'uuidv7'
 import { organizations, projects } from '../db/schema.js'
@@ -97,6 +97,42 @@ describe.skipIf(!url)('model-store', () => {
     loaded = await loadProjectModel(app.db!, projectId)
     expect(loaded.domains[domainId]).toBeUndefined()
     expect(loaded.columns[columnId]!.domainId).toBeNull()
+  })
+
+  it('persists a single batch with domain + referencing column without FK violation (create and delete)', async () => {
+    // model_columns.domain_id → model_domains.id는 NOT DEFERRABLE FK다. diffModels가 만드는
+    // 단일 배치(예: 스냅샷 복원) 안에서 domain이 참조 column보다 먼저 생성/나중에 삭제되어야
+    // persistOps가 행 단위 SQL을 실행하는 도중 FK 위반 없이 통과한다.
+    const target = buildSampleModel()
+    const domainId = 'dm1'
+    target.domains[domainId] = {
+      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL',
+      dialectTypes: {
+        postgresql: null, mysql: null, oracle: null, mssql: null,
+      },
+      defaultValue: null, allowedValues: [], description: null,
+    }
+    target.columns.c1!.domainId = domainId
+    const full = withUuidIds(target)
+    const empty = createEmptyModel()
+
+    // 생성: diffModels가 만든 실제 배치를 core로 먼저 검증한 뒤 서버에 단일 배치로 영속화
+    const createOps = diffModels(empty, full)
+    expect(applyOps(empty, createOps)).toEqual(full)
+    await persistOps(app.db!, projectId, createOps)
+    const loaded = await loadProjectModel(app.db!, projectId)
+    expect(loaded).toEqual(full)
+    const [fullDomainId, fullDomain] = Object.entries(full.domains)[0]!
+    expect(loaded.domains[fullDomainId]).toEqual(fullDomain)
+    const referencingColumnId = Object.values(full.columns).find((c) => c.domainId !== null)!.id
+    expect(loaded.columns[referencingColumnId]!.domainId).toBe(fullDomainId)
+
+    // 삭제: 역순(자식 먼저) 단일 배치도 FK 위반 없이 통과해야 한다
+    const deleteOps = diffModels(full, empty)
+    expect(applyOps(full, deleteOps)).toEqual(empty)
+    await persistOps(app.db!, projectId, deleteOps)
+    const reloaded = await loadProjectModel(app.db!, projectId)
+    expect(reloaded).toEqual(empty)
   })
 
   it('scopes by project — ops cannot touch another project rows', async () => {

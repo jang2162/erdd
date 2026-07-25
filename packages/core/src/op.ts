@@ -5,7 +5,7 @@ import {
 } from './model.js'
 import { validateModelIntegrity } from './integrity.js'
 
-export const ENTITY_KINDS = ['tableGroup', 'table', 'column', 'relationship', 'index', 'note', 'domain'] as const
+export const ENTITY_KINDS = ['tableGroup', 'domain', 'table', 'column', 'relationship', 'index', 'note'] as const
 export type EntityKind = (typeof ENTITY_KINDS)[number]
 
 const ENTITY_SCHEMAS: Record<EntityKind, z.ZodType> = {
