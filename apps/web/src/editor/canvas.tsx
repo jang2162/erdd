@@ -11,6 +11,8 @@ import { TableNode } from './table-node.js'
 import { NoteNode, type NoteNodeData } from './note-node.js'
 import { GroupNode } from './group-node.js'
 import { buildGroupNodes } from './group-nodes.js'
+import { GhostNode } from './ghost-node.js'
+import { buildGhostNodes } from './ghost-nodes.js'
 import { RelationshipEdge, RelationshipMarkers } from './relationship-edge.js'
 import { useModelMutation } from './use-model.js'
 import { moveTable, moveTableGroupPosition } from './model-edits.js'
@@ -18,7 +20,7 @@ import { moveNote } from './note-edits.js'
 import { newId } from './uid.js'
 import { computeWarnings, createRelationshipFromParentPk } from '@erdd/core'
 
-const nodeTypes = { table: TableNode, note: NoteNode, group: GroupNode }
+const nodeTypes = { table: TableNode, note: NoteNode, group: GroupNode, ghost: GhostNode }
 const edgeTypes = { relationship: RelationshipEdge }
 
 export function Canvas({ projectId }: { projectId: string }) {
@@ -47,8 +49,9 @@ export function Canvas({ projectId }: { projectId: string }) {
   const derived = useMemo(() => {
     const tableNodes = buildNodes(model, viewMode, selectedId, warnings, view)
     if (view.kind === 'group') {
-      // 그룹 뷰: 색상 영역·메모 노드는 숨긴다. (고스트 노드는 Task 3에서 추가)
-      return [...tableNodes]
+      // 그룹 뷰: 색상 영역·메모 노드는 숨긴다. 관계로 이어진 외부 테이블은 고스트로 보여준다.
+      const ghostNodes = buildGhostNodes(model, view.groupId)
+      return [...ghostNodes, ...tableNodes]
     }
     const groupNodes = buildGroupNodes(model, selectedGroupId)
     const noteNodes: Node[] = Object.values(model.notes).map((note) => ({
@@ -65,7 +68,10 @@ export function Canvas({ projectId }: { projectId: string }) {
 
   const edges = useMemo<Edge[]>(() => {
     const built = view.kind === 'group'
-      ? buildEdges(model, new Set(Object.values(model.tables).filter((t) => t.groupId === view.groupId).map((t) => t.id)))
+      ? buildEdges(model, new Set([
+          ...Object.values(model.tables).filter((t) => t.groupId === view.groupId).map((t) => t.id),
+          ...buildGhostNodes(model, view.groupId).map((g) => g.data.table.id),
+        ]))
       : buildEdges(model)
     return selectedRelId ? built.map((e) => (e.id === selectedRelId ? { ...e, selected: true } : e)) : built
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
@@ -109,7 +115,7 @@ export function Canvas({ projectId }: { projectId: string }) {
         onNodesChange={onNodesChange as (c: NodeChange[]) => void}
         onConnect={onConnect}
         onNodeClick={(_, node) => {
-          if (node.type === 'group') return
+          if (node.type === 'group' || node.type === 'ghost') return
           if (node.type === 'note') selectNote(node.id)
           else select(node.id)
         }}
