@@ -23,8 +23,10 @@ export function IndexSection({ projectId, tableId }: { projectId: string; tableI
 
   const onAdd = () => {
     const id = newId()
-    const used = new Set(Object.values(model.indexes).map((ix) => ix.name))
-    void mutate((m) => createIndex(m, { id, tableId, name: nextIndexName(used) }), { summary: '인덱스 추가' })
+    void mutate((m) => createIndex(m, {
+      id, tableId,
+      name: nextIndexName(new Set(Object.values(m.indexes).map((ix) => ix.name))),
+    }), { summary: '인덱스 추가' })
   }
 
   return (

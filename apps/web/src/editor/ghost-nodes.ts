@@ -26,6 +26,7 @@ export function buildGhostNodes(model: ProjectModel, groupId: string): Node<Ghos
       position: table.position,
       draggable: false,
       selectable: false,
+      connectable: false,
       zIndex: 0,
       data: { table, targetGroupId: table.groupId },
     })

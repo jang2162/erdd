@@ -52,6 +52,22 @@ describe('IndexSection', () => {
     })
   })
 
+  it('two rapid adds get distinct names (IX_1, IX_2), not a duplicate', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    renderSection('t1')
+
+    const addButton = screen.getByRole('button', { name: '인덱스 추가' })
+    await userEvent.click(addButton)
+    await userEvent.click(addButton)
+
+    await waitFor(() => {
+      const names = Object.values(useEditorStore.getState().model.indexes)
+        .filter((ix) => ix.tableId === 't1').map((ix) => ix.name).sort()
+      expect(names).toEqual(['IX_1', 'IX_2'])
+    })
+  })
+
   it('toggles a member column direction between asc and desc', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)

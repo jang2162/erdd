@@ -1,5 +1,5 @@
 import { toPng, toSvg } from 'html-to-image'
-import { getNodesBounds, type ReactFlowInstance } from '@xyflow/react'
+import type { ReactFlowInstance } from '@xyflow/react'
 
 export type ImageFormat = 'png' | 'svg'
 
@@ -22,7 +22,7 @@ export async function downloadCanvasImage(
   const viewport = document.querySelector<HTMLElement>('.react-flow__viewport')
   if (!viewport) throw new Error('캔버스를 찾을 수 없습니다')
 
-  const b = getNodesBounds(nodes)
+  const b = rf.getNodesBounds(nodes)
   const width = Math.ceil(b.width) + MARGIN * 2
   const height = Math.ceil(b.height) + MARGIN * 2
   const style = {

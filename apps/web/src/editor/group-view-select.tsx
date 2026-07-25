@@ -14,7 +14,7 @@ export function GroupViewSelect() {
     <select
       aria-label="뷰 전환"
       className="h-8 rounded-md border bg-background px-2 text-sm"
-      value={activeGroupView ?? ''}
+      value={activeGroupView && groups[activeGroupView] ? activeGroupView : ''}
       onChange={(e) => {
         const v = e.target.value
         if (v === '') exitGroupView()

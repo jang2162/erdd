@@ -1,6 +1,7 @@
 import { FileText, Plus, Redo2, Trash2, Undo2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { useReactFlow } from '@xyflow/react'
+import { setTableGroup } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation, useUndoRedo } from './use-model.js'
 import { newId } from './uid.js'
@@ -12,6 +13,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
   const mutate = useModelMutation(projectId)
   const { undo, redo, canUndo, canRedo } = useUndoRedo(projectId)
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const select = useEditorStore((s) => s.select)
   const selectNote = useEditorStore((s) => s.selectNote)
   const rf = useReactFlow()
@@ -33,7 +35,12 @@ export function Toolbar({ projectId }: { projectId: string }) {
   const onAdd = () => {
     const id = newId()
     const center = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
-    void mutate((m) => addTable(m, { id, position: center }), { summary: '테이블 추가' })
+    const agv = activeGroupView
+    void mutate((m) => {
+      let n = addTable(m, { id, position: center })
+      if (agv) n = setTableGroup(n, id, agv)
+      return n
+    }, { summary: '테이블 추가' })
     select(id)
   }
   const onDelete = () => {
@@ -52,7 +59,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
   return (
     <div className="flex items-center gap-2">
       <Button size="sm" onClick={onAdd}><Plus /> 테이블 추가</Button>
-      <Button size="sm" variant="outline" onClick={onAddNote}><FileText /> 메모</Button>
+      <Button size="sm" variant="outline" disabled={!!activeGroupView} onClick={onAddNote}><FileText /> 메모</Button>
       <Button size="sm" variant="outline" disabled={!selectedTableId} onClick={onDelete}>
         <Trash2 /> 삭제
       </Button>
