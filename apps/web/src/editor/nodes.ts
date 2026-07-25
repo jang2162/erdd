@@ -3,10 +3,16 @@ import type { ProjectModel, Warning } from '@erdd/core'
 import type { TableNodeData } from './table-node.js'
 import type { ViewMode } from './store.js'
 
+export type NodeView = { kind: 'full' } | { kind: 'group'; groupId: string }
+
 export function buildNodes(
   model: ProjectModel, viewMode: ViewMode, selectedId: string | null, warnings: Warning[],
+  view: NodeView = { kind: 'full' },
 ): Node<TableNodeData>[] {
-  return Object.values(model.tables).map((table) => {
+  const tables = Object.values(model.tables).filter(
+    (t) => view.kind === 'full' || t.groupId === view.groupId,
+  )
+  return tables.map((table) => {
     const tableCols = Object.values(model.columns).filter((c) => c.tableId === table.id)
     const colIds = new Set(tableCols.map((c) => c.id))
     const relIds = new Set(Object.values(model.relationships)
@@ -19,10 +25,11 @@ export function buildNodes(
         (columnWarnings[w.entityId] ??= []).push(w)
       }
     }
+    const position = view.kind === 'group' ? (table.groupPosition ?? table.position) : table.position
     return {
       id: table.id,
       type: 'table',
-      position: table.position,
+      position,
       data: {
         table,
         columns: tableCols,

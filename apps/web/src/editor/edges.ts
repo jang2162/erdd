@@ -6,13 +6,17 @@ export type RelationshipEdgeData = {
   identifying: boolean
 }
 
-export function buildEdges(model: ProjectModel): Edge[] {
-  return Object.values(model.relationships).map((rel) => {
+export function buildEdges(model: ProjectModel, visibleTableIds?: Set<string>): Edge[] {
+  const edges: Edge[] = []
+  for (const rel of Object.values(model.relationships)) {
+    if (visibleTableIds && (!visibleTableIds.has(rel.parentTableId) || !visibleTableIds.has(rel.childTableId))) {
+      continue
+    }
     const parent = model.tables[rel.parentTableId]
     const child = model.tables[rel.childTableId]
     // 자식이 부모보다 오른쪽이면 자식의 왼쪽 핸들 → 부모의 오른쪽 핸들.
     const childRight = !!parent && !!child && child.position.x >= parent.position.x
-    return {
+    edges.push({
       id: rel.id,
       source: rel.childTableId,
       target: rel.parentTableId,
@@ -20,8 +24,9 @@ export function buildEdges(model: ProjectModel): Edge[] {
       targetHandle: childRight ? 'r' : 'l',
       type: 'relationship',
       data: { cardinality: rel.cardinality, identifying: rel.identifying },
-    }
-  })
+    })
+  }
+  return edges
 }
 
 export type ConnectionPlan =

@@ -13,7 +13,7 @@ import { GroupNode } from './group-node.js'
 import { buildGroupNodes } from './group-nodes.js'
 import { RelationshipEdge, RelationshipMarkers } from './relationship-edge.js'
 import { useModelMutation } from './use-model.js'
-import { moveTable } from './model-edits.js'
+import { moveTable, moveTableGroupPosition } from './model-edits.js'
 import { moveNote } from './note-edits.js'
 import { newId } from './uid.js'
 import { computeWarnings, createRelationshipFromParentPk } from '@erdd/core'
@@ -28,6 +28,7 @@ export function Canvas({ projectId }: { projectId: string }) {
   const selectedRelId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
+  const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const select = useEditorStore((s) => s.select)
   const selectRelationship = useEditorStore((s) => s.selectRelationship)
   const selectNote = useEditorStore((s) => s.selectNote)
@@ -38,24 +39,37 @@ export function Canvas({ projectId }: { projectId: string }) {
 
   const warnings = useMemo(() => computeWarnings(model), [model])
 
+  // 유효 뷰: 활성 그룹이 삭제됐으면(그룹 뷰 도중 삭제) 전체 뷰로 폴백한다.
+  const view = activeGroupView && model.tableGroups[activeGroupView]
+    ? { kind: 'group' as const, groupId: activeGroupView }
+    : { kind: 'full' as const }
+
   const derived = useMemo(() => {
+    const tableNodes = buildNodes(model, viewMode, selectedId, warnings, view)
+    if (view.kind === 'group') {
+      // 그룹 뷰: 색상 영역·메모 노드는 숨긴다. (고스트 노드는 Task 3에서 추가)
+      return [...tableNodes]
+    }
     const groupNodes = buildGroupNodes(model, selectedGroupId)
-    const tableNodes = buildNodes(model, viewMode, selectedId, warnings)
     const noteNodes: Node[] = Object.values(model.notes).map((note) => ({
       id: note.id, type: 'note', position: note.position,
       data: { note, selected: note.id === selectedNoteId } satisfies NoteNodeData,
     }))
     return [...groupNodes, ...tableNodes, ...noteNodes]
-  }, [model, viewMode, selectedId, selectedNoteId, selectedGroupId, warnings])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
+  }, [model, viewMode, selectedId, selectedNoteId, selectedGroupId, warnings, view.kind, view.kind === 'group' ? view.groupId : null])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.
   useEffect(() => { setNodes(derived) }, [derived, setNodes])
 
   const edges = useMemo<Edge[]>(() => {
-    const built = buildEdges(model)
+    const built = view.kind === 'group'
+      ? buildEdges(model, new Set(Object.values(model.tables).filter((t) => t.groupId === view.groupId).map((t) => t.id)))
+      : buildEdges(model)
     return selectedRelId ? built.map((e) => (e.id === selectedRelId ? { ...e, selected: true } : e)) : built
-  }, [model, selectedRelId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
+  }, [model, view.kind, view.kind === 'group' ? view.groupId : null, selectedRelId])
 
   // 트리에서 발행한 포커스 신호를 소비해 해당 테이블로 이동한다.
   useEffect(() => {
@@ -103,12 +117,12 @@ export function Canvas({ projectId }: { projectId: string }) {
         onPaneClick={() => select(null)}
         onNodeDragStop={(_, __, dragged) =>
           void mutate(
-            (m) => dragged
-              .filter((n) => n.type !== 'group')
-              .reduce(
-                (acc, n) => (n.type === 'note' ? moveNote(acc, n.id, n.position) : moveTable(acc, n.id, n.position)),
-                m,
-              ),
+            (m) => dragged.reduce((acc, n) => {
+              if (n.type === 'group' || n.type === 'ghost') return acc
+              if (view.kind === 'group' && n.type === 'table') return moveTableGroupPosition(acc, n.id, n.position)
+              if (n.type === 'note') return moveNote(acc, n.id, n.position)
+              return moveTable(acc, n.id, n.position)
+            }, m),
             { summary: '이동' },
           )}
         fitView

@@ -41,6 +41,12 @@ describe('buildEdges 핸들 휴리스틱', () => {
     expect(() => buildEdges(m)).not.toThrow()
     expect(buildEdges(m)).toHaveLength(1)
   })
+  it('visibleTableIds가 주어지면 양 끝이 모두 포함된 엣지만 반환한다', () => {
+    const m = model() // P(부모)·C(자식) 관계 R 하나
+    expect(buildEdges(m, new Set(['P', 'C']))).toHaveLength(1)
+    expect(buildEdges(m, new Set(['C']))).toHaveLength(0)     // 부모 미포함 → 제외
+    expect(buildEdges(m, new Set())).toHaveLength(0)
+  })
 })
 
 describe('planConnection', () => {
