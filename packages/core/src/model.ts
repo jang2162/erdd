@@ -87,6 +87,23 @@ export const DomainSchema = z.strictObject({
 })
 export type Domain = z.infer<typeof DomainSchema>
 
+export const WordSchema = z.strictObject({
+  id: z.string(),
+  logicalName: z.string(),
+  abbreviation: z.string(),
+  description: z.string().nullable(),
+})
+export type Word = z.infer<typeof WordSchema>
+
+export const TermSchema = z.strictObject({
+  id: z.string(),
+  logicalName: z.string(),
+  physicalName: z.string(),
+  domainId: z.string().nullable(),
+  description: z.string().nullable(),
+})
+export type Term = z.infer<typeof TermSchema>
+
 export const ProjectModelSchema = z.strictObject({
   tables: z.record(z.string(), TableSchema),
   columns: z.record(z.string(), ColumnSchema),
@@ -95,12 +112,14 @@ export const ProjectModelSchema = z.strictObject({
   notes: z.record(z.string(), NoteSchema),
   tableGroups: z.record(z.string(), TableGroupSchema),
   domains: z.record(z.string(), DomainSchema),
+  words: z.record(z.string(), WordSchema).default({}),
+  terms: z.record(z.string(), TermSchema).default({}),
 })
 export type ProjectModel = z.infer<typeof ProjectModelSchema>
 
 export function createEmptyModel(): ProjectModel {
   return {
     tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {},
-    domains: {},
+    domains: {}, words: {}, terms: {},
   }
 }

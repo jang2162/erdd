@@ -10,6 +10,7 @@ type MutationTx = Parameters<typeof loadProjectModel>[0]
 const KIND_LABEL: Record<EntityKind, string> = {
   table: '테이블', column: '컬럼', relationship: '관계',
   index: '인덱스', note: '메모', tableGroup: '그룹', domain: '도메인',
+  word: '단어', term: '용어',
 }
 const ACTION_LABEL = { create: '생성', update: '수정', delete: '삭제' } as const
 

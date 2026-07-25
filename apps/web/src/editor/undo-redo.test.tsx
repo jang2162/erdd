@@ -83,7 +83,7 @@ describe('store 선택·히스토리', () => {
   it('setLoaded는 히스토리를 초기화한다', () => {
     act(() => {
       useEditorStore.getState().recordEdit([{ action: 'create', entity: 'table', entityId: 'A', data: {} }])
-      useEditorStore.getState().setLoaded({ tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {}, domains: {} }, 1, 'p1')
+      useEditorStore.getState().setLoaded({ tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {}, domains: {}, words: {}, terms: {} }, 1, 'p1')
     })
     expect(useEditorStore.getState().undoStack).toHaveLength(0)
   })

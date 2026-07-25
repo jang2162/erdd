@@ -3,7 +3,7 @@ import type { ProjectModel } from './model.js'
 // integrity.ts는 op.ts로부터 import되므로(applyOps가 무결성 검사를 호출) 순환 import를
 // 막기 위해 EntityKind를 다시 import하지 않고 유니언을 이 파일에 리터럴로 정의한다.
 export type IntegrityIssue = {
-  entity: 'tableGroup' | 'table' | 'column' | 'relationship' | 'index' | 'note' | 'domain'
+  entity: 'tableGroup' | 'table' | 'column' | 'relationship' | 'index' | 'note' | 'domain' | 'word' | 'term'
   entityId: string
   message: string
 }
@@ -20,6 +20,8 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
     { entity: 'index', record: model.indexes },
     { entity: 'note', record: model.notes },
     { entity: 'domain', record: model.domains },
+    { entity: 'word', record: model.words },
+    { entity: 'term', record: model.terms },
   ]
   for (const { entity, record } of collections) {
     for (const [key, value] of Object.entries(record)) {
@@ -55,6 +57,15 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
       issues.push({
         entity: 'column', entityId: column.id,
         message: `존재하지 않는 도메인 참조: ${column.domainId}`,
+      })
+    }
+  }
+
+  for (const term of Object.values(model.terms)) {
+    if (term.domainId !== null && !Object.hasOwn(model.domains, term.domainId)) {
+      issues.push({
+        entity: 'term', entityId: term.id,
+        message: `존재하지 않는 도메인 참조: ${term.domainId}`,
       })
     }
   }

@@ -63,5 +63,9 @@ export function withUuidIds(model: ProjectModel): ProjectModel {
     })),
     notes: remapRecord(model.notes, (n) => n),
     domains: remapRecord(model.domains, (d) => d),
+    words: remapRecord(model.words, (w) => w),
+    terms: remapRecord(model.terms, (t) => ({
+      ...t, domainId: t.domainId === null ? null : nid(t.domainId),
+    })),
   }
 }

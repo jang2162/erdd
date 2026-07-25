@@ -76,6 +76,9 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
       dialectTypes: r.dialectTypes, defaultValue: r.defaultValue,
       allowedValues: r.allowedValues, description: r.description,
     }))),
+    // TODO(Task 4): model_words/model_terms 테이블에서 실로드로 교체.
+    words: {},
+    terms: {},
   }
 }
 
@@ -88,6 +91,10 @@ export async function persistOps(
   db: DbLike, projectId: string, ops: readonly Op[],
 ): Promise<void> {
   for (const op of ops) {
+    if (op.entity === 'word' || op.entity === 'term') {
+      // TODO(Task 4): model_words/model_terms 테이블 추가 + TABLE_BY_KIND 등록.
+      throw new Error(`${op.entity} 영속화는 아직 구현되지 않음(Task 4)`)
+    }
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
     if (op.action === 'create') {

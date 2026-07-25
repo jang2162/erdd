@@ -55,5 +55,7 @@ export function buildSampleModel(): ProjectModel {
       n1: { id: 'n1', content: '회원 도메인 메모', position: { x: 600, y: 0 }, color: '#FFF3B0' },
     },
     domains: {},
+    words: {},
+    terms: {},
   }
 }

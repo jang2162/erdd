@@ -159,4 +159,25 @@ describe('applyOps', () => {
       autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
       domainId: 'missing' } }])).toThrow()
   })
+
+  it('word/term 엔티티를 왕복하고, term은 존재하는 도메인만 참조한다', () => {
+    const m = createEmptyModel()
+    const w = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null }
+    const created = applyOps(m, [{ action: 'create', entity: 'word', entityId: 'w1', data: w }])
+    expect(created.words['w1']!.abbreviation).toBe('MBR')
+    // term with missing domain → 무결성 위반
+    expect(() => applyOps(created, [{ action: 'create', entity: 'term', entityId: 't1', data: {
+      id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: 'nope', description: null } }])).toThrow()
+    // term with null domain OK
+    const wt = applyOps(created, [{ action: 'create', entity: 'term', entityId: 't1', data: {
+      id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: null, description: null } }])
+    expect(wt.terms['t1']!.physicalName).toBe('MBR_NO')
+  })
+  it('words/terms 생략된 옛 모델도 파싱된다(.default)', () => {
+    // applyOps 초기 spread가 model.words 없이도 동작하는지 — createEmptyModel엔 있으나 옛 스냅샷 방어
+    const legacy = { ...createEmptyModel() } as Record<string, unknown>
+    delete legacy.words; delete legacy.terms
+    const out = applyOps(legacy as ReturnType<typeof createEmptyModel>, [])
+    expect(out.words).toEqual({}); expect(out.terms).toEqual({})
+  })
 })
