@@ -1,7 +1,7 @@
 import {
   boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
-import type { Dialect, Op } from '@erdd/core'
+import type { Dialect, Op, ProjectModel } from '@erdd/core'
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(),
@@ -140,3 +140,13 @@ export const revisions = pgTable(
   },
   (t) => [uniqueIndex('ux_revisions_project_seq').on(t.projectId, t.seq)],
 )
+
+export const snapshots = pgTable('snapshots', {
+  id: uuid('id').primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  revisionSeq: integer('revision_seq').notNull(),
+  model: jsonb('model').$type<ProjectModel>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})

@@ -22,6 +22,13 @@
       "when": 1784859791764,
       "tag": "0002_smooth_kylun",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784954642363,
+      "tag": "0003_last_magik",
+      "breakpoints": true
     }
   ]
 }
