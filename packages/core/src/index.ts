@@ -16,6 +16,8 @@ export { deepEqual } from './equal.js'
 export { diffModels } from './diff.js'
 export { DIALECTS, toDialectType, resolveColumnType } from './dialect.js'
 export type { Dialect } from './dialect.js'
+export { generateDdl } from './ddl.js'
+export type { DdlScope } from './ddl.js'
 export { OpParseError, parseOps } from './op-guard.js'
 export {
   createRelationshipFromParentPk, remapRelationshipChildColumn, setRelationshipIdentifying,
