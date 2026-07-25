@@ -28,3 +28,5 @@ export { createGroup, updateGroup, deleteGroup, setTableGroup } from './group.js
 export { createIndex, updateIndex, removeIndex } from './table-index.js'
 export { computeWarnings } from './warnings.js'
 export type { Warning } from './warnings.js'
+export { resolveColumn } from './domain-resolve.js'
+export type { ResolvedColumn } from './domain-resolve.js'
