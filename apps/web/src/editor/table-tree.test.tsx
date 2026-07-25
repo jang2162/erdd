@@ -56,6 +56,16 @@ describe('TableTree', () => {
     expect(screen.getByText('MBR')).toBeInTheDocument() // now unassigned
   })
 
+  it('그룹 뷰 활성 시 그 그룹만 스코핑해 표시한다', () => {
+    const model = buildSampleModel()
+    model.tables = { ...model.tables, t2: { ...model.tables.t2!, groupId: null } }
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    useEditorStore.getState().enterGroupView('g1')
+    renderTree()
+    expect(screen.getByText('회원관리')).toBeInTheDocument()
+    expect(screen.queryByText('미분류')).not.toBeInTheDocument() // 스코핑되어 숨김
+  })
+
   it('creates a new group with a generated name/color and selects it via the add-group button', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)

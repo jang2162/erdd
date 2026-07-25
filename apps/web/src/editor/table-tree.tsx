@@ -13,6 +13,7 @@ export function TableTree({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
+  const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const focus = useEditorStore((s) => s.focus)
   const selectGroup = useEditorStore((s) => s.selectGroup)
   const mutate = useModelMutation(projectId)
@@ -26,6 +27,11 @@ export function TableTree({ projectId }: { projectId: string }) {
     .sort((a, b) => a.physicalName.localeCompare(b.physicalName))
   const groups = Object.values(model.tableGroups).sort((a, b) => a.name.localeCompare(b.name))
   const unassigned = allTables.filter((t) => t.groupId === null || !model.tableGroups[t.groupId])
+
+  // 유효 활성 그룹: 설정됐고 실제로 존재할 때만 스코핑한다(삭제된 경우 전체 뷰로 폴백 — canvas와 일치).
+  const scopedGroupId = activeGroupView && model.tableGroups[activeGroupView] ? activeGroupView : null
+  const visibleGroups = scopedGroupId ? groups.filter((g) => g.id === scopedGroupId) : groups
+  const showUnassigned = !scopedGroupId && (unassigned.length > 0 || groups.length > 0)
 
   const onAddGroup = () => {
     const id = newId()
@@ -49,14 +55,15 @@ export function TableTree({ projectId }: { projectId: string }) {
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
-        {groups.map((g) => {
+        {visibleGroups.map((g) => {
           const members = allTables.filter((t) => t.groupId === g.id)
           if (query !== '' && members.length === 0) return null
           return (
             <div key={g.id} className="mb-1">
               <button type="button" onClick={() => selectGroup(g.id)}
                 className={cn('flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-accent',
-                  g.id === selectedGroupId && 'bg-accent')}>
+                  g.id === selectedGroupId && 'bg-accent',
+                  g.id === scopedGroupId && 'ring-1 ring-inset ring-ring')}>
                 <span className="size-2.5 shrink-0 rounded-sm" style={{ background: g.color }} />
                 <span className="flex-1 truncate text-xs font-semibold">{g.name}</span>
                 <span className="text-[10px] text-muted-foreground">{members.length}</span>
@@ -68,7 +75,7 @@ export function TableTree({ projectId }: { projectId: string }) {
           )
         })}
 
-        {(unassigned.length > 0 || groups.length > 0) && (
+        {showUnassigned && (
           <div className="mb-1">
             {groups.length > 0 && (
               <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">미분류</div>
