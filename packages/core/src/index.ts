@@ -24,5 +24,6 @@ export {
   deleteRelationship, deleteTableCascade, deleteColumnCascade,
 } from './relationship.js'
 export { createGroup, updateGroup, deleteGroup, setTableGroup } from './group.js'
+export { createIndex, updateIndex, removeIndex } from './table-index.js'
 export { computeWarnings } from './warnings.js'
 export type { Warning } from './warnings.js'
