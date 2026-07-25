@@ -31,4 +31,22 @@ describe('model schemas', () => {
   it('ColumnSchema rejects a column missing required fields', () => {
     expect(() => ColumnSchema.parse({ id: 'c1', tableId: 't1' })).toThrow()
   })
+
+  it('ColumnSchema defaults domainId to null when omitted (구 리비전 하위호환)', () => {
+    const legacyColumn = {
+      id: 'c1',
+      tableId: 't1',
+      logicalName: '이름',
+      physicalName: 'NAME',
+      type: 'varchar',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      // domainId 의도적으로 생략 — domainId 필드가 없던 구 리비전 데이터를 흉내
+    }
+    expect(ColumnSchema.parse(legacyColumn).domainId).toBeNull()
+  })
 })

@@ -138,6 +138,18 @@ describe('applyOps', () => {
     expect(deleted.domains['d1']).toBeUndefined()
   })
 
+  it('컬럼 create 시 domainId를 생략해도 통과하며 null로 채워진다(구 리비전 하위호환)', () => {
+    const base = buildSampleModel()
+    const data = {
+      id: 'c5', tableId: 't2', logicalName: '비고', physicalName: 'RMK',
+      type: 'VARCHAR(200)', isPk: false, autoIncrement: false, nullable: true,
+      defaultValue: null, order: 3, comment: null,
+      // domainId 의도적으로 생략 — domainId 필드가 없던 구 리비전 op 페이로드를 흉내
+    }
+    const next = applyOps(base, [{ action: 'create', entity: 'column', entityId: 'c5', data }])
+    expect(next.columns.c5?.domainId).toBeNull()
+  })
+
   it('컬럼이 존재하지 않는 도메인을 가리키면 무결성 위반', () => {
     const m = createEmptyModel()
     m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null,

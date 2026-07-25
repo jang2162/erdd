@@ -1,7 +1,9 @@
 import { and, eq } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
-import type {
-  Column, IndexDef, Note, Op, ProjectModel, Relationship, Table, TableGroup,
+import {
+  OpApplyError,
+  type Column, type IndexDef, type Note, type Op, type ProjectModel, type Relationship,
+  type Table, type TableGroup,
 } from '@erdd/core'
 import * as schema from '../db/schema.js'
 import {
@@ -79,9 +81,10 @@ export async function persistOps(
   db: DbLike, projectId: string, ops: readonly Op[],
 ): Promise<void> {
   for (const op of ops) {
-    // domain은 아직 DB 테이블이 없음(Task 3에서 추가) — 현재는 domain op가 이 경로에 도달하지 않는다.
+    // domain은 아직 DB 테이블이 없음(Task 3에서 이 가드 전체가 제거/교체된다).
+    // OpApplyError로 던져야 라우터(model.ts)가 400으로 매핑한다 — plain Error는 비제어 500이 된다.
     if (op.entity === 'domain') {
-      throw new Error(`persistOps: domain 영속화는 아직 지원하지 않음(Task 3) — ${op.entityId}`)
+      throw new OpApplyError(`도메인 op 영속화는 아직 지원되지 않습니다(Task 3) — ${op.entityId}`)
     }
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
