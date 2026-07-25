@@ -1,51 +1,41 @@
 import { describe, expect, it } from 'vitest'
 import { parseLogicalType } from './logical-type.js'
 
-describe('parseLogicalType', () => {
-  it('parses INT and canonicalizes case', () => {
-    expect(parseLogicalType('int')).toEqual({ ok: true, type: { kind: 'INT' }, canonical: 'INT' })
-  })
+const canon = (s: string) => { const r = parseLogicalType(s); return r.ok ? r.canonical : `RAW:${r.raw}` }
 
-  it('accepts INTEGER as alias of INT', () => {
-    expect(parseLogicalType('INTEGER')).toMatchObject({ ok: true, canonical: 'INT' })
+describe('parseLogicalType — 17종·별칭·정규화', () => {
+  it('파라미터 없는 타입', () => {
+    for (const t of ['TEXT', 'SMALLINT', 'INT', 'BIGINT', 'FLOAT', 'DOUBLE', 'BOOLEAN',
+      'DATE', 'TIME', 'DATETIME', 'TIMESTAMPTZ', 'BLOB', 'JSON', 'UUID']) {
+      expect(canon(t.toLowerCase())).toBe(t)
+    }
   })
-
-  it('parses VARCHAR(n) and VARCHAR2 alias', () => {
-    expect(parseLogicalType('varchar2(100)')).toEqual({
-      ok: true,
-      type: { kind: 'VARCHAR', length: 100 },
-      canonical: 'VARCHAR(100)',
-    })
+  it('길이 타입', () => {
+    expect(canon('char(1)')).toBe('CHAR(1)')
+    expect(canon('varchar(255)')).toBe('VARCHAR(255)')
   })
-
-  it('rejects VARCHAR without length (length is required)', () => {
-    expect(parseLogicalType('VARCHAR')).toEqual({ ok: false, raw: 'VARCHAR' })
+  it('DECIMAL scale 기본 0', () => {
+    expect(canon('decimal(15)')).toBe('DECIMAL(15,0)')
+    expect(canon('DECIMAL(18,2)')).toBe('DECIMAL(18,2)')
   })
-
-  it('parses DECIMAL(p,s) with scale defaulting to 0, NUMBER/NUMERIC aliases', () => {
-    expect(parseLogicalType('NUMBER(15)')).toEqual({
-      ok: true,
-      type: { kind: 'DECIMAL', precision: 15, scale: 0 },
-      canonical: 'DECIMAL(15,0)',
-    })
+  it('별칭 정규화', () => {
+    expect(canon('integer')).toBe('INT')
+    expect(canon('varchar2(100)')).toBe('VARCHAR(100)')
+    expect(canon('numeric(10,2)')).toBe('DECIMAL(10,2)')
+    expect(canon('number(5)')).toBe('DECIMAL(5,0)')
+    expect(canon('timestamp')).toBe('DATETIME')
+    expect(canon('bool')).toBe('BOOLEAN')
+    expect(canon('double precision')).toBe('DOUBLE')
   })
-
-  it('returns ok:false with raw text for unknown types', () => {
-    expect(parseLogicalType('geometry(Point,4326)')).toEqual({
-      ok: false,
-      raw: 'geometry(Point,4326)',
-    })
+  it('CHAR/VARCHAR 길이 누락은 실패', () => {
+    expect(canon('varchar')).toBe('RAW:varchar')
+    expect(canon('char')).toBe('RAW:char')
   })
-
-  it('accepts NUMERIC as alias of DECIMAL', () => {
-    expect(parseLogicalType('NUMERIC(10,2)')).toMatchObject({ ok: true, canonical: 'DECIMAL(10,2)' })
+  it('파라미터 없는 타입에 괄호가 오면 실패(원문 보존)', () => {
+    expect(canon('int(11)')).toBe('RAW:int(11)')
   })
-
-  it('parses DECIMAL directly', () => {
-    expect(parseLogicalType('DECIMAL(8,3)')).toEqual({
-      ok: true,
-      type: { kind: 'DECIMAL', precision: 8, scale: 3 },
-      canonical: 'DECIMAL(8,3)',
-    })
+  it('미지의 벤더 타입은 원문 보존', () => {
+    expect(canon('geometry')).toBe('RAW:geometry')
+    expect(canon('')).toBe('RAW:')
   })
 })
