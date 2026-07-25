@@ -25,15 +25,24 @@ describe('buildGhostNodes', () => {
   it('그룹 내 테이블과 관계된 외부 테이블만 고스트로 만든다', () => {
     const ghosts = buildGhostNodes(model(), 'G1')
     const ids = ghosts.map((g) => g.id).sort()
-    expect(ids).toEqual(['ghost:LOG', 'ghost:USR']) // FAR는 관계 없어 제외, ORD는 내부라 제외
+    // 노드 id는 원본 테이블 id(엣지 끝점과 일치해야 선이 렌더됨). FAR 제외, ORD는 내부라 제외.
+    expect(ids).toEqual(['LOG', 'USR'])
   })
   it('고스트에 targetGroupId를 담는다(미분류는 null)', () => {
     const ghosts = buildGhostNodes(model(), 'G1')
-    const usr = ghosts.find((g) => g.id === 'ghost:USR')!
-    const log = ghosts.find((g) => g.id === 'ghost:LOG')!
+    const usr = ghosts.find((g) => g.id === 'USR')!
+    const log = ghosts.find((g) => g.id === 'LOG')!
     expect((usr.data as { targetGroupId: string | null }).targetGroupId).toBe('G2')
     expect((log.data as { targetGroupId: string | null }).targetGroupId).toBeNull()
     expect(usr.type).toBe('ghost')
     expect(usr.draggable).toBe(false)
+  })
+  it('한 외부 테이블이 여러 관계로 연결돼도 고스트는 하나다(dedup)', () => {
+    const m = model()
+    // USR↔ORD가 이미 R1. 두 번째 관계 R3도 USR(외부)↔ORD(내부).
+    m.relationships['R3'] = { id: 'R3', parentTableId: 'ORD', childTableId: 'USR',
+      columnMappings: [], cardinality: '1:N', identifying: false, name: null }
+    const usrGhosts = buildGhostNodes(m, 'G1').filter((g) => g.id === 'USR')
+    expect(usrGhosts).toHaveLength(1)
   })
 })
