@@ -9,7 +9,7 @@ function tbl(id: string): Table {
 }
 function col(id: string, tableId: string): Column {
   return { id, tableId, logicalName: id, physicalName: id.toUpperCase(), type: 'BIGINT', isPk: false,
-    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null }
+    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null }
 }
 function base(): ProjectModel {
   const m = createEmptyModel()

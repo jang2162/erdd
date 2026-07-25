@@ -24,10 +24,10 @@ const DATA = {
   columns: [
     { id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO',
       type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
-      defaultValue: null, order: 0, comment: null },
+      defaultValue: null, order: 0, comment: null, domainId: null },
     { id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM',
       type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: true,
-      defaultValue: null, order: 1, comment: null },
+      defaultValue: null, order: 1, comment: null, domainId: null },
   ],
   selected: false,
 }

@@ -8,7 +8,8 @@ function tbl(id: string, physicalName: string, over: Partial<Table> = {}): Table
 }
 function col(id: string, tableId: string, physicalName: string, type: string, over: Partial<Column> = {}): Column {
   return { id, tableId, logicalName: physicalName, physicalName, type, isPk: false,
-    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, ...over }
+    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
+    domainId: null, ...over }
 }
 
 function usersModel(): ProjectModel {

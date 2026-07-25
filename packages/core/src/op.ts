@@ -1,11 +1,11 @@
 import type { z } from 'zod'
 import {
-  ColumnSchema, IndexSchema, NoteSchema, RelationshipSchema, TableGroupSchema, TableSchema,
+  ColumnSchema, DomainSchema, IndexSchema, NoteSchema, RelationshipSchema, TableGroupSchema, TableSchema,
   type ProjectModel,
 } from './model.js'
 import { validateModelIntegrity } from './integrity.js'
 
-export const ENTITY_KINDS = ['tableGroup', 'table', 'column', 'relationship', 'index', 'note'] as const
+export const ENTITY_KINDS = ['tableGroup', 'table', 'column', 'relationship', 'index', 'note', 'domain'] as const
 export type EntityKind = (typeof ENTITY_KINDS)[number]
 
 const ENTITY_SCHEMAS: Record<EntityKind, z.ZodType> = {
@@ -15,6 +15,7 @@ const ENTITY_SCHEMAS: Record<EntityKind, z.ZodType> = {
   relationship: RelationshipSchema,
   index: IndexSchema,
   note: NoteSchema,
+  domain: DomainSchema,
 }
 
 export const COLLECTION_BY_KIND = {
@@ -24,6 +25,7 @@ export const COLLECTION_BY_KIND = {
   relationship: 'relationships',
   index: 'indexes',
   note: 'notes',
+  domain: 'domains',
 } as const satisfies Record<EntityKind, keyof ProjectModel>
 
 // from/before는 기록용이다. applyOps는 전제조건으로 검사하지 않는다(Phase 3 LWW에서
@@ -59,6 +61,7 @@ export function applyOps(model: ProjectModel, ops: readonly Op[]): ProjectModel 
     indexes: { ...model.indexes },
     notes: { ...model.notes },
     tableGroups: { ...model.tableGroups },
+    domains: { ...model.domains },
   }
 
   ops.forEach((op, i) => {

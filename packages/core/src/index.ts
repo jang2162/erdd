@@ -2,10 +2,10 @@ export { parseLogicalType } from './logical-type.js'
 export type { LogicalType, LogicalTypeKind, ParseResult } from './logical-type.js'
 export {
   PositionSchema, TableSchema, ColumnSchema, RelationshipSchema,
-  IndexSchema, NoteSchema, TableGroupSchema, ProjectModelSchema, createEmptyModel,
+  IndexSchema, NoteSchema, TableGroupSchema, DomainSchema, ProjectModelSchema, createEmptyModel,
 } from './model.js'
 export type {
-  Position, Table, Column, Relationship, IndexDef, Note, TableGroup, ProjectModel,
+  Position, Table, Column, Relationship, IndexDef, Note, TableGroup, Domain, ProjectModel,
 } from './model.js'
 export { validateModelIntegrity } from './integrity.js'
 export type { IntegrityIssue } from './integrity.js'

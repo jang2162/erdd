@@ -53,7 +53,7 @@ describe('planConnection', () => {
   const gen = () => { let n = 0; return () => `id${++n}` }
   it('source=자식, target=부모로 매핑하고 부모 PK 수만큼 컬럼 id를 만든다', () => {
     const m = model() // P(부모)·C(자식). model()의 P에는 기본적으로 PK 컬럼이 없으므로 여기서 추가.
-    m.columns['PPK'] = { id: 'PPK', tableId: 'P', logicalName: 'PPK', physicalName: 'ID', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null }
+    m.columns['PPK'] = { id: 'PPK', tableId: 'P', logicalName: 'PPK', physicalName: 'ID', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null, domainId: null }
     const plan = planConnection(m, { source: 'C', target: 'P' }, gen())
     expect(plan.ok).toBe(true)
     if (plan.ok) {
@@ -74,8 +74,8 @@ describe('planConnection', () => {
   })
   it('복합 PK면 컬럼 id를 그 수만큼 만든다', () => {
     const m = model()
-    m.columns['PPK1'] = { id: 'PPK1', tableId: 'P', logicalName: 'a', physicalName: 'A', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null }
-    m.columns['PPK2'] = { id: 'PPK2', tableId: 'P', logicalName: 'b', physicalName: 'B', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 1, comment: null }
+    m.columns['PPK1'] = { id: 'PPK1', tableId: 'P', logicalName: 'a', physicalName: 'A', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null, domainId: null }
+    m.columns['PPK2'] = { id: 'PPK2', tableId: 'P', logicalName: 'b', physicalName: 'B', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 1, comment: null, domainId: null }
     const plan = planConnection(m, { source: 'C', target: 'P' }, gen())
     if (plan.ok) expect(plan.newColumnIds).toHaveLength(2)
     else throw new Error('expected ok')

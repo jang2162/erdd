@@ -15,7 +15,7 @@ export function addColumn(
   const column: Column = {
     id, tableId, logicalName: `컬럼${n}`, physicalName: `COL_${n}`,
     type: 'VARCHAR(255)', isPk: false, autoIncrement: false, nullable: true,
-    defaultValue: null, order, comment: null,
+    defaultValue: null, order, comment: null, domainId: null,
   }
   return { ...model, columns: { ...model.columns, [id]: column } }
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ColumnSchema, TableSchema, createEmptyModel } from './model.js'
 
 describe('model schemas', () => {
-  it('createEmptyModel returns all six empty collections', () => {
+  it('createEmptyModel returns all seven empty collections', () => {
     expect(createEmptyModel()).toEqual({
       tables: {},
       columns: {},
@@ -10,6 +10,7 @@ describe('model schemas', () => {
       indexes: {},
       notes: {},
       tableGroups: {},
+      domains: {},
     })
   })
 

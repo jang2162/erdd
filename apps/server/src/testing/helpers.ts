@@ -60,5 +60,6 @@ export function withUuidIds(model: ProjectModel): ProjectModel {
       columns: ix.columns.map((c) => ({ ...c, columnId: nid(c.columnId) })),
     })),
     notes: remapRecord(model.notes, (n) => n),
+    domains: model.domains,
   }
 }

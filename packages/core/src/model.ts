@@ -26,6 +26,7 @@ export const ColumnSchema = z.strictObject({
   defaultValue: z.string().nullable(),
   order: z.number().int(),
   comment: z.string().nullable(),
+  domainId: z.string().nullable().default(null),
 })
 export type Column = z.infer<typeof ColumnSchema>
 
@@ -69,6 +70,23 @@ export const TableGroupSchema = z.strictObject({
 })
 export type TableGroup = z.infer<typeof TableGroupSchema>
 
+export const DomainSchema = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  category: z.string().nullable(),
+  logicalType: z.string(),
+  dialectTypes: z.strictObject({
+    postgresql: z.string().nullable(),
+    mysql: z.string().nullable(),
+    oracle: z.string().nullable(),
+    mssql: z.string().nullable(),
+  }),
+  defaultValue: z.string().nullable(),
+  allowedValues: z.array(z.string()),
+  description: z.string().nullable(),
+})
+export type Domain = z.infer<typeof DomainSchema>
+
 export const ProjectModelSchema = z.strictObject({
   tables: z.record(z.string(), TableSchema),
   columns: z.record(z.string(), ColumnSchema),
@@ -76,9 +94,13 @@ export const ProjectModelSchema = z.strictObject({
   indexes: z.record(z.string(), IndexSchema),
   notes: z.record(z.string(), NoteSchema),
   tableGroups: z.record(z.string(), TableGroupSchema),
+  domains: z.record(z.string(), DomainSchema),
 })
 export type ProjectModel = z.infer<typeof ProjectModelSchema>
 
 export function createEmptyModel(): ProjectModel {
-  return { tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {} }
+  return {
+    tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {},
+    domains: {},
+  }
 }

@@ -53,4 +53,12 @@ describe('validateModelIntegrity', () => {
     m.tables.t1!.groupId = 'constructor'
     expect(validateModelIntegrity(m)).toHaveLength(1)
   })
+
+  it('flags a column whose domainId does not exist', () => {
+    const m = buildSampleModel()
+    m.columns.c1!.domainId = 'missing'
+    const issues = validateModelIntegrity(m)
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({ entity: 'column', entityId: 'c1' })
+  })
 })

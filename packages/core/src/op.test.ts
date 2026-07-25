@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyOps, OpApplyError, type Op } from './op.js'
+import { createEmptyModel } from './model.js'
 import { buildSampleModel } from './testing/fixtures.js'
 
 describe('applyOps', () => {
@@ -121,5 +122,29 @@ describe('applyOps', () => {
         { action: 'update', entity: 'note', entityId: 'n1', changes: { nope: { from: null, to: 1 } } },
       ]),
     ).toThrow(OpApplyError)
+  })
+
+  it('domain 엔티티를 create/update/delete로 왕복한다', () => {
+    const m = createEmptyModel()
+    const d = { id: 'd1', name: '금액', category: '숫자', logicalType: 'DECIMAL(15)',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null }
+    const created = applyOps(m, [{ action: 'create', entity: 'domain', entityId: 'd1', data: d }])
+    expect(created.domains['d1']!.name).toBe('금액')
+    const updated = applyOps(created, [{ action: 'update', entity: 'domain', entityId: 'd1',
+      changes: { name: { from: '금액', to: '통화금액' } } }])
+    expect(updated.domains['d1']!.name).toBe('통화금액')
+    const deleted = applyOps(updated, [{ action: 'delete', entity: 'domain', entityId: 'd1', before: d }])
+    expect(deleted.domains['d1']).toBeUndefined()
+  })
+
+  it('컬럼이 존재하지 않는 도메인을 가리키면 무결성 위반', () => {
+    const m = createEmptyModel()
+    m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null }
+    expect(() => applyOps(m, [{ action: 'create', entity: 'column', entityId: 'c', data: {
+      id: 'c', tableId: 't', logicalName: 'A', physicalName: 'A', type: 'INT', isPk: false,
+      autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
+      domainId: 'missing' } }])).toThrow()
   })
 })

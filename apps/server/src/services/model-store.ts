@@ -53,6 +53,7 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
       id: r.id, tableId: r.tableId, logicalName: r.logicalName, physicalName: r.physicalName,
       type: r.type, isPk: r.isPk, autoIncrement: r.autoIncrement, nullable: r.nullable,
       defaultValue: r.defaultValue, order: r.order, comment: r.comment,
+      domainId: null, // 임시 — 도메인 컬럼은 Task 3에서 실제 DB 컬럼으로 교체
     }))),
     relationships: keyed(relRows.map((r): Relationship => ({
       id: r.id, parentTableId: r.parentTableId, childTableId: r.childTableId,
@@ -65,6 +66,7 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
     notes: keyed(noteRows.map((r): Note => ({
       id: r.id, content: r.content, position: r.position, color: r.color,
     }))),
+    domains: {}, // 도메인 테이블 없음 — Task 3에서 실제 로드로 교체
   }
 }
 
@@ -77,6 +79,10 @@ export async function persistOps(
   db: DbLike, projectId: string, ops: readonly Op[],
 ): Promise<void> {
   for (const op of ops) {
+    // domain은 아직 DB 테이블이 없음(Task 3에서 추가) — 현재는 domain op가 이 경로에 도달하지 않는다.
+    if (op.entity === 'domain') {
+      throw new Error(`persistOps: domain 영속화는 아직 지원하지 않음(Task 3) — ${op.entityId}`)
+    }
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
     if (op.action === 'create') {

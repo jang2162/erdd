@@ -20,22 +20,22 @@ export function buildSampleModel(): ProjectModel {
       c1: {
         id: 'c1', tableId: 't1', logicalName: '등급코드', physicalName: 'GRD_CD',
         type: 'CHAR(2)', isPk: true, autoIncrement: false, nullable: false,
-        defaultValue: null, order: 0, comment: null,
+        defaultValue: null, order: 0, comment: null, domainId: null,
       },
       c2: {
         id: 'c2', tableId: 't2', logicalName: '회원번호', physicalName: 'MBR_NO',
         type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
-        defaultValue: null, order: 0, comment: null,
+        defaultValue: null, order: 0, comment: null, domainId: null,
       },
       c3: {
         id: 'c3', tableId: 't2', logicalName: '회원명', physicalName: 'MBR_NM',
         type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: false,
-        defaultValue: null, order: 1, comment: null,
+        defaultValue: null, order: 1, comment: null, domainId: null,
       },
       c4: {
         id: 'c4', tableId: 't2', logicalName: '등급코드', physicalName: 'GRD_CD',
         type: 'CHAR(2)', isPk: false, autoIncrement: false, nullable: false,
-        defaultValue: null, order: 2, comment: null,
+        defaultValue: null, order: 2, comment: null, domainId: null,
       },
     },
     relationships: {
@@ -54,5 +54,6 @@ export function buildSampleModel(): ProjectModel {
     notes: {
       n1: { id: 'n1', content: '회원 도메인 메모', position: { x: 600, y: 0 }, color: '#FFF3B0' },
     },
+    domains: {},
   }
 }

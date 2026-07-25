@@ -9,7 +9,8 @@ function tbl(id: string): Table {
 }
 function col(id: string, tableId: string, physicalName: string, over: Partial<Column> = {}): Column {
   return { id, tableId, logicalName: id, physicalName, type: 'BIGINT', isPk: false,
-    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, ...over }
+    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
+    domainId: null, ...over }
 }
 
 describe('computeWarnings', () => {
