@@ -1,4 +1,4 @@
-import type { Column, ProjectModel, Table } from './model.js'
+import type { Column, ProjectModel, Relationship, Table } from './model.js'
 import { resolveColumnType, type Dialect } from './dialect.js'
 import { parseLogicalType } from './logical-type.js'
 
@@ -42,23 +42,138 @@ function tableColumns(model: ProjectModel, tableId: string): Column[] {
   return Object.values(model.columns).filter((c) => c.tableId === tableId).sort((a, b) => a.order - b.order)
 }
 
+/** logicalName/physicalName/comment로부터 코멘트 텍스트 산출. 논리명==물리명이고 설명이 없으면 생략(null). */
+function commentText(logicalName: string, physicalName: string, comment: string | null): string | null {
+  const parts: string[] = []
+  if (logicalName && logicalName !== physicalName) parts.push(logicalName)
+  else if (logicalName && logicalName === physicalName && comment) parts.push(logicalName)
+  if (comment) parts.push(comment)
+  if (parts.length === 0) return null
+  return parts.join(' - ')
+}
+
+const esc = (s: string) => s.replace(/'/g, "''")
+
+function fkName(rel: { name: string | null }, child: string, parent: string): string {
+  return rel.name && rel.name.trim() !== '' ? rel.name : `FK_${child}_${parent}`
+}
+
 function columnLine(col: Column, dialect: Dialect): string {
   const parts = [col.physicalName, resolveColumnType(col.type, dialect).sql]
   const auto = col.autoIncrement && col.isPk && isIntegerType(col.type)
   if (auto) parts.push(autoIncrementToken(dialect))
   if (!col.nullable) parts.push('NOT NULL')
   if (!auto && col.defaultValue !== null && col.defaultValue !== '') parts.push(`DEFAULT ${col.defaultValue}`)
+  if (dialect === 'mysql') {
+    const text = commentText(col.logicalName, col.physicalName, col.comment)
+    if (text !== null) parts.push(`COMMENT '${esc(text)}'`)
+  }
   return `  ${parts.join(' ')}`
+}
+
+function createTableBlock(model: ProjectModel, table: Table, dialect: Dialect): string {
+  const cols = tableColumns(model, table.id)
+  const lines = cols.map((c) => columnLine(c, dialect))
+  const pks = cols.filter((c) => c.isPk)
+  if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => c.physicalName).join(', ')})`)
+  let block = `CREATE TABLE ${table.physicalName} (\n${lines.join(',\n')}\n)`
+  if (dialect === 'mysql') {
+    const text = commentText(table.logicalName, table.physicalName, table.comment)
+    if (text !== null) block += ` COMMENT '${esc(text)}'`
+  }
+  return `${block};`
+}
+
+function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): Relationship[] {
+  return Object.values(model.relationships).filter(
+    (r) => selectedIds.has(r.parentTableId) && selectedIds.has(r.childTableId),
+  )
+}
+
+function fkStatements(model: ProjectModel, selectedIds: Set<string>): string[] {
+  const rels = selectedRelationships(model, selectedIds)
+  const statements: string[] = []
+  for (const rel of rels) {
+    const parent = model.tables[rel.parentTableId]
+    const child = model.tables[rel.childTableId]
+    if (!parent || !child) continue
+    const childCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
+    const parentCols = rel.columnMappings.map((m) => model.columns[m.parentColumnId]?.physicalName ?? '')
+    const name = fkName(rel, child.physicalName, parent.physicalName)
+    statements.push(
+      `ALTER TABLE ${child.physicalName} ADD CONSTRAINT ${name} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${parent.physicalName} (${parentCols.join(', ')});`,
+    )
+    if (rel.cardinality === '1:1') {
+      const uqName = `UQ_${child.physicalName}_${childCols.join('_')}`
+      statements.push(`ALTER TABLE ${child.physicalName} ADD CONSTRAINT ${uqName} UNIQUE (${childCols.join(', ')});`)
+    }
+  }
+  return statements
+}
+
+function indexStatements(model: ProjectModel, selectedIds: Set<string>): string[] {
+  const indexes = Object.values(model.indexes).filter((ix) => selectedIds.has(ix.tableId))
+  return indexes.map((ix) => {
+    const table = model.tables[ix.tableId]
+    const tableName = table ? table.physicalName : ix.tableId
+    const cols = ix.columns
+      .map((c) => {
+        const col = model.columns[c.columnId]
+        const colName = col ? col.physicalName : c.columnId
+        return `${colName} ${c.direction.toUpperCase()}`
+      })
+      .join(', ')
+    const uniqueToken = ix.unique ? 'UNIQUE ' : ''
+    return `CREATE ${uniqueToken}INDEX ${ix.name} ON ${tableName} (${cols});`
+  })
+}
+
+function commentStatements(model: ProjectModel, tables: Table[], dialect: Dialect): string[] {
+  const statements: string[] = []
+  for (const table of tables) {
+    const tableText = commentText(table.logicalName, table.physicalName, table.comment)
+    if (tableText !== null) statements.push(tableCommentStatement(dialect, table.physicalName, tableText))
+    const cols = tableColumns(model, table.id)
+    for (const col of cols) {
+      const colText = commentText(col.logicalName, col.physicalName, col.comment)
+      if (colText !== null) statements.push(columnCommentStatement(dialect, table.physicalName, col.physicalName, colText))
+    }
+  }
+  return statements
+}
+
+function tableCommentStatement(dialect: Dialect, tableName: string, text: string): string {
+  switch (dialect) {
+    case 'postgresql':
+    case 'oracle':
+      return `COMMENT ON TABLE ${tableName} IS '${esc(text)}';`
+    case 'mssql':
+      return `EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'${esc(text)}', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'${tableName}';`
+    case 'mysql':
+      throw new Error('MySQL uses inline comments')
+  }
+}
+
+function columnCommentStatement(dialect: Dialect, tableName: string, columnName: string, text: string): string {
+  switch (dialect) {
+    case 'postgresql':
+    case 'oracle':
+      return `COMMENT ON COLUMN ${tableName}.${columnName} IS '${esc(text)}';`
+    case 'mssql':
+      return `EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'${esc(text)}', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'${tableName}', @level2type=N'COLUMN', @level2name=N'${columnName}';`
+    case 'mysql':
+      throw new Error('MySQL uses inline comments')
+  }
 }
 
 export function generateDdl(model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }): string {
   const tables = selectTables(model, scope)
-  const blocks = tables.map((table) => {
-    const cols = tableColumns(model, table.id)
-    const lines = cols.map((c) => columnLine(c, dialect))
-    const pks = cols.filter((c) => c.isPk)
-    if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => c.physicalName).join(', ')})`)
-    return `CREATE TABLE ${table.physicalName} (\n${lines.join(',\n')}\n);`
-  })
-  return blocks.join('\n\n')
+  const selectedIds = new Set(tables.map((t) => t.id))
+
+  const createBlocks = tables.map((table) => createTableBlock(model, table, dialect))
+  const fk = fkStatements(model, selectedIds).join('\n')
+  const index = indexStatements(model, selectedIds).join('\n')
+  const comment = dialect === 'mysql' ? '' : commentStatements(model, tables, dialect).join('\n')
+
+  return [createBlocks.join('\n\n'), fk, index, comment].filter((s) => s.trim() !== '').join('\n\n')
 }

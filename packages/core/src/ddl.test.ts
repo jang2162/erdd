@@ -56,3 +56,48 @@ describe('generateDdl — CREATE TABLE', () => {
     expect(generateDdl(m, 'postgresql')).toContain('SHAPE geometry')
   })
 })
+
+// 관계·인덱스·코멘트가 있는 모델
+function relModel(): ProjectModel {
+  const m = createEmptyModel()
+  m.tables['p'] = tbl('p', 'USERS', { logicalName: '회원', comment: '회원 마스터' })
+  m.tables['c'] = tbl('c', 'ORDERS', { logicalName: '주문' })
+  m.columns['pk'] = col('pk', 'p', 'ID', 'BIGINT', { isPk: true, nullable: false, order: 0, logicalName: '아이디' })
+  m.columns['fk'] = col('fk', 'c', 'USER_ID', 'BIGINT', { nullable: false, order: 0 })
+  m.columns['co'] = col('co', 'c', 'ID', 'BIGINT', { isPk: true, nullable: false, order: 1 })
+  m.relationships['r'] = { id: 'r', parentTableId: 'p', childTableId: 'c',
+    columnMappings: [{ childColumnId: 'fk', parentColumnId: 'pk' }],
+    cardinality: '1:N', identifying: false, name: null }
+  m.indexes['ix'] = { id: 'ix', tableId: 'c', name: 'IX_ORDERS_USER', unique: false,
+    columns: [{ columnId: 'fk', direction: 'asc' }] }
+  return m
+}
+
+describe('generateDdl — FK·인덱스·코멘트', () => {
+  it('PostgreSQL FK·인덱스·코멘트', () => {
+    const ddl = generateDdl(relModel(), 'postgresql')
+    expect(ddl).toContain('ALTER TABLE ORDERS ADD CONSTRAINT FK_ORDERS_USERS FOREIGN KEY (USER_ID) REFERENCES USERS (ID);')
+    expect(ddl).toContain('CREATE INDEX IX_ORDERS_USER ON ORDERS (USER_ID ASC);')
+    expect(ddl).toContain("COMMENT ON TABLE USERS IS '회원 - 회원 마스터';")
+    expect(ddl).toContain("COMMENT ON COLUMN USERS.ID IS '아이디';")
+  })
+  it('1:1 관계는 UNIQUE 제약 포함', () => {
+    const m = relModel()
+    m.relationships['r']!.cardinality = '1:1'
+    const ddl = generateDdl(m, 'postgresql')
+    expect(ddl).toContain('UNIQUE (USER_ID)')
+  })
+  it('MySQL 인라인 코멘트', () => {
+    const ddl = generateDdl(relModel(), 'mysql')
+    expect(ddl).toContain("COMMENT '회원 - 회원 마스터'") // 테이블
+    expect(ddl).not.toContain('COMMENT ON')
+  })
+  it('MSSQL 확장 속성', () => {
+    const ddl = generateDdl(relModel(), 'mssql')
+    expect(ddl).toContain('sp_addextendedproperty')
+  })
+  it('FK는 양 끝이 선택 범위에 있을 때만', () => {
+    const ddl = generateDdl(relModel(), 'postgresql', { kind: 'tables', tableIds: ['c'] })
+    expect(ddl).not.toContain('ADD CONSTRAINT FK_') // 부모 USERS 미포함
+  })
+})
