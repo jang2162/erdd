@@ -9,6 +9,7 @@ import { ExportDialog } from '@/editor/export-dialog'
 import { GroupViewSelect } from '@/editor/group-view-select'
 import { TableTree } from '@/editor/table-tree'
 import { Toolbar } from '@/editor/toolbar'
+import { VersionDialog } from '@/editor/version-dialog'
 import { ViewModeToggle } from '@/editor/view-mode-toggle'
 import { BrandWordmark } from '@/components/brand-mark'
 import { UserMenu } from '@/components/user-menu'
@@ -33,6 +34,7 @@ export function ProjectPage() {
           </div>
           <div className="flex items-center gap-2">
             {loaded && <GroupViewSelect />}
+            {loaded && <VersionDialog projectId={projectId} />}
             {loaded && <ExportDialog />}
             <ViewModeToggle />
             <Button variant="ghost" size="sm" asChild>
