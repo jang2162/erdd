@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { generateDdl } from './ddl.js'
+import { generateDdl, ddlWarnings } from './ddl.js'
 import { createEmptyModel, type ProjectModel, type Table, type Column } from './model.js'
 
 function tbl(id: string, physicalName: string, over: Partial<Table> = {}): Table {
@@ -55,6 +55,17 @@ describe('generateDdl — CREATE TABLE', () => {
     m.columns['c'] = col('c', 't', 'SHAPE', 'geometry', { order: 0 })
     expect(generateDdl(m, 'postgresql')).toContain('SHAPE geometry')
   })
+  it('컬럼이 없는 테이블은 CREATE 하지 않고 경고로 알린다', () => {
+    const m = usersModel()
+    m.tables['empty'] = tbl('empty', 'EMPTY_TBL')
+    const sql = generateDdl(m, 'postgresql')
+    expect(sql).not.toContain('CREATE TABLE EMPTY_TBL')
+    expect(sql).not.toContain('(\n\n)')
+    expect(ddlWarnings(m, 'postgresql')).toEqual(
+      expect.arrayContaining([expect.stringContaining('EMPTY_TBL')]),
+    )
+  })
+
   it('예약어 물리명을 방언별로 인용한다', () => {
     const m = createEmptyModel()
     m.tables['t'] = tbl('t', 'ORDER', { comment: '주문' })

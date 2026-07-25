@@ -44,7 +44,7 @@ describe('ExportDialog', () => {
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: 'Oracle' }))
-    const warnings = screen.getByLabelText('변환 경고')
+    const warnings = screen.getByLabelText('DDL 경고')
     expect(warnings.textContent).toContain('MBR.MBR_NM')
     expect(warnings.textContent).toContain('TIME')
   })

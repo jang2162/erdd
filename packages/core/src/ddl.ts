@@ -182,7 +182,7 @@ function columnCommentStatement(dialect: Dialect, tableName: string, columnName:
 }
 
 export function generateDdl(model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }): string {
-  const tables = selectTables(model, scope)
+  const tables = selectTables(model, scope).filter((t) => tableColumns(model, t.id).length > 0)
   const selectedIds = new Set(tables.map((t) => t.id))
 
   const createBlocks = tables.map((table) => createTableBlock(model, table, dialect))
@@ -191,4 +191,20 @@ export function generateDdl(model: ProjectModel, dialect: Dialect, scope: DdlSco
   const comment = dialect === 'mysql' ? '' : commentStatements(model, tables, dialect).join('\n')
 
   return [createBlocks.join('\n\n'), fk, index, comment].filter((s) => s.trim() !== '').join('\n\n')
+}
+
+/** DDL 생성 시 사용자가 알아야 할 경고 목록(0컬럼 제외, 타입 변환 등). scope를 반영한다. */
+export function ddlWarnings(model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }): string[] {
+  const inScope = selectTables(model, scope)
+  const out: string[] = []
+  for (const t of inScope) {
+    if (tableColumns(model, t.id).length === 0) out.push(`${t.physicalName}: 컬럼이 없어 DDL에서 제외됨`)
+  }
+  for (const t of inScope) {
+    for (const c of tableColumns(model, t.id)) {
+      const { warning } = resolveColumnType(c.type, dialect)
+      if (warning) out.push(`${t.physicalName}.${c.physicalName}: ${warning}`)
+    }
+  }
+  return out
 }
