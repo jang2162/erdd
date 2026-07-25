@@ -2,6 +2,7 @@ import type { Column, ProjectModel, Relationship, Table } from './model.js'
 import { resolveColumnType, type Dialect } from './dialect.js'
 import { parseLogicalType } from './logical-type.js'
 import { quoteIdentifier } from './identifier.js'
+import { resolveColumn } from './domain-resolve.js'
 
 export type DdlScope =
   | { kind: 'all' }
@@ -69,12 +70,17 @@ function uniqueConstraintName(base: string, used: Set<string>): string {
   return name
 }
 
-function columnLine(col: Column, dialect: Dialect): string {
-  const parts = [quoteIdentifier(col.physicalName, dialect), resolveColumnType(col.type, dialect).sql]
-  const auto = col.autoIncrement && col.isPk && isIntegerType(col.type)
+function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string {
+  const r = resolveColumn(col, model, dialect)
+  const parts = [quoteIdentifier(col.physicalName, dialect), r.sql]
+  const auto = col.autoIncrement && col.isPk && isIntegerType(r.logicalType)
   if (auto) parts.push(autoIncrementToken(dialect))
   if (!col.nullable) parts.push('NOT NULL')
-  if (!auto && col.defaultValue !== null && col.defaultValue !== '') parts.push(`DEFAULT ${col.defaultValue}`)
+  if (!auto && r.defaultValue !== null && r.defaultValue !== '') parts.push(`DEFAULT ${r.defaultValue}`)
+  if (r.checkValues && r.checkValues.length > 0) {
+    const list = r.checkValues.map((v) => `'${esc(v)}'`).join(', ')
+    parts.push(`CHECK (${quoteIdentifier(col.physicalName, dialect)} IN (${list}))`)
+  }
   if (dialect === 'mysql') {
     const text = commentText(col.logicalName, col.physicalName, col.comment)
     if (text !== null) parts.push(`COMMENT '${esc(text)}'`)
@@ -84,7 +90,7 @@ function columnLine(col: Column, dialect: Dialect): string {
 
 function createTableBlock(model: ProjectModel, table: Table, dialect: Dialect): string {
   const cols = tableColumns(model, table.id)
-  const lines = cols.map((c) => columnLine(c, dialect))
+  const lines = cols.map((c) => columnLine(model, c, dialect))
   const pks = cols.filter((c) => c.isPk)
   if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => quoteIdentifier(c.physicalName, dialect)).join(', ')})`)
   let block = `CREATE TABLE ${quoteIdentifier(table.physicalName, dialect)} (\n${lines.join(',\n')}\n)`

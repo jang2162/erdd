@@ -67,6 +67,19 @@ describe('generateDdl — CREATE TABLE', () => {
     )
   })
 
+  it('도메인 컬럼은 방언 타입·CHECK·기본값을 반영한다', () => {
+    const m = createEmptyModel()
+    m.tables['t'] = tbl('t', 'FLAGS')
+    m.domains['d'] = { id: 'd', name: '여부', category: null, logicalType: 'CHAR(1)',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: "'N'", allowedValues: ['Y', 'N'], description: null }
+    m.columns['c'] = col('c', 't', 'USE_YN', 'INT', { order: 0, domainId: 'd' }) // type INT은 무시(잠금)
+    const pg = generateDdl(m, 'postgresql')
+    expect(pg).toContain('USE_YN char(1)')          // 도메인 논리타입 변환
+    expect(pg).toContain("DEFAULT 'N'")              // 도메인 기본값
+    expect(pg).toContain("CHECK (USE_YN IN ('Y', 'N'))") // 허용값
+  })
+
   it('예약어 물리명을 방언별로 인용한다', () => {
     const m = createEmptyModel()
     m.tables['t'] = tbl('t', 'ORDER', { comment: '주문' })
