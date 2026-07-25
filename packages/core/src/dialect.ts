@@ -23,7 +23,10 @@ const FIXED: Record<Exclude<LogicalTypeKind, 'CHAR' | 'VARCHAR' | 'DECIMAL'>, Re
 
 export function toDialectType(type: LogicalType, dialect: Dialect): string {
   if (type.kind === 'CHAR') {
-    return dialect === 'mssql' ? `NCHAR(${type.length})` : `CHAR(${type.length})`
+    const n = type.length
+    return dialect === 'postgresql' ? `char(${n})`
+      : dialect === 'mssql' ? `NCHAR(${n})`
+      : `CHAR(${n})` // mysql, oracle
   }
   if (type.kind === 'VARCHAR') {
     const n = type.length
