@@ -37,6 +37,18 @@ describe('ExportDialog', () => {
     expect(preview.textContent).toContain('NUMBER(19)')
   })
 
+  it('switching the dialect to Oracle shows a conversion warning for a TIME column', async () => {
+    const model = buildSampleModel()
+    model.columns.c3!.type = 'TIME'
+    useEditorStore.getState().setLoaded(model, 1, 'p1')
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Oracle' }))
+    const warnings = screen.getByLabelText('변환 경고')
+    expect(warnings.textContent).toContain('MBR.MBR_NM')
+    expect(warnings.textContent).toContain('TIME')
+  })
+
   it('switching to the 이미지 section renders format controls and a download button', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()

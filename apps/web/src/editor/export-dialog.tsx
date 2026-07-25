@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Copy, Download, FileOutput } from 'lucide-react'
 import { useReactFlow } from '@xyflow/react'
 import { toast } from 'sonner'
-import { DIALECTS, generateDdl, type Dialect, type DdlScope } from '@erdd/core'
+import { DIALECTS, generateDdl, resolveColumnType, type Dialect, type DdlScope } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { downloadCanvasImage, type ImageFormat } from './image-export.js'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,14 @@ export function ExportDialog() {
   const [imageFormat, setImageFormat] = useState<ImageFormat>('png')
 
   const ddl = useMemo(() => generateDdl(model, dialect, scope), [model, dialect, scope])
+  const typeWarnings = useMemo(() => {
+    const out: { table: string; col: string; warning: string }[] = []
+    for (const c of Object.values(model.columns)) {
+      const { warning } = resolveColumnType(c.type, dialect)
+      if (warning) out.push({ table: model.tables[c.tableId]?.physicalName ?? '?', col: c.physicalName, warning })
+    }
+    return out
+  }, [model, dialect])
 
   const onCopy = () => { void navigator.clipboard?.writeText(ddl) }
   const onDownload = () => {
@@ -118,6 +126,13 @@ export function ExportDialog() {
             >
               {ddl}
             </pre>
+            {typeWarnings.length > 0 && (
+              <ul aria-label="변환 경고" className="grid gap-0.5 text-xs text-key">
+                {typeWarnings.map((w, i) => (
+                  <li key={i}>⚠ {w.table}.{w.col}: {w.warning}</li>
+                ))}
+              </ul>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onCopy}><Copy /> 복사</Button>
               <Button type="button" onClick={onDownload}><Download /> 다운로드</Button>

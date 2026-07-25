@@ -116,4 +116,26 @@ describe.skipIf(!url)('snapshot', () => {
     })
     expect(restored.statusCode).toBe(404)
   })
+
+  it('404s delete for a snapshot scoped to a different project, and for a nonexistent snapshot', async () => {
+    const target = withUuidIds(buildSampleModel())
+    await post(app, 'model.mutate', token, { projectId, ops: diffModels(createEmptyModel(), target) })
+    const snapshotId = (await post(app, 'snapshot.create', token, {
+      projectId, name: '스냅샷',
+    })).json().result.data.id as string
+
+    const otherProjectId = (await post(app, 'project.create', token, {
+      orgId, name: 'P2', dialects: ['postgresql'],
+    })).json().result.data.id as string
+
+    const crossProjectDelete = await post(app, 'snapshot.delete', token, {
+      projectId: otherProjectId, snapshotId,
+    })
+    expect(crossProjectDelete.statusCode).toBe(404)
+
+    const nonexistentDelete = await post(app, 'snapshot.delete', token, {
+      projectId, snapshotId: '00000000-0000-0000-0000-000000000000',
+    })
+    expect(nonexistentDelete.statusCode).toBe(404)
+  })
 })

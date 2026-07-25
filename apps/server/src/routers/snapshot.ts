@@ -62,6 +62,9 @@ export const snapshotRouter = router({
     .input(z.object({ projectId: z.string().uuid(), snapshotId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')
+      const snap = (await ctx.db.select({ id: snapshots.id }).from(snapshots)
+        .where(and(eq(snapshots.id, input.snapshotId), eq(snapshots.projectId, input.projectId))))[0]
+      if (!snap) throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
       await ctx.db.delete(snapshots)
         .where(and(eq(snapshots.id, input.snapshotId), eq(snapshots.projectId, input.projectId)))
       return { ok: true as const }
