@@ -47,8 +47,10 @@ export function EditPanel({ projectId }: { projectId: string }) {
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const mutate = useModelMutation(projectId)
   const namingRules = useEditorStore((s) => s.namingRules)
+  const dialects = useEditorStore((s) => s.dialects)
   const table = selectedTableId ? model.tables[selectedTableId] : undefined
-  const warnings = useMemo(() => computeWarnings(model), [model])
+  const warnings = useMemo(
+    () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
 
   if (selectedRelationshipId) return <RelationshipPanel projectId={projectId} />
 

@@ -9,6 +9,7 @@ import { DomainPanel } from '@/editor/domain-panel'
 import { EditPanel } from '@/editor/edit-panel'
 import { ExportDialog } from '@/editor/export-dialog'
 import { GroupViewSelect } from '@/editor/group-view-select'
+import { NamingCheck } from '@/editor/naming-check'
 import { TableTree } from '@/editor/table-tree'
 import { Toolbar } from '@/editor/toolbar'
 import { VersionDialog } from '@/editor/version-dialog'
@@ -39,6 +40,7 @@ export function ProjectPage() {
             {loaded && <VersionDialog projectId={projectId} />}
             {loaded && <DomainPanel projectId={projectId} />}
             {loaded && <DictPanel projectId={projectId} />}
+            {loaded && <NamingCheck projectId={projectId} />}
             {loaded && <ExportDialog />}
             <ViewModeToggle />
             <Button variant="ghost" size="sm" asChild>

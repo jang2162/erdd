@@ -18,7 +18,9 @@ export function buildNodes(
     const relIds = new Set(Object.values(model.relationships)
       .filter((r) => r.parentTableId === table.id || r.childTableId === table.id).map((r) => r.id))
     const tableWarnings = warnings.filter((w) =>
-      (w.scope === 'column' && w.tableId === table.id) || (w.scope === 'relationship' && relIds.has(w.entityId)))
+      (w.scope === 'table' && w.entityId === table.id)
+      || (w.scope === 'column' && w.tableId === table.id)
+      || (w.scope === 'relationship' && relIds.has(w.entityId)))
     const columnWarnings: Record<string, Warning[]> = {}
     for (const w of warnings) {
       if (w.scope === 'column' && colIds.has(w.entityId)) {

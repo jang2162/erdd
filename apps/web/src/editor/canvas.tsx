@@ -44,7 +44,10 @@ export function Canvas({ projectId }: { projectId: string }) {
   // 그룹 드래그 시작 시점의 그룹 노드 위치 + 소속 테이블 위치 스냅샷(전체 뷰에서만 사용).
   const dragOrigin = useRef<{ groupNodeStart: XYPosition; members: Map<string, XYPosition> } | null>(null)
 
-  const warnings = useMemo(() => computeWarnings(model), [model])
+  const namingRules = useEditorStore((s) => s.namingRules)
+  const dialects = useEditorStore((s) => s.dialects)
+  const warnings = useMemo(
+    () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
 
   // 유효 뷰: 활성 그룹이 삭제됐으면(그룹 뷰 도중 삭제) 전체 뷰로 폴백한다.
   const view = activeGroupView && model.tableGroups[activeGroupView]
