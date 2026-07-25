@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import { createEmptyModel, type Op, type ProjectModel } from '@erdd/core'
+import {
+  createEmptyModel, DEFAULT_NAMING_RULES, type Dialect, type NamingRules, type Op, type ProjectModel,
+} from '@erdd/core'
 
 export type ViewMode = 'logical' | 'physical' | 'mixed'
 const HISTORY_CAP = 100
@@ -9,6 +11,8 @@ type EditorState = {
   seq: number
   loaded: boolean
   loadedProjectId: string | null
+  namingRules: NamingRules
+  dialects: Dialect[]
   viewMode: ViewMode
   selectedTableId: string | null
   selectedRelationshipId: string | null
@@ -19,6 +23,7 @@ type EditorState = {
   undoStack: Op[][]
   redoStack: Op[][]
   setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
+  setProjectConfig: (namingRules: NamingRules, dialects: Dialect[]) => void
   setModel: (model: ProjectModel) => void
   setSeq: (seq: number) => void
   setViewMode: (viewMode: ViewMode) => void
@@ -45,6 +50,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   seq: 0,
   loaded: false,
   loadedProjectId: null,
+  namingRules: DEFAULT_NAMING_RULES,
+  dialects: [],
   viewMode: 'physical',
   selectedTableId: null,
   selectedRelationshipId: null,
@@ -59,6 +66,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       model, seq, loaded: true, loadedProjectId: projectId,
       undoStack: [], redoStack: [], activeGroupView: null,
     }),
+  setProjectConfig: (namingRules, dialects) => set({ namingRules, dialects }),
   setModel: (model) => set({ model }),
   setSeq: (seq) => set((s) => ({ seq: Math.max(s.seq, seq) })),
   setViewMode: (viewMode) => set({ viewMode }),
@@ -88,6 +96,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   reset: () => set({
     model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
+    namingRules: DEFAULT_NAMING_RULES, dialects: [],
     ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],
   }),
 }))

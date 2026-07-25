@@ -18,12 +18,20 @@ function serializeMutation<T>(fn: () => Promise<T>): Promise<T> {
 export function useModelLoader(projectId: string) {
   const trpc = useTRPC()
   const setLoaded = useEditorStore((s) => s.setLoaded)
+  const setProjectConfig = useEditorStore((s) => s.setProjectConfig)
   const query = useQuery(trpc.model.get.queryOptions({ projectId }))
+  // 명명 규칙·방언은 프로젝트 설정(버전 모델 밖)이라 project.get으로 별도 로드해 store에 둔다.
+  const projectQuery = useQuery(trpc.project.get.queryOptions({ projectId }))
   useEffect(() => {
     if (query.data && useEditorStore.getState().loadedProjectId !== projectId) {
       setLoaded(query.data.model, query.data.seq, projectId)
     }
   }, [query.data, setLoaded, projectId])
+  useEffect(() => {
+    if (projectQuery.data) {
+      setProjectConfig(projectQuery.data.namingRules, projectQuery.data.dialects)
+    }
+  }, [projectQuery.data, setProjectConfig])
   return query
 }
 

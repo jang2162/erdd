@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
-import { computeWarnings, setTableGroup, type Column, type Domain, type Warning } from '@erdd/core'
+import {
+  computeWarnings, generatePhysicalName, setTableGroup, type Column, type Domain, type Warning,
+} from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
@@ -8,6 +10,7 @@ import { updateTable } from './model-edits.js'
 import {
   addColumn, clearColumnDomain, removeColumn, reorderColumn, setColumnDomain, updateColumn,
 } from './column-edits.js'
+import { createTerm } from './dict-edits.js'
 import { RelationshipPanel } from './relationship-panel.js'
 import { NotePanel } from './note-panel.js'
 import { GroupPanel } from './group-panel.js'
@@ -43,6 +46,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const mutate = useModelMutation(projectId)
+  const namingRules = useEditorStore((s) => s.namingRules)
   const table = selectedTableId ? model.tables[selectedTableId] : undefined
   const warnings = useMemo(() => computeWarnings(model), [model])
 
@@ -71,10 +75,31 @@ export function EditPanel({ projectId }: { projectId: string }) {
         <div className="grid gap-1.5">
           <Label htmlFor="tbl-logical">논리명</Label>
           <CommitInput id="tbl-logical" value={table.logicalName}
-            onCommit={(v) => void mutate((m) => updateTable(m, tid, { logicalName: v }))} />
+            onCommit={(v) => {
+              const logical = v
+              void mutate((m) => {
+                let next = updateTable(m, tid, { logicalName: logical })
+                const cur = next.tables[tid]
+                if (cur && cur.physicalName.trim() === '' && logical.trim() !== '') {
+                  const gen = generatePhysicalName(logical, next.words, next.terms, namingRules)
+                  if (gen.physicalName) next = updateTable(next, tid, { physicalName: gen.physicalName })
+                }
+                return next
+              }, { summary: '논리명 변경' })
+            }} />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="tbl-physical">테이블 물리명</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="tbl-physical">테이블 물리명</Label>
+            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+              onClick={() => {
+                const logical = table.logicalName
+                void mutate((m) => {
+                  const gen = generatePhysicalName(logical, m.words, m.terms, namingRules)
+                  return gen.physicalName ? updateTable(m, tid, { physicalName: gen.physicalName }) : m
+                }, { summary: '물리명 재생성' })
+              }}>재생성</Button>
+          </div>
           <CommitInput id="tbl-physical" value={table.physicalName} mono
             onCommit={(v) => void mutate((m) => updateTable(m, tid, { physicalName: v }))} />
         </div>
@@ -111,6 +136,36 @@ export function EditPanel({ projectId }: { projectId: string }) {
             onPatch={(patch) => void mutate((m) => updateColumn(m, c.id, patch))}
             onRemove={() => void mutate((m) => removeColumn(m, c.id), { summary: '컬럼 삭제' })}
             onMove={(dir) => void mutate((m) => reorderColumn(m, c.id, dir))}
+            onLogicalName={(v) => {
+              const logical = v
+              void mutate((m) => {
+                let next = updateColumn(m, c.id, { logicalName: logical })
+                const cur = next.columns[c.id]
+                if (cur && cur.physicalName.trim() === '' && logical.trim() !== '') {
+                  const gen = generatePhysicalName(logical, next.words, next.terms, namingRules)
+                  if (gen.physicalName) next = updateColumn(next, c.id, { physicalName: gen.physicalName })
+                  if (gen.domainId && cur.domainId === null) next = setColumnDomain(next, c.id, gen.domainId)
+                }
+                return next
+              }, { summary: '논리명 변경' })
+            }}
+            onRegenerate={() => {
+              const logical = c.logicalName
+              void mutate((m) => {
+                const gen = generatePhysicalName(logical, m.words, m.terms, namingRules)
+                return gen.physicalName ? updateColumn(m, c.id, { physicalName: gen.physicalName }) : m
+              }, { summary: '물리명 재생성' })
+            }}
+            onRegisterTerm={() => {
+              const logicalName = c.logicalName
+              const physicalName = c.physicalName
+              const domainId = c.domainId
+              if (logicalName.trim() === '' || physicalName.trim() === '') return
+              void mutate(
+                (m) => createTerm(m, { id: newId(), logicalName, physicalName, domainId, description: null }),
+                { summary: '용어 등록' },
+              )
+            }}
             onDomainChange={(domainId) => {
               if (domainId === '') {
                 void mutate((m) => clearColumnDomain(m, c.id), { summary: '도메인 해제' })
@@ -133,6 +188,9 @@ function ColumnRow(props: {
   onPatch: (patch: Partial<Omit<Column, 'id' | 'tableId'>>) => void
   onRemove: () => void; onMove: (dir: -1 | 1) => void
   onDomainChange: (domainId: string) => void
+  onLogicalName: (value: string) => void
+  onRegenerate: () => void
+  onRegisterTerm: () => void
 }) {
   const { column: c } = props
   const locked = c.domainId !== null
@@ -141,10 +199,16 @@ function ColumnRow(props: {
     <li className="grid gap-2 rounded-md border p-2">
       <div className="flex items-center justify-between gap-2">
         <div className="grid flex-1 grid-cols-2 gap-2">
-          <CommitInput label="논리명" value={c.logicalName} onCommit={(v) => props.onPatch({ logicalName: v })} />
+          <CommitInput label="논리명" value={c.logicalName} onCommit={props.onLogicalName} />
           <CommitInput label="물리명" value={c.physicalName} mono onCommit={(v) => props.onPatch({ physicalName: v })} />
         </div>
         <WarningBadge warnings={props.warnings} className="shrink-0" />
+      </div>
+      <div className="flex gap-1">
+        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+          aria-label="물리명 재생성" onClick={props.onRegenerate}>재생성</Button>
+        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+          aria-label="용어로 등록" onClick={props.onRegisterTerm}>용어 등록</Button>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`col-domain-${c.id}`}>도메인</Label>

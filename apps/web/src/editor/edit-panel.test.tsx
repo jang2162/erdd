@@ -80,6 +80,43 @@ describe('EditPanel', () => {
     expect(typeInput.value).toContain('DECIMAL(15)')
   })
 
+  it('빈 물리명 컬럼은 논리명 입력 시 물리명이 자동 생성된다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null } },
+      columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: '' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
+    renderPanel()
+    const logicalInputs = screen.getAllByLabelText('논리명') // [0] 테이블, [1] 컬럼
+    await userEvent.type(logicalInputs[1]!, '회원')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.physicalName).toBe('MBR')
+    })
+  })
+
+  it('물리명이 이미 있으면 논리명 입력이 물리명을 덮지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null } },
+      columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: 'KEEP_ME' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    const logicalInputs = screen.getAllByLabelText('논리명')
+    await userEvent.type(logicalInputs[1]!, '회원')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('회원')
+    })
+    expect(useEditorStore.getState().model.columns['c1']!.physicalName).toBe('KEEP_ME')
+  })
+
   it('clearing a domain unlocks the type input and copies the resolved logical type', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
