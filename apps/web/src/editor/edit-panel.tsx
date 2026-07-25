@@ -1,11 +1,13 @@
 import { useMemo } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
-import { computeWarnings, setTableGroup, type Column, type Warning } from '@erdd/core'
+import { computeWarnings, setTableGroup, type Column, type Domain, type Warning } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { updateTable } from './model-edits.js'
-import { addColumn, removeColumn, reorderColumn, updateColumn } from './column-edits.js'
+import {
+  addColumn, clearColumnDomain, removeColumn, reorderColumn, setColumnDomain, updateColumn,
+} from './column-edits.js'
 import { RelationshipPanel } from './relationship-panel.js'
 import { NotePanel } from './note-panel.js'
 import { GroupPanel } from './group-panel.js'
@@ -104,10 +106,18 @@ export function EditPanel({ projectId }: { projectId: string }) {
         {columns.map((c, i) => (
           <ColumnRow
             key={c.id} column={c} isFirst={i === 0} isLast={i === columns.length - 1}
+            domains={Object.values(model.domains)}
             warnings={warnings.filter((w) => w.scope === 'column' && w.entityId === c.id)}
             onPatch={(patch) => void mutate((m) => updateColumn(m, c.id, patch))}
             onRemove={() => void mutate((m) => removeColumn(m, c.id), { summary: '컬럼 삭제' })}
             onMove={(dir) => void mutate((m) => reorderColumn(m, c.id, dir))}
+            onDomainChange={(domainId) => {
+              if (domainId === '') {
+                void mutate((m) => clearColumnDomain(m, c.id), { summary: '도메인 해제' })
+              } else {
+                void mutate((m) => setColumnDomain(m, c.id, domainId), { summary: '도메인 지정' })
+              }
+            }}
           />
         ))}
         {columns.length === 0 && <li className="text-xs text-muted-foreground">컬럼이 없습니다.</li>}
@@ -119,11 +129,14 @@ export function EditPanel({ projectId }: { projectId: string }) {
 }
 
 function ColumnRow(props: {
-  column: Column; isFirst: boolean; isLast: boolean; warnings: Warning[]
+  column: Column; isFirst: boolean; isLast: boolean; warnings: Warning[]; domains: Domain[]
   onPatch: (patch: Partial<Omit<Column, 'id' | 'tableId'>>) => void
   onRemove: () => void; onMove: (dir: -1 | 1) => void
+  onDomainChange: (domainId: string) => void
 }) {
   const { column: c } = props
+  const locked = c.domainId !== null
+  const domain = locked ? props.domains.find((d) => d.id === c.domainId) : undefined
   return (
     <li className="grid gap-2 rounded-md border p-2">
       <div className="flex items-center justify-between gap-2">
@@ -133,7 +146,27 @@ function ColumnRow(props: {
         </div>
         <WarningBadge warnings={props.warnings} className="shrink-0" />
       </div>
-      <CommitInput label="타입" value={c.type} mono onCommit={(v) => props.onPatch({ type: v })} />
+      <div className="grid gap-1.5">
+        <Label htmlFor={`col-domain-${c.id}`}>도메인</Label>
+        <select id={`col-domain-${c.id}`}
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          value={c.domainId ?? ''}
+          onChange={(e) => {
+            const domainId = e.target.value
+            props.onDomainChange(domainId)
+          }}>
+          <option value="">없음</option>
+          {props.domains.map((d) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+      </div>
+      {locked ? (
+        <Input aria-label="타입" className="font-mono" disabled readOnly
+          value={domain ? `${domain.logicalType} (도메인: ${domain.name})` : c.type} />
+      ) : (
+        <CommitInput label="타입" value={c.type} mono onCommit={(v) => props.onPatch({ type: v })} />
+      )}
       <div className="flex items-center gap-3 text-xs">
         <label className="flex items-center gap-1">
           <input type="checkbox" checked={c.isPk} onChange={(e) => props.onPatch({ isPk: e.target.checked })} /> PK
