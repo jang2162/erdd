@@ -8,10 +8,10 @@ export function GroupNode({ data }: NodeProps) {
   const selectGroup = useEditorStore((s) => s.selectGroup)
   return (
     <div
-      className="size-full rounded-xl border-2"
+      className="relative size-full rounded-xl border-2"
       style={{
         borderColor: group.color,
-        background: `${group.color}14`, // ~8% 불투명
+        background: `${group.color}14`,
         borderStyle: selected ? 'solid' : 'dashed',
       }}
     >
@@ -21,8 +21,8 @@ export function GroupNode({ data }: NodeProps) {
           e.stopPropagation()
           selectGroup(group.id)
         }}
-        className="m-2 rounded px-1.5 py-0.5 text-xs font-semibold text-white"
-        style={{ pointerEvents: 'auto', background: group.color }}
+        className="absolute left-0 -top-6 rounded px-1.5 py-0.5 text-xs font-semibold text-white"
+        style={{ background: group.color }}
       >
         {group.name}
       </button>
