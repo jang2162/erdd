@@ -1,13 +1,13 @@
 import { and, eq } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import {
-  OpApplyError,
-  type Column, type IndexDef, type Note, type Op, type ProjectModel, type Relationship,
-  type Table, type TableGroup,
+  type Column, type Domain, type IndexDef, type Note, type Op, type ProjectModel,
+  type Relationship, type Table, type TableGroup,
 } from '@erdd/core'
 import * as schema from '../db/schema.js'
 import {
-  modelColumns, modelIndexes, modelNotes, modelRelationships, modelTableGroups, modelTables,
+  modelColumns, modelDomains, modelIndexes, modelNotes, modelRelationships, modelTableGroups,
+  modelTables,
 } from '../db/schema.js'
 
 /** Db와 drizzle 트랜잭션 객체가 공유하는 쿼리 인터페이스. */
@@ -22,6 +22,7 @@ const TABLE_BY_KIND = {
   relationship: modelRelationships,
   index: modelIndexes,
   note: modelNotes,
+  domain: modelDomains,
 } as const
 
 function keyed<T extends { id: string }>(rows: T[]): Record<string, T> {
@@ -41,6 +42,8 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
     .where(eq(modelIndexes.projectId, projectId))
   const noteRows = await db.select().from(modelNotes)
     .where(eq(modelNotes.projectId, projectId))
+  const domainRows = await db.select().from(modelDomains)
+    .where(eq(modelDomains.projectId, projectId))
 
   return {
     tableGroups: keyed(groupRows.map((r): TableGroup => ({
@@ -55,7 +58,7 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
       id: r.id, tableId: r.tableId, logicalName: r.logicalName, physicalName: r.physicalName,
       type: r.type, isPk: r.isPk, autoIncrement: r.autoIncrement, nullable: r.nullable,
       defaultValue: r.defaultValue, order: r.order, comment: r.comment,
-      domainId: null, // 임시 — 도메인 컬럼은 Task 3에서 실제 DB 컬럼으로 교체
+      domainId: r.domainId,
     }))),
     relationships: keyed(relRows.map((r): Relationship => ({
       id: r.id, parentTableId: r.parentTableId, childTableId: r.childTableId,
@@ -68,7 +71,11 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
     notes: keyed(noteRows.map((r): Note => ({
       id: r.id, content: r.content, position: r.position, color: r.color,
     }))),
-    domains: {}, // 도메인 테이블 없음 — Task 3에서 실제 로드로 교체
+    domains: keyed(domainRows.map((r): Domain => ({
+      id: r.id, name: r.name, category: r.category, logicalType: r.logicalType,
+      dialectTypes: r.dialectTypes, defaultValue: r.defaultValue,
+      allowedValues: r.allowedValues, description: r.description,
+    }))),
   }
 }
 
@@ -81,11 +88,6 @@ export async function persistOps(
   db: DbLike, projectId: string, ops: readonly Op[],
 ): Promise<void> {
   for (const op of ops) {
-    // domain은 아직 DB 테이블이 없음(Task 3에서 이 가드 전체가 제거/교체된다).
-    // OpApplyError로 던져야 라우터(model.ts)가 400으로 매핑한다 — plain Error는 비제어 500이 된다.
-    if (op.entity === 'domain') {
-      throw new OpApplyError(`도메인 op 영속화는 아직 지원되지 않습니다(Task 3) — ${op.entityId}`)
-    }
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
     if (op.action === 'create') {

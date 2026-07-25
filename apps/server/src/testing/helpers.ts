@@ -44,7 +44,9 @@ export function withUuidIds(model: ProjectModel): ProjectModel {
     tables: remapRecord(model.tables, (t) => ({
       ...t, groupId: t.groupId === null ? null : nid(t.groupId),
     })),
-    columns: remapRecord(model.columns, (c) => ({ ...c, tableId: nid(c.tableId) })),
+    columns: remapRecord(model.columns, (c) => ({
+      ...c, tableId: nid(c.tableId), domainId: c.domainId === null ? null : nid(c.domainId),
+    })),
     relationships: remapRecord(model.relationships, (r) => ({
       ...r,
       parentTableId: nid(r.parentTableId),
@@ -60,6 +62,6 @@ export function withUuidIds(model: ProjectModel): ProjectModel {
       columns: ix.columns.map((c) => ({ ...c, columnId: nid(c.columnId) })),
     })),
     notes: remapRecord(model.notes, (n) => n),
-    domains: model.domains,
+    domains: remapRecord(model.domains, (d) => d),
   }
 }

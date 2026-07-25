@@ -94,6 +94,20 @@ export const modelColumns = pgTable('model_columns', {
   defaultValue: text('default_value'),
   order: integer('order').notNull(),
   comment: text('comment'),
+  domainId: uuid('domain_id').references(() => modelDomains.id),
+})
+
+export const modelDomains = pgTable('model_domains', {
+  id: uuid('id').primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  category: text('category'),
+  logicalType: text('logical_type').notNull(),
+  dialectTypes: jsonb('dialect_types')
+    .$type<{ postgresql: string | null; mysql: string | null; oracle: string | null; mssql: string | null }>().notNull(),
+  defaultValue: text('default_value'),
+  allowedValues: jsonb('allowed_values').$type<string[]>().notNull(),
+  description: text('description'),
 })
 
 export const modelRelationships = pgTable('model_relationships', {

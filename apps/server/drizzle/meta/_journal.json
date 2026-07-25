@@ -29,6 +29,13 @@
       "when": 1784954642363,
       "tag": "0003_last_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784988528760,
+      "tag": "0004_confused_stephen_strange",
+      "breakpoints": true
     }
   ]
 }
