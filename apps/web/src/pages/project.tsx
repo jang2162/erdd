@@ -4,6 +4,7 @@ import { Settings } from 'lucide-react'
 import { useModelLoader } from '@/editor/use-model'
 import { useEditorStore } from '@/editor/store'
 import { Canvas } from '@/editor/canvas'
+import { DictPanel } from '@/editor/dict-panel'
 import { DomainPanel } from '@/editor/domain-panel'
 import { EditPanel } from '@/editor/edit-panel'
 import { ExportDialog } from '@/editor/export-dialog'
@@ -37,6 +38,7 @@ export function ProjectPage() {
             {loaded && <GroupViewSelect />}
             {loaded && <VersionDialog projectId={projectId} />}
             {loaded && <DomainPanel projectId={projectId} />}
+            {loaded && <DictPanel projectId={projectId} />}
             {loaded && <ExportDialog />}
             <ViewModeToggle />
             <Button variant="ghost" size="sm" asChild>
