@@ -14,7 +14,7 @@ export type { CreateOp, UpdateOp, DeleteOp, Op, EntityKind } from './op.js'
 export { invertOp, invertOps } from './invert.js'
 export { deepEqual } from './equal.js'
 export { diffModels } from './diff.js'
-export { DIALECTS } from './dialect.js'
+export { DIALECTS, toDialectType, resolveColumnType } from './dialect.js'
 export type { Dialect } from './dialect.js'
 export { OpParseError, parseOps } from './op-guard.js'
 export {
