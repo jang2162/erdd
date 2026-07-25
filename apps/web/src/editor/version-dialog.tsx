@@ -3,6 +3,7 @@ import { History } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTRPC } from '@/lib/trpc'
+import { formatCreatedAt } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { HistoryView } from './history-view.js'
 import { Button } from '@/components/ui/button'
@@ -13,11 +14,6 @@ import {
 } from '@/components/ui/dialog'
 
 type Section = 'snapshot' | 'history'
-
-function formatCreatedAt(value: string | Date): string {
-  const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
-}
 
 /** 스냅샷 목록의 한 항목: 이름/설명/리비전/생성일 + 복원·삭제. 클릭하면 snapshot.get으로 요약을 펼쳐 보여준다(열람). */
 function SnapshotRow({

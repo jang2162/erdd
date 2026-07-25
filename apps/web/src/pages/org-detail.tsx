@@ -5,6 +5,7 @@ import { Database, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { DIALECTS, type Dialect } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
+import { DIALECT_LABEL } from '@/lib/labels'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,10 +20,6 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-
-const DIALECT_LABEL: Record<Dialect, string> = {
-  postgresql: 'PostgreSQL', mysql: 'MySQL/MariaDB', oracle: 'Oracle', mssql: 'MSSQL',
-}
 
 function CreateProjectDialog({ orgId }: { orgId: string }) {
   const trpc = useTRPC()

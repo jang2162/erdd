@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTRPC } from '@/lib/trpc'
+import { formatCreatedAt } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -13,11 +14,6 @@ type RevisionItem = {
   ops: unknown
   createdAt: string | Date
   actorName: string
-}
-
-function formatCreatedAt(value: string | Date): string {
-  const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
 }
 
 /** source 배지: system(복원 등 시스템 작업)은 key 색으로 구분한다. */

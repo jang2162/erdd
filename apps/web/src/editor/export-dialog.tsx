@@ -5,14 +5,11 @@ import { toast } from 'sonner'
 import { DIALECTS, generateDdl, ddlWarnings, type Dialect, type DdlScope } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { downloadCanvasImage, type ImageFormat } from './image-export.js'
+import { DIALECT_LABEL } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
-
-const DIALECT_LABEL: Record<Dialect, string> = {
-  postgresql: 'PostgreSQL', mysql: 'MySQL·MariaDB', oracle: 'Oracle', mssql: 'MSSQL',
-}
 
 type Section = 'ddl' | 'image'
 
