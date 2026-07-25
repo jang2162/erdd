@@ -32,7 +32,7 @@ export function buildGroupNodes(
       width: maxX - minX + PAD * 2,
       height: maxY - minY + PAD * 2,
       selectable: false,
-      draggable: false,
+      draggable: true,
       zIndex: 0,
       data: { group, selected: group.id === selectedGroupId },
     })

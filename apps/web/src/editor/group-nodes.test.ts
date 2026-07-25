@@ -22,7 +22,7 @@ describe('buildGroupNodes', () => {
     expect(nodes[0]!.id).toBe('group:G1')
     expect(nodes[0]!.type).toBe('group')
     expect(nodes[0]!.selectable).toBe(false)
-    expect(nodes[0]!.draggable).toBe(false)
+    expect(nodes[0]!.draggable).toBe(true)
   })
   it('영역이 멤버 위치를 포함한다(좌상단은 최소 위치보다 작거나 같다)', () => {
     const n = buildGroupNodes(model(), null)[0]!

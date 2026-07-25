@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   Background, Controls, MiniMap, ReactFlow, ConnectionMode,
   useNodesState, useReactFlow, type Connection, type Edge, type Node, type NodeChange,
+  type XYPosition,
 } from '@xyflow/react'
 import { toast } from 'sonner'
 import { useEditorStore } from './store.js'
@@ -23,6 +24,8 @@ import { computeWarnings, createRelationshipFromParentPk } from '@erdd/core'
 const nodeTypes = { table: TableNode, note: NoteNode, group: GroupNode, ghost: GhostNode }
 const edgeTypes = { relationship: RelationshipEdge }
 
+const groupIdOf = (nodeId: string) => nodeId.slice('group:'.length)
+
 export function Canvas({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const viewMode = useEditorStore((s) => s.viewMode)
@@ -38,6 +41,8 @@ export function Canvas({ projectId }: { projectId: string }) {
   const consumeFocus = useEditorStore((s) => s.consumeFocus)
   const mutate = useModelMutation(projectId)
   const rf = useReactFlow()
+  // 그룹 드래그 시작 시점의 그룹 노드 위치 + 소속 테이블 위치 스냅샷(전체 뷰에서만 사용).
+  const dragOrigin = useRef<{ groupNodeStart: XYPosition; members: Map<string, XYPosition> } | null>(null)
 
   const warnings = useMemo(() => computeWarnings(model), [model])
 
@@ -115,13 +120,43 @@ export function Canvas({ projectId }: { projectId: string }) {
         onNodesChange={onNodesChange as (c: NodeChange[]) => void}
         onConnect={onConnect}
         onNodeClick={(_, node) => {
-          if (node.type === 'group' || node.type === 'ghost') return
+          if (node.type === 'ghost') return
+          if (node.type === 'group') { select(null); return } // 빈 영역 클릭 = 선택 해제(라벨은 stopPropagation으로 별도 처리)
           if (node.type === 'note') selectNote(node.id)
           else select(node.id)
         }}
         onEdgeClick={(_, edge) => selectRelationship(edge.id)}
         onPaneClick={() => select(null)}
-        onNodeDragStop={(_, __, dragged) =>
+        onNodeDragStart={(_, node) => {
+          if (node.type !== 'group') return
+          const gid = groupIdOf(node.id)
+          const members = new Map<string, XYPosition>()
+          for (const t of Object.values(model.tables)) if (t.groupId === gid) members.set(t.id, { ...t.position })
+          dragOrigin.current = { groupNodeStart: { ...node.position }, members }
+        }}
+        onNodeDrag={(_, node) => {
+          if (node.type !== 'group' || !dragOrigin.current) return
+          const o = dragOrigin.current
+          const dx = node.position.x - o.groupNodeStart.x
+          const dy = node.position.y - o.groupNodeStart.y
+          setNodes((ns) => ns.map((n) =>
+            o.members.has(n.id) ? { ...n, position: { x: o.members.get(n.id)!.x + dx, y: o.members.get(n.id)!.y + dy } } : n))
+        }}
+        onNodeDragStop={(_, node, dragged) => {
+          if (node.type === 'group') {
+            const o = dragOrigin.current
+            dragOrigin.current = null
+            if (!o) return
+            const dx = node.position.x - o.groupNodeStart.x
+            const dy = node.position.y - o.groupNodeStart.y
+            if (dx === 0 && dy === 0) return
+            void mutate((m) => {
+              let next = m
+              for (const [id, pos] of o.members) next = moveTable(next, id, { x: pos.x + dx, y: pos.y + dy })
+              return next
+            }, { summary: '그룹 이동' })
+            return
+          }
           void mutate(
             (m) => dragged.reduce((acc, n) => {
               if (n.type === 'group' || n.type === 'ghost') return acc
@@ -130,7 +165,8 @@ export function Canvas({ projectId }: { projectId: string }) {
               return moveTable(acc, n.id, n.position)
             }, m),
             { summary: '이동' },
-          )}
+          )
+        }}
         fitView
         proOptions={{ hideAttribution: true }}
       >
