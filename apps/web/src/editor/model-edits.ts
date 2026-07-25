@@ -20,6 +20,12 @@ export function moveTable(model: ProjectModel, id: string, position: Position): 
   return { ...model, tables: { ...model.tables, [id]: { ...table, position } } }
 }
 
+export function moveTableGroupPosition(model: ProjectModel, id: string, position: Position): ProjectModel {
+  const table = model.tables[id]
+  if (!table) return model
+  return { ...model, tables: { ...model.tables, [id]: { ...table, groupPosition: position } } }
+}
+
 export function updateTable(
   model: ProjectModel, id: string,
   patch: Partial<Pick<Table, 'logicalName' | 'physicalName' | 'comment'>>,

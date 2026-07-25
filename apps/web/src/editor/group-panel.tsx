@@ -10,6 +10,7 @@ export function GroupPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const groupId = useEditorStore((s) => s.selectedGroupId)!
   const selectGroup = useEditorStore((s) => s.selectGroup)
+  const enterGroupView = useEditorStore((s) => s.enterGroupView)
   const mutate = useModelMutation(projectId)
   const group = model.tableGroups[groupId]
   if (!group) return null
@@ -26,6 +27,9 @@ export function GroupPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
       <p className="mb-4 text-xs text-muted-foreground">소속 테이블 {memberCount}개</p>
+      <Button size="sm" variant="outline" className="mb-4 w-full" onClick={() => enterGroupView(groupId)}>
+        이 그룹 뷰 열기
+      </Button>
       <div className="grid gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="grp-name">이름</Label>

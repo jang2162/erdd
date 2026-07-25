@@ -15,6 +15,7 @@ type EditorState = {
   selectedNoteId: string | null
   selectedGroupId: string | null
   focusTableId: string | null
+  activeGroupView: string | null
   undoStack: Op[][]
   redoStack: Op[][]
   setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
@@ -27,6 +28,8 @@ type EditorState = {
   selectGroup: (id: string | null) => void
   focus: (tableId: string) => void
   consumeFocus: () => void
+  enterGroupView: (groupId: string) => void
+  exitGroupView: () => void
   recordEdit: (ops: Op[]) => void
   moveUndoToRedo: () => Op[] | null
   moveRedoToUndo: () => Op[] | null
@@ -48,10 +51,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectedNoteId: null,
   selectedGroupId: null,
   focusTableId: null,
+  activeGroupView: null,
   undoStack: [],
   redoStack: [],
   setLoaded: (model, seq, projectId) =>
-    set({ model, seq, loaded: true, loadedProjectId: projectId, undoStack: [], redoStack: [] }),
+    set({
+      model, seq, loaded: true, loadedProjectId: projectId,
+      undoStack: [], redoStack: [], activeGroupView: null,
+    }),
   setModel: (model) => set({ model }),
   setSeq: (seq) => set((s) => ({ seq: Math.max(s.seq, seq) })),
   setViewMode: (viewMode) => set({ viewMode }),
@@ -61,6 +68,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectGroup: (selectedGroupId) => set({ ...CLEARED_SELECTION, selectedGroupId }),
   focus: (id) => set({ ...CLEARED_SELECTION, focusTableId: id, selectedTableId: id }),
   consumeFocus: () => set({ focusTableId: null }),
+  enterGroupView: (activeGroupView) => set({ ...CLEARED_SELECTION, activeGroupView }),
+  exitGroupView: () => set({ ...CLEARED_SELECTION, activeGroupView: null }),
   recordEdit: (ops) =>
     set((s) => ({ undoStack: [...s.undoStack, ops].slice(-HISTORY_CAP), redoStack: [] })),
   moveUndoToRedo: () => {
@@ -79,6 +88,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   reset: () => set({
     model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
-    ...CLEARED_SELECTION, focusTableId: null, undoStack: [], redoStack: [],
+    ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],
   }),
 }))
