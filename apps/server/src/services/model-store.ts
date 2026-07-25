@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import {
-  type Column, type Domain, type IndexDef, type Note, type Op, type ProjectModel,
+  OpApplyError, type Column, type Domain, type IndexDef, type Note, type Op, type ProjectModel,
   type Relationship, type Table, type TableGroup,
 } from '@erdd/core'
 import * as schema from '../db/schema.js'
@@ -93,7 +93,7 @@ export async function persistOps(
   for (const op of ops) {
     if (op.entity === 'word' || op.entity === 'term') {
       // TODO(Task 4): model_words/model_terms 테이블 추가 + TABLE_BY_KIND 등록.
-      throw new Error(`${op.entity} 영속화는 아직 구현되지 않음(Task 4)`)
+      throw new OpApplyError(`${op.entity} 영속화는 아직 구현되지 않음(Task 4)`)
     }
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
