@@ -100,4 +100,16 @@ describe('generateDdl — FK·인덱스·코멘트', () => {
     const ddl = generateDdl(relModel(), 'postgresql', { kind: 'tables', tableIds: ['c'] })
     expect(ddl).not.toContain('ADD CONSTRAINT FK_') // 부모 USERS 미포함
   })
+
+  it('같은 테이블 쌍의 무명 관계 2개는 제약명이 충돌하지 않는다', () => {
+    const m = relModel()
+    // 두 번째 자식 FK 컬럼 + 두 번째 무명 관계(같은 c→p 쌍).
+    m.columns['fk2'] = col('fk2', 'c', 'USER_ID2', 'BIGINT', { nullable: false, order: 2 })
+    m.relationships['r2'] = { id: 'r2', parentTableId: 'p', childTableId: 'c',
+      columnMappings: [{ childColumnId: 'fk2', parentColumnId: 'pk' }],
+      cardinality: '1:N', identifying: false, name: null }
+    const ddl = generateDdl(m, 'postgresql')
+    expect(ddl).toContain('ADD CONSTRAINT FK_ORDERS_USERS FOREIGN KEY (USER_ID)')
+    expect(ddl).toContain('ADD CONSTRAINT FK_ORDERS_USERS_2 FOREIGN KEY (USER_ID2)')
+  })
 })

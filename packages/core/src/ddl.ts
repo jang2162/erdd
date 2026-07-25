@@ -54,8 +54,18 @@ function commentText(logicalName: string, physicalName: string, comment: string 
 
 const esc = (s: string) => s.replace(/'/g, "''")
 
-function fkName(rel: { name: string | null }, child: string, parent: string): string {
+function fkBaseName(rel: { name: string | null }, child: string, parent: string): string {
   return rel.name && rel.name.trim() !== '' ? rel.name : `FK_${child}_${parent}`
+}
+
+/** 배치 안에서 제약명이 유일하도록 보장한다(충돌 시 _2, _3… 접미). */
+function uniqueConstraintName(base: string, used: Set<string>): string {
+  if (!used.has(base)) { used.add(base); return base }
+  let n = 2
+  while (used.has(`${base}_${n}`)) n++
+  const name = `${base}_${n}`
+  used.add(name)
+  return name
 }
 
 function columnLine(col: Column, dialect: Dialect): string {
@@ -93,18 +103,19 @@ function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): R
 function fkStatements(model: ProjectModel, selectedIds: Set<string>): string[] {
   const rels = selectedRelationships(model, selectedIds)
   const statements: string[] = []
+  const used = new Set<string>() // 배치 내 제약명 유일성(같은 테이블 쌍의 무명 관계 2개 충돌 방지)
   for (const rel of rels) {
     const parent = model.tables[rel.parentTableId]
     const child = model.tables[rel.childTableId]
     if (!parent || !child) continue
     const childCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
     const parentCols = rel.columnMappings.map((m) => model.columns[m.parentColumnId]?.physicalName ?? '')
-    const name = fkName(rel, child.physicalName, parent.physicalName)
+    const name = uniqueConstraintName(fkBaseName(rel, child.physicalName, parent.physicalName), used)
     statements.push(
       `ALTER TABLE ${child.physicalName} ADD CONSTRAINT ${name} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${parent.physicalName} (${parentCols.join(', ')});`,
     )
     if (rel.cardinality === '1:1') {
-      const uqName = `UQ_${child.physicalName}_${childCols.join('_')}`
+      const uqName = uniqueConstraintName(`UQ_${child.physicalName}_${childCols.join('_')}`, used)
       statements.push(`ALTER TABLE ${child.physicalName} ADD CONSTRAINT ${uqName} UNIQUE (${childCols.join(', ')});`)
     }
   }
