@@ -1,14 +1,34 @@
-import type { ProjectModel } from './model.js'
+import type { ProjectModel, Term } from './model.js'
+import { generatePhysicalName, type NamingRules } from './naming.js'
+import { isReservedWord } from './identifier.js'
+import type { Dialect } from './dialect.js'
 
 export type Warning = {
-  kind: 'duplicate-physical' | 'type-mismatch' | 'incomplete-mapping'
-  scope: 'column' | 'relationship'
+  kind:
+    | 'duplicate-physical'
+    | 'type-mismatch'
+    | 'incomplete-mapping'
+    | 'unknown-word'
+    | 'term-mismatch'
+    | 'too-long'
+    | 'reserved'
+    | 'duplicate-physical-table'
+  scope: 'table' | 'column' | 'relationship'
   entityId: string
   tableId?: string
   message: string
+  severity?: 'warning' | 'error'
 }
 
-export function computeWarnings(model: ProjectModel): Warning[] {
+/** terms에서 논리명이 정확히 일치하는 Term을 찾는다(naming.ts의 용어 완전일치 규칙과 동일). */
+function findMatchingTerm(logicalName: string, terms: Record<string, Term>): Term | undefined {
+  const name = logicalName.trim()
+  return Object.values(terms).find((t) => t.logicalName.trim() === name)
+}
+
+export function computeWarnings(
+  model: ProjectModel, rules?: NamingRules, dialects?: Dialect[],
+): Warning[] {
   const warnings: Warning[] = []
 
   // 1) 같은 테이블 물리명 중복
@@ -28,6 +48,7 @@ export function computeWarnings(model: ProjectModel): Warning[] {
         warnings.push({
           kind: 'duplicate-physical', scope: 'column', entityId: id, tableId,
           message: `물리명 "${physicalName}"이(가) 같은 테이블에서 중복됩니다`,
+          severity: 'error',
         })
       }
     }
@@ -53,6 +74,70 @@ export function computeWarnings(model: ProjectModel): Warning[] {
           message: `참조 컬럼 타입이 다릅니다 (${parent.type} ↔ ${child.type})`,
         })
         break // 관계당 1건
+      }
+    }
+  }
+
+  // 4) 명명 경고 — rules가 주어질 때만 계산(무인자 호출 시 하위호환 유지)
+  if (rules) {
+    const checkNamingEntity = (
+      scope: 'table' | 'column', entityId: string, tableId: string | undefined,
+      logicalName: string, physicalName: string,
+    ) => {
+      const logical = logicalName.trim()
+      if (logical !== '') {
+        const gen = generatePhysicalName(logical, model.words, model.terms, rules)
+        if (gen.unknownWords.length > 0) {
+          warnings.push({
+            kind: 'unknown-word', scope, entityId, tableId,
+            message: `등록되지 않은 단어가 있습니다: ${gen.unknownWords.join(', ')}`,
+          })
+        }
+        const term = findMatchingTerm(logical, model.terms)
+        if (term && term.physicalName !== physicalName) {
+          warnings.push({
+            kind: 'term-mismatch', scope, entityId, tableId,
+            message: `용어 "${term.logicalName}"의 표준 물리명은 "${term.physicalName}"입니다(현재 "${physicalName}")`,
+          })
+        }
+      }
+      if (new TextEncoder().encode(physicalName).length > rules.maxLengthBytes) {
+        warnings.push({
+          kind: 'too-long', scope, entityId, tableId,
+          message: `물리명 "${physicalName}"이(가) 최대 길이(${rules.maxLengthBytes}바이트)를 초과합니다`,
+        })
+      }
+      if (dialects?.some((d) => isReservedWord(physicalName, d))) {
+        warnings.push({
+          kind: 'reserved', scope, entityId, tableId,
+          message: `물리명 "${physicalName}"은(는) 예약어입니다`,
+        })
+      }
+    }
+
+    for (const t of Object.values(model.tables)) {
+      checkNamingEntity('table', t.id, undefined, t.logicalName, t.physicalName)
+    }
+    for (const c of Object.values(model.columns)) {
+      checkNamingEntity('column', c.id, c.tableId, c.logicalName, c.physicalName)
+    }
+
+    // 테이블 물리명 간 중복(테이블 간)
+    const tableNames = new Map<string, string[]>() // physicalName → tableIds
+    for (const t of Object.values(model.tables)) {
+      if (t.physicalName === '') continue
+      const ids = tableNames.get(t.physicalName) ?? []
+      ids.push(t.id)
+      tableNames.set(t.physicalName, ids)
+    }
+    for (const [physicalName, ids] of tableNames) {
+      if (ids.length < 2) continue
+      for (const id of ids) {
+        warnings.push({
+          kind: 'duplicate-physical-table', scope: 'table', entityId: id,
+          severity: 'error',
+          message: `테이블 물리명 "${physicalName}"이(가) 중복됩니다`,
+        })
       }
     }
   }

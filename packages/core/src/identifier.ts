@@ -22,6 +22,11 @@ const RESERVED: Record<Dialect, Set<string>> = {
   mssql: new Set([...BASE, ...EXTRA.mssql]),
 }
 
+/** 방언별 예약어 여부(대소문자 무시). */
+export function isReservedWord(name: string, dialect: Dialect): boolean {
+  return RESERVED[dialect].has(name.toLowerCase())
+}
+
 const SAFE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** 예약어이거나 안전패턴 위반 시에만 방언 규칙으로 인용한다. */

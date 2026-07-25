@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { computeWarnings } from './warnings.js'
-import type { Column, ProjectModel, Relationship, Table } from './model.js'
+import type { Column, ProjectModel, Relationship, Table, Term, Word } from './model.js'
 import { createEmptyModel } from './model.js'
+import type { NamingRules } from './naming.js'
 
-function tbl(id: string): Table {
+function tbl(id: string, over: Partial<Table> = {}): Table {
   return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null }
+    position: { x: 0, y: 0 }, groupPosition: null, ...over }
 }
 function col(id: string, tableId: string, physicalName: string, over: Partial<Column> = {}): Column {
   return { id, tableId, logicalName: id, physicalName, type: 'BIGINT', isPk: false,
     autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
     domainId: null, ...over }
+}
+function word(id: string, logicalName: string, abbreviation: string): Word {
+  return { id, logicalName, abbreviation, description: null }
+}
+function term(id: string, logicalName: string, physicalName: string): Term {
+  return { id, logicalName, physicalName, domainId: null, description: null }
 }
 
 describe('computeWarnings', () => {
@@ -63,5 +70,74 @@ describe('computeWarnings', () => {
     m.tables['T'] = tbl('T')
     m.columns['A'] = col('A', 'T', 'ID')
     expect(computeWarnings(m)).toEqual([])
+  })
+})
+
+describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
+  const rules: NamingRules = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
+
+  it('논리명에 미등록 단어가 있으면 unknown-word를 경고한다', () => {
+    const m = createEmptyModel()
+    m.tables['T'] = tbl('T', { logicalName: '' })
+    m.words['w1'] = word('w1', '회원', 'MBR')
+    m.columns['A'] = col('A', 'T', 'MBR_CPN', { logicalName: '회원쿠폰' })
+    const ws = computeWarnings(m, rules).filter((w) => w.kind === 'unknown-word')
+    expect(ws).toHaveLength(1)
+    expect(ws[0]).toMatchObject({ entityId: 'A', scope: 'column', tableId: 'T' })
+  })
+
+  it('용어와 논리명은 일치하지만 물리명이 다르면 term-mismatch를 경고한다', () => {
+    const m = createEmptyModel()
+    m.tables['T'] = tbl('T', { logicalName: '' })
+    m.terms['t1'] = term('t1', '주문번호', 'ORD_NO')
+    m.columns['A'] = col('A', 'T', 'ORDER_NUMBER', { logicalName: '주문번호' })
+    const ws = computeWarnings(m, rules).filter((w) => w.kind === 'term-mismatch')
+    expect(ws).toHaveLength(1)
+    expect(ws[0]!.entityId).toBe('A')
+
+    // 물리명이 용어의 표준 물리명과 같으면 경고하지 않는다
+    m.columns['A'] = col('A', 'T', 'ORD_NO', { logicalName: '주문번호' })
+    expect(computeWarnings(m, rules).filter((w) => w.kind === 'term-mismatch')).toEqual([])
+  })
+
+  it('물리명 바이트 길이가 규칙을 초과하면 too-long을 경고한다', () => {
+    const m = createEmptyModel()
+    m.tables['T'] = tbl('T', { logicalName: '' })
+    m.columns['A'] = col('A', 'T', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_EXTRA', { logicalName: '' })
+    const ws = computeWarnings(m, { ...rules, maxLengthBytes: 5 }).filter((w) => w.kind === 'too-long')
+    expect(ws).toHaveLength(1)
+    expect(ws[0]!.entityId).toBe('A')
+  })
+
+  it('물리명이 지정된 방언의 예약어이면 reserved를 경고한다', () => {
+    const m = createEmptyModel()
+    m.tables['T'] = tbl('T', { logicalName: '', physicalName: 'ORDER' })
+    const ws = computeWarnings(m, rules, ['postgresql']).filter((w) => w.kind === 'reserved')
+    expect(ws).toHaveLength(1)
+    expect(ws[0]).toMatchObject({ entityId: 'T', scope: 'table' })
+    // 예약어가 아닌 방언 목록만 주어지면 경고하지 않는다
+    const m2 = createEmptyModel()
+    m2.tables['T'] = tbl('T', { logicalName: '', physicalName: 'CUSTOMER' })
+    expect(computeWarnings(m2, rules, ['postgresql']).filter((w) => w.kind === 'reserved')).toEqual([])
+  })
+
+  it('테이블 물리명이 다른 테이블과 중복되면 duplicate-physical-table을 severity error로 경고한다', () => {
+    const m = createEmptyModel()
+    m.tables['T1'] = tbl('T1', { logicalName: '', physicalName: 'SHARED' })
+    m.tables['T2'] = tbl('T2', { logicalName: '', physicalName: 'SHARED' })
+    const ws = computeWarnings(m, rules).filter((w) => w.kind === 'duplicate-physical-table')
+    expect(ws.map((w) => w.entityId).sort()).toEqual(['T1', 'T2'])
+    expect(ws.every((w) => w.severity === 'error')).toBe(true)
+  })
+
+  it('rules/dialects 없이 호출하면 명명 경고를 추가하지 않는다(하위호환)', () => {
+    const m = createEmptyModel()
+    m.tables['T1'] = tbl('T1', { logicalName: '', physicalName: 'ORDER' })
+    m.tables['T2'] = tbl('T2', { logicalName: '', physicalName: 'ORDER' })
+    m.words['w1'] = word('w1', '회원', 'MBR')
+    m.terms['t1'] = term('t1', '주문번호', 'ORD_NO')
+    m.columns['A'] = col('A', 'T1', 'ORDER_NUMBER', { logicalName: '주문번호쿠폰' })
+    const namingKinds = ['unknown-word', 'term-mismatch', 'too-long', 'reserved', 'duplicate-physical-table']
+    expect(computeWarnings(m).every((w) => !namingKinds.includes(w.kind))).toBe(true)
   })
 })
