@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
+import { HistoryView } from './history-view.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -195,7 +196,7 @@ export function VersionDialog({ projectId }: { projectId: string }) {
         </div>
         {section === 'snapshot'
           ? <SnapshotSection projectId={projectId} onRestored={() => setOpen(false)} />
-          : <div data-testid="history-placeholder" className="py-8 text-center text-sm text-muted-foreground">이력은 준비 중입니다</div>}
+          : <HistoryView projectId={projectId} />}
       </DialogContent>
     </Dialog>
   )

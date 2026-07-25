@@ -20,6 +20,15 @@ const SNAPSHOT_ITEM = {
   createdAt: '2026-07-20T00:00:00.000Z',
 }
 
+const REVISION_ITEM = {
+  seq: 3,
+  summary: '메모 생성',
+  source: 'web',
+  ops: [],
+  createdAt: '2026-07-21T00:00:00.000Z',
+  actorName: '오너',
+}
+
 function renderDialog() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
@@ -89,5 +98,17 @@ describe('VersionDialog', () => {
     })
     await waitFor(() => expect(useEditorStore.getState().loadedProjectId).toBe(PROJECT_ID))
     expect(useEditorStore.getState().seq).toBe(4)
+  })
+
+  it('switching to 이력 renders the revision.list result', async () => {
+    mockTrpcFetch({
+      'snapshot.list': () => ({ data: { items: [] } }),
+      'revision.list': () => ({ data: { items: [REVISION_ITEM], nextCursor: null } }),
+    })
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '버전' }))
+    await userEvent.click(screen.getByRole('button', { name: '이력' }))
+    expect(await screen.findByText(/메모 생성/)).toBeInTheDocument()
+    expect(screen.getByText(/오너/)).toBeInTheDocument()
   })
 })
