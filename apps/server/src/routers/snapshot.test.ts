@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { desc, eq } from 'drizzle-orm'
-import { createEmptyModel, diffModels } from '@erdd/core'
+import { uuidv7 } from 'uuidv7'
+import { createEmptyModel, diffModels, type ProjectModel } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
-import { revisions } from '../db/schema.js'
+import { revisions, snapshots } from '../db/schema.js'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs, withUuidIds } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
@@ -95,6 +96,31 @@ describe.skipIf(!url)('snapshot', () => {
     expect(rows[0]!.seq).toBe(3)
     expect(rows[0]!.source).toBe('system')
     expect(rows[0]!.summary).toContain('복원지점')
+  })
+
+  it('restores a pre-domain (0004 이전) snapshot whose stored jsonb has no domains key, without crashing', async () => {
+    const target = withUuidIds(buildSampleModel())
+    await post(app, 'model.mutate', token, { projectId, ops: diffModels(createEmptyModel(), target) })
+
+    // 0004(도메인 도입) 이전에 저장된 스냅샷 jsonb를 재현: domains 키 자체가 없다.
+    // snapshot.create를 거치면 항상 현재 ProjectModel 전체가 저장되므로, 여기서는
+    // 실제 레거시 로우를 흉내내기 위해 snapshots 테이블에 직접 삽입한다.
+    const legacyModel = { ...target } as Partial<ProjectModel>
+    delete legacyModel.domains
+    expect('domains' in legacyModel).toBe(false)
+
+    const snapshotId = uuidv7()
+    await app.db!.insert(snapshots).values({
+      id: snapshotId, projectId, name: '레거시 스냅샷(0004 이전)', description: '',
+      revisionSeq: 1, model: legacyModel as unknown as ProjectModel,
+    })
+
+    const restored = await post(app, 'snapshot.restore', token, { projectId, snapshotId })
+    expect(restored.statusCode).toBe(200)
+
+    const after = (await get(app, 'model.get', token, { projectId })).json().result.data
+    expect(after.model.domains).toEqual({})
+    expect(Object.keys(after.model.tables)).toEqual(Object.keys(target.tables))
   })
 
   it('404s get and restore for a snapshot scoped to a different project', async () => {
