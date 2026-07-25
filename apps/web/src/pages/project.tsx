@@ -5,6 +5,7 @@ import { useModelLoader } from '@/editor/use-model'
 import { useEditorStore } from '@/editor/store'
 import { Canvas } from '@/editor/canvas'
 import { EditPanel } from '@/editor/edit-panel'
+import { ExportDialog } from '@/editor/export-dialog'
 import { GroupViewSelect } from '@/editor/group-view-select'
 import { TableTree } from '@/editor/table-tree'
 import { Toolbar } from '@/editor/toolbar'
@@ -32,6 +33,7 @@ export function ProjectPage() {
           </div>
           <div className="flex items-center gap-2">
             {loaded && <GroupViewSelect />}
+            {loaded && <ExportDialog />}
             <ViewModeToggle />
             <Button variant="ghost" size="sm" asChild>
               <Link to={`/p/${projectId}/settings`}><Settings /> 설정</Link>
