@@ -110,9 +110,9 @@ function fkStatements(model: ProjectModel, selectedIds: Set<string>, dialect: Di
     const parent = model.tables[rel.parentTableId]
     const child = model.tables[rel.childTableId]
     if (!parent || !child) continue
-    const childCols = rel.columnMappings.map((m) => q(model.columns[m.childColumnId]?.physicalName ?? ''))
-    const parentCols = rel.columnMappings.map((m) => q(model.columns[m.parentColumnId]?.physicalName ?? ''))
     const rawChildCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
+    const childCols = rawChildCols.map(q)
+    const parentCols = rel.columnMappings.map((m) => q(model.columns[m.parentColumnId]?.physicalName ?? ''))
     const name = uniqueConstraintName(fkBaseName(rel, child.physicalName, parent.physicalName), used)
     statements.push(
       `ALTER TABLE ${q(child.physicalName)} ADD CONSTRAINT ${q(name)} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${q(parent.physicalName)} (${parentCols.join(', ')});`,

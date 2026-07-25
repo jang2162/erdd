@@ -82,6 +82,9 @@ describe('generateDdl — CREATE TABLE', () => {
     expect(ms).toContain('CREATE TABLE [ORDER]')
     expect(ms).toContain("@level1name=N'ORDER'")
     expect(ms).not.toContain("@level1name=N'[ORDER]'")
+    // 컬럼레벨 코멘트 이름도 리터럴이라 대괄호로 인용하지 않는다
+    expect(ms).toContain("@level2name=N'USER'")
+    expect(ms).not.toContain("@level2name=N'[USER]'")
   })
 })
 
