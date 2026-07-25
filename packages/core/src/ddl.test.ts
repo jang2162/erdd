@@ -55,6 +55,23 @@ describe('generateDdl — CREATE TABLE', () => {
     m.columns['c'] = col('c', 't', 'SHAPE', 'geometry', { order: 0 })
     expect(generateDdl(m, 'postgresql')).toContain('SHAPE geometry')
   })
+  it('예약어 물리명을 방언별로 인용한다', () => {
+    const m = createEmptyModel()
+    m.tables['t'] = tbl('t', 'ORDER', { comment: '주문' })
+    m.columns['c'] = col('c', 't', 'USER', 'BIGINT', { order: 0, comment: '사용자' })
+    // PostgreSQL
+    const pg = generateDdl(m, 'postgresql')
+    expect(pg).toContain('CREATE TABLE "ORDER"')
+    expect(pg).toContain('"USER"')
+    expect(pg).toContain('COMMENT ON TABLE "ORDER" IS')
+    // MySQL
+    expect(generateDdl(m, 'mysql')).toContain('CREATE TABLE `ORDER`')
+    // MSSQL 코멘트문(sp_addextendedproperty)의 이름은 N'...' 문자열 리터럴이므로 대괄호로 인용하지 않는다
+    const ms = generateDdl(m, 'mssql')
+    expect(ms).toContain('CREATE TABLE [ORDER]')
+    expect(ms).toContain("@level1name=N'ORDER'")
+    expect(ms).not.toContain("@level1name=N'[ORDER]'")
+  })
 })
 
 // 관계·인덱스·코멘트가 있는 모델

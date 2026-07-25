@@ -1,6 +1,7 @@
 import type { Column, ProjectModel, Relationship, Table } from './model.js'
 import { resolveColumnType, type Dialect } from './dialect.js'
 import { parseLogicalType } from './logical-type.js'
+import { quoteIdentifier } from './identifier.js'
 
 export type DdlScope =
   | { kind: 'all' }
@@ -69,7 +70,7 @@ function uniqueConstraintName(base: string, used: Set<string>): string {
 }
 
 function columnLine(col: Column, dialect: Dialect): string {
-  const parts = [col.physicalName, resolveColumnType(col.type, dialect).sql]
+  const parts = [quoteIdentifier(col.physicalName, dialect), resolveColumnType(col.type, dialect).sql]
   const auto = col.autoIncrement && col.isPk && isIntegerType(col.type)
   if (auto) parts.push(autoIncrementToken(dialect))
   if (!col.nullable) parts.push('NOT NULL')
@@ -85,8 +86,8 @@ function createTableBlock(model: ProjectModel, table: Table, dialect: Dialect): 
   const cols = tableColumns(model, table.id)
   const lines = cols.map((c) => columnLine(c, dialect))
   const pks = cols.filter((c) => c.isPk)
-  if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => c.physicalName).join(', ')})`)
-  let block = `CREATE TABLE ${table.physicalName} (\n${lines.join(',\n')}\n)`
+  if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => quoteIdentifier(c.physicalName, dialect)).join(', ')})`)
+  let block = `CREATE TABLE ${quoteIdentifier(table.physicalName, dialect)} (\n${lines.join(',\n')}\n)`
   if (dialect === 'mysql') {
     const text = commentText(table.logicalName, table.physicalName, table.comment)
     if (text !== null) block += ` COMMENT '${esc(text)}'`
@@ -100,30 +101,33 @@ function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): R
   )
 }
 
-function fkStatements(model: ProjectModel, selectedIds: Set<string>): string[] {
+function fkStatements(model: ProjectModel, selectedIds: Set<string>, dialect: Dialect): string[] {
   const rels = selectedRelationships(model, selectedIds)
   const statements: string[] = []
-  const used = new Set<string>() // 배치 내 제약명 유일성(같은 테이블 쌍의 무명 관계 2개 충돌 방지)
+  const used = new Set<string>() // 원문 기준 유일성 추적, 출력 시 인용
+  const q = (s: string) => quoteIdentifier(s, dialect)
   for (const rel of rels) {
     const parent = model.tables[rel.parentTableId]
     const child = model.tables[rel.childTableId]
     if (!parent || !child) continue
-    const childCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
-    const parentCols = rel.columnMappings.map((m) => model.columns[m.parentColumnId]?.physicalName ?? '')
+    const childCols = rel.columnMappings.map((m) => q(model.columns[m.childColumnId]?.physicalName ?? ''))
+    const parentCols = rel.columnMappings.map((m) => q(model.columns[m.parentColumnId]?.physicalName ?? ''))
+    const rawChildCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
     const name = uniqueConstraintName(fkBaseName(rel, child.physicalName, parent.physicalName), used)
     statements.push(
-      `ALTER TABLE ${child.physicalName} ADD CONSTRAINT ${name} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${parent.physicalName} (${parentCols.join(', ')});`,
+      `ALTER TABLE ${q(child.physicalName)} ADD CONSTRAINT ${q(name)} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${q(parent.physicalName)} (${parentCols.join(', ')});`,
     )
     if (rel.cardinality === '1:1') {
-      const uqName = uniqueConstraintName(`UQ_${child.physicalName}_${childCols.join('_')}`, used)
-      statements.push(`ALTER TABLE ${child.physicalName} ADD CONSTRAINT ${uqName} UNIQUE (${childCols.join(', ')});`)
+      const uqName = uniqueConstraintName(`UQ_${child.physicalName}_${rawChildCols.join('_')}`, used)
+      statements.push(`ALTER TABLE ${q(child.physicalName)} ADD CONSTRAINT ${q(uqName)} UNIQUE (${childCols.join(', ')});`)
     }
   }
   return statements
 }
 
-function indexStatements(model: ProjectModel, selectedIds: Set<string>): string[] {
+function indexStatements(model: ProjectModel, selectedIds: Set<string>, dialect: Dialect): string[] {
   const indexes = Object.values(model.indexes).filter((ix) => selectedIds.has(ix.tableId))
+  const q = (s: string) => quoteIdentifier(s, dialect)
   return indexes.map((ix) => {
     const table = model.tables[ix.tableId]
     const tableName = table ? table.physicalName : ix.tableId
@@ -131,11 +135,11 @@ function indexStatements(model: ProjectModel, selectedIds: Set<string>): string[
       .map((c) => {
         const col = model.columns[c.columnId]
         const colName = col ? col.physicalName : c.columnId
-        return `${colName} ${c.direction.toUpperCase()}`
+        return `${q(colName)} ${c.direction.toUpperCase()}`
       })
       .join(', ')
     const uniqueToken = ix.unique ? 'UNIQUE ' : ''
-    return `CREATE ${uniqueToken}INDEX ${ix.name} ON ${tableName} (${cols});`
+    return `CREATE ${uniqueToken}INDEX ${q(ix.name)} ON ${q(tableName)} (${cols});`
   })
 }
 
@@ -157,7 +161,7 @@ function tableCommentStatement(dialect: Dialect, tableName: string, text: string
   switch (dialect) {
     case 'postgresql':
     case 'oracle':
-      return `COMMENT ON TABLE ${tableName} IS '${esc(text)}';`
+      return `COMMENT ON TABLE ${quoteIdentifier(tableName, dialect)} IS '${esc(text)}';`
     case 'mssql':
       return `EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'${esc(text)}', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'${tableName}';`
     case 'mysql':
@@ -169,7 +173,7 @@ function columnCommentStatement(dialect: Dialect, tableName: string, columnName:
   switch (dialect) {
     case 'postgresql':
     case 'oracle':
-      return `COMMENT ON COLUMN ${tableName}.${columnName} IS '${esc(text)}';`
+      return `COMMENT ON COLUMN ${quoteIdentifier(tableName, dialect)}.${quoteIdentifier(columnName, dialect)} IS '${esc(text)}';`
     case 'mssql':
       return `EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'${esc(text)}', @level0type=N'SCHEMA', @level0name=N'dbo', @level1type=N'TABLE', @level1name=N'${tableName}', @level2type=N'COLUMN', @level2name=N'${columnName}';`
     case 'mysql':
@@ -182,8 +186,8 @@ export function generateDdl(model: ProjectModel, dialect: Dialect, scope: DdlSco
   const selectedIds = new Set(tables.map((t) => t.id))
 
   const createBlocks = tables.map((table) => createTableBlock(model, table, dialect))
-  const fk = fkStatements(model, selectedIds).join('\n')
-  const index = indexStatements(model, selectedIds).join('\n')
+  const fk = fkStatements(model, selectedIds, dialect).join('\n')
+  const index = indexStatements(model, selectedIds, dialect).join('\n')
   const comment = dialect === 'mysql' ? '' : commentStatements(model, tables, dialect).join('\n')
 
   return [createBlocks.join('\n\n'), fk, index, comment].filter((s) => s.trim() !== '').join('\n\n')
