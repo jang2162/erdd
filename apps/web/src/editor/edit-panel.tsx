@@ -9,6 +9,7 @@ import { addColumn, removeColumn, reorderColumn, updateColumn } from './column-e
 import { RelationshipPanel } from './relationship-panel.js'
 import { NotePanel } from './note-panel.js'
 import { GroupPanel } from './group-panel.js'
+import { IndexSection } from './index-section.js'
 import { WarningBadge } from './warning-badge.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -111,6 +112,8 @@ export function EditPanel({ projectId }: { projectId: string }) {
         ))}
         {columns.length === 0 && <li className="text-xs text-muted-foreground">컬럼이 없습니다.</li>}
       </ul>
+
+      <IndexSection projectId={projectId} tableId={tid} />
     </aside>
   )
 }
