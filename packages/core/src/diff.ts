@@ -7,6 +7,9 @@ import { deepEqual } from './equal.js'
  * 순서 보장: create는 ENTITY_KINDS(부모 우선) 순, update는 그 다음, delete는 역순(자식 우선)
  * — applyOps(base, diffModels(base, target))가 무결성 검사를 항상 통과하도록.
  * 전제: target은 무결성이 유효한 모델이어야 한다(validateModelIntegrity(target) === []).
+ * 예외: base에만 있고 target에는 없는 속성 때문에 deepEqual이 다르다고 판단해도,
+ * target 기준으로 실제 변경된 속성이 없으면 update op를 만들지 않는다(그 결과 base의
+ * 값이 그대로 보존된다) — 값 없는 update op로 인한 persistOps 실패를 막기 위해서다.
  * 반환하는 op의 payload(data/changes의 from·to)는 base·target 엔티티의 참조를 그대로
  * 공유한다(딥클론하지 않음) — 호출 측은 base와 target을 이후 불변 값으로 다뤄야 한다.
  */

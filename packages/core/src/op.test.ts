@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { applyOps, OpApplyError, type Op } from './op.js'
+import { applyOps, ENTITY_KINDS, OpApplyError, type Op } from './op.js'
 import { createEmptyModel } from './model.js'
 import { buildSampleModel } from './testing/fixtures.js'
 
 describe('applyOps', () => {
+  // ENTITY_KINDS의 순서는 FK 안전성 제약이다: 참조 대상(부모)이 참조하는 쪽(자식)보다
+  // 앞에 와야 한다. diffModels가 create를 이 순서대로, delete를 역순(자식 먼저)으로 내고,
+  // persistOps는 그 순서대로 행 단위 SQL을 실행하며 FK는 NOT DEFERRABLE이다.
+  // 순서가 흐트러지면 스냅샷 복원이 FK 위반 500으로 죽는 사고가 과거 2회 있었다.
+  it('ENTITY_KINDS 순서는 FK 안전성 제약이다(참조 대상이 참조하는 쪽보다 앞)', () => {
+    expect(ENTITY_KINDS).toEqual([
+      'tableGroup', 'domain', 'word', 'term', 'customField',
+      'table', 'column', 'relationship', 'index', 'note',
+    ])
+  })
+
   it('applies create/update/delete and does not mutate the input model', () => {
     const base = buildSampleModel()
     const frozen = JSON.parse(JSON.stringify(base))

@@ -42,13 +42,22 @@ export function CustomFieldEditDialog({
   const nameInvalid = name.trim() === ''
   const requiredLocked = type === 'boolean'
 
+  // 저장 시점의 파생값이 아니라 현재 폼 state에서 계산 — disabled와 안내 문구가 항상 같은 값을 본다.
+  const trimmedDefault = defaultValue.trim()
+  const parsedOptions = type === 'select'
+    ? [...new Set(optionsText.split(',').map((v) => v.trim()).filter((v) => v !== ''))]
+    : []
+  const selectOptionsEmpty = type === 'select' && parsedOptions.length === 0
+  const selectDefaultInvalid = type === 'select'
+    && trimmedDefault !== '' && !parsedOptions.includes(trimmedDefault)
+  const booleanDefaultInvalid = type === 'boolean'
+    && trimmedDefault !== '' && trimmedDefault !== 'true' && trimmedDefault !== 'false'
+  const saveDisabled = nameInvalid || selectOptionsEmpty || selectDefaultInvalid || booleanDefaultInvalid
+
   const onSave = () => {
     const trimmedName = name.trim()
-    if (trimmedName === '') return
-    const nextOptions = type === 'select'
-      ? optionsText.split(',').map((v) => v.trim()).filter((v) => v !== '')
-      : []
-    const trimmedDefault = defaultValue.trim()
+    if (saveDisabled) return
+    const nextOptions = parsedOptions
     const nextRequired = requiredLocked ? false : required
 
     if (!isEdit) {
@@ -127,6 +136,9 @@ export function CustomFieldEditDialog({
               <Label htmlFor="cf-options">선택지 (쉼표로 구분)</Label>
               <Input id="cf-options" value={optionsText} placeholder="예: 없음, AES256, SHA256"
                 onChange={(e) => setOptionsText(e.target.value)} />
+              {selectOptionsEmpty && (
+                <p className="text-xs text-destructive">선택형은 선택지를 하나 이상 입력해야 합니다</p>
+              )}
             </div>
           )}
           <div className="grid gap-1.5">
@@ -134,6 +146,12 @@ export function CustomFieldEditDialog({
             <Input id="cf-default" value={defaultValue}
               placeholder={type === 'boolean' ? 'true 또는 false' : '값을 입력하지 않은 항목에 쓰입니다'}
               onChange={(e) => setDefaultValue(e.target.value)} />
+            {selectDefaultInvalid && (
+              <p className="text-xs text-destructive">기본값은 선택지 중 하나여야 합니다</p>
+            )}
+            {booleanDefaultInvalid && (
+              <p className="text-xs text-destructive">불리언 기본값은 true 또는 false여야 합니다</p>
+            )}
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input id="cf-required" type="checkbox" aria-label="필수"
@@ -154,7 +172,7 @@ export function CustomFieldEditDialog({
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-          <Button type="button" disabled={nameInvalid} onClick={onSave}>저장</Button>
+          <Button type="button" disabled={saveDisabled} onClick={onSave}>저장</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
