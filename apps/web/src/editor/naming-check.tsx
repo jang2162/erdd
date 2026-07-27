@@ -30,7 +30,7 @@ function entityLabel(model: ReturnType<typeof useEditorStore.getState>['model'],
   return model.relationships[w.entityId]?.name ?? '관계'
 }
 
-/** 헤더의 "명명 검사": 명명 규칙 위반·경고를 종류별로 모아 보고, 클릭 시 해당 엔티티로 이동한다. */
+/** 헤더의 "모델 검사": 명명 규칙 위반·경고를 종류별로 모아 보고, 클릭 시 해당 엔티티로 이동한다. */
 export function NamingCheck({ projectId: _projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const namingRules = useEditorStore((s) => s.namingRules)
@@ -62,11 +62,11 @@ export function NamingCheck({ projectId: _projectId }: { projectId: string }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
-          <ListChecks /> 명명 검사{warnings.length > 0 ? ` (${warnings.length})` : ''}
+          <ListChecks /> 모델 검사{warnings.length > 0 ? ` (${warnings.length})` : ''}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>명명 검사</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>모델 검사</DialogTitle></DialogHeader>
         {warnings.length === 0 && (
           <p className="text-sm text-muted-foreground">경고가 없습니다. 명명이 규칙에 부합합니다.</p>
         )}
