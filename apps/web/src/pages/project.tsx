@@ -4,6 +4,7 @@ import { Settings } from 'lucide-react'
 import { useModelLoader } from '@/editor/use-model'
 import { useEditorStore } from '@/editor/store'
 import { Canvas } from '@/editor/canvas'
+import { CustomFieldPanel } from '@/editor/custom-field-panel'
 import { DictPanel } from '@/editor/dict-panel'
 import { DomainPanel } from '@/editor/domain-panel'
 import { EditPanel } from '@/editor/edit-panel'
@@ -40,6 +41,7 @@ export function ProjectPage() {
             {loaded && <VersionDialog projectId={projectId} />}
             {loaded && <DomainPanel projectId={projectId} />}
             {loaded && <DictPanel projectId={projectId} />}
+            {loaded && <CustomFieldPanel projectId={projectId} />}
             {loaded && <NamingCheck projectId={projectId} />}
             {loaded && <ExportDialog />}
             <ViewModeToggle />
