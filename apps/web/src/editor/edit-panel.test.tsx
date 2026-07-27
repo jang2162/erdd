@@ -10,6 +10,7 @@ import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { useEditorStore } from './store.js'
 import { createDomain } from './domain-edits.js'
+import { createCustomField } from './custom-field-edits.js'
 import { EditPanel } from './edit-panel.js'
 
 function renderPanel() {
@@ -138,5 +139,34 @@ describe('EditPanel', () => {
     const typeInput = screen.getByLabelText('타입') as HTMLInputElement
     expect(typeInput).toBeEnabled()
     expect(typeInput.value).toBe('CHAR(1)')
+  })
+
+  it('컬럼 커스텀 항목 체크박스가 모델의 custom 값을 바꾼다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = createCustomField(m, {
+      id: 'cf1', name: '개인정보여부', target: 'column', type: 'boolean',
+      options: [], required: false, defaultValue: null,
+    })
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
+    renderPanel()
+    await userEvent.click(screen.getByLabelText('개인정보여부'))
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.custom).toEqual({ cf1: 'true' })
+    })
+  })
+
+  it('테이블 대상 커스텀 항목은 테이블 영역에 기본값과 함께 렌더된다', () => {
+    let m = buildSampleModel()
+    m = createCustomField(m, {
+      id: 'cf2', name: '업무구분', target: 'table', type: 'text',
+      options: [], required: false, defaultValue: '공통',
+    })
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    // 미입력이므로 정의 기본값이 라이브 해석돼 보인다
+    expect(screen.getByLabelText('업무구분')).toHaveValue('공통')
   })
 })

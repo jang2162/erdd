@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import {
-  computeWarnings, generatePhysicalName, setTableGroup, type Column, type Domain, type Warning,
+  computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
+  type Column, type CustomField, type Domain, type Warning,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
@@ -11,11 +12,13 @@ import {
   addColumn, clearColumnDomain, removeColumn, reorderColumn, setColumnDomain, updateColumn,
 } from './column-edits.js'
 import { createTerm } from './dict-edits.js'
+import { setCustomValue } from './custom-field-edits.js'
 import { RelationshipPanel } from './relationship-panel.js'
 import { NotePanel } from './note-panel.js'
 import { GroupPanel } from './group-panel.js'
 import { IndexSection } from './index-section.js'
 import { WarningBadge } from './warning-badge.js'
+import { CustomFieldsSection } from './custom-fields-section.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -51,6 +54,8 @@ export function EditPanel({ projectId }: { projectId: string }) {
   const table = selectedTableId ? model.tables[selectedTableId] : undefined
   const warnings = useMemo(
     () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
+  const tableFields = useMemo(() => customFieldsFor(model, 'table'), [model])
+  const columnFields = useMemo(() => customFieldsFor(model, 'column'), [model])
 
   if (selectedRelationshipId) return <RelationshipPanel projectId={projectId} />
 
@@ -119,6 +124,14 @@ export function EditPanel({ projectId }: { projectId: string }) {
             ))}
           </select>
         </div>
+        <CustomFieldsSection
+          fields={tableFields} values={table.custom} idPrefix={`tbl-custom-${tid}`}
+          warnings={warnings.filter((w) => w.scope === 'table' && w.entityId === tid)}
+          onChange={(fieldId, value) => {
+            void mutate((m) => setCustomValue(m, 'table', tid, fieldId, value),
+              { summary: '커스텀 항목 값 변경' })
+          }}
+        />
       </div>
 
       <div className="mt-6 flex items-center justify-between">
@@ -175,6 +188,11 @@ export function EditPanel({ projectId }: { projectId: string }) {
                 void mutate((m) => setColumnDomain(m, c.id, domainId), { summary: '도메인 지정' })
               }
             }}
+            customFields={columnFields}
+            onCustomChange={(fieldId, value) => {
+              void mutate((m) => setCustomValue(m, 'column', c.id, fieldId, value),
+                { summary: '커스텀 항목 값 변경' })
+            }}
           />
         ))}
         {columns.length === 0 && <li className="text-xs text-muted-foreground">컬럼이 없습니다.</li>}
@@ -193,6 +211,8 @@ function ColumnRow(props: {
   onLogicalName: (value: string) => void
   onRegenerate: () => void
   onRegisterTerm: () => void
+  customFields: CustomField[]
+  onCustomChange: (fieldId: string, value: string) => void
 }) {
   const { column: c } = props
   const locked = c.domainId !== null
@@ -249,6 +269,11 @@ function ColumnRow(props: {
             aria-label="컬럼 삭제" onClick={props.onRemove}><Trash2 className="size-3" /></Button>
         </span>
       </div>
+      <CustomFieldsSection
+        fields={props.customFields} values={c.custom} idPrefix={`col-custom-${c.id}`}
+        warnings={props.warnings.filter((w) => w.kind === 'custom-required')}
+        onChange={props.onCustomChange}
+      />
     </li>
   )
 }
