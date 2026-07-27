@@ -9,7 +9,7 @@ beforeEach(() => { act(() => useEditorStore.getState().reset()) })
 
 function tbl(id: string): Table {
   return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
-    position: { x: 10, y: 20 }, groupPosition: null }
+    position: { x: 10, y: 20 }, groupPosition: null, custom: {} }
 }
 
 describe('store activeGroupView', () => {

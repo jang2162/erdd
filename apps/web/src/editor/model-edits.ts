@@ -9,7 +9,7 @@ export function addTable(
   while (used.has(`TABLE_${n}`)) n++
   const table: Table = {
     id, logicalName: `테이블${n}`, physicalName: `TABLE_${n}`,
-    comment: null, groupId: null, position, groupPosition: null,
+    comment: null, groupId: null, position, groupPosition: null, custom: {},
   }
   return { ...model, tables: { ...model.tables, [id]: table } }
 }

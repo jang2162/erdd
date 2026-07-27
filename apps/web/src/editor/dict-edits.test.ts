@@ -11,11 +11,12 @@ const term = (id: string, over = {}) => (
   { id, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null, ...over }
 )
 const table = (id: string, logicalName: string) => (
-  { id, logicalName, physicalName: '', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null }
+  { id, logicalName, physicalName: '', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
 )
 const column = (id: string, tableId: string, logicalName: string) => ({
   id, tableId, logicalName, physicalName: '', type: 'INT',
   isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null,
+  custom: {},
 })
 
 describe('dict-edits', () => {

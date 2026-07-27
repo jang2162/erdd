@@ -12,7 +12,7 @@ function loadWith(physicalName: string) {
   const m = createEmptyModel()
   m.tables['t1'] = {
     id: 't1', logicalName: '', physicalName, comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null,
+    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
   }
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
   useEditorStore.getState().setProjectConfig(

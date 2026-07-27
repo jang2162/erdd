@@ -4,7 +4,7 @@ import { createEmptyModel, type ProjectModel, type Table, type Relationship } fr
 
 function tbl(id: string, groupId: string | null): Table {
   return { id, logicalName: id, physicalName: id, comment: null, groupId,
-    position: { x: 0, y: 0 }, groupPosition: null }
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
 }
 function model(): ProjectModel {
   const m = createEmptyModel()

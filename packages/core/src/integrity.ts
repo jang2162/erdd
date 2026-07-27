@@ -3,7 +3,9 @@ import type { ProjectModel } from './model.js'
 // integrity.ts는 op.ts로부터 import되므로(applyOps가 무결성 검사를 호출) 순환 import를
 // 막기 위해 EntityKind를 다시 import하지 않고 유니언을 이 파일에 리터럴로 정의한다.
 export type IntegrityIssue = {
-  entity: 'tableGroup' | 'table' | 'column' | 'relationship' | 'index' | 'note' | 'domain' | 'word' | 'term'
+  entity:
+    | 'tableGroup' | 'table' | 'column' | 'relationship' | 'index' | 'note' | 'domain' | 'word' | 'term'
+    | 'customField'
   entityId: string
   message: string
 }
@@ -22,6 +24,7 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
     { entity: 'domain', record: model.domains },
     { entity: 'word', record: model.words },
     { entity: 'term', record: model.terms },
+    { entity: 'customField', record: model.customFields },
   ]
   for (const { entity, record } of collections) {
     for (const [key, value] of Object.entries(record)) {

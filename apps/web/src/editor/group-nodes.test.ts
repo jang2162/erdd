@@ -4,7 +4,7 @@ import { createEmptyModel, type ProjectModel, type Table } from '@erdd/core'
 
 function tbl(id: string, x: number, y: number, groupId: string | null): Table {
   return { id, logicalName: id, physicalName: id, comment: null, groupId,
-    position: { x, y }, groupPosition: null }
+    position: { x, y }, groupPosition: null, custom: {} }
 }
 function model(): ProjectModel {
   const m = createEmptyModel()

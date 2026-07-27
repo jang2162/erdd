@@ -5,7 +5,7 @@ import { createEmptyModel, type ProjectModel, type Table } from './model.js'
 
 function tbl(id: string, over: Partial<Table> = {}): Table {
   return { id, logicalName: id, physicalName: id.toUpperCase(), comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, ...over }
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {}, ...over }
 }
 function base(): ProjectModel {
   const m = createEmptyModel()

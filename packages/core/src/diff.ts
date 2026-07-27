@@ -31,7 +31,12 @@ export function diffModels(base: ProjectModel, target: ProjectModel): Op[] {
               changes[prop] = { from: existing[prop], to: entity[prop] }
             }
           }
-          updates.push({ action: 'update', entity: kind, entityId: id, changes })
+          // base에만 있는 속성(구 스냅샷의 table에 custom 키가 없는 경우) 때문에 deepEqual은
+          // 다르다고 보지만 target 기준 변경점은 없을 수 있다. 이때 빈 changes를 내보내면
+          // persistOps가 값 없는 UPDATE를 실행해 실패한다 → 그런 op는 만들지 않는다.
+          if (Object.keys(changes).length > 0) {
+            updates.push({ action: 'update', entity: kind, entityId: id, changes })
+          }
         }
       }
     }

@@ -17,9 +17,9 @@ describe('domain-edits', () => {
   it('사용 중 도메인 삭제는 막고, 미사용은 삭제', () => {
     let m = createEmptyModel()
     m = createDomain(m, dom('d1'))
-    m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null }
+    m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
     m.columns['c'] = { id: 'c', tableId: 't', logicalName: 'A', physicalName: 'A', type: 'INT',
-      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: 'd1' }
+      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: 'd1', custom: {} }
     expect(usageOf(m, 'd1').map((c) => c.id)).toEqual(['c'])
     expect(() => removeDomain(m, 'd1')).toThrow()
     m.columns['c']!.domainId = null

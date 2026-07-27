@@ -3,10 +3,11 @@ export type { LogicalType, LogicalTypeKind, ParseResult } from './logical-type.j
 export {
   PositionSchema, TableSchema, ColumnSchema, RelationshipSchema,
   IndexSchema, NoteSchema, TableGroupSchema, DomainSchema, WordSchema, TermSchema,
-  ProjectModelSchema, createEmptyModel,
+  CustomFieldSchema, ProjectModelSchema, createEmptyModel,
 } from './model.js'
 export type {
-  Position, Table, Column, Relationship, IndexDef, Note, TableGroup, Domain, Word, Term, ProjectModel,
+  Position, Table, Column, Relationship, IndexDef, Note, TableGroup, Domain, Word, Term,
+  CustomField, ProjectModel,
 } from './model.js'
 export { validateModelIntegrity } from './integrity.js'
 export type { IntegrityIssue } from './integrity.js'

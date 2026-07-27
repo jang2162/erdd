@@ -67,5 +67,6 @@ export function withUuidIds(model: ProjectModel): ProjectModel {
     terms: remapRecord(model.terms, (t) => ({
       ...t, domainId: t.domainId === null ? null : nid(t.domainId),
     })),
+    customFields: remapRecord(model.customFields, (f) => f),
   }
 }

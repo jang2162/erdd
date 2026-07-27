@@ -57,7 +57,7 @@ export function createRelationshipFromParentPk(
     newColumns[id] = {
       id, tableId: childTableId, logicalName, physicalName, type: pk.type,
       isPk: identifying, autoIncrement: false, nullable: false,
-      defaultValue: null, order: order++, comment: null, domainId: null,
+      defaultValue: null, order: order++, comment: null, domainId: null, custom: {},
     }
     mappings.push({ childColumnId: id, parentColumnId: pk.id })
   })

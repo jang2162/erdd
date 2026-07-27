@@ -9,12 +9,12 @@ import { createEmptyModel } from './model.js'
 
 function tbl(id: string, physicalName: string): Table {
   return { id, logicalName: id, physicalName, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null }
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
 }
 function col(id: string, tableId: string, physicalName: string, over: Partial<Column> = {}): Column {
   return { id, tableId, logicalName: id, physicalName, type: 'BIGINT', isPk: false,
     autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
-    domainId: null, ...over }
+    domainId: null, custom: {}, ...over }
 }
 
 // 부모 USERS(PK id), 자식 ORDERS(컬럼 없음)

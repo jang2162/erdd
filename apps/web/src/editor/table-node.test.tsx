@@ -19,15 +19,15 @@ function renderNode(data: Parameters<typeof TableNode>[0]['data']) {
 const DATA = {
   table: {
     id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null,
+    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
   },
   columns: [
     { id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO',
       type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
-      defaultValue: null, order: 0, comment: null, domainId: null },
+      defaultValue: null, order: 0, comment: null, domainId: null, custom: {} },
     { id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM',
       type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: true,
-      defaultValue: null, order: 1, comment: null, domainId: null },
+      defaultValue: null, order: 1, comment: null, domainId: null, custom: {} },
   ],
   selected: false,
 }

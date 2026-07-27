@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import {
+  OpApplyError,
   type Column, type Domain, type IndexDef, type Note, type Op, type ProjectModel,
   type Relationship, type Table, type TableGroup, type Term, type Word,
 } from '@erdd/core'
@@ -59,12 +60,14 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
       id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,
       comment: r.comment, groupId: r.groupId, position: r.position,
       groupPosition: r.groupPosition ?? null,
+      custom: {}, // Task 3에서 r.custom으로 교체(아직 컬럼 없음)
     }))),
     columns: keyed(columnRows.map((r): Column => ({
       id: r.id, tableId: r.tableId, logicalName: r.logicalName, physicalName: r.physicalName,
       type: r.type, isPk: r.isPk, autoIncrement: r.autoIncrement, nullable: r.nullable,
       defaultValue: r.defaultValue, order: r.order, comment: r.comment,
       domainId: r.domainId,
+      custom: {}, // Task 3에서 r.custom으로 교체(아직 컬럼 없음)
     }))),
     relationships: keyed(relRows.map((r): Relationship => ({
       id: r.id, parentTableId: r.parentTableId, childTableId: r.childTableId,
@@ -90,6 +93,7 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
       id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,
       domainId: r.domainId, description: r.description,
     }))),
+    customFields: {},
   }
 }
 
@@ -102,6 +106,11 @@ export async function persistOps(
   db: DbLike, projectId: string, ops: readonly Op[],
 ): Promise<void> {
   for (const op of ops) {
+    // Task 3에서 model_custom_fields 테이블과 함께 제거되는 임시 가드.
+    // plain Error가 아니라 OpApplyError여야 라우터가 400으로 매핑한다(500 방지).
+    if (op.entity === 'customField') {
+      throw new OpApplyError('커스텀 항목은 아직 저장할 수 없습니다')
+    }
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
     if (op.action === 'create') {

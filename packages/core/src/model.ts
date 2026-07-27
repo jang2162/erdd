@@ -11,6 +11,7 @@ export const TableSchema = z.strictObject({
   groupId: z.string().nullable(),
   position: PositionSchema,
   groupPosition: PositionSchema.nullable(),
+  custom: z.record(z.string(), z.string()).default({}),
 })
 export type Table = z.infer<typeof TableSchema>
 
@@ -27,6 +28,7 @@ export const ColumnSchema = z.strictObject({
   order: z.number().int(),
   comment: z.string().nullable(),
   domainId: z.string().nullable().default(null),
+  custom: z.record(z.string(), z.string()).default({}),
 })
 export type Column = z.infer<typeof ColumnSchema>
 
@@ -104,6 +106,18 @@ export const TermSchema = z.strictObject({
 })
 export type Term = z.infer<typeof TermSchema>
 
+export const CustomFieldSchema = z.strictObject({
+  id: z.string(),
+  name: z.string(),                              // "개인정보여부"
+  target: z.enum(['table', 'column']),           // 적용 대상
+  type: z.enum(['text', 'boolean', 'select']),
+  options: z.array(z.string()),                  // select일 때만 사용(그 외 [])
+  required: z.boolean(),                         // boolean 타입에는 적용하지 않는다(항상 값이 있음)
+  defaultValue: z.string().nullable(),
+  order: z.number().int(),                       // 같은 target 안에서의 표시 순서
+})
+export type CustomField = z.infer<typeof CustomFieldSchema>
+
 export const ProjectModelSchema = z.strictObject({
   tables: z.record(z.string(), TableSchema),
   columns: z.record(z.string(), ColumnSchema),
@@ -114,12 +128,13 @@ export const ProjectModelSchema = z.strictObject({
   domains: z.record(z.string(), DomainSchema),
   words: z.record(z.string(), WordSchema).default({}),
   terms: z.record(z.string(), TermSchema).default({}),
+  customFields: z.record(z.string(), CustomFieldSchema).default({}),
 })
 export type ProjectModel = z.infer<typeof ProjectModelSchema>
 
 export function createEmptyModel(): ProjectModel {
   return {
     tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {},
-    domains: {}, words: {}, terms: {},
+    domains: {}, words: {}, terms: {}, customFields: {},
   }
 }

@@ -6,12 +6,12 @@ import type { NamingRules } from './naming.js'
 
 function tbl(id: string, over: Partial<Table> = {}): Table {
   return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, ...over }
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {}, ...over }
 }
 function col(id: string, tableId: string, physicalName: string, over: Partial<Column> = {}): Column {
   return { id, tableId, logicalName: id, physicalName, type: 'BIGINT', isPk: false,
     autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
-    domainId: null, ...over }
+    domainId: null, custom: {}, ...over }
 }
 function word(id: string, logicalName: string, abbreviation: string): Word {
   return { id, logicalName, abbreviation, description: null }

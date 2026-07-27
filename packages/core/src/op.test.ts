@@ -153,7 +153,7 @@ describe('applyOps', () => {
   it('컬럼이 존재하지 않는 도메인을 가리키면 무결성 위반', () => {
     const m = createEmptyModel()
     m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null }
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
     expect(() => applyOps(m, [{ action: 'create', entity: 'column', entityId: 'c', data: {
       id: 'c', tableId: 't', logicalName: 'A', physicalName: 'A', type: 'INT', isPk: false,
       autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
@@ -179,5 +179,48 @@ describe('applyOps', () => {
     delete legacy.words; delete legacy.terms
     const out = applyOps(legacy as ReturnType<typeof createEmptyModel>, [])
     expect(out.words).toEqual({}); expect(out.terms).toEqual({})
+  })
+
+  it('customField 엔티티를 왕복하고 table/column의 custom 값을 갱신한다', () => {
+    const m = createEmptyModel()
+    const field = {
+      id: 'f1', name: '개인정보여부', target: 'column', type: 'boolean',
+      options: [], required: false, defaultValue: null, order: 0,
+    }
+    const withField = applyOps(m, [
+      { action: 'create', entity: 'customField', entityId: 'f1', data: field },
+    ])
+    expect(withField.customFields['f1']!.name).toBe('개인정보여부')
+
+    const withTable = applyOps(withField, [
+      { action: 'create', entity: 'table', entityId: 't1', data: {
+        id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null,
+        position: { x: 0, y: 0 }, groupPosition: null, custom: {} } },
+      { action: 'create', entity: 'column', entityId: 'c1', data: {
+        id: 'c1', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM', type: 'VARCHAR(100)',
+        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0,
+        comment: null, domainId: null, custom: { f1: 'true' } } },
+    ])
+    expect(withTable.columns['c1']!.custom).toEqual({ f1: 'true' })
+
+    const updated = applyOps(withTable, [
+      { action: 'update', entity: 'column', entityId: 'c1',
+        changes: { custom: { from: { f1: 'true' }, to: { f1: 'false' } } } },
+    ])
+    expect(updated.columns['c1']!.custom).toEqual({ f1: 'false' })
+
+    // 정의를 지워도(dangling 키가 남아도) 무결성 위반이 아니다 — 관대 정책
+    const dropped = applyOps(updated, [
+      { action: 'delete', entity: 'customField', entityId: 'f1', before: field },
+    ])
+    expect(dropped.customFields['f1']).toBeUndefined()
+    expect(dropped.columns['c1']!.custom).toEqual({ f1: 'false' })
+  })
+
+  it('customFields 생략된 옛 모델도 파싱된다(.default)', () => {
+    const legacy = { ...createEmptyModel() } as Record<string, unknown>
+    delete legacy.customFields
+    const out = applyOps(legacy as ReturnType<typeof createEmptyModel>, [])
+    expect(out.customFields).toEqual({})
   })
 })

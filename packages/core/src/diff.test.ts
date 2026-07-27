@@ -103,4 +103,38 @@ describe('diffModels', () => {
     const ops = diffModels(base, target)
     expect(applyOps(base, ops)).toEqual(target)
   })
+
+  it('orders customField creates before table/column creates and deletes after them', () => {
+    const empty = createEmptyModel()
+    const target = buildSampleModel()
+    target.customFields['f1'] = {
+      id: 'f1', name: '개인정보여부', target: 'column', type: 'boolean',
+      options: [], required: false, defaultValue: null, order: 0,
+    }
+    target.columns.c1!.custom = { f1: 'true' }
+
+    const createOps = diffModels(empty, target)
+    const kinds = createOps.map((o) => `${o.action}:${o.entity}`)
+    expect(kinds.indexOf('create:customField')).toBeGreaterThanOrEqual(0)
+    expect(kinds.indexOf('create:table')).toBeGreaterThan(kinds.indexOf('create:customField'))
+    expect(applyOps(empty, createOps)).toEqual(target)
+
+    const deleteOps = diffModels(target, empty)
+    const dkinds = deleteOps.map((o) => `${o.action}:${o.entity}`)
+    expect(dkinds.lastIndexOf('delete:column')).toBeLessThan(dkinds.indexOf('delete:customField'))
+    expect(applyOps(target, deleteOps)).toEqual(empty)
+  })
+
+  it('does not emit an update op when the target entity merely lacks a property the base has', () => {
+    // 구 스냅샷 복원 회귀 가드: 스냅샷 jsonb의 table에는 custom 키가 없고 현재 모델에는 있다.
+    // 이때 changes가 빈 객체인 update op가 나가면 persistOps가 값 없는 UPDATE를 실행해 터진다.
+    const base = buildSampleModel()
+    const target = structuredClone(base)
+    const legacyTable = { ...target.tables.t1! } as Record<string, unknown>
+    delete legacyTable.custom
+    target.tables.t1 = legacyTable as unknown as NonNullable<typeof base.tables.t1>
+
+    const ops = diffModels(base, target)
+    expect(ops.filter((o) => o.action === 'update')).toEqual([])
+  })
 })

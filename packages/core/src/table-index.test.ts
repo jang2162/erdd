@@ -5,11 +5,12 @@ import { createEmptyModel, type Column, type ProjectModel, type Table } from './
 
 function tbl(id: string): Table {
   return { id, logicalName: id, physicalName: id.toUpperCase(), comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null }
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
 }
 function col(id: string, tableId: string): Column {
   return { id, tableId, logicalName: id, physicalName: id.toUpperCase(), type: 'BIGINT', isPk: false,
-    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null }
+    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null,
+    custom: {} }
 }
 function base(): ProjectModel {
   const m = createEmptyModel()

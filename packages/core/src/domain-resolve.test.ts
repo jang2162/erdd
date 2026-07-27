@@ -5,12 +5,12 @@ import { resolveColumn } from './domain-resolve.js'
 function base(): ProjectModel {
   const m = createEmptyModel()
   m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null }
+    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
   return m
 }
 const col = (over = {}) => ({ id: 'c', tableId: 't', logicalName: 'A', physicalName: 'A',
   type: 'INT', isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
-  order: 0, comment: null, domainId: null, ...over })
+  order: 0, comment: null, domainId: null, custom: {}, ...over })
 
 describe('resolveColumn', () => {
   it('직접입력 컬럼은 타입을 그대로 변환', () => {

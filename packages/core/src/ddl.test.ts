@@ -4,12 +4,12 @@ import { createEmptyModel, type ProjectModel, type Table, type Column } from './
 
 function tbl(id: string, physicalName: string, over: Partial<Table> = {}): Table {
   return { id, logicalName: physicalName, physicalName, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, ...over }
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {}, ...over }
 }
 function col(id: string, tableId: string, physicalName: string, type: string, over: Partial<Column> = {}): Column {
   return { id, tableId, logicalName: physicalName, physicalName, type, isPk: false,
     autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
-    domainId: null, ...over }
+    domainId: null, custom: {}, ...over }
 }
 
 function usersModel(): ProjectModel {
