@@ -164,4 +164,35 @@ describe.skipIf(!url)('snapshot', () => {
     })
     expect(nonexistentDelete.statusCode).toBe(404)
   })
+
+  it('restores a pre-custom-fields snapshot whose tables have no custom key, without crashing', async () => {
+    const target = withUuidIds(buildSampleModel())
+    await post(app, 'model.mutate', token, { projectId, ops: diffModels(createEmptyModel(), target) })
+
+    // 커스텀 항목 도입 이전에 저장된 스냅샷 jsonb를 재현: customFields 키가 없고
+    // 각 table/column에도 custom 키가 없다. diffModels가 빈 changes update를 내면
+    // persistOps가 값 없는 UPDATE로 터진다(Task 1의 diff 수정이 이걸 막는다).
+    const legacyModel = JSON.parse(JSON.stringify(target)) as Record<string, unknown>
+    delete legacyModel.customFields
+    for (const t of Object.values(legacyModel.tables as Record<string, Record<string, unknown>>)) {
+      delete t.custom
+    }
+    for (const c of Object.values(legacyModel.columns as Record<string, Record<string, unknown>>)) {
+      delete c.custom
+    }
+
+    const snapshotId = uuidv7()
+    await app.db!.insert(snapshots).values({
+      id: snapshotId, projectId, name: '레거시 스냅샷(커스텀 항목 이전)', description: '',
+      revisionSeq: 1, model: legacyModel as unknown as ProjectModel,
+    })
+
+    const restored = await post(app, 'snapshot.restore', token, { projectId, snapshotId })
+    expect(restored.statusCode).toBe(200)
+
+    const after = (await get(app, 'model.get', token, { projectId })).json().result.data
+    expect(after.model.customFields).toEqual({})
+    const tableId = Object.keys(target.tables)[0]!
+    expect(after.model.tables[tableId].custom).toEqual({})
+  })
 })

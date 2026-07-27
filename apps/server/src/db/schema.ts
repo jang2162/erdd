@@ -80,6 +80,7 @@ export const modelTables = pgTable('model_tables', {
   groupId: uuid('group_id').references(() => modelTableGroups.id),
   position: jsonb('position').$type<{ x: number; y: number }>().notNull(),
   groupPosition: jsonb('group_position').$type<{ x: number; y: number }>(),
+  custom: jsonb('custom').$type<Record<string, string>>().notNull().default({}),
 })
 
 export const modelColumns = pgTable('model_columns', {
@@ -96,6 +97,7 @@ export const modelColumns = pgTable('model_columns', {
   order: integer('order').notNull(),
   comment: text('comment'),
   domainId: uuid('domain_id').references(() => modelDomains.id),
+  custom: jsonb('custom').$type<Record<string, string>>().notNull().default({}),
 })
 
 export const modelDomains = pgTable('model_domains', {
@@ -126,6 +128,18 @@ export const modelTerms = pgTable('model_terms', {
   physicalName: text('physical_name').notNull(),
   domainId: uuid('domain_id').references(() => modelDomains.id),
   description: text('description'),
+})
+
+export const modelCustomFields = pgTable('model_custom_fields', {
+  id: uuid('id').primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  target: text('target', { enum: ['table', 'column'] }).notNull(),
+  type: text('type', { enum: ['text', 'boolean', 'select'] }).notNull(),
+  options: jsonb('options').$type<string[]>().notNull(),
+  required: boolean('required').notNull(),
+  defaultValue: text('default_value'),
+  order: integer('order').notNull(),
 })
 
 export const modelRelationships = pgTable('model_relationships', {

@@ -43,6 +43,13 @@
       "when": 1784999989246,
       "tag": "0005_hard_spyke",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785119532378,
+      "tag": "0006_secret_nightcrawler",
+      "breakpoints": true
     }
   ]
 }

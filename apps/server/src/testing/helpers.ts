@@ -38,14 +38,21 @@ export function withUuidIds(model: ProjectModel): ProjectModel {
       const next = fix({ ...e, id: nid(e.id) })
       return [next.id, next]
     }))
+  const remapCustom = (custom: Record<string, string>): Record<string, string> =>
+    Object.fromEntries(Object.entries(custom).map(([fieldId, v]) => [nid(fieldId), v]))
 
   return {
     tableGroups: remapRecord(model.tableGroups, (g) => g),
     tables: remapRecord(model.tables, (t) => ({
-      ...t, groupId: t.groupId === null ? null : nid(t.groupId),
+      ...t,
+      groupId: t.groupId === null ? null : nid(t.groupId),
+      custom: remapCustom(t.custom),
     })),
     columns: remapRecord(model.columns, (c) => ({
-      ...c, tableId: nid(c.tableId), domainId: c.domainId === null ? null : nid(c.domainId),
+      ...c,
+      tableId: nid(c.tableId),
+      domainId: c.domainId === null ? null : nid(c.domainId),
+      custom: remapCustom(c.custom),
     })),
     relationships: remapRecord(model.relationships, (r) => ({
       ...r,

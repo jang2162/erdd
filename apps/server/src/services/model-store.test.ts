@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import {
-  applyOps, createEmptyModel, diffModels, type Domain, type Term, type Word,
+  applyOps, createEmptyModel, diffModels, type CustomField, type Domain, type Term, type Word,
 } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { uuidv7 } from 'uuidv7'
@@ -271,5 +271,77 @@ describe.skipIf(!url)('model-store', () => {
     ])
     const reloaded = await loadProjectModel(app.db!, projectId)
     expect(reloaded.notes[noteId]).toBeDefined()
+  })
+
+  it('persists customField ops and table/column custom values roundtrip', async () => {
+    const base = withUuidIds(buildSampleModel())
+    await persistOps(app.db!, projectId, diffModels(createEmptyModel(), base))
+
+    const fieldId = uuidv7()
+    const field: CustomField = {
+      id: fieldId, name: '개인정보여부', target: 'column', type: 'select',
+      options: ['Y', 'N'], required: true, defaultValue: 'N', order: 0,
+    }
+    const columnId = Object.keys(base.columns)[0]!
+
+    await persistOps(app.db!, projectId, [
+      { action: 'create', entity: 'customField', entityId: fieldId, data: field },
+      {
+        action: 'update', entity: 'column', entityId: columnId,
+        changes: { custom: { from: {}, to: { [fieldId]: 'Y' } } },
+      },
+    ])
+    let loaded = await loadProjectModel(app.db!, projectId)
+    expect(loaded.customFields[fieldId]).toEqual(field)
+    expect(loaded.columns[columnId]!.custom).toEqual({ [fieldId]: 'Y' })
+
+    const updated: CustomField = { ...field, name: '개인정보', options: ['Y', 'N', 'X'], order: 2 }
+    await persistOps(app.db!, projectId, [
+      {
+        action: 'update', entity: 'customField', entityId: fieldId,
+        changes: {
+          name: { from: field.name, to: updated.name },
+          options: { from: field.options, to: updated.options },
+          order: { from: field.order, to: updated.order },
+        },
+      },
+    ])
+    loaded = await loadProjectModel(app.db!, projectId)
+    expect(loaded.customFields[fieldId]).toEqual(updated)
+
+    await persistOps(app.db!, projectId, [
+      {
+        action: 'update', entity: 'column', entityId: columnId,
+        changes: { custom: { from: { [fieldId]: 'Y' }, to: {} } },
+      },
+      { action: 'delete', entity: 'customField', entityId: fieldId, before: updated },
+    ])
+    loaded = await loadProjectModel(app.db!, projectId)
+    expect(loaded.customFields[fieldId]).toBeUndefined()
+    expect(loaded.columns[columnId]!.custom).toEqual({})
+  })
+
+  it('persists a single batch with customField + table/column custom values (create and delete)', async () => {
+    // 스냅샷 복원은 diffModels가 만든 단일 배치를 그대로 persist한다. customField가
+    // table/column보다 먼저 생성되고 나중에 삭제되는지 실 DB로 확인하는 회귀 가드.
+    const target = buildSampleModel()
+    const fieldId = 'cf1'
+    target.customFields[fieldId] = {
+      id: fieldId, name: '개인정보여부', target: 'column', type: 'boolean',
+      options: [], required: false, defaultValue: null, order: 0,
+    }
+    target.columns.c1!.custom = { [fieldId]: 'true' }
+    const full = withUuidIds(target)
+    const empty = createEmptyModel()
+
+    const createOps = diffModels(empty, full)
+    expect(applyOps(empty, createOps)).toEqual(full)
+    await persistOps(app.db!, projectId, createOps)
+    expect(await loadProjectModel(app.db!, projectId)).toEqual(full)
+
+    const deleteOps = diffModels(full, empty)
+    expect(applyOps(full, deleteOps)).toEqual(empty)
+    await persistOps(app.db!, projectId, deleteOps)
+    expect(await loadProjectModel(app.db!, projectId)).toEqual(empty)
   })
 })

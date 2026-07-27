@@ -1,14 +1,13 @@
 import { and, eq } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import {
-  OpApplyError,
-  type Column, type Domain, type IndexDef, type Note, type Op, type ProjectModel,
-  type Relationship, type Table, type TableGroup, type Term, type Word,
+  type Column, type CustomField, type Domain, type IndexDef, type Note, type Op,
+  type ProjectModel, type Relationship, type Table, type TableGroup, type Term, type Word,
 } from '@erdd/core'
 import * as schema from '../db/schema.js'
 import {
-  modelColumns, modelDomains, modelIndexes, modelNotes, modelRelationships, modelTableGroups,
-  modelTables, modelTerms, modelWords,
+  modelColumns, modelCustomFields, modelDomains, modelIndexes, modelNotes, modelRelationships,
+  modelTableGroups, modelTables, modelTerms, modelWords,
 } from '../db/schema.js'
 
 /** Db와 drizzle 트랜잭션 객체가 공유하는 쿼리 인터페이스. */
@@ -26,6 +25,7 @@ const TABLE_BY_KIND = {
   domain: modelDomains,
   word: modelWords,
   term: modelTerms,
+  customField: modelCustomFields,
 } as const
 
 function keyed<T extends { id: string }>(rows: T[]): Record<string, T> {
@@ -51,6 +51,8 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
     .where(eq(modelWords.projectId, projectId))
   const termRows = await db.select().from(modelTerms)
     .where(eq(modelTerms.projectId, projectId))
+  const customFieldRows = await db.select().from(modelCustomFields)
+    .where(eq(modelCustomFields.projectId, projectId))
 
   return {
     tableGroups: keyed(groupRows.map((r): TableGroup => ({
@@ -59,15 +61,13 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
     tables: keyed(tableRows.map((r): Table => ({
       id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,
       comment: r.comment, groupId: r.groupId, position: r.position,
-      groupPosition: r.groupPosition ?? null,
-      custom: {}, // Task 3에서 r.custom으로 교체(아직 컬럼 없음)
+      groupPosition: r.groupPosition ?? null, custom: r.custom ?? {},
     }))),
     columns: keyed(columnRows.map((r): Column => ({
       id: r.id, tableId: r.tableId, logicalName: r.logicalName, physicalName: r.physicalName,
       type: r.type, isPk: r.isPk, autoIncrement: r.autoIncrement, nullable: r.nullable,
       defaultValue: r.defaultValue, order: r.order, comment: r.comment,
-      domainId: r.domainId,
-      custom: {}, // Task 3에서 r.custom으로 교체(아직 컬럼 없음)
+      domainId: r.domainId, custom: r.custom ?? {},
     }))),
     relationships: keyed(relRows.map((r): Relationship => ({
       id: r.id, parentTableId: r.parentTableId, childTableId: r.childTableId,
@@ -93,7 +93,10 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
       id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,
       domainId: r.domainId, description: r.description,
     }))),
-    customFields: {},
+    customFields: keyed(customFieldRows.map((r): CustomField => ({
+      id: r.id, name: r.name, target: r.target, type: r.type, options: r.options,
+      required: r.required, defaultValue: r.defaultValue, order: r.order,
+    }))),
   }
 }
 
@@ -106,11 +109,6 @@ export async function persistOps(
   db: DbLike, projectId: string, ops: readonly Op[],
 ): Promise<void> {
   for (const op of ops) {
-    // Task 3에서 model_custom_fields 테이블과 함께 제거되는 임시 가드.
-    // plain Error가 아니라 OpApplyError여야 라우터가 400으로 매핑한다(500 방지).
-    if (op.entity === 'customField') {
-      throw new OpApplyError('커스텀 항목은 아직 저장할 수 없습니다')
-    }
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
     if (op.action === 'create') {

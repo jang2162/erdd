@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { desc, eq } from 'drizzle-orm'
-import { uuidv7 } from 'uuidv7'
 import { createEmptyModel, diffModels, type Op } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { revisions } from '../db/schema.js'
@@ -155,18 +154,4 @@ describe.skipIf(!url)('model', () => {
     })
   })
 
-  it('rejects a customField op with 400 (임시 가드는 OpApplyError여야 한다)', async () => {
-    const fieldId = uuidv7()
-    const res = await post(app, 'model.mutate', editorToken, {
-      projectId,
-      ops: [{
-        action: 'create', entity: 'customField', entityId: fieldId,
-        data: {
-          id: fieldId, name: '개인정보여부', target: 'column', type: 'boolean',
-          options: [], required: false, defaultValue: null, order: 0,
-        },
-      }],
-    })
-    expect(res.statusCode).toBe(400)
-  })
 })
