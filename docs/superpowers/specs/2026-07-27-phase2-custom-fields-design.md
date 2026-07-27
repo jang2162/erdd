@@ -122,6 +122,8 @@ removeCustomField(model, id)                                     // 정의 삭�
 setCustomValue(model, target, entityId, fieldId, value: string)  // '' 이면 키 삭제(미입력으로 환원)
 ```
 
+- 사용 건수(삭제 확인 카피·선택지 가드)는 core의 `customFieldUsageCount`/`customOptionUsageCount`를 그대로 쓴다(web에 별도 헬퍼를 두지 않는다).
+
 - `removeCustomField`는 **한 producer 안에서** 정의 삭제와 값 정리를 모두 수행한다 → 단일 뮤테이션 = Revision 1건, undo 1회로 원복.
 - `type`·`target`은 patch에서 제외(타입 변경 불허 — 삭제 후 재생성).
 
