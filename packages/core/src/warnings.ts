@@ -2,6 +2,7 @@ import type { ProjectModel, Term } from './model.js'
 import { generatePhysicalName, type NamingRules } from './naming.js'
 import { isReservedWord } from './identifier.js'
 import type { Dialect } from './dialect.js'
+import { customFieldsFor, resolveCustomValue } from './custom-field.js'
 
 export type Warning = {
   kind:
@@ -13,6 +14,7 @@ export type Warning = {
     | 'too-long'
     | 'reserved'
     | 'duplicate-physical-table'
+    | 'custom-required'
   scope: 'table' | 'column' | 'relationship'
   entityId: string
   tableId?: string
@@ -140,6 +142,30 @@ export function computeWarnings(
         })
       }
     }
+  }
+
+  // 5) 커스텀 항목 필수 미입력 — 명명 규칙과 무관하므로 rules 게이트 밖에서 계산한다.
+  const tableFields = customFieldsFor(model, 'table')
+  const columnFields = customFieldsFor(model, 'column')
+  const checkRequired = (
+    scope: 'table' | 'column', entityId: string, tableId: string | undefined,
+    entity: { custom: Record<string, string> }, fields: typeof tableFields,
+  ) => {
+    for (const field of fields) {
+      // boolean은 체크박스라 "미입력"이 없다 → 필수 검사 대상 아님
+      if (!field.required || field.type === 'boolean') continue
+      if (resolveCustomValue(entity, field) !== '') continue
+      warnings.push({
+        kind: 'custom-required', scope, entityId, tableId,
+        message: `필수 항목 "${field.name}"이(가) 비어 있습니다`,
+      })
+    }
+  }
+  if (tableFields.length > 0) {
+    for (const t of Object.values(model.tables)) checkRequired('table', t.id, undefined, t, tableFields)
+  }
+  if (columnFields.length > 0) {
+    for (const c of Object.values(model.columns)) checkRequired('column', c.id, c.tableId, c, columnFields)
   }
 
   return warnings

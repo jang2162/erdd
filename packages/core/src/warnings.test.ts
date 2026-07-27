@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeWarnings } from './warnings.js'
-import type { Column, ProjectModel, Relationship, Table, Term, Word } from './model.js'
+import type { Column, CustomField, ProjectModel, Relationship, Table, Term, Word } from './model.js'
 import { createEmptyModel } from './model.js'
 import type { NamingRules } from './naming.js'
 
@@ -139,5 +139,59 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     m.columns['A'] = col('A', 'T1', 'ORDER_NUMBER', { logicalName: '주문번호쿠폰' })
     const namingKinds = ['unknown-word', 'term-mismatch', 'too-long', 'reserved', 'duplicate-physical-table']
     expect(computeWarnings(m).every((w) => !namingKinds.includes(w.kind))).toBe(true)
+  })
+
+  it('필수 커스텀 항목이 비어 있으면 경고한다(rules 없이 호출해도 계산된다)', () => {
+    const m = createEmptyModel()
+    m.customFields['f1'] = {
+      id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
+      options: ['Y', 'N'], required: true, defaultValue: null, order: 0,
+    }
+    m.tables['T'] = tbl('T')
+    m.columns['A'] = col('A', 'T', 'NAME')
+    const w = computeWarnings(m).filter((x) => x.kind === 'custom-required')
+    expect(w).toHaveLength(1)
+    expect(w[0]!.entityId).toBe('A')
+    expect(w[0]!.tableId).toBe('T')
+    expect(w[0]!.message).toContain('개인정보여부')
+  })
+
+  it('값이 있거나 기본값이 있으면 필수 경고를 내지 않는다', () => {
+    const m = createEmptyModel()
+    m.customFields['f1'] = {
+      id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
+      options: ['Y', 'N'], required: true, defaultValue: null, order: 0,
+    }
+    m.customFields['f2'] = {
+      id: 'f2', name: '암호화방식', target: 'column', type: 'text',
+      options: [], required: true, defaultValue: '없음', order: 1,
+    }
+    m.tables['T'] = tbl('T')
+    m.columns['A'] = col('A', 'T', 'NAME', { custom: { f1: 'Y' } })
+    expect(computeWarnings(m).filter((x) => x.kind === 'custom-required')).toEqual([])
+  })
+
+  it('boolean 타입은 필수여도 경고하지 않는다(체크박스는 항상 값이 있다)', () => {
+    const m = createEmptyModel()
+    m.customFields['f1'] = {
+      id: 'f1', name: '개인정보여부', target: 'column', type: 'boolean',
+      options: [], required: true, defaultValue: null, order: 0,
+    }
+    m.tables['T'] = tbl('T')
+    m.columns['A'] = col('A', 'T', 'NAME')
+    expect(computeWarnings(m).filter((x) => x.kind === 'custom-required')).toEqual([])
+  })
+
+  it('테이블 대상 필수 항목은 테이블 scope로 경고한다', () => {
+    const m = createEmptyModel()
+    m.customFields['f1'] = {
+      id: 'f1', name: '업무구분', target: 'table', type: 'text',
+      options: [], required: true, defaultValue: null, order: 0,
+    }
+    m.tables['T'] = tbl('T')
+    const w = computeWarnings(m).filter((x) => x.kind === 'custom-required')
+    expect(w).toHaveLength(1)
+    expect(w[0]!.scope).toBe('table')
+    expect(w[0]!.entityId).toBe('T')
   })
 })
