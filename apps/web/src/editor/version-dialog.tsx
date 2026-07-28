@@ -6,6 +6,7 @@ import { useTRPC } from '@/lib/trpc'
 import { formatCreatedAt } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { HistoryView } from './history-view.js'
+import { SnapshotDiff } from './snapshot-diff.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,7 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
 
-type Section = 'snapshot' | 'history'
+type Section = 'snapshot' | 'history' | 'diff'
 
 /** 스냅샷 목록의 한 항목: 이름/설명/리비전/생성일 + 복원·삭제. 클릭하면 snapshot.get으로 요약을 펼쳐 보여준다(열람). */
 function SnapshotRow({
@@ -189,10 +190,20 @@ export function VersionDialog({ projectId }: { projectId: string }) {
           >
             이력
           </Button>
+          <Button
+            type="button" size="sm" variant={section === 'diff' ? 'default' : 'outline'}
+            onClick={() => setSection('diff')}
+          >
+            비교
+          </Button>
         </div>
-        {section === 'snapshot'
-          ? <SnapshotSection projectId={projectId} onRestored={() => setOpen(false)} />
-          : <HistoryView projectId={projectId} />}
+        {section === 'snapshot' && (
+          <SnapshotSection projectId={projectId} onRestored={() => setOpen(false)} />
+        )}
+        {section === 'history' && <HistoryView projectId={projectId} />}
+        {section === 'diff' && (
+          <SnapshotDiff projectId={projectId} onNavigate={() => setOpen(false)} />
+        )}
       </DialogContent>
     </Dialog>
   )
