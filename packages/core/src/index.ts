@@ -26,6 +26,11 @@ export {
   TABLE_LIST_HEADERS, TABLE_SPEC_HEADERS, buildExcelSheets, buildDictTemplateSheets,
 } from './excel-sheets.js'
 export type { ExcelSheetKey, SheetData } from './excel-sheets.js'
+export { planDictImport } from './excel-import.js'
+export type {
+  DictSheetKey, RawSheet, DictImportIssue, DictImportEntry, DictImportCounts,
+  DictImportPlan, TermDraft,
+} from './excel-import.js'
 export { OpParseError, parseOps } from './op-guard.js'
 export {
   createRelationshipFromParentPk, remapRelationshipChildColumn, setRelationshipIdentifying,
