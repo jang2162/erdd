@@ -72,4 +72,21 @@ describe('DictPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /사전/ }))
     expect(screen.getByRole('button', { name: '회원 삭제' })).toBeEnabled()
   })
+
+  it('가져오기 탭에 양식 다운로드와 파일 선택이 있다', async () => {
+    loadModelWithDict()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
+    expect(screen.getByRole('button', { name: /양식 다운로드/ })).toBeInTheDocument()
+    expect(screen.getByLabelText('Excel 파일 선택')).toBeInTheDocument()
+  })
+
+  it('단어 편집 폼에 영문명 입력란이 있다', async () => {
+    loadModelWithDict()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+    await userEvent.click(screen.getByRole('button', { name: '단어 추가' }))
+    expect(screen.getByLabelText('영문명')).toBeInTheDocument()
+  })
 })
