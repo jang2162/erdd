@@ -118,3 +118,17 @@ describe('origin (공용 리소스 원본 참조)', () => {
     expect(DomainSchema.safeParse({ ...domainPayload, origin: bad }).success).toBe(false)
   })
 })
+
+describe('WordSchema englishName', () => {
+  it('englishName이 없는 옛 페이로드는 null로 파싱된다 (구 리비전 하위호환)', () => {
+    const legacyWord = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null }
+    expect(WordSchema.parse(legacyWord).englishName).toBeNull()
+  })
+
+  it('englishName 값을 그대로 보존한다', () => {
+    const word = {
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', description: null,
+    }
+    expect(WordSchema.parse(word)).toEqual({ ...word, origin: null })
+  })
+})

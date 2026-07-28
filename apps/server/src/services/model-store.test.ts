@@ -148,7 +148,8 @@ describe.skipIf(!url)('model-store', () => {
       defaultValue: null, allowedValues: [], description: null, origin: null,
     }
     const word: Word = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null, origin: null,
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+      englishName: null, description: null, origin: null,
     }
     raw.words[word.id] = word
     const term: Term = {
@@ -389,5 +390,35 @@ describe.skipIf(!url)('model-store', () => {
       }])
     })
     expect((await loadProjectModel(app.db!, projectId)).words[wordId]!.origin).toBeNull()
+  })
+
+  it('단어의 englishName을 왕복 저장·조회한다', async () => {
+    const base = withUuidIds(buildSampleModel())
+    const wordId = uuidv7()
+    const target: typeof base = {
+      ...base,
+      words: {
+        [wordId]: {
+          id: wordId, logicalName: '회원', abbreviation: 'MBR',
+          englishName: 'MEMBER', description: '서비스 가입 주체', origin: null,
+        },
+      },
+    }
+    await persistOps(app.db!, projectId, diffModels(createEmptyModel(), target))
+    const loaded = await loadProjectModel(app.db!, projectId)
+    expect(loaded.words[wordId]).toEqual(target.words[wordId])
+  })
+
+  it('englishName 없이 만든 단어는 null로 읽힌다 (구 리비전 하위호환)', async () => {
+    const wordId = uuidv7()
+    const legacyPayload = {
+      id: wordId, logicalName: '주문', abbreviation: 'ORD', description: null,
+    }
+    // CreateOp.data는 unknown이라 englishName이 빠진 옛 페이로드를 그대로 넣을 수 있다.
+    await persistOps(app.db!, projectId, [
+      { action: 'create', entity: 'word', entityId: wordId, data: legacyPayload },
+    ])
+    const loaded = await loadProjectModel(app.db!, projectId)
+    expect(loaded.words[wordId]?.englishName).toBeNull()
   })
 })

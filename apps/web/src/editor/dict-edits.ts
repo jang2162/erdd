@@ -1,6 +1,6 @@
 import {
   type Word, type Term, type Table, type Column, type ProjectModel, type NamingRules,
-  generatePhysicalName,
+  generatePhysicalName, decomposeByWords,
 } from '@erdd/core'
 
 export function createWord(model: ProjectModel, word: Word): ProjectModel {
@@ -47,7 +47,7 @@ function matchesTermExactly(name: string, terms: Record<string, Term>): boolean 
 }
 
 /**
- * logicalName을 naming.ts generatePhysicalName과 동일한 최장일치 규칙으로 분해했을 때
+ * logicalName을 generatePhysicalName과 동일한 최장일치 규칙으로 분해했을 때
  * wordId에 해당하는 단어가 실제로 매치에 쓰였는지 판정한다.
  */
 function usesWord(
@@ -56,19 +56,7 @@ function usesWord(
   const name = logicalName.trim()
   if (name === '') return false
   if (matchesTermExactly(name, terms)) return false
-
-  const byLen = Object.values(words).slice().sort((a, b) => b.logicalName.length - a.logicalName.length)
-  let i = 0
-  while (i < name.length) {
-    const match = byLen.find((w) => w.logicalName.length > 0 && name.startsWith(w.logicalName, i))
-    if (match) {
-      if (match.id === wordId) return true
-      i += match.logicalName.length
-    } else {
-      i += 1
-    }
-  }
-  return false
+  return decomposeByWords(name, words).some((s) => s.word?.id === wordId)
 }
 
 /** 그 단어의 logicalName이 논리명 분해에 실제로 쓰인 테이블/컬럼 목록. */

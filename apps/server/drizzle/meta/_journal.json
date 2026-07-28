@@ -64,6 +64,13 @@
       "when": 1785213928975,
       "tag": "0008_lethal_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785215749131,
+      "tag": "0009_youthful_stick",
+      "breakpoints": true
     }
   ]
 }

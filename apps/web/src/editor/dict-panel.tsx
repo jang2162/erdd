@@ -8,6 +8,7 @@ import {
   createTerm, createWord, removeTerm, removeWord, termUsage, unregisteredWords, updateTerm, updateWord,
   wordUsage,
 } from './dict-edits.js'
+import { DictImportSection } from './dict-import-section.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,7 +16,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
 
-type Section = 'words' | 'terms' | 'unregistered'
+type Section = 'words' | 'terms' | 'unregistered' | 'import'
 
 /** 헤더의 "사전": 물리명 자동 생성에 쓰이는 단어·용어 사전의 목록·추가·편집·삭제, 사용처, 미등록 단어 모아보기. */
 export function DictPanel({ projectId }: { projectId: string }) {
@@ -67,6 +68,12 @@ export function DictPanel({ projectId }: { projectId: string }) {
               onClick={() => setSection('unregistered')}
             >
               미등록 단어{candidates.length > 0 ? ` (${candidates.length})` : ''}
+            </Button>
+            <Button
+              type="button" size="sm" variant={section === 'import' ? 'default' : 'outline'}
+              onClick={() => setSection('import')}
+            >
+              가져오기
             </Button>
           </div>
 
@@ -157,6 +164,7 @@ export function DictPanel({ projectId }: { projectId: string }) {
           )}
 
           {section === 'unregistered' && <UnregisteredWordsSection projectId={projectId} candidates={candidates} />}
+          {section === 'import' && <DictImportSection projectId={projectId} />}
         </DialogContent>
       </Dialog>
       {wordEditorOpen && (
@@ -198,8 +206,8 @@ function UnregisteredWordsSection({ projectId, candidates }: { projectId: string
     void mutate(
       (m: ProjectModel) => registrations.reduce(
         (acc, r) => createWord(acc, {
-          id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation, description: null,
-          origin: null,
+          id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
+          englishName: null, description: null, origin: null,
         }),
         m,
       ),
@@ -258,6 +266,7 @@ function WordEditDialog({
 
   const [logicalName, setLogicalName] = useState(word?.logicalName ?? '')
   const [abbreviation, setAbbreviation] = useState(word?.abbreviation ?? '')
+  const [englishName, setEnglishName] = useState(word?.englishName ?? '')
   const [description, setDescription] = useState(word?.description ?? '')
 
   const logicalNameInvalid = logicalName.trim() === ''
@@ -268,6 +277,7 @@ function WordEditDialog({
     if (trimmedLogicalName === '') return
     const trimmedAbbreviation = abbreviation.trim()
     if (trimmedAbbreviation === '') return
+    const trimmedEnglishName = englishName.trim()
     const trimmedDescription = description.trim()
 
     if (word === null) {
@@ -276,6 +286,7 @@ function WordEditDialog({
         id,
         logicalName: trimmedLogicalName,
         abbreviation: trimmedAbbreviation,
+        englishName: trimmedEnglishName === '' ? null : trimmedEnglishName,
         description: trimmedDescription === '' ? null : trimmedDescription,
         origin: null,
       }), { summary: '단어 추가' })
@@ -287,6 +298,7 @@ function WordEditDialog({
     void mutate((m) => updateWord(m, wordId, {
       logicalName: trimmedLogicalName,
       abbreviation: trimmedAbbreviation,
+      englishName: trimmedEnglishName === '' ? null : trimmedEnglishName,
       description: trimmedDescription === '' ? null : trimmedDescription,
     }), { summary: '단어 수정' })
     onOpenChange(false)
@@ -306,6 +318,13 @@ function WordEditDialog({
             <Input
               id="word-abbr" className="font-mono" value={abbreviation}
               onChange={(e) => setAbbreviation(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="word-english">영문명</Label>
+            <Input
+              id="word-english" className="font-mono" value={englishName}
+              onChange={(e) => setEnglishName(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">

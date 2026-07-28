@@ -7,7 +7,7 @@ import {
 } from './dict-edits.js'
 
 const word = (id: string, over = {}) => (
-  { id, logicalName: '주문', abbreviation: 'ORD', description: null, origin: null, ...over }
+  { id, logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null, origin: null, ...over }
 )
 const term = (id: string, over = {}) => (
   { id, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null, origin: null, ...over }

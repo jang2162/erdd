@@ -88,14 +88,14 @@ describe('ResourcePanel', () => {
 
   it('처리할 것이 없으면 적용 버튼이 비활성', async () => {
     const forked: Word = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null,
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null,
       origin: {
         libraryId: 'l1', sourceId: 's1', sourceVersion: 1,
         base: { logicalName: '회원', abbreviation: 'MBR', description: null },
       },
     }
     const forked2: Word = {
-      id: 'w2', logicalName: '주문', abbreviation: 'ORD', description: null,
+      id: 'w2', logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null,
       origin: {
         libraryId: 'l1', sourceId: 's2', sourceVersion: 1,
         base: { logicalName: '주문', abbreviation: 'ORD', description: null },
@@ -113,7 +113,7 @@ describe('ResourcePanel', () => {
 
   it('충돌은 3상태 라디오로 뜨고 일괄 버튼이 모두를 바꾼다', async () => {
     const forked: Word = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MB', description: null,
+      id: 'w1', logicalName: '회원', abbreviation: 'MB', englishName: null, description: null,
       origin: {
         libraryId: 'l1', sourceId: 's1', sourceVersion: 1,
         base: { logicalName: '회원', abbreviation: 'MBR', description: null },
@@ -137,7 +137,7 @@ describe('ResourcePanel', () => {
     // 값을 못 본 채 고르면 원본 개선을 영원히 놓친다. 프로젝트는 MB, 원본은 MEMBER인
     // 케이스라 abbreviation 필드에 두 값이 모두 화면에 보여야 한다.
     const forked: Word = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MB', description: null,
+      id: 'w1', logicalName: '회원', abbreviation: 'MB', englishName: null, description: null,
       origin: {
         libraryId: 'l1', sourceId: 's1', sourceVersion: 1,
         base: { logicalName: '회원', abbreviation: 'MBR', description: null },
@@ -157,7 +157,7 @@ describe('ResourcePanel', () => {
 
   it('충돌에 "모두 프로젝트 유지"를 적용하면 내용은 그대로, origin.sourceVersion만 올라간다', async () => {
     const forked: Word = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MB', description: null,
+      id: 'w1', logicalName: '회원', abbreviation: 'MB', englishName: null, description: null,
       origin: {
         libraryId: 'l1', sourceId: 's1', sourceVersion: 1,
         base: { logicalName: '회원', abbreviation: 'MBR', description: null },
@@ -184,7 +184,7 @@ describe('ResourcePanel', () => {
 
   it('충돌에 "모두 원본 반영"을 적용하면 내용이 원본 값으로 바뀐다', async () => {
     const forked: Word = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MB', description: null,
+      id: 'w1', logicalName: '회원', abbreviation: 'MB', englishName: null, description: null,
       origin: {
         libraryId: 'l1', sourceId: 's1', sourceVersion: 1,
         base: { logicalName: '회원', abbreviation: 'MBR', description: null },
@@ -211,7 +211,7 @@ describe('ResourcePanel', () => {
 
   it('이름이 겹치는 신규는 기본 미선택이고 배지가 붙는다', async () => {
     const local: Word = {
-      id: 'w9', logicalName: '회원', abbreviation: 'MEM', description: null, origin: null,
+      id: 'w9', logicalName: '회원', abbreviation: 'MEM', englishName: null, description: null, origin: null,
     }
     renderPanel({
       'resource.library.listForProject': () => ({ data: LIBS }),

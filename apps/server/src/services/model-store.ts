@@ -87,7 +87,7 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
     }))),
     words: keyed(wordRows.map((r): Word => ({
       id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
-      description: r.description, origin: r.origin ?? null,
+      englishName: r.englishName, description: r.description, origin: r.origin ?? null,
     }))),
     terms: keyed(termRows.map((r): Term => ({
       id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,

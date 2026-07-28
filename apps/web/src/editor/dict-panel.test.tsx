@@ -27,7 +27,10 @@ function renderPanel() {
 function loadModelWithDict() {
   // buildSampleModel의 t2 테이블 논리명은 "회원", c2/c3/c4 컬럼 논리명은 "회원번호"/"회원명"/"등급코드".
   let m = buildSampleModel()
-  m = createWord(m, { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null, origin: null })
+  m = createWord(m, {
+    id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+    englishName: null, description: null, origin: null,
+  })
   m = createTerm(m, {
     id: 'term1', logicalName: '등급코드', physicalName: 'GRD_CD', domainId: null, description: null,
     origin: null,
@@ -72,5 +75,22 @@ describe('DictPanel', () => {
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: /사전/ }))
     expect(screen.getByRole('button', { name: '회원 삭제' })).toBeEnabled()
+  })
+
+  it('가져오기 탭에 양식 다운로드와 파일 선택이 있다', async () => {
+    loadModelWithDict()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
+    expect(screen.getByRole('button', { name: /양식 다운로드/ })).toBeInTheDocument()
+    expect(screen.getByLabelText('Excel 파일 선택')).toBeInTheDocument()
+  })
+
+  it('단어 편집 폼에 영문명 입력란이 있다', async () => {
+    loadModelWithDict()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+    await userEvent.click(screen.getByRole('button', { name: '단어 추가' }))
+    expect(screen.getByLabelText('영문명')).toBeInTheDocument()
   })
 })

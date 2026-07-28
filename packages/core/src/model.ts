@@ -108,6 +108,7 @@ export const WordSchema = z.strictObject({
   id: z.string(),
   logicalName: z.string(),
   abbreviation: z.string(),
+  englishName: z.string().nullable().default(null),   // 회원 → MEMBER. 옛 페이로드 하위호환
   description: z.string().nullable(),
   origin: OriginSchema.nullable().default(null),
 })

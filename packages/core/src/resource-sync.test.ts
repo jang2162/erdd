@@ -37,7 +37,7 @@ function customFieldItem(id: string, name: string, version = 1): LibraryItem {
 function forkedWord(
   id: string, sourceId: string, logicalName: string, abbreviation: string, sourceVersion = 1,
 ): Word {
-  const payload = { logicalName, abbreviation, description: null }
+  const payload = { logicalName, abbreviation, englishName: null, description: null }
   return { id, ...payload, origin: { libraryId: LIB, sourceId, sourceVersion, base: payload } }
 }
 
@@ -84,7 +84,10 @@ describe('planResync — 분류', () => {
   })
 
   it('origin이 없는 항목은 keptLocal이고 계획에 영향이 없다', () => {
-    const local: Word = { id: 'w9', logicalName: '쿠폰', abbreviation: 'CPN', description: null, origin: null }
+    const local: Word = {
+      id: 'w9', logicalName: '쿠폰', abbreviation: 'CPN',
+      englishName: null, description: null, origin: null,
+    }
     const model: ProjectModel = { ...createEmptyModel(), words: { w9: local } }
     const plan = planResync(model, LIB, [])
     expect(plan.keptLocal).toBe(1)
@@ -112,7 +115,10 @@ describe('planResync — 분류', () => {
   })
 
   it('added인데 같은 종류에 같은 이름이 있으면 nameClash', () => {
-    const local: Word = { id: 'w9', logicalName: '회원', abbreviation: 'MEM', description: null, origin: null }
+    const local: Word = {
+      id: 'w9', logicalName: '회원', abbreviation: 'MEM',
+      englishName: null, description: null, origin: null,
+    }
     const model: ProjectModel = { ...createEmptyModel(), words: { w9: local } }
     const plan = planResync(model, LIB, [wordItem('s1', '회원', 'MBR')])
     expect(plan.entries[0]!.nameClash).toBe(true)

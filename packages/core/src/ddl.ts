@@ -9,6 +9,9 @@ export type DdlScope =
   | { kind: 'group'; groupId: string }
   | { kind: 'tables'; tableIds: string[] }
 
+/** 내보내기 범위. DDL 전용이 아니라 Excel 산출물도 같은 범위 개념을 쓴다. */
+export type ExportScope = DdlScope
+
 const INT_KINDS = new Set(['SMALLINT', 'INT', 'BIGINT'])
 
 function isIntegerType(type: string): boolean {

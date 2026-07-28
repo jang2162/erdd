@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { OpApplyError, OpParseError, parseOps, type Op } from '@erdd/core'
+import { MAX_OPS_PER_MUTATION, OpApplyError, OpParseError, parseOps, type Op } from '@erdd/core'
 import { currentSeq, runMutation } from '../services/mutation.js'
 import { loadProjectModel } from '../services/model-store.js'
 import { requireProjectAccess } from '../services/perm.js'
@@ -24,7 +24,7 @@ export const modelRouter = router({
   mutate: authedProcedure
     .input(z.object({
       projectId: z.string().uuid(),
-      ops: z.array(z.unknown()).min(1).max(500),
+      ops: z.array(z.unknown()).min(1).max(MAX_OPS_PER_MUTATION),
       summary: z.string().min(1).max(200).optional(),
     }))
     .mutation(async ({ ctx, input }) => {

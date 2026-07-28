@@ -85,7 +85,10 @@ describe('EditPanel', () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
     m = { ...m,
-      words: { w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null, origin: null } },
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
       columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: '' } },
     }
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
@@ -103,7 +106,10 @@ describe('EditPanel', () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
     m = { ...m,
-      words: { w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null, origin: null } },
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
       columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: 'KEEP_ME' } },
     }
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
