@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { buildDictTemplateSheets, planDictImport, type DictImportPlan } from '@erdd/core'
+import {
+  DICT_SHEET_KEYS, EXCEL_SHEET_NAME, MAX_OPS_PER_MUTATION, buildDictTemplateSheets, planDictImport,
+  type DictImportPlan,
+} from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
@@ -40,20 +43,35 @@ export function DictImportSection({ projectId }: { projectId: string }) {
     }
   }
 
-  const onImport = () => {
+  /**
+   * 사전 전체를 mutation 1건으로 보낸다(undo 한 번으로 원복). 서버가 거절할 수도 있으므로
+   * 결과를 기다렸다가 성공했을 때만 완료를 알리고 미리보기를 치운다 — 실패하면 미리보기를
+   * 남겨 사용자가 그대로 다시 시도할 수 있게 한다.
+   */
+  const onImport = async () => {
     if (!plan) return
     const current = plan
     const currentMode = mode
-    const applied = countApplied(current, currentMode)
-    const summary = `Excel 사전 가져오기 (단어 ${applied.words} · 용어 ${applied.terms} · 도메인 ${applied.domains})`
-    void mutate((m) => applyDictImport(m, current, currentMode, newId), { summary })
+    const counts = countApplied(current, currentMode)
+    const summary = `Excel 사전 가져오기 (단어 ${counts.words} · 용어 ${counts.terms} · 도메인 ${counts.domains})`
+    const ok = await mutate((m) => applyDictImport(m, current, currentMode, newId), { summary })
+    if (!ok) return
     setPlan(null)
     setFileName('')
     toast.success(summary)
   }
 
   const applied = plan ? countApplied(plan, mode) : null
-  const nothingToApply = applied !== null && applied.words + applied.terms + applied.domains === 0
+  const appliedTotal = applied === null ? 0 : applied.words + applied.terms + applied.domains
+  const nothingToApply = applied !== null && appliedTotal === 0
+  // 서버는 mutation 1건당 op 수를 MAX_OPS_PER_MUTATION으로 제한한다. 항목 1건이 op 1건이므로
+  // 여기서 미리 막지 않으면 낙관적 반영 → 서버 거절 → 되돌림을 사용자가 겪게 된다.
+  const tooManyOps = appliedTotal > MAX_OPS_PER_MUTATION
+  const recognizedSheets = plan === null
+    ? []
+    : DICT_SHEET_KEYS
+      .map((key) => [key, plan.recognizedColumns[key]] as const)
+      .filter(([, cols]) => cols.length > 0)
 
   return (
     <div className="grid gap-3">
@@ -69,7 +87,12 @@ export function DictImportSection({ projectId }: { projectId: string }) {
         <input
           id="dict-import-file" type="file" accept=".xlsx"
           className="text-sm file:mr-3 file:rounded-md file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm"
-          onChange={(e) => { const f = e.target.files?.[0]; void onFile(f) }}
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            // 같은 파일을 고치고 다시 고르면 change가 안 뜬다. 값을 비워 재선택을 살린다.
+            e.target.value = ''
+            void onFile(f)
+          }}
         />
       </div>
 
@@ -99,11 +122,22 @@ export function DictImportSection({ projectId }: { projectId: string }) {
             </label>
           </fieldset>
 
+          {recognizedSheets.length > 0 && (
+            <div className="grid gap-0.5 text-xs text-muted-foreground">
+              <p>덮어쓰기는 파일에 있는 아래 컬럼만 갱신하고 나머지 값은 그대로 둡니다</p>
+              <ul aria-label="인식한 컬럼">
+                {recognizedSheets.map(([key, cols]) => (
+                  <li key={key}>{EXCEL_SHEET_NAME[key]}: {cols.join(', ')}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {plan.issues.length > 0 && (
             <ul aria-label="가져오기 이슈" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs">
               {plan.issues.slice(0, MAX_ISSUES_SHOWN).map((i, idx) => (
                 <li key={idx} className={i.level === 'error' ? 'text-destructive' : 'text-key'}>
-                  {i.row === null ? '' : `${i.row}행 · `}{i.message}
+                  {EXCEL_SHEET_NAME[i.sheet]} · {i.row === null ? '' : `${i.row}행 · `}{i.message}
                 </li>
               ))}
               {plan.issues.length > MAX_ISSUES_SHOWN && (
@@ -112,9 +146,19 @@ export function DictImportSection({ projectId }: { projectId: string }) {
             </ul>
           )}
 
-          <div className="flex justify-end">
-            <Button type="button" disabled={nothingToApply} onClick={onImport}>
-              <Upload /> 가져오기
+          {tooManyOps && (
+            <p role="alert" className="text-sm text-destructive">
+              한 번에 보낼 수 있는 최대 {MAX_OPS_PER_MUTATION}건을 넘습니다. 파일을 나눠서 올려 주세요
+            </p>
+          )}
+
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">적용 대상 {appliedTotal}건</p>
+            <Button
+              type="button" disabled={nothingToApply || tooManyOps}
+              onClick={() => { void onImport() }}
+            >
+              <Upload /> 가져오기 실행
             </Button>
           </div>
         </div>

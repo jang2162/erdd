@@ -95,11 +95,16 @@ function useSubmit(projectId: string) {
   )
 }
 
+/**
+ * 모델 변경의 표준 진입점. 성공 여부(boolean)를 그대로 돌려주므로, 완료 토스트를 띄우는
+ * 호출부는 반드시 await해서 성공했을 때만 알려야 한다(서버 거절 뒤 "성공" 토스트 방지).
+ * 결과를 쓰지 않는 호출부는 지금처럼 void로 흘려보내면 된다.
+ */
 export function useModelMutation(projectId: string) {
   const submit = useSubmit(projectId)
   return useCallback(
-    (producer: (model: ProjectModel) => ProjectModel, opts?: { summary?: string }) =>
-      serializeMutation(() => submit(producer, { summary: opts?.summary, record: true })).then(() => undefined),
+    (producer: (model: ProjectModel) => ProjectModel, opts?: { summary?: string }): Promise<boolean> =>
+      serializeMutation(() => submit(producer, { summary: opts?.summary, record: true })),
     [submit],
   )
 }

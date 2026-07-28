@@ -1,9 +1,6 @@
-import {
-  EXCEL_SHEET_NAME, type DictSheetKey, type RawSheet, type SheetData,
-} from '@erdd/core'
+import { DICT_SHEET_KEYS, EXCEL_SHEET_NAME, type RawSheet, type SheetData } from '@erdd/core'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-const DICT_SHEET_KEYS: readonly DictSheetKey[] = ['words', 'terms', 'domains']
 const MAX_COLUMN_WIDTH = 60
 
 /**

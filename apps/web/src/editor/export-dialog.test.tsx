@@ -117,10 +117,15 @@ describe('ExportDialog', () => {
     expect(fileName).toBe('erdd_정의서.xlsx')
   })
 
-  it('그룹 범위 Excel 다운로드는 파일명에 그룹명을 붙이고 금지문자를 치환한다', async () => {
+  it('그룹 범위 Excel 다운로드는 그 그룹만 담고 파일명의 금지문자를 치환한다', async () => {
+    // 샘플 모델은 두 테이블이 모두 g1이므로, t2를 미배정으로 돌려 범위가 실제로 좁혀지는지 본다.
     const m = buildSampleModel()
     useEditorStore.getState().setLoaded(
-      { ...m, tableGroups: { g1: { ...m.tableGroups['g1']!, name: '회원/관리' } } }, 1, 'p1',
+      {
+        ...m,
+        tableGroups: { g1: { ...m.tableGroups['g1']!, name: '회원/관리' } },
+        tables: { ...m.tables, t2: { ...m.tables['t2']!, groupId: null } },
+      }, 1, 'p1',
     )
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
@@ -130,6 +135,8 @@ describe('ExportDialog', () => {
 
     const [sheets, fileName] = downloadExcelWorkbook.mock.calls[0]!
     expect(fileName).toBe('erdd_정의서_회원_관리.xlsx')
-    expect(sheets.find((s) => s.key === 'tableList')!.rows.every((r) => r[0] === '회원/관리')).toBe(true)
+    const rows = sheets.find((s) => s.key === 'tableList')!.rows
+    expect(rows.map((r) => r[2])).toEqual(['MBR_GRD'])          // 범위 밖 t2(MBR)는 빠졌다
+    expect(rows.every((r) => r[0] === '회원/관리')).toBe(true)
   })
 })
