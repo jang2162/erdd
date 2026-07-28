@@ -54,6 +54,15 @@ const isBlank = (row: string[]): boolean => row.every((c) => (c ?? '').trim() ==
 const splitList = (s: string): string[] =>
   s.split(',').map((x) => x.trim()).filter((x) => x !== '')
 
+/** 받침 유무에 따라 주격 조사 이/가를 고른다. 한글 음절이 아니면 '이'. */
+function subjectParticle(word: string): string {
+  const last = word.at(-1)
+  if (last === undefined) return '이'
+  const code = last.charCodeAt(0)
+  if (code < 0xac00 || code > 0xd7a3) return '이'
+  return (code - 0xac00) % 28 === 0 ? '가' : '이'
+}
+
 /**
  * 사전 시트를 파싱해 적용 계획을 세운다. 모델은 바꾸지 않는다 — 미리보기를 그린 뒤
  * 사용자가 건너뛰기/덮어쓰기를 고르고 나서 applyDictImport(web)가 실제로 반영한다.
@@ -93,14 +102,17 @@ export function planDictImport(
       if (isBlank(row)) return
       const keyValue = cell(row, keyIdx)
       if (keyValue === '') {
-        issues.push({ sheet: key, row: rowNo, level: 'error', message: `${keyName}이 비어 있습니다` })
+        issues.push({
+          sheet: key, row: rowNo, level: 'error',
+          message: `${keyName}${subjectParticle(keyName)} 비어 있습니다`,
+        })
         return
       }
       const prev = seen.get(keyValue)
       if (prev !== undefined) {
         issues.push({
           sheet: key, row: rowNo, level: 'error',
-          message: `${prev}행과 ${keyName}이(가) 중복됩니다`,
+          message: `${prev}행과 ${keyName}${subjectParticle(keyName)} 중복됩니다`,
         })
         return
       }

@@ -133,6 +133,14 @@ describe('planDictImport — 도메인', () => {
     )
     expect(plan.entries[0]!.existingId).toBe('d1')
   })
+
+  it('도메인 시트의 파일 내 중복 메시지는 받침 있는 조사 "이"를 쓴다', () => {
+    const plan = planDictImport([domainSheet([
+      ['코드', '', 'CHAR(2)', '', '', '', '', '', '', ''],
+      ['코드', '', 'CHAR(2)', '', '', '', '', '', '', ''],
+    ])], createEmptyModel())
+    expect(plan.issues[0]!.message).toBe('1행과 이름이 중복됩니다')
+  })
 })
 
 describe('planDictImport — 용어', () => {
@@ -183,6 +191,11 @@ describe('planDictImport — 용어', () => {
     ], createEmptyModel())
     expect(plan.issues).toHaveLength(0)
     expect(plan.entries).toHaveLength(2)
+  })
+
+  it('용어 시트의 키 누락 메시지는 받침 없는 조사 "가"를 쓴다', () => {
+    const plan = planDictImport([termSheet([['', '', 'MBR_NO', '', '']])], createEmptyModel())
+    expect(plan.issues[0]!.message).toBe('용어가 비어 있습니다')
   })
 })
 
