@@ -493,9 +493,10 @@ describe('buildExcelSheets', () => {
   it('테이블 목록: 그룹·논리명·물리명·설명을 그룹명→물리명 순으로 낸다', () => {
     const s = sheetOf(buildExcelSheets(buildSampleModel()), 'tableList')!
     expect(s.headers).toEqual(['그룹', '논리명', '물리명', '설명'])
+    // 정렬은 (그룹명, 물리명) — MBR < MBR_GRD 이므로 t2(회원)가 먼저다.
     expect(s.rows).toEqual([
-      ['회원관리', '회원', 'MBR', ''],
-      ['회원관리', '회원등급', 'MBR_GRD', '서비스 가입 회원'],
+      ['회원관리', '회원', 'MBR', '서비스 가입 회원'],
+      ['회원관리', '회원등급', 'MBR_GRD', ''],
     ])
   })
 
@@ -1780,12 +1781,17 @@ Expected: PASS (4개)
   })
 
   it('DDL 섹션의 범위를 그룹 드롭다운으로 좁히면 미리보기가 그 그룹만 담는다', async () => {
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
+    // 샘플 모델은 두 테이블이 모두 g1이므로, t2를 미배정으로 돌려 범위 효과가 보이게 한다.
+    const m = buildSampleModel()
+    useEditorStore.getState().setLoaded(
+      { ...m, tables: { ...m.tables, t2: { ...m.tables['t2']!, groupId: null } } }, 1, 'p1',
+    )
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.selectOptions(screen.getByLabelText('그룹 선택'), 'g1')
     const preview = screen.getByLabelText('DDL 미리보기')
-    expect(preview.textContent).toContain('CREATE TABLE MBR')
+    expect(preview.textContent).toContain('CREATE TABLE MBR_GRD')
+    expect(preview.textContent).not.toContain('MBR_NM')   // t2 전용 컬럼이 빠졌다
   })
 ```
 
