@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -22,6 +22,13 @@ export function DictImportSection({ projectId }: { projectId: string }) {
   const [plan, setPlan] = useState<DictImportPlan | null>(null)
   const [fileName, setFileName] = useState('')
   const [mode, setMode] = useState<DictImportMode>('skip')
+  // 제출 중 잠금. mutation 왕복 동안 버튼이 열려 있으면 두 번째 클릭이 같은 계획을 한 번 더
+  // 보내고, 신규 항목은 그때마다 새 id로 다시 만들어져 사전이 통째로 중복 등록된다(무결성
+  // 규칙에도 이름 유일성이 없어 아무도 막지 않는다). 파일 입력도 같이 잠근다 — 왕복 중에
+  // 새 파일을 고르면 앞선 mutation이 끝나면서 그 미리보기를 지워 버린다.
+  // ref는 리렌더 전 재진입까지 막고, state는 화면을 잠근다.
+  const importingRef = useRef(false)
+  const [importing, setImporting] = useState(false)
 
   const onTemplate = () => {
     void downloadExcelWorkbook(buildDictTemplateSheets(), 'erdd_사전양식.xlsx')
@@ -47,18 +54,29 @@ export function DictImportSection({ projectId }: { projectId: string }) {
    * 사전 전체를 mutation 1건으로 보낸다(undo 한 번으로 원복). 서버가 거절할 수도 있으므로
    * 결과를 기다렸다가 성공했을 때만 완료를 알리고 미리보기를 치운다 — 실패하면 미리보기를
    * 남겨 사용자가 그대로 다시 시도할 수 있게 한다.
+   *
+   * 덮어쓰기인데 파일 내용이 사전과 같으면 보낼 op이 없어 mutation이 noop으로 끝난다. 이때는
+   * 아무도 알려 주지 않으므로 여기서 안내한다("눌렀는데 아무 일도 없는" 상태 방지).
    */
   const onImport = async () => {
-    if (!plan) return
+    if (!plan || importingRef.current) return
     const current = plan
     const currentMode = mode
     const counts = countApplied(current, currentMode)
     const summary = `Excel 사전 가져오기 (단어 ${counts.words} · 용어 ${counts.terms} · 도메인 ${counts.domains})`
-    const ok = await mutate((m) => applyDictImport(m, current, currentMode, newId), { summary })
-    if (!ok) return
-    setPlan(null)
-    setFileName('')
-    toast.success(summary)
+    importingRef.current = true
+    setImporting(true)
+    try {
+      const result = await mutate((m) => applyDictImport(m, current, currentMode, newId), { summary })
+      if (result === 'error') return
+      setPlan(null)
+      setFileName('')
+      if (result === 'noop') toast.info('파일 내용이 현재 사전과 같아 바뀐 항목이 없습니다')
+      else toast.success(summary)
+    } finally {
+      importingRef.current = false
+      setImporting(false)
+    }
   }
 
   const applied = plan ? countApplied(plan, mode) : null
@@ -85,8 +103,8 @@ export function DictImportSection({ projectId }: { projectId: string }) {
       <div className="grid gap-1.5">
         <label htmlFor="dict-import-file" className="text-sm font-medium">Excel 파일 선택</label>
         <input
-          id="dict-import-file" type="file" accept=".xlsx"
-          className="text-sm file:mr-3 file:rounded-md file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm"
+          id="dict-import-file" type="file" accept=".xlsx" disabled={importing}
+          className="text-sm file:mr-3 file:rounded-md file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm disabled:opacity-50"
           onChange={(e) => {
             const f = e.target.files?.[0]
             // 같은 파일을 고치고 다시 고르면 change가 안 뜬다. 값을 비워 재선택을 살린다.
@@ -155,7 +173,7 @@ export function DictImportSection({ projectId }: { projectId: string }) {
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">적용 대상 {appliedTotal}건</p>
             <Button
-              type="button" disabled={nothingToApply || tooManyOps}
+              type="button" disabled={nothingToApply || tooManyOps || importing}
               onClick={() => { void onImport() }}
             >
               <Upload /> 가져오기 실행
