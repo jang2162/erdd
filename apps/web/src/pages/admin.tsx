@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTRPC } from '@/lib/trpc'
+import { ResourceLibraryManager } from '@/components/resource-library-manager'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -197,6 +198,7 @@ export function AdminPage() {
           <p className="p-8 text-center text-muted-foreground">아직 계정이 없습니다.</p>
         )}
       </div>
+      <ResourceLibraryManager scope="global" canManage />
     </div>
   )
 }

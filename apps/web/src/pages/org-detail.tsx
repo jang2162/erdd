@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { DIALECTS, type Dialect } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { DIALECT_LABEL } from '@/lib/labels'
+import { ResourceLibraryManager } from '@/components/resource-library-manager'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -249,6 +250,13 @@ export function OrgDetailPage() {
       )}
 
       {org && org.kind === 'team' && <MembersSection orgId={orgId} myRole={org.role} />}
+
+      {org && (
+        <ResourceLibraryManager
+          scope="org" orgId={orgId}
+          canManage={org.role === 'owner' || org.role === 'admin'}
+        />
+      )}
     </div>
   )
 }
