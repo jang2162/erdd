@@ -28,10 +28,8 @@ function modelWith(): ProjectModel {
 describe('planDictImport — 단어', () => {
   it('신규 단어를 파싱한다', () => {
     const plan = planDictImport([wordSheet([['주문', 'ORD', 'ORDER', '주문 건']])], createEmptyModel())
-    expect(plan.entries).toEqual([{
-      kind: 'word', row: 1, existingId: null,
-      draft: { logicalName: '주문', abbreviation: 'ORD', englishName: 'ORDER', description: '주문 건' },
-    }])
+    const draft = { logicalName: '주문', abbreviation: 'ORD', englishName: 'ORDER', description: '주문 건' }
+    expect(plan.entries).toEqual([{ kind: 'word', row: 1, existingId: null, draft, patch: draft }])
     expect(plan.total).toEqual({ created: 1, duplicated: 0, errored: 0 })
   })
 
@@ -101,14 +99,12 @@ describe('planDictImport — 도메인', () => {
     const plan = planDictImport([domainSheet([
       ['등급코드', '코드', 'CHAR(2)', 'char(2)', '', '', '', "'01'", '01, 02 ,', '설명'],
     ])], createEmptyModel())
-    expect(plan.entries[0]).toEqual({
-      kind: 'domain', row: 1, existingId: null,
-      draft: {
-        name: '등급코드', category: '코드', logicalType: 'CHAR(2)',
-        dialectTypes: { postgresql: 'char(2)', mysql: null, oracle: null, mssql: null },
-        defaultValue: "'01'", allowedValues: ['01', '02'], description: '설명',
-      },
-    })
+    const draft = {
+      name: '등급코드', category: '코드', logicalType: 'CHAR(2)',
+      dialectTypes: { postgresql: 'char(2)', mysql: null, oracle: null, mssql: null },
+      defaultValue: "'01'", allowedValues: ['01', '02'], description: '설명',
+    }
+    expect(plan.entries[0]).toEqual({ kind: 'domain', row: 1, existingId: null, draft, patch: draft })
   })
 
   it('허용값이 비면 빈 배열이다', () => {
@@ -139,7 +135,7 @@ describe('planDictImport — 도메인', () => {
       ['코드', '', 'CHAR(2)', '', '', '', '', '', '', ''],
       ['코드', '', 'CHAR(2)', '', '', '', '', '', '', ''],
     ])], createEmptyModel())
-    expect(plan.issues[0]!.message).toBe('1행과 이름이 중복됩니다')
+    expect(plan.issues[0]!.message).toBe('이름이 1행과 중복됩니다')
   })
 })
 
@@ -148,10 +144,8 @@ describe('planDictImport — 용어', () => {
     const plan = planDictImport(
       [termSheet([['회원번호', '아무거나', 'MBR_NO', '금액', '설명']])], modelWith(),
     )
-    expect(plan.entries[0]).toEqual({
-      kind: 'term', row: 1, existingId: null,
-      draft: { logicalName: '회원번호', physicalName: 'MBR_NO', domainName: '금액', description: '설명' },
-    })
+    const draft = { logicalName: '회원번호', physicalName: 'MBR_NO', domainName: '금액', description: '설명' }
+    expect(plan.entries[0]).toEqual({ kind: 'term', row: 1, existingId: null, draft, patch: draft })
     expect(plan.issues).toHaveLength(0)
   })
 
@@ -196,6 +190,83 @@ describe('planDictImport — 용어', () => {
   it('용어 시트의 키 누락 메시지는 받침 없는 조사 "가"를 쓴다', () => {
     const plan = planDictImport([termSheet([['', '', 'MBR_NO', '', '']])], createEmptyModel())
     expect(plan.issues[0]!.message).toBe('용어가 비어 있습니다')
+  })
+
+  it('찾을 수 없는 기본 도메인 경고는 받침에 맞는 목적격 조사를 쓴다', () => {
+    const withJongseong = planDictImport([termSheet([['용어1', '', 'A', '없는도메인', '']])], createEmptyModel())
+    expect(withJongseong.issues[0]!.message).toBe('기본 도메인 "없는도메인"을 찾을 수 없어 비웁니다')
+    const withoutJongseong = planDictImport([termSheet([['용어2', '', 'A', '금리', '']])], createEmptyModel())
+    expect(withoutJongseong.issues[0]!.message).toBe('기본 도메인 "금리"를 찾을 수 없어 비웁니다')
+  })
+
+  it('같은 파일의 단어만으로 물리명을 자동 생성한다 (모델 사전이 비어 있어도)', () => {
+    const plan = planDictImport([
+      wordSheet([['회원', 'MBR', '', ''], ['번호', 'NO', '', '']]),
+      termSheet([['회원번호', '', '', '', '']]),
+    ], createEmptyModel(), DEFAULT_NAMING_RULES)
+    const term = plan.entries.find((e) => e.kind === 'term')!
+    expect(term.kind === 'term' && term.draft.physicalName).toBe('MBR_NO')
+    expect(plan.issues).toHaveLength(0)
+  })
+
+  it('논리명이 겹치면 파일의 단어가 기존 단어를 이긴다', () => {
+    // modelWith()의 회원=MBR을 파일에서 MEM으로 다시 등록하면 자동 생성도 MEM을 쓴다.
+    const plan = planDictImport([
+      wordSheet([['회원', 'MEM', '', '']]),
+      termSheet([['회원', '', '', '', '']]),
+    ], modelWith(), DEFAULT_NAMING_RULES)
+    const term = plan.entries.find((e) => e.kind === 'term')!
+    expect(term.kind === 'term' && term.draft.physicalName).toBe('MEM')
+  })
+})
+
+describe('planDictImport — 인식 컬럼과 부분 갱신값(patch)', () => {
+  it('시트에 실제로 있는 알려진 컬럼만 recognizedColumns에 담는다', () => {
+    const sheet: RawSheet = { key: 'words', headers: ['논리명', '약어', '비고'], rows: [['주문', 'ORD', 'x']] }
+    const plan = planDictImport([sheet], createEmptyModel())
+    expect(plan.recognizedColumns.words).toEqual(['논리명', '약어'])
+    expect(plan.recognizedColumns.terms).toEqual([])
+  })
+
+  it('파생 컬럼 "구성 단어"는 인식 목록에 넣지 않는다', () => {
+    const plan = planDictImport([termSheet([['회원번호', '회원, 번호', 'MBR_NO', '', '']])], createEmptyModel())
+    expect(plan.recognizedColumns.terms).toEqual(['용어', '물리명', '기본 도메인', '설명'])
+  })
+
+  it('없는 컬럼은 patch에서 빠지고 draft에만 기본값으로 들어간다', () => {
+    const sheet: RawSheet = { key: 'words', headers: ['논리명', '약어'], rows: [['주문', 'ORD']] }
+    const e = planDictImport([sheet], createEmptyModel()).entries[0]!
+    expect(e.patch).toEqual({ logicalName: '주문', abbreviation: 'ORD' })
+    expect(e.draft).toEqual({
+      logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null,
+    })
+  })
+
+  it('컬럼이 있고 셀만 비면 patch에 null로 남는다 (빈 셀 ≠ 없는 컬럼)', () => {
+    const e = planDictImport([wordSheet([['주문', 'ORD', '', '']])], createEmptyModel()).entries[0]!
+    expect(e.patch).toEqual({
+      logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null,
+    })
+  })
+
+  it('도메인 방언 컬럼이 일부만 있으면 그 방언만 patch에 담는다', () => {
+    const sheet: RawSheet = {
+      key: 'domains', headers: ['이름', '논리 타입', 'PostgreSQL'], rows: [['코드', 'CHAR(2)', 'char(2)']],
+    }
+    const e = planDictImport([sheet], createEmptyModel()).entries[0]!
+    expect(e.kind === 'domain' && e.patch.dialectTypes).toEqual({ postgresql: 'char(2)' })
+    expect(e.kind === 'domain' && e.patch.allowedValues).toBeUndefined()
+    expect(e.kind === 'domain' && e.draft.dialectTypes).toEqual({
+      postgresql: 'char(2)', mysql: null, oracle: null, mssql: null,
+    })
+    expect(e.kind === 'domain' && e.draft.allowedValues).toEqual([])
+  })
+
+  it('물리명 컬럼이 없으면 자동 생성값은 draft에만 들어간다', () => {
+    const sheet: RawSheet = { key: 'terms', headers: ['용어', '설명'], rows: [['회원', '설명']] }
+    const e = planDictImport([sheet], modelWith(), DEFAULT_NAMING_RULES).entries[0]!
+    expect(e.kind === 'term' && e.draft.physicalName).toBe('MBR')
+    expect(e.kind === 'term' && 'physicalName' in e.patch).toBe(false)
   })
 })
 

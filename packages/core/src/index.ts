@@ -26,12 +26,12 @@ export {
   TABLE_LIST_HEADERS, TABLE_SPEC_HEADERS, buildExcelSheets, buildDictTemplateSheets,
 } from './excel-sheets.js'
 export type { ExcelSheetKey, SheetData } from './excel-sheets.js'
-export { planDictImport } from './excel-import.js'
+export { DICT_SHEET_KEYS, planDictImport } from './excel-import.js'
 export type {
   DictSheetKey, RawSheet, DictImportIssue, DictImportEntry, DictImportCounts,
-  DictImportPlan, TermDraft,
+  DictImportPlan, TermDraft, WordPatch, TermPatch, DomainPatch,
 } from './excel-import.js'
-export { OpParseError, parseOps } from './op-guard.js'
+export { MAX_OPS_PER_MUTATION, OpParseError, parseOps } from './op-guard.js'
 export {
   createRelationshipFromParentPk, remapRelationshipChildColumn, setRelationshipIdentifying,
   deleteRelationship, deleteTableCascade, deleteColumnCascade,

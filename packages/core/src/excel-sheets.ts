@@ -140,6 +140,8 @@ export function buildExcelSheets(
             ]),
         }
       case 'domains':
+        // 허용값은 `', '` 조인이고 파서는 `,`로 나눈다. 값 자체에 쉼표가 든 허용값은
+        // 왕복하지 못한다(알려진 한계 — 인코딩 변경은 별도 과제).
         return {
           key, name: EXCEL_SHEET_NAME[key], headers: [...DOMAIN_HEADERS],
           rows: Object.values(model.domains)

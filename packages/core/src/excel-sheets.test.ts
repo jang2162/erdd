@@ -77,6 +77,23 @@ describe('buildExcelSheets', () => {
     ])
   })
 
+  it('순번은 order 값이 아니라 테이블 안에서의 1-based 위치다', () => {
+    const m = buildSampleModel()
+    // MBR의 컬럼 order를 5·9·20으로 띄워 "위치"와 "order + 1"을 구분할 수 있게 한다.
+    const shifted: ProjectModel = {
+      ...m,
+      columns: {
+        ...m.columns,
+        c2: { ...m.columns['c2']!, order: 5 },
+        c3: { ...m.columns['c3']!, order: 9 },
+        c4: { ...m.columns['c4']!, order: 20 },
+      },
+    }
+    const rows = sheetOf(buildExcelSheets(shifted), 'tableSpec')!.rows.filter((r) => r[2] === 'MBR')
+    expect(rows.map((r) => r[5])).toEqual(['MBR_NO', 'MBR_NM', 'GRD_CD'])   // order 오름차순 정렬은 유지
+    expect(rows.map((r) => r[3])).toEqual(['1', '2', '3'])
+  })
+
   it('도메인 지정 컬럼은 도메인 이름·논리 타입·기본값을 따른다', () => {
     const s = sheetOf(buildExcelSheets(richModel()), 'tableSpec')!
     const row = s.rows.find((r) => r[5] === 'GRD_CD' && r[2] === 'MBR_GRD')!
