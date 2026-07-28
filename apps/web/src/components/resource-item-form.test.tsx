@@ -80,4 +80,108 @@ describe('ResourceItemForm', () => {
     expect(screen.getByLabelText('논리명')).toHaveProperty('value', '회원')
     expect(screen.getByLabelText('물리 약어')).toHaveProperty('value', 'MBR')
   })
+
+  it('커스텀 항목 선택형의 기본값이 선택지 밖이면 저장할 수 없다', async () => {
+    render(<ResourceItemForm kind="customField" payload={null} domainOptions={[]}
+      onSubmit={vi.fn()} onCancel={() => {}} />)
+    await userEvent.type(screen.getByLabelText('이름'), '등급')
+    await userEvent.selectOptions(screen.getByLabelText('타입'), 'select')
+    await userEvent.type(screen.getByLabelText('선택지 (쉼표로 구분)'), 'A, B')
+    await userEvent.type(screen.getByLabelText('기본값 (선택)'), 'C')
+    expect(screen.getByRole('button', { name: '저장' })).toHaveProperty('disabled', true)
+    expect(screen.getByText('기본값은 선택지 중 하나여야 합니다')).toBeDefined()
+  })
+
+  it('커스텀 항목 불리언의 기본값이 true/false가 아니면 저장할 수 없다', async () => {
+    render(<ResourceItemForm kind="customField" payload={null} domainOptions={[]}
+      onSubmit={vi.fn()} onCancel={() => {}} />)
+    await userEvent.type(screen.getByLabelText('이름'), '동의여부')
+    await userEvent.selectOptions(screen.getByLabelText('타입'), 'boolean')
+    await userEvent.type(screen.getByLabelText('기본값 (선택)'), 'yes')
+    expect(screen.getByRole('button', { name: '저장' })).toHaveProperty('disabled', true)
+    expect(screen.getByText('불리언 기본값은 true 또는 false여야 합니다')).toBeDefined()
+  })
+
+  it('도메인의 논리 타입이 비면 저장할 수 없다', async () => {
+    render(<ResourceItemForm kind="domain" payload={null} domainOptions={[]}
+      onSubmit={vi.fn()} onCancel={() => {}} />)
+    await userEvent.type(screen.getByLabelText('이름'), '금액')
+    expect(screen.getByRole('button', { name: '저장' })).toHaveProperty('disabled', true)
+  })
+
+  it('용어의 물리명이 비면 저장할 수 없다', async () => {
+    render(<ResourceItemForm kind="term" payload={null} domainOptions={[]}
+      onSubmit={vi.fn()} onCancel={() => {}} />)
+    await userEvent.type(screen.getByLabelText('논리명'), '주문금액')
+    expect(screen.getByRole('button', { name: '저장' })).toHaveProperty('disabled', true)
+  })
+
+  it('기존 용어 payload를 폼에 채운다(도메인 선택 포함)', () => {
+    render(<ResourceItemForm kind="term"
+      payload={{
+        logicalName: '주문금액', physicalName: 'ORD_AMT', domainId: 'lib-d1', description: '주문 총액',
+      }}
+      domainOptions={[{ id: 'lib-d1', name: '금액' }]} onSubmit={vi.fn()} onCancel={() => {}} />)
+    expect(screen.getByLabelText('논리명')).toHaveProperty('value', '주문금액')
+    expect(screen.getByLabelText('물리명')).toHaveProperty('value', 'ORD_AMT')
+    expect(screen.getByLabelText('기본 도메인')).toHaveProperty('value', 'lib-d1')
+  })
+
+  it('용어 payload의 domainId가 null이면 기본 도메인이 "선택 안 함"이다', () => {
+    render(<ResourceItemForm kind="term"
+      payload={{ logicalName: '주문금액', physicalName: 'ORD_AMT', domainId: null, description: null }}
+      domainOptions={[{ id: 'lib-d1', name: '금액' }]} onSubmit={vi.fn()} onCancel={() => {}} />)
+    expect(screen.getByLabelText('기본 도메인')).toHaveProperty('value', '')
+  })
+
+  it('기존 도메인 payload를 폼에 채운다(방언별 물리 타입·허용값 포함)', () => {
+    render(<ResourceItemForm kind="domain"
+      payload={{
+        name: '금액', category: '재무', logicalType: 'DECIMAL(15,2)',
+        dialectTypes: { postgresql: 'numeric(15,2)', mysql: null, oracle: 'NUMBER(15,2)', mssql: null },
+        defaultValue: '0', allowedValues: ['A', 'B'], description: '금액 도메인',
+      }}
+      domainOptions={[]} onSubmit={vi.fn()} onCancel={() => {}} />)
+    expect(screen.getByLabelText('이름')).toHaveProperty('value', '금액')
+    expect(screen.getByLabelText('분류 (선택)')).toHaveProperty('value', '재무')
+    expect(screen.getByLabelText('논리 타입')).toHaveProperty('value', 'DECIMAL(15,2)')
+    expect(screen.getByLabelText('PostgreSQL 물리 타입 (선택)')).toHaveProperty('value', 'numeric(15,2)')
+    expect(screen.getByLabelText('MySQL·MariaDB 물리 타입 (선택)')).toHaveProperty('value', '')
+    expect(screen.getByLabelText('Oracle 물리 타입 (선택)')).toHaveProperty('value', 'NUMBER(15,2)')
+    expect(screen.getByLabelText('MSSQL 물리 타입 (선택)')).toHaveProperty('value', '')
+    expect(screen.getByLabelText('허용값 (쉼표로 구분, 선택)')).toHaveProperty('value', 'A, B')
+    expect(screen.getByLabelText('기본값 (선택)')).toHaveProperty('value', '0')
+  })
+
+  it('기존 도메인 payload를 수정 없이 저장하면 payload 키 집합이 스키마와 일치한다', async () => {
+    const onSubmit = vi.fn()
+    render(<ResourceItemForm kind="domain"
+      payload={{
+        name: '금액', category: '재무', logicalType: 'DECIMAL(15,2)',
+        dialectTypes: { postgresql: 'numeric(15,2)', mysql: null, oracle: null, mssql: null },
+        defaultValue: '0', allowedValues: ['A', 'B'], description: '금액 도메인',
+      }}
+      domainOptions={[]} onSubmit={onSubmit} onCancel={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: '금액', category: '재무', logicalType: 'DECIMAL(15,2)',
+      dialectTypes: { postgresql: 'numeric(15,2)', mysql: null, oracle: null, mssql: null },
+      defaultValue: '0', allowedValues: ['A', 'B'], description: '금액 도메인',
+    })
+  })
+
+  it('기존 커스텀 항목 payload를 폼에 채운다(대상·타입·선택지·필수 포함)', () => {
+    render(<ResourceItemForm kind="customField"
+      payload={{
+        name: '등급', target: 'table', type: 'select', options: ['A', 'B'],
+        required: true, defaultValue: 'A',
+      }}
+      domainOptions={[]} onSubmit={vi.fn()} onCancel={() => {}} />)
+    expect(screen.getByLabelText('이름')).toHaveProperty('value', '등급')
+    expect(screen.getByLabelText('적용 대상')).toHaveProperty('value', 'table')
+    expect(screen.getByLabelText('타입')).toHaveProperty('value', 'select')
+    expect(screen.getByLabelText('선택지 (쉼표로 구분)')).toHaveProperty('value', 'A, B')
+    expect(screen.getByLabelText('필수')).toHaveProperty('checked', true)
+    expect(screen.getByLabelText('기본값 (선택)')).toHaveProperty('value', 'A')
+  })
 })
