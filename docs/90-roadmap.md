@@ -29,14 +29,14 @@
 - 스냅샷 diff, 변경분 정의서 ([11-collaboration](11-collaboration.md), [17-import-export](17-import-export.md))
 - 권한 세분화(필요 시 그룹 단위 편집 권한 등 검토)
 
-## Phase 4 — 생태계·수익화
+## Phase 4 — 생태계
 
 - CLI: pull/push/diff, 파일 포맷 공개, 에이전트 스킬 ([16-cli](16-cli.md))
 - DDL 가져오기(역설계) ([17-import-export](17-import-export.md))
-- 과금 플랜 설계·결제 ([00-vision](00-vision.md))
 
 ## 추후 검토 (현재 비범위)
 
+- **과금 플랜 설계·결제** ([00-vision](00-vision.md)) — 최우선 목표는 조직 내에서 사용 가능한 수준의 도구를 완성하는 것. 상용화·과금은 그 이후 판단.
 - 발주처별 Excel 양식 템플릿 커스터마이징
 - 셀프 가입(이메일 인증), 초대·비밀번호 재설정 메일 발송 (현재는 관리자 계정 생성으로 대체)
 - 소셜 로그인(Google OAuth 등)
