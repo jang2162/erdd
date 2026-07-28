@@ -42,3 +42,7 @@ export {
   resourcePayloadOf, resourceDisplayName,
 } from './resource.js'
 export type { ResourceKind } from './resource.js'
+export { planResync, applyResyncPlan } from './resource-sync.js'
+export type {
+  LibraryItem, ResyncStatus, ResyncDecision, ResyncEntry, ResyncPlan,
+} from './resource-sync.js'
