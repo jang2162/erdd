@@ -20,7 +20,12 @@ export { DIALECTS, toDialectType, resolveColumnType } from './dialect.js'
 export type { Dialect } from './dialect.js'
 export { quoteIdentifier, isReservedWord } from './identifier.js'
 export { generateDdl, ddlWarnings } from './ddl.js'
-export type { DdlScope } from './ddl.js'
+export type { DdlScope, ExportScope } from './ddl.js'
+export {
+  EXCEL_SHEET_KEYS, EXCEL_SHEET_NAME, WORD_HEADERS, TERM_HEADERS, DOMAIN_HEADERS,
+  TABLE_LIST_HEADERS, TABLE_SPEC_HEADERS, buildExcelSheets, buildDictTemplateSheets,
+} from './excel-sheets.js'
+export type { ExcelSheetKey, SheetData } from './excel-sheets.js'
 export { OpParseError, parseOps } from './op-guard.js'
 export {
   createRelationshipFromParentPk, remapRelationshipChildColumn, setRelationshipIdentifying,
