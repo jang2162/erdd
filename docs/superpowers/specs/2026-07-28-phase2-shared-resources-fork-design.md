@@ -90,12 +90,15 @@
 ```ts
 // model.ts
 export const OriginSchema = z.strictObject({
+  libraryId: z.string(),                             // 어느 라이브러리에서 왔는지
   sourceId: z.string(),                              // 라이브러리 항목 id
   sourceVersion: z.number().int(),                   // 가져온(또는 마지막으로 처리한) 시점의 원본 버전
   base: z.record(z.string(), z.unknown()),           // 그 시점 원본 payload를 프로젝트 공간으로 리맵한 값
 })
 export type Origin = z.infer<typeof OriginSchema>
 ```
+
+- **`libraryId`가 필요한 이유**: 재동기화 계획은 라이브러리 하나를 대상으로 계산한다. `libraryId`가 없으면 "라이브러리 A에서 온 항목"과 "라이브러리 B에서 왔는데 지금 목록에 없는 항목"을 구분할 수 없어, B의 항목이 전부 "원본에서 삭제됨"으로 잘못 집계된다.
 
 - `DomainSchema`·`WordSchema`·`TermSchema`·`CustomFieldSchema`에 `origin: OriginSchema.nullable().default(null)` 추가.
 - `base`가 **프로젝트 공간**인 것이 핵심이다. `term.domainId`는 라이브러리에서는 라이브러리 항목 id지만 프로젝트에서는 프로젝트 도메인 id다. `base`를 프로젝트 공간으로 저장해야 "프로젝트가 고쳤는가"를 `deepEqual(payloadOf(entity), origin.base)` 한 줄로 판정할 수 있다.
@@ -144,19 +147,23 @@ export type ResyncEntry = {
   version: number                          // 원본 현재 버전
   fromVersion: number | null               // 프로젝트가 들고 있는 버전(added면 null)
   projectEntityId: string | null           // added면 null
-  nextPayload: Record<string, unknown>     // 원본 반영 시 쓸 프로젝트 공간 payload
+  sourcePayload: Record<string, unknown>   // 라이브러리 공간 원본 payload(적용 시 재투영용)
+  nextPayload: Record<string, unknown>     // 계획 시점 색인으로 투영한 프로젝트 공간 payload(표시용)
   changedFields: string[]                  // base 대비 원본이 바꾼 필드(표시용, added면 [])
   nameClash: boolean                       // added인데 같은 종류에 같은 이름이 이미 있음
 }
 
 export type ResyncPlan = {
+  libraryId: string
   entries: ResyncEntry[]
   keptLocal: number       // origin이 없는(프로젝트 자체 추가) 항목 수
-  keptDetached: number    // origin은 있으나 원본 항목이 사라진 항목 수
-  keptSynced: number      // origin이 있고 원본과 버전이 같은 항목 수
+  keptDetached: number    // 이 라이브러리에서 왔으나 원본 항목이 사라진 항목 수
+  keptSynced: number      // 이 라이브러리에서 왔고 원본과 버전이 같은 항목 수
 }
 
-export function planResync(model: ProjectModel, items: readonly LibraryItem[]): ResyncPlan
+export function planResync(
+  model: ProjectModel, libraryId: string, items: readonly LibraryItem[],
+): ResyncPlan
 
 export type ResyncDecision = 'apply' | 'keep' | 'defer'
 export function applyResyncPlan(
@@ -177,8 +184,10 @@ export function applyResyncPlan(
 | 다름 | 예 | `conflict` |
 
 - **"원본이 바뀌었다"의 판정은 오직 버전 비교**다(`item.version !== origin.sourceVersion`). payload 비교로 판정하면 참조 리맵 결과가 나중에 달라졌을 때(예: 나중에 도메인을 추가로 fork) 원본이 그대로인데도 변경으로 잡힌다.
-- **`keptDetached`**: `origin.sourceId`가 이 라이브러리 항목 목록에 없는 경우. 삭제 제안을 하지 않고 카운트만 노출한다.
+- **`keptDetached`**: `origin.libraryId`가 이 라이브러리인데 `origin.sourceId`가 항목 목록에 없는 경우. 삭제 제안을 하지 않고 카운트만 노출한다.
 - **`keptLocal`**: `origin === null`인 프로젝트 자체 항목. 재동기화가 절대 건드리지 않는다.
+- **다른 라이브러리에서 온 항목**(`origin.libraryId !== libraryId`)은 계획에서 완전히 제외한다 — 어느 카운트에도 넣지 않는다.
+- `nextPayload`는 계획 시점의 색인으로 투영한 값이라, 같은 배치에서 도메인이 함께 추가되는 경우의 `term.domainId`가 확정되지 않는다. 그래서 `applyResyncPlan`은 `nextPayload`를 쓰지 않고 `sourcePayload`를 **적용 시점 색인(기존 + 이번에 발급한 id)으로 다시 투영**한다.
 - `changedFields`는 `nextPayload`와 `origin.base`를 필드별 `deepEqual`로 비교해 만든다.
 - `nameClash`는 `added` 항목의 표시 이름이 같은 종류의 기존 프로젝트 항목과 같을 때 true. 기본 미선택으로 노출해 중복 단어·용어가 조용히 생기는 것을 막는다(현재 `warnings.ts`에는 단어·용어 중복 경고가 없다).
 
@@ -186,7 +195,7 @@ export function applyResyncPlan(
 
 1. `apply`로 선택된 `added` 항목에 **먼저 id를 전부 발급**하고, `sourceId → 프로젝트 엔티티 id` 색인을 만든다(기존 엔티티의 `origin.sourceId` + 이번에 발급한 것).
 2. 그 색인으로 각 항목의 라이브러리 공간 payload를 프로젝트 공간으로 리맵한다(`term.domainId`; 색인에 없으면 `null`).
-3. 결정별 동작 — 어느 경우든 `origin = { sourceId, sourceVersion: item.version, base: nextPayload }`로 갱신한다:
+3. 결정별 동작 — 어느 경우든 `origin = { libraryId, sourceId, sourceVersion: item.version, base: 투영된 payload }`로 갱신한다:
    - `added` + `apply` → 엔티티 생성(`customField`는 같은 target 최대 order+1 부여)
    - `auto-update` / `conflict` + `apply` → 엔티티 내용을 `nextPayload`로 교체(`customField.order`는 현재 값 유지)
    - `conflict` + `keep` → **엔티티 내용은 그대로**, `origin`만 갱신
@@ -225,7 +234,8 @@ export const resourceItems = pgTable('resource_items', {
 - `model_domains` / `model_words` / `model_terms` / `model_custom_fields`에 `origin: jsonb('origin').$type<Origin>()`(nullable) 추가.
 - `model-store.ts`의 해당 4종 매핑에 `origin: r.origin ?? null`.
 - `scope`/`orgId` 정합성(전역이면 `orgId` null, 조직이면 non-null)은 라우터에서 강제한다(부분 CHECK 제약은 drizzle-kit 생성 SQL 밖이라 도입하지 않는다).
-- `testing/helpers.ts`의 `withUuidIds`는 `origin`을 **건드리지 않는다**(`origin.sourceId`는 라이브러리 id 공간). `origin`을 쓰는 서버 테스트는 실제 UUID를 직접 지정한다 — 이 계약을 주석으로 남긴다.
+- `testing/helpers.ts`의 `withUuidIds`는 `origin`을 **건드리지 않는다**(`origin.libraryId`/`sourceId`는 라이브러리 id 공간). `origin`을 쓰는 서버 테스트는 실제 UUID를 직접 지정한다 — 이 계약을 주석으로 남긴다.
+- `testing/db.ts`의 `TEST_TABLES`에 `resource_items`·`resource_libraries`를 **반드시** 추가한다. 전역 라이브러리는 `org_id`가 null이라 `organizations` TRUNCATE CASCADE로 지워지지 않아, 빠뜨리면 시드 라이브러리가 테스트 간에 남아 격리가 깨진다. 같은 김에 이월 항목이던 `model_domains`·`model_words`·`model_terms`·`model_custom_fields`·`snapshots`도 명시한다.
 
 **테스트(erdd_test_a)**: `origin` 왕복 persist(create/update/delete), `origin`이 있는 도메인·용어·단어·커스텀 항목을 **단일 배치**로 persist(스냅샷 복원 회귀 가드), 라이브러리 삭제 시 항목 CASCADE, 조직 삭제 시 조직 라이브러리 CASCADE.
 
