@@ -1,0 +1,1 @@
+ALTER TABLE "model_words" ADD COLUMN "english_name" text;

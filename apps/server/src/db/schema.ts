@@ -118,6 +118,7 @@ export const modelWords = pgTable('model_words', {
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   logicalName: text('logical_name').notNull(),
   abbreviation: text('abbreviation').notNull(),
+  englishName: text('english_name'),
   description: text('description'),
 })
 

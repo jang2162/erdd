@@ -50,6 +50,13 @@
       "when": 1785119532378,
       "tag": "0006_secret_nightcrawler",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785207001566,
+      "tag": "0007_pale_korg",
+      "breakpoints": true
     }
   ]
 }
