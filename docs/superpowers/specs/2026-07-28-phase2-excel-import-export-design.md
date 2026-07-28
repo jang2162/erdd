@@ -166,10 +166,18 @@ export type DictImportIssue = {
 }
 
 export type TermDraft = Omit<Term, 'id' | 'domainId'> & { domainName: string }
+
+// draft = 신규 생성용 완전값(없던 컬럼은 기본값), patch = 덮어쓰기용 부분값(시트 헤더에
+// 실제로 있던 컬럼만). draft = 기본값 + patch 이므로 둘이 어긋나지 않는다.
+export type WordPatch = Partial<Omit<Word, 'id'>>
+export type TermPatch = Partial<TermDraft>
+export type DomainPatch =
+  Partial<Omit<Domain, 'id' | 'dialectTypes'>> & { dialectTypes?: Partial<Domain['dialectTypes']> }
+
 export type DictImportEntry =
-  | { kind: 'word';   row: number; draft: Omit<Word, 'id'>;   existingId: string | null }
-  | { kind: 'term';   row: number; draft: TermDraft;          existingId: string | null }
-  | { kind: 'domain'; row: number; draft: Omit<Domain, 'id'>; existingId: string | null }
+  | { kind: 'word';   row: number; draft: Omit<Word, 'id'>;   patch: WordPatch;   existingId: string | null }
+  | { kind: 'term';   row: number; draft: TermDraft;          patch: TermPatch;   existingId: string | null }
+  | { kind: 'domain'; row: number; draft: Omit<Domain, 'id'>; patch: DomainPatch; existingId: string | null }
 
 export type DictImportCounts = { created: number; duplicated: number; errored: number }
 export type DictImportPlan = {
@@ -177,6 +185,7 @@ export type DictImportPlan = {
   issues: DictImportIssue[]
   total: DictImportCounts
   bySheet: Record<DictSheetKey, DictImportCounts>
+  recognizedColumns: Record<DictSheetKey, string[]>  // 시트 헤더에서 알아본 컬럼(정해진 순서)
 }
 
 export function planDictImport(
@@ -192,16 +201,17 @@ export function planDictImport(
 - 모든 셀이 빈 문자열인 행은 조용히 스킵(이슈 없음).
 - **파일 내 중복**: 같은 시트에서 이미 나온 키와 같으면 error("N행과 중복됩니다") + 스킵.
 - **기존 중복 판정**: 키를 `trim()`한 값의 정확 일치(words/terms는 `logicalName`, domains는 `name`) → `existingId`.
-- **처리 순서는 domains → words → terms.** 용어의 `기본 도메인`을 검증할 때 이번 파일에서 새로 생기는 도메인 이름도 알아야 한다.
+- **처리 순서는 domains → words → terms.** 용어의 `기본 도메인`을 검증할 때 이번 파일에서 새로 생기는 도메인 이름도 알아야 하고, 용어 물리명을 자동 생성할 때 이번 파일에서 새로 생기는 단어의 약어도 써야 한다.
+- **인식한 컬럼(`recognizedColumns`)**: 시트 헤더에 실제로 있던 알려진 컬럼만 기록한다. 이 목록이 곧 덮어쓰기가 건드리는 범위이고, entry의 `patch`도 이 컬럼들로만 채운다. (파생값인 `구성 단어`는 읽지 않으므로 목록에서도 뺀다.)
 
 시트별:
 - **words** — 논리명 빈 값이면 error. `약어`는 빈 문자열 허용(등록됨). `영문명`·`설명`은 빈 값 → `null`.
-- **terms** — 용어 빈 값이면 error. `물리명`이 비면 `rules`가 주어졌을 때 `generatePhysicalName(용어, model.words, {}, rules)`로 자동 생성한다(용어 사전은 `{}`를 넘긴다 — 자기 자신에 완전일치해 단축되는 것을 막고 단어 분해만 쓰기 위해). `rules`가 없거나 생성 결과가 빈 문자열이면 error. `기본 도메인`이 비어 있지 않은데 기존 도메인·이번 파일 도메인 어디에도 없으면 **warning**(행은 등록되고 적용 단계에서 `domainId: null`). `구성 단어` 컬럼은 읽지 않는다.
-- **domains** — `이름` 또는 `논리 타입`이 비면 error(타입 없는 도메인은 무의미). 방언 4컬럼·`기본값`·`분류`·`설명`은 빈 값 → `null`. `허용값`은 `,`로 분리 → trim → 빈 항목 제거.
+- **terms** — 용어 빈 값이면 error. `물리명`이 비면 `rules`가 주어졌을 때 `generatePhysicalName(용어, 유효단어, {}, rules)`로 자동 생성한다(용어 사전은 `{}`를 넘긴다 — 자기 자신에 완전일치해 단축되는 것을 막고 단어 분해만 쓰기 위해). **유효단어 = `model.words` + 이번 파일의 단어 시트**, 논리명이 겹치면 파일 쪽이 이긴다(방금 올린 값이 사용자의 최신 의사다). `rules`가 없거나 생성 결과가 빈 문자열이면 error. 자동 생성에 **약어가 빈 단어**가 섞였으면 warning(행은 등록된다 — `회원번호 → _NO`처럼 조용히 망가진 물리명을 알리되, 단어 시트의 빈 약어 허용 정책은 그대로 둔다). `기본 도메인`이 비어 있지 않은데 기존 도메인·이번 파일 도메인 어디에도 없으면 **warning**(행은 등록되고 적용 단계에서 `domainId: null`). `구성 단어` 컬럼은 읽지 않는다.
+- **domains** — `이름` 또는 `논리 타입`이 비면 error(타입 없는 도메인은 무의미 — 부분 덮어쓰기라도 `논리 타입`은 요구한다). 방언 4컬럼·`기본값`·`분류`·`설명`은 빈 값 → `null`. `허용값`은 `,`로 분리 → trim → 빈 항목 제거. **알려진 한계**: 내보내기가 `', '`로 조인하므로 값 자체에 쉼표가 든 허용값은 내보내기 → 업로드 왕복을 견디지 못한다(인코딩 변경은 별도 과제).
 
 `total`/`bySheet`: `created` = `existingId === null`인 entry 수, `duplicated` = `existingId !== null`, `errored` = level `'error'` 이슈 수.
 
-**테스트**: 3시트 정상 파싱, 헤더 순서가 뒤바뀌어도 이름으로 매칭, 미지의 추가 컬럼 무시, 키 헤더 누락 시 시트 스킵 + 이슈, 빈 행 스킵, 키 빈 값 error, 파일 내 중복 error, 기존 항목이 `existingId`로 잡힘, 도메인 허용값 쉼표 분해/빈 값 → `[]`, 방언 빈 칸 → `null`, 용어 물리명 자동 생성(rules 있음)과 error(rules 없음), 미지의 기본 도메인이 warning이면서 entry는 남음, 같은 파일에서 새로 만들어진 도메인 이름은 warning이 아님, counts 집계.
+**테스트**: 3시트 정상 파싱, 헤더 순서가 뒤바뀌어도 이름으로 매칭, 미지의 추가 컬럼 무시, 키 헤더 누락 시 시트 스킵 + 이슈, 빈 행 스킵, 키 빈 값 error, 파일 내 중복 error, 기존 항목이 `existingId`로 잡힘, 도메인 허용값 쉼표 분해/빈 값 → `[]`, 방언 빈 칸 → `null`, 용어 물리명 자동 생성(rules 있음)과 error(rules 없음), 같은 파일 단어로 자동 생성·논리명 충돌 시 파일 우선, 약어가 빈 단어로 자동 생성하면 warning + 행 등록, 미지의 기본 도메인이 warning이면서 entry는 남음, 같은 파일에서 새로 만들어진 도메인 이름은 warning이 아님, `recognizedColumns`와 `patch`가 시트에 있던 컬럼만 담음, counts 집계.
 
 ## 항목 5: web — xlsx 인코딩/디코딩 (`excel-file.ts`)
 
@@ -252,9 +262,11 @@ export function applyDictImport(
 ```
 
 - **적용 순서 domains → words → terms.** 용어의 `domainName`은 **도메인을 반영한 뒤의 모델**에서 이름으로 해석한다(같은 파일에서 새로 만들어진 도메인도 잡힌다). 해석 실패 시 `domainId: null`.
-- `existingId !== null`이고 `mode === 'skip'`이면 건너뛴다. `mode === 'overwrite'`면 `{ ...기존, ...draft, id: existingId }` — **id를 유지**해 `column.domainId` 참조를 지킨다.
+- `existingId !== null`이고 `mode === 'skip'`이면 건너뛴다. `mode === 'overwrite'`면 `{ ...기존, ...patch, id: existingId }` — **id를 유지**해 `column.domainId` 참조를 지킨다.
+- **덮어쓰기는 부분 갱신이다.** 신규는 `draft`(완전값), 덮어쓰기는 `patch`(그 시트에서 인식한 컬럼만)를 쓴다. 컬럼이 통째로 없는 시트 한 장이 기존 영문명·설명을 전부 지워 버리는 것을 막기 위해서다. 도메인의 방언 타입도 시트에 있던 방언만 갈아끼우고, 용어의 `기본 도메인` 컬럼이 없으면 기존 `domainId`를 그대로 둔다.
 - 신규는 `newId()`로 id를 발급한다(주입받아 producer를 순수·테스트 가능하게 유지).
 - 한 producer 안에서 3종을 모두 처리 → 단일 뮤테이션 → Revision 1건, undo 1회로 원복.
+- 단일 뮤테이션이므로 서버의 op 상한 `MAX_OPS_PER_MUTATION`(5000)이 한 번에 올릴 수 있는 항목 수의 천장이다(항목 1건 = op 1건). 그 배치가 들어올 수 있도록 서버 본문 한도도 함께 올렸다. UI가 미리 막는다 — 아래 참조.
 
 ```tsx
 // dict-import-section.tsx
@@ -263,12 +275,15 @@ export function DictImportSection({ projectId }: { projectId: string })
 
 - "양식 다운로드" 버튼 → `buildDictTemplateSheets()` → `erdd_사전양식.xlsx`. (내보내기 다이얼로그가 아니라 여기 둔다 — 올릴 사람이 양식을 받는 자리다.)
 - `<input type="file" accept=".xlsx">` → `readDictSheets` → `planDictImport(sheets, model, namingRules)` → 계획 state. 파싱 실패는 `toast.error`.
-- 요약 "신규 N건 · 중복 M건 · 오류 K행", 중복 처리 라디오(건너뛰기 기본 / 덮어쓰기), 이슈 목록(최대 20건 + "외 N건").
-- "가져오기" → `mutate((m) => applyDictImport(m, plan, mode, newId), { summary })`. summary는 실제 반영 건수 기준 `Excel 사전 가져오기 (단어 N · 용어 M · 도메인 K)`. 완료 후 state 리셋 + 성공 토스트.
+- 요약 "신규 N건 · 중복 M건 · 오류 K행", 중복 처리 라디오(건너뛰기 기본 / 덮어쓰기), 이슈 목록(최대 20건 + "외 N건"), 시트별 **인식한 컬럼** 목록("덮어쓰기는 파일에 있는 아래 컬럼만 갱신하고 나머지 값은 그대로 둡니다").
+- "가져오기" → `mutate((m) => applyDictImport(m, plan, mode, newId), { summary })`. summary는 실제 반영 건수 기준 `Excel 사전 가져오기 (단어 N · 용어 M · 도메인 K)`.
+- **결과를 `await`해서 분기한다**(`useModelMutation`은 `'applied' | 'noop' | 'error'`를 돌려준다). `applied`면 state 리셋 + 성공 토스트, `noop`(덮어쓰기인데 내용이 같아 보낼 op이 없음)이면 state 리셋 + 안내 토스트, `error`면 미리보기를 남겨 그대로 재시도할 수 있게 한다.
+- **제출 중에는 버튼과 파일 입력을 잠근다.** 왕복 동안 버튼이 열려 있으면 두 번째 클릭이 같은 계획을 한 번 더 보내고, 신규 항목은 그때마다 새 id로 다시 생성돼 사전이 통째로 중복 등록된다(이름 유일성 무결성 규칙이 없어 아무도 막지 않는다). 재진입 가드는 리렌더 전 연속 클릭까지 막고, 성공·실패 어느 쪽으로 끝나도 잠금을 푼다.
+- 적용 대상이 `MAX_OPS_PER_MUTATION`을 넘으면 버튼을 막고 파일 분할을 안내한다(낙관적 반영 → 서버 거절 → 되돌림을 사용자가 겪지 않도록 미리 막는다).
 - `dict-panel.tsx`의 `Section` 유니언에 `'import'`를 추가하고 "가져오기" 버튼으로 전환한다. dict-panel이 이미 428줄이라 섹션 본체는 별도 파일로 둔다.
 - `dict-panel.tsx` 단어 편집 폼에 **영문명** 입력란을 추가한다(항목 1의 필드가 UI로 노출되는 자리).
 
-**테스트**: `applyDictImport`의 skip/overwrite 각각, 덮어쓰기가 id를 유지(참조 컬럼의 domainId가 그대로), 같은 파일의 새 도메인을 용어가 참조, 해석 실패 도메인은 `null`, 적용 순서(도메인 먼저)가 결과에 반영됨. UI: 파일 선택 후 요약·이슈 렌더, 라디오 전환, 가져오기가 mutate를 1회 호출, 양식 다운로드, 단어 폼 영문명 입력·저장.
+**테스트**: `applyDictImport`의 skip/overwrite 각각, 덮어쓰기가 id를 유지(참조 컬럼의 domainId가 그대로), 덮어쓰기가 시트에 없던 컬럼을 건드리지 않음, 같은 파일의 새 도메인을 용어가 참조, 해석 실패 도메인은 `null`, 적용 순서(도메인 먼저)가 결과에 반영됨. UI: 파일 선택 후 요약·이슈·인식한 컬럼 렌더, 라디오 전환, 가져오기가 mutate를 1회 호출, 제출 중 두 번째 클릭이 mutate를 다시 부르지 않음, 실패 후 재시도 가능, `noop` 안내 토스트, op 상한 초과 시 버튼 비활성, 양식 다운로드, 단어 폼 영문명 입력·저장.
 
 ## 실행
 
