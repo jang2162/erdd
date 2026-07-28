@@ -25,9 +25,10 @@ export { generateDdl, ddlWarnings } from './ddl.js'
 export type { DdlScope, ExportScope } from './ddl.js'
 export {
   EXCEL_SHEET_KEYS, EXCEL_SHEET_NAME, WORD_HEADERS, TERM_HEADERS, DOMAIN_HEADERS,
-  TABLE_LIST_HEADERS, TABLE_SPEC_HEADERS, buildExcelSheets, buildDictTemplateSheets,
+  TABLE_LIST_HEADERS, TABLE_SPEC_HEADERS, CHANGE_HEADERS, buildExcelSheets, buildDictTemplateSheets,
+  buildChangeSheet,
 } from './excel-sheets.js'
-export type { ExcelSheetKey, SheetData } from './excel-sheets.js'
+export type { ExcelSheetKey, SheetKey, SheetData } from './excel-sheets.js'
 export { DICT_SHEET_KEYS, planDictImport } from './excel-import.js'
 export type {
   DictSheetKey, RawSheet, DictImportIssue, DictImportEntry, DictImportCounts,

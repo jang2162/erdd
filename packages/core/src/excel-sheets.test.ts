@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { buildSampleModel } from './testing/fixtures.js'
 import type { ProjectModel } from './model.js'
-import { buildDictTemplateSheets, buildExcelSheets, EXCEL_SHEET_NAME } from './excel-sheets.js'
+import { createEmptyModel } from './model.js'
+import {
+  buildChangeSheet, buildDictTemplateSheets, buildExcelSheets, CHANGE_HEADERS, EXCEL_SHEET_NAME,
+} from './excel-sheets.js'
+import { diffModelsForDisplay } from './model-diff.js'
 
 /** 시트 key로 하나를 꺼낸다(없으면 테스트 실패를 유도하도록 undefined 반환). */
 function sheetOf(sheets: ReturnType<typeof buildExcelSheets>, key: string) {
@@ -215,5 +219,45 @@ describe('buildDictTemplateSheets', () => {
     for (const t of template) {
       expect(t.headers).toEqual(exported.find((e) => e.key === t.key)!.headers)
     }
+  })
+})
+
+describe('buildChangeSheet', () => {
+  const meta = { baseLabel: 'v1.0', targetLabel: '현재' }
+
+  it('제목 행에 기준·비교 라벨을 담고 헤더가 상수와 같다', () => {
+    const m = createEmptyModel()
+    const sheet = buildChangeSheet(diffModelsForDisplay(m, m), meta)
+    expect(sheet.key).toBe('changes')
+    expect(sheet.name).toBe('변경분 정의서')
+    expect(sheet.title).toBe('기준: v1.0 · 비교: 현재')
+    expect(sheet.headers).toEqual([...CHANGE_HEADERS])
+    expect(sheet.rows).toEqual([])
+  })
+
+  it('changed는 속성 하나당 한 행을 만든다', () => {
+    // 픽스처의 c3는 nullable:false — false→true로 바꿔야 실제 변경이 된다.
+    const base = buildSampleModel()
+    const target = structuredClone(base)
+    target.columns['c3']!.physicalName = 'MBR_NAME'
+    target.columns['c3']!.nullable = true
+    const sheet = buildChangeSheet(diffModelsForDisplay(base, target), meta)
+    expect(sheet.rows).toHaveLength(2)
+    // changed 라벨은 target(현재 상태)에서 해석된다 — 물리명이 MBR_NAME으로
+    // 바뀌었으므로 라벨도 그 이름을 쓴다(model-diff.ts labelOf, added와 대칭).
+    expect(sheet.rows.every((r) => r[0] === '컬럼' && r[1] === 'MBR.MBR_NAME')).toBe(true)
+    expect(sheet.rows.every((r) => r[2] === '변경')).toBe(true)
+    const physical = sheet.rows.find((r) => r[3] === '물리명')!
+    expect(physical[4]).toBe('MBR_NM')
+    expect(physical[5]).toBe('MBR_NAME')
+  })
+
+  it('added/removed는 한 행이고 속성·값 칸이 빈다', () => {
+    const base = buildSampleModel()
+    const target = structuredClone(base)
+    delete target.columns['c3']
+    const sheet = buildChangeSheet(diffModelsForDisplay(base, target), meta)
+    expect(sheet.rows).toHaveLength(1)
+    expect(sheet.rows[0]).toEqual(['컬럼', 'MBR.MBR_NM', '삭제', '', '', ''])
   })
 })

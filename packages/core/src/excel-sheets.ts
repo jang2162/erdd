@@ -2,6 +2,7 @@ import type { Column, ProjectModel, Table } from './model.js'
 import type { ExportScope } from './ddl.js'
 import { customFieldsFor, resolveCustomValue } from './custom-field.js'
 import { decomposeByWords } from './naming.js'
+import { DIFF_KIND_LABEL, type ModelDiff } from './model-diff.js'
 
 export type ExcelSheetKey = 'tableList' | 'tableSpec' | 'words' | 'terms' | 'domains'
 
@@ -9,12 +10,19 @@ export type ExcelSheetKey = 'tableList' | 'tableSpec' | 'words' | 'terms' | 'dom
 export const EXCEL_SHEET_KEYS: readonly ExcelSheetKey[] =
   ['tableList', 'tableSpec', 'words', 'terms', 'domains']
 
-export const EXCEL_SHEET_NAME: Record<ExcelSheetKey, string> = {
+/**
+ * 워크북에 실릴 수 있는 전체 시트 키. 'changes'(변경분 정의서)는 내보내기 다이얼로그의
+ * 체크박스 목록(EXCEL_SHEET_KEYS)에 넣지 않는다 — 비교 화면에서만 만든다.
+ */
+export type SheetKey = ExcelSheetKey | 'changes'
+
+export const EXCEL_SHEET_NAME: Record<SheetKey, string> = {
   tableList: '테이블 목록',
   tableSpec: '테이블정의서',
   words: '단어사전',
   terms: '용어사전',
   domains: '도메인정의서',
+  changes: '변경분 정의서',
 }
 
 export const TABLE_LIST_HEADERS = ['그룹', '논리명', '물리명', '설명'] as const
@@ -27,12 +35,20 @@ export const TERM_HEADERS = ['용어', '구성 단어', '물리명', '기본 도
 export const DOMAIN_HEADERS = [
   '이름', '분류', '논리 타입', 'PostgreSQL', 'MySQL', 'Oracle', 'MSSQL', '기본값', '허용값', '설명',
 ] as const
+export const CHANGE_HEADERS = ['구분', '대상', '변경유형', '속성', '이전값', '이후값'] as const
 
 /**
  * 한 시트의 내용. 모든 셀은 문자열이다 — 물리명 "0001"의 앞 0이 날아가거나
  * 코드값이 숫자로 바뀌는 것을 막고, 업로드 파서와 표현이 대칭이 된다.
  */
-export type SheetData = { key: ExcelSheetKey; name: string; headers: string[]; rows: string[][] }
+export type SheetData = {
+  key: SheetKey
+  name: string
+  headers: string[]
+  rows: string[][]
+  /** 있으면 헤더 위 1행에 쓰인다(변경분 정의서의 비교 대상 표기). */
+  title?: string
+}
 
 const text = (v: string | null | undefined): string => v ?? ''
 
@@ -166,4 +182,31 @@ export function buildDictTemplateSheets(): SheetData[] {
     { key: 'terms', name: EXCEL_SHEET_NAME.terms, headers: [...TERM_HEADERS], rows: [] },
     { key: 'domains', name: EXCEL_SHEET_NAME.domains, headers: [...DOMAIN_HEADERS], rows: [] },
   ]
+}
+
+const CHANGE_KIND_LABEL = { added: '추가', removed: '삭제', changed: '변경' } as const
+
+/**
+ * 변경분 정의서 한 시트. changed는 속성 하나당 한 행이고, added/removed는
+ * 한 행에 속성·값 칸을 비워 둔다(무엇이 통째로 생기거나 사라졌는지가 정보의 전부다).
+ */
+export function buildChangeSheet(
+  diff: ModelDiff, meta: { baseLabel: string; targetLabel: string },
+): SheetData {
+  const rows: string[][] = []
+  for (const e of diff.entries) {
+    const head = [DIFF_KIND_LABEL[e.kind], e.label, CHANGE_KIND_LABEL[e.changeKind]]
+    if (e.fields.length === 0) {
+      rows.push([...head, '', '', ''])
+      continue
+    }
+    for (const f of e.fields) rows.push([...head, f.label, f.before, f.after])
+  }
+  return {
+    key: 'changes',
+    name: EXCEL_SHEET_NAME.changes,
+    title: `기준: ${meta.baseLabel} · 비교: ${meta.targetLabel}`,
+    headers: [...CHANGE_HEADERS],
+    rows,
+  }
 }
