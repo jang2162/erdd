@@ -147,10 +147,11 @@ describe.skipIf(!url)('model', () => {
     const got = await get(app, 'model.get', editorToken, { projectId })
     expect(got.statusCode).toBe(200)
     expect(got.json().result.data.model.words[wordId]).toEqual({
-      id: wordId, logicalName: '주문', abbreviation: 'ORD', description: null,
+      id: wordId, logicalName: '주문', abbreviation: 'ORD', description: null, origin: null,
     })
     expect(got.json().result.data.model.terms[termId]).toEqual({
       id: termId, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null,
+      origin: null,
     })
   })
 

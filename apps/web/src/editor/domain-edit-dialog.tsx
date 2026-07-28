@@ -84,6 +84,7 @@ export function DomainEditDialog({
         defaultValue: trimmedDefaultValue === '' ? null : trimmedDefaultValue,
         allowedValues: nextAllowedValues,
         description: trimmedDescription === '' ? null : trimmedDescription,
+        origin: null,
       }), { summary: '도메인 추가' })
       onOpenChange(false)
       return

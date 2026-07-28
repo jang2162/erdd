@@ -6,9 +6,11 @@ import {
   wordUsage, termUsage, unregisteredWords,
 } from './dict-edits.js'
 
-const word = (id: string, over = {}) => ({ id, logicalName: '주문', abbreviation: 'ORD', description: null, ...over })
+const word = (id: string, over = {}) => (
+  { id, logicalName: '주문', abbreviation: 'ORD', description: null, origin: null, ...over }
+)
 const term = (id: string, over = {}) => (
-  { id, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null, ...over }
+  { id, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null, origin: null, ...over }
 )
 const table = (id: string, logicalName: string) => (
   { id, logicalName, physicalName: '', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }

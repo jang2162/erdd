@@ -177,7 +177,9 @@ export function EditPanel({ projectId }: { projectId: string }) {
               const domainId = c.domainId
               if (logicalName.trim() === '' || physicalName.trim() === '') return
               void mutate(
-                (m) => createTerm(m, { id: newId(), logicalName, physicalName, domainId, description: null }),
+                (m) => createTerm(
+                  m, { id: newId(), logicalName, physicalName, domainId, description: null, origin: null },
+                ),
                 { summary: '용어 등록' },
               )
             }}

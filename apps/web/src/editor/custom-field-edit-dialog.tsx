@@ -70,6 +70,7 @@ export function CustomFieldEditDialog({
         options: nextOptions,
         required: nextRequired,
         defaultValue: trimmedDefault === '' ? null : trimmedDefault,
+        origin: null,
       }), { summary: '커스텀 항목 추가' })
       onOpenChange(false)
       return

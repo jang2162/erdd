@@ -21,7 +21,7 @@ describe('resolveColumn', () => {
     const m = base()
     m.domains['d'] = { id: 'd', name: '금액', category: null, logicalType: 'DECIMAL(15,0)',
       dialectTypes: { postgresql: 'numeric(15)', mysql: null, oracle: null, mssql: null },
-      defaultValue: '0', allowedValues: [], description: null }
+      defaultValue: '0', allowedValues: [], description: null, origin: null }
     m.columns['c'] = col({ domainId: 'd', defaultValue: null })
     expect(resolveColumn(m.columns['c']!, m, 'postgresql').sql).toBe('numeric(15)')
     expect(resolveColumn(m.columns['c']!, m, 'mysql').sql).toBe('DECIMAL(15,0)') // 논리타입 변환
@@ -32,7 +32,7 @@ describe('resolveColumn', () => {
     const m = base()
     m.domains['d'] = { id: 'd', name: '여부', category: null, logicalType: 'CHAR(1)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: "'N'", allowedValues: ['Y', 'N'], description: null }
+      defaultValue: "'N'", allowedValues: ['Y', 'N'], description: null, origin: null }
     m.columns['c'] = col({ domainId: 'd', type: 'INT', defaultValue: "'Y'" })
     const r = resolveColumn(m.columns['c']!, m, 'postgresql')
     expect(r.defaultValue).toBe("'Y'")

@@ -72,6 +72,20 @@ export const TableGroupSchema = z.strictObject({
 })
 export type TableGroup = z.infer<typeof TableGroupSchema>
 
+/**
+ * 공용 리소스 라이브러리에서 복사(fork)해 온 항목의 원본 참조.
+ * base는 "가져온(또는 마지막으로 재동기화 처리한) 시점에 프로젝트에 써넣은 payload"이며
+ * 프로젝트 공간이다(term.domainId는 프로젝트 도메인 id). 3-way 병합의 기준점.
+ * libraryId가 있어야 여러 라이브러리를 쓰는 프로젝트에서 계획 대상을 정확히 가를 수 있다.
+ */
+export const OriginSchema = z.strictObject({
+  libraryId: z.string(),
+  sourceId: z.string(),
+  sourceVersion: z.number().int(),
+  base: z.record(z.string(), z.unknown()),
+})
+export type Origin = z.infer<typeof OriginSchema>
+
 export const DomainSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
@@ -86,6 +100,7 @@ export const DomainSchema = z.strictObject({
   defaultValue: z.string().nullable(),
   allowedValues: z.array(z.string()),
   description: z.string().nullable(),
+  origin: OriginSchema.nullable().default(null),
 })
 export type Domain = z.infer<typeof DomainSchema>
 
@@ -94,6 +109,7 @@ export const WordSchema = z.strictObject({
   logicalName: z.string(),
   abbreviation: z.string(),
   description: z.string().nullable(),
+  origin: OriginSchema.nullable().default(null),
 })
 export type Word = z.infer<typeof WordSchema>
 
@@ -103,6 +119,7 @@ export const TermSchema = z.strictObject({
   physicalName: z.string(),
   domainId: z.string().nullable(),
   description: z.string().nullable(),
+  origin: OriginSchema.nullable().default(null),
 })
 export type Term = z.infer<typeof TermSchema>
 
@@ -115,6 +132,7 @@ export const CustomFieldSchema = z.strictObject({
   required: z.boolean(),                         // boolean 타입에는 적용하지 않는다(항상 값이 있음)
   defaultValue: z.string().nullable(),
   order: z.number().int(),                       // 같은 target 안에서의 표시 순서
+  origin: OriginSchema.nullable().default(null),
 })
 export type CustomField = z.infer<typeof CustomFieldSchema>
 

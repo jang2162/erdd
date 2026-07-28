@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { ColumnSchema, ProjectModelSchema, TableSchema, createEmptyModel } from './model.js'
+import {
+  ColumnSchema, ProjectModelSchema, TableSchema, createEmptyModel,
+  DomainSchema, WordSchema, TermSchema, CustomFieldSchema,
+} from './model.js'
 
 describe('model schemas', () => {
   it('createEmptyModel returns all ten empty collections', () => {
@@ -78,5 +81,40 @@ describe('model schemas', () => {
       // domainId 의도적으로 생략 — domainId 필드가 없던 구 리비전 데이터를 흉내
     }
     expect(ColumnSchema.parse(legacyColumn).domainId).toBeNull()
+  })
+})
+
+describe('origin (공용 리소스 원본 참조)', () => {
+  const domainPayload = {
+    id: 'd1', name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+    dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+    defaultValue: null, allowedValues: [], description: null,
+  }
+
+  it('origin을 생략하면 null로 파싱된다 (옛 op 페이로드·옛 스냅샷)', () => {
+    expect(DomainSchema.parse(domainPayload).origin).toBeNull()
+    expect(WordSchema.parse({
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null,
+    }).origin).toBeNull()
+    expect(TermSchema.parse({
+      id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: null, description: null,
+    }).origin).toBeNull()
+    expect(CustomFieldSchema.parse({
+      id: 'f1', name: '개인정보여부', target: 'column', type: 'text',
+      options: [], required: false, defaultValue: null, order: 0,
+    }).origin).toBeNull()
+  })
+
+  it('origin을 그대로 왕복한다', () => {
+    const origin = {
+      libraryId: 'lib1', sourceId: 'src1', sourceVersion: 3,
+      base: { name: '금액', category: null },
+    }
+    expect(DomainSchema.parse({ ...domainPayload, origin }).origin).toEqual(origin)
+  })
+
+  it('origin에 알 수 없는 키가 있으면 거부한다', () => {
+    const bad = { libraryId: 'l', sourceId: 's', sourceVersion: 1, base: {}, extra: 1 }
+    expect(DomainSchema.safeParse({ ...domainPayload, origin: bad }).success).toBe(false)
   })
 })

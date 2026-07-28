@@ -72,7 +72,7 @@ describe('generateDdl — CREATE TABLE', () => {
     m.tables['t'] = tbl('t', 'FLAGS')
     m.domains['d'] = { id: 'd', name: '여부', category: null, logicalType: 'CHAR(1)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: "'N'", allowedValues: ['Y', 'N'], description: null }
+      defaultValue: "'N'", allowedValues: ['Y', 'N'], description: null, origin: null }
     m.columns['c'] = col('c', 't', 'USE_YN', 'INT', { order: 0, domainId: 'd' }) // type INT은 무시(잠금)
     const pg = generateDdl(m, 'postgresql')
     expect(pg).toContain('USE_YN char(1)')          // 도메인 논리타입 변환

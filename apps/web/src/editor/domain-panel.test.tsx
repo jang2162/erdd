@@ -29,12 +29,12 @@ function loadModelWithDomains() {
   m = createDomain(m, {
     id: 'd1', name: '금액', category: '통화', logicalType: 'DECIMAL(15)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: [], description: null,
+    defaultValue: null, allowedValues: [], description: null, origin: null,
   })
   m = createDomain(m, {
     id: 'd2', name: '상태코드', category: '코드', logicalType: 'CHAR(1)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: ['Y', 'N'], description: null,
+    defaultValue: null, allowedValues: ['Y', 'N'], description: null, origin: null,
   })
   m = { ...m, columns: { ...m.columns, c1: { ...m.columns['c1']!, domainId: 'd2' } } }
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)

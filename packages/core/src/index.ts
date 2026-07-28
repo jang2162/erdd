@@ -3,11 +3,11 @@ export type { LogicalType, LogicalTypeKind, ParseResult } from './logical-type.j
 export {
   PositionSchema, TableSchema, ColumnSchema, RelationshipSchema,
   IndexSchema, NoteSchema, TableGroupSchema, DomainSchema, WordSchema, TermSchema,
-  CustomFieldSchema, ProjectModelSchema, createEmptyModel,
+  CustomFieldSchema, ProjectModelSchema, createEmptyModel, OriginSchema,
 } from './model.js'
 export type {
   Position, Table, Column, Relationship, IndexDef, Note, TableGroup, Domain, Word, Term,
-  CustomField, ProjectModel,
+  CustomField, ProjectModel, Origin,
 } from './model.js'
 export { validateModelIntegrity } from './integrity.js'
 export type { IntegrityIssue } from './integrity.js'
@@ -37,3 +37,8 @@ export type { NamingRules, GenResult } from './naming.js'
 export {
   customFieldsFor, resolveCustomValue, customFieldUsageCount, customOptionUsageCount,
 } from './custom-field.js'
+export {
+  RESOURCE_KINDS, RESOURCE_COLLECTION_BY_KIND, RESOURCE_KIND_LABEL, RESOURCE_PAYLOAD_SCHEMAS,
+  resourcePayloadOf, resourceDisplayName,
+} from './resource.js'
+export type { ResourceKind } from './resource.js'

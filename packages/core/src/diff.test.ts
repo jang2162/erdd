@@ -62,7 +62,7 @@ describe('diffModels', () => {
     target.domains[domainId] = {
       id: domainId, name: '금액', category: null, logicalType: 'DECIMAL',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null, allowedValues: [], description: null, origin: null,
     }
     target.columns.c1!.domainId = domainId
 
@@ -109,7 +109,7 @@ describe('diffModels', () => {
     const target = buildSampleModel()
     target.customFields['f1'] = {
       id: 'f1', name: '개인정보여부', target: 'column', type: 'boolean',
-      options: [], required: false, defaultValue: null, order: 0,
+      options: [], required: false, defaultValue: null, order: 0, origin: null,
     }
     target.columns.c1!.custom = { f1: 'true' }
 

@@ -42,7 +42,7 @@ describe('NamingCheck', () => {
     const m = createEmptyModel()
     m.customFields['cf1'] = {
       id: 'cf1', name: '업무구분', target: 'table', type: 'text',
-      options: [], required: true, defaultValue: null, order: 0,
+      options: [], required: true, defaultValue: null, order: 0, origin: null,
     }
     m.tables['t1'] = {
       id: 't1', logicalName: '', physicalName: 'ORD', comment: null,

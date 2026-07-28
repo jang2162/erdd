@@ -4,7 +4,7 @@ import { createDomain, updateDomain, removeDomain, usageOf } from './domain-edit
 
 const dom = (id: string, over = {}) => ({ id, name: '금액', category: null, logicalType: 'DECIMAL(15)',
   dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-  defaultValue: null, allowedValues: [], description: null, ...over })
+  defaultValue: null, allowedValues: [], description: null, origin: null, ...over })
 
 describe('domain-edits', () => {
   it('createDomain/updateDomain', () => {

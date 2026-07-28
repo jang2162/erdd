@@ -8,7 +8,7 @@ import {
 function newField(id: string, over: Partial<CustomField> = {}): Omit<CustomField, 'order'> {
   const { order: _order, ...rest } = {
     id, name: id, target: 'column' as const, type: 'text' as const, options: [] as string[],
-    required: false, defaultValue: null, order: 0, ...over,
+    required: false, defaultValue: null, order: 0, origin: null, ...over,
   }
   return rest
 }
