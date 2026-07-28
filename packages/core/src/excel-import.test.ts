@@ -218,6 +218,38 @@ describe('planDictImport — 용어', () => {
     const term = plan.entries.find((e) => e.kind === 'term')!
     expect(term.kind === 'term' && term.draft.physicalName).toBe('MEM')
   })
+
+  it('약어가 빈 단어로 물리명을 자동 생성하면 warning을 남기되 행은 등록한다', () => {
+    const plan = planDictImport([
+      wordSheet([['회원', '', '', ''], ['번호', 'NO', '', '']]),
+      termSheet([['회원번호', '', '', '', '']]),
+    ], createEmptyModel(), DEFAULT_NAMING_RULES)
+    const term = plan.entries.find((e) => e.kind === 'term')!
+    expect(term.kind === 'term' && term.draft.physicalName).toBe('_NO')
+    expect(plan.issues).toEqual([{
+      sheet: 'terms', row: 1, level: 'warning',
+      message: '물리명 자동 생성에 약어가 비어 있는 단어를 썼습니다: 회원',
+    }])
+    expect(plan.bySheet.terms).toEqual({ created: 1, duplicated: 0, errored: 0 })
+  })
+
+  it('약어 컬럼이 아예 없는 단어 시트도 같은 warning을 남긴다', () => {
+    const plan = planDictImport([
+      { key: 'words', headers: ['논리명'], rows: [['회원'], ['번호']] },
+      termSheet([['회원번호', '', '', '', '']]),
+    ], createEmptyModel(), DEFAULT_NAMING_RULES)
+    expect(plan.issues.map((i) => i.message))
+      .toEqual(['물리명 자동 생성에 약어가 비어 있는 단어를 썼습니다: 회원, 번호'])
+    expect(plan.entries.filter((e) => e.kind === 'term')).toHaveLength(1)
+  })
+
+  it('물리명을 직접 적었으면 약어가 비어 있어도 경고하지 않는다', () => {
+    const plan = planDictImport([
+      wordSheet([['회원', '', '', '']]),
+      termSheet([['회원번호', '', 'MBR_NO', '', '']]),
+    ], createEmptyModel(), DEFAULT_NAMING_RULES)
+    expect(plan.issues).toHaveLength(0)
+  })
 })
 
 describe('planDictImport — 인식 컬럼과 부분 갱신값(patch)', () => {

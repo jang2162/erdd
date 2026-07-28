@@ -1,6 +1,6 @@
 import type { Domain, ProjectModel, Term, Word } from './model.js'
 import type { NamingRules } from './naming.js'
-import { generatePhysicalName } from './naming.js'
+import { decomposeByWords, generatePhysicalName } from './naming.js'
 import { DOMAIN_HEADERS, TERM_HEADERS, WORD_HEADERS } from './excel-sheets.js'
 
 export type DictSheetKey = 'words' | 'terms' | 'domains'
@@ -250,6 +250,21 @@ export function planDictImport(
     let physicalName = r.at('물리명')
     if (physicalName === '' && rules) {
       physicalName = generatePhysicalName(logicalName, effectiveWords, {}, rules).physicalName
+      // 약어가 빈 단어는 단어 시트에서는 허용되지만(관대한 파싱), 그 단어로 물리명을 만들면
+      // 그 자리가 빈 채로 이어붙어 "회원번호 → _NO" 같은 값이 나온다. 행은 그대로 등록하되
+      // 어느 단어 때문인지 알려 준다.
+      if (physicalName !== '') {
+        const blanks = [...new Set(
+          decomposeByWords(logicalName, effectiveWords)
+            .flatMap((s) => (s.word !== null && s.word.abbreviation.trim() === '' ? [s.word.logicalName] : [])),
+        )]
+        if (blanks.length > 0) {
+          issues.push({
+            sheet: 'terms', row: rowNo, level: 'warning',
+            message: `물리명 자동 생성에 약어가 비어 있는 단어를 썼습니다: ${blanks.join(', ')}`,
+          })
+        }
+      }
     }
     if (physicalName === '') {
       issues.push({
