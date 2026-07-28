@@ -119,6 +119,9 @@ export function ResourceLibraryManager({
 
             {selectedId === lib.id && (
               <div className="grid gap-3 border-t p-3">
+                {items.isError && (
+                  <p role="alert" className="text-destructive">{items.error.message}</p>
+                )}
                 {RESOURCE_KINDS.map((kind) => {
                   const kindRows = rows.filter((r) => r.kind === kind)
                   return (

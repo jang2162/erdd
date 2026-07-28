@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -87,5 +87,56 @@ describe('ResourceLibraryManager', () => {
     await screen.findByText('회원')
     await userEvent.click(screen.getByRole('button', { name: '회원 삭제' }))
     await waitFor(() => expect(remove).toHaveBeenCalledWith({ itemId: 'i1' }))
+  })
+
+  it('항목 목록 조회 실패는 알림으로 보인다', async () => {
+    renderManager({
+      'resource.library.list': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ error: { code: -32004, message: '항목을 불러오지 못했습니다' } }),
+    })
+    await userEvent.click(await screen.findByRole('button', { name: /항목 3개/ }))
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('항목을 불러오지 못했습니다'))
+  })
+
+  it('항목을 만든다', async () => {
+    const create = vi.fn(() => ({ data: { id: 'i3' } }))
+    renderManager({
+      'resource.library.list': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+      'resource.items.create': create,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: /항목 3개/ }))
+    await screen.findByText('회원')
+    const wordSection = screen.getByText('단어').parentElement!.parentElement!
+    await userEvent.click(within(wordSection).getByRole('button', { name: '추가' }))
+    await userEvent.type(screen.getByLabelText('논리명'), '주문')
+    await userEvent.type(screen.getByLabelText('물리 약어'), 'ORD')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(create).toHaveBeenCalledWith({
+      libraryId: 'l1',
+      kind: 'word',
+      payload: { logicalName: '주문', abbreviation: 'ORD', description: null },
+    }))
+  })
+
+  it('항목을 수정한다', async () => {
+    const update = vi.fn(() => ({ data: { ok: true } }))
+    renderManager({
+      'resource.library.list': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+      'resource.items.update': update,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: /항목 3개/ }))
+    await screen.findByText('회원')
+    await userEvent.click(screen.getByRole('button', { name: '회원 편집' }))
+    const nameInput = screen.getByLabelText('논리명')
+    await userEvent.clear(nameInput)
+    await userEvent.type(nameInput, '회원신규')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => expect(update).toHaveBeenCalledWith({
+      itemId: 'i1',
+      payload: { logicalName: '회원신규', abbreviation: 'MBR', description: null },
+    }))
   })
 })
