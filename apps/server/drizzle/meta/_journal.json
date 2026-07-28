@@ -57,6 +57,13 @@
       "when": 1785207604776,
       "tag": "0007_equal_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785213928975,
+      "tag": "0008_lethal_spiral",
+      "breakpoints": true
     }
   ]
 }

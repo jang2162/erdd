@@ -1,5 +1,5 @@
 import {
-  boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid,
+  boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
 import {
   DEFAULT_NAMING_RULES, type Dialect, type NamingRules, type Op, type Origin, type ProjectModel,
@@ -214,7 +214,7 @@ export const resourceLibraries = pgTable('resource_libraries', {
   description: text('description').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (t) => [index('ix_resource_libraries_org_id').on(t.orgId)])
 
 export const resourceItems = pgTable('resource_items', {
   id: uuid('id').primaryKey(),
@@ -226,4 +226,4 @@ export const resourceItems = pgTable('resource_items', {
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (t) => [index('ix_resource_items_library_id').on(t.libraryId)])
