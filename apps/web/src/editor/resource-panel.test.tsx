@@ -132,6 +132,29 @@ describe('ResourcePanel', () => {
     expect(screen.getByRole('radio', { name: '회원 원본 반영' })).toHaveProperty('checked', true)
   })
 
+  it('충돌 항목은 프로젝트 현재값과 원본값을 나란히 보여준다', async () => {
+    // "프로젝트 유지"는 이 변경을 검토·거절했다고 영구 기록해 다시 띄우지 않는다 —
+    // 값을 못 본 채 고르면 원본 개선을 영원히 놓친다. 프로젝트는 MB, 원본은 MEMBER인
+    // 케이스라 abbreviation 필드에 두 값이 모두 화면에 보여야 한다.
+    const forked: Word = {
+      id: 'w1', logicalName: '회원', abbreviation: 'MB', description: null,
+      origin: {
+        libraryId: 'l1', sourceId: 's1', sourceVersion: 1,
+        base: { logicalName: '회원', abbreviation: 'MBR', description: null },
+      },
+    }
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({
+        data: [{ ...ITEMS[0]!, version: 2, payload: { logicalName: '회원', abbreviation: 'MEMBER', description: null } }],
+      }),
+    }, { ...createEmptyModel(), words: { w1: forked } })
+    await openLibrary()
+    expect(await screen.findByText('충돌 (1)')).toBeDefined()
+    expect(screen.getByText('MB')).toBeDefined()
+    expect(screen.getByText('MEMBER')).toBeDefined()
+  })
+
   it('충돌에 "모두 프로젝트 유지"를 적용하면 내용은 그대로, origin.sourceVersion만 올라간다', async () => {
     const forked: Word = {
       id: 'w1', logicalName: '회원', abbreviation: 'MB', description: null,
@@ -198,5 +221,19 @@ describe('ResourcePanel', () => {
     await screen.findByText('신규 추가 (1)')
     expect(screen.getByRole('checkbox', { name: /회원/ })).toHaveProperty('checked', false)
     expect(screen.getByText('이름 중복')).toBeDefined()
+  })
+
+  it('항목 조회 실패는 알림으로 뜨고 신규 추가 등 4구역은 렌더하지 않는다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ error: { code: -32004, message: '항목을 불러오지 못했습니다' } }),
+    }, createEmptyModel())
+    await openLibrary()
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('항목을 불러오지 못했습니다'))
+    expect(screen.queryByText(/신규 추가/)).toBeNull()
+    expect(screen.queryByText(/자동 갱신/)).toBeNull()
+    expect(screen.queryByText(/충돌/)).toBeNull()
+    expect(screen.queryByText(/최신 상태/)).toBeNull()
   })
 })

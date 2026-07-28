@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Library } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  applyResyncPlan, planResync, RESOURCE_KIND_LABEL,
-  type LibraryItem, type ResyncEntry, type ResyncPlan,
+  applyResyncPlan, planResync, RESOURCE_COLLECTION_BY_KIND, RESOURCE_KIND_LABEL, resourcePayloadOf,
+  type LibraryItem, type ProjectModel, type ResyncEntry, type ResyncPlan,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
@@ -38,6 +38,44 @@ function EntryLabel({ entry }: { entry: ResyncEntry }) {
         </span>
       )}
     </span>
+  )
+}
+
+/** 화면 표시용 값 포맷 — null/undefined는 "(없음)", 객체·배열은 JSON으로 떨어뜨린다. */
+function formatConflictValue(value: unknown): string {
+  if (value === null || value === undefined) return '(없음)'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+/** 충돌 항목의 프로젝트 현재 payload — origin 없는 신규(added)면 null. */
+function currentProjectPayload(model: ProjectModel, entry: ResyncEntry): Record<string, unknown> | null {
+  if (!entry.projectEntityId) return null
+  const collection = model[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as Record<string, Record<string, unknown>>
+  const entity = collection[entry.projectEntityId]
+  if (!entity) return null
+  return resourcePayloadOf(entry.kind, entity)
+}
+
+/**
+ * 충돌 항목의 필드별 "현재(프로젝트) ↔ 원본" 비교. "프로젝트 유지"는 이 변경을 검토·거절했다고
+ * 영구 기록해 다시 띄우지 않으므로, 값을 못 본 채 고르면 원본 개선을 영원히 놓친다.
+ */
+function ConflictValueDiff({ entry, model }: { entry: ResyncEntry; model: ProjectModel }) {
+  const current = currentProjectPayload(model, entry)
+  if (!current || entry.changedFields.length === 0) return null
+  return (
+    <ul className="grid gap-0.5 text-xs text-muted-foreground">
+      {entry.changedFields.map((field) => (
+        <li key={field}>
+          <span className="font-medium text-foreground">{field}</span>
+          {': 현재 '}
+          <span>{formatConflictValue(current[field])}</span>
+          {' → 원본 '}
+          <span>{formatConflictValue(entry.nextPayload[field])}</span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -113,7 +151,10 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
         <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_1fr]">
           <div className="grid content-start gap-1">
             <h4 className="text-xs font-semibold text-muted-foreground">라이브러리</h4>
-            {libraries.data?.length === 0 && (
+            {libraries.isError && (
+              <p role="alert" className="text-destructive">{libraries.error.message}</p>
+            )}
+            {!libraries.isError && libraries.data?.length === 0 && (
               <p className="text-sm text-muted-foreground">사용할 수 있는 라이브러리가 없습니다</p>
             )}
             {libraries.data?.map((lib) => (
@@ -135,7 +176,11 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
               </p>
             )}
 
-            {libraryId !== null && (
+            {libraryId !== null && items.isError && (
+              <p role="alert" className="text-destructive">{items.error.message}</p>
+            )}
+
+            {libraryId !== null && !items.isError && (
               <>
                 <section className="grid gap-1.5">
                   <div className="flex items-center justify-between">
@@ -201,6 +246,7 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
                     {conflicts.map((entry) => (
                       <li key={entry.sourceId} className="grid gap-1 rounded border px-2 py-1.5">
                         <EntryLabel entry={entry} />
+                        <ConflictValueDiff entry={entry} model={model} />
                         <div className="flex flex-wrap gap-3 text-sm">
                           {([
                             ['defer', '보류'], ['keep', '프로젝트 유지'], ['apply', '원본 반영'],

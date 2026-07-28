@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import type { FastifyInstance } from 'fastify'
+import { RESOURCE_PAYLOAD_SCHEMAS } from '@erdd/core'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { resetDb } from '../testing/db.js'
 import { createTestApp } from '../testing/helpers.js'
@@ -51,5 +52,16 @@ describe.skipIf(!url)('ensureStarterGlobalLibrary', () => {
     const linked = items.filter((i) => i.kind === 'term' && i.payload.domainId !== null)
     expect(linked.length).toBeGreaterThan(0)
     for (const term of linked) expect(domainIds.has(String(term.payload.domainId))).toBe(true)
+  })
+
+  it('시드된 모든 항목의 payload가 core RESOURCE_PAYLOAD_SCHEMAS[kind]를 통과한다', async () => {
+    // 나중에 엔티티 스키마가 바뀌면 시드만 조용히 어긋나 fork 시 400이 나는 것을 막는 잠금 테스트.
+    await ensureStarterGlobalLibrary(app.db!)
+    const items = await app.db!.select().from(resourceItems)
+    expect(items.length).toBeGreaterThan(0)
+    for (const item of items) {
+      const result = RESOURCE_PAYLOAD_SCHEMAS[item.kind].safeParse(item.payload)
+      expect(result.success, `${item.kind}:${item.id} — ${result.success ? '' : result.error.message}`).toBe(true)
+    }
   })
 })

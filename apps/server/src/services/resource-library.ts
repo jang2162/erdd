@@ -95,42 +95,47 @@ const STARTER_CUSTOM_FIELDS = [
 /**
  * 전역 라이브러리가 하나도 없을 때만 예시 라이브러리를 만든다(ensureBootstrapAdmin과 같은 패턴).
  * 행안부 표준 사전 실데이터는 출처·라이선스 확인이 끝난 뒤 별도로 넣는다.
+ * 존재 확인 + 두 insert를 한 트랜잭션으로 묶는다 — library insert 뒤 items insert 전에
+ * 실패하면 항목 0개짜리 라이브러리가 남고, 다음 부팅부터 existing 가드에 걸려 영원히
+ * 복구되지 않기 때문이다.
  */
 export async function ensureStarterGlobalLibrary(db: Db): Promise<void> {
-  const existing = (
-    await db.select({ id: resourceLibraries.id }).from(resourceLibraries)
-      .where(eq(resourceLibraries.scope, 'global')).limit(1)
-  )[0]
-  if (existing) return
+  await db.transaction(async (tx) => {
+    const existing = (
+      await tx.select({ id: resourceLibraries.id }).from(resourceLibraries)
+        .where(eq(resourceLibraries.scope, 'global')).limit(1)
+    )[0]
+    if (existing) return
 
-  const libraryId = uuidv7()
-  await db.insert(resourceLibraries).values({
-    id: libraryId, scope: 'global', orgId: null,
-    name: '표준 사전(예시)',
-    description: '가져오기·재동기화를 시험해 볼 수 있는 예시 데이터입니다. 행안부 표준 사전 실데이터는 별도 소싱 예정입니다.',
+    const libraryId = uuidv7()
+    await tx.insert(resourceLibraries).values({
+      id: libraryId, scope: 'global', orgId: null,
+      name: '표준 사전(예시)',
+      description: '가져오기·재동기화를 시험해 볼 수 있는 예시 데이터입니다. 행안부 표준 사전 실데이터는 별도 소싱 예정입니다.',
+    })
+
+    const rows: { id: string; libraryId: string; kind: 'domain' | 'word' | 'term' | 'customField'; payload: Record<string, unknown>; version: number }[] = []
+    const domainIdByName = new Map<string, string>()
+    for (const payload of STARTER_DOMAINS) {
+      const id = uuidv7()
+      domainIdByName.set(payload.name, id)
+      rows.push({ id, libraryId, kind: 'domain', payload, version: 1 })
+    }
+    for (const payload of STARTER_WORDS) {
+      rows.push({ id: uuidv7(), libraryId, kind: 'word', payload, version: 1 })
+    }
+    const terms = [
+      { logicalName: '회원번호', physicalName: 'MBR_NO', domainId: domainIdByName.get('식별번호')!, description: null },
+      { logicalName: '회원명', physicalName: 'MBR_NM', domainId: domainIdByName.get('이름100')!, description: null },
+      { logicalName: '주문금액', physicalName: 'ORD_AMT', domainId: domainIdByName.get('금액')!, description: null },
+    ]
+    for (const payload of terms) {
+      rows.push({ id: uuidv7(), libraryId, kind: 'term', payload, version: 1 })
+    }
+    for (const payload of STARTER_CUSTOM_FIELDS) {
+      rows.push({ id: uuidv7(), libraryId, kind: 'customField', payload, version: 1 })
+    }
+    await tx.insert(resourceItems).values(rows)
+    console.log(`예시 전역 공용 리소스 라이브러리 생성: ${libraryId}`)
   })
-
-  const rows: { id: string; libraryId: string; kind: 'domain' | 'word' | 'term' | 'customField'; payload: Record<string, unknown>; version: number }[] = []
-  const domainIdByName = new Map<string, string>()
-  for (const payload of STARTER_DOMAINS) {
-    const id = uuidv7()
-    domainIdByName.set(payload.name, id)
-    rows.push({ id, libraryId, kind: 'domain', payload, version: 1 })
-  }
-  for (const payload of STARTER_WORDS) {
-    rows.push({ id: uuidv7(), libraryId, kind: 'word', payload, version: 1 })
-  }
-  const terms = [
-    { logicalName: '회원번호', physicalName: 'MBR_NO', domainId: domainIdByName.get('식별번호')!, description: null },
-    { logicalName: '회원명', physicalName: 'MBR_NM', domainId: domainIdByName.get('이름100')!, description: null },
-    { logicalName: '주문금액', physicalName: 'ORD_AMT', domainId: domainIdByName.get('금액')!, description: null },
-  ]
-  for (const payload of terms) {
-    rows.push({ id: uuidv7(), libraryId, kind: 'term', payload, version: 1 })
-  }
-  for (const payload of STARTER_CUSTOM_FIELDS) {
-    rows.push({ id: uuidv7(), libraryId, kind: 'customField', payload, version: 1 })
-  }
-  await db.insert(resourceItems).values(rows)
-  console.log(`예시 전역 공용 리소스 라이브러리 생성: ${libraryId}`)
 }

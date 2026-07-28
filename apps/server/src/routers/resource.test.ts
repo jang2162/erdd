@@ -50,15 +50,18 @@ describe.skipIf(!url)('resource', () => {
   it('조직 라이브러리는 Owner/Admin만 쓰고, 멤버는 읽기만, 외부인은 못 읽는다', async () => {
     const owner = await createAccount(app.db!, { email: 'owner@t.dev', name: 'O', password: 'pw-123456', role: 'user' })
     const memberUser = await createAccount(app.db!, { email: 'mem@t.dev', name: 'M', password: 'pw-123456', role: 'user' })
+    const adminMember = await createAccount(app.db!, { email: 'orgadmin@t.dev', name: 'OA', password: 'pw-123456', role: 'user' })
     await createAccount(app.db!, { email: 'out@t.dev', name: 'X', password: 'pw-123456', role: 'user' })
     const orgId = uuidv7()
     await app.db!.insert(organizations).values({ id: orgId, name: '팀', kind: 'team' })
     await app.db!.insert(members).values([
       { id: uuidv7(), orgId, userId: owner.id, role: 'owner' },
       { id: uuidv7(), orgId, userId: memberUser.id, role: 'member' },
+      { id: uuidv7(), orgId, userId: adminMember.id, role: 'admin' },
     ])
     const ownerToken = await loginAs(app, 'owner@t.dev', 'pw-123456')
     const memberToken = await loginAs(app, 'mem@t.dev', 'pw-123456')
+    const orgAdminToken = await loginAs(app, 'orgadmin@t.dev', 'pw-123456')
     const outsiderToken = await loginAs(app, 'out@t.dev', 'pw-123456')
 
     expect((await post(app, 'resource.library.create', memberToken, {
@@ -68,6 +71,12 @@ describe.skipIf(!url)('resource', () => {
       scope: 'org', orgId, name: '조직표준',
     })
     expect(created.statusCode).toBe(200)
+
+    // 조직 role='admin' 멤버도 owner와 동등하게 조직 라이브러리를 만들 수 있어야 한다.
+    const adminCreated = await post(app, 'resource.library.create', orgAdminToken, {
+      scope: 'org', orgId, name: '조직표준2',
+    })
+    expect(adminCreated.statusCode).toBe(200)
 
     expect((await get(app, 'resource.library.list', memberToken, { scope: 'org', orgId })).statusCode).toBe(200)
     expect((await get(app, 'resource.library.list', outsiderToken, { scope: 'org', orgId })).statusCode).toBe(403)

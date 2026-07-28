@@ -137,4 +137,25 @@ describe('diffModels', () => {
     const ops = diffModels(base, target)
     expect(ops.filter((o) => o.action === 'update')).toEqual([])
   })
+
+  it('does not emit an update op when the target domain merely lacks origin a base has (legacy snapshot regression)', () => {
+    // origin은 이번 sub-project에서 domain/word/term/customField에 새로 추가된 필드다.
+    // HANDOFF 3.3: 새 필드를 추가할 때는 "구 스냅샷에 필드 없음" 케이스를 회귀 테스트로 남긴다.
+    // 위 table.custom 테스트와 같은 패턴 — origin이 생기기 전 스냅샷의 jsonb에는 도메인에
+    // origin 키가 아예 없고, 현재 모델(base)에는 있다. 이때도 값 없는 update op가 나가면
+    // 옛 스냅샷 복원이 500으로 터진다.
+    const base = buildSampleModel()
+    base.domains['dm1'] = {
+      id: 'dm1', name: '금액', category: null, logicalType: 'DECIMAL',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null, origin: null,
+    }
+    const target = structuredClone(base)
+    const legacyDomain = { ...target.domains.dm1! } as Record<string, unknown>
+    delete legacyDomain.origin
+    target.domains.dm1 = legacyDomain as unknown as NonNullable<typeof base.domains.dm1>
+
+    const ops = diffModels(base, target)
+    expect(ops.filter((o) => o.action === 'update')).toEqual([])
+  })
 })
