@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { desc, eq } from 'drizzle-orm'
-import { createEmptyModel, diffModels, type Op } from '@erdd/core'
+import { MAX_OPS_PER_MUTATION, createEmptyModel, diffModels, type Op } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { revisions } from '../db/schema.js'
 import { resetDb } from '../testing/db.js'
@@ -153,6 +154,34 @@ describe.skipIf(!url)('model', () => {
     expect(got.json().result.data.model.terms[termId]).toEqual({
       id: termId, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null,
     })
+  })
+
+  // Excel 사전 가져오기는 undo 1회로 원복되도록 전체를 mutation 1건으로 보낸다. 옛 상한 500과
+  // Fastify 기본 본문 한도 1 MiB로는 수백 행짜리 단어사전 한 장이 통째로 거절됐다.
+  it('op 600건·본문 1 MiB 초과 배치를 받아들이고 상한을 넘으면 400으로 막는다', async () => {
+    const padding = 'x'.repeat(2000)
+    const bulk = Array.from({ length: 600 }, (_, i) => {
+      const id = randomUUID()
+      return {
+        action: 'create', entity: 'word', entityId: id,
+        data: { id, logicalName: `단어${i}`, abbreviation: `W${i}`, englishName: null, description: padding },
+      }
+    })
+    expect(JSON.stringify(bulk).length).toBeGreaterThan(1024 * 1024)   // 기본 본문 한도 초과
+
+    const res = await post(app, 'model.mutate', editorToken, { projectId, ops: bulk })
+    expect(res.statusCode).toBe(200)
+    const got = await get(app, 'model.get', editorToken, { projectId })
+    expect(Object.keys(got.json().result.data.model.words)).toHaveLength(600)
+
+    const overCap = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, () => {
+      const id = randomUUID()
+      return {
+        action: 'create', entity: 'word', entityId: id,
+        data: { id, logicalName: id, abbreviation: 'X', englishName: null, description: null },
+      }
+    })
+    expect((await post(app, 'model.mutate', editorToken, { projectId, ops: overCap })).statusCode).toBe(400)
   })
 
 })
