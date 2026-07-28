@@ -173,7 +173,7 @@ describe('applyOps', () => {
 
   it('word/term 엔티티를 왕복하고, term은 존재하는 도메인만 참조한다', () => {
     const m = createEmptyModel()
-    const w = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null }
+    const w = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null }
     const created = applyOps(m, [{ action: 'create', entity: 'word', entityId: 'w1', data: w }])
     expect(created.words['w1']!.abbreviation).toBe('MBR')
     // term with missing domain → 무결성 위반

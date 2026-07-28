@@ -27,7 +27,7 @@ function renderPanel() {
 function loadModelWithDict() {
   // buildSampleModel의 t2 테이블 논리명은 "회원", c2/c3/c4 컬럼 논리명은 "회원번호"/"회원명"/"등급코드".
   let m = buildSampleModel()
-  m = createWord(m, { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null })
+  m = createWord(m, { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null })
   m = createTerm(m, {
     id: 'term1', logicalName: '등급코드', physicalName: 'GRD_CD', domainId: null, description: null,
   })

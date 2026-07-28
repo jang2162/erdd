@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ColumnSchema, ProjectModelSchema, TableSchema, createEmptyModel } from './model.js'
+import { ColumnSchema, ProjectModelSchema, TableSchema, WordSchema, createEmptyModel } from './model.js'
 
 describe('model schemas', () => {
   it('createEmptyModel returns all ten empty collections', () => {
@@ -78,5 +78,19 @@ describe('model schemas', () => {
       // domainId 의도적으로 생략 — domainId 필드가 없던 구 리비전 데이터를 흉내
     }
     expect(ColumnSchema.parse(legacyColumn).domainId).toBeNull()
+  })
+})
+
+describe('WordSchema englishName', () => {
+  it('englishName이 없는 옛 페이로드는 null로 파싱된다 (구 리비전 하위호환)', () => {
+    const legacyWord = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null }
+    expect(WordSchema.parse(legacyWord).englishName).toBeNull()
+  })
+
+  it('englishName 값을 그대로 보존한다', () => {
+    const word = {
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', description: null,
+    }
+    expect(WordSchema.parse(word)).toEqual(word)
   })
 })

@@ -146,8 +146,9 @@ describe.skipIf(!url)('model', () => {
 
     const got = await get(app, 'model.get', editorToken, { projectId })
     expect(got.statusCode).toBe(200)
+    // op 페이로드에는 englishName이 없지만(위 data), 로드 결과에는 null이 채워진다 — 하위호환 증거
     expect(got.json().result.data.model.words[wordId]).toEqual({
-      id: wordId, logicalName: '주문', abbreviation: 'ORD', description: null,
+      id: wordId, logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null,
     })
     expect(got.json().result.data.model.terms[termId]).toEqual({
       id: termId, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null,

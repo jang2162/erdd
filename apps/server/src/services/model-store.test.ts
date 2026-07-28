@@ -147,7 +147,7 @@ describe.skipIf(!url)('model-store', () => {
       },
       defaultValue: null, allowedValues: [], description: null,
     }
-    const word: Word = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null }
+    const word: Word = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null }
     raw.words[word.id] = word
     const term: Term = {
       id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId, description: '회원 식별자',

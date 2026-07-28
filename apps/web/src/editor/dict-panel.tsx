@@ -198,7 +198,7 @@ function UnregisteredWordsSection({ projectId, candidates }: { projectId: string
     void mutate(
       (m: ProjectModel) => registrations.reduce(
         (acc, r) => createWord(acc, {
-          id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation, description: null,
+          id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation, englishName: null, description: null,
         }),
         m,
       ),
@@ -275,6 +275,7 @@ function WordEditDialog({
         id,
         logicalName: trimmedLogicalName,
         abbreviation: trimmedAbbreviation,
+        englishName: null, // TODO(Task 7): 사전 폼에 영문명 입력란이 붙으면 그 값으로 교체
         description: trimmedDescription === '' ? null : trimmedDescription,
       }), { summary: '단어 추가' })
       onOpenChange(false)

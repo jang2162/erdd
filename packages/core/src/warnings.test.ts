@@ -14,7 +14,7 @@ function col(id: string, tableId: string, physicalName: string, over: Partial<Co
     domainId: null, custom: {}, ...over }
 }
 function word(id: string, logicalName: string, abbreviation: string): Word {
-  return { id, logicalName, abbreviation, description: null }
+  return { id, logicalName, abbreviation, englishName: null, description: null }
 }
 function term(id: string, logicalName: string, physicalName: string): Term {
   return { id, logicalName, physicalName, domainId: null, description: null }
