@@ -7,6 +7,7 @@ import { projectRouter } from './routers/project.js'
 import { modelRouter } from './routers/model.js'
 import { revisionRouter } from './routers/revision.js'
 import { snapshotRouter } from './routers/snapshot.js'
+import { resourceRouter } from './routers/resource.js'
 import { publicProcedure, router } from './trpc.js'
 
 export const appRouter = router({
@@ -23,6 +24,7 @@ export const appRouter = router({
   model: modelRouter,
   revision: revisionRouter,
   snapshot: snapshotRouter,
+  resource: resourceRouter,
 })
 
 export type AppRouter = typeof appRouter
