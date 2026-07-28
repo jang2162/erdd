@@ -45,6 +45,32 @@ describe('diffModelsForDisplay', () => {
     expect(d.counts.removed).toBe(1)
   })
 
+  it('소속 테이블까지 함께 삭제돼도 컬럼 라벨을 base에서 해석한다', () => {
+    // t2(MBR) 테이블 전체를 삭제하는 시나리오 — 이때 target에는 t2가 없으므로
+    // labelOf가 실수로 target을 참조하면 '?.MBR_NM' 같은 깨진 라벨이 나온다.
+    // t2를 참조하는 관계(r1)·인덱스(i1)도 함께 지워 실제 삭제 상황을 흉내낸다.
+    const base = buildSampleModel()
+    const target = clone(base)
+    delete target.tables['t2']
+    delete target.columns['c2']
+    delete target.columns['c3']
+    delete target.columns['c4']
+    delete target.relationships['r1']
+    delete target.indexes['i1']
+    const d = diffModelsForDisplay(base, target)
+
+    const table = d.entries.find((x) => x.entityId === 't2')!
+    expect(table.changeKind).toBe('removed')
+    expect(table.kind).toBe('table')
+    expect(table.label).toBe('MBR')
+
+    const column = d.entries.find((x) => x.entityId === 'c3')!
+    expect(column.changeKind).toBe('removed')
+    expect(column.kind).toBe('column')
+    expect(column.label).toBe('MBR.MBR_NM')
+    expect(column.parentTableId).toBe('t2')
+  })
+
   it('변경된 속성만 fields에 담고 한국어 라벨을 붙인다', () => {
     // 픽스처의 c3는 nullable:false다 — false→true로 바꿔야 실제 변경이 된다.
     const base = buildSampleModel()
