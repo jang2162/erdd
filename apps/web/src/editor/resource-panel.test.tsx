@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
+import { toast } from 'sonner'
 import { createEmptyModel, type ProjectModel, type Word } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
@@ -16,9 +17,15 @@ const ITEMS = [
   { id: 's1', kind: 'word', version: 1, payload: { logicalName: '회원', abbreviation: 'MBR', description: null } },
   { id: 's2', kind: 'word', version: 1, payload: { logicalName: '주문', abbreviation: 'ORD', description: null } },
 ]
+// model.mutate의 op 상한(500)과 같은 값. 이보다 많은 신규 항목을 만들어 가드를 넘긴다.
+const MANY_ITEMS = Array.from({ length: 501 }, (_, i) => ({
+  id: `s${i}`, kind: 'word', version: 1,
+  payload: { logicalName: `단어${i}`, abbreviation: `W${i}`, description: null },
+}))
 
 const mutate = vi.fn()
 vi.mock('./use-model.js', () => ({ useModelMutation: () => mutate }))
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 function renderPanel(handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel) {
   mockTrpcFetch(handlers)
@@ -39,7 +46,7 @@ async function openLibrary() {
   await userEvent.click(await screen.findByRole('button', { name: /표준 사전/ }))
 }
 
-beforeEach(() => { mutate.mockClear() })
+beforeEach(() => { mutate.mockClear(); vi.mocked(toast.error).mockClear() })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('ResourcePanel', () => {
@@ -65,6 +72,18 @@ describe('ResourcePanel', () => {
     const [producer] = mutate.mock.calls[0]!
     const next = producer(createEmptyModel()) as ProjectModel
     expect(Object.keys(next.words)).toHaveLength(2)
+  })
+
+  it('처리 대상이 500건을 넘으면 mutate를 호출하지 않고 토스트로 막는다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: MANY_ITEMS }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (501)')
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    expect(mutate).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalled()
   })
 
   it('처리할 것이 없으면 적용 버튼이 비활성', async () => {
@@ -111,6 +130,60 @@ describe('ResourcePanel', () => {
     expect(screen.getByRole('radio', { name: '회원 보류' })).toHaveProperty('checked', true)
     await userEvent.click(screen.getByRole('button', { name: '모두 원본 반영' }))
     expect(screen.getByRole('radio', { name: '회원 원본 반영' })).toHaveProperty('checked', true)
+  })
+
+  it('충돌에 "모두 프로젝트 유지"를 적용하면 내용은 그대로, origin.sourceVersion만 올라간다', async () => {
+    const forked: Word = {
+      id: 'w1', logicalName: '회원', abbreviation: 'MB', description: null,
+      origin: {
+        libraryId: 'l1', sourceId: 's1', sourceVersion: 1,
+        base: { logicalName: '회원', abbreviation: 'MBR', description: null },
+      },
+    }
+    const model: ProjectModel = { ...createEmptyModel(), words: { w1: forked } }
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({
+        data: [{ ...ITEMS[0]!, version: 2, payload: { logicalName: '회원', abbreviation: 'MEMBER', description: null } }],
+      }),
+    }, model)
+    await openLibrary()
+    expect(await screen.findByText('충돌 (1)')).toBeDefined()
+    await userEvent.click(screen.getByRole('button', { name: '모두 프로젝트 유지' }))
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const [producer] = mutate.mock.calls[0]!
+    const next = producer(model) as ProjectModel
+    expect(next.words.w1!.logicalName).toBe('회원')
+    expect(next.words.w1!.abbreviation).toBe('MB')
+    expect(next.words.w1!.origin?.sourceVersion).toBe(2)
+  })
+
+  it('충돌에 "모두 원본 반영"을 적용하면 내용이 원본 값으로 바뀐다', async () => {
+    const forked: Word = {
+      id: 'w1', logicalName: '회원', abbreviation: 'MB', description: null,
+      origin: {
+        libraryId: 'l1', sourceId: 's1', sourceVersion: 1,
+        base: { logicalName: '회원', abbreviation: 'MBR', description: null },
+      },
+    }
+    const model: ProjectModel = { ...createEmptyModel(), words: { w1: forked } }
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({
+        data: [{ ...ITEMS[0]!, version: 2, payload: { logicalName: '회원', abbreviation: 'MEMBER', description: null } }],
+      }),
+    }, model)
+    await openLibrary()
+    expect(await screen.findByText('충돌 (1)')).toBeDefined()
+    await userEvent.click(screen.getByRole('button', { name: '모두 원본 반영' }))
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const [producer] = mutate.mock.calls[0]!
+    const next = producer(model) as ProjectModel
+    expect(next.words.w1!.logicalName).toBe('회원')
+    expect(next.words.w1!.abbreviation).toBe('MEMBER')
+    expect(next.words.w1!.origin?.sourceVersion).toBe(2)
   })
 
   it('이름이 겹치는 신규는 기본 미선택이고 배지가 붙는다', async () => {
