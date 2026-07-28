@@ -349,4 +349,45 @@ describe.skipIf(!url)('model-store', () => {
     await persistOps(app.db!, projectId, deleteOps)
     expect(await loadProjectModel(app.db!, projectId)).toEqual(empty)
   })
+
+  it('origin이 붙은 사전 엔티티를 단일 배치로 왕복시킨다', async () => {
+    const libraryId = uuidv7()
+    const domainId = uuidv7()
+    const termId = uuidv7()
+    const origin = (sourceId: string, base: Record<string, unknown>) =>
+      ({ libraryId, sourceId, sourceVersion: 2, base })
+
+    const domain = {
+      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null,
+      origin: origin(uuidv7(), { name: '금액' }),
+    }
+    const term = {
+      id: termId, logicalName: '주문금액', physicalName: 'ORD_AMT',
+      domainId, description: null, origin: origin(uuidv7(), { logicalName: '주문금액' }),
+    }
+
+    await app.db!.transaction(async (tx) => {
+      await persistOps(tx, projectId, [
+        { action: 'create', entity: 'domain', entityId: domainId, data: domain },
+        { action: 'create', entity: 'term', entityId: termId, data: term },
+      ])
+    })
+
+    const loaded = await loadProjectModel(app.db!, projectId)
+    expect(loaded.domains[domainId]!.origin).toEqual(domain.origin)
+    expect(loaded.terms[termId]!.origin).toEqual(term.origin)
+  })
+
+  it('origin이 없는 행은 null로 로드된다', async () => {
+    const wordId = uuidv7()
+    await app.db!.transaction(async (tx) => {
+      await persistOps(tx, projectId, [{
+        action: 'create', entity: 'word', entityId: wordId,
+        data: { id: wordId, logicalName: '회원', abbreviation: 'MBR', description: null, origin: null },
+      }])
+    })
+    expect((await loadProjectModel(app.db!, projectId)).words[wordId]!.origin).toBeNull()
+  })
 })

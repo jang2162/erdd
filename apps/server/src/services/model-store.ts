@@ -83,19 +83,19 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
     domains: keyed(domainRows.map((r): Domain => ({
       id: r.id, name: r.name, category: r.category, logicalType: r.logicalType,
       dialectTypes: r.dialectTypes, defaultValue: r.defaultValue,
-      allowedValues: r.allowedValues, description: r.description, origin: null,
+      allowedValues: r.allowedValues, description: r.description, origin: r.origin ?? null,
     }))),
     words: keyed(wordRows.map((r): Word => ({
       id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
-      description: r.description, origin: null,
+      description: r.description, origin: r.origin ?? null,
     }))),
     terms: keyed(termRows.map((r): Term => ({
       id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,
-      domainId: r.domainId, description: r.description, origin: null,
+      domainId: r.domainId, description: r.description, origin: r.origin ?? null,
     }))),
     customFields: keyed(customFieldRows.map((r): CustomField => ({
       id: r.id, name: r.name, target: r.target, type: r.type, options: r.options,
-      required: r.required, defaultValue: r.defaultValue, order: r.order, origin: null,
+      required: r.required, defaultValue: r.defaultValue, order: r.order, origin: r.origin ?? null,
     }))),
   }
 }

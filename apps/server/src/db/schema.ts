@@ -1,7 +1,9 @@
 import {
   boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
-import { DEFAULT_NAMING_RULES, type Dialect, type NamingRules, type Op, type ProjectModel } from '@erdd/core'
+import {
+  DEFAULT_NAMING_RULES, type Dialect, type NamingRules, type Op, type Origin, type ProjectModel,
+} from '@erdd/core'
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(),
@@ -111,6 +113,7 @@ export const modelDomains = pgTable('model_domains', {
   defaultValue: text('default_value'),
   allowedValues: jsonb('allowed_values').$type<string[]>().notNull(),
   description: text('description'),
+  origin: jsonb('origin').$type<Origin>(),
 })
 
 export const modelWords = pgTable('model_words', {
@@ -119,6 +122,7 @@ export const modelWords = pgTable('model_words', {
   logicalName: text('logical_name').notNull(),
   abbreviation: text('abbreviation').notNull(),
   description: text('description'),
+  origin: jsonb('origin').$type<Origin>(),
 })
 
 export const modelTerms = pgTable('model_terms', {
@@ -128,6 +132,7 @@ export const modelTerms = pgTable('model_terms', {
   physicalName: text('physical_name').notNull(),
   domainId: uuid('domain_id').references(() => modelDomains.id),
   description: text('description'),
+  origin: jsonb('origin').$type<Origin>(),
 })
 
 export const modelCustomFields = pgTable('model_custom_fields', {
@@ -140,6 +145,7 @@ export const modelCustomFields = pgTable('model_custom_fields', {
   required: boolean('required').notNull(),
   defaultValue: text('default_value'),
   order: integer('order').notNull(),
+  origin: jsonb('origin').$type<Origin>(),
 })
 
 export const modelRelationships = pgTable('model_relationships', {
@@ -195,4 +201,29 @@ export const snapshots = pgTable('snapshots', {
   revisionSeq: integer('revision_seq').notNull(),
   model: jsonb('model').$type<ProjectModel>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// ─── 공용 리소스 라이브러리 (프로젝트 모델 밖 — op 로그 대상이 아니다) ───
+
+export const resourceLibraries = pgTable('resource_libraries', {
+  id: uuid('id').primaryKey(),
+  scope: text('scope', { enum: ['global', 'org'] }).notNull(),
+  /** scope='org'일 때만 채워진다. 정합성은 라우터가 강제한다. */
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const resourceItems = pgTable('resource_items', {
+  id: uuid('id').primaryKey(),
+  libraryId: uuid('library_id').notNull()
+    .references(() => resourceLibraries.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['domain', 'word', 'term', 'customField'] }).notNull(),
+  /** core RESOURCE_PAYLOAD_SCHEMAS[kind]를 통과한 값. term.domainId는 라이브러리 항목 id. */
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
