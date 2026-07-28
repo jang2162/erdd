@@ -50,6 +50,20 @@
       "when": 1785119532378,
       "tag": "0006_secret_nightcrawler",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785207604776,
+      "tag": "0007_equal_ikaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785213928975,
+      "tag": "0008_lethal_spiral",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import { EditPanel } from '@/editor/edit-panel'
 import { ExportDialog } from '@/editor/export-dialog'
 import { GroupViewSelect } from '@/editor/group-view-select'
 import { NamingCheck } from '@/editor/naming-check'
+import { ResourcePanel } from '@/editor/resource-panel'
 import { TableTree } from '@/editor/table-tree'
 import { Toolbar } from '@/editor/toolbar'
 import { VersionDialog } from '@/editor/version-dialog'
@@ -42,6 +43,7 @@ export function ProjectPage() {
             {loaded && <DomainPanel projectId={projectId} />}
             {loaded && <DictPanel projectId={projectId} />}
             {loaded && <CustomFieldPanel projectId={projectId} />}
+            {loaded && <ResourcePanel projectId={projectId} />}
             {loaded && <NamingCheck projectId={projectId} />}
             {loaded && <ExportDialog />}
             <ViewModeToggle />

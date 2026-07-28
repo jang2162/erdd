@@ -39,7 +39,7 @@ describe('column-edits', () => {
     let m = createEmptyModel()
     m.domains['d'] = { id: 'd', name: '여부', category: null, logicalType: 'CHAR(1)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null }
+      defaultValue: null, allowedValues: [], description: null, origin: null }
     m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
     m.columns['c'] = { id: 'c', tableId: 't', logicalName: 'A', physicalName: 'A', type: 'INT',
       isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null, custom: {} }

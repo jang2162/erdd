@@ -199,6 +199,7 @@ function UnregisteredWordsSection({ projectId, candidates }: { projectId: string
       (m: ProjectModel) => registrations.reduce(
         (acc, r) => createWord(acc, {
           id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation, description: null,
+          origin: null,
         }),
         m,
       ),
@@ -276,6 +277,7 @@ function WordEditDialog({
         logicalName: trimmedLogicalName,
         abbreviation: trimmedAbbreviation,
         description: trimmedDescription === '' ? null : trimmedDescription,
+        origin: null,
       }), { summary: '단어 추가' })
       onOpenChange(false)
       return
@@ -367,6 +369,7 @@ function TermEditDialog({
         physicalName: trimmedPhysicalName,
         domainId: nextDomainId,
         description: trimmedDescription === '' ? null : trimmedDescription,
+        origin: null,
       }), { summary: '용어 추가' })
       onOpenChange(false)
       return

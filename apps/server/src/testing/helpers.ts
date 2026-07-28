@@ -24,7 +24,11 @@ export async function loginAs(
   return cookie.value
 }
 
-/** core 픽스처의 짧은 id를 UUID로 재매핑한다(DB uuid 컬럼용). 참조 필드도 함께 치환. */
+/**
+ * core 픽스처의 짧은 id를 UUID로 재매핑한다(DB uuid 컬럼용). 참조 필드도 함께 치환.
+ * origin은 건드리지 않는다 — origin.libraryId/sourceId는 라이브러리 id 공간이라
+ * 모델 id 재매핑 대상이 아니다. origin을 쓰는 테스트는 실제 UUID를 직접 지정한다.
+ */
 export function withUuidIds(model: ProjectModel): ProjectModel {
   const map = new Map<string, string>()
   const nid = (old: string): string => {

@@ -58,7 +58,7 @@ describe.skipIf(!url)('model-store', () => {
       dialectTypes: {
         postgresql: 'NUMERIC(15,2)', mysql: 'DECIMAL(15,2)', oracle: 'NUMBER(15,2)', mssql: 'DECIMAL(15,2)',
       },
-      defaultValue: '0', allowedValues: [], description: '금액 도메인',
+      defaultValue: '0', allowedValues: [], description: '금액 도메인', origin: null,
     }
     const columnId = Object.keys(base.columns)[0]!
 
@@ -112,7 +112,7 @@ describe.skipIf(!url)('model-store', () => {
       dialectTypes: {
         postgresql: null, mysql: null, oracle: null, mssql: null,
       },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null, allowedValues: [], description: null, origin: null,
     }
     target.columns.c1!.domainId = domainId
     const full = withUuidIds(target)
@@ -145,12 +145,15 @@ describe.skipIf(!url)('model-store', () => {
       dialectTypes: {
         postgresql: null, mysql: null, oracle: null, mssql: null,
       },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null, allowedValues: [], description: null, origin: null,
     }
-    const word: Word = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null }
+    const word: Word = {
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null, origin: null,
+    }
     raw.words[word.id] = word
     const term: Term = {
       id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId, description: '회원 식별자',
+      origin: null,
     }
     raw.terms[term.id] = term
     const target = withUuidIds(raw)
@@ -167,11 +170,12 @@ describe.skipIf(!url)('model-store', () => {
       dialectTypes: {
         postgresql: 'NUMERIC(15,2)', mysql: 'DECIMAL(15,2)', oracle: 'NUMBER(15,2)', mssql: 'DECIMAL(15,2)',
       },
-      defaultValue: '0', allowedValues: [], description: '금액 도메인',
+      defaultValue: '0', allowedValues: [], description: '금액 도메인', origin: null,
     }
     const termId = uuidv7()
     const term: Term = {
       id: termId, logicalName: '주문금액', physicalName: 'ORD_AMT', domainId, description: null,
+      origin: null,
     }
 
     // 도메인 + 도메인을 참조하는 용어 생성
@@ -227,10 +231,11 @@ describe.skipIf(!url)('model-store', () => {
       dialectTypes: {
         postgresql: null, mysql: null, oracle: null, mssql: null,
       },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null, allowedValues: [], description: null, origin: null,
     }
     target.terms.tm1 = {
       id: 'tm1', logicalName: '주문금액', physicalName: 'ORD_AMT', domainId, description: null,
+      origin: null,
     }
     const full = withUuidIds(target)
     const empty = createEmptyModel()
@@ -280,7 +285,7 @@ describe.skipIf(!url)('model-store', () => {
     const fieldId = uuidv7()
     const field: CustomField = {
       id: fieldId, name: '개인정보여부', target: 'column', type: 'select',
-      options: ['Y', 'N'], required: true, defaultValue: 'N', order: 0,
+      options: ['Y', 'N'], required: true, defaultValue: 'N', order: 0, origin: null,
     }
     const columnId = Object.keys(base.columns)[0]!
 
@@ -328,7 +333,7 @@ describe.skipIf(!url)('model-store', () => {
     const fieldId = 'cf1'
     target.customFields[fieldId] = {
       id: fieldId, name: '개인정보여부', target: 'column', type: 'boolean',
-      options: [], required: false, defaultValue: null, order: 0,
+      options: [], required: false, defaultValue: null, order: 0, origin: null,
     }
     target.columns.c1!.custom = { [fieldId]: 'true' }
     const full = withUuidIds(target)
@@ -343,5 +348,46 @@ describe.skipIf(!url)('model-store', () => {
     expect(applyOps(full, deleteOps)).toEqual(empty)
     await persistOps(app.db!, projectId, deleteOps)
     expect(await loadProjectModel(app.db!, projectId)).toEqual(empty)
+  })
+
+  it('origin이 붙은 사전 엔티티를 단일 배치로 왕복시킨다', async () => {
+    const libraryId = uuidv7()
+    const domainId = uuidv7()
+    const termId = uuidv7()
+    const origin = (sourceId: string, base: Record<string, unknown>) =>
+      ({ libraryId, sourceId, sourceVersion: 2, base })
+
+    const domain = {
+      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null,
+      origin: origin(uuidv7(), { name: '금액' }),
+    }
+    const term = {
+      id: termId, logicalName: '주문금액', physicalName: 'ORD_AMT',
+      domainId, description: null, origin: origin(uuidv7(), { logicalName: '주문금액' }),
+    }
+
+    await app.db!.transaction(async (tx) => {
+      await persistOps(tx, projectId, [
+        { action: 'create', entity: 'domain', entityId: domainId, data: domain },
+        { action: 'create', entity: 'term', entityId: termId, data: term },
+      ])
+    })
+
+    const loaded = await loadProjectModel(app.db!, projectId)
+    expect(loaded.domains[domainId]!.origin).toEqual(domain.origin)
+    expect(loaded.terms[termId]!.origin).toEqual(term.origin)
+  })
+
+  it('origin이 없는 행은 null로 로드된다', async () => {
+    const wordId = uuidv7()
+    await app.db!.transaction(async (tx) => {
+      await persistOps(tx, projectId, [{
+        action: 'create', entity: 'word', entityId: wordId,
+        data: { id: wordId, logicalName: '회원', abbreviation: 'MBR', description: null, origin: null },
+      }])
+    })
+    expect((await loadProjectModel(app.db!, projectId)).words[wordId]!.origin).toBeNull()
   })
 })

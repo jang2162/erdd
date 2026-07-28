@@ -7,7 +7,7 @@ import {
 function field(id: string, over: Partial<CustomField> = {}): CustomField {
   return {
     id, name: id, target: 'column', type: 'text', options: [], required: false,
-    defaultValue: null, order: 0, ...over,
+    defaultValue: null, order: 0, origin: null, ...over,
   }
 }
 function modelWith(fields: CustomField[]): ProjectModel {

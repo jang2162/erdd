@@ -14,10 +14,10 @@ function col(id: string, tableId: string, physicalName: string, over: Partial<Co
     domainId: null, custom: {}, ...over }
 }
 function word(id: string, logicalName: string, abbreviation: string): Word {
-  return { id, logicalName, abbreviation, description: null }
+  return { id, logicalName, abbreviation, description: null, origin: null }
 }
 function term(id: string, logicalName: string, physicalName: string): Term {
-  return { id, logicalName, physicalName, domainId: null, description: null }
+  return { id, logicalName, physicalName, domainId: null, description: null, origin: null }
 }
 
 describe('computeWarnings', () => {
@@ -145,7 +145,7 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
       id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
-      options: ['Y', 'N'], required: true, defaultValue: null, order: 0,
+      options: ['Y', 'N'], required: true, defaultValue: null, order: 0, origin: null,
     }
     m.tables['T'] = tbl('T')
     m.columns['A'] = col('A', 'T', 'NAME')
@@ -160,11 +160,11 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
       id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
-      options: ['Y', 'N'], required: true, defaultValue: null, order: 0,
+      options: ['Y', 'N'], required: true, defaultValue: null, order: 0, origin: null,
     }
     m.customFields['f2'] = {
       id: 'f2', name: '암호화방식', target: 'column', type: 'text',
-      options: [], required: true, defaultValue: '없음', order: 1,
+      options: [], required: true, defaultValue: '없음', order: 1, origin: null,
     }
     m.tables['T'] = tbl('T')
     m.columns['A'] = col('A', 'T', 'NAME', { custom: { f1: 'Y' } })
@@ -175,7 +175,7 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
       id: 'f1', name: '개인정보여부', target: 'column', type: 'boolean',
-      options: [], required: true, defaultValue: null, order: 0,
+      options: [], required: true, defaultValue: null, order: 0, origin: null,
     }
     m.tables['T'] = tbl('T')
     m.columns['A'] = col('A', 'T', 'NAME')
@@ -186,7 +186,7 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
       id: 'f1', name: '업무구분', target: 'table', type: 'text',
-      options: [], required: true, defaultValue: null, order: 0,
+      options: [], required: true, defaultValue: null, order: 0, origin: null,
     }
     m.tables['T'] = tbl('T')
     const w = computeWarnings(m).filter((x) => x.kind === 'custom-required')

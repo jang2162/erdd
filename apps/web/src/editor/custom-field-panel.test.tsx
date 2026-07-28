@@ -28,15 +28,15 @@ function loadModelWithFields() {
   let m = buildSampleModel()
   m = createCustomField(m, {
     id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
-    options: ['Y', 'N'], required: true, defaultValue: null,
+    options: ['Y', 'N'], required: true, defaultValue: null, origin: null,
   })
   m = createCustomField(m, {
     id: 'f2', name: '암호화방식', target: 'column', type: 'text',
-    options: [], required: false, defaultValue: null,
+    options: [], required: false, defaultValue: null, origin: null,
   })
   m = createCustomField(m, {
     id: 'f3', name: '업무구분', target: 'table', type: 'text',
-    options: [], required: false, defaultValue: null,
+    options: [], required: false, defaultValue: null, origin: null,
   })
   m = setCustomValue(m, 'column', 'c1', 'f1', 'Y')
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)

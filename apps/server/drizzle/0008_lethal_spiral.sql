@@ -1,0 +1,2 @@
+CREATE INDEX "ix_resource_items_library_id" ON "resource_items" USING btree ("library_id");--> statement-breakpoint
+CREATE INDEX "ix_resource_libraries_org_id" ON "resource_libraries" USING btree ("org_id");

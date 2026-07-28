@@ -66,7 +66,7 @@ describe('EditPanel', () => {
     m = createDomain(m, {
       id: 'd1', name: '금액', category: null, logicalType: 'DECIMAL(15)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null, allowedValues: [], description: null, origin: null,
     })
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
     useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
@@ -85,7 +85,7 @@ describe('EditPanel', () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
     m = { ...m,
-      words: { w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null } },
+      words: { w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null, origin: null } },
       columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: '' } },
     }
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
@@ -103,7 +103,7 @@ describe('EditPanel', () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
     m = { ...m,
-      words: { w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null } },
+      words: { w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null, origin: null } },
       columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: 'KEEP_ME' } },
     }
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
@@ -124,7 +124,7 @@ describe('EditPanel', () => {
     m = createDomain(m, {
       id: 'd2', name: '상태코드', category: null, logicalType: 'CHAR(1)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: ['Y', 'N'], description: null,
+      defaultValue: null, allowedValues: ['Y', 'N'], description: null, origin: null,
     })
     m = { ...m, columns: { ...m.columns, c1: { ...m.columns['c1']!, domainId: 'd2' } } }
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
@@ -146,7 +146,7 @@ describe('EditPanel', () => {
     let m = buildSampleModel()
     m = createCustomField(m, {
       id: 'cf1', name: '개인정보여부', target: 'column', type: 'boolean',
-      options: [], required: false, defaultValue: null,
+      options: [], required: false, defaultValue: null, origin: null,
     })
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
     useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
@@ -161,7 +161,7 @@ describe('EditPanel', () => {
     let m = buildSampleModel()
     m = createCustomField(m, {
       id: 'cf2', name: '업무구분', target: 'table', type: 'text',
-      options: [], required: false, defaultValue: '공통',
+      options: [], required: false, defaultValue: '공통', origin: null,
     })
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
     useEditorStore.getState().select('t1')

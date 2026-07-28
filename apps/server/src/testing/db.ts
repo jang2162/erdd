@@ -1,9 +1,11 @@
 import pg from 'pg'
 
 export const TEST_TABLES = [
-  'revisions',
+  'revisions', 'snapshots',
   'model_columns', 'model_indexes', 'model_relationships', 'model_notes',
   'model_tables', 'model_table_groups',
+  'model_terms', 'model_words', 'model_domains', 'model_custom_fields',
+  'resource_items', 'resource_libraries',
   'project_members', 'projects', 'members', 'organizations', 'sessions', 'users',
 ] as const
 
