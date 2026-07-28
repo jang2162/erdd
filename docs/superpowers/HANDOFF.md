@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-07-27 / **main HEAD:** `f7ead02` / **마이그레이션:** 0005까지
+**최종 갱신:** 2026-07-28 / **main HEAD:** (머지 후 갱신) / **마이그레이션:** 0006까지
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -16,18 +16,18 @@
 | **Phase 1 이월 정리** M10 + 후속 | 그룹 영역 드래그, 자동 정렬(dagre), DDL 식별자 조건부 인용(방언별 예약어), 0컬럼 DDL 제외+경고 통합, 그룹 라벨 가림 해소, 중복 헬퍼 통합 |
 | **Phase 2 #1 도메인** | 도메인 CRUD·컬럼 지정(라이브 해석·타입란 잠금)·일괄반영·삭제가드·DDL 통합(방언타입·CHECK·기본값), 마이그 0004 |
 | **Phase 2 #2 명명 체계** | 단어/용어 op 엔티티, 물리명 자동생성(용어일치→최장일치 분해), 명명 경고 5종(기존 computeWarnings 확장), 사전 관리 화면, 자동생성 에디터 통합, 명명 검사 화면, 마이그 0005 |
+| **Phase 2 #3 커스텀 항목** | 정의=10번째 op 엔티티 `customField`(도메인/사전과 동일 패턴), 값=`table.custom`/`column.custom`(문자열, 기본값 라이브 해석, dangling 키 관대). 필수 미입력 경고(`custom-required`), 정의 관리 화면, 편집 패널 인라인 값 입력(text/boolean/select), 검사 화면 표시명 "모델 검사"로 정리, 마이그 0006 |
 
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 127 · web 126 · server 49 (erdd_test) · pnpm -r typecheck → 0 errors
+core 146 · web 159 · server 52 (erdd_test) · pnpm -r typecheck → 0 errors
 ```
 
 ### 다음 작업 (Phase 2 남은 sub-project, 권장 순서)
 
-1. **커스텀 항목** — 조직별 커스텀 메타 항목(→ `docs/15-custom-fields.md`). 대체로 독립적, 규모 작음.
-2. **공용 리소스 fork/재동기화** — 서비스 전역·조직 표준 사전/도메인을 프로젝트로 fork 후 수동 재동기화(→ `docs/01-concepts.md` 공용 리소스 패턴). 사전·도메인이 이미 있으므로 이제 의미 있음.
-3. **Excel 산출물/업로드** — 정의서 Excel 내보내기, 사전 Excel 업로드, 그룹 단위 내보내기(→ `docs/17-import-export.md`).
+1. **공용 리소스 fork/재동기화** — 서비스 전역·조직 표준 사전/도메인/커스텀 항목을 프로젝트로 fork 후 수동 재동기화(→ `docs/01-concepts.md` 공용 리소스 패턴). 사전·도메인·커스텀 항목이 이미 있으므로 세 종류를 하나의 fork 메커니즘으로 한꺼번에 설계.
+2. **Excel 산출물/업로드** — 정의서 Excel 내보내기(커스텀 항목 컬럼 포함), 사전 Excel 업로드, 그룹 단위 내보내기(→ `docs/17-import-export.md`).
 
 이후 Phase 3(실시간 협업), Phase 4(CLI·역설계·과금) — `docs/90-roadmap.md`.
 
@@ -38,7 +38,7 @@ core 127 · web 126 · server 49 (erdd_test) · pnpm -r typecheck → 0 errors
 1. **이 문서** — 현재 상태·불변식·환경·워크플로
 2. `docs/90-roadmap.md` — 단계별 범위(무엇이 어느 Phase인지)
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
-4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-26-phase2-naming-design.md`, `docs/superpowers/plans/2026-07-26-phase2-naming.md`
+4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-27-phase2-custom-fields-design.md`, `docs/superpowers/plans/2026-07-27-phase2-custom-fields.md`
 5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 2 남은 항목 확인)
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
@@ -53,7 +53,7 @@ core 127 · web 126 · server 49 (erdd_test) · pnpm -r typecheck → 0 errors
 - id는 클라이언트 생성 UUIDv7(`newId()`).
 
 ### 3.2 새 op 엔티티를 추가할 때 (체크리스트)
-현재 엔티티 9종: `tableGroup, domain, word, term, table, column, relationship, index, note`
+현재 엔티티 10종: `tableGroup, domain, word, term, customField, table, column, relationship, index, note`
 
 등록해야 하는 **6곳**:
 1. `packages/core/src/op.ts` — `ENTITY_KINDS`
@@ -72,7 +72,7 @@ core 127 · web 126 · server 49 (erdd_test) · pnpm -r typecheck → 0 errors
 ### 3.3 하위호환 (스냅샷·옛 리비전)
 - 모델에 새 컬렉션을 추가하면 `ProjectModelSchema`에서 `.default({})`. 단, **`z.infer` 출력 타입은 필수**이므로 `: ProjectModel` 리터럴(fixtures, model-store 반환 등)에는 전부 키를 추가해야 한다(typecheck-driven으로 훑기).
 - 엔티티에 새 필드를 추가하면 `.nullable().default(null)`(옛 op 페이로드 파싱).
-- **스냅샷 복원은 정규화 필수**: `snapshot.ts` restore가 `diffModels(current, { ...createEmptyModel(), ...snap.model })`로 누락 컬렉션을 보충한다. 새 컬렉션을 추가해도 이 패턴 덕에 옛 스냅샷이 깨지지 않는다(제거하지 말 것).
+- **스냅샷 복원은 정규화 필수**: `snapshot.ts` restore가 `diffModels(current, { ...createEmptyModel(), ...snap.model })`로 누락 컬렉션을 보충한다. 새 컬렉션을 추가해도 이 패턴 덕에 옛 스냅샷이 깨지지 않는다(제거하지 말 것). 단, 이 정규화는 **컬렉션 키만** 보충하고 **엔티티 필드**(예: `table.custom`)는 안 채운다 — 옛 스냅샷의 엔티티에 새 필드가 없으면 `diffModels`가 그 차이를 감지하되(커스텀 항목 sub-project에서 실제 발생), **빈 `changes`의 update op는 만들지 않는다**(`diff.ts`가 target 기준으로 실변경 없으면 op를 내보내지 않도록 방어). 새 엔티티 필드를 추가할 때는 이 케이스(구 스냅샷에 필드 없음)를 회귀 테스트로 남긴다.
 
 ### 3.4 웹 UI 재발 버그
 - **이벤트 값은 producer 진입 전에 캡처.** `serializeMutation`이 producer를 마이크로태스크로 지연 실행하므로, `mutate((m) => ... e.target.value ...)`처럼 lazy read하면 제어 인풋이 먼저 리셋되어 stale 값을 읽는다. 반드시 `const v = e.target.value` 후 producer에 넘긴다.
@@ -90,7 +90,7 @@ core 127 · web 126 · server 49 (erdd_test) · pnpm -r typecheck → 0 errors
 ```bash
 # DB (docker) — 이미 떠 있는 경우가 많다
 docker ps --filter name=erdd-db      # erdd-db-1, postgres:17, :5432
-# dev DB=erdd, test DB=erdd_test (둘 다 0005까지 마이그레이션)
+# dev DB=erdd, test DB=erdd_test (둘 다 0006까지 마이그레이션)
 # 관리자 계정: admin@erdd.local / Passw0rd!erdd
 
 # ⚠️ dev 서버는 루트 .env를 자동 로드하지 않는다 → DATABASE_URL 없이 뜨면
@@ -132,7 +132,7 @@ sub-project 하나마다:
   ```
 - 응답은 한국어.
 
-**서브에이전트 한도:** 한 세션에서 200개까지. 직전 세션은 명명 체계 Task 6에서 한도에 도달해 이후는 컨트롤러가 직접 구현+자기리뷰로 마쳤다. 서브에이전트 리뷰를 계속 쓰려면 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`을 올린다.
+**서브에이전트 한도:** 한 세션에서 200개까지. 명명 체계 세션은 Task 6에서 한도에 도달해 이후는 컨트롤러가 직접 구현+자기리뷰로 마쳤다. 커스텀 항목 세션(7태스크+최종리뷰+수정)은 한도 안에서 전 과정을 서브에이전트 구현+리뷰로 마쳤다(약 17개 서브에이전트 사용). 서브에이전트 리뷰를 계속 쓰려면 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`을 올린다.
 
 ---
 
@@ -161,6 +161,16 @@ sub-project 하나마다:
 - 방언별 예약어 목록은 큐레이션 세트(전수 아님)
 - 0컬럼 테이블은 DDL에서 제외 + 경고(정책 확정됨)
 
+**커스텀 항목**
+- 조직 표준 템플릿(→ 프로젝트로 가져오기)은 범위 밖(다음 fork sub-project에서 사전·도메인과 통합 설계)
+- 커스텀 항목이 있는 상태에서 그 이전 스냅샷(값 없음)을 복원하는 회귀 테스트가 없음(관대 정책상 정의는 삭제되고 값은 dangling으로 남는 것이 의도된 동작 — 고정 테스트 추가 권장)
+- 테이블 scope 값 커밋 경로(`setCustomValue(m,'table',...)`) 전용 통합 테스트 없음
+- '필수' 배지가 섹션 단위라 여러 필수 항목이 있을 때 어떤 항목이 비었는지 안 보임
+- boolean 필드에는 required 표식(*)이 없음(현재 UI로는 required:true인 boolean을 생성할 수 없어 도달 불가 — fork/임포트로 우회 생성되면 문제)
+- `custom-fields-section.tsx`의 text 입력(blur 커밋)이 `edit-panel.tsx`의 `CommitInput`과 의미상 중복(공용 파일 추출 여지 — edit-panel에서 import하면 순환이라 별도 파일 필요)
+- 자동 저장 금지 가드(정의 기본값 표시 중 blur해도 저장 안 됨) 고정 테스트 없음
+- Excel 산출물의 커스텀 컬럼, CLI `custom` 필드는 각각 Excel/Phase 4 사이클로 이월
+
 ---
 
 ## 7. 새 세션 시작 프롬프트 (복사해서 사용)
@@ -175,9 +185,9 @@ ERDD 프로젝트를 이어서 작업한다. 먼저 docs/superpowers/HANDOFF.md�
 - 커밋 메시지는 한국어 + Co-Authored-By/Claude-Session 트레일러 2줄.
 - 임시 파일은 $CLAUDE_JOB_DIR/tmp 사용.
 
-다음 작업: Phase 2의 남은 sub-project 중 <커스텀 항목 | 공용 리소스 fork | Excel 산출물>을
+다음 작업: Phase 2의 남은 sub-project 중 <공용 리소스 fork | Excel 산출물>을
 진행한다. HANDOFF.md의 "작업 방식"대로 brainstorming(설계 결정 확인) → spec → plan →
 SDD 구현/리뷰 → 브라우저 스모크 → main 머지 순서로 가라.
 ```
 
-> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목 중 명명 체계 항목들을 정리한다" / "Phase 3 실시간 협업 설계를 시작한다".
+> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목 중 커스텀 항목 항목들을 정리한다" / "Phase 3 실시간 협업 설계를 시작한다".
