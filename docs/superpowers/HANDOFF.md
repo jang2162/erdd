@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-07-28 / **main HEAD:** `c923796` / **마이그레이션:** 0006까지
+**최종 갱신:** 2026-07-28 / **main HEAD:** `d580028` / **마이그레이션:** 0009까지
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -17,19 +17,26 @@
 | **Phase 2 #1 도메인** | 도메인 CRUD·컬럼 지정(라이브 해석·타입란 잠금)·일괄반영·삭제가드·DDL 통합(방언타입·CHECK·기본값), 마이그 0004 |
 | **Phase 2 #2 명명 체계** | 단어/용어 op 엔티티, 물리명 자동생성(용어일치→최장일치 분해), 명명 경고 5종(기존 computeWarnings 확장), 사전 관리 화면, 자동생성 에디터 통합, 명명 검사 화면, 마이그 0005 |
 | **Phase 2 #3 커스텀 항목** | 정의=10번째 op 엔티티 `customField`(도메인/사전과 동일 패턴), 값=`table.custom`/`column.custom`(문자열, 기본값 라이브 해석, dangling 키 관대). 필수 미입력 경고(`custom-required`), 정의 관리 화면, 편집 패널 인라인 값 입력(text/boolean/select), 검사 화면 표시명 "모델 검사"로 정리, 마이그 0006 |
+| **Phase 2 #4 공용 리소스 fork** | 전역·조직 2계층 라이브러리(`resource_libraries`/`resource_items`, op 로그 밖), 모델 4종(domain/word/term/customField)에 `origin` 필드, 3-way 병합 엔진(core `resource-sync.ts` 순수 함수), 프로젝트 "공용 리소스" 통합 화면(가져오기=재동기화 같은 경로), 충돌 항목별 3상태 라디오, 전역 예시 시드, 마이그 0007·0008 |
+| **Phase 2 #5 Excel 산출물/업로드** | 정의서 Excel 내보내기 5시트(테이블 목록·테이블정의서·단어사전·용어사전·도메인정의서, 커스텀 항목 컬럼 포함), Excel 사전 업로드(신규/중복/오류 미리보기 + 건너뛰기·덮어쓰기), 양식 다운로드, 범위 선택기 공용화(그룹 드롭다운), `Word.englishName` 추가, 마이그 0009 |
+
+> **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 146 · web 159 · server 52 (erdd_test) · pnpm -r typecheck → 0 errors
+core 234 · web 242 · server 69 (erdd_test) · pnpm -r typecheck → 0 errors
 ```
 
-### 다음 작업 (Phase 2 남은 sub-project, 권장 순서)
+### 다음 작업
 
-1. **공용 리소스 fork/재동기화** — 서비스 전역·조직 표준 사전/도메인/커스텀 항목을 프로젝트로 fork 후 수동 재동기화(→ `docs/01-concepts.md` 공용 리소스 패턴). 사전·도메인·커스텀 항목이 이미 있으므로 세 종류를 하나의 fork 메커니즘으로 한꺼번에 설계.
-2. **Excel 산출물/업로드** — 정의서 Excel 내보내기(커스텀 항목 컬럼 포함), 사전 Excel 업로드, 그룹 단위 내보내기(→ `docs/17-import-export.md`).
+**Phase 3 — 협업 완성** (→ `docs/90-roadmap.md`)
 
-이후 Phase 3(실시간 협업), Phase 4(CLI·역설계·과금) — `docs/90-roadmap.md`.
+1. **실시간 동시편집** — presence, 즉시 반영, 충돌 정책(→ `docs/11-collaboration.md`). 착수 전 `docs/91-checklist.md`의 "실시간 프로토콜 상세"(채널 인증·재수화 한계·presence 메시지) 확정 필요. 데이터 계층은 Phase 1부터 op 로그 기반으로 깔려 있다.
+2. **스냅샷 diff + 변경분 정의서** — diff 화면과 Excel "변경분 정의서" 시트(Excel 사이클에서 의도적으로 남겨 둔 유일한 시트).
+3. 권한 세분화(필요 시 그룹 단위 편집 권한 등 검토).
+
+이후 Phase 4(CLI·역설계). 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
 
 ---
 
@@ -38,8 +45,8 @@ core 146 · web 159 · server 52 (erdd_test) · pnpm -r typecheck → 0 errors
 1. **이 문서** — 현재 상태·불변식·환경·워크플로
 2. `docs/90-roadmap.md` — 단계별 범위(무엇이 어느 Phase인지)
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
-4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-27-phase2-custom-fields-design.md`, `docs/superpowers/plans/2026-07-27-phase2-custom-fields.md`
-5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 2 남은 항목 확인)
+4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-28-phase2-shared-resources-fork-design.md`, `docs/superpowers/specs/2026-07-28-phase2-excel-import-export-design.md`와 각각의 `plans/` 문서
+5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 3 항목 확인)
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
 
@@ -69,6 +76,14 @@ core 146 · web 159 · server 52 (erdd_test) · pnpm -r typecheck → 0 errors
 
 **⚠️ 임시 `persistOps` 가드는 `OpApplyError`로 throw.** 엔티티를 `ENTITY_KINDS`에 넣는 태스크와 서버 `TABLE_BY_KIND` 배선 태스크가 나뉘면 중간에 임시 가드를 넣게 되는데, plain `Error`면 라우터 catch(`OpApplyError`만 400)를 못 타 미제어 500이 된다(도메인·명명 두 번 재발). `@erdd/core`의 `OpApplyError`를 쓰고 "해당 op → 400" 회귀 테스트를 남긴다.
 
+**⚠️ 한 뮤테이션의 op 상한은 `MAX_OPS_PER_MUTATION`(5000)이다**(`apps/server/src/routers/model.ts`, Fastify `bodyLimit`도 함께 올려 둠). 사전 일괄 등록처럼 "단일 뮤테이션 = Revision 1건 = undo 1회"를 지켜야 하는 기능은 이 천장에 걸린다 — 대량 배치를 만드는 UI는 **미리 막고 안내**한다(낙관적 반영 후 서버 거절로 되돌려지는 것을 사용자가 겪지 않도록). 원래 500이었는데 600단어 사전이 400으로 막혀 Excel 사이클에서 올렸다.
+
+### 3.2b 공용 리소스(전역·조직 라이브러리)
+- `resource_libraries` / `resource_items`는 **op 로그 밖의 일반 테이블**이다(프로젝트 모델이 아님). 프로젝트로 fork된 결과만 op 엔티티가 된다.
+- 모델 4종(`domain`/`word`/`term`/`customField`)의 `origin` = `{ libraryId, sourceId, sourceVersion, base }`. **`base`는 가져온 시점에 프로젝트 공간으로 투영해 써넣은 payload**라, `payloadOf(현재) ≠ base` 하나로 "프로젝트가 고쳤는지"가 판정되고 3-way 병합 전체가 core 순수 함수(`resource-sync.ts`)로 닫힌다. 버전 이력 테이블이 없다.
+- 적용은 **새 엔드포인트 없이 기존 `model.mutate` 경로**를 탄다 → Revision 1건, undo 1회로 원복.
+- 원본에서 삭제된 항목은 프로젝트에 그대로 둔다(삭제 제안 없음 — 프로젝트 독립성 원칙).
+
 ### 3.3 하위호환 (스냅샷·옛 리비전)
 - 모델에 새 컬렉션을 추가하면 `ProjectModelSchema`에서 `.default({})`. 단, **`z.infer` 출력 타입은 필수**이므로 `: ProjectModel` 리터럴(fixtures, model-store 반환 등)에는 전부 키를 추가해야 한다(typecheck-driven으로 훑기).
 - 엔티티에 새 필드를 추가하면 `.nullable().default(null)`(옛 op 페이로드 파싱).
@@ -80,8 +95,9 @@ core 146 · web 159 · server 52 (erdd_test) · pnpm -r typecheck → 0 errors
 - 프로젝트 설정(방언·명명 규칙)은 버전 모델이 아니라 `projects` 행에 있고, `useModelLoader`가 `project.get`으로 조회해 store(`namingRules`, `dialects`)에 넣는다.
 
 ### 3.5 core 규칙
-- `packages/core`는 **IO·런타임 의존성 free**(순수 도메인 로직). 레이아웃 계산용 dagre 같은 것은 `apps/web`에만.
+- `packages/core`는 **IO·런타임 의존성 free**(순수 도메인 로직). 레이아웃 계산용 dagre 같은 것은 `apps/web`에만. Excel의 `exceljs`도 `apps/web`에만 두고 **동적 `import()`로만** 쓴다(초기 번들 영향 없음) — 양식 정의·파싱 규칙 자체는 core의 순수 함수(`excel-sheets.ts` / `excel-import.ts`)다.
 - DDL은 `generateDdl(model, dialect, scope)` 시그니처 불변, 경고는 `ddlWarnings(model, dialect, scope)`로 분리.
+- **Excel 왕복 계약**: 내보내기 헤더 배열과 업로드 파서가 같은 상수를 공유해, 내보낸 파일을 그대로 다시 올릴 수 있다(단어·용어·도메인 3시트). 양식 다운로드도 같은 빌더를 쓴다. 유일한 예외는 용어사전의 `구성 단어`(파생값 — 업로드 시 무시).
 
 ---
 
@@ -90,8 +106,9 @@ core 146 · web 159 · server 52 (erdd_test) · pnpm -r typecheck → 0 errors
 ```bash
 # DB (docker) — 이미 떠 있는 경우가 많다
 docker ps --filter name=erdd-db      # erdd-db-1, postgres:17, :5432
-# dev DB=erdd, test DB=erdd_test (둘 다 0006까지 마이그레이션)
+# dev DB=erdd, test DB=erdd_test (둘 다 0009까지 마이그레이션)
 # 관리자 계정: admin@erdd.local / Passw0rd!erdd
+# ADMIN_EMAIL/ADMIN_PASSWORD를 export하고 서버를 띄우면 없을 때 자동 생성된다(ensureBootstrapAdmin)
 
 # ⚠️ dev 서버는 루트 .env를 자동 로드하지 않는다 → DATABASE_URL 없이 뜨면
 #    ctx.db=null → 모든 tRPC가 412 → 화면에 "연결에 문제가 있습니다"
@@ -110,6 +127,10 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @
 ```
 
 브라우저 스모크: 기존 스크래치 프로젝트 `http://localhost:5173/p/019f9451-d164-7d8c-a2f0-b71b7b60d42d`(로그인 쿠키가 남아있는 편). **스모크로 만든 변경은 실행 취소(undo)로 원복**해 dev DB를 깨끗이 둔다.
+
+스모크에서 실제로 막혔던 것 두 가지:
+- **`pnpm -r dev`의 vite가 IPv6 `[::1]`에만 바인딩**돼 Chrome이 접속을 못 하는 경우가 있다(curl은 `localhost`를 `::1`로 풀어 200이라 서버 문제로 오인하기 쉽다). `pnpm --filter @erdd/web exec vite --host 127.0.0.1`로 따로 띄우면 해결된다.
+- **서버를 background로 띄우면 래퍼만 죽고 `tsx watch` 자식이 살아남아** 포트 3000을 잡고 있다(다음 스모크가 구 코드로 돌아간다). `lsof -nP -iTCP:3000 -sTCP:LISTEN`로 확인하고 kill한다.
 
 ---
 
@@ -133,6 +154,18 @@ sub-project 하나마다:
 - 응답은 한국어.
 
 **서브에이전트 한도:** 한 세션에서 200개까지. 명명 체계 세션은 Task 6에서 한도에 도달해 이후는 컨트롤러가 직접 구현+자기리뷰로 마쳤다. 커스텀 항목 세션(7태스크+최종리뷰+수정)은 한도 안에서 전 과정을 서브에이전트 구현+리뷰로 마쳤다(약 17개 서브에이전트 사용). 서브에이전트 리뷰를 계속 쓰려면 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`을 올린다.
+
+### 병렬 트랙(worktree 2개)으로 돌릴 때
+
+Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다음이 필수였다:
+
+- **트랙별 격리 DB**를 미리 만들어 준다(`erdd_dev_a`/`erdd_test_a`, `erdd_dev_b`/`erdd_test_b`). 공유 `erdd_test`를 두 트랙이 함께 쓰면 서로의 데이터를 지운다.
+- **worktree base는 반드시 로컬 `main`으로 명시**한다(`--base-branch refs/heads/main`). `origin/main`이 뒤처져 있으면 Orca 기본값이 그 옛 커밋을 base로 잡는다(실제로 42커밋 뒤처진 상태였다).
+- 각 워커에게 **`main` 체크아웃·머지·브라우저 스모크 금지**를 명시한다(같은 저장소의 다른 worktree가 `main`을 잡고 있어 git이 거부한다). 워커는 구현+테스트+최종 리뷰까지, 병합·스모크·문서 갱신은 컨트롤러가 한다.
+- **`HANDOFF.md`·`91-checklist.md`는 어느 트랙도 건드리지 않게 한다** — 양쪽이 고치면 병합 충돌이 확정이다. 컨트롤러가 병합 후 일괄 갱신한다.
+- **마이그레이션 번호는 반드시 충돌한다**(둘 다 0007을 만든다). 워커에겐 신경 쓰지 말고 각자 격리 DB에 적용하라고 하고, 병합 시 컨트롤러가 나중 트랙의 파일을 버리고 **병합된 스키마에서 `drizzle-kit generate`로 새 번호를 뽑는다**(스냅샷 손수정보다 안전).
+- 병합 시 실제로 든 비용: 파일 충돌 11개 + 교차 타입/테스트 오류 20여 곳. 대부분 "두 트랙이 같은 엔티티에 각각 새 필드를 추가"해서 생긴 기계적 충돌이라, 양쪽 필드를 모두 살리면 된다. 다만 **의미 판단이 필요한 곳이 섞인다**(예: Excel 가져오기의 `draft`는 신규 생성용이라 `origin: null`이 맞지만, 부분 갱신용 `patch`에는 넣으면 안 된다 — 넣으면 업로드가 기존 항목의 fork 출처를 지운다).
+- 새 런타임 의존성이 붙은 트랙을 병합하면 **`pnpm install`을 먼저** 해야 타입이 풀린다(안 하면 그 파일이 implicit any로 깨진다).
 
 ---
 
@@ -169,7 +202,25 @@ sub-project 하나마다:
 - boolean 필드에는 required 표식(*)이 없음(현재 UI로는 required:true인 boolean을 생성할 수 없어 도달 불가 — fork/임포트로 우회 생성되면 문제)
 - `custom-fields-section.tsx`의 text 입력(blur 커밋)이 `edit-panel.tsx`의 `CommitInput`과 의미상 중복(공용 파일 추출 여지 — edit-panel에서 import하면 순환이라 별도 파일 필요)
 - 자동 저장 금지 가드(정의 기본값 표시 중 blur해도 저장 안 됨) 고정 테스트 없음
-- Excel 산출물의 커스텀 컬럼, CLI `custom` 필드는 각각 Excel/Phase 4 사이클로 이월
+- CLI `custom` 필드는 Phase 4로 이월(Excel 정의서 컬럼은 #5에서 구현됨)
+
+**공용 리소스 fork (#4)**
+- **프로젝트 → 조직 리소스 승격(반대 방향)** 미구현 — 기획(`01-concepts.md` 4항)에 있으나 이번 범위에서 제외
+- **행안부 표준 사전 실데이터 미확보** — 현재는 전역 라이브러리가 비어 있을 때 부팅 시 "표준 사전(예시)" 소량(도메인 3·단어 6·용어 3·커스텀 항목 2)만 시드. `91-checklist`의 "표준 사전 데이터 소싱" 미결과 연결
+- `resource-sync`: 같은 배치 내 동명 added 2건은 서로에 대해 `nameClash=false`(UI 자문용, 무결성 무관)
+- `resource-sync`의 `as unknown as` 캐스트 4곳, `items.update/remove`가 권한검사 전 NOT_FOUND(존재 오라클 — uuidv7이라 열거 불가, snapshot.ts 관례와 동일)
+- `library.update`가 서버에만 있고 UI 경로 없음. 라이브러리 remove 테스트 없음
+- 충돌 라디오 `aria-label`에 종류 수식어 없음(동명 이종 항목이면 모호), 적용 성공 토스트 없음(선택이 전부 no-op이면 무반응)
+- 패널 재오픈 시 라이브러리 목록 stale(`onOpenChange`에서 refetch 권장), `plan` 참조 변경 시 `useEffect`가 진행 중 선택을 리셋할 수 있음
+- `ensureStarterGlobalLibrary`의 동시 부팅 경합(단일 인스턴스면 무해), `changedFields`에 `domainId`가 허위로 낄 수 있음(표시 전용)
+- customField 로컬 순서변경·origin 왕복 회귀 테스트 없음(구조적으로 성립하나 미고정)
+
+**Excel 산출물/업로드 (#5)**
+- **"변경분 정의서" 시트 미구현** — 스냅샷 diff 기반이라 Phase 3의 diff 화면과 함께 설계(의도적으로 남긴 유일한 시트)
+- **테이블·컬럼 커스텀 항목 "값"의 Excel 업로드 미지원**(내보내기만) — 테이블·컬럼 식별 규칙(물리명? id?)이 따로 필요해 별도 사이클
+- **선택 테이블 범위 내보내기** — `ExportScope`의 `{kind:'tables'}`는 타입만 있고 UI 없음
+- 도메인 허용값의 쉼표 왕복 한계(값 자체에 쉼표가 있으면 분리됨)
+- 대량 업로드는 `MAX_OPS_PER_MUTATION`(5000)이 천장 — 초과 시 UI가 막고 파일 분할 안내(청크 적용 미구현)
 
 ---
 
@@ -185,9 +236,9 @@ ERDD 프로젝트를 이어서 작업한다. 먼저 docs/superpowers/HANDOFF.md�
 - 커밋 메시지는 한국어 + Co-Authored-By/Claude-Session 트레일러 2줄.
 - 임시 파일은 $CLAUDE_JOB_DIR/tmp 사용.
 
-다음 작업: Phase 2의 남은 sub-project 중 <공용 리소스 fork | Excel 산출물>을
-진행한다. HANDOFF.md의 "작업 방식"대로 brainstorming(설계 결정 확인) → spec → plan →
-SDD 구현/리뷰 → 브라우저 스모크 → main 머지 순서로 가라.
+다음 작업: Phase 3(협업 완성)을 시작한다. 먼저 <실시간 동시편집 | 스냅샷 diff·변경분 정의서>
+중 무엇을 할지 확인하고, HANDOFF.md의 "작업 방식"대로 brainstorming(설계 결정 확인) →
+spec → plan → SDD 구현/리뷰 → 브라우저 스모크 → main 머지 순서로 가라.
 ```
 
-> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목 중 커스텀 항목 항목들을 정리한다" / "Phase 3 실시간 협업 설계를 시작한다".
+> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목을 정리한다" / "프로젝트→조직 리소스 승격(공용 리소스 반대 방향)을 구현한다".
