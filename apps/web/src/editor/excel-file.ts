@@ -37,14 +37,24 @@ export async function buildWorkbookBlob(sheets: SheetData[]): Promise<Blob> {
   const wb = new ExcelJS.Workbook()
   for (const s of sheets) {
     const ws = wb.addWorksheet(s.name)
+    // title이 있으면 1행은 비교 대상 표기, 헤더는 2행으로 내려간다.
+    if (s.title !== undefined) {
+      ws.addRow([s.title])
+      ws.getRow(1).font = { italic: true }
+    }
+    const headerRow = s.title === undefined ? 1 : 2
     ws.addRow([...s.headers])
-    ws.getRow(1).font = { bold: true }
-    ws.views = [{ state: 'frozen', ySplit: 1 }]
+    ws.getRow(headerRow).font = { bold: true }
+    ws.views = [{ state: 'frozen', ySplit: headerRow }]
     if (s.headers.length > 0) {
-      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: s.headers.length } }
+      ws.autoFilter = {
+        from: { row: headerRow, column: 1 },
+        to: { row: headerRow, column: s.headers.length },
+      }
     }
     for (const row of s.rows) ws.addRow([...row])
     ws.columns.forEach((col, i) => {
+      // 제목 행은 열 너비 계산에서 뺀다(제목이 길다고 첫 열이 과하게 넓어지지 않도록).
       const header = s.headers[i] ?? ''
       const longest = s.rows.reduce((max, r) => Math.max(max, (r[i] ?? '').length), header.length)
       col.width = Math.min(MAX_COLUMN_WIDTH, Math.max(10, longest + 2))

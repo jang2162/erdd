@@ -147,3 +147,37 @@ describe('내보내기 → 업로드 왕복', () => {
     expect(buildExcelSheets(restored, dictOnly)).toEqual(buildExcelSheets(source, dictOnly))
   })
 })
+
+describe('제목 행이 있는 시트', () => {
+  it('제목을 1행에, 헤더를 2행에 쓴다', async () => {
+    const sheet = {
+      key: 'changes' as const, name: '변경분 정의서', title: '기준: v1.0 · 비교: 현재',
+      headers: ['구분', '대상'], rows: [['컬럼', 'MBR.MBR_NO']],
+    }
+    const blob = await buildWorkbookBlob([sheet])
+    const ExcelJS = await import('exceljs')
+    const wb = new ExcelJS.default.Workbook()
+    await wb.xlsx.load(await blob.arrayBuffer())
+    const ws = wb.getWorksheet('변경분 정의서')!
+    expect(String(ws.getRow(1).getCell(1).value)).toBe('기준: v1.0 · 비교: 현재')
+    expect(String(ws.getRow(2).getCell(1).value)).toBe('구분')
+    expect(String(ws.getRow(3).getCell(2).value)).toBe('MBR.MBR_NO')
+    // exceljs는 로드 후 autoFilter를 범위 문자열로 역직렬화한다(from/to 객체가 아님).
+    expect(ws.autoFilter).toBe('A2:B2')
+  })
+
+  it('제목이 없는 시트는 1행이 헤더 그대로다(회귀)', async () => {
+    const sheet = {
+      key: 'words' as const, name: '단어사전',
+      headers: ['논리명', '약어'], rows: [['회원', 'MBR']],
+    }
+    const blob = await buildWorkbookBlob([sheet])
+    const ExcelJS = await import('exceljs')
+    const wb = new ExcelJS.default.Workbook()
+    await wb.xlsx.load(await blob.arrayBuffer())
+    const ws = wb.getWorksheet('단어사전')!
+    expect(String(ws.getRow(1).getCell(1).value)).toBe('논리명')
+    expect(String(ws.getRow(2).getCell(1).value)).toBe('회원')
+    expect(ws.autoFilter).toBe('A1:B1')
+  })
+})
