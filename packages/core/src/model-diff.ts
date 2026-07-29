@@ -34,11 +34,18 @@ export const DIFF_KIND_LABEL: Record<EntityKind, string> = {
   customField: '커스텀 항목', note: '메모',
 }
 
+/** Excel '변경유형' 컬럼과 화면의 변경 유형 라벨이 공유하는 상수. */
+export const CHANGE_KIND_LABEL: Record<DiffChangeKind, string> = {
+  added: '추가', removed: '삭제', changed: '변경',
+}
+
 /**
  * 표시 순서 — FK 안전 순서(ENTITY_KINDS)가 아니라 사람이 읽는 순서다.
  * 스키마(테이블→컬럼→관계→인덱스→그룹) 다음에 사전 자산, 마지막이 메모.
+ * export된 이유는 테스트가 ENTITY_KINDS 전체를 담는지 완전성을 검증하기 위해서다
+ * (11번째 op 엔티티가 여기 누락되면 그 종류 전체가 diff·정의서에서 조용히 빠진다).
  */
-const KIND_ORDER: readonly EntityKind[] = [
+export const KIND_ORDER: readonly EntityKind[] = [
   'table', 'column', 'relationship', 'index', 'tableGroup',
   'domain', 'word', 'term', 'customField', 'note',
 ]
@@ -78,6 +85,99 @@ function formatValue(v: unknown): string {
       .join(', ')
   }
   return String(v)
+}
+
+/**
+ * id 하나를 이름으로 바꾼다. 참조가 끊겼으면(dangling — 그 모델에 해당 id가 없음)
+ * 원시 id를 그대로 남긴다. 정보를 숨기지 않는다.
+ */
+function resolveRefLabel<T>(
+  id: unknown, collection: Record<string, T>, nameOf: (e: T) => string,
+): string {
+  if (id === null || id === undefined || id === '') return ''
+  if (typeof id !== 'string') return formatValue(id)
+  const e = collection[id]
+  if (!e) return id
+  const name = nameOf(e)
+  return name === '' ? id : name
+}
+
+function refDomainName(model: ProjectModel, id: unknown): string {
+  return resolveRefLabel(id, model.domains, (d) => d.name)
+}
+function refGroupName(model: ProjectModel, id: unknown): string {
+  return resolveRefLabel(id, model.tableGroups, (g) => g.name)
+}
+function refTableName(model: ProjectModel, id: unknown): string {
+  return resolveRefLabel(id, model.tables, (t) => t.physicalName || t.logicalName)
+}
+function refColumnName(model: ProjectModel, id: unknown): string {
+  return resolveRefLabel(id, model.columns, (c) => c.physicalName || c.logicalName)
+}
+
+/** custom 값 맵(customFieldId → 값)을 항목 이름 기준 "이름=값" 나열로 바꾼다. */
+function formatCustomField(value: unknown, model: ProjectModel): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value !== 'object') return formatValue(value)
+  return Object.entries(value as Record<string, unknown>)
+    .map(([fieldId, v]) => [fieldId, formatValue(v)] as const)
+    .filter(([, v]) => v !== '')
+    .map(([fieldId, v]) => {
+      const field = model.customFields[fieldId]
+      return [field?.name || fieldId, v] as const
+    })
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, v]) => `${name}=${v}`)
+    .join(', ')
+}
+
+/** 인덱스 구성 컬럼. 정의 순서를 그대로 보존한다(정렬하지 않음 — 인덱스는 순서가 의미 있다). */
+function formatIndexColumns(value: unknown, model: ProjectModel): string {
+  if (!Array.isArray(value)) return formatValue(value)
+  return value
+    .map((v) => {
+      const item = v as { columnId?: unknown; direction?: unknown }
+      const name = refColumnName(model, item.columnId)
+      return name === '' ? formatValue(v) : `${name}(${String(item.direction)})`
+    })
+    .join(', ')
+}
+
+/** 관계의 컬럼 매핑. "자식 ← 부모" 순으로 나열한다(FK는 자식 쪽에 있다). */
+function formatColumnMappings(value: unknown, model: ProjectModel): string {
+  if (!Array.isArray(value)) return formatValue(value)
+  return value
+    .map((v) => {
+      const item = v as { childColumnId?: unknown; parentColumnId?: unknown }
+      const child = refColumnName(model, item.childColumnId) || formatValue(item.childColumnId)
+      const parent = refColumnName(model, item.parentColumnId) || formatValue(item.parentColumnId)
+      return `${child} ← ${parent}`
+    })
+    .join(', ')
+}
+
+/**
+ * 필드 값을 셀 문자열로 — 표시 전용이다.
+ * id를 값으로 갖는 속성(도메인·그룹·테이블·컬럼 참조)은 사람이 읽는 이름으로 바꾼다.
+ * 실데이터 id는 UUIDv7이라 원문 그대로는 감사 문서로 쓸 수 없다. 참조가 끊겼으면
+ * (dangling) 원시 값을 그대로 남긴다 — formatValue와 동일한 원칙이다.
+ * 이 함수는 변경 판정에는 쓰지 않는다: diffModelsForDisplay는 formatValue(원시값)로
+ * 판정한 뒤에만 이 함수로 표시 문자열을 만든다. 그래야 이름만 바뀌어도(예: 도메인
+ * 개명) 값을 바꾸지 않은 엔티티가 '변경'으로 잘못 잡히는 일이 없다.
+ */
+function formatFieldValue(field: string, value: unknown, model: ProjectModel): string {
+  switch (field) {
+    case 'domainId': return refDomainName(model, value)
+    case 'groupId': return refGroupName(model, value)
+    case 'tableId':
+    case 'parentTableId':
+    case 'childTableId':
+      return refTableName(model, value)
+    case 'custom': return formatCustomField(value, model)
+    case 'columns': return formatIndexColumns(value, model)
+    case 'columnMappings': return formatColumnMappings(value, model)
+    default: return formatValue(value)
+  }
 }
 
 type Entity = Record<string, unknown> & { id: string }
@@ -164,9 +264,13 @@ export function diffModelsForDisplay(base: ProjectModel, target: ProjectModel): 
       }
       const fields: DiffFieldChange[] = []
       for (const field of comparableFields(before, entity)) {
-        const b = formatValue(before[field])
-        const a = formatValue(entity[field])
-        if (b === a) continue
+        // 판정은 원시 값(formatValue)으로 한다 — 참조 이름 해석은 표시 전용이라,
+        // 이름만 바뀌고 참조 id가 그대로면 여기서 걸러져 '변경'으로 잡히지 않는다.
+        const rawBefore = formatValue(before[field])
+        const rawAfter = formatValue(entity[field])
+        if (rawBefore === rawAfter) continue
+        const b = formatFieldValue(field, before[field], base)
+        const a = formatFieldValue(field, entity[field], target)
         fields.push({ field, label: FIELD_LABEL[field] ?? field, before: b, after: a })
       }
       if (fields.length === 0) continue

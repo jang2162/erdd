@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type ProjectModel } from './model.js'
 import { buildSampleModel } from './testing/fixtures.js'
-import { diffModelsForDisplay } from './model-diff.js'
+import { ENTITY_KINDS } from './op.js'
+import { diffModelsForDisplay, KIND_ORDER } from './model-diff.js'
 
 /** 픽스처를 깊은 복사해 한쪽만 고칠 수 있게 한다. */
 function clone(m: ProjectModel): ProjectModel {
@@ -171,5 +172,140 @@ describe('diffModelsForDisplay', () => {
     }
     const kinds = diffModelsForDisplay(base, target).entries.map((e) => e.kind)
     expect(kinds).toEqual(['table', 'column', 'word'])
+  })
+
+  it('KIND_ORDER는 ENTITY_KINDS 전체를 빠짐없이 담는다', () => {
+    expect([...KIND_ORDER].sort()).toEqual([...ENTITY_KINDS].sort())
+  })
+
+  describe('참조형 속성은 id가 아니라 이름으로 표시한다', () => {
+    it('domainId는 도메인 이름으로 표시하고, 이전값은 base·이후값은 target에서 해석한다', () => {
+      // 이름(금액/비율)이 id(d1/d2)와 확실히 다르게 — 짧은 픽스처 id로도 검증되게 한다.
+      const base = buildSampleModel()
+      base.domains['d1'] = {
+        id: 'd1', name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+        dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+        defaultValue: null, allowedValues: [], description: null, origin: null,
+      }
+      base.columns['c1']!.domainId = 'd1'
+      const target = clone(base)
+      target.domains['d2'] = {
+        id: 'd2', name: '비율', category: null, logicalType: 'DECIMAL(5,4)',
+        dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+        defaultValue: null, allowedValues: [], description: null, origin: null,
+      }
+      target.columns['c1']!.domainId = 'd2'
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 'c1')!
+      const f = e.fields.find((x) => x.field === 'domainId')!
+      expect(f.before).toBe('금액')
+      expect(f.after).toBe('비율')
+    })
+
+    it('참조가 끊겼으면(dangling) 원시 id를 그대로 남긴다', () => {
+      const base = buildSampleModel()
+      const target = clone(base)
+      target.columns['c1']!.domainId = 'd-missing' // target에 그런 도메인이 없다
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 'c1')!
+      const f = e.fields.find((x) => x.field === 'domainId')!
+      expect(f.before).toBe('')
+      expect(f.after).toBe('d-missing')
+    })
+
+    it('groupId는 소속 그룹 이름으로 표시한다', () => {
+      const base = buildSampleModel()
+      const target = clone(base)
+      target.tableGroups['g2'] = { id: 'g2', name: '인사관리', color: '#000', comment: null }
+      target.tables['t1']!.groupId = 'g2'
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 't1')!
+      const f = e.fields.find((x) => x.field === 'groupId')!
+      expect(f.before).toBe('회원관리')
+      expect(f.after).toBe('인사관리')
+    })
+
+    it('tableId는 테이블 물리명으로 표시한다', () => {
+      const base = buildSampleModel()
+      const target = clone(base)
+      target.columns['c3']!.tableId = 't1' // MBR → MBR_GRD로 컬럼을 옮긴다
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 'c3')!
+      const f = e.fields.find((x) => x.field === 'tableId')!
+      expect(f.before).toBe('MBR')
+      expect(f.after).toBe('MBR_GRD')
+    })
+
+    it('parentTableId·childTableId는 테이블 물리명으로 표시한다', () => {
+      const base = buildSampleModel()
+      const target = clone(base)
+      target.relationships['r1']!.parentTableId = 't2'
+      target.relationships['r1']!.childTableId = 't1'
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 'r1')!
+      const parentField = e.fields.find((x) => x.field === 'parentTableId')!
+      const childField = e.fields.find((x) => x.field === 'childTableId')!
+      expect(parentField).toMatchObject({ before: 'MBR_GRD', after: 'MBR' })
+      expect(childField).toMatchObject({ before: 'MBR', after: 'MBR_GRD' })
+    })
+
+    it('custom은 커스텀 항목 이름 기준 "이름=값"으로 표시한다', () => {
+      const base = buildSampleModel()
+      base.customFields['cf1'] = {
+        id: 'cf1', name: '개인정보여부', target: 'table', type: 'boolean',
+        options: [], required: false, defaultValue: null, order: 0, origin: null,
+      }
+      const target = clone(base)
+      target.tables['t1']!.custom = { cf1: 'Y' }
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 't1')!
+      const f = e.fields.find((x) => x.field === 'custom')!
+      expect(f.before).toBe('')
+      expect(f.after).toBe('개인정보여부=Y')
+    })
+
+    it('custom 값이 그대로면 커스텀 항목 이름만 바뀌어도 판정은 변경으로 잡지 않는다', () => {
+      // 판정(변경 여부)은 원시 값(id)으로 하고 표시만 이름으로 바꾼다 — 이름이
+      // 바뀌었다고 값을 건드리지 않은 테이블까지 '변경'으로 잘못 잡히면 안 된다.
+      const base = buildSampleModel()
+      base.customFields['cf1'] = {
+        id: 'cf1', name: '개인정보여부', target: 'table', type: 'boolean',
+        options: [], required: false, defaultValue: null, order: 0, origin: null,
+      }
+      base.tables['t1']!.custom = { cf1: 'Y' }
+      const target = clone(base)
+      target.customFields['cf1']!.name = '개인정보보호여부' // 이름만 바꾼다(값은 그대로)
+      const d = diffModelsForDisplay(base, target)
+      expect(d.entries.find((x) => x.entityId === 't1')).toBeUndefined()
+      const cfEntry = d.entries.find((x) => x.entityId === 'cf1')!
+      expect(cfEntry.changeKind).toBe('changed')
+    })
+
+    it('인덱스 columns는 "컬럼물리명(방향)" 나열로, 정의 순서를 보존한다', () => {
+      const base = buildSampleModel()
+      const target = clone(base)
+      target.indexes['i1']!.columns = [
+        { columnId: 'c3', direction: 'asc' },
+        { columnId: 'c2', direction: 'desc' },
+      ]
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 'i1')!
+      const f = e.fields.find((x) => x.field === 'columns')!
+      expect(f.before).toBe('MBR_NM(asc)')
+      expect(f.after).toBe('MBR_NM(asc), MBR_NO(desc)')
+    })
+
+    it('관계 columnMappings는 "자식물리명 ← 부모물리명" 나열로 표시한다', () => {
+      const base = buildSampleModel()
+      const target = clone(base)
+      target.relationships['r1']!.columnMappings = [
+        { childColumnId: 'c3', parentColumnId: 'c1' },
+      ]
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 'r1')!
+      const f = e.fields.find((x) => x.field === 'columnMappings')!
+      expect(f.before).toBe('GRD_CD ← GRD_CD')
+      expect(f.after).toBe('MBR_NM ← GRD_CD')
+    })
   })
 })

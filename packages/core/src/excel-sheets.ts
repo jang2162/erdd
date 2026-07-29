@@ -2,7 +2,7 @@ import type { Column, ProjectModel, Table } from './model.js'
 import type { ExportScope } from './ddl.js'
 import { customFieldsFor, resolveCustomValue } from './custom-field.js'
 import { decomposeByWords } from './naming.js'
-import { DIFF_KIND_LABEL, type ModelDiff } from './model-diff.js'
+import { CHANGE_KIND_LABEL, DIFF_KIND_LABEL, type ModelDiff } from './model-diff.js'
 
 export type ExcelSheetKey = 'tableList' | 'tableSpec' | 'words' | 'terms' | 'domains'
 
@@ -183,8 +183,6 @@ export function buildDictTemplateSheets(): SheetData[] {
     { key: 'domains', name: EXCEL_SHEET_NAME.domains, headers: [...DOMAIN_HEADERS], rows: [] },
   ]
 }
-
-const CHANGE_KIND_LABEL = { added: '추가', removed: '삭제', changed: '변경' } as const
 
 /**
  * 변경분 정의서 한 시트. changed는 속성 하나당 한 행이고, added/removed는

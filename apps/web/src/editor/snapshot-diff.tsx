@@ -3,8 +3,8 @@ import { Download } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  DIFF_KIND_LABEL, buildChangeSheet, createEmptyModel, diffModelsForDisplay,
-  type DiffEntry, type EntityKind, type ProjectModel,
+  CHANGE_KIND_LABEL, DIFF_KIND_LABEL, buildChangeSheet, createEmptyModel, diffModelsForDisplay,
+  type DiffEntry, type ProjectModel,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { formatCreatedAt } from '@/lib/format'
@@ -16,16 +16,24 @@ import { Label } from '@/components/ui/label'
 /** 'current'는 편집 중인 모델, 그 외는 스냅샷 id. */
 type Side = 'current' | string
 
-const CHANGE_LABEL = { added: '추가', removed: '삭제', changed: '변경' } as const
-
 /** 스냅샷 jsonb는 zod 파싱을 거치지 않는다 — 복원 경로와 같은 방식으로 누락 컬렉션을 보충한다. */
 function normalize(model: unknown): ProjectModel {
   return { ...createEmptyModel(), ...(model as Partial<ProjectModel>) }
 }
 
-/** 캔버스에 대응 객체가 있어 클릭 이동이 되는 종류. */
-function isNavigable(kind: EntityKind): boolean {
-  return kind === 'table' || kind === 'column' || kind === 'index' || kind === 'relationship'
+/**
+ * 클릭 이동이 실제로 되는지 — 종류뿐 아니라 "현재 편집 모델"에 이 엔티티가
+ * 실제로 해석되는지까지 본다. 이동은 항상 현재 모델의 캔버스로 가므로, 종류만
+ * 보고 버튼을 만들면 기본 뷰(기준=스냅샷, 비교=현재)에서 removed 테이블처럼
+ * 현재 모델에 없는 대상을 클릭했을 때 다이얼로그만 닫히는 dead end가 된다.
+ * removed 컬럼이라도 소속 테이블이 살아 있으면 여전히 유효한 이동이다.
+ */
+function isNavigable(e: DiffEntry, currentModel: ProjectModel): boolean {
+  if (e.kind === 'relationship') return e.entityId in currentModel.relationships
+  if (e.kind === 'table' || e.kind === 'column' || e.kind === 'index') {
+    return (e.parentTableId ?? e.entityId) in currentModel.tables
+  }
+  return false
 }
 
 /** 헤더 "버전"의 비교 섹션: 두 시점을 골라 변경 목록을 보고 변경분 정의서를 내보낸다. */
@@ -70,7 +78,7 @@ export function SnapshotDiff({
   )
 
   const onClickEntry = (e: DiffEntry) => {
-    if (!isNavigable(e.kind)) return
+    if (!isNavigable(e, currentModel)) return
     if (e.kind === 'relationship') selectRelationship(e.entityId)
     else select(e.parentTableId ?? e.entityId)
     onNavigate()
@@ -157,7 +165,7 @@ export function SnapshotDiff({
                     <li key={`${e.kind}-${e.entityId}`} className="rounded border p-2 text-xs">
                       <div className="flex items-center gap-1.5">
                         <span className="text-muted-foreground">{DIFF_KIND_LABEL[e.kind]}</span>
-                        {isNavigable(e.kind)
+                        {isNavigable(e, currentModel)
                           ? (
                               <button
                                 type="button" className="font-mono font-medium hover:underline"
@@ -167,7 +175,7 @@ export function SnapshotDiff({
                               </button>
                             )
                           : <span className="font-mono font-medium">{e.label}</span>}
-                        <span className="ml-auto">{CHANGE_LABEL[e.changeKind]}</span>
+                        <span className="ml-auto">{CHANGE_KIND_LABEL[e.changeKind]}</span>
                       </div>
                       {e.fields.length > 0 && (
                         <ul className="mt-1 grid gap-0.5 text-muted-foreground">

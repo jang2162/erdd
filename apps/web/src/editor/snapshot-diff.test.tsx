@@ -91,4 +91,42 @@ describe('SnapshotDiff', () => {
     const item = await screen.findByText('회원')
     expect(item.closest('button')).toBeNull()
   })
+
+  it('removed 테이블(현재 모델에 없음)은 클릭 버튼이 아니다', async () => {
+    // 기본 뷰: 기준=스냅샷, 비교=현재. 스냅샷에만 있던 테이블은 '삭제'로 잡히는데,
+    // 이동은 항상 현재 모델의 캔버스로 가므로 현재에 없는 대상은 버튼이면 안 된다.
+    const snapModel = structuredClone(buildSampleModel())
+    snapModel.tables['t9'] = {
+      id: 't9', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    mockSnapshot(snapModel)
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    renderDiff()
+    const item = await screen.findByText('ORD')
+    expect(item.closest('button')).toBeNull()
+  })
+
+  it('스냅샷을 불러오지 못하면 에러를 보여주고 "차이가 없습니다"라고 하지 않는다', async () => {
+    mockTrpcFetch({
+      'snapshot.list': () => ({ data: { items: [{
+        id: SNAP_ID, name: 'v1.0', description: '', revisionSeq: 1,
+        createdAt: '2026-07-01T00:00:00.000Z',
+      }] } }),
+      'snapshot.get': () => ({ error: { code: -32004, message: '스냅샷을 찾을 수 없습니다' } }),
+    })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    renderDiff()
+    expect(await screen.findByText('스냅샷을 불러오지 못했습니다')).toBeInTheDocument()
+    expect(screen.queryByText('차이가 없습니다')).not.toBeInTheDocument()
+  })
+
+  it('기준과 비교로 같은 시점을 고르면 안내를 보여준다', async () => {
+    mockSnapshot(structuredClone(buildSampleModel()))
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    renderDiff()
+    const targetSelect = await screen.findByLabelText('비교')
+    await userEvent.selectOptions(targetSelect, SNAP_ID)
+    expect(await screen.findByText('같은 시점을 비교하고 있습니다')).toBeInTheDocument()
+  })
 })
