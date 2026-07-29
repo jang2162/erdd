@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-07-28 / **main HEAD:** `d580028` / **마이그레이션:** 0009까지
+**최종 갱신:** 2026-07-29 / **main HEAD:** `06c6423` / **마이그레이션:** 0009까지
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -20,23 +20,24 @@
 | **Phase 2 #4 공용 리소스 fork** | 전역·조직 2계층 라이브러리(`resource_libraries`/`resource_items`, op 로그 밖), 모델 4종(domain/word/term/customField)에 `origin` 필드, 3-way 병합 엔진(core `resource-sync.ts` 순수 함수), 프로젝트 "공용 리소스" 통합 화면(가져오기=재동기화 같은 경로), 충돌 항목별 3상태 라디오, 전역 예시 시드, 마이그 0007·0008 |
 | **Phase 2 #5 Excel 산출물/업로드** | 정의서 Excel 내보내기 5시트(테이블 목록·테이블정의서·단어사전·용어사전·도메인정의서, 커스텀 항목 컬럼 포함), Excel 사전 업로드(신규/중복/오류 미리보기 + 건너뛰기·덮어쓰기), 양식 다운로드, 범위 선택기 공용화(그룹 드롭다운), `Word.englishName` 추가, 마이그 0009 |
 
+| **Phase 3 #1 스냅샷 diff** | 표시 전용 `diffModelsForDisplay`(core 순수 함수 — 기존 `diffModels`(Op[])는 불가침), 버전 다이얼로그 "비교" 섹션(기준/비교 각각 선택: 현재+스냅샷), 변경분 정의서 Excel(한 시트 flat, 1행 제목·2행 헤더), 배치 좌표 제외, 참조형 속성 이름 해석. **서버 변경·마이그레이션 없음** |
+
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
+> **Phase 3은 절반 완료** — 남은 것은 실시간 동시편집.
 
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 234 · web 242 · server 69 (erdd_test) · pnpm -r typecheck → 0 errors
+core 260 · web 253 · server 69 (erdd_test) · pnpm -r typecheck → 0 errors
 ```
 
 ### 다음 작업
 
-**Phase 3 — 협업 완성** (→ `docs/90-roadmap.md`)
+**Phase 3 나머지 — 실시간 동시편집** (→ `docs/11-collaboration.md`, `docs/90-roadmap.md`)
 
-1. **실시간 동시편집** — presence, 즉시 반영, 충돌 정책(→ `docs/11-collaboration.md`). 착수 전 `docs/91-checklist.md`의 "실시간 프로토콜 상세"(채널 인증·재수화 한계·presence 메시지) 확정 필요. 데이터 계층은 Phase 1부터 op 로그 기반으로 깔려 있다.
-2. **스냅샷 diff + 변경분 정의서** — diff 화면과 Excel "변경분 정의서" 시트(Excel 사이클에서 의도적으로 남겨 둔 유일한 시트).
-3. 권한 세분화(필요 시 그룹 단위 편집 권한 등 검토).
+presence(아바타·선택 하이라이트), 즉시 반영, 속성 단위 LWW 충돌 정책, 재접속 재수화. 착수 전 `docs/91-checklist.md`의 **"실시간 프로토콜 상세"**(채널 인증·재수화 한계 기준·presence 메시지) 확정이 필요하다. 기반은 이미 깔려 있다 — 데이터 계층이 Phase 1부터 op 로그 기반이고(`docs/02-architecture.md` "Phase 3/4 대비" 절에 설계 초안), op의 `changes`가 이미 속성 단위라 서버 도착 순서가 곧 LWW 승자다.
 
-이후 Phase 4(CLI·역설계). 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
+그다음 권한 세분화(필요 시 그룹 단위 편집 권한 등 검토) → Phase 4(CLI·역설계). 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
 
 ---
 
@@ -45,8 +46,8 @@ core 234 · web 242 · server 69 (erdd_test) · pnpm -r typecheck → 0 errors
 1. **이 문서** — 현재 상태·불변식·환경·워크플로
 2. `docs/90-roadmap.md` — 단계별 범위(무엇이 어느 Phase인지)
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
-4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-28-phase2-shared-resources-fork-design.md`, `docs/superpowers/specs/2026-07-28-phase2-excel-import-export-design.md`와 각각의 `plans/` 문서
-5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 3 항목 확인)
+4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-28-phase3-snapshot-diff-design.md`와 `plans/2026-07-28-phase3-snapshot-diff.md`
+5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 3 남은 항목 = 실시간 프로토콜 상세)
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
 
@@ -77,6 +78,12 @@ core 234 · web 242 · server 69 (erdd_test) · pnpm -r typecheck → 0 errors
 **⚠️ 임시 `persistOps` 가드는 `OpApplyError`로 throw.** 엔티티를 `ENTITY_KINDS`에 넣는 태스크와 서버 `TABLE_BY_KIND` 배선 태스크가 나뉘면 중간에 임시 가드를 넣게 되는데, plain `Error`면 라우터 catch(`OpApplyError`만 400)를 못 타 미제어 500이 된다(도메인·명명 두 번 재발). `@erdd/core`의 `OpApplyError`를 쓰고 "해당 op → 400" 회귀 테스트를 남긴다.
 
 **⚠️ 한 뮤테이션의 op 상한은 `MAX_OPS_PER_MUTATION`(5000)이다**(`apps/server/src/routers/model.ts`, Fastify `bodyLimit`도 함께 올려 둠). 사전 일괄 등록처럼 "단일 뮤테이션 = Revision 1건 = undo 1회"를 지켜야 하는 기능은 이 천장에 걸린다 — 대량 배치를 만드는 UI는 **미리 막고 안내**한다(낙관적 반영 후 서버 거절로 되돌려지는 것을 사용자가 겪지 않도록). 원래 500이었는데 600단어 사전이 400으로 막혀 Excel 사이클에서 올렸다.
+
+**⚠️ diff 함수가 두 개다. 용도를 섞지 마라.**
+- `diffModels`(`diff.ts`) → `Op[]`. **적용용**이고 FK 안전 순서로 정렬된다. 스냅샷 복원·향후 CLI push가 의존하는 불가침 함수다.
+- `diffModelsForDisplay`(`model-diff.ts`) → `ModelDiff`. **표시용**이고 사람이 읽는 순서로 정렬, 이름 해석, 배치 좌표 제외, 참조형 속성(id) → 이름 변환을 한다.
+- `model-diff.ts`의 **`KIND_ORDER`가 사실상 7번째 엔티티 등록처**다(이 배열을 순회해 diff를 만든다). 누락하면 그 종류가 정의서에서 조용히 빠진다 — 완전성 테스트가 `ENTITY_KINDS`와 대조해 잡는다. `FIELD_LABEL`도 함께 채워야 한다(누락 시 필드명 원문이 노출될 뿐 테스트는 통과한다).
+- **판정과 표시를 분리한다**: 변경 감지는 원시 값(`formatValue`)으로만 하고, 이름 해석(`formatFieldValue`)은 표시에만 쓴다. 판정이 이름 기준이 되면 도메인 이름만 바꿔도 그 도메인을 쓰는 컬럼이 전부 "변경"으로 잡힌다.
 
 ### 3.2b 공용 리소스(전역·조직 라이브러리)
 - `resource_libraries` / `resource_items`는 **op 로그 밖의 일반 테이블**이다(프로젝트 모델이 아님). 프로젝트로 fork된 결과만 op 엔티티가 된다.
@@ -141,6 +148,8 @@ sub-project 하나마다:
 1. **brainstorming 스킬** — 기획 문서(`docs/*.md`) 읽고 설계 결정을 사용자와 확정(특히 load-bearing 결정 1~2개는 반드시 질문)
 2. **spec 작성** → `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` 커밋
 3. **writing-plans 스킬** → `docs/superpowers/plans/YYYY-MM-DD-<topic>.md` 커밋 (태스크별 완결 코드·테스트·커밋 명령 포함)
+   - ⚠️ **계획에 쓴 테스트 기대값은 계획의 가장 약한 고리다.** diff sub-project에서만 3건이 틀렸다: 설계가 정한 라벨 방향과 반대로 쓴 단언, 라이브러리 실제 동작(exceljs가 왕복 후 `autoFilter`를 범위 문자열로 역직렬화)과 어긋난 단언, 설계의 테스트 목록에서 3건 누락. **계획을 커밋하기 전에 (a) 설계 문서의 규칙·테스트 목록과 기계적으로 대조하고 (b) 픽스처의 실제 값을 열어 확인하라**(픽스처 값 오류도 1건 있었다).
+   - 구현자에게는 "브리프 기대값이 실제와 어긋나면 이전 태스크 산출물을 고치지 말고 단언만 정정한 뒤 근거를 보고하라"고 명시하면 이 결함이 조기에 잡힌다.
 4. 브랜치 생성(`feat/<topic>`), **subagent-driven-development**로 태스크별 구현 → 태스크별 리뷰 → 필요 시 수정 → 재리뷰
 5. 전체 스위트 체크포인트 → **컨트롤러 브라우저 스모크**(실 앱+실 DB) → 최종 whole-branch 리뷰 → main 머지(fast-forward), 브랜치 삭제
 
@@ -222,6 +231,19 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - 도메인 허용값의 쉼표 왕복 한계(값 자체에 쉼표가 있으면 분리됨)
 - 대량 업로드는 `MAX_OPS_PER_MUTATION`(5000)이 천장 — 초과 시 UI가 막고 파일 분할 안내(청크 적용 미구현)
 
+**스냅샷 diff (Phase 3 #1)**
+- 라벨 2차 정렬(같은 종류 안 `localeCompare`)·`labelOf`의 relationship/index/tableGroup/customField/term/note 분기 미테스트
+- 키 누락의 역방향(base에만 있고 target 엔티티엔 없는 필드) 미테스트
+- 비교 화면의 `normalize()`를 실증하는 테스트 없음(core가 컬렉션 기본값을 자체적으로 채워 크래시는 안 남)
+- select 상호작용·다운로드 버튼 호출·relationship 클릭 분기 미테스트
+- `useMemo`가 실효 없음 — `normalize`가 매 렌더 새 객체를 만들어 의존성 identity가 매번 바뀐다(소규모 모델이라 체감 없음)
+- `type Side = 'current' | string`이 사실상 `string`(타입 안전성 없음, 실 id가 UUIDv7이라 충돌 불가)
+- `snapshot-diff.tsx`가 `in` 연산자를 쓰는데 core는 `Object.hasOwn` 관례
+- 참조 대상 이름이 우연히 같으면 `이전값 = 이후값`인 변경 행이 나온다(판정은 id 기준이라 의도된 동작이나 감리 문서에선 혼동 소지)
+- **Revision 단위 diff 미지원**(현재는 스냅샷·현재 시점 단위). 이력 화면 확장은 별도
+- diff에서 선택 항목만 되돌리는 "선택 복원" 미지원(스냅샷 전체 복원만)
+- 배치 좌표 변경 이력 보기 없음(좌표는 diff에서 의도적으로 제외)
+
 ---
 
 ## 7. 새 세션 시작 프롬프트 (복사해서 사용)
@@ -236,9 +258,10 @@ ERDD 프로젝트를 이어서 작업한다. 먼저 docs/superpowers/HANDOFF.md�
 - 커밋 메시지는 한국어 + Co-Authored-By/Claude-Session 트레일러 2줄.
 - 임시 파일은 $CLAUDE_JOB_DIR/tmp 사용.
 
-다음 작업: Phase 3(협업 완성)을 시작한다. 먼저 <실시간 동시편집 | 스냅샷 diff·변경분 정의서>
-중 무엇을 할지 확인하고, HANDOFF.md의 "작업 방식"대로 brainstorming(설계 결정 확인) →
-spec → plan → SDD 구현/리뷰 → 브라우저 스모크 → main 머지 순서로 가라.
+다음 작업: Phase 3의 남은 절반인 실시간 동시편집을 진행한다. 착수 전
+docs/91-checklist.md의 "실시간 프로토콜 상세"를 먼저 확정하고, HANDOFF.md의 "작업 방식"대로
+brainstorming(설계 결정 확인) → spec → plan → SDD 구현/리뷰 → 브라우저 스모크 → main 머지
+순서로 가라.
 ```
 
-> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목을 정리한다" / "프로젝트→조직 리소스 승격(공용 리소스 반대 방향)을 구현한다".
+> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목을 정리한다" / "프로젝트→조직 리소스 승격(공용 리소스 반대 방향)을 구현한다" / "Phase 4 CLI 설계를 시작한다".

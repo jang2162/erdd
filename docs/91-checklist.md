@@ -22,7 +22,7 @@
 ## Phase 3 착수 전
 
 - [ ] **실시간 프로토콜 상세** — 채널 인증, 재수화 한계 기준(간극이 크면 전체 리로드), presence 메시지 설계 (기반은 [02-architecture](02-architecture.md)에 정의됨)
-- [ ] **diff 화면과 변경분 정의서** — diff 결과 표시 상세, 변경분 정의서 양식. Excel 사이클에서 이 시트만 의도적으로 남겨 뒀으므로, 양식이 정해지면 기존 `buildExcelSheets`에 시트 하나를 더하는 형태로 붙는다(→ [설계](superpowers/specs/2026-07-28-phase2-excel-import-export-design.md))
+- [x] **diff 화면과 변경분 정의서** — 표시 전용 `diffModelsForDisplay`(적용용 `diffModels`와 분리), 기준/비교 각각 선택(현재+스냅샷), 결과는 종류별 목록 + 속성별 before/after. 변경분 정의서는 한 시트 flat(구분·대상·변경유형·속성·이전값·이후값) + 1행에 비교 대상 표기. **배치 좌표는 비교에서 제외**(옮기기만 해도 전체가 변경으로 잡히면 정의서가 무의미), 참조형 속성(domainId·groupId·custom 키 등)은 이름으로 해석해 UUID가 문서에 나오지 않게 한다 → [설계](superpowers/specs/2026-07-28-phase3-snapshot-diff-design.md)
 
 ## Phase 4 착수 전
 
