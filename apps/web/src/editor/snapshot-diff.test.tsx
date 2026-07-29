@@ -78,6 +78,23 @@ describe('SnapshotDiff', () => {
     expect(onNavigate).toHaveBeenCalled()
   })
 
+  it('removed 컬럼이라도 소속 테이블이 현재 모델에 있으면 클릭 버튼이고 테이블을 선택한다', async () => {
+    // 기본 뷰: 기준=스냅샷, 비교=현재. 스냅샷에는 있고 현재에서만 지운 컬럼(테이블은 살아있음)
+    // → removed로 잡히지만 소속 테이블은 여전히 유효한 이동 대상이어야 한다.
+    const snapModel = structuredClone(buildSampleModel())
+    const current = structuredClone(buildSampleModel())
+    delete current.columns['c3']
+    mockSnapshot(snapModel)
+    useEditorStore.getState().setLoaded(current, 1, PROJECT_ID)
+    const onNavigate = vi.fn()
+    renderDiff(onNavigate)
+    const item = await screen.findByText('MBR.MBR_NM')
+    expect(item.closest('button')).not.toBeNull()
+    await userEvent.click(item)
+    await waitFor(() => expect(useEditorStore.getState().selectedTableId).toBe('t2'))
+    expect(onNavigate).toHaveBeenCalled()
+  })
+
   it('사전 항목은 캔버스에 대응 객체가 없어 클릭 버튼이 아니다', async () => {
     const snapModel = structuredClone(buildSampleModel())
     const current = structuredClone(buildSampleModel())

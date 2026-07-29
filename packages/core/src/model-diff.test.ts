@@ -295,7 +295,21 @@ describe('diffModelsForDisplay', () => {
       expect(f.after).toBe('MBR_NM(asc), MBR_NO(desc)')
     })
 
-    it('관계 columnMappings는 "자식물리명 ← 부모물리명" 나열로 표시한다', () => {
+    it('인덱스 columns에 direction이 없으면(구 스냅샷) undefined 없이 컬럼 이름만 낸다', () => {
+      const base = buildSampleModel()
+      const target = clone(base)
+      // 구 스냅샷은 zod 파싱을 거치지 않으므로 direction이 아예 없을 수 있다.
+      target.indexes['i1']!.columns = [
+        { columnId: 'c2' } as unknown as { columnId: string; direction: 'asc' | 'desc' },
+      ]
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 'i1')!
+      const f = e.fields.find((x) => x.field === 'columns')!
+      expect(f.after).toBe('MBR_NO')
+      expect(f.after).not.toContain('undefined')
+    })
+
+    it('관계 columnMappings는 "부모물리명 → 자식물리명" 나열로 표시한다(관계 라벨과 같은 방향)', () => {
       const base = buildSampleModel()
       const target = clone(base)
       target.relationships['r1']!.columnMappings = [
@@ -304,8 +318,30 @@ describe('diffModelsForDisplay', () => {
       const d = diffModelsForDisplay(base, target)
       const e = d.entries.find((x) => x.entityId === 'r1')!
       const f = e.fields.find((x) => x.field === 'columnMappings')!
-      expect(f.before).toBe('GRD_CD ← GRD_CD')
-      expect(f.after).toBe('MBR_NM ← GRD_CD')
+      expect(f.before).toBe('GRD_CD → GRD_CD')
+      expect(f.after).toBe('GRD_CD → MBR_NM')
+    })
+
+    it('참조 대상이 target에서 사라져도(도메인 삭제) 이전값은 base에서 해석한다', () => {
+      // target = clone(base) 패턴만 쓰면 base 쪽 참조 대상이 항상 target에도 있어,
+      // 구현을 실수로 (target, target)으로 바꿔도 이 구분을 못 걸러낸다 — 그래서
+      // target에서 도메인을 지워 base 해석이 실제로 쓰이는지를 검증한다.
+      const base = buildSampleModel()
+      base.domains['d1'] = {
+        id: 'd1', name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+        dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+        defaultValue: null, allowedValues: [], description: null, origin: null,
+      }
+      base.columns['c1']!.domainId = 'd1'
+      const target = clone(base)
+      delete target.domains['d1']
+      target.columns['c1']!.domainId = null
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.entityId === 'c1')!
+      const f = e.fields.find((x) => x.field === 'domainId')!
+      // target에서 해석했다면(잘못된 구현) 사라진 도메인의 dangling id 'd1'이 나온다.
+      expect(f.before).toBe('금액')
+      expect(f.after).toBe('')
     })
   })
 })

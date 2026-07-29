@@ -138,12 +138,16 @@ function formatIndexColumns(value: unknown, model: ProjectModel): string {
     .map((v) => {
       const item = v as { columnId?: unknown; direction?: unknown }
       const name = refColumnName(model, item.columnId)
-      return name === '' ? formatValue(v) : `${name}(${String(item.direction)})`
+      if (name === '') return formatValue(v)
+      return typeof item.direction === 'string' ? `${name}(${item.direction})` : name
     })
     .join(', ')
 }
 
-/** 관계의 컬럼 매핑. "자식 ← 부모" 순으로 나열한다(FK는 자식 쪽에 있다). */
+/**
+ * 관계의 컬럼 매핑. "부모 → 자식" 순으로 나열한다 — labelOf가 관계를
+ * "부모물리명 → 자식물리명"으로 쓰는 것과 방향을 맞춘다.
+ */
 function formatColumnMappings(value: unknown, model: ProjectModel): string {
   if (!Array.isArray(value)) return formatValue(value)
   return value
@@ -151,7 +155,7 @@ function formatColumnMappings(value: unknown, model: ProjectModel): string {
       const item = v as { childColumnId?: unknown; parentColumnId?: unknown }
       const child = refColumnName(model, item.childColumnId) || formatValue(item.childColumnId)
       const parent = refColumnName(model, item.parentColumnId) || formatValue(item.parentColumnId)
-      return `${child} ← ${parent}`
+      return `${parent} → ${child}`
     })
     .join(', ')
 }
