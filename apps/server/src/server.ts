@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url'
 import Fastify, { type FastifyInstance } from 'fastify'
 import fastifyCookie from '@fastify/cookie'
 import fastifyStatic from '@fastify/static'
+import fastifyWebsocket from '@fastify/websocket'
 import { fastifyTRPCPlugin, type CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import { appRouter } from './router.js'
 import { createContext } from './context.js'
 import { createDb, type Db } from './db/client.js'
 import { RealtimeHub } from './services/realtime.js'
+import { wsPlugin } from './ws.js'
 import type pg from 'pg'
 
 declare module 'fastify' {
@@ -40,6 +42,9 @@ export function buildServer({ databaseUrl }: { databaseUrl?: string } = {}): Fas
   app.decorate('hub', hub)
 
   app.register(fastifyCookie)
+  app.register(fastifyWebsocket)
+  // 별도 register로 감싸야 fastifyWebsocket이 먼저 로드된 뒤 websocket 라우트가 등록된다.
+  app.register(wsPlugin(hub, db))
   app.register(fastifyTRPCPlugin, {
     prefix: '/trpc',
     trpcOptions: {
