@@ -8,8 +8,10 @@ import { useEditorStore } from './store.js'
 // 모든 모델 mutation(정상 편집·undo·redo)을 전역으로 직렬화한다. 낙관적 갱신과 undo/redo
 // 히스토리 스택 조작이 await 경계에서 뒤섞여 잘못된 배치를 이동시키는 경쟁을 막는다
 // (서버도 프로젝트별 mutation을 직렬화하므로 동작 의미가 일치한다).
+// 실시간 수신 op도 같은 체인을 쓴다(use-realtime) — 내 mutation이 in-flight인 동안 남의 op가
+// 끼어들어 낙관적 상태와 경합하는 것을 막는다.
 let mutationChain: Promise<unknown> = Promise.resolve()
-function serializeMutation<T>(fn: () => Promise<T>): Promise<T> {
+export function serializeMutation<T>(fn: () => Promise<T>): Promise<T> {
   const run = mutationChain.then(fn, fn)
   mutationChain = run.then(() => undefined, () => undefined)
   return run
