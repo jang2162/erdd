@@ -8,12 +8,14 @@ import { fastifyTRPCPlugin, type CreateFastifyContextOptions } from '@trpc/serve
 import { appRouter } from './router.js'
 import { createContext } from './context.js'
 import { createDb, type Db } from './db/client.js'
+import { RealtimeHub } from './services/realtime.js'
 import type pg from 'pg'
 
 declare module 'fastify' {
   interface FastifyInstance {
     db: Db | null
     pgPool: pg.Pool | null
+    hub: RealtimeHub
   }
 }
 
@@ -34,13 +36,15 @@ export function buildServer({ databaseUrl }: { databaseUrl?: string } = {}): Fas
   }
   app.decorate('db', db)
   app.decorate('pgPool', pool)
+  const hub = new RealtimeHub()
+  app.decorate('hub', hub)
 
   app.register(fastifyCookie)
   app.register(fastifyTRPCPlugin, {
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
-      createContext: ({ req, res }: CreateFastifyContextOptions) => createContext({ req, res, db }),
+      createContext: ({ req, res }: CreateFastifyContextOptions) => createContext({ req, res, db, hub }),
     },
   })
 
