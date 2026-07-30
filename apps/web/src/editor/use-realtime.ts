@@ -140,7 +140,14 @@ export function useRealtime(projectId: string): void {
       if (disposed) return
       const socket = new WebSocket(wsUrl(projectId, window.location.href))
       socketRef.current = socket
-      socket.onopen = () => { attempt = 0 }
+      socket.onopen = () => {
+        attempt = 0
+        // 재접속 시 서버 쪽 Entry는 selection:null로 새로 시작한다. 로컬 선택이 그대로여도
+        // 다시 알리지 않으면(발신 effect는 "값이 바뀔 때만" 보낸다) 다른 참여자에게는
+        // 이 사용자의 하이라이트가 재접속 전까지 사라진 채로 남는다.
+        const msg: ClientMessage = { type: 'selection', selection: selectionOf(useEditorStore.getState()) }
+        socket.send(JSON.stringify(msg))
+      }
       socket.onmessage = (ev) => {
         const msg = parseServerMessage(String(ev.data))
         if (msg) void handle(msg)

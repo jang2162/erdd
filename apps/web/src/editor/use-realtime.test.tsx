@@ -238,4 +238,24 @@ describe('useRealtime selection 발신', () => {
     await waitFor(() => expect(s.sent).toHaveLength(1))
     expect(JSON.parse(s.sent[0]!)).toEqual({ type: 'selection', selection: null })
   })
+
+  it('재접속하면 현재 선택 상태를 다시 보낸다', async () => {
+    renderHook()
+    useEditorStore.getState().selectNote(NOTE_A)
+    const first = await socket()
+    await waitFor(() => expect(first.sent.length).toBeGreaterThan(0))
+    first.sent.length = 0 // 재접속 이후 프레임만 본다
+
+    first.closeWith(1006) // 인증 실패가 아닌 임의 코드 — 재시도 대상
+    await new Promise((r) => setTimeout(r, 1100)) // BACKOFF_MS[0]=1000 지나 재접속
+    const second = await socket()
+    expect(second).not.toBe(first)
+    // FakeSocket은 실제 브라우저와 달리 open 이벤트를 자동 발화하지 않으므로 직접 트리거한다
+    // (emit/closeWith와 같은 방식의 수동 트리거).
+    second.onopen?.()
+    await waitFor(() => expect(second.sent.length).toBeGreaterThan(0))
+    expect(JSON.parse(second.sent[0]!)).toEqual({
+      type: 'selection', selection: { kind: 'note', id: NOTE_A },
+    })
+  })
 })

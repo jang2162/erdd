@@ -79,12 +79,23 @@ function useSubmit(projectId: string) {
         return 'error'
       }
 
+      const seqBefore = store.seq
       store.setModel(next) // 낙관적
       try {
         const { seq } = await mutation.mutateAsync({ projectId, ops, summary: opts.summary })
         // await 사이 프로젝트가 바뀌었으면 새 프로젝트의 seq/히스토리를 오염시키지 않는다.
         if (useEditorStore.getState().loadedProjectId !== projectId) return 'error'
-        useEditorStore.getState().setSeq(seq)
+        if (seq !== seqBefore + 1) {
+          // 내 mutation이 서버 락에 대기하는 동안 다른 사용자의 revision이 끼어들었다.
+          // 그 op는 use-realtime의 seq 체인에서 "이미 지나간 것"으로 오인돼 버려지므로,
+          // 낙관적 로컬 상태를 버리고 서버의 최신 모델로 통째 되맞춘다.
+          const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
+          if (useEditorStore.getState().loadedProjectId === projectId) {
+            useEditorStore.getState().resync(fresh.model, fresh.seq)
+          }
+        } else {
+          useEditorStore.getState().setSeq(seq)
+        }
         if (opts.record) useEditorStore.getState().recordEdit(ops)
         return 'applied'
       } catch (err) {
