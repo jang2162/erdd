@@ -4,6 +4,7 @@ import type { Column, Table, Warning } from '@erdd/core'
 import { cn } from '@/lib/utils'
 import type { ViewMode } from './store.js'
 import { WarningBadge } from './warning-badge.js'
+import type { PeerMark } from './peer-marks.js'
 
 export type TableNodeData = {
   table: Table
@@ -12,6 +13,7 @@ export type TableNodeData = {
   selected: boolean
   tableWarnings?: Warning[]
   columnWarnings?: Record<string, Warning[]>
+  peers?: PeerMark[]
 }
 
 function name(logical: string, physical: string, mode: ViewMode) {
@@ -21,7 +23,8 @@ function name(logical: string, physical: string, mode: ViewMode) {
 }
 
 export function TableNode({ data }: { data: TableNodeData }) {
-  const { table, columns, viewMode, selected, tableWarnings = [], columnWarnings = {} } = data
+  const { table, columns, viewMode, selected, tableWarnings = [], columnWarnings = {}, peers = [] } = data
+  const peerColorHex = peers[0]?.color
   const sorted = [...columns].sort((a, b) => a.order - b.order)
   const mixed = viewMode === 'mixed'
 
@@ -31,11 +34,20 @@ export function TableNode({ data }: { data: TableNodeData }) {
         'min-w-48 overflow-hidden rounded-lg border bg-card shadow-sm',
         selected && 'ring-2 ring-primary',
       )}
+      // 로컬 선택(ring)과 구분되도록 peer는 바깥쪽 외곽선을 쓴다.
+      style={peerColorHex ? { outline: `2px solid ${peerColorHex}`, outlineOffset: '2px' } : undefined}
     >
       <Handle id="l" type="source" position={Position.Left}
         className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background" />
       <Handle id="r" type="source" position={Position.Right}
         className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background" />
+      {peers.length > 0 && (
+        <div className="flex flex-wrap gap-1 px-2 py-0.5" style={{ background: peerColorHex }}>
+          {peers.map((p) => (
+            <span key={p.userId} className="text-[9px] font-semibold text-white">{p.name}</span>
+          ))}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2 border-b bg-secondary/60 px-3 py-2">
         {mixed ? (
           <div className="flex flex-1 items-baseline justify-between gap-2">

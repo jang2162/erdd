@@ -54,3 +54,18 @@ describe('TableNode', () => {
     expect(screen.getByLabelText('기본 키')).toBeInTheDocument()
   })
 })
+
+describe('peer 선택 하이라이트', () => {
+  it('peer가 선택한 테이블에 참여자 이름 라벨을 그린다', () => {
+    renderNode({
+      ...DATA, viewMode: 'physical',
+      peers: [{ userId: 'u2', name: '동료', color: '#DB2777' }],
+    })
+    expect(screen.getByText('동료')).toBeInTheDocument()
+  })
+
+  it('peer가 없으면 라벨을 그리지 않는다(회귀)', () => {
+    renderNode({ ...DATA, viewMode: 'physical' })
+    expect(screen.queryByText('동료')).not.toBeInTheDocument()
+  })
+})

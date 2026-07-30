@@ -1,12 +1,16 @@
 import type { Edge } from '@xyflow/react'
 import type { ProjectModel } from '@erdd/core'
+import type { PeerMark, PeerMarks } from './peer-marks.js'
 
 export type RelationshipEdgeData = {
   cardinality: '1:1' | '1:N'
   identifying: boolean
+  peers?: PeerMark[]
 }
 
-export function buildEdges(model: ProjectModel, visibleTableIds?: Set<string>): Edge[] {
+export function buildEdges(
+  model: ProjectModel, visibleTableIds?: Set<string>, peerMarks: PeerMarks = new Map(),
+): Edge[] {
   const edges: Edge[] = []
   for (const rel of Object.values(model.relationships)) {
     if (visibleTableIds && (!visibleTableIds.has(rel.parentTableId) || !visibleTableIds.has(rel.childTableId))) {
@@ -23,7 +27,9 @@ export function buildEdges(model: ProjectModel, visibleTableIds?: Set<string>): 
       sourceHandle: childRight ? 'l' : 'r',
       targetHandle: childRight ? 'r' : 'l',
       type: 'relationship',
-      data: { cardinality: rel.cardinality, identifying: rel.identifying },
+      data: {
+        cardinality: rel.cardinality, identifying: rel.identifying, peers: peerMarks.get(rel.id),
+      },
     })
   }
   return edges

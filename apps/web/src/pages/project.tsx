@@ -64,7 +64,7 @@ export function ProjectPage() {
             ? (
                 <>
                   <TableTree projectId={projectId} />
-                  <Canvas projectId={projectId} />
+                  <Canvas projectId={projectId} selfUserId={me.id} />
                   <EditPanel projectId={projectId} />
                 </>
               )
