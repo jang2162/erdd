@@ -2,6 +2,8 @@ import { Link, useParams } from 'react-router'
 import { ReactFlowProvider } from '@xyflow/react'
 import { Settings } from 'lucide-react'
 import { useModelLoader } from '@/editor/use-model'
+import { useRealtime } from '@/editor/use-realtime'
+import { PresenceBar } from '@/editor/presence'
 import { useEditorStore } from '@/editor/store'
 import { Canvas } from '@/editor/canvas'
 import { CustomFieldPanel } from '@/editor/custom-field-panel'
@@ -18,12 +20,15 @@ import { VersionDialog } from '@/editor/version-dialog'
 import { ViewModeToggle } from '@/editor/view-mode-toggle'
 import { BrandWordmark } from '@/components/brand-mark'
 import { UserMenu } from '@/components/user-menu'
+import { useMe } from '@/components/require-auth'
 import { Button } from '@/components/ui/button'
 
 export function ProjectPage() {
   const { projectId = '' } = useParams()
+  const me = useMe()
   const load = useModelLoader(projectId)
   const loaded = useEditorStore((s) => s.loaded)
+  useRealtime(projectId)
 
   if (load.isError) {
     return <p role="alert" className="p-8 text-destructive">{load.error.message}</p>
@@ -38,6 +43,7 @@ export function ProjectPage() {
             {loaded && <Toolbar projectId={projectId} />}
           </div>
           <div className="flex items-center gap-2">
+            {loaded && <PresenceBar selfUserId={me.id} />}
             {loaded && <GroupViewSelect />}
             {loaded && <VersionDialog projectId={projectId} />}
             {loaded && <DomainPanel projectId={projectId} />}

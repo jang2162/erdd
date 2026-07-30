@@ -212,3 +212,30 @@ describe('useRealtime 수신 적용', () => {
     expect(FakeSocket.instances).toHaveLength(1)
   })
 })
+
+describe('useRealtime selection 발신', () => {
+  beforeEach(() => {
+    useEditorStore.getState().setLoaded(modelWith(NOTE_A), 5, PROJECT_ID)
+    mockTrpcFetch({ 'model.get': () => ({ data: { model: modelWith(NOTE_A), seq: 5 } }) })
+  })
+
+  it('로컬 선택이 바뀌면 selection 메시지를 보낸다', async () => {
+    renderHook()
+    const s = await socket()
+    useEditorStore.getState().selectNote(NOTE_A)
+    await waitFor(() => expect(s.sent).toHaveLength(1))
+    expect(JSON.parse(s.sent[0]!)).toEqual({
+      type: 'selection', selection: { kind: 'note', id: NOTE_A },
+    })
+  })
+
+  it('스로틀 창 안의 연속 변경은 마지막 값 1건으로 합쳐진다', async () => {
+    renderHook()
+    const s = await socket()
+    useEditorStore.getState().select(NOTE_A)
+    useEditorStore.getState().selectNote(NOTE_A)
+    useEditorStore.getState().select(null)
+    await waitFor(() => expect(s.sent).toHaveLength(1))
+    expect(JSON.parse(s.sent[0]!)).toEqual({ type: 'selection', selection: null })
+  })
+})

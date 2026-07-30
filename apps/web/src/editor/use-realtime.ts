@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import {
   applyOps, parseServerMessage,
   WS_CLOSE_FORBIDDEN, WS_CLOSE_UNAUTHORIZED,
-  type Op, type ProjectModel, type ServerMessage,
+  type ClientMessage, type Op, type PeerSelection, type ProjectModel, type ServerMessage,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
@@ -13,6 +13,8 @@ import { serializeMutation } from './use-model.js'
 /** 인증 실패로 닫힌 소켓은 재시도하지 않는다 — 백오프가 무한 루프가 된다. */
 const NO_RETRY_CODES = new Set<number>([WS_CLOSE_UNAUTHORIZED, WS_CLOSE_FORBIDDEN])
 const BACKOFF_MS = [1000, 2000, 4000, 8000]
+/** 선택은 드래그·연속 클릭으로 잦게 바뀐다 — 마지막 값만 보낸다. */
+const SELECTION_THROTTLE_MS = 100
 
 /** 서버와 같은 오리진의 소켓 주소. 스킴만 ws/wss로 바꾼다. */
 export function wsUrl(projectId: string, href: string): string {
@@ -23,6 +25,22 @@ export function wsUrl(projectId: string, href: string): string {
 }
 
 export type SelectionImpact = 'deleted' | 'changed' | null
+
+type SelectionSource = {
+  selectedTableId: string | null
+  selectedRelationshipId: string | null
+  selectedNoteId: string | null
+  selectedGroupId: string | null
+}
+
+/** 스토어 선택 상태를 프로토콜의 단일 selection으로 좁힌다(스토어가 이미 배타적으로 관리한다). */
+function selectionOf(s: SelectionSource): PeerSelection | null {
+  if (s.selectedTableId !== null) return { kind: 'table', id: s.selectedTableId }
+  if (s.selectedRelationshipId !== null) return { kind: 'relationship', id: s.selectedRelationshipId }
+  if (s.selectedNoteId !== null) return { kind: 'note', id: s.selectedNoteId }
+  if (s.selectedGroupId !== null) return { kind: 'group', id: s.selectedGroupId }
+  return null
+}
 
 /**
  * 수신 op 배치가 내가 보고 있는 대상(테이블·관계·메모와 그 하위 컬럼·인덱스)을 건드렸는지.
@@ -146,4 +164,30 @@ export function useRealtime(projectId: string): void {
       useEditorStore.getState().setPeers([])
     }
   }, [projectId, ready, queryClient, trpc])
+
+  // 로컬 선택 → 서버. 소켓 수명주기와 독립이므로 별도 effect다(재접속 중이면 조용히 버린다).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let last = JSON.stringify(selectionOf(useEditorStore.getState()))
+
+    const flush = () => {
+      timer = undefined
+      const socket = socketRef.current
+      if (!socket || socket.readyState !== 1) return // 1 = OPEN
+      const msg: ClientMessage = { type: 'selection', selection: selectionOf(useEditorStore.getState()) }
+      socket.send(JSON.stringify(msg))
+    }
+
+    const unsubscribe = useEditorStore.subscribe((s) => {
+      const current = JSON.stringify(selectionOf(s))
+      if (current === last) return
+      last = current
+      if (timer === undefined) timer = setTimeout(flush, SELECTION_THROTTLE_MS)
+    })
+
+    return () => {
+      unsubscribe()
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }, [])
 }
