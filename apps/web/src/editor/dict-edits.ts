@@ -158,7 +158,8 @@ export function planTermPropagation(
 /**
  * 계획을 모델에 적용한다. 순수 함수.
  * updateTerm과 같은 producer 안에서 연달아 호출해 단일 mutation(Revision 1건)으로 만든다.
- * 계획을 세운 뒤 대상이 사라졌으면(실시간 협업 중 남이 삭제) 그 항목은 조용히 건너뛴다.
+ * 계획을 세운 뒤 대상이 사라졌거나(남이 삭제) 그 필드를 남이 먼저 고쳤으면 건너뛴다 —
+ * 확인 다이얼로그에서 보여준 것만 정확히 적용한다(원격 변경을 혼종으로 덮어쓰지 않는다).
  */
 export function applyTermPropagation(model: ProjectModel, plan: TermPropagationPlan): ProjectModel {
   if (plan.entries.length === 0) return model
@@ -170,8 +171,13 @@ export function applyTermPropagation(model: ProjectModel, plan: TermPropagationP
       if (!cur) continue
       const next = { ...cur }
       for (const c of entry.changes) {
-        if (c.field === 'logicalName') next.logicalName = c.after ?? ''
-        else if (c.field === 'physicalName') next.physicalName = c.after ?? ''
+        if (c.field === 'logicalName') {
+          if (cur.logicalName !== c.before) continue   // 남이 먼저 고쳤다 — 덮어쓰지 않는다
+          next.logicalName = c.after ?? ''
+        } else if (c.field === 'physicalName') {
+          if (cur.physicalName !== c.before) continue
+          next.physicalName = c.after ?? ''
+        }
       }
       tables[entry.entityId] = next
     } else {
@@ -179,9 +185,16 @@ export function applyTermPropagation(model: ProjectModel, plan: TermPropagationP
       if (!cur) continue
       const next = { ...cur }
       for (const c of entry.changes) {
-        if (c.field === 'logicalName') next.logicalName = c.after ?? ''
-        else if (c.field === 'physicalName') next.physicalName = c.after ?? ''
-        else next.domainId = c.after
+        if (c.field === 'logicalName') {
+          if (cur.logicalName !== c.before) continue
+          next.logicalName = c.after ?? ''
+        } else if (c.field === 'physicalName') {
+          if (cur.physicalName !== c.before) continue
+          next.physicalName = c.after ?? ''
+        } else {
+          if (cur.domainId !== c.before) continue
+          next.domainId = c.after
+        }
       }
       columns[entry.entityId] = next
     }

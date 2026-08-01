@@ -128,14 +128,46 @@ describe('DictPanel 용어 전파', () => {
     expect(screen.getAllByText(/GRD_CD → GRADE_CD/)).toHaveLength(2)
   })
 
+  it('확인 목록의 도메인은 UUID가 아니라 이름으로 보여준다', async () => {
+    // loadModelWithDict의 term1은 '등급코드'(도메인 없음), c1·c4가 그 용어를 쓴다.
+    loadModelWithDict()
+    const m = useEditorStore.getState().model
+    const withDomains = {
+      ...m,
+      domains: {
+        dom1: {
+          id: 'dom1', name: '코드값', category: null, logicalType: 'CHAR(2)',
+          dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+          defaultValue: null, allowedValues: [], description: null, origin: null,
+        },
+      },
+    }
+    useEditorStore.getState().setLoaded(withDomains, 1, PROJECT_ID)
+
+    renderPanel()
+    await openTermEdit()
+    // 용어에 도메인을 지정하면 사용처 컬럼(도메인 없음 → dom1)이 전파 대상이 된다.
+    await userEvent.selectOptions(screen.getByLabelText('도메인 (선택)'), 'dom1')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    expect(await screen.findByText(/함께 갱신할까요/)).toBeInTheDocument()
+    // 이름으로 보여야 한다 — UUID가 새어나오면 실패
+    expect(screen.getAllByText(/없음 → 코드값/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/dom1/)).not.toBeInTheDocument()
+  })
+
   it('바뀐 값이 없으면 확인 없이 저장된다', async () => {
     loadModelWithDict()
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     renderPanel()
     await openTermEdit()
     await userEvent.type(screen.getByLabelText('설명'), '설명만 수정')
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
 
     expect(screen.queryByText(/함께 갱신할까요/)).not.toBeInTheDocument()
+    // 확인 없이 '저장까지' 됐는지 확인 — 다이얼로그 부재만 보면 onSave가 즉시 리턴해도 통과한다.
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.terms.term1!.description).toBe('설명만 수정'))
   })
 
   it('유지를 고르면 용어만 바뀌고 사용처는 그대로다', async () => {
@@ -143,7 +175,7 @@ describe('DictPanel 용어 전파', () => {
     // 스토어는 seq 1로 로드된다. 낙관적 갱신이 롤백되지 않으려면 mutation이 성공해야 하고,
     // 반환 seq는 정확히 seqBefore+1(=2)이어야 한다 — 다른 값이면 use-model의 resync 경로가
     // 발동해 model.get을 부르고 낙관적 상태를 덮어쓴다.
-    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    const fetchMock = mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     renderPanel()
     await openTermEdit()
     await typePhysicalName('GRADE_CD')
@@ -154,6 +186,7 @@ describe('DictPanel 용어 전파', () => {
     const m = useEditorStore.getState().model
     expect(m.columns.c1!.physicalName).toBe('GRD_CD')   // 사용처는 그대로
     expect(m.columns.c4!.physicalName).toBe('GRD_CD')
+    expect(fetchMock).toHaveBeenCalledTimes(1)   // 유지도 Revision 1건이다
   })
 
   it('반영을 고르면 용어와 사용처가 한 번의 mutation으로 함께 바뀐다', async () => {

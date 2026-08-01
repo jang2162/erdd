@@ -248,4 +248,27 @@ describe('planTermPropagation / applyTermPropagation', () => {
     const plan = planTermPropagation(m2, 'tm1', { physicalName: 'ORD_NO' })
     expect(plan.entries.map((e) => e.entityId)).toEqual(['c2'])
   })
+
+  it('applyTermPropagation은 입력 모델을 변형하지 않는다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { physicalName: 'ORDER_NO' })
+    const before = JSON.stringify(m)
+    const next = applyTermPropagation(m, plan)
+    // 제자리 변형 회귀가 나면 diffModels(current, next)가 참조 동일을 보고 전파 op를 만들지 않는다.
+    expect(JSON.stringify(m)).toBe(before)
+    expect(next.columns.c2!.physicalName).toBe('ORDER_NO')   // 반환값에는 반영돼 있다
+  })
+
+  it('계획을 세운 뒤 남이 그 필드를 고쳤으면 덮어쓰지 않는다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { physicalName: 'ORDER_NO' })
+    // 계획 수립 후 원격에서 c1의 물리명이 다른 값으로 바뀐 상황
+    const remote = {
+      ...m,
+      columns: { ...m.columns, c1: { ...m.columns.c1!, physicalName: 'JOIN_DT' } },
+    }
+    const next = applyTermPropagation(remote, plan)
+    expect(next.columns.c1!.physicalName).toBe('JOIN_DT')      // 남의 변경 보존
+    expect(next.columns.c2!.physicalName).toBe('ORDER_NO')     // 나머지는 정상 반영
+  })
 })
