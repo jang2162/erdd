@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import { createEmptyModel } from '@erdd/core'
+import { createEmptyModel, DEFAULT_NAMING_RULES } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
@@ -117,5 +117,27 @@ describe('useModelLoader', () => {
       expect(useEditorStore.getState().loadedProjectId).toBe(newProjectId)
       expect(useEditorStore.getState().model.notes[NOTE.id]).toBeDefined()
     })
+  })
+
+  it('project.get의 판정 결과를 store에 싣는다', async () => {
+    mockTrpcFetch({
+      'model.get': () => ({ data: { model: createEmptyModel(), seq: 1 } }),
+      'project.get': () => ({
+        data: {
+          namingRules: DEFAULT_NAMING_RULES,
+          dialects: ['postgresql'],
+          canEdit: true,
+          canManage: false,
+        },
+      }),
+    })
+    renderHook(() => useModelLoader('018f6b0e-0000-7000-8000-0000000000aa'), {
+      wrapper: wrapper(),
+    })
+    await waitFor(() => {
+      expect(useEditorStore.getState().canEdit).toBe(true)
+    })
+    expect(useEditorStore.getState().canManage).toBe(false)
+    expect(useEditorStore.getState().dialects).toEqual(['postgresql'])
   })
 })

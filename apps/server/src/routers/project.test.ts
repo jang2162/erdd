@@ -75,6 +75,8 @@ describe.skipIf(!url)('project', () => {
     const got = await get(app, 'project.get', memberToken, { projectId })
     expect(got.statusCode).toBe(200)
     expect(got.json().result.data.myRole).toBe('viewer')
+    expect(got.json().result.data.canEdit).toBe(false)
+    expect(got.json().result.data.canManage).toBe(false)
 
     const upd = await post(app, 'project.update', memberToken, { projectId, name: '변경' })
     expect(upd.statusCode).toBe(403)
@@ -110,9 +112,19 @@ describe.skipIf(!url)('project', () => {
     const got = await get(app, 'project.get', memberToken, { projectId })
     expect(got.statusCode).toBe(200)
     expect(got.json().result.data.myRole).toBe('editor')
+    expect(got.json().result.data.canEdit).toBe(true)
+    expect(got.json().result.data.canManage).toBe(false)
 
     const upd = await post(app, 'project.update', memberToken, { projectId, name: '변경' })
     expect(upd.statusCode).toBe(403)
+  })
+
+  it('project.get grants canEdit and canManage to the org owner', async () => {
+    const projectId = await createProject()
+    const got = await get(app, 'project.get', ownerToken, { projectId })
+    expect(got.statusCode).toBe(200)
+    expect(got.json().result.data.canEdit).toBe(true)
+    expect(got.json().result.data.canManage).toBe(true)
   })
 
   it('project.get returns DEFAULT_NAMING_RULES when the project has no explicit override', async () => {

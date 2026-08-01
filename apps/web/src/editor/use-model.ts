@@ -21,6 +21,7 @@ export function useModelLoader(projectId: string) {
   const trpc = useTRPC()
   const setLoaded = useEditorStore((s) => s.setLoaded)
   const setProjectConfig = useEditorStore((s) => s.setProjectConfig)
+  const setPermissions = useEditorStore((s) => s.setPermissions)
   const query = useQuery(trpc.model.get.queryOptions({ projectId }))
   // 명명 규칙·방언은 프로젝트 설정(버전 모델 밖)이라 project.get으로 별도 로드해 store에 둔다.
   const projectQuery = useQuery(trpc.project.get.queryOptions({ projectId }))
@@ -32,8 +33,12 @@ export function useModelLoader(projectId: string) {
   useEffect(() => {
     if (projectQuery.data) {
       setProjectConfig(projectQuery.data.namingRules, projectQuery.data.dialects)
+      setPermissions({
+        canEdit: projectQuery.data.canEdit,
+        canManage: projectQuery.data.canManage,
+      })
     }
-  }, [projectQuery.data, setProjectConfig])
+  }, [projectQuery.data, setProjectConfig, setPermissions])
   return query
 }
 

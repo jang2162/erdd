@@ -70,6 +70,9 @@ export const projectRouter = router({
         namingRules: access.project.namingRules ?? DEFAULT_NAMING_RULES,
         myRole: access.projectRole ?? null,
         myOrgRole: access.orgRole ?? null,
+        // 판정은 서버가 한다. 클라가 역할 조합식을 재현하면 perm.ts가 바뀔 때 조용히 어긋난다.
+        canEdit: access.canEdit,
+        canManage: access.canManage,
       }
     }),
 
