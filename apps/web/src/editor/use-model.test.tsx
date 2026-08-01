@@ -60,6 +60,30 @@ describe('useModelMutation', () => {
     expect(useEditorStore.getState().seq).toBe(1)
   })
 
+  it('resyncs from the server when the returned seq skips ahead (concurrent commit interleaved)', async () => {
+    useEditorStore.getState().setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
+    const NOTE_B = { ...NOTE, id: '018f6b0e-0000-7000-8000-000000000002', content: '남의 메모' }
+    const freshModel = { ...createEmptyModel(), notes: { [NOTE_B.id]: NOTE_B } }
+    mockTrpcFetch({
+      // seqBefore(3)+1=4를 기대하지만 5가 온다 → 내 mutation이 락을 기다리는 동안
+      // 다른 사용자의 revision이 끼어들었다는 뜻.
+      'model.mutate': () => ({ data: { seq: 5 } }),
+      'model.get': () => ({ data: { model: freshModel, seq: 5 } }),
+    })
+    const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
+      wrapper: wrapper(),
+    })
+    await act(async () => {
+      await result.current((m) => ({ ...m, notes: { ...m.notes, [NOTE.id]: NOTE } }))
+    })
+    await waitFor(() => expect(useEditorStore.getState().seq).toBe(5))
+    // resync가 호출됐다면 서버가 돌려준 최신 모델로 통째 교체된다 — 내가 낙관적으로 넣었던
+    // NOTE는 사라지고 NOTE_B만 남는다. setSeq(seq)만 호출하는 회귀 버전이면 model.get을
+    // 아예 부르지 않아 낙관적으로 넣은 NOTE가 그대로 남고 NOTE_B는 존재하지 않는다.
+    expect(useEditorStore.getState().model.notes[NOTE.id]).toBeUndefined()
+    expect(useEditorStore.getState().model.notes[NOTE_B.id]).toBeDefined()
+  })
+
   it('rolls back to the server model on mutation error', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 5, '018f6b0e-0000-7000-8000-0000000000aa')
     mockTrpcFetch({

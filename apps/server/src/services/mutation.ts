@@ -46,6 +46,7 @@ export async function currentSeq(tx: MutationTx, projectId: string): Promise<num
 /**
  * 단일 변경 경로. 트랜잭션 콜백 안에서 호출한다.
  * deriveOps가 빈 배열을 반환하면(변경 없음) Revision 없이 현재 seq를 반환한다.
+ * 반환하는 ops는 withAuthoritativeHistory를 거친 최종본이다(브로드캐스트가 이 값을 그대로 쓴다).
  * applyOps의 OpApplyError는 그대로 throw하므로 호출부가 BAD_REQUEST로 매핑한다.
  */
 export async function runMutation(
@@ -57,7 +58,7 @@ export async function runMutation(
     deriveOps: (model: ProjectModel) => Op[]
     summary?: string
   },
-): Promise<{ seq: number }> {
+): Promise<{ seq: number; ops: Op[] }> {
   const locked = await tx.execute(sql`SELECT id FROM projects WHERE id = ${args.projectId} FOR UPDATE`)
   if (locked.rows.length === 0) {
     throw new TRPCError({ code: 'NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' })
@@ -65,7 +66,7 @@ export async function runMutation(
   const model = await loadProjectModel(tx, args.projectId)
   const ops = args.deriveOps(model)
   const seqNow = await currentSeq(tx, args.projectId)
-  if (ops.length === 0) return { seq: seqNow }
+  if (ops.length === 0) return { seq: seqNow, ops: [] }
   const authoritative = withAuthoritativeHistory(model, ops)
   applyOps(model, authoritative) // OpApplyError → 호출부가 매핑
   await persistOps(tx, args.projectId, authoritative)
@@ -79,5 +80,5 @@ export async function runMutation(
     ops: authoritative,
     summary: args.summary ?? summarizeOps(authoritative),
   })
-  return { seq }
+  return { seq, ops: authoritative }
 }

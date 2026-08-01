@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner'
 import { useEditorStore } from './store.js'
 import { buildNodes } from './nodes.js'
+import { buildPeerMarks } from './peer-marks.js'
 import { buildEdges, planConnection } from './edges.js'
 import { TableNode } from './table-node.js'
 import { NoteNode, type NoteNodeData } from './note-node.js'
@@ -26,7 +27,7 @@ const edgeTypes = { relationship: RelationshipEdge }
 
 const groupIdOf = (nodeId: string) => nodeId.slice('group:'.length)
 
-export function Canvas({ projectId }: { projectId: string }) {
+export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserId: string }) {
   const model = useEditorStore((s) => s.model)
   const viewMode = useEditorStore((s) => s.viewMode)
   const selectedId = useEditorStore((s) => s.selectedTableId)
@@ -48,6 +49,8 @@ export function Canvas({ projectId }: { projectId: string }) {
   const dialects = useEditorStore((s) => s.dialects)
   const warnings = useMemo(
     () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
+  const peers = useEditorStore((s) => s.peers)
+  const peerMarks = useMemo(() => buildPeerMarks(peers, selfUserId), [peers, selfUserId])
 
   // 유효 뷰: 활성 그룹이 삭제됐으면(그룹 뷰 도중 삭제) 전체 뷰로 폴백한다.
   const view = activeGroupView && model.tableGroups[activeGroupView]
@@ -55,7 +58,7 @@ export function Canvas({ projectId }: { projectId: string }) {
     : { kind: 'full' as const }
 
   const derived = useMemo(() => {
-    const tableNodes = buildNodes(model, viewMode, selectedId, warnings, view)
+    const tableNodes = buildNodes(model, viewMode, selectedId, warnings, view, peerMarks)
     if (view.kind === 'group') {
       // 그룹 뷰: 색상 영역·메모 노드는 숨긴다. 관계로 이어진 외부 테이블은 고스트로 보여준다.
       const ghostNodes = buildGhostNodes(model, view.groupId)
@@ -64,11 +67,13 @@ export function Canvas({ projectId }: { projectId: string }) {
     const groupNodes = buildGroupNodes(model, selectedGroupId)
     const noteNodes: Node[] = Object.values(model.notes).map((note) => ({
       id: note.id, type: 'note', position: note.position,
-      data: { note, selected: note.id === selectedNoteId } satisfies NoteNodeData,
+      data: {
+        note, selected: note.id === selectedNoteId, peers: peerMarks.get(note.id),
+      } satisfies NoteNodeData,
     }))
     return [...groupNodes, ...tableNodes, ...noteNodes]
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, viewMode, selectedId, selectedNoteId, selectedGroupId, warnings, view.kind, view.kind === 'group' ? view.groupId : null])
+  }, [model, viewMode, selectedId, selectedNoteId, selectedGroupId, warnings, peerMarks, view.kind, view.kind === 'group' ? view.groupId : null])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.
@@ -79,11 +84,11 @@ export function Canvas({ projectId }: { projectId: string }) {
       ? buildEdges(model, new Set([
           ...Object.values(model.tables).filter((t) => t.groupId === view.groupId).map((t) => t.id),
           ...buildGhostNodes(model, view.groupId).map((g) => g.data.table.id),
-        ]))
-      : buildEdges(model)
+        ]), peerMarks)
+      : buildEdges(model, undefined, peerMarks)
     return selectedRelId ? built.map((e) => (e.id === selectedRelId ? { ...e, selected: true } : e)) : built
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, view.kind, view.kind === 'group' ? view.groupId : null, selectedRelId])
+  }, [model, view.kind, view.kind === 'group' ? view.groupId : null, selectedRelId, peerMarks])
 
   // 트리에서 발행한 포커스 신호를 소비해 해당 테이블로 이동한다.
   useEffect(() => {

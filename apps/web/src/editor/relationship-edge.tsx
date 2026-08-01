@@ -36,8 +36,10 @@ export function RelationshipEdge(props: EdgeProps) {
       markerStart={many ? 'url(#erd-many)' : 'url(#erd-one)'}
       markerEnd="url(#erd-one)"
       style={{
-        stroke: selected ? 'var(--color-primary)' : 'var(--color-muted-foreground)',
-        strokeWidth: selected ? 2 : 1.5,
+        stroke: selected
+          ? 'var(--color-primary)'
+          : data?.peers?.[0]?.color ?? 'var(--color-muted-foreground)',
+        strokeWidth: selected || data?.peers?.length ? 2 : 1.5,
         strokeDasharray: identifying ? undefined : '6 4',
       }}
     />

@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 // 이 파일을 타입 전용으로 가져오는 모든 프로그램(apps/web 크로스 패키지 typecheck 포함)에 적용하기 위한 타입 전용 임포트.
 import type {} from '@fastify/cookie'
 import type { Db } from './db/client.js'
+import type { RealtimeHub } from './services/realtime.js'
 import { sessions, users } from './db/schema.js'
 
 export const SESSION_COOKIE = 'erdd_session'
@@ -11,11 +12,12 @@ export const SESSION_COOKIE = 'erdd_session'
 export type SessionUser = { id: string; email: string; name: string; role: 'admin' | 'user' }
 
 export async function createContext({
-  req, res, db,
+  req, res, db, hub,
 }: {
   req: FastifyRequest
   res: FastifyReply
   db: Db | null
+  hub: RealtimeHub
 }) {
   let user: SessionUser | null = null
   const token = req.cookies[SESSION_COOKIE]
@@ -33,6 +35,6 @@ export async function createContext({
       user = { id: row.id, email: row.email, name: row.name, role: row.role }
     }
   }
-  return { db, user, req, res }
+  return { db, user, req, res, hub }
 }
 export type Context = Awaited<ReturnType<typeof createContext>>

@@ -2,12 +2,13 @@ import type { Node } from '@xyflow/react'
 import type { ProjectModel, Warning } from '@erdd/core'
 import type { TableNodeData } from './table-node.js'
 import type { ViewMode } from './store.js'
+import type { PeerMarks } from './peer-marks.js'
 
 export type NodeView = { kind: 'full' } | { kind: 'group'; groupId: string }
 
 export function buildNodes(
   model: ProjectModel, viewMode: ViewMode, selectedId: string | null, warnings: Warning[],
-  view: NodeView = { kind: 'full' },
+  view: NodeView = { kind: 'full' }, peerMarks: PeerMarks = new Map(),
 ): Node<TableNodeData>[] {
   const tables = Object.values(model.tables).filter(
     (t) => view.kind === 'full' || t.groupId === view.groupId,
@@ -39,6 +40,7 @@ export function buildNodes(
         selected: table.id === selectedId,
         tableWarnings,
         columnWarnings,
+        peers: peerMarks.get(table.id),
       },
     }
   })
