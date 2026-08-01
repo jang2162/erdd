@@ -94,15 +94,11 @@ type EditorState = {
   canEdit: boolean
   /** 프로젝트를 관리할 수 있는가(스냅샷 복원·삭제). 로드 전 기본값 false. */
   canManage: boolean
-  setProjectConfig: (
-    namingRules: NamingRules,
-    dialects: Dialect[],
-    perms: { canEdit: boolean; canManage: boolean },
-  ) => void
+  setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
 }
 ```
 
-`setProjectConfig`에 인자를 더하는 이유는 호출부가 한 곳(`use-model.ts`)이고 셋 다 같은 `project.get` 응답에서 나오기 때문이다. 별도 setter를 만들면 두 번 렌더가 돈다.
+`setProjectConfig(namingRules, dialects)`의 시그니처는 **바꾸지 않고** 권한은 별도 setter로 둔다. 둘을 합치면 테스트가 권한만 조작할 수 없어(명명 규칙까지 같이 넘겨야 한다) 20여 개 테스트 파일이 불필요하게 얽힌다. 렌더 비용 걱정은 없다 — 두 setter를 같은 `useEffect` 안에서 부르므로 React 18 자동 배칭으로 렌더는 한 번이다.
 
 ## 전역 제약 (Global Constraints)
 
