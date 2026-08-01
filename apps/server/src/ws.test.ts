@@ -39,14 +39,14 @@ async function connect(app: FastifyInstance, path: string, cookie?: string) {
 
   const socket = await app.injectWS(path, cookie ? { headers: { cookie } } : {}, {
     onInit: (ws) => {
-      ws.on('message', (data) => {
+      ws.on('message', (data: unknown) => {
         const msg = parseServerMessage(String(data))
         if (!msg) return
         frames.push(msg)
         const i = waiters.findIndex((w) => w.match(msg))
         if (i >= 0) waiters.splice(i, 1)[0]!.resolve(msg)
       })
-      ws.on('close', (code) => {
+      ws.on('close', (code: number) => {
         closeCode = code
         closeWaiters.splice(0).forEach((r) => r(code))
       })
