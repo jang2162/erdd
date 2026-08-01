@@ -6,6 +6,7 @@ import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import {
   createTerm, createWord, removeTerm, removeWord, termUsage, unregisteredWords, updateTerm, updateWord,
+  planTermPropagation, applyTermPropagation, type TermPropagationPlan,
   wordUsage,
 } from './dict-edits.js'
 import { DictImportSection } from './dict-import-section.js'
@@ -372,6 +373,11 @@ function TermEditDialog({
 
   const domains = Object.values(model.domains).sort((a, b) => a.name.localeCompare(b.name))
 
+  // 저장 시 전파할 게 있으면 여기에 담고 확인 단계를 띄운다. patch·plan은 클릭 시점에 확정된 값이다.
+  const [pending, setPending] = useState<
+    { termId: string; patch: Partial<Omit<Term, 'id'>>; plan: TermPropagationPlan } | null
+  >(null)
+
   const onSave = () => {
     const trimmedLogicalName = logicalName.trim()
     if (trimmedLogicalName === '') return
@@ -395,17 +401,39 @@ function TermEditDialog({
     }
 
     const termId = term.id
-    void mutate((m) => updateTerm(m, termId, {
+    const patch = {
       logicalName: trimmedLogicalName,
       physicalName: trimmedPhysicalName,
       domainId: nextDomainId,
       description: trimmedDescription === '' ? null : trimmedDescription,
-    }), { summary: '용어 수정' })
+    }
+    // 반드시 updateTerm 적용 전의 모델로 계획을 세운다(논리명이 바뀌면 사용처 판정이 무너진다).
+    const plan = planTermPropagation(model, termId, patch)
+    if (plan.entries.length === 0) {
+      void mutate((m) => updateTerm(m, termId, patch), { summary: '용어 수정' })
+      onOpenChange(false)
+      return
+    }
+    setPending({ termId, patch, plan })
+  }
+
+  /** 확인 단계의 선택. propagate=false면 용어만 저장한다. */
+  const onResolve = (propagate: boolean) => {
+    if (!pending) return
+    const { termId, patch, plan } = pending      // producer 진입 전에 캡처
+    setPending(null)
+    void mutate(
+      (m) => (propagate
+        ? applyTermPropagation(updateTerm(m, termId, patch), plan)
+        : updateTerm(m, termId, patch)),
+      { summary: propagate ? '용어 수정·사용처 반영' : '용어 수정' },
+    )
     onOpenChange(false)
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <Dialog open={open && pending === null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>{term === null ? '용어 추가' : '용어 수정'}</DialogTitle></DialogHeader>
         <div className="grid gap-3">
@@ -446,5 +474,48 @@ function TermEditDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={pending !== null} onOpenChange={(o) => { if (!o) setPending(null) }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            &quot;{term?.logicalName}&quot; 용어를 쓰는 {pending?.plan.entries.length ?? 0}곳을 함께 갱신할까요?
+          </DialogTitle>
+        </DialogHeader>
+        <div className="max-h-72 overflow-y-auto text-sm">
+          {pending?.plan.entries.map((entry) => (
+            <div key={entry.entityId} className="border-b py-2 last:border-b-0">
+              <p className="font-mono text-xs font-semibold">{entry.label}</p>
+              {entry.changes.map((c) => (
+                <p key={c.field} className="text-xs text-muted-foreground">
+                  {PROPAGATION_FIELD_LABEL[c.field]}{' '}
+                  {displayFieldValue(c.field, c.before, model)} → {displayFieldValue(c.field, c.after, model)}
+                </p>
+              ))}
+            </div>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onResolve(false)}>유지</Button>
+          <Button type="button" onClick={() => onResolve(true)}>
+            {pending?.plan.entries.length ?? 0}곳에 반영
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
+}
+
+const PROPAGATION_FIELD_LABEL: Record<'logicalName' | 'physicalName' | 'domainId', string> = {
+  logicalName: '논리명', physicalName: '물리명', domainId: '도메인',
+}
+
+/** 도메인은 UUID 대신 이름으로 보여준다(없으면 '없음'). */
+function displayFieldValue(
+  field: 'logicalName' | 'physicalName' | 'domainId', value: string | null, model: ProjectModel,
+): string {
+  if (field !== 'domainId') return value ?? ''
+  if (value === null) return '없음'
+  return model.domains[value]?.name ?? value
 }
