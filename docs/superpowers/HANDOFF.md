@@ -29,8 +29,27 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 271 · web 278 · server 88 (erdd_test) · pnpm -r typecheck → 0 errors
+core 271 · web 293 · server 88 (erdd_test) · typecheck 0
 ```
+
+⚠️ **`pnpm -s -r typecheck`의 출력만 보고 판정하지 말 것.** `-s`가 자식 출력을 삼켜서, 타입 오류가
+있어도 **출력이 0바이트이고 종료코드만 1**이다. 실시간 사이클에서 이 함정 때문에 구현자·태스크
+리뷰어·최종 리뷰어가 전원 "typecheck clean"으로 오판했고, 암묵적 any 3건이 그대로 main에 머지됐다
+(다음 사이클 구현자가 패키지별로 돌려보고 발견). **종료코드로 판정하거나 패키지별로 돌린다:**
+
+```bash
+pnpm -r typecheck; echo "EXIT=$?"      # EXIT=0이어야 통과
+pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그대로 보인다
+pnpm -s -C apps/web typecheck
+pnpm -s -C packages/core typecheck
+```
+
+파이프(`| tail`)를 붙이면 `$?`가 tail의 종료코드가 되어 또 오판한다. 리뷰어에게 typecheck를
+시킬 때도 이 주의를 프롬프트에 넣어라.
+
+가장 확실한 방법은 루트의 `pnpm verify` 하나로 돌리는 것이다(typecheck + 3개 스위트를 `&&`로
+묶어 어느 하나라도 실패하면 비정상 종료한다). 서버 스위트는 DB env가 필요하므로
+`set -a && . ./.env && set +a && pnpm verify`로 실행한다.
 
 ### 다음 작업
 
@@ -211,13 +230,21 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - 도메인 삭제 summary 카피, `usageOf` 스냅샷 타이밍(단일 사용자 범위 밖)
 
 **명명 체계**
-- **용어 수정 시 사용 중 컬럼 일괄 반영 미구현** — Term의 물리명은 저장값이고 컬럼 물리명은 생성 시점 스냅샷이라, Term을 고쳐도 컬럼은 그대로이고 `term-mismatch` 경고만 뜬다. 도메인처럼 라이브가 아니므로 "N개 컬럼에 반영" UX가 별도로 필요(구현 시 Revision 1건). 기획 문서 `docs/13-naming.md`의 "용어 수정 시 변경 반영 여부 선택"이 이 부분.
 - `duplicate-physical-table`이 `rules` 게이트 안에 있음(컬럼 중복은 항상 계산 — 스키마 정확성 경고라 항상 계산이 더 일관적)
 - `reserved` 경고가 `rules` truthiness에 결합(`dialects`만 줘도 무효)
 - core에 `NamingRulesSchema`(zod) export → server `project.ts`의 손-미러 제거
 - `apps/server/src/testing/db.ts` `TEST_TABLES`에 `model_domains/model_words/model_terms/snapshots` 명시(현재는 TRUNCATE CASCADE로 무해)
 - `dict-panel.tsx`의 `wordUsage` 렌더마다 재계산 → memo
 - 자동생성 패널의 미등록 단어 인라인 등록(현재는 사전 화면 "미등록 단어" 탭으로 갈음)
+
+**용어 전파 (용어 수정 시 사용처 일괄 반영 — 구현 완료, 잔여 한계)**
+- **저장 클릭과 반영 클릭 사이에 남이 같은 대상을 고치면 그 변경은 건너뛴다**(`applyTermPropagation`이 `c.before` 일치를 확인). 건너뛴 항목을 사용자에게 알리지 않아, 확인 다이얼로그가 "N곳에 반영"이라 했는데 실제로는 N보다 적게 반영될 수 있다
+- 저장~반영 사이에 **용어 자체가 원격 삭제**되면 `updateTerm`은 no-op인데 사용처 반영은 그대로 진행된다(존재하지 않는 용어의 물리명으로 개명됨). 확률은 낮고 undo 1회로 복구된다
+- **논리명만 바꾸면 기존 `term-mismatch` 경고가 남는다** — "실제로 바뀐 필드만 전파"가 설계 결정이라 사양대로 맞는 동작이지만, 확인 다이얼로그 문구는 "일괄 반영"으로 읽혀 경고가 다 사라질 것처럼 보인다
+- 물리명이 아직 생성되지 않은(빈 문자열) 엔티티는 확인 목록에서 `MBR.`처럼 어색하게 보인다(정상적인 전파 대상은 맞다 — 표시만의 문제)
+- 사용처가 `MAX_OPS_PER_MUTATION`(5000)을 넘으면 서버가 raw zod 메시지로 거절한다(사전 업로드 경로에는 있는 클라 가드가 여기엔 없음). 단일 용어로는 현실적으로 도달 불가
+- 용어 **추가** 시 기존 동명 엔티티로의 전파 미지원, 모델 검사 화면에서 `term-mismatch` 일괄 해소 진입점 없음, 전파 대상 개별 선택(체크박스) 없음(현재는 전체 반영/전체 유지 2택)
+- `apps/server`에 `@types/ws`가 없어 `ws.ts`의 핸들러 인자를 `unknown`/`number`로 손수 주석했다. `@types/ws`를 devDependency로 넣으면 `RawData`로 추론된다(현재 깨진 것은 없음)
 
 **DDL/기타**
 - 방언별 예약어 목록은 큐레이션 세트(전수 아님)

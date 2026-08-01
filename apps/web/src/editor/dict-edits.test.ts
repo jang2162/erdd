@@ -4,6 +4,7 @@ import {
   createWord, updateWord, removeWord,
   createTerm, updateTerm, removeTerm,
   wordUsage, termUsage, unregisteredWords,
+  planTermPropagation, applyTermPropagation,
 } from './dict-edits.js'
 
 const word = (id: string, over = {}) => (
@@ -122,5 +123,152 @@ describe('dict-edits', () => {
     m.tables['t'] = table('t', '주문')
 
     expect(unregisteredWords(m, DEFAULT_NAMING_RULES)).toEqual([])
+  })
+})
+
+/**
+ * 전파 테스트용 모델: 용어 '주문번호'(ORD_NO)를 테이블 1개·컬럼 2개가 쓰고 있다.
+ * 기존 table()/column() 헬퍼는 physicalName이 ''이라 스프레드로 덮어쓴다.
+ */
+function propagationModel() {
+  let m = createEmptyModel()
+  m = createTerm(m, term('tm1'))                     // 주문번호 / ORD_NO / domainId null
+  m = {
+    ...m,
+    domains: {
+      d1: {
+        id: 'd1', name: '번호', category: null, logicalType: 'BIGINT',
+        dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+        defaultValue: null, allowedValues: [], description: null, origin: null,
+      },
+      d2: {
+        id: 'd2', name: '코드', category: null, logicalType: 'CHAR(2)',
+        dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+        defaultValue: null, allowedValues: [], description: null, origin: null,
+      },
+    },
+    tables: {
+      t1: { ...table('t1', '주문번호'), physicalName: 'ORD_NO' },   // 용어와 논리명이 같은 테이블
+      t2: { ...table('t2', '주문'), physicalName: 'ORD' },          // 무관한 테이블(컬럼 소속용)
+    },
+    columns: {
+      c1: { ...column('c1', 't2', '주문번호'), physicalName: 'ORD_NO' },
+      c2: { ...column('c2', 't2', '주문번호'), physicalName: 'OLD_NO', domainId: 'd2' },
+      c3: { ...column('c3', 't2', '주문일자'), physicalName: 'ORD_DT' },  // 무관한 컬럼
+    },
+  }
+  return m
+}
+
+describe('planTermPropagation / applyTermPropagation', () => {
+  it('물리명만 바뀌면 물리명만 전파하고 논리명은 건드리지 않는다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { physicalName: 'ORDER_NO' })
+    // t1·c1·c2 모두 물리명이 ORDER_NO와 다르므로 대상, c3는 논리명이 달라 제외
+    expect(plan.entries.map((e) => e.entityId).sort()).toEqual(['c1', 'c2', 't1'])
+    expect(plan.entries.every((e) => e.changes.every((c) => c.field === 'physicalName'))).toBe(true)
+
+    const next = applyTermPropagation(m, plan)
+    expect(next.tables.t1!.physicalName).toBe('ORDER_NO')
+    expect(next.tables.t1!.logicalName).toBe('주문번호')      // 논리명 불변
+    expect(next.columns.c1!.physicalName).toBe('ORDER_NO')
+    expect(next.columns.c2!.physicalName).toBe('ORDER_NO')
+    expect(next.columns.c3!.physicalName).toBe('ORD_DT')      // 무관한 컬럼 불변
+  })
+
+  it('논리명이 바뀌면 수정 전 논리명 기준으로 사용처를 찾는다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { logicalName: '주문식별번호' })
+    // 수정 후 논리명('주문식별번호')으로 찾는 구현이면 매칭이 0건이 되어 이 단언이 실패한다.
+    expect(plan.entries.map((e) => e.entityId).sort()).toEqual(['c1', 'c2', 't1'])
+
+    const next = applyTermPropagation(m, plan)
+    expect(next.tables.t1!.logicalName).toBe('주문식별번호')
+    expect(next.columns.c1!.logicalName).toBe('주문식별번호')
+    expect(next.columns.c3!.logicalName).toBe('주문일자')
+  })
+
+  it('테이블과 컬럼이 모두 대상에 들어간다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { physicalName: 'ORDER_NO' })
+    expect(plan.entries.filter((e) => e.kind === 'table')).toHaveLength(1)
+    expect(plan.entries.filter((e) => e.kind === 'column')).toHaveLength(2)
+  })
+
+  it('라벨은 수정 전 물리명 기준이고 컬럼은 소속 테이블을 앞에 붙인다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { physicalName: 'ORDER_NO' })
+    const byId = Object.fromEntries(plan.entries.map((e) => [e.entityId, e.label]))
+    expect(byId.t1).toBe('ORD_NO')
+    expect(byId.c1).toBe('ORD.ORD_NO')
+    expect(byId.c2).toBe('ORD.OLD_NO')
+  })
+
+  it('domainId가 null로 바뀌면 전파하지 않는다(컬럼 도메인 보존)', () => {
+    let m = propagationModel()
+    m = updateTerm(m, 'tm1', { domainId: 'd1' })        // 용어에 도메인이 있는 상태에서
+    const plan = planTermPropagation(m, 'tm1', { domainId: null })
+    expect(plan.entries).toEqual([])
+
+    const next = applyTermPropagation(m, plan)
+    expect(next.columns.c2!.domainId).toBe('d2')        // 기존 도메인 그대로
+  })
+
+  it('domainId가 null→값 / 값→다른 값이면 컬럼에만 전파한다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { domainId: 'd1' })
+    // c1(null→d1)·c2(d2→d1)는 대상, t1은 테이블이라 domainId 필드가 없어 변경 없음 → 제외
+    expect(plan.entries.map((e) => e.entityId).sort()).toEqual(['c1', 'c2'])
+    expect(plan.entries.every((e) => e.changes.every((c) => c.field === 'domainId'))).toBe(true)
+
+    const next = applyTermPropagation(m, plan)
+    expect(next.columns.c1!.domainId).toBe('d1')
+    expect(next.columns.c2!.domainId).toBe('d1')
+  })
+
+  it('바뀐 필드가 없으면 빈 계획이다(값이 같은 키가 patch에 있어도)', () => {
+    const m = propagationModel()
+    // 폼은 항상 모든 필드를 채워 보낸다 — 값이 같으면 전파 대상이 아니어야 한다.
+    const plan = planTermPropagation(m, 'tm1', {
+      logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: '설명만 바꿈',
+    })
+    expect(plan.entries).toEqual([])
+  })
+
+  it('사용처가 없거나 이미 값이 일치하는 엔티티는 계획에서 빠진다', () => {
+    const m = propagationModel()
+    // 사용처 없음
+    let m2 = createTerm(m, term('tm2', { logicalName: '배송지', physicalName: 'DLV_ADDR' }))
+    expect(planTermPropagation(m2, 'tm2', { physicalName: 'SHIP_ADDR' }).entries).toEqual([])
+    // c1은 이미 ORD_NO라 물리명 변경 없음 → t1도 ORD_NO라 제외, c2(OLD_NO)만 남는다
+    m2 = { ...m, tables: { ...m.tables, t1: { ...m.tables.t1!, physicalName: 'ORD_NO' } } }
+    // 용어 자체의 물리명을 먼저 다른 값으로 바꿔둬야 이어지는 patch가 "실제 변경"이 된다
+    // (그렇지 않으면 patch 값이 용어의 현재 값과 같아 애초에 변경으로 인식되지 않는다).
+    m2 = updateTerm(m2, 'tm1', { physicalName: 'TEMP_NO' })
+    const plan = planTermPropagation(m2, 'tm1', { physicalName: 'ORD_NO' })
+    expect(plan.entries.map((e) => e.entityId)).toEqual(['c2'])
+  })
+
+  it('applyTermPropagation은 입력 모델을 변형하지 않는다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { physicalName: 'ORDER_NO' })
+    const before = JSON.stringify(m)
+    const next = applyTermPropagation(m, plan)
+    // 제자리 변형 회귀가 나면 diffModels(current, next)가 참조 동일을 보고 전파 op를 만들지 않는다.
+    expect(JSON.stringify(m)).toBe(before)
+    expect(next.columns.c2!.physicalName).toBe('ORDER_NO')   // 반환값에는 반영돼 있다
+  })
+
+  it('계획을 세운 뒤 남이 그 필드를 고쳤으면 덮어쓰지 않는다', () => {
+    const m = propagationModel()
+    const plan = planTermPropagation(m, 'tm1', { physicalName: 'ORDER_NO' })
+    // 계획 수립 후 원격에서 c1의 물리명이 다른 값으로 바뀐 상황
+    const remote = {
+      ...m,
+      columns: { ...m.columns, c1: { ...m.columns.c1!, physicalName: 'JOIN_DT' } },
+    }
+    const next = applyTermPropagation(remote, plan)
+    expect(next.columns.c1!.physicalName).toBe('JOIN_DT')      // 남의 변경 보존
+    expect(next.columns.c2!.physicalName).toBe('ORDER_NO')     // 나머지는 정상 반영
   })
 })

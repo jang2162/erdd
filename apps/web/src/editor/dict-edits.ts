@@ -86,6 +86,122 @@ export function termUsage(model: ProjectModel, termId: string): DictUsageEntry[]
   return entries
 }
 
+/** 전파로 바뀌는 필드 1건. 실제로 값이 달라지는 것만 만든다. */
+export type TermPropagationChange = {
+  field: 'logicalName' | 'physicalName' | 'domainId'
+  before: string | null
+  after: string | null
+}
+
+export type TermPropagationEntry = {
+  kind: 'table' | 'column'
+  entityId: string
+  /** 화면 표시용. **수정 전 물리명** 기준(사용자가 목록에서 대상을 알아보려면 바뀌기 전 이름이어야 한다). */
+  label: string
+  changes: TermPropagationChange[]
+}
+
+export type TermPropagationPlan = { entries: TermPropagationEntry[] }
+
+/**
+ * 용어 수정을 사용처(테이블·컬럼)에 전파할 계획을 만든다. 순수 함수.
+ *
+ * ⚠️ **반드시 updateTerm을 적용하기 전의 모델을 넘겨야 한다.** termUsage가
+ * `entity.logicalName === term.logicalName`으로 사용처를 찾으므로, 논리명이 바뀐 뒤의
+ * 모델을 넘기면 매칭이 0건이 되어 전파가 조용히 사라진다.
+ *
+ * "바뀐 필드"는 patch에 키가 있고 값이 실제로 다른 것만 뜻한다(폼이 항상 모든 필드를
+ * 채워 보내므로 이 구분이 없으면 안 바꾼 필드까지 전파된다).
+ */
+export function planTermPropagation(
+  model: ProjectModel, termId: string, patch: Partial<Omit<Term, 'id'>>,
+): TermPropagationPlan {
+  const term = model.terms[termId]
+  if (!term) return { entries: [] }
+
+  const nextLogicalName = 'logicalName' in patch
+    ? (patch.logicalName ?? '').trim() : term.logicalName.trim()
+  const nextPhysicalName = 'physicalName' in patch
+    ? (patch.physicalName ?? '').trim() : term.physicalName.trim()
+  const nextDomainId = 'domainId' in patch ? (patch.domainId ?? null) : term.domainId
+
+  const logicalChanged = nextLogicalName !== '' && nextLogicalName !== term.logicalName.trim()
+  const physicalChanged = nextPhysicalName !== '' && nextPhysicalName !== term.physicalName.trim()
+  // 용어에서 도메인을 떼는 것은 "쓰는 곳의 도메인을 지워라"가 아니다 — null 방향은 전파하지 않는다.
+  const domainChanged = nextDomainId !== null && nextDomainId !== term.domainId
+
+  if (!logicalChanged && !physicalChanged && !domainChanged) return { entries: [] }
+
+  const entries: TermPropagationEntry[] = []
+  for (const usage of termUsage(model, termId)) {
+    const entity = usage.entity
+    const changes: TermPropagationChange[] = []
+    if (logicalChanged && entity.logicalName !== nextLogicalName) {
+      changes.push({ field: 'logicalName', before: entity.logicalName, after: nextLogicalName })
+    }
+    if (physicalChanged && entity.physicalName !== nextPhysicalName) {
+      changes.push({ field: 'physicalName', before: entity.physicalName, after: nextPhysicalName })
+    }
+    // 테이블에는 domainId 필드가 없다 — 컬럼만 대상.
+    if (usage.kind === 'column' && domainChanged && usage.entity.domainId !== nextDomainId) {
+      changes.push({ field: 'domainId', before: usage.entity.domainId, after: nextDomainId })
+    }
+    if (changes.length === 0) continue
+    const label = usage.kind === 'column'
+      ? `${model.tables[usage.entity.tableId]?.physicalName ?? '?'}.${usage.entity.physicalName}`
+      : usage.entity.physicalName
+    entries.push({ kind: usage.kind, entityId: entity.id, label, changes })
+  }
+  return { entries }
+}
+
+/**
+ * 계획을 모델에 적용한다. 순수 함수.
+ * updateTerm과 같은 producer 안에서 연달아 호출해 단일 mutation(Revision 1건)으로 만든다.
+ * 계획을 세운 뒤 대상이 사라졌거나(남이 삭제) 그 필드를 남이 먼저 고쳤으면 건너뛴다 —
+ * 확인 다이얼로그에서 보여준 것만 정확히 적용한다(원격 변경을 혼종으로 덮어쓰지 않는다).
+ */
+export function applyTermPropagation(model: ProjectModel, plan: TermPropagationPlan): ProjectModel {
+  if (plan.entries.length === 0) return model
+  const tables = { ...model.tables }
+  const columns = { ...model.columns }
+  for (const entry of plan.entries) {
+    if (entry.kind === 'table') {
+      const cur = tables[entry.entityId]
+      if (!cur) continue
+      const next = { ...cur }
+      for (const c of entry.changes) {
+        if (c.field === 'logicalName') {
+          if (cur.logicalName !== c.before) continue   // 남이 먼저 고쳤다 — 덮어쓰지 않는다
+          next.logicalName = c.after ?? ''
+        } else if (c.field === 'physicalName') {
+          if (cur.physicalName !== c.before) continue
+          next.physicalName = c.after ?? ''
+        }
+      }
+      tables[entry.entityId] = next
+    } else {
+      const cur = columns[entry.entityId]
+      if (!cur) continue
+      const next = { ...cur }
+      for (const c of entry.changes) {
+        if (c.field === 'logicalName') {
+          if (cur.logicalName !== c.before) continue
+          next.logicalName = c.after ?? ''
+        } else if (c.field === 'physicalName') {
+          if (cur.physicalName !== c.before) continue
+          next.physicalName = c.after ?? ''
+        } else {
+          if (cur.domainId !== c.before) continue
+          next.domainId = c.after
+        }
+      }
+      columns[entry.entityId] = next
+    }
+  }
+  return { ...model, tables, columns }
+}
+
 /** 전 테이블·컬럼 논리명을 generatePhysicalName으로 분해했을 때 나오는 unknownWords의 dedupe된 합집합. */
 export function unregisteredWords(model: ProjectModel, rules: NamingRules): string[] {
   const set = new Set<string>()
