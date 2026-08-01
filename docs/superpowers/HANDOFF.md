@@ -29,8 +29,23 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 271 · web 278 · server 88 (erdd_test) · pnpm -r typecheck → 0 errors
+core 271 · web 278 · server 88 (erdd_test) · typecheck 0
 ```
+
+⚠️ **`pnpm -s -r typecheck`의 출력만 보고 판정하지 말 것.** `-s`가 자식 출력을 삼켜서, 타입 오류가
+있어도 **출력이 0바이트이고 종료코드만 1**이다. 실시간 사이클에서 이 함정 때문에 구현자·태스크
+리뷰어·최종 리뷰어가 전원 "typecheck clean"으로 오판했고, 암묵적 any 3건이 그대로 main에 머지됐다
+(다음 사이클 구현자가 패키지별로 돌려보고 발견). **종료코드로 판정하거나 패키지별로 돌린다:**
+
+```bash
+pnpm -r typecheck; echo "EXIT=$?"      # EXIT=0이어야 통과
+pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그대로 보인다
+pnpm -s -C apps/web typecheck
+pnpm -s -C packages/core typecheck
+```
+
+파이프(`| tail`)를 붙이면 `$?`가 tail의 종료코드가 되어 또 오판한다. 리뷰어에게 typecheck를
+시킬 때도 이 주의를 프롬프트에 넣어라.
 
 ### 다음 작업
 
