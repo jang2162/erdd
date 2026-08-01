@@ -21,7 +21,8 @@
 
 ## Phase 3 착수 전
 
-- [ ] **실시간 프로토콜 상세** — 채널 인증, 재수화 한계 기준(간극이 크면 전체 리로드), presence 메시지 설계 (기반은 [02-architecture](02-architecture.md)에 정의됨)
+- [x] **실시간 프로토콜 상세** — 전송은 WebSocket(`@fastify/websocket`), 채널은 `/ws?projectId=`. **인증은 업그레이드 시 `erdd_session` 쿠키 재사용**(별도 티켓 없음, tRPC와 동일한 신뢰 경계·동일한 `canView` 판정), 실패는 예외가 아니라 close code(4401 미인증 / 4403 권한 없음). Viewer도 접속·수신·presence 가능(편집 차단은 `model.mutate`의 `'edit'` 게이트가 담당). **재수화는 간극 크기와 무관하게 항상 전체 리로드**(`model.get`) — "마지막 수신 seq 이후 revisions 재전송" 경로는 만들지 않았다. 수신 op는 기존 `serializeMutation` 직렬화 체인에 태워 낙관적 mutation과의 경합을 구조적으로 차단하고, `seq`가 연속이면 `applyOps`·과거면 무시(에코)·간극이면 전체 리로드. presence는 영속화 없는 별도 메시지로 참여자 **전체 목록**을 매번 전송(델타 아님), 사용자 색은 서버가 배정하지 않고 `peerColor(userId)`로 클라가 결정론적으로 계산 → [설계](superpowers/specs/2026-07-29-phase3-realtime-collab-design.md)
+  - 미결(후속): 다중 인스턴스 배포 시 Redis pub/sub 브리지(허브가 인메모리 단일 인스턴스 전제), 편집 중 텍스트의 문자 단위 병합(현재는 필드 확정 단위 LWW), presence에 "편집 중" 상태를 선택과 구분해 표시
 - [x] **diff 화면과 변경분 정의서** — 표시 전용 `diffModelsForDisplay`(적용용 `diffModels`와 분리), 기준/비교 각각 선택(현재+스냅샷), 결과는 종류별 목록 + 속성별 before/after. 변경분 정의서는 한 시트 flat(구분·대상·변경유형·속성·이전값·이후값) + 1행에 비교 대상 표기. **배치 좌표는 비교에서 제외**(옮기기만 해도 전체가 변경으로 잡히면 정의서가 무의미), 참조형 속성(domainId·groupId·custom 키 등)은 이름으로 해석해 UUID가 문서에 나오지 않게 한다 → [설계](superpowers/specs/2026-07-28-phase3-snapshot-diff-design.md)
 
 ## Phase 4 착수 전

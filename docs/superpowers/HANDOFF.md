@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-07-29 / **main HEAD:** `06c6423` / **마이그레이션:** 0009까지
+**최종 갱신:** 2026-08-01 / **main HEAD:** `9dbdeef` / **마이그레이션:** 0009까지
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -21,25 +21,26 @@
 | **Phase 2 #5 Excel 산출물/업로드** | 정의서 Excel 내보내기 5시트(테이블 목록·테이블정의서·단어사전·용어사전·도메인정의서, 커스텀 항목 컬럼 포함), Excel 사전 업로드(신규/중복/오류 미리보기 + 건너뛰기·덮어쓰기), 양식 다운로드, 범위 선택기 공용화(그룹 드롭다운), `Word.englishName` 추가, 마이그 0009 |
 
 | **Phase 3 #1 스냅샷 diff** | 표시 전용 `diffModelsForDisplay`(core 순수 함수 — 기존 `diffModels`(Op[])는 불가침), 버전 다이얼로그 "비교" 섹션(기준/비교 각각 선택: 현재+스냅샷), 변경분 정의서 Excel(한 시트 flat, 1행 제목·2행 헤더), 배치 좌표 제외, 참조형 속성 이름 해석. **서버 변경·마이그레이션 없음** |
+| **Phase 3 #2 실시간 동시편집** | `/ws?projectId=` WebSocket 채널(`@fastify/websocket`, 쿠키 인증·close code 4401/4403), 인메모리 `RealtimeHub`(프로젝트별 채널·같은 사용자 다중 소켓 병합), `mutateAndPublish`로 **커밋 후에만** op 브로드캐스트(모든 변경 경로의 유일한 진입점), 웹 `useRealtime`(seq 3분기: 연속 적용/과거 무시/간극 전체 리로드, 기존 `serializeMutation` 체인 재사용), presence 아바타 + 캔버스 선택 하이라이트, 충돌 토스트. **마이그레이션 없음** |
 
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
-> **Phase 3은 절반 완료** — 남은 것은 실시간 동시편집.
+> **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
 
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 260 · web 253 · server 69 (erdd_test) · pnpm -r typecheck → 0 errors
+core 271 · web 278 · server 88 (erdd_test) · pnpm -r typecheck → 0 errors
 ```
 
 ### 다음 작업
 
-**Phase 3 나머지 — 실시간 동시편집** (→ `docs/11-collaboration.md`, `docs/90-roadmap.md`)
+**권한 세분화 검토 → Phase 4(CLI·역설계)** (→ `docs/90-roadmap.md`, `docs/16-cli.md`)
 
-presence(아바타·선택 하이라이트), 즉시 반영, 속성 단위 LWW 충돌 정책, 재접속 재수화. 착수 전 `docs/91-checklist.md`의 **"실시간 프로토콜 상세"**(채널 인증·재수화 한계 기준·presence 메시지) 확정이 필요하다. 기반은 이미 깔려 있다 — 데이터 계층이 Phase 1부터 op 로그 기반이고(`docs/02-architecture.md` "Phase 3/4 대비" 절에 설계 초안), op의 `changes`가 이미 속성 단위라 서버 도착 순서가 곧 LWW 승자다.
+Phase 1~3이 모두 main에 있다. 다음 후보는 (a) 권한 세분화(필요 시 그룹 단위 편집 권한 등), (b) Phase 4 CLI·DDL 역설계, (c) 6절 이월 항목 정리다. 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
 
-그다음 권한 세분화(필요 시 그룹 단위 편집 권한 등 검토) → Phase 4(CLI·역설계). 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
+Phase 4 착수 전 `docs/91-checklist.md`의 **CLI 상세**(base 사본 저장 방식, push 충돌 출력 형식, `--json` 스키마, 패키지명 확정)·**에이전트 스킬 문서**·**DDL 역설계 범위** 확정이 필요하다.
 
----
+> ⚠️ **CLI push는 세 번째 모델 변경 경로가 된다.** 반드시 `mutateAndPublish`(`apps/server/src/services/mutate-publish.ts`)를 거쳐야 한다 — `runMutation`을 직접 부르면 그 변경이 실시간 채널로 전파되지 않는다. 3.6절 참조.
 
 ## 2. 읽을 문서 (순서)
 
@@ -108,6 +109,18 @@ presence(아바타·선택 하이라이트), 즉시 반영, 속성 단위 LWW �
 
 ---
 
+### 3.6 실시간 협업 (Phase 3 #2에서 실제로 물린 것들)
+
+- **모델을 바꾸는 모든 경로는 `mutateAndPublish`를 거친다**(`apps/server/src/services/mutate-publish.ts`). `runMutation`을 직접 부르면 커밋은 되지만 **실시간 채널로 전파되지 않는다.** 현재 호출처는 `model.mutate`·`snapshot.restore` 둘이고, Phase 4 CLI push가 셋째가 된다. 발행은 `db.transaction()`이 resolve된 **뒤**에만 일어나야 한다 — 콜백 안에서 발행하면 롤백된 op가 채널로 나간다(drizzle의 `transaction()`은 `commit`을 await한 뒤에만 resolve하므로 현재 구조에선 구조적으로 불가능).
+- **`store.seq`에는 의미가 하나여야 한다.** 이 사이클의 Critical 결함이 여기서 나왔다: `use-model.ts`의 `submit()`이 서버 응답 seq로 `setSeq`하고, `use-realtime.ts`는 그 값을 "내가 적용한 마지막 seq"로 읽었다. 두 의미가 갈리면, 내 mutation이 서버 락에 대기하는 동안 커밋된 **남의 op가 "에코"로 오인돼 영구 유실**된다(seq 불연속도 안 잡혀 자가 치유도 발동 안 함). 현재는 `submit()`이 `seq !== seqBefore + 1`이면 `model.get`으로 통째 resync해서 막는다. **seq에 새 writer를 추가하려면 이 불변식을 먼저 확인하라.**
+- **소켓 핸들러에서 `await` 앞에 close 리스너를 걸어라.** `hub.subscribe()` 직후·`await` 이전에 `socket.on('close', ...)`를 등록하지 않으면, 인증(DB 왕복 3회)이나 `currentSeq` 대기 중 끊긴 소켓이 허브에 **영구 유령 항목**을 남긴다 — 다른 참여자에게 유령 아바타·잔상 하이라이트가 서버 재시작 전까지 남고 하트비트 타이머도 누수된다.
+- **재접속 시 클라이언트 상태를 다시 알려야 한다.** 서버 `Entry`는 `selection: null`로 새로 시작하는데, 선택 발신 effect는 "값이 바뀔 때만" 보낸다. `socket.onopen`에서 현재 선택을 무조건 재발신하지 않으면 재접속 후 하이라이트가 사라진 채로 남는다. presence는 서버→클라 방향만 전체 스냅샷이고 클라→서버는 델타라 이 비대칭이 생긴다.
+- **인증 실패 close(4401/4403)는 재접속 백오프에서 제외한다** — 안 그러면 무한 루프다.
+- **수신 op는 기존 `serializeMutation` 체인에 태운다**(`use-model.ts`에서 export). 별도 직렬화를 만들면 내 낙관적 mutation과 교차한다.
+- `resync`는 `setLoaded`와 다르다 — **`activeGroupView`를 보존**한다(남이 편집할 때마다 그룹 뷰에서 튕기면 못 쓴다). 선택은 대상이 사라졌을 때만 해제한다.
+- dev에서 **React StrictMode가 effect를 2회 실행**해 소켓이 잠시 2개 생기고 presence 프레임이 중복된다. 프로덕션 빌드에는 없다 — dev 로그에서 중복 프레임을 보고 버그로 오인하지 말 것.
+- 허브는 **인메모리 단일 인스턴스** 전제다. 다중 인스턴스로 가면 Redis pub/sub 브리지가 필요하다(설계상 예정된 확장점, 현재 범위 밖). `publishOps`/`peers`가 동기 API라 그때 시그니처를 async로 바꿔야 한다.
+
 ## 4. 개발 환경
 
 ```bash
@@ -133,11 +146,15 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd'      pnpm --filter @
 DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @erdd/server exec drizzle-kit migrate
 ```
 
-브라우저 스모크: 기존 스크래치 프로젝트 `http://localhost:5173/p/019f9451-d164-7d8c-a2f0-b71b7b60d42d`(로그인 쿠키가 남아있는 편). **스모크로 만든 변경은 실행 취소(undo)로 원복**해 dev DB를 깨끗이 둔다.
+브라우저 스모크: 브라우저는 항상 **`127.0.0.1`로 접속**한다(`localhost`는 IPv6로 풀릴 수 있다).
 
-스모크에서 실제로 막혔던 것 두 가지:
-- **`pnpm -r dev`의 vite가 IPv6 `[::1]`에만 바인딩**돼 Chrome이 접속을 못 하는 경우가 있다(curl은 `localhost`를 `::1`로 풀어 200이라 서버 문제로 오인하기 쉽다). `pnpm --filter @erdd/web exec vite --host 127.0.0.1`로 따로 띄우면 해결된다.
-- **서버를 background로 띄우면 래퍼만 죽고 `tsx watch` 자식이 살아남아** 포트 3000을 잡고 있다(다음 스모크가 구 코드로 돌아간다). `lsof -nP -iTCP:3000 -sTCP:LISTEN`로 확인하고 kill한다.
+스모크에서 매번 물리는 것들:
+- **vite가 IPv6 `[::1]`에만 바인딩**돼 Chrome이 접속을 못 한다(curl은 `localhost`를 `::1`로 풀어 200이라 서버 문제로 오인하기 쉽다). **`pnpm ... dev -- --host 127.0.0.1`은 인자가 전달되지 않는다** — `cd apps/web && ./node_modules/.bin/vite --host 127.0.0.1 --port 5173 --strictPort`로 바이너리를 직접 실행해야 먹는다(루트 `node_modules/.bin/vite`는 없다).
+- **`tsx watch` 부모가 세션을 넘어 살아남는다.** 자식만 kill하면 부모가 재기동하지 않아 **포트 3000을 잡은 채 구 코드를 서빙**한다(실시간 스모크에서 이틀 전 코드를 물고 있었다). `ps -eo pid,ppid,lstart,command | grep tsx`로 부모까지 확인해 둘 다 kill하고, 스모크 중에는 watch 없이 `./node_modules/.bin/tsx src/main.ts`로 띄우는 편이 안정적이다.
+- **서버 테스트가 전 테이블을 TRUNCATE한다**(`testing/db.ts`의 `resetDb`). 테스트를 돌린 뒤 스모크하려면 계정·조직·프로젝트를 다시 시드해야 한다. 부트스트랩 관리자는 `ADMIN_EMAIL`/`ADMIN_PASSWORD`를 export하고 서버를 띄우면 자동 생성되고, 나머지는 tRPC를 curl로 때리는 게 빠르다(`admin.users.create` → `org.create` → `org.members.add` → `project.create` → `project.members.add`).
+- `psql`이 PATH에 없다. DB를 직접 봐야 하면 `apps/server`에서 `node` 스크립트로 `pg`를 import한다(pnpm 엄격 모드라 리포 루트에서는 `pg`·`ws`가 해석되지 않는다).
+
+**다중 사용자 스모크(실시간 등)**: 브라우저 2개를 띄우는 것보다 **연결된 Chrome 1개(A) + 헤드리스 WS 클라이언트(B)** 조합이 낫다. Claude 확장은 프로필 하나에만 있어서 새 프로필 창은 조작할 수 없고, 무엇보다 **경합 조건은 손으로 재현이 안 된다.** 실시간 사이클의 Critical 회귀 검증은 `SELECT ... FOR UPDATE`로 프로젝트 행 락을 12초 잡아 "B 먼저 커밋 / A는 대기 중" 순서를 강제해서 결정적으로 재현했다. 헤드리스 B는 `ws`를 pnpm 스토어 경로(`node_modules/.pnpm/ws@*/node_modules/ws`)에서 직접 import하면 된다.
 
 ---
 
@@ -151,7 +168,10 @@ sub-project 하나마다:
    - ⚠️ **계획에 쓴 테스트 기대값은 계획의 가장 약한 고리다.** diff sub-project에서만 3건이 틀렸다: 설계가 정한 라벨 방향과 반대로 쓴 단언, 라이브러리 실제 동작(exceljs가 왕복 후 `autoFilter`를 범위 문자열로 역직렬화)과 어긋난 단언, 설계의 테스트 목록에서 3건 누락. **계획을 커밋하기 전에 (a) 설계 문서의 규칙·테스트 목록과 기계적으로 대조하고 (b) 픽스처의 실제 값을 열어 확인하라**(픽스처 값 오류도 1건 있었다).
    - 구현자에게는 "브리프 기대값이 실제와 어긋나면 이전 태스크 산출물을 고치지 말고 단언만 정정한 뒤 근거를 보고하라"고 명시하면 이 결함이 조기에 잡힌다.
 4. 브랜치 생성(`feat/<topic>`), **subagent-driven-development**로 태스크별 구현 → 태스크별 리뷰 → 필요 시 수정 → 재리뷰
-5. 전체 스위트 체크포인트 → **컨트롤러 브라우저 스모크**(실 앱+실 DB) → 최종 whole-branch 리뷰 → main 머지(fast-forward), 브랜치 삭제
+5. 전체 스위트 체크포인트 → 최종 whole-branch 리뷰 → 수정 → **컨트롤러 브라우저 스모크**(실 앱+실 DB) → main 머지, 브랜치 삭제
+   - ⚠️ **태스크별 리뷰가 전부 clean이어도 최종 리뷰는 반드시 하라.** 실시간 sub-project에서 7태스크가 모두 Critical/Important 0건이었는데 최종 리뷰가 Critical 1건 + Important 2건을 잡았다. 셋 다 **태스크 경계를 가로지르는** 결함이라 스코프가 좁은 게이트로는 구조적으로 볼 수 없다.
+   - 최종 리뷰 프롬프트에 이 한 줄을 넣으면 그런 결함이 바로 드러난다: **"이번 브랜치에서 두 번째 호출자가 생긴 기존 함수를 전부 나열하고, 양쪽 호출자 기준으로 그 함수의 불변식을 재유도하라."** 실제로 Critical(`setSeq`가 두 가지 의미를 갖게 된 것)이 이 질문 하나로 잡힌다.
+   - **수정의 구분력은 컨트롤러가 직접 실증하라** — 각 파일을 수정 전 버전으로 되돌려 새 테스트가 *실제로 실패*하는지 확인한다(`git show <base>:<path> > /tmp/x && cp /tmp/x <path>` → 테스트 → `git checkout -- <path>`). 실시간 사이클에서 리뷰 에이전트가 되돌린 파일을 남긴 채 스톨해서 컨트롤러가 복구해야 했다 — 되돌리기를 서브에이전트에게 시키면 워킹트리 오염을 각오할 것.
 
 **커밋 규칙(사용자 지정, 반드시 준수)**
 - `git add .` / `git add -A` **금지** — 명시 파일만 스테이징. `.idea/*` 변경과 루트 `.env`는 커밋하지 않는다(워킹트리에 항상 `.idea` 노이즈가 있음).
@@ -244,6 +264,17 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - diff에서 선택 항목만 되돌리는 "선택 복원" 미지원(스냅샷 전체 복원만)
 - 배치 좌표 변경 이력 보기 없음(좌표는 diff에서 의도적으로 제외)
 
+**실시간 동시편집 (Phase 3 #2)**
+- **다중 인스턴스 미지원** — 허브가 인메모리 단일 인스턴스 전제. 스케일아웃 시 Redis pub/sub 브리지 필요하고, 그때 `publishOps`/`peers`를 async로 바꿔야 한다(현재 동기 API라 `mutateAndPublish`가 fire-and-forget으로 부른다)
+- **`actorUserId`/`actorName`이 브로드캐스트되지만 클라가 안 쓴다** — 같은 사용자의 다른 탭에서 온 변경에도 "다른 사용자가…" 토스트가 뜬다. `msg.actorUserId !== me.id`로 게이트하거나 `${actorName}님이…`로 카피에 쓰면 둘 다 해소된다
+- **peer 이름 라벨이 테이블에만 있다** — 설계·계획 산문은 관계·메모에도 이름 라벨을 약속했으나 구현은 테이블만(관계는 `EdgeLabelRenderer`가 필요해 까다롭다). 계획 산문을 고치든 라벨을 추가하든 정리 필요
+- **`PresenceBar` 위치가 설계와 다름** — 설계는 "캔버스 좌상단", 구현은 헤더 우측 클러스터. 헤더 쪽이 더 나아 보이나 문서화되지 않은 드리프트
+- 좌표 이동만으로도 "수정했습니다" 토스트가 뜬다(`selectionImpact`가 `position` 변경을 구분하지 않음) — 남이 내가 선택한 테이블을 반복 드래그하면 토스트가 연달아 뜬다
+- 소켓 인바운드 rate limit·payload cap 없음(`ws` 기본 `maxPayload` 100MiB). `selection` 프레임 1건이 채널 전체 presence 팬아웃을 유발하는데 스로틀은 클라 측에만 있다. `app.register(fastifyWebsocket, { options: { maxPayload: 64*1024 } })` 한 줄로 완화 가능
+- 클라이언트 측 liveness 감지 없음(하트비트가 서버→클라 단방향) — half-open 소켓이면 TCP가 포기할 때까지 조용히 아무것도 못 받는다. 복구 자체는 `ready.seq` 불일치로 정상 동작
+- `PEER_SELECTION_KINDS`·`PeerSelectionKind`·`PEER_PALETTE`가 core 밖에서 안 쓰임, `RealtimeHub.connectionCount`는 테스트 전용(공개 표면 정리 여지)
+- DB 조회 실패 시 앱 레벨 close code가 아니라 1011로 닫힌다(인증 단계 실패는 4401/4403). 리포에 eslint 설정이 아예 없어 `react-hooks/exhaustive-deps`가 안 돌고, `canvas.tsx`의 `eslint-disable` 주석도 실효가 없다
+
 ---
 
 ## 7. 새 세션 시작 프롬프트 (복사해서 사용)
@@ -258,10 +289,11 @@ ERDD 프로젝트를 이어서 작업한다. 먼저 docs/superpowers/HANDOFF.md�
 - 커밋 메시지는 한국어 + Co-Authored-By/Claude-Session 트레일러 2줄.
 - 임시 파일은 $CLAUDE_JOB_DIR/tmp 사용.
 
-다음 작업: Phase 3의 남은 절반인 실시간 동시편집을 진행한다. 착수 전
-docs/91-checklist.md의 "실시간 프로토콜 상세"를 먼저 확정하고, HANDOFF.md의 "작업 방식"대로
-brainstorming(설계 결정 확인) → spec → plan → SDD 구현/리뷰 → 브라우저 스모크 → main 머지
+다음 작업: <권한 세분화 검토 | Phase 4 CLI·역설계 | 6절 이월 항목 정리> 중 하나를 진행한다.
+Phase 4를 고른다면 착수 전 docs/91-checklist.md의 "CLI 상세"·"에이전트 스킬 문서"·
+"DDL 역설계 범위"를 먼저 확정해라. HANDOFF.md의 "작업 방식"대로
+brainstorming(설계 결정 확인) → spec → plan → SDD 구현/리뷰 → 최종 리뷰 → 브라우저 스모크 → main 머지
 순서로 가라.
 ```
 
-> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목을 정리한다" / "프로젝트→조직 리소스 승격(공용 리소스 반대 방향)을 구현한다" / "Phase 4 CLI 설계를 시작한다".
+> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목을 정리한다" / "프로젝트→조직 리소스 승격(공용 리소스 반대 방향)을 구현한다" / "실시간 협업의 이월 항목(멀티 인스턴스·토스트 정교화)을 정리한다".
