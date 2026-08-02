@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label'
 
 /** blur 시 값이 바뀌었으면 producer로 커밋하는 제어 인풋. */
 function CommitInput(props: {
-  id?: string; label?: string; value: string; mono?: boolean
+  id?: string; label?: string; value: string; mono?: boolean; readOnly?: boolean
   onCommit: (value: string) => void
 }) {
   return (
@@ -35,6 +35,7 @@ function CommitInput(props: {
       defaultValue={props.value}
       key={props.value}
       className={props.mono ? 'font-mono' : undefined}
+      readOnly={props.readOnly}
       onBlur={(e) => {
         if (e.target.value !== props.value) props.onCommit(e.target.value)
       }}
@@ -44,6 +45,7 @@ function CommitInput(props: {
 
 export function EditPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
   const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
@@ -81,7 +83,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
       <div className="grid gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="tbl-logical">논리명</Label>
-          <CommitInput id="tbl-logical" value={table.logicalName}
+          <CommitInput id="tbl-logical" value={table.logicalName} readOnly={!canEdit}
             onCommit={(v) => {
               const logical = v
               void mutate((m) => {
@@ -98,22 +100,24 @@ export function EditPanel({ projectId }: { projectId: string }) {
         <div className="grid gap-1.5">
           <div className="flex items-center justify-between">
             <Label htmlFor="tbl-physical">테이블 물리명</Label>
-            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-              onClick={() => {
-                const logical = table.logicalName
-                void mutate((m) => {
-                  const gen = generatePhysicalName(logical, m.words, m.terms, namingRules)
-                  return gen.physicalName ? updateTable(m, tid, { physicalName: gen.physicalName }) : m
-                }, { summary: '물리명 재생성' })
-              }}>재생성</Button>
+            {canEdit && (
+              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+                onClick={() => {
+                  const logical = table.logicalName
+                  void mutate((m) => {
+                    const gen = generatePhysicalName(logical, m.words, m.terms, namingRules)
+                    return gen.physicalName ? updateTable(m, tid, { physicalName: gen.physicalName }) : m
+                  }, { summary: '물리명 재생성' })
+                }}>재생성</Button>
+            )}
           </div>
-          <CommitInput id="tbl-physical" value={table.physicalName} mono
+          <CommitInput id="tbl-physical" value={table.physicalName} mono readOnly={!canEdit}
             onCommit={(v) => void mutate((m) => updateTable(m, tid, { physicalName: v }))} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="tbl-group">소속 그룹</Label>
           <select id="tbl-group" className="h-9 rounded-md border bg-background px-2 text-sm"
-            value={table.groupId ?? ''}
+            value={table.groupId ?? ''} disabled={!canEdit}
             onChange={(e) => {
               const groupId = e.target.value === '' ? null : e.target.value
               void mutate((m) => setTableGroup(m, tid, groupId), { summary: '그룹 배정' })
@@ -127,6 +131,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
         <CustomFieldsSection
           fields={tableFields} values={table.custom} idPrefix={`tbl-custom-${tid}`}
           warnings={warnings.filter((w) => w.scope === 'table' && w.entityId === tid)}
+          canEdit={canEdit}
           onChange={(fieldId, value) => {
             void mutate((m) => setCustomValue(m, 'table', tid, fieldId, value),
               { summary: '커스텀 항목 값 변경' })
@@ -136,16 +141,18 @@ export function EditPanel({ projectId }: { projectId: string }) {
 
       <div className="mt-6 flex items-center justify-between">
         <h3 className="text-sm font-semibold">컬럼</h3>
-        <Button size="sm" variant="outline"
-          onClick={() => void mutate((m) => addColumn(m, tid, { id: newId() }), { summary: '컬럼 추가' })}>
-          <Plus /> 컬럼 추가
-        </Button>
+        {canEdit && (
+          <Button size="sm" variant="outline"
+            onClick={() => void mutate((m) => addColumn(m, tid, { id: newId() }), { summary: '컬럼 추가' })}>
+            <Plus /> 컬럼 추가
+          </Button>
+        )}
       </div>
 
       <ul className="mt-2 grid gap-3">
         {columns.map((c, i) => (
           <ColumnRow
-            key={c.id} column={c} isFirst={i === 0} isLast={i === columns.length - 1}
+            key={c.id} column={c} isFirst={i === 0} isLast={i === columns.length - 1} canEdit={canEdit}
             domains={Object.values(model.domains)}
             warnings={warnings.filter((w) => w.scope === 'column' && w.entityId === c.id)}
             onPatch={(patch) => void mutate((m) => updateColumn(m, c.id, patch))}
@@ -207,6 +214,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
 
 function ColumnRow(props: {
   column: Column; isFirst: boolean; isLast: boolean; warnings: Warning[]; domains: Domain[]
+  canEdit: boolean
   onPatch: (patch: Partial<Omit<Column, 'id' | 'tableId'>>) => void
   onRemove: () => void; onMove: (dir: -1 | 1) => void
   onDomainChange: (domainId: string) => void
@@ -216,29 +224,32 @@ function ColumnRow(props: {
   customFields: CustomField[]
   onCustomChange: (fieldId: string, value: string) => void
 }) {
-  const { column: c } = props
+  const { column: c, canEdit } = props
   const locked = c.domainId !== null
   const domain = locked ? props.domains.find((d) => d.id === c.domainId) : undefined
   return (
     <li className="grid gap-2 rounded-md border p-2">
       <div className="flex items-center justify-between gap-2">
         <div className="grid flex-1 grid-cols-2 gap-2">
-          <CommitInput label="논리명" value={c.logicalName} onCommit={props.onLogicalName} />
-          <CommitInput label="물리명" value={c.physicalName} mono onCommit={(v) => props.onPatch({ physicalName: v })} />
+          <CommitInput label="논리명" value={c.logicalName} readOnly={!canEdit} onCommit={props.onLogicalName} />
+          <CommitInput label="물리명" value={c.physicalName} mono readOnly={!canEdit}
+            onCommit={(v) => props.onPatch({ physicalName: v })} />
         </div>
         <WarningBadge warnings={props.warnings} className="shrink-0" />
       </div>
-      <div className="flex gap-1">
-        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-          aria-label="물리명 재생성" onClick={props.onRegenerate}>재생성</Button>
-        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-          aria-label="용어로 등록" onClick={props.onRegisterTerm}>용어 등록</Button>
-      </div>
+      {canEdit && (
+        <div className="flex gap-1">
+          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+            aria-label="물리명 재생성" onClick={props.onRegenerate}>재생성</Button>
+          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+            aria-label="용어로 등록" onClick={props.onRegisterTerm}>용어 등록</Button>
+        </div>
+      )}
       <div className="grid gap-1.5">
         <Label htmlFor={`col-domain-${c.id}`}>도메인</Label>
         <select id={`col-domain-${c.id}`}
           className="h-9 rounded-md border bg-background px-2 text-sm"
-          value={c.domainId ?? ''}
+          value={c.domainId ?? ''} disabled={!canEdit}
           onChange={(e) => {
             const domainId = e.target.value
             props.onDomainChange(domainId)
@@ -253,27 +264,34 @@ function ColumnRow(props: {
         <Input aria-label="타입" className="font-mono" disabled readOnly
           value={domain ? `${domain.logicalType} (도메인: ${domain.name})` : c.type} />
       ) : (
-        <CommitInput label="타입" value={c.type} mono onCommit={(v) => props.onPatch({ type: v })} />
+        <CommitInput label="타입" value={c.type} mono readOnly={!canEdit} onCommit={(v) => props.onPatch({ type: v })} />
       )}
       <div className="flex items-center gap-3 text-xs">
         <label className="flex items-center gap-1">
-          <input type="checkbox" checked={c.isPk} onChange={(e) => props.onPatch({ isPk: e.target.checked })} /> PK
+          <input type="checkbox" checked={c.isPk} disabled={!canEdit}
+            onChange={(e) => props.onPatch({ isPk: e.target.checked })} /> PK
         </label>
         <label className="flex items-center gap-1">
-          <input type="checkbox" checked={!c.nullable} onChange={(e) => props.onPatch({ nullable: !e.target.checked })} /> NN
+          <input type="checkbox" checked={!c.nullable} disabled={!canEdit}
+            onChange={(e) => props.onPatch({ nullable: !e.target.checked })} /> NN
         </label>
         <span className="ml-auto flex gap-1">
-          <Button size="icon" variant="ghost" className="size-6" disabled={props.isFirst}
-            aria-label="위로" onClick={() => props.onMove(-1)}><ChevronUp className="size-3" /></Button>
-          <Button size="icon" variant="ghost" className="size-6" disabled={props.isLast}
-            aria-label="아래로" onClick={() => props.onMove(1)}><ChevronDown className="size-3" /></Button>
-          <Button size="icon" variant="ghost" className="size-6 text-destructive"
-            aria-label="컬럼 삭제" onClick={props.onRemove}><Trash2 className="size-3" /></Button>
+          {canEdit && (
+            <>
+              <Button size="icon" variant="ghost" className="size-6" disabled={props.isFirst}
+                aria-label="위로" onClick={() => props.onMove(-1)}><ChevronUp className="size-3" /></Button>
+              <Button size="icon" variant="ghost" className="size-6" disabled={props.isLast}
+                aria-label="아래로" onClick={() => props.onMove(1)}><ChevronDown className="size-3" /></Button>
+              <Button size="icon" variant="ghost" className="size-6 text-destructive"
+                aria-label="컬럼 삭제" onClick={props.onRemove}><Trash2 className="size-3" /></Button>
+            </>
+          )}
         </span>
       </div>
       <CustomFieldsSection
         fields={props.customFields} values={c.custom} idPrefix={`col-custom-${c.id}`}
         warnings={props.warnings.filter((w) => w.kind === 'custom-required')}
+        canEdit={canEdit}
         onChange={props.onCustomChange}
       />
     </li>

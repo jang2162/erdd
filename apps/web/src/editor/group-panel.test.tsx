@@ -30,6 +30,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().re
 describe('GroupPanel', () => {
   it('renders the group name, delete button, and member count for the selected group', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     useEditorStore.getState().selectGroup('g1')
     renderPanel()
     expect(screen.getByLabelText('이름')).toHaveValue('회원관리')
@@ -46,5 +47,20 @@ describe('GroupPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: '그룹 삭제' }))
     await waitFor(() => expect(useEditorStore.getState().model.tableGroups['g1']).toBeUndefined())
     expect(useEditorStore.getState().selectedGroupId).toBeNull()
+  })
+
+  it('편집 권한이 없으면 삭제 버튼이 사라지고 이름 입력이 잠긴다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    useEditorStore.getState().selectGroup('g1')
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderPanel()
+
+    expect(screen.queryByRole('button', { name: '그룹 삭제' })).toBeNull()
+    const nameInput = screen.getByLabelText('이름')
+    expect(nameInput).toHaveValue('회원관리')
+    expect(nameInput).toHaveAttribute('readonly')
+    expect(screen.getByLabelText('설명')).toHaveAttribute('readonly')
+    // "이 그룹 뷰 열기"는 모델을 바꾸지 않으므로 권한과 무관하게 남아 있어야 한다.
+    expect(screen.getByRole('button', { name: '이 그룹 뷰 열기' })).toBeInTheDocument()
   })
 })

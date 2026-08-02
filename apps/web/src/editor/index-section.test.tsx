@@ -87,4 +87,26 @@ describe('IndexSection', () => {
       expect(useEditorStore.getState().model.indexes['i1']!.columns[0]!.direction).toBe('desc')
     })
   })
+
+  it('편집 권한이 없으면 편집 버튼이 사라지고 입력이 잠기지만 값은 보인다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderSection('t2')
+
+    expect(screen.queryByRole('button', { name: '인덱스 추가' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '인덱스 삭제' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '위로' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '아래로' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '인덱스 컬럼 제거' })).toBeNull()
+
+    const nameInput = screen.getByLabelText('인덱스명') as HTMLInputElement
+    expect(nameInput.value).toBe('UX_MBR_01')
+    expect(nameInput).toHaveAttribute('readonly')
+    expect(screen.getByRole('checkbox', { name: 'UNIQUE' })).toBeDisabled()
+    // ASC/DESC 토글은 값 표시를 겸하므로 숨기지 않고 disabled로만 잠근다.
+    const dirButton = screen.getByRole('button', { name: 'ASC' })
+    expect(dirButton).toBeInTheDocument()
+    expect(dirButton).toBeDisabled()
+    expect(screen.getByLabelText('인덱스 컬럼 추가')).toBeDisabled()
+  })
 })

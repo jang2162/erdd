@@ -12,6 +12,8 @@ export function CustomFieldsSection(props: {
   values: Record<string, string>
   idPrefix: string
   warnings: Warning[]
+  /** 편집 권한(store의 canEdit). 부모(edit-panel 등)가 prop으로 내려준다 — 이 컴포넌트는 store를 직접 읽지 않는다. */
+  canEdit: boolean
   onChange: (fieldId: string, value: string) => void
 }) {
   if (props.fields.length === 0) return null
@@ -33,7 +35,7 @@ export function CustomFieldsSection(props: {
           return (
             <label key={f.id} className="flex items-center gap-2 text-sm">
               <input
-                id={id} type="checkbox" aria-label={f.name} checked={value === 'true'}
+                id={id} type="checkbox" aria-label={f.name} checked={value === 'true'} disabled={!props.canEdit}
                 onChange={(e) => {
                   const next = e.target.checked ? 'true' : 'false'
                   props.onChange(f.id, next)
@@ -50,7 +52,7 @@ export function CustomFieldsSection(props: {
             <div key={f.id} className="grid gap-1.5">
               <Label htmlFor={id}>{f.name}{f.required && <span className="text-destructive"> *</span>}</Label>
               <select
-                id={id} aria-label={f.name} value={value}
+                id={id} aria-label={f.name} value={value} disabled={!props.canEdit}
                 className="h-9 rounded-md border bg-background px-2 text-sm"
                 onChange={(e) => {
                   const next = e.target.value
@@ -68,7 +70,7 @@ export function CustomFieldsSection(props: {
           <div key={f.id} className="grid gap-1.5">
             <Label htmlFor={id}>{f.name}{f.required && <span className="text-destructive"> *</span>}</Label>
             <Input
-              id={id} aria-label={f.name} defaultValue={value} key={value}
+              id={id} aria-label={f.name} defaultValue={value} key={value} readOnly={!props.canEdit}
               onBlur={(e) => {
                 const next = e.target.value
                 if (next !== value) props.onChange(f.id, next)

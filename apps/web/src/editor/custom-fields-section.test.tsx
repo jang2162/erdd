@@ -16,7 +16,7 @@ afterEach(cleanup)
 describe('CustomFieldsSection', () => {
   it('정의가 없으면 아무것도 렌더하지 않는다', () => {
     const { container } = render(
-      <CustomFieldsSection fields={[]} values={{}} idPrefix="x" warnings={[]} onChange={() => {}} />,
+      <CustomFieldsSection fields={[]} values={{}} idPrefix="x" warnings={[]} canEdit={true} onChange={() => {}} />,
     )
     expect(container).toBeEmptyDOMElement()
   })
@@ -26,7 +26,7 @@ describe('CustomFieldsSection', () => {
     render(
       <CustomFieldsSection
         fields={[field('f1', { name: '비고' })]} values={{}} idPrefix="x"
-        warnings={[]} onChange={onChange}
+        warnings={[]} canEdit={true} onChange={onChange}
       />,
     )
     await userEvent.type(screen.getByLabelText('비고'), '메모')
@@ -39,7 +39,7 @@ describe('CustomFieldsSection', () => {
     render(
       <CustomFieldsSection
         fields={[field('f1', { name: '개인정보여부', type: 'boolean' })]} values={{}}
-        idPrefix="x" warnings={[]} onChange={onChange}
+        idPrefix="x" warnings={[]} canEdit={true} onChange={onChange}
       />,
     )
     await userEvent.click(screen.getByLabelText('개인정보여부'))
@@ -51,7 +51,7 @@ describe('CustomFieldsSection', () => {
     render(
       <CustomFieldsSection
         fields={[field('f1', { name: '암호화방식', type: 'select', options: ['없음', 'AES256'] })]}
-        values={{}} idPrefix="x" warnings={[]} onChange={onChange}
+        values={{}} idPrefix="x" warnings={[]} canEdit={true} onChange={onChange}
       />,
     )
     await userEvent.selectOptions(screen.getByLabelText('암호화방식'), 'AES256')
@@ -62,7 +62,7 @@ describe('CustomFieldsSection', () => {
     render(
       <CustomFieldsSection
         fields={[field('f1', { name: '비고', defaultValue: '해당없음' })]} values={{}}
-        idPrefix="x" warnings={[]} onChange={() => {}}
+        idPrefix="x" warnings={[]} canEdit={true} onChange={() => {}}
       />,
     )
     expect(screen.getByLabelText('비고')).toHaveValue('해당없음')
@@ -72,7 +72,7 @@ describe('CustomFieldsSection', () => {
     render(
       <CustomFieldsSection
         fields={[field('f1', { name: '암호화방식', type: 'select', options: ['없음', 'AES256'] })]}
-        values={{ f1: 'SHA256' }} idPrefix="x" warnings={[]} onChange={() => {}}
+        values={{ f1: 'SHA256' }} idPrefix="x" warnings={[]} canEdit={true} onChange={() => {}}
       />,
     )
     expect(screen.getByLabelText('암호화방식')).toHaveValue('SHA256')
@@ -87,9 +87,36 @@ describe('CustomFieldsSection', () => {
           kind: 'custom-required', scope: 'column', entityId: 'c1',
           message: '필수 항목 "개인정보여부"이(가) 비어 있습니다',
         }]}
+        canEdit={true}
         onChange={() => {}}
       />,
     )
     expect(screen.getByText('필수')).toBeInTheDocument()
+  })
+
+  it('편집 권한이 없으면(canEdit=false) 값은 보이되 텍스트·불리언·선택 항목이 모두 잠긴다', () => {
+    const onChange = vi.fn()
+    render(
+      <CustomFieldsSection
+        fields={[
+          field('f1', { name: '비고' }),
+          field('f2', { name: '개인정보여부', type: 'boolean' }),
+          field('f3', { name: '암호화방식', type: 'select', options: ['없음', 'AES256'] }),
+        ]}
+        values={{ f1: '메모', f2: 'true', f3: 'AES256' }}
+        idPrefix="x" warnings={[]} canEdit={false} onChange={onChange}
+      />,
+    )
+    const text = screen.getByLabelText('비고') as HTMLInputElement
+    expect(text.value).toBe('메모')
+    expect(text).toHaveAttribute('readonly')
+
+    const boolField = screen.getByLabelText('개인정보여부') as HTMLInputElement
+    expect(boolField.checked).toBe(true)
+    expect(boolField).toBeDisabled()
+
+    const selectField = screen.getByLabelText('암호화방식') as HTMLSelectElement
+    expect(selectField.value).toBe('AES256')
+    expect(selectField).toBeDisabled()
   })
 })
