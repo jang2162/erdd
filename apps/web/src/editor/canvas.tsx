@@ -40,6 +40,7 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const selectNote = useEditorStore((s) => s.selectNote)
   const focusTableId = useEditorStore((s) => s.focusTableId)
   const consumeFocus = useEditorStore((s) => s.consumeFocus)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
   const rf = useReactFlow()
   // 그룹 드래그 시작 시점의 그룹 노드 위치 + 소속 테이블 위치 스냅샷(전체 뷰에서만 사용).
@@ -125,6 +126,11 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionMode={ConnectionMode.Loose}
+        // 위치는 모델 상태라 드래그가 곧 모델 변경이다. 읽기 전용에서는 아예 못 잡게 막는다.
+        // 팬·줌·선택은 뷰 상태라 그대로 둔다.
+        nodesDraggable={canEdit}
+        nodesConnectable={canEdit}
+        deleteKeyCode={canEdit ? 'Backspace' : null}
         onNodesChange={onNodesChange as (c: NodeChange[]) => void}
         onConnect={onConnect}
         onNodeClick={(_, node) => {

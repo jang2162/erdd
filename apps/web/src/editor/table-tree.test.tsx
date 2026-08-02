@@ -38,6 +38,16 @@ describe('TableTree', () => {
     expect(screen.getByText('MBR_GRD')).toBeInTheDocument()
   })
 
+  it('편집 권한이 없으면 그룹 추가 버튼을 숨긴다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderTree()
+
+    expect(screen.queryByRole('button', { name: '그룹 추가' })).toBeNull()
+    // 조회 기능은 그대로다.
+    expect(screen.getByPlaceholderText('테이블 검색')).toBeInTheDocument()
+  })
+
   it('selects and focuses a table on click', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     renderTree()

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 
 export function TableTree({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const selectedTableId = useEditorStore((s) => s.selectedTableId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
@@ -50,9 +51,11 @@ export function TableTree({ projectId }: { projectId: string }) {
     <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
       <div className="flex items-center gap-1 border-b p-2">
         <Input placeholder="테이블 검색" value={q} onChange={(e) => setQ(e.target.value)} className="h-8" />
-        <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="그룹 추가" onClick={onAddGroup}>
-          <FolderPlus className="size-4" />
-        </Button>
+        {canEdit && (
+          <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="그룹 추가" onClick={onAddGroup}>
+            <FolderPlus className="size-4" />
+          </Button>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {visibleGroups.map((g) => {
