@@ -29,7 +29,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 271 · web 293 · server 88 (erdd_test) · typecheck 0
+core 271 · web 321 · server 89 (erdd_test) · typecheck 0
 ```
 
 ⚠️ **`pnpm -s -r typecheck`의 출력만 보고 판정하지 말 것.** `-s`가 자식 출력을 삼켜서, 타입 오류가
@@ -53,9 +53,9 @@ pnpm -s -C packages/core typecheck
 
 ### 다음 작업
 
-**권한 세분화 검토 → Phase 4(CLI·역설계)** (→ `docs/90-roadmap.md`, `docs/16-cli.md`)
+**Phase 4(CLI·DDL 역설계)** (→ `docs/90-roadmap.md`, `docs/16-cli.md`)
 
-Phase 1~3이 모두 main에 있다. 다음 후보는 (a) 권한 세분화(필요 시 그룹 단위 편집 권한 등), (b) Phase 4 CLI·DDL 역설계, (c) 6절 이월 항목 정리다. 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
+Phase 1~3이 모두 main에 있고 권한 세분화 검토도 끝났다(새 권한 축 미도입 — 근거는 `docs/91-checklist.md`). 다음 후보는 (a) Phase 4 CLI·DDL 역설계, (b) 6절 이월 항목 정리다. 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
 
 Phase 4 착수 전 `docs/91-checklist.md`의 **CLI 상세**(base 사본 저장 방식, push 충돌 출력 형식, `--json` 스키마, 패키지명 확정)·**에이전트 스킬 문서**·**DDL 역설계 범위** 확정이 필요하다.
 
@@ -301,6 +301,15 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - 클라이언트 측 liveness 감지 없음(하트비트가 서버→클라 단방향) — half-open 소켓이면 TCP가 포기할 때까지 조용히 아무것도 못 받는다. 복구 자체는 `ready.seq` 불일치로 정상 동작
 - `PEER_SELECTION_KINDS`·`PeerSelectionKind`·`PEER_PALETTE`가 core 밖에서 안 쓰임, `RealtimeHub.connectionCount`는 테스트 전용(공개 표면 정리 여지)
 - DB 조회 실패 시 앱 레벨 close code가 아니라 1011로 닫힌다(인증 단계 실패는 4401/4403). 리포에 eslint 설정이 아예 없어 `react-hooks/exhaustive-deps`가 안 돌고, `canvas.tsx`의 `eslint-disable` 주석도 실효가 없다
+
+**권한 (역할 기반 읽기 전용 — 구현 완료, 잔여 한계)**
+- 읽기 전용 판정은 `project.get` 응답에 의존한다. 다른 사용자가 내 역할을 낮춰도 **내 화면은 새로고침 전까지 편집 가능 상태로 남는다**(실시간으로 권한 변경을 밀어주지 않는다). 서버가 막으므로 데이터는 안전하고, 편집 시도가 토스트로 거절된다
+- Org Owner/Admin은 프로젝트 멤버가 아니어도 항상 `canEdit`·`canManage`가 참이다(`perm.ts`의 기존 정책 그대로)
+- presence에서 Viewer와 Editor를 구분해 표시하지 않는다
+- `domain-edit-dialog`·`custom-field-edit-dialog`, 그리고 `dict-panel.tsx`의 `WordEditDialog`·`TermEditDialog`에는 권한 분기가 없다. 부모 패널이 여는 추가·수정 버튼을 숨겨 도달 불가이기 때문이다 — 나중에 다른 곳에서 이 다이얼로그들을 렌더하면 가드를 추가해야 한다(`useSubmit` 가드가 저장은 막는다)
+- **프로젝트 전환 시 권한이 fail-closed로 초기화되지 않는다.** `reset()`은 프로덕션에서 호출되지 않고 `setLoaded`도 권한을 건드리지 않으므로, 프로젝트 A→B 전환 시 `project.get(B)`가 도착할 때까지 A의 권한이 남는다. 실제 위험은 낮다 — `httpBatchLink`가 `model.get`/`project.get`을 한 요청으로 묶어 사실상 동시에 도착한다. 남는 창은 `project.get`만 에러일 때뿐이고 그때는 fail-open이 된다(서버가 막으므로 데이터는 안전, 대신 FORBIDDEN 바운스가 발생). 고친다면 `useModelLoader`에서 `projectId` 변경 시 초기화해야 하며, **`setLoaded` 안에 넣으면 안 된다** — mutation 실패 롤백이 같은 함수를 쓰므로 Editor가 잠긴다.
+- **`project-settings.tsx:109`의 역할 조합식이 이제 중복이다.** `p.myOrgRole === 'owner' || … || p.myRole === 'admin'`은 오늘 `perm.ts`와 정확히 일치하지만, 같은 응답에 이제 `canManage`가 실려 온다. "클라가 역할 조합식을 재현하지 않는다"는 제약을 지키려면 한 줄 교체가 자연스럽다(설계가 이 파일을 범위 밖으로 뒀으므로 이월).
+- **잔여 커버리지 구멍:** `toolbar.tsx`의 Cmd+Z 가드(리포 전체에 키보드 단축키 테스트가 0건), `group-panel.tsx`의 색상 입력 `disabled`(같은 성격의 `note-panel`만 검증됨), `relationship-panel.tsx`의 관계명 `readOnly`·컬럼 매핑 select `disabled`, `resource-panel.tsx`의 충돌 라디오 숨김(테스트 픽스처에 충돌 항목이 없어 미도달), `ghost-node.tsx`의 `isConnectable` 배선(`ghost-nodes.ts`가 이미 `connectable:false`라 실질 no-op).
 
 ---
 

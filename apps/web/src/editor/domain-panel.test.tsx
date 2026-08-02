@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { createDomain } from './domain-edits.js'
 import { DomainPanel } from './domain-panel.js'
@@ -24,7 +25,7 @@ function renderPanel() {
   render(<DomainPanel projectId={PROJECT_ID} />, { wrapper: w })
 }
 
-function loadModelWithDomains() {
+function loadModelWithDomains(grant = true) {
   let m = buildSampleModel()
   m = createDomain(m, {
     id: 'd1', name: '금액', category: '통화', logicalType: 'DECIMAL(15)',
@@ -38,6 +39,7 @@ function loadModelWithDomains() {
   })
   m = { ...m, columns: { ...m.columns, c1: { ...m.columns['c1']!, domainId: 'd2' } } }
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+  if (grant) grantEditPermission()
 }
 
 afterEach(() => { cleanup(); useEditorStore.getState().reset() })
@@ -59,5 +61,18 @@ describe('DomainPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /도메인/ }))
     expect(screen.getByRole('button', { name: '상태코드 삭제' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '금액 삭제' })).toBeEnabled()
+  })
+
+  it('편집 권한이 없으면 도메인을 열람만 할 수 있다', async () => {
+    loadModelWithDomains(false)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /도메인/ }))
+
+    expect(screen.getByText('금액')).toBeInTheDocument()
+    expect(screen.getByText('상태코드')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '도메인 추가' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '금액 편집' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '금액 삭제' })).toBeNull()
   })
 })

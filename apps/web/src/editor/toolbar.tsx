@@ -9,8 +9,10 @@ import { addTable, moveTable, moveTableGroupPosition, removeTable } from './mode
 import { addNote } from './note-edits.js'
 import { computeAutoLayout } from './auto-layout.js'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 export function Toolbar({ projectId }: { projectId: string }) {
+  const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
   const { undo, redo, canUndo, canRedo } = useUndoRedo(projectId)
   const model = useEditorStore((s) => s.model)
@@ -22,6 +24,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
   const visibleTables = Object.values(model.tables).filter((t) => (activeGroupView ? t.groupId === activeGroupView : true))
 
   useEffect(() => {
+    if (!canEdit) return
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey
       if (!meta || e.key.toLowerCase() !== 'z') return
@@ -33,7 +36,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [undo, redo])
+  }, [undo, redo, canEdit])
 
   const onAdd = () => {
     const id = newId()
@@ -75,6 +78,14 @@ export function Toolbar({ projectId }: { projectId: string }) {
       for (const [id, p] of pos) n = agv ? moveTableGroupPosition(n, id, p) : moveTable(n, id, p)
       return n
     }, { summary: '자동 정렬' })
+  }
+
+  if (!canEdit) {
+    return (
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary">읽기 전용</Badge>
+      </div>
+    )
   }
 
   return (

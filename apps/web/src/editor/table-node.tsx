@@ -22,7 +22,19 @@ function name(logical: string, physical: string, mode: ViewMode) {
   return null // mixed는 둘 다 표시
 }
 
-export function TableNode({ data }: { data: TableNodeData }) {
+export function TableNode({
+  data,
+  isConnectable,
+}: {
+  data: TableNodeData
+  /**
+   * React Flow가 store의 `nodesConnectable`(및 노드별 `connectable` 오버라이드)로부터 계산해
+   * 커스텀 노드에 주입하는 값. 캔버스를 통해 렌더될 때는 항상 전달되지만, 이 컴포넌트를 직접
+   * 렌더하는 테스트 등에서는 생략될 수 있어 optional로 둔다 — 생략 시 `<Handle>` 자체의
+   * 기본값(true, 연결 가능)을 그대로 따른다.
+   */
+  isConnectable?: boolean
+}) {
   const { table, columns, viewMode, selected, tableWarnings = [], columnWarnings = {}, peers = [] } = data
   const peerColorHex = peers[0]?.color
   const sorted = [...columns].sort((a, b) => a.order - b.order)
@@ -37,9 +49,9 @@ export function TableNode({ data }: { data: TableNodeData }) {
       // 로컬 선택(ring)과 구분되도록 peer는 바깥쪽 외곽선을 쓴다.
       style={peerColorHex ? { outline: `2px solid ${peerColorHex}`, outlineOffset: '2px' } : undefined}
     >
-      <Handle id="l" type="source" position={Position.Left}
+      <Handle id="l" type="source" position={Position.Left} isConnectable={isConnectable}
         className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background" />
-      <Handle id="r" type="source" position={Position.Right}
+      <Handle id="r" type="source" position={Position.Right} isConnectable={isConnectable}
         className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background" />
       {peers.length > 0 && (
         <div className="flex flex-wrap gap-1 px-2 py-0.5" style={{ background: peerColorHex }}>

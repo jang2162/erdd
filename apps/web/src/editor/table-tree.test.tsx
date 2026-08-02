@@ -8,6 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { TableTree } from './table-tree.js'
 
@@ -35,6 +36,16 @@ describe('TableTree', () => {
     await userEvent.type(screen.getByPlaceholderText('테이블 검색'), '등급')
     expect(screen.queryByText('MBR')).not.toBeInTheDocument()
     expect(screen.getByText('MBR_GRD')).toBeInTheDocument()
+  })
+
+  it('편집 권한이 없으면 그룹 추가 버튼을 숨긴다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderTree()
+
+    expect(screen.queryByRole('button', { name: '그룹 추가' })).toBeNull()
+    // 조회 기능은 그대로다.
+    expect(screen.getByPlaceholderText('테이블 검색')).toBeInTheDocument()
   })
 
   it('selects and focuses a table on click', async () => {
@@ -69,6 +80,7 @@ describe('TableTree', () => {
   it('creates a new group with a generated name/color and selects it via the add-group button', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderTree()
     await userEvent.click(screen.getByRole('button', { name: '그룹 추가' }))
     await waitFor(() => {
@@ -92,6 +104,7 @@ describe('TableTree', () => {
       Object.entries(model.tables).map(([id, t]) => [id, { ...t, groupId: null }]),
     )
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
     renderTree()
     await userEvent.click(screen.getByRole('button', { name: '그룹 추가' }))
     await waitFor(() => {

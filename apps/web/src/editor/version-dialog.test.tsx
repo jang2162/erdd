@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { VersionDialog } from './version-dialog.js'
 
@@ -53,6 +54,7 @@ describe('VersionDialog', () => {
   })
 
   it('creates a snapshot with the entered name and refreshes the list', async () => {
+    grantEditPermission()
     const fetchMock = mockTrpcFetch({
       'snapshot.list': () => ({ data: { items: [] } }),
       'snapshot.create': (input) => {
@@ -78,6 +80,7 @@ describe('VersionDialog', () => {
   })
 
   it('confirms and calls snapshot.restore when 복원 is clicked', async () => {
+    grantEditPermission()
     vi.stubGlobal('confirm', vi.fn(() => true))
     const fetchMock = mockTrpcFetch({
       'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }),
@@ -110,5 +113,41 @@ describe('VersionDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: '이력' }))
     expect(await screen.findByText(/메모 생성/)).toBeInTheDocument()
     expect(screen.getByText(/오너/)).toBeInTheDocument()
+  })
+
+  it('Viewer는 스냅샷을 만들 수도 복원할 수도 없다', async () => {
+    // grantEditPermission을 부르지 않는다 — canEdit=false, canManage=false.
+    mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '버전' }))
+    await screen.findByText('배포 전 백업')
+
+    expect(screen.queryByRole('button', { name: '스냅샷 만들기' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '복원' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '삭제' })).toBeNull()
+  })
+
+  it('Editor는 스냅샷을 만들 수 있지만 복원·삭제는 못 한다', async () => {
+    grantEditPermission({ canEdit: true, canManage: false })
+    mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '버전' }))
+    await screen.findByText('배포 전 백업')
+
+    expect(screen.getByRole('button', { name: '스냅샷 만들기' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '복원' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '삭제' })).toBeNull()
+  })
+
+  it('Project Admin은 복원·삭제까지 할 수 있다', async () => {
+    grantEditPermission({ canEdit: true, canManage: true })
+    mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '버전' }))
+    await screen.findByText('배포 전 백업')
+
+    expect(screen.getByRole('button', { name: '스냅샷 만들기' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '복원' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '삭제' })).toBeInTheDocument()
   })
 })

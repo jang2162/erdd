@@ -11,7 +11,7 @@ function estHeight(colCount: number): number {
 }
 
 export function buildGroupNodes(
-  model: ProjectModel, selectedGroupId: string | null,
+  model: ProjectModel, selectedGroupId: string | null, canEdit: boolean,
 ): Node<GroupNodeData>[] {
   const nodes: Node<GroupNodeData>[] = []
   for (const group of Object.values(model.tableGroups)) {
@@ -32,7 +32,7 @@ export function buildGroupNodes(
       width: maxX - minX + PAD * 2,
       height: maxY - minY + PAD * 2,
       selectable: false,
-      draggable: true,
+      draggable: canEdit,
       zIndex: 0,
       data: { group, selected: group.id === selectedGroupId },
     })

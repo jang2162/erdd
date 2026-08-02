@@ -49,7 +49,7 @@ set -a && . ./.env && set +a && pnpm verify; echo "EXIT=$?"
 | `apps/web/src/editor/canvas.tsx` | 수정 | 드래그·연결·삭제키 차단 |
 | `apps/web/src/editor/table-tree.tsx` | 수정 | `그룹 추가` 숨김 |
 | `apps/web/src/editor/edit-panel.tsx` 외 5개 | 수정 | 입력 잠금 + 편집 버튼 숨김 |
-| `apps/web/src/editor/dict-panel.tsx` 외 6개 | 수정 | 다이얼로그 내 CRUD 숨김 |
+| `apps/web/src/editor/dict-panel.tsx` 외 4개 | 수정 | 다이얼로그 내 CRUD 숨김 |
 | `apps/web/src/editor/version-dialog.tsx` | 수정 | `canEdit`=만들기 / `canManage`=복원·삭제 |
 | `docs/superpowers/HANDOFF.md`, `docs/90-roadmap.md`, `docs/91-checklist.md` | 수정 | 검토 결론·완료 반영 |
 
@@ -868,10 +868,10 @@ EOF
 - Modify: `apps/web/src/editor/dict-panel.tsx`
 - Modify: `apps/web/src/editor/dict-import-section.tsx`
 - Modify: `apps/web/src/editor/domain-panel.tsx`
-- Modify: `apps/web/src/editor/domain-edit-dialog.tsx`
 - Modify: `apps/web/src/editor/custom-field-panel.tsx`
-- Modify: `apps/web/src/editor/custom-field-edit-dialog.tsx`
 - Modify: `apps/web/src/editor/resource-panel.tsx`
+
+> `domain-edit-dialog.tsx`·`custom-field-edit-dialog.tsx`는 **손대지 않는다.** 둘 다 부모 패널이 `{editorOpen && …}`로 조건부 렌더하고 `editorOpen`을 켜는 것은 이 태스크에서 숨기는 추가·편집 버튼뿐이라, `canEdit=false`에서는 열리는 경로가 없다. 방어적으로 입력을 잠그면 실행되지 않는 코드가 되고 테스트로 덮을 수도 없다. 진짜 안전망은 `useSubmit` 가드다.
 - Test: `apps/web/src/editor/dict-panel.test.tsx`, `dict-import-section.test.tsx`, `domain-panel.test.tsx`, `custom-field-panel.test.tsx`, `resource-panel.test.tsx`
 
 **Interfaces:**
@@ -886,9 +886,7 @@ EOF
 | `dict-panel.tsx` | `단어 추가`, `용어 추가`, 각 항목의 편집·삭제 아이콘 버튼, 미등록 단어의 등록 액션 |
 | `dict-import-section.tsx` | 파일 선택·업로드·적용 버튼 (`양식 다운로드`는 **유지** — 다운로드는 조회다) |
 | `domain-panel.tsx` | `도메인 추가`, 각 도메인의 편집·삭제, 일괄 반영 |
-| `domain-edit-dialog.tsx` | 저장 버튼 + 모든 입력 잠금(권한이 없으면 애초에 열 수 없지만 방어적으로) |
 | `custom-field-panel.tsx` | `항목 추가`, 각 항목의 편집·삭제 |
-| `custom-field-edit-dialog.tsx` | 저장 버튼 + 모든 입력 잠금 |
 | `resource-panel.tsx` | 가져오기·재동기화·충돌 해소(`유지`/원본 반영) 액션 |
 
 - [ ] **Step 1: 실패 테스트를 쓴다**
@@ -923,7 +921,7 @@ Expected: FAIL — 편집 버튼이 여전히 있다
 
 - [ ] **Step 3: 7개 파일에 규칙을 적용한다**
 
-각 파일에 `const canEdit = useEditorStore((s) => s.canEdit)`를 추가하고 위 규칙대로 감싼다. 하위 컴포넌트로 쪼개진 곳은 `canEdit`을 prop으로 내려준다(`domain-edit-dialog.tsx`·`custom-field-edit-dialog.tsx`는 각각 부모 패널이 렌더한다).
+각 파일에 `const canEdit = useEditorStore((s) => s.canEdit)`를 추가하고 위 규칙대로 감싼다. 하위 컴포넌트로 쪼개진 곳은 `canEdit`을 prop으로 내려준다.
 
 - [ ] **Step 4: 테스트 통과 확인**
 
@@ -937,8 +935,7 @@ Expected: PASS
 
 ```bash
 grep -n "mutate(" apps/web/src/editor/dict-panel.tsx apps/web/src/editor/dict-import-section.tsx \
-  apps/web/src/editor/domain-panel.tsx apps/web/src/editor/domain-edit-dialog.tsx \
-  apps/web/src/editor/custom-field-panel.tsx apps/web/src/editor/custom-field-edit-dialog.tsx \
+  apps/web/src/editor/domain-panel.tsx apps/web/src/editor/custom-field-panel.tsx \
   apps/web/src/editor/resource-panel.tsx
 ```
 
@@ -948,8 +945,7 @@ grep -n "mutate(" apps/web/src/editor/dict-panel.tsx apps/web/src/editor/dict-im
 
 ```bash
 git add apps/web/src/editor/dict-panel.tsx apps/web/src/editor/dict-import-section.tsx \
-  apps/web/src/editor/domain-panel.tsx apps/web/src/editor/domain-edit-dialog.tsx \
-  apps/web/src/editor/custom-field-panel.tsx apps/web/src/editor/custom-field-edit-dialog.tsx \
+  apps/web/src/editor/domain-panel.tsx apps/web/src/editor/custom-field-panel.tsx \
   apps/web/src/editor/resource-panel.tsx \
   apps/web/src/editor/dict-panel.test.tsx apps/web/src/editor/dict-import-section.test.tsx \
   apps/web/src/editor/domain-panel.test.tsx apps/web/src/editor/custom-field-panel.test.tsx \
@@ -1136,7 +1132,7 @@ set -a && . ./.env && set +a && pnpm verify 2>&1 | grep -E "Tests +[0-9]+ passed
 - 읽기 전용 판정은 `project.get` 응답에 의존한다. 다른 사용자가 내 역할을 낮춰도 **내 화면은 새로고침 전까지 편집 가능 상태로 남는다**(실시간으로 권한 변경을 밀어주지 않는다). 서버가 막으므로 데이터는 안전하고, 편집 시도가 토스트로 거절된다
 - Org Owner/Admin은 프로젝트 멤버가 아니어도 항상 `canEdit`·`canManage`가 참이다(`perm.ts`의 기존 정책 그대로)
 - presence에서 Viewer와 Editor를 구분해 표시하지 않는다
-- `custom-field-edit-dialog`·`domain-edit-dialog`는 읽기 전용에서 열 수 없지만 방어적으로 입력도 잠갔다 — 중복이지만 의도된 것
+- `domain-edit-dialog`·`custom-field-edit-dialog`에는 권한 분기가 없다. 부모 패널이 여는 버튼을 숨겨 도달 불가이기 때문이다 — 나중에 다른 곳에서 이 다이얼로그를 렌더하면 가드를 추가해야 한다(`useSubmit` 가드가 저장은 막는다)
 ```
 
 - [ ] **Step 4: 커밋**

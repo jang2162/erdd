@@ -87,6 +87,7 @@ function ConflictValueDiff({ entry, model }: { entry: ResyncEntry; model: Projec
 export function ResourcePanel({ projectId }: { projectId: string }) {
   const trpc = useTRPC()
   const model = useEditorStore((s) => s.model)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
   const [open, setOpen] = useState(false)
   const [libraryId, setLibraryId] = useState<string | null>(null)
@@ -128,15 +129,21 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
 
   const checkboxRow = (entry: ResyncEntry) => (
     <li key={entry.sourceId} className="flex items-center justify-between gap-2 rounded border px-2 py-1">
-      <label className="flex flex-1 items-center gap-2">
-        <input type="checkbox" aria-label={`${entry.name} 선택`}
-          checked={decisions[entry.sourceId] === 'apply'}
-          onChange={(e) => {
-            const next = e.target.checked ? 'apply' : 'defer'
-            setDecisions((prev) => ({ ...prev, [entry.sourceId]: next }))
-          }} />
-        <EntryLabel entry={entry} />
-      </label>
+      {canEdit
+        ? (
+            <label className="flex flex-1 items-center gap-2">
+              <input type="checkbox" aria-label={`${entry.name} 선택`}
+                checked={decisions[entry.sourceId] === 'apply'}
+                onChange={(e) => {
+                  const next = e.target.checked ? 'apply' : 'defer'
+                  setDecisions((prev) => ({ ...prev, [entry.sourceId]: next }))
+                }} />
+              <EntryLabel entry={entry} />
+            </label>
+          )
+        : (
+            <span className="flex flex-1 items-center gap-2"><EntryLabel entry={entry} /></span>
+          )}
       {entry.nameClash && <Badge variant="outline" className="shrink-0">이름 중복</Badge>}
     </li>
   )
@@ -185,7 +192,7 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
                 <section className="grid gap-1.5">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-semibold">신규 추가 ({added.length})</h4>
-                    {added.length > 0 && (
+                    {canEdit && added.length > 0 && (
                       <span className="flex gap-1">
                         <Button size="sm" variant="ghost"
                           onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'added', 'apply'))}>
@@ -204,7 +211,7 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
                 <section className="grid gap-1.5">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-semibold">자동 갱신 ({autoUpdate.length})</h4>
-                    {autoUpdate.length > 0 && (
+                    {canEdit && autoUpdate.length > 0 && (
                       <span className="flex gap-1">
                         <Button size="sm" variant="ghost"
                           onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'auto-update', 'apply'))}>
@@ -223,7 +230,7 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
                 <section className="grid gap-1.5">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-semibold">충돌 ({conflicts.length})</h4>
-                    {conflicts.length > 0 && (
+                    {canEdit && conflicts.length > 0 && (
                       <span className="flex gap-1">
                         <Button size="sm" variant="ghost"
                           onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'conflict', 'apply'))}>
@@ -236,7 +243,7 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
                       </span>
                     )}
                   </div>
-                  {conflicts.length > 0 && (
+                  {canEdit && conflicts.length > 0 && (
                     <p className="text-xs text-muted-foreground">
                       "프로젝트 유지"는 내용을 그대로 두고 이 변경을 검토했다고 기록합니다(다음에 다시 뜨지 않습니다).
                       "보류"는 아무것도 기록하지 않아 다음에 다시 뜹니다.
@@ -247,20 +254,22 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
                       <li key={entry.sourceId} className="grid gap-1 rounded border px-2 py-1.5">
                         <EntryLabel entry={entry} />
                         <ConflictValueDiff entry={entry} model={model} />
-                        <div className="flex flex-wrap gap-3 text-sm">
-                          {([
-                            ['defer', '보류'], ['keep', '프로젝트 유지'], ['apply', '원본 반영'],
-                          ] as const).map(([value, label]) => (
-                            <label key={value} className="flex items-center gap-1">
-                              <input type="radio" aria-label={`${entry.name} ${label}`}
-                                name={`conflict-${entry.sourceId}`}
-                                checked={(decisions[entry.sourceId] ?? 'defer') === value}
-                                onChange={() =>
-                                  setDecisions((prev) => ({ ...prev, [entry.sourceId]: value }))} />
-                              {label}
-                            </label>
-                          ))}
-                        </div>
+                        {canEdit && (
+                          <div className="flex flex-wrap gap-3 text-sm">
+                            {([
+                              ['defer', '보류'], ['keep', '프로젝트 유지'], ['apply', '원본 반영'],
+                            ] as const).map(([value, label]) => (
+                              <label key={value} className="flex items-center gap-1">
+                                <input type="radio" aria-label={`${entry.name} ${label}`}
+                                  name={`conflict-${entry.sourceId}`}
+                                  checked={(decisions[entry.sourceId] ?? 'defer') === value}
+                                  onChange={() =>
+                                    setDecisions((prev) => ({ ...prev, [entry.sourceId]: value }))} />
+                                {label}
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -274,10 +283,12 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
                   )}
                 </section>
 
-                <div className="flex items-center justify-end gap-2 border-t pt-2">
-                  <span className="text-xs text-muted-foreground">처리 대상 {active}건</span>
-                  <Button type="button" disabled={active === 0} onClick={onApply}>적용</Button>
-                </div>
+                {canEdit && (
+                  <div className="flex items-center justify-end gap-2 border-t pt-2">
+                    <span className="text-xs text-muted-foreground">처리 대상 {active}건</span>
+                    <Button type="button" disabled={active === 0} onClick={onApply}>적용</Button>
+                  </div>
+                )}
               </>
             )}
           </div>

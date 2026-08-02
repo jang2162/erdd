@@ -7,6 +7,7 @@ import { createEmptyModel } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { useModelMutation, useUndoRedo } from './use-model.js'
 
@@ -99,6 +100,7 @@ describe('useUndoRedo (훅 통합)', () => {
     }
     const model = { ...createEmptyModel(), tables: { [TABLE.id]: TABLE } }
     useEditorStore.getState().setLoaded(model, 3, projectId)
+    grantEditPermission()
     useEditorStore.getState().recordEdit([{ action: 'create', entity: 'table', entityId: TABLE.id, data: TABLE }])
 
     mockTrpcFetch({
@@ -119,7 +121,12 @@ describe('useUndoRedo (훅 통합)', () => {
 
   it('undo 역적용이 불가하면 스택을 이동하지 않는다', async () => {
     // 현재 모델에 없는 테이블 생성 배치를 히스토리에 심으면 역적용(delete)이 throw → submit false.
+    // setLoaded('p1')·grantEditPermission을 부르지 않으면 useSubmit의 프로젝트 전환 가드/편집
+    // 권한 가드가 producer를 실행하기도 전에 먼저 'error'를 돌려줘, 이 테스트가 검증하려는
+    // "역적용 자체가 실패한다"는 경로를 타지 않고도 통과해버린다.
     act(() => {
+      useEditorStore.getState().setLoaded(createEmptyModel(), 1, 'p1')
+      grantEditPermission()
       useEditorStore.getState().recordEdit([
         { action: 'create', entity: 'table', entityId: 'GHOST', data: {} },
       ])
@@ -135,6 +142,7 @@ describe('프로젝트 전환 가드', () => {
   it('loadedProjectId와 다른 프로젝트의 mutation은 무시한다', async () => {
     // B가 로드된 상태에서 A용 mutate 호출 → producer 실행 전에 bail, 모델·히스토리 불변.
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, 'project-B')
+    grantEditPermission()
     const { result } = renderHook(() => useModelMutation('project-A'), { wrapper: wrapper() })
     await act(async () => {
       await result.current((m) => ({

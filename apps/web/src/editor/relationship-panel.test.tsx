@@ -8,6 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { RelationshipPanel } from './relationship-panel.js'
 
@@ -29,6 +30,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().re
 describe('RelationshipPanel', () => {
   it('renders the delete button and identifying checkbox for the selected relationship', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     useEditorStore.getState().selectRelationship('r1')
     renderPanel()
     expect(screen.getByRole('button', { name: '관계 삭제' })).toBeInTheDocument()
@@ -40,10 +42,23 @@ describe('RelationshipPanel', () => {
   it('deletes the relationship and clears selection when the delete button is clicked', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     useEditorStore.getState().selectRelationship('r1')
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: '관계 삭제' }))
     await waitFor(() => expect(useEditorStore.getState().model.relationships['r1']).toBeUndefined())
     expect(useEditorStore.getState().selectedRelationshipId).toBeNull()
+  })
+
+  it('편집 권한이 없으면 삭제 버튼이 사라지고 컨트롤이 잠긴다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    useEditorStore.getState().selectRelationship('r1')
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderPanel()
+
+    expect(screen.queryByRole('button', { name: '관계 삭제' })).toBeNull()
+    expect(screen.getByRole('checkbox', { name: /식별 관계/ })).toBeDisabled()
+    // 카디널리티 select는 <Label>이 htmlFor 없이 렌더돼 getByLabelText로 못 찾는다 — 첫 번째 combobox로 짚는다.
+    expect(screen.getAllByRole('combobox')[0]).toBeDisabled()
   })
 })

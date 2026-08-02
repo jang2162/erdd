@@ -18,6 +18,7 @@ const MAX_ISSUES_SHOWN = 20
 export function DictImportSection({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const namingRules = useEditorStore((s) => s.namingRules)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
   const [plan, setPlan] = useState<DictImportPlan | null>(null)
   const [fileName, setFileName] = useState('')
@@ -100,86 +101,90 @@ export function DictImportSection({ projectId }: { projectId: string }) {
         <Button size="sm" variant="outline" onClick={onTemplate}><Download /> 양식 다운로드</Button>
       </div>
 
-      <div className="grid gap-1.5">
-        <label htmlFor="dict-import-file" className="text-sm font-medium">Excel 파일 선택</label>
-        <input
-          id="dict-import-file" type="file" accept=".xlsx" disabled={importing}
-          className="text-sm file:mr-3 file:rounded-md file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm disabled:opacity-50"
-          onChange={(e) => {
-            const f = e.target.files?.[0]
-            // 같은 파일을 고치고 다시 고르면 change가 안 뜬다. 값을 비워 재선택을 살린다.
-            e.target.value = ''
-            void onFile(f)
-          }}
-        />
-      </div>
+      {canEdit && (
+        <>
+          <div className="grid gap-1.5">
+            <label htmlFor="dict-import-file" className="text-sm font-medium">Excel 파일 선택</label>
+            <input
+              id="dict-import-file" type="file" accept=".xlsx" disabled={importing}
+              className="text-sm file:mr-3 file:rounded-md file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm disabled:opacity-50"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                // 같은 파일을 고치고 다시 고르면 change가 안 뜬다. 값을 비워 재선택을 살린다.
+                e.target.value = ''
+                void onFile(f)
+              }}
+            />
+          </div>
 
-      {plan && (
-        <div className="grid gap-3 rounded-md border p-3">
-          <p className="text-sm">
-            <span className="font-medium">{fileName}</span>
-            {' — '}
-            신규 {plan.total.created}건 · 중복 {plan.total.duplicated}건 · 오류 {plan.total.errored}행
-          </p>
+          {plan && (
+            <div className="grid gap-3 rounded-md border p-3">
+              <p className="text-sm">
+                <span className="font-medium">{fileName}</span>
+                {' — '}
+                신규 {plan.total.created}건 · 중복 {plan.total.duplicated}건 · 오류 {plan.total.errored}행
+              </p>
 
-          <fieldset className="grid gap-1.5">
-            <legend className="text-sm font-medium">중복 항목 처리</legend>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio" name="dict-import-mode" className="size-4"
-                checked={mode === 'skip'} onChange={() => setMode('skip')}
-              />
-              건너뛰기
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio" name="dict-import-mode" className="size-4"
-                checked={mode === 'overwrite'} onChange={() => setMode('overwrite')}
-              />
-              덮어쓰기
-            </label>
-          </fieldset>
+              <fieldset className="grid gap-1.5">
+                <legend className="text-sm font-medium">중복 항목 처리</legend>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio" name="dict-import-mode" className="size-4"
+                    checked={mode === 'skip'} onChange={() => setMode('skip')}
+                  />
+                  건너뛰기
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio" name="dict-import-mode" className="size-4"
+                    checked={mode === 'overwrite'} onChange={() => setMode('overwrite')}
+                  />
+                  덮어쓰기
+                </label>
+              </fieldset>
 
-          {recognizedSheets.length > 0 && (
-            <div className="grid gap-0.5 text-xs text-muted-foreground">
-              <p>덮어쓰기는 파일에 있는 아래 컬럼만 갱신하고 나머지 값은 그대로 둡니다</p>
-              <ul aria-label="인식한 컬럼">
-                {recognizedSheets.map(([key, cols]) => (
-                  <li key={key}>{EXCEL_SHEET_NAME[key]}: {cols.join(', ')}</li>
-                ))}
-              </ul>
+              {recognizedSheets.length > 0 && (
+                <div className="grid gap-0.5 text-xs text-muted-foreground">
+                  <p>덮어쓰기는 파일에 있는 아래 컬럼만 갱신하고 나머지 값은 그대로 둡니다</p>
+                  <ul aria-label="인식한 컬럼">
+                    {recognizedSheets.map(([key, cols]) => (
+                      <li key={key}>{EXCEL_SHEET_NAME[key]}: {cols.join(', ')}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {plan.issues.length > 0 && (
+                <ul aria-label="가져오기 이슈" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs">
+                  {plan.issues.slice(0, MAX_ISSUES_SHOWN).map((i, idx) => (
+                    <li key={idx} className={i.level === 'error' ? 'text-destructive' : 'text-key'}>
+                      {EXCEL_SHEET_NAME[i.sheet]} · {i.row === null ? '' : `${i.row}행 · `}{i.message}
+                    </li>
+                  ))}
+                  {plan.issues.length > MAX_ISSUES_SHOWN && (
+                    <li className="text-muted-foreground">외 {plan.issues.length - MAX_ISSUES_SHOWN}건</li>
+                  )}
+                </ul>
+              )}
+
+              {tooManyOps && (
+                <p role="alert" className="text-sm text-destructive">
+                  한 번에 보낼 수 있는 최대 {MAX_OPS_PER_MUTATION}건을 넘습니다. 파일을 나눠서 올려 주세요
+                </p>
+              )}
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground">적용 대상 {appliedTotal}건</p>
+                <Button
+                  type="button" disabled={nothingToApply || tooManyOps || importing}
+                  onClick={() => { void onImport() }}
+                >
+                  <Upload /> 가져오기 실행
+                </Button>
+              </div>
             </div>
           )}
-
-          {plan.issues.length > 0 && (
-            <ul aria-label="가져오기 이슈" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs">
-              {plan.issues.slice(0, MAX_ISSUES_SHOWN).map((i, idx) => (
-                <li key={idx} className={i.level === 'error' ? 'text-destructive' : 'text-key'}>
-                  {EXCEL_SHEET_NAME[i.sheet]} · {i.row === null ? '' : `${i.row}행 · `}{i.message}
-                </li>
-              ))}
-              {plan.issues.length > MAX_ISSUES_SHOWN && (
-                <li className="text-muted-foreground">외 {plan.issues.length - MAX_ISSUES_SHOWN}건</li>
-              )}
-            </ul>
-          )}
-
-          {tooManyOps && (
-            <p role="alert" className="text-sm text-destructive">
-              한 번에 보낼 수 있는 최대 {MAX_OPS_PER_MUTATION}건을 넘습니다. 파일을 나눠서 올려 주세요
-            </p>
-          )}
-
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm text-muted-foreground">적용 대상 {appliedTotal}건</p>
-            <Button
-              type="button" disabled={nothingToApply || tooManyOps || importing}
-              onClick={() => { void onImport() }}
-            >
-              <Upload /> 가져오기 실행
-            </Button>
-          </div>
-        </div>
+        </>
       )}
     </div>
   )

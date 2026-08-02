@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 
 export function RelationshipPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const relId = useEditorStore((s) => s.selectedRelationshipId)!
   const selectRelationship = useEditorStore((s) => s.selectRelationship)
   const mutate = useModelMutation(projectId)
@@ -32,10 +33,12 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
           <h3 className="text-sm font-semibold">관계</h3>
           <WarningBadge warnings={relWarnings} />
         </div>
-        <Button size="icon" variant="ghost" className="size-7 text-destructive" aria-label="관계 삭제"
-          onClick={() => { selectRelationship(null); void mutate((m) => deleteRelationship(m, relId), { summary: '관계 삭제' }) }}>
-          <Trash2 className="size-4" />
-        </Button>
+        {canEdit && (
+          <Button size="icon" variant="ghost" className="size-7 text-destructive" aria-label="관계 삭제"
+            onClick={() => { selectRelationship(null); void mutate((m) => deleteRelationship(m, relId), { summary: '관계 삭제' }) }}>
+            <Trash2 className="size-4" />
+          </Button>
+        )}
       </div>
 
       <p className="mb-4 text-xs text-muted-foreground">
@@ -47,6 +50,7 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
         <div className="grid gap-1.5">
           <Label>카디널리티</Label>
           <select className="h-9 rounded-md border bg-background px-2 text-sm" value={rel.cardinality}
+            disabled={!canEdit}
             onChange={(e) => {
               const cardinality = e.target.value as '1:1' | '1:N'
               void mutate((m) => {
@@ -61,7 +65,7 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
         </div>
 
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={rel.identifying}
+          <input type="checkbox" checked={rel.identifying} disabled={!canEdit}
             onChange={(e) => {
               // e.target 값은 호출 시점에 즉시 읽는다. producer는 직렬화로 마이크로태스크에 지연
               // 실행되는데, 그 사이 controlled input이 리셋되어 지연 읽기는 옛 값을 본다.
@@ -74,7 +78,7 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
         <div className="grid gap-1.5">
           <Label>관계명</Label>
           <input className="h-9 rounded-md border bg-background px-2 text-sm" defaultValue={rel.name ?? ''}
-            key={rel.name ?? ''}
+            key={rel.name ?? ''} readOnly={!canEdit}
             onBlur={(e) => {
               const v = e.target.value.trim() === '' ? null : e.target.value
               if (v !== rel.name) void mutate((m) => {
@@ -93,6 +97,7 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
               return (
                 <li key={mm.parentColumnId} className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-xs">
                   <select className="h-8 rounded border bg-background px-1 font-mono" value={mm.childColumnId}
+                    disabled={!canEdit}
                     onChange={(e) => {
                       const newChildColumnId = e.target.value
                       void mutate((m) => remapRelationshipChildColumn(m, { relationshipId: relId, parentColumnId: mm.parentColumnId, newChildColumnId }), { summary: '매핑 변경' })

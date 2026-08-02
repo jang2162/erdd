@@ -7,7 +7,7 @@ import type { GhostNodeData } from './ghost-nodes.js'
  * TableNode와 같은 좌/우 핸들('l'/'r')을 둔다 — 그래야 그룹↔외부 관계 엣지가
  * 이 노드에 연결되어 렌더된다(엣지는 sourceHandle/targetHandle 'l'/'r'을 지정).
  */
-export function GhostNode({ data }: NodeProps) {
+export function GhostNode({ data, isConnectable }: NodeProps) {
   const { table, targetGroupId } = data as unknown as GhostNodeData
   const enterGroupView = useEditorStore((s) => s.enterGroupView)
   const exitGroupView = useEditorStore((s) => s.exitGroupView)
@@ -21,9 +21,9 @@ export function GhostNode({ data }: NodeProps) {
       className="min-w-40 cursor-pointer rounded-lg border border-dashed bg-card/50 px-3 py-2 text-left opacity-70 hover:opacity-100"
       title="외부 참조 — 클릭해 이동"
     >
-      <Handle id="l" type="source" position={Position.Left}
+      <Handle id="l" type="source" position={Position.Left} isConnectable={isConnectable}
         className="!h-2 !w-2 !border !border-muted-foreground/40 !bg-background" />
-      <Handle id="r" type="source" position={Position.Right}
+      <Handle id="r" type="source" position={Position.Right} isConnectable={isConnectable}
         className="!h-2 !w-2 !border !border-muted-foreground/40 !bg-background" />
       <span className="font-mono text-sm font-medium text-muted-foreground">{table.physicalName}</span>
     </div>

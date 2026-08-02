@@ -14,6 +14,10 @@ type EditorState = {
   loadedProjectId: string | null
   namingRules: NamingRules
   dialects: Dialect[]
+  /** 모델을 편집할 수 있는가(서버 판정). 로드 전 기본값 false — fail-closed. */
+  canEdit: boolean
+  /** 프로젝트를 관리할 수 있는가(스냅샷 복원·삭제). 로드 전 기본값 false. */
+  canManage: boolean
   viewMode: ViewMode
   selectedTableId: string | null
   selectedRelationshipId: string | null
@@ -26,6 +30,7 @@ type EditorState = {
   peers: Peer[]
   setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
   setProjectConfig: (namingRules: NamingRules, dialects: Dialect[]) => void
+  setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
   setModel: (model: ProjectModel) => void
   setSeq: (seq: number) => void
   setPeers: (peers: Peer[]) => void
@@ -57,6 +62,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   loadedProjectId: null,
   namingRules: DEFAULT_NAMING_RULES,
   dialects: [],
+  canEdit: false,
+  canManage: false,
   viewMode: 'physical',
   selectedTableId: null,
   selectedRelationshipId: null,
@@ -73,6 +80,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       undoStack: [], redoStack: [], activeGroupView: null, peers: [],
     }),
   setProjectConfig: (namingRules, dialects) => set({ namingRules, dialects }),
+  setPermissions: ({ canEdit, canManage }) => set({ canEdit, canManage }),
   setModel: (model) => set({ model }),
   setSeq: (seq) => set((s) => ({ seq: Math.max(s.seq, seq) })),
   setPeers: (peers) => set({ peers }),
@@ -117,7 +125,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   reset: () => set({
     model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
-    namingRules: DEFAULT_NAMING_RULES, dialects: [], peers: [],
+    namingRules: DEFAULT_NAMING_RULES, dialects: [], peers: [], canEdit: false, canManage: false,
     ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],
   }),
 }))

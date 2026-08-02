@@ -213,6 +213,26 @@ describe('useRealtime 수신 적용', () => {
   })
 })
 
+describe('useRealtime 권한 무관 수신', () => {
+  it('편집 권한이 없어도 수신 op는 그대로 적용된다', async () => {
+    // Viewer도 실시간 수신·presence는 정상 동작해야 한다(Phase 3 실시간 설계 확정 사항).
+    // 안전망 가드를 serializeMutation이나 이 훅에 넣으면 이 테스트가 실패한다.
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    // canEdit은 기본값 false 그대로 둔다.
+    renderHook()
+    const s = FakeSocket.instances[0]!
+    s.onopen?.()
+    s.emit({ type: 'ready', seq: 1, peers: [] })
+    s.emit({
+      type: 'ops', seq: 2, ops: [noteOp(NOTE_A, '남의 메모')],
+      actorUserId: 'u-other', actorName: '남',
+    })
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.notes[NOTE_A]?.content).toBe('남의 메모')
+    })
+  })
+})
+
 describe('useRealtime selection 발신', () => {
   beforeEach(() => {
     useEditorStore.getState().setLoaded(modelWith(NOTE_A), 5, PROJECT_ID)

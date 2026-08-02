@@ -27,7 +27,7 @@
 
 - 실시간 동시편집: presence, 즉시 반영, 충돌 정책 ([11-collaboration](11-collaboration.md))
 - 스냅샷 diff, 변경분 정의서 ([11-collaboration](11-collaboration.md), [17-import-export](17-import-export.md))
-- 권한 세분화(필요 시 그룹 단위 편집 권한 등 검토)
+- 권한 세분화 검토 완료 — **새 권한 축은 도입하지 않는다**(그룹 단위·표준 축 분리 모두 필요 미확인). 대신 이미 있는 Project 역할을 화면에 반영: Viewer 읽기 전용 화면, `manage` 전용 동작(스냅샷 복원·삭제) 노출 정리 ([설계](superpowers/specs/2026-08-01-viewer-readonly-ui-design.md))
 
 ## Phase 4 — 생태계
 

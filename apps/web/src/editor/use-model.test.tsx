@@ -3,10 +3,11 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import { createEmptyModel } from '@erdd/core'
+import { createEmptyModel, DEFAULT_NAMING_RULES } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { useModelLoader, useModelMutation } from './use-model.js'
 
@@ -33,6 +34,7 @@ afterEach(() => {
 describe('useModelMutation', () => {
   it('derives ops via diffModels, optimistically updates the store, and reconciles seq', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     const captured: unknown[] = []
     mockTrpcFetch({
       'model.mutate': (input) => { captured.push(input); return { data: { seq: 4 } } },
@@ -51,17 +53,21 @@ describe('useModelMutation', () => {
 
   it('is a no-op when the producer changes nothing', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     const fetchMock = mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
       wrapper: wrapper(),
     })
-    await act(async () => { await result.current((m) => m) })
+    let outcome: string | undefined
+    await act(async () => { outcome = await result.current((m) => m) })
+    expect(outcome).toBe('noop')
     expect(fetchMock).not.toHaveBeenCalled()
     expect(useEditorStore.getState().seq).toBe(1)
   })
 
   it('resyncs from the server when the returned seq skips ahead (concurrent commit interleaved)', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     const NOTE_B = { ...NOTE, id: '018f6b0e-0000-7000-8000-000000000002', content: '남의 메모' }
     const freshModel = { ...createEmptyModel(), notes: { [NOTE_B.id]: NOTE_B } }
     mockTrpcFetch({
@@ -86,6 +92,7 @@ describe('useModelMutation', () => {
 
   it('rolls back to the server model on mutation error', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 5, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     mockTrpcFetch({
       'model.mutate': () => ({ error: { code: -32600, message: '무결성 위반' } }),
       'model.get': () => ({ data: { model: createEmptyModel(), seq: 5 } }),
@@ -97,6 +104,25 @@ describe('useModelMutation', () => {
       await result.current((m) => ({ ...m, notes: { ...m.notes, [NOTE.id]: NOTE } }))
     })
     await waitFor(() => expect(useEditorStore.getState().model.notes[NOTE.id]).toBeUndefined())
+  })
+
+  it('편집 권한이 없으면 서버로 보내지도, 모델을 바꾸지도 않는다', async () => {
+    useEditorStore.getState().setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
+    // grantEditPermission을 부르지 않는다 — store 기본값 canEdit=false 그대로 검증한다.
+    const captured: unknown[] = []
+    mockTrpcFetch({
+      'model.mutate': (input) => { captured.push(input); return { data: { seq: 4 } } },
+    })
+    const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
+      wrapper: wrapper(),
+    })
+    let outcome: string | undefined
+    await act(async () => {
+      outcome = await result.current((m) => ({ ...m, notes: { ...m.notes, [NOTE.id]: NOTE } }))
+    })
+    expect(outcome).toBe('error')
+    expect(captured).toHaveLength(0)                          // 서버 왕복 없음
+    expect(useEditorStore.getState().model.notes).toEqual({})  // 낙관적 적용 없음
   })
 })
 
@@ -117,5 +143,27 @@ describe('useModelLoader', () => {
       expect(useEditorStore.getState().loadedProjectId).toBe(newProjectId)
       expect(useEditorStore.getState().model.notes[NOTE.id]).toBeDefined()
     })
+  })
+
+  it('project.get의 판정 결과를 store에 싣는다', async () => {
+    mockTrpcFetch({
+      'model.get': () => ({ data: { model: createEmptyModel(), seq: 1 } }),
+      'project.get': () => ({
+        data: {
+          namingRules: DEFAULT_NAMING_RULES,
+          dialects: ['postgresql'],
+          canEdit: true,
+          canManage: false,
+        },
+      }),
+    })
+    renderHook(() => useModelLoader('018f6b0e-0000-7000-8000-0000000000aa'), {
+      wrapper: wrapper(),
+    })
+    await waitFor(() => {
+      expect(useEditorStore.getState().canEdit).toBe(true)
+    })
+    expect(useEditorStore.getState().canManage).toBe(false)
+    expect(useEditorStore.getState().dialects).toEqual(['postgresql'])
   })
 })

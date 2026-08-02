@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { createCustomField, setCustomValue } from './custom-field-edits.js'
 import { CustomFieldPanel } from './custom-field-panel.js'
@@ -24,7 +25,7 @@ function renderPanel() {
   render(<CustomFieldPanel projectId={PROJECT_ID} />, { wrapper: w })
 }
 
-function loadModelWithFields() {
+function loadModelWithFields(grant = true) {
   let m = buildSampleModel()
   m = createCustomField(m, {
     id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
@@ -40,6 +41,7 @@ function loadModelWithFields() {
   })
   m = setCustomValue(m, 'column', 'c1', 'f1', 'Y')
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+  if (grant) grantEditPermission()
 }
 
 afterEach(() => { cleanup(); useEditorStore.getState().reset() })
@@ -72,6 +74,21 @@ describe('CustomFieldPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: '암호화방식 위로' }))
     const m = useEditorStore.getState().model
     expect(m.customFields['f2']!.order).toBeLessThan(m.customFields['f1']!.order)
+  })
+
+  it('편집 권한이 없으면 커스텀 항목을 열람만 할 수 있다', async () => {
+    loadModelWithFields(false)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /커스텀 항목/ }))
+
+    expect(screen.getByText('개인정보여부')).toBeInTheDocument()
+    expect(screen.getByText('암호화방식')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '항목 추가' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '개인정보여부 편집' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '개인정보여부 삭제' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '암호화방식 위로' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '암호화방식 아래로' })).toBeNull()
   })
 })
 

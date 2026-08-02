@@ -8,6 +8,7 @@ import { createEmptyModel, type ProjectModel, type Word } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
 
@@ -27,9 +28,13 @@ const mutate = vi.fn()
 vi.mock('./use-model.js', () => ({ useModelMutation: () => mutate }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
-function renderPanel(handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel) {
+function renderPanel(
+  handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel,
+  perms: { canEdit: boolean; canManage: boolean } = { canEdit: true, canManage: true },
+) {
   mockTrpcFetch(handlers)
   useEditorStore.getState().setLoaded(model, 0, PROJECT_ID)
+  grantEditPermission(perms)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   render(
@@ -235,5 +240,22 @@ describe('ResourcePanel', () => {
     expect(screen.queryByText(/자동 갱신/)).toBeNull()
     expect(screen.queryByText(/충돌/)).toBeNull()
     expect(screen.queryByText(/최신 상태/)).toBeNull()
+  })
+
+  it('편집 권한이 없으면 공용 리소스를 열람만 할 수 있다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+    }, createEmptyModel(), { canEdit: false, canManage: false })
+    await openLibrary()
+
+    expect(await screen.findByText('신규 추가 (2)')).toBeDefined()
+    expect(screen.getByText('회원')).toBeDefined()
+    // 선택·일괄·적용 액션은 전부 없다.
+    expect(screen.queryByRole('checkbox', { name: /회원/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: '모두 선택' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '모두 해제' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '적용' })).toBeNull()
+    expect(mutate).not.toHaveBeenCalled()
   })
 })

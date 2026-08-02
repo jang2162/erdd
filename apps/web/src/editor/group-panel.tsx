@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 
 export function GroupPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const groupId = useEditorStore((s) => s.selectedGroupId)!
   const selectGroup = useEditorStore((s) => s.selectGroup)
   const enterGroupView = useEditorStore((s) => s.enterGroupView)
@@ -21,10 +22,12 @@ export function GroupPanel({ projectId }: { projectId: string }) {
     <aside className="w-80 shrink-0 overflow-y-auto border-l bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold">그룹</h3>
-        <Button size="icon" variant="ghost" className="size-7 text-destructive" aria-label="그룹 삭제"
-          onClick={() => { selectGroup(null); void mutate((m) => deleteGroup(m, groupId), { summary: '그룹 삭제' }) }}>
-          <Trash2 className="size-4" />
-        </Button>
+        {canEdit && (
+          <Button size="icon" variant="ghost" className="size-7 text-destructive" aria-label="그룹 삭제"
+            onClick={() => { selectGroup(null); void mutate((m) => deleteGroup(m, groupId), { summary: '그룹 삭제' }) }}>
+            <Trash2 className="size-4" />
+          </Button>
+        )}
       </div>
       <p className="mb-4 text-xs text-muted-foreground">소속 테이블 {memberCount}개</p>
       <Button size="sm" variant="outline" className="mb-4 w-full" onClick={() => enterGroupView(groupId)}>
@@ -33,18 +36,19 @@ export function GroupPanel({ projectId }: { projectId: string }) {
       <div className="grid gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor="grp-name">이름</Label>
-          <Input id="grp-name" defaultValue={group.name} key={group.name}
+          <Input id="grp-name" defaultValue={group.name} key={group.name} readOnly={!canEdit}
             onBlur={(e) => { const name = e.target.value; if (name !== group.name && name.trim() !== '') void mutate((m) => updateGroup(m, groupId, { name })) }} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="grp-color">색상</Label>
+          {/* color input은 readOnly가 동작하지 않아(브라우저가 무시) disabled로 잠근다. */}
           <input id="grp-color" type="color" className="h-9 w-16 rounded border bg-background"
-            defaultValue={group.color} key={group.color}
+            defaultValue={group.color} key={group.color} disabled={!canEdit}
             onBlur={(e) => { const color = e.target.value; if (color !== group.color) void mutate((m) => updateGroup(m, groupId, { color })) }} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="grp-comment">설명</Label>
-          <Input id="grp-comment" defaultValue={group.comment ?? ''} key={group.comment ?? ''}
+          <Input id="grp-comment" defaultValue={group.comment ?? ''} key={group.comment ?? ''} readOnly={!canEdit}
             onBlur={(e) => { const v = e.target.value.trim() === '' ? null : e.target.value; if (v !== group.comment) void mutate((m) => updateGroup(m, groupId, { comment: v })) }} />
         </div>
       </div>
