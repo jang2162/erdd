@@ -65,7 +65,7 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
       const ghostNodes = buildGhostNodes(model, view.groupId)
       return [...ghostNodes, ...tableNodes]
     }
-    const groupNodes = buildGroupNodes(model, selectedGroupId)
+    const groupNodes = buildGroupNodes(model, selectedGroupId, canEdit)
     const noteNodes: Node[] = Object.values(model.notes).map((note) => ({
       id: note.id, type: 'note', position: note.position,
       data: {
@@ -74,7 +74,7 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     }))
     return [...groupNodes, ...tableNodes, ...noteNodes]
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, viewMode, selectedId, selectedNoteId, selectedGroupId, warnings, peerMarks, view.kind, view.kind === 'group' ? view.groupId : null])
+  }, [model, viewMode, selectedId, selectedNoteId, selectedGroupId, canEdit, warnings, peerMarks, view.kind, view.kind === 'group' ? view.groupId : null])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.

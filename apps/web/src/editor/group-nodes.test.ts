@@ -17,15 +17,19 @@ function model(): ProjectModel {
 
 describe('buildGroupNodes', () => {
   it('멤버가 있는 그룹마다 영역 노드를 만든다', () => {
-    const nodes = buildGroupNodes(model(), null)
+    const nodes = buildGroupNodes(model(), null, true)
     expect(nodes).toHaveLength(1)
     expect(nodes[0]!.id).toBe('group:G1')
     expect(nodes[0]!.type).toBe('group')
     expect(nodes[0]!.selectable).toBe(false)
     expect(nodes[0]!.draggable).toBe(true)
   })
+  it('canEdit=false면 draggable=false', () => {
+    const n = buildGroupNodes(model(), null, false)[0]!
+    expect(n.draggable).toBe(false)
+  })
   it('영역이 멤버 위치를 포함한다(좌상단은 최소 위치보다 작거나 같다)', () => {
-    const n = buildGroupNodes(model(), null)[0]!
+    const n = buildGroupNodes(model(), null, true)[0]!
     expect(n.position.x).toBeLessThanOrEqual(0)
     expect(n.position.y).toBeLessThanOrEqual(0)
     expect(typeof n.width).toBe('number')
@@ -34,10 +38,10 @@ describe('buildGroupNodes', () => {
   it('멤버가 없는 그룹은 노드를 만들지 않는다', () => {
     const m = createEmptyModel()
     m.tableGroups['G1'] = { id: 'G1', name: '빈그룹', color: '#000', comment: null }
-    expect(buildGroupNodes(m, null)).toHaveLength(0)
+    expect(buildGroupNodes(m, null, true)).toHaveLength(0)
   })
   it('selectedGroupId면 selected=true', () => {
-    const n = buildGroupNodes(model(), 'G1')[0]!
+    const n = buildGroupNodes(model(), 'G1', true)[0]!
     expect((n.data as { selected: boolean }).selected).toBe(true)
   })
 })

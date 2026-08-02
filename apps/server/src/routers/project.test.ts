@@ -119,10 +119,33 @@ describe.skipIf(!url)('project', () => {
     expect(upd.statusCode).toBe(403)
   })
 
-  it('project.get grants canEdit and canManage to the org owner', async () => {
+  it('project.get grants canEdit and canManage to the org owner (also auto-added as project admin)', async () => {
+    // project.create가 생성자를 projectMembers role='admin'으로 자동 삽입하므로(project.ts:36-40),
+    // 여기서 owner는 isOrgManager이면서 동시에 projectRole==='admin'이다 — 이 테스트는
+    // canManage = isOrgManager || projectRole === 'admin'의 어느 가지가 true를 만드는지
+    // 구분하지 못한다. 라우터 배선 회귀(전혀 허용 안 하는 경우)는 여전히 잡는다.
+    // isOrgManager 단독 경로는 아래 '프로젝트 멤버가 아닌 org admin' 테스트가 검증한다.
     const projectId = await createProject()
     const got = await get(app, 'project.get', ownerToken, { projectId })
     expect(got.statusCode).toBe(200)
+    expect(got.json().result.data.canEdit).toBe(true)
+    expect(got.json().result.data.canManage).toBe(true)
+  })
+
+  it('org admin who is not a project member still gets canEdit/canManage via isOrgManager alone', async () => {
+    // project.create가 생성자만 project admin으로 넣으므로, org admin을 새로 만들어 프로젝트에는
+    // 추가하지 않으면 projectRole은 undefined로 남는다. 이 상태에서 canEdit/canManage가 true라면
+    // isOrgManager 가지 하나만으로 만들어진 것이다(projectRole===undefined이므로 다른 가지는
+    // 전부 false).
+    const projectId = await createProject()
+    await createAccount(app.db!, { email: 'a@test.dev', name: '조직관리자', password: 'password-a', role: 'user' })
+    const adminToken = await loginAs(app, 'a@test.dev', 'password-a')
+    await post(app, 'org.members.add', ownerToken, { orgId, email: 'a@test.dev', role: 'admin' })
+
+    const got = await get(app, 'project.get', adminToken, { projectId })
+    expect(got.statusCode).toBe(200)
+    expect(got.json().result.data.myRole).toBeNull()
+    expect(got.json().result.data.myOrgRole).toBe('admin')
     expect(got.json().result.data.canEdit).toBe(true)
     expect(got.json().result.data.canManage).toBe(true)
   })

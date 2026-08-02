@@ -104,6 +104,15 @@ describe('Canvas — 읽기 전용 잠금', () => {
     expect(node.className).not.toMatch(/(^|\s)draggable(\s|$)/)
     expect(node.className).not.toMatch(/(^|\s)nopan(\s|$)/)
 
+    // 그룹(색상 영역) 노드는 buildGroupNodes가 draggable:true를 명시하므로 nodesDraggable=false여도
+    // React Flow가 그 값을 그대로 존중해 계속 드래그 가능해지는 결함이 있었다(NodeWrapper의
+    // isDraggable = node.draggable || (nodesDraggable && node.draggable === undefined) —
+    // 노드가 draggable을 명시하면 캔버스 전역 nodesDraggable을 무시한다). 그룹 노드에도
+    // draggable/nopan 클래스가 없어야 한다.
+    const groupNode = screen.getByTestId('rf__node-group:g1')
+    expect(groupNode.className).not.toMatch(/(^|\s)draggable(\s|$)/)
+    expect(groupNode.className).not.toMatch(/(^|\s)nopan(\s|$)/)
+
     // 핸들 수준 연결 가능 여부: React Flow는 Handle의 isConnectable prop이 true일 때만
     // 'connectable' 클래스 토큰을 붙인다(HandleComponent가 cc()로 `{ connectable: isConnectable }`
     // 을 넣어 계산 — @xyflow/react dist/esm/index.mjs). 'connectablestart'/'connectableend'는
@@ -143,6 +152,11 @@ describe('Canvas — 읽기 전용 잠금', () => {
     const node = screen.getByTestId('rf__node-t1')
     expect(node.className).toMatch(/(^|\s)draggable(\s|$)/)
     expect(node.className).toMatch(/(^|\s)nopan(\s|$)/)
+
+    // 대조군: 편집 가능하면 그룹 노드도 draggable/nopan이 있다.
+    const groupNode = screen.getByTestId('rf__node-group:g1')
+    expect(groupNode.className).toMatch(/(^|\s)draggable(\s|$)/)
+    expect(groupNode.className).toMatch(/(^|\s)nopan(\s|$)/)
 
     // 대조군: 편집 권한이 있으면 핸들도 실제로 연결 가능 상태(class="connectable")로 렌더된다.
     const handles = node.querySelectorAll('.react-flow__handle')
