@@ -53,11 +53,14 @@ describe('useModelMutation', () => {
 
   it('is a no-op when the producer changes nothing', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     const fetchMock = mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
       wrapper: wrapper(),
     })
-    await act(async () => { await result.current((m) => m) })
+    let outcome: string | undefined
+    await act(async () => { outcome = await result.current((m) => m) })
+    expect(outcome).toBe('noop')
     expect(fetchMock).not.toHaveBeenCalled()
     expect(useEditorStore.getState().seq).toBe(1)
   })
