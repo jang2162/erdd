@@ -27,6 +27,7 @@ function SnapshotRow({
   const trpc = useTRPC()
   const queryClient = useQueryClient()
   const setLoaded = useEditorStore((s) => s.setLoaded)
+  const canManage = useEditorStore((s) => s.canManage)
   const [expanded, setExpanded] = useState(false)
 
   const invalidateList = () =>
@@ -80,17 +81,19 @@ function SnapshotRow({
             {item.description || '설명 없음'} · rev {item.revisionSeq} · {formatCreatedAt(item.createdAt)}
           </span>
         </button>
-        <div className="flex shrink-0 gap-2">
-          <Button type="button" size="sm" variant="outline" disabled={restore.isPending} onClick={onRestore}>
-            복원
-          </Button>
-          <Button
-            type="button" size="sm" variant="outline" className="text-destructive"
-            disabled={del.isPending} onClick={onDelete}
-          >
-            삭제
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex shrink-0 gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={restore.isPending} onClick={onRestore}>
+              복원
+            </Button>
+            <Button
+              type="button" size="sm" variant="outline" className="text-destructive"
+              disabled={del.isPending} onClick={onDelete}
+            >
+              삭제
+            </Button>
+          </div>
+        )}
       </div>
       {expanded && (
         <div className="mt-2 rounded-md bg-muted p-2 text-xs">
@@ -117,6 +120,7 @@ function SnapshotRow({
 function SnapshotSection({ projectId, onRestored }: { projectId: string; onRestored: () => void }) {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
+  const canEdit = useEditorStore((s) => s.canEdit)
   const [name, setName] = useState('')
   const list = useQuery(trpc.snapshot.list.queryOptions({ projectId }))
 
@@ -139,18 +143,20 @@ function SnapshotSection({ projectId, onRestored }: { projectId: string; onResto
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-end gap-2">
-        <div className="grid flex-1 gap-2">
-          <Label htmlFor="snap-name">이름</Label>
-          <Input
-            id="snap-name" value={name} placeholder="예: 배포 전 백업"
-            onChange={(e) => setName(e.target.value)}
-          />
+      {canEdit && (
+        <div className="flex items-end gap-2">
+          <div className="grid flex-1 gap-2">
+            <Label htmlFor="snap-name">이름</Label>
+            <Input
+              id="snap-name" value={name} placeholder="예: 배포 전 백업"
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <Button type="button" disabled={create.isPending || name.trim() === ''} onClick={onCreate}>
+            스냅샷 만들기
+          </Button>
         </div>
-        <Button type="button" disabled={create.isPending || name.trim() === ''} onClick={onCreate}>
-          스냅샷 만들기
-        </Button>
-      </div>
+      )}
 
       <div className="grid max-h-96 gap-2 overflow-y-auto">
         {list.isError && <p role="alert" className="text-sm text-destructive">{list.error.message}</p>}
