@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { grantEditPermission } from '@/testing/editor-store'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { useEditorStore } from './store.js'
 import { createDomain } from './domain-edits.js'
@@ -36,6 +37,7 @@ describe('EditPanel', () => {
   it('edits the table physical name and sends a mutation', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     useEditorStore.getState().select('t2')
     renderPanel()
     const input = screen.getByLabelText('테이블 물리명') as HTMLInputElement
@@ -48,6 +50,7 @@ describe('EditPanel', () => {
   it('adds a column via the add button', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     useEditorStore.getState().select('t1')
     renderPanel()
     const before = Object.values(useEditorStore.getState().model.columns)
@@ -69,6 +72,7 @@ describe('EditPanel', () => {
       defaultValue: null, allowedValues: [], description: null, origin: null,
     })
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
     renderPanel()
     expect((screen.getByLabelText('타입') as HTMLInputElement)).toBeEnabled()
@@ -92,6 +96,7 @@ describe('EditPanel', () => {
       columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: '' } },
     }
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
     renderPanel()
     const logicalInputs = screen.getAllByLabelText('논리명') // [0] 테이블, [1] 컬럼
@@ -113,6 +118,7 @@ describe('EditPanel', () => {
       columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: 'KEEP_ME' } },
     }
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     useEditorStore.getState().select('t1')
     renderPanel()
     const logicalInputs = screen.getAllByLabelText('논리명')
@@ -134,6 +140,7 @@ describe('EditPanel', () => {
     })
     m = { ...m, columns: { ...m.columns, c1: { ...m.columns['c1']!, domainId: 'd2' } } }
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     useEditorStore.getState().select('t1')
     renderPanel()
     expect(screen.getByLabelText('타입')).toBeDisabled()
@@ -155,6 +162,7 @@ describe('EditPanel', () => {
       options: [], required: false, defaultValue: null, origin: null,
     })
     useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
     useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
     renderPanel()
     await userEvent.click(screen.getByLabelText('개인정보여부'))

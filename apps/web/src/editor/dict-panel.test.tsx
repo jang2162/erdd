@@ -11,6 +11,7 @@ import { useEditorStore } from './store.js'
 import { createWord, createTerm } from './dict-edits.js'
 import { DictPanel } from './dict-panel.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { grantEditPermission } from '@/testing/editor-store'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000bb'
 
@@ -37,6 +38,7 @@ function loadModelWithDict() {
     origin: null,
   })
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+  grantEditPermission()
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })

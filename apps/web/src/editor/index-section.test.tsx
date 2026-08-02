@@ -8,6 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { IndexSection } from './index-section.js'
 
@@ -40,6 +41,7 @@ describe('IndexSection', () => {
   it('creates an index on the table via the add button', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection('t1')
 
     expect(screen.getByText('인덱스가 없습니다.')).toBeInTheDocument()
@@ -55,6 +57,7 @@ describe('IndexSection', () => {
   it('two rapid adds get distinct names (IX_1, IX_2), not a duplicate', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection('t1')
 
     const addButton = screen.getByRole('button', { name: '인덱스 추가' })
@@ -75,6 +78,7 @@ describe('IndexSection', () => {
   it('toggles a member column direction between asc and desc', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection('t2')
 
     await userEvent.click(screen.getByRole('button', { name: 'ASC' }))

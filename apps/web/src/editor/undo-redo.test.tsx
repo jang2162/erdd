@@ -7,6 +7,7 @@ import { createEmptyModel } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { useModelMutation, useUndoRedo } from './use-model.js'
 
@@ -99,6 +100,7 @@ describe('useUndoRedo (훅 통합)', () => {
     }
     const model = { ...createEmptyModel(), tables: { [TABLE.id]: TABLE } }
     useEditorStore.getState().setLoaded(model, 3, projectId)
+    grantEditPermission()
     useEditorStore.getState().recordEdit([{ action: 'create', entity: 'table', entityId: TABLE.id, data: TABLE }])
 
     mockTrpcFetch({

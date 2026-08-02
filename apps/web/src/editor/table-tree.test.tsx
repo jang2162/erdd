@@ -8,6 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { TableTree } from './table-tree.js'
 
@@ -69,6 +70,7 @@ describe('TableTree', () => {
   it('creates a new group with a generated name/color and selects it via the add-group button', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderTree()
     await userEvent.click(screen.getByRole('button', { name: '그룹 추가' }))
     await waitFor(() => {
@@ -92,6 +94,7 @@ describe('TableTree', () => {
       Object.entries(model.tables).map(([id, t]) => [id, { ...t, groupId: null }]),
     )
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
     renderTree()
     await userEvent.click(screen.getByRole('button', { name: '그룹 추가' }))
     await waitFor(() => {

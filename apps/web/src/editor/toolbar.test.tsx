@@ -9,6 +9,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { Toolbar } from './toolbar.js'
 
@@ -34,6 +35,7 @@ describe('Toolbar', () => {
   it('그룹 뷰에서 "테이블 추가"로 만든 테이블을 활성 그룹에 배정한다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     useEditorStore.getState().enterGroupView('g1')
     renderToolbar()
 

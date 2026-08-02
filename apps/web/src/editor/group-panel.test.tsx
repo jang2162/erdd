@@ -8,6 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { GroupPanel } from './group-panel.js'
 
@@ -39,6 +40,7 @@ describe('GroupPanel', () => {
   it('deletes the group and clears selection when the delete button is clicked', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     useEditorStore.getState().selectGroup('g1')
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: '그룹 삭제' }))

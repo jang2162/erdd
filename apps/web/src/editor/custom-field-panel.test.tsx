@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { createCustomField, setCustomValue } from './custom-field-edits.js'
 import { CustomFieldPanel } from './custom-field-panel.js'
@@ -40,6 +41,7 @@ function loadModelWithFields() {
   })
   m = setCustomValue(m, 'column', 'c1', 'f1', 'Y')
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+  grantEditPermission()
 }
 
 afterEach(() => { cleanup(); useEditorStore.getState().reset() })

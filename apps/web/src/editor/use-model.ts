@@ -66,6 +66,14 @@ function useSubmit(projectId: string) {
       // mutation은 직렬화로 지연 실행될 수 있다. 프로젝트가 전환된 뒤 큐에 남은 producer가
       // 새 프로젝트의 모델을 읽거나(옛 프로젝트로 전송) 새 프로젝트 상태를 오염시키는 것을 막는다.
       if (useEditorStore.getState().loadedProjectId !== projectId) return 'error'
+      // 편집 권한이 없으면 서버 왕복도 낙관적 적용도 하지 않는다. 서버가 이미 'edit' 게이트로
+      // 막지만, 여기서 끊어야 낙관적 적용 → FORBIDDEN → resync 롤백으로 화면이 튀지 않는다.
+      // ⚠️ 이 가드는 useSubmit 전용이다. serializeMutation이나 use-realtime에 넣으면 수신 op까지
+      // 막혀 Viewer의 실시간 화면이 얼어붙는다(Viewer도 수신·presence는 정상 동작해야 한다).
+      if (!useEditorStore.getState().canEdit) {
+        toast.error('이 프로젝트에 대한 편집 권한이 없습니다')
+        return 'error'
+      }
       const store = useEditorStore.getState()
       const current = store.model
       let next: ProjectModel
