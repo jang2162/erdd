@@ -26,6 +26,7 @@ function groupByCategory(domains: Domain[]): [string, Domain[]][] {
 /** 헤더의 "도메인": 공통 컬럼 도메인(타입·기본값·허용값 재사용 단위)의 목록·추가·편집·삭제. */
 export function DomainPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Domain | null>(null)
@@ -48,7 +49,7 @@ export function DomainPanel({ projectId }: { projectId: string }) {
           <DialogHeader><DialogTitle>도메인</DialogTitle></DialogHeader>
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">공통 컬럼 타입·기본값·허용값을 재사용 단위로 관리합니다</p>
-            <Button size="sm" onClick={onAdd}><Plus /> 도메인 추가</Button>
+            {canEdit && <Button size="sm" onClick={onAdd}><Plus /> 도메인 추가</Button>}
           </div>
           <div className="grid max-h-96 gap-4 overflow-y-auto">
             {domains.length === 0 && <p className="text-sm text-muted-foreground">아직 도메인이 없습니다</p>}
@@ -66,19 +67,23 @@ export function DomainPanel({ projectId }: { projectId: string }) {
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                           {usage > 0 && <span className="text-xs text-muted-foreground">사용처 {usage}개</span>}
-                          <Button
-                            size="icon" variant="ghost" className="size-7" aria-label={`${d.name} 편집`}
-                            onClick={() => onEdit(d)}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            size="icon" variant="ghost" className="size-7 text-destructive"
-                            aria-label={`${d.name} 삭제`} disabled={usage > 0}
-                            onClick={() => onRemove(d.id)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
+                          {canEdit && (
+                            <>
+                              <Button
+                                size="icon" variant="ghost" className="size-7" aria-label={`${d.name} 편집`}
+                                onClick={() => onEdit(d)}
+                              >
+                                <Pencil className="size-4" />
+                              </Button>
+                              <Button
+                                size="icon" variant="ghost" className="size-7 text-destructive"
+                                aria-label={`${d.name} 삭제`} disabled={usage > 0}
+                                onClick={() => onRemove(d.id)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </li>
                     )

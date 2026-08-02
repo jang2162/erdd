@@ -16,6 +16,7 @@ const TYPE_LABEL = { text: '텍스트', boolean: '불리언', select: '선택형
 /** 헤더의 "커스텀 항목": 테이블/컬럼에 붙는 조직·프로젝트 고유 메타 항목의 정의를 관리한다. */
 export function CustomFieldPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<CustomField | null>(null)
@@ -48,7 +49,7 @@ export function CustomFieldPanel({ projectId }: { projectId: string }) {
             <p className="text-sm text-muted-foreground">
               테이블·컬럼에 프로젝트 고유의 관리 항목을 정의합니다
             </p>
-            <Button size="sm" onClick={onAdd}><Plus /> 항목 추가</Button>
+            {canEdit && <Button size="sm" onClick={onAdd}><Plus /> 항목 추가</Button>}
           </div>
           <div className="grid max-h-96 gap-4 overflow-y-auto">
             {(['table', 'column'] as const).map((target) => {
@@ -81,24 +82,28 @@ export function CustomFieldPanel({ projectId }: { projectId: string }) {
                             {used > 0 && (
                               <span className="mr-1 text-xs text-muted-foreground">값 {used}건</span>
                             )}
-                            <Button size="icon" variant="ghost" className="size-7"
-                              aria-label={`${f.name} 위로`} disabled={i === 0}
-                              onClick={() => onMove(f.id, -1)}>
-                              <ChevronUp className="size-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="size-7"
-                              aria-label={`${f.name} 아래로`} disabled={i === fields.length - 1}
-                              onClick={() => onMove(f.id, 1)}>
-                              <ChevronDown className="size-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="size-7"
-                              aria-label={`${f.name} 편집`} onClick={() => onEdit(f)}>
-                              <Pencil className="size-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="size-7 text-destructive"
-                              aria-label={`${f.name} 삭제`} onClick={() => onRemove(f)}>
-                              <Trash2 className="size-4" />
-                            </Button>
+                            {canEdit && (
+                              <>
+                                <Button size="icon" variant="ghost" className="size-7"
+                                  aria-label={`${f.name} 위로`} disabled={i === 0}
+                                  onClick={() => onMove(f.id, -1)}>
+                                  <ChevronUp className="size-4" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="size-7"
+                                  aria-label={`${f.name} 아래로`} disabled={i === fields.length - 1}
+                                  onClick={() => onMove(f.id, 1)}>
+                                  <ChevronDown className="size-4" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="size-7"
+                                  aria-label={`${f.name} 편집`} onClick={() => onEdit(f)}>
+                                  <Pencil className="size-4" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="size-7 text-destructive"
+                                  aria-label={`${f.name} 삭제`} onClick={() => onRemove(f)}>
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </li>
                       )

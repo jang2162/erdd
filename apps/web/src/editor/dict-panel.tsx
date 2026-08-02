@@ -22,6 +22,7 @@ type Section = 'words' | 'terms' | 'unregistered' | 'import'
 /** 헤더의 "사전": 물리명 자동 생성에 쓰이는 단어·용어 사전의 목록·추가·편집·삭제, 사용처, 미등록 단어 모아보기. */
 export function DictPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
+  const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
   const [open, setOpen] = useState(false)
   const [section, setSection] = useState<Section>('words')
@@ -84,7 +85,7 @@ export function DictPanel({ projectId }: { projectId: string }) {
                 <p className="text-sm text-muted-foreground">
                   단어의 표준 약어를 등록해 물리명 자동 생성에 사용합니다
                 </p>
-                <Button size="sm" onClick={onAddWord}><Plus /> 단어 추가</Button>
+                {canEdit && <Button size="sm" onClick={onAddWord}><Plus /> 단어 추가</Button>}
               </div>
               <ul className="grid max-h-96 gap-2 overflow-y-auto">
                 {words.length === 0 && <p className="text-sm text-muted-foreground">아직 단어가 없습니다</p>}
@@ -100,19 +101,23 @@ export function DictPanel({ projectId }: { projectId: string }) {
                         {usage.length > 0 && (
                           <span className="text-xs text-muted-foreground">사용처 {usage.length}개</span>
                         )}
-                        <Button
-                          size="icon" variant="ghost" className="size-7" aria-label={`${w.logicalName} 편집`}
-                          onClick={() => onEditWord(w)}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          size="icon" variant="ghost" className="size-7 text-destructive"
-                          aria-label={`${w.logicalName} 삭제`}
-                          onClick={() => onRemoveWord(w.id)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <>
+                            <Button
+                              size="icon" variant="ghost" className="size-7" aria-label={`${w.logicalName} 편집`}
+                              onClick={() => onEditWord(w)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                            <Button
+                              size="icon" variant="ghost" className="size-7 text-destructive"
+                              aria-label={`${w.logicalName} 삭제`}
+                              onClick={() => onRemoveWord(w.id)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </li>
                   )
@@ -127,7 +132,7 @@ export function DictPanel({ projectId }: { projectId: string }) {
                 <p className="text-sm text-muted-foreground">
                   논리명 전체가 완전일치할 때 우선 적용되는 표준 물리명을 관리합니다
                 </p>
-                <Button size="sm" onClick={onAddTerm}><Plus /> 용어 추가</Button>
+                {canEdit && <Button size="sm" onClick={onAddTerm}><Plus /> 용어 추가</Button>}
               </div>
               <ul className="grid max-h-96 gap-2 overflow-y-auto">
                 {terms.length === 0 && <p className="text-sm text-muted-foreground">아직 용어가 없습니다</p>}
@@ -143,19 +148,23 @@ export function DictPanel({ projectId }: { projectId: string }) {
                         {usage.length > 0 && (
                           <span className="text-xs text-muted-foreground">사용처 {usage.length}개</span>
                         )}
-                        <Button
-                          size="icon" variant="ghost" className="size-7" aria-label={`${t.logicalName} 편집`}
-                          onClick={() => onEditTerm(t)}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          size="icon" variant="ghost" className="size-7 text-destructive"
-                          aria-label={`${t.logicalName} 삭제`}
-                          onClick={() => onRemoveTerm(t.id)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <>
+                            <Button
+                              size="icon" variant="ghost" className="size-7" aria-label={`${t.logicalName} 편집`}
+                              onClick={() => onEditTerm(t)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                            <Button
+                              size="icon" variant="ghost" className="size-7 text-destructive"
+                              aria-label={`${t.logicalName} 삭제`}
+                              onClick={() => onRemoveTerm(t.id)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </li>
                   )
@@ -164,7 +173,9 @@ export function DictPanel({ projectId }: { projectId: string }) {
             </div>
           )}
 
-          {section === 'unregistered' && <UnregisteredWordsSection projectId={projectId} candidates={candidates} />}
+          {section === 'unregistered' && (
+            <UnregisteredWordsSection projectId={projectId} candidates={candidates} canEdit={canEdit} />
+          )}
           {section === 'import' && <DictImportSection projectId={projectId} />}
         </DialogContent>
       </Dialog>
@@ -188,7 +199,9 @@ export function DictPanel({ projectId }: { projectId: string }) {
  * 테이블·컬럼 논리명 분해 중 사전에 없는 단어(후보) 목록을 보여주고, 약어를 입력한 후보들을
  * 단일 mutation으로 일괄 createWord 등록한다. 등록되면 다음 렌더에서 후보 목록에서 자연히 빠진다.
  */
-function UnregisteredWordsSection({ projectId, candidates }: { projectId: string; candidates: string[] }) {
+function UnregisteredWordsSection(
+  { projectId, candidates, canEdit }: { projectId: string; candidates: string[]; canEdit: boolean },
+) {
   const mutate = useModelMutation(projectId)
   const [abbrByCandidate, setAbbrByCandidate] = useState<Record<string, string>>({})
 
@@ -230,20 +243,24 @@ function UnregisteredWordsSection({ projectId, candidates }: { projectId: string
                 {candidates.map((candidate) => (
                   <li key={candidate} className="flex items-center gap-2 rounded-md border p-2">
                     <span className="flex-1 font-medium">{candidate}</span>
-                    <Input
-                      aria-label={`${candidate} 약어`} placeholder="약어" className="w-32 font-mono"
-                      value={abbrByCandidate[candidate] ?? ''}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        onAbbreviationChange(candidate, value)
-                      }}
-                    />
+                    {canEdit && (
+                      <Input
+                        aria-label={`${candidate} 약어`} placeholder="약어" className="w-32 font-mono"
+                        value={abbrByCandidate[candidate] ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          onAbbreviationChange(candidate, value)
+                        }}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>
-              <div className="flex justify-end">
-                <Button size="sm" onClick={onBulkRegister}><Plus /> 일괄 등록</Button>
-              </div>
+              {canEdit && (
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={onBulkRegister}><Plus /> 일괄 등록</Button>
+                </div>
+              )}
             </>
           )}
     </div>

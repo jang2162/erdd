@@ -8,6 +8,7 @@ import type { SheetData } from '@erdd/core'
 import { MAX_OPS_PER_MUTATION, createEmptyModel } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
+import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { buildWorkbookBlob } from './excel-file.js'
 import type { ModelMutationResult } from './use-model.js'
@@ -55,6 +56,7 @@ const fileInput = () => screen.getByLabelText('Excel 파일 선택')
 /** 단어 1건짜리 파일을 올려 미리보기가 뜬 상태까지 만든다. */
 async function uploadOneWord(): Promise<void> {
   useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+  grantEditPermission()
   renderSection()
   await userEvent.upload(fileInput(), await xlsxFile([wordsSheet([['주문', 'ORD', '', '']])]))
   await waitFor(() => expect(importButton()).toBeEnabled())
@@ -73,6 +75,7 @@ afterEach(() => {
 describe('DictImportSection', () => {
   it('파일을 고르면 신규·중복·오류 건수를 보여준다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const file = await xlsxFile([wordsSheet([['주문', 'ORD', '', ''], ['', '', '', 'x']])])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), file)
@@ -85,6 +88,7 @@ describe('DictImportSection', () => {
 
   it('이슈 목록에 시트 이름과 사유를 보여준다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const file = await xlsxFile([wordsSheet([['', 'ORD', '', 'x']])])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), file)
@@ -95,6 +99,7 @@ describe('DictImportSection', () => {
 
   it('시트별로 인식한 컬럼을 보여준다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const file = await xlsxFile([wordsSheet([['주문', 'ORD']], ['논리명', '약어'])])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), file)
@@ -104,6 +109,7 @@ describe('DictImportSection', () => {
 
   it('파일을 읽은 뒤 input 값을 비워 같은 파일 재선택이 동작한다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const input = screen.getByLabelText('Excel 파일 선택') as HTMLInputElement
     await userEvent.upload(input, await xlsxFile([wordsSheet([['주문', 'ORD', '', '']])]))
@@ -113,6 +119,7 @@ describe('DictImportSection', () => {
 
   it('가져오기 버튼이 mutate를 한 번 호출한다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const file = await xlsxFile([wordsSheet([['주문', 'ORD', '', '']])])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), file)
@@ -123,6 +130,7 @@ describe('DictImportSection', () => {
 
   it('mutate가 성공해야 완료 토스트를 띄우고 미리보기를 치운다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const file = await xlsxFile([wordsSheet([['주문', 'ORD', '', '']])])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), file)
@@ -135,6 +143,7 @@ describe('DictImportSection', () => {
 
   it('mutate가 실패하면 완료 토스트 없이 미리보기를 남긴다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const file = await xlsxFile([wordsSheet([['주문', 'ORD', '', '']])])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), file)
@@ -211,6 +220,7 @@ describe('DictImportSection', () => {
 
   it('서버 op 한도를 넘으면 가져오기를 막고 파일 분할을 안내한다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const rows = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, (_, i) => [`단어${i}`, `W${i}`, '', ''])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), await xlsxFile([wordsSheet(rows)]))
@@ -226,6 +236,7 @@ describe('DictImportSection', () => {
 
   it('중복 처리 라디오를 덮어쓰기로 바꿀 수 있다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     const file = await xlsxFile([wordsSheet([['주문', 'ORD', '', '']])])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), file)
@@ -236,7 +247,17 @@ describe('DictImportSection', () => {
 
   it('양식 다운로드 버튼이 있다', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderSection()
     expect(screen.getByRole('button', { name: /양식 다운로드/ })).toBeInTheDocument()
+  })
+
+  it('편집 권한이 없으면 양식 다운로드만 남고 업로드·적용은 숨겨진다', () => {
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderSection()
+    expect(screen.getByRole('button', { name: /양식 다운로드/ })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Excel 파일 선택')).toBeNull()
+    expect(screen.queryByRole('button', { name: '가져오기 실행' })).toBeNull()
   })
 })

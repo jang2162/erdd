@@ -26,7 +26,7 @@ function renderPanel() {
   render(<DictPanel projectId={PROJECT_ID} />, { wrapper: w })
 }
 
-function loadModelWithDict() {
+function loadModelWithDict(grant = true) {
   // buildSampleModel의 t2 테이블 논리명은 "회원", c2/c3/c4 컬럼 논리명은 "회원번호"/"회원명"/"등급코드".
   let m = buildSampleModel()
   m = createWord(m, {
@@ -38,7 +38,7 @@ function loadModelWithDict() {
     origin: null,
   })
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
-  grantEditPermission()
+  if (grant) grantEditPermission()
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
@@ -95,6 +95,39 @@ describe('DictPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /사전/ }))
     await userEvent.click(screen.getByRole('button', { name: '단어 추가' }))
     expect(screen.getByLabelText('영문명')).toBeInTheDocument()
+  })
+
+  it('편집 권한이 없으면 사전을 열람만 할 수 있다', async () => {
+    loadModelWithDict(false)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+
+    // 목록은 그대로 보인다.
+    expect(screen.getByText('단어·용어 사전')).toBeInTheDocument()
+    expect(screen.getByText('회원')).toBeInTheDocument()
+    // 단어 탭의 편집 액션은 없다.
+    expect(screen.queryByRole('button', { name: '단어 추가' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '회원 편집' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '회원 삭제' })).toBeNull()
+
+    // 용어 탭도 마찬가지다.
+    await userEvent.click(screen.getByRole('button', { name: '용어' }))
+    expect(screen.getByText('등급코드')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '용어 추가' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '등급코드 편집' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '등급코드 삭제' })).toBeNull()
+
+    // 미등록 단어 탭은 후보는 보이되 등록 입력·버튼은 없다.
+    await userEvent.click(screen.getByRole('button', { name: /미등록 단어/ }))
+    expect(screen.getByText('명')).toBeInTheDocument()
+    expect(screen.queryByLabelText('명 약어')).toBeNull()
+    expect(screen.queryByRole('button', { name: '일괄 등록' })).toBeNull()
+
+    // 가져오기 탭은 양식 다운로드만 남고 업로드는 숨는다.
+    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
+    expect(screen.getByRole('button', { name: /양식 다운로드/ })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Excel 파일 선택')).toBeNull()
   })
 })
 
