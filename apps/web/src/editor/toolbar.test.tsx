@@ -51,6 +51,7 @@ describe('Toolbar', () => {
 
   it('그룹 뷰에서는 "메모" 버튼이 비활성화된다', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     useEditorStore.getState().enterGroupView('g1')
     renderToolbar()
 
@@ -59,8 +60,32 @@ describe('Toolbar', () => {
 
   it('전체 뷰에서는 "메모" 버튼이 활성화된다', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
     renderToolbar()
 
     expect(screen.getByRole('button', { name: /메모/ })).toBeEnabled()
+  })
+
+  it('편집 권한이 없으면 편집 버튼 대신 읽기 전용 배지를 보여준다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderToolbar()
+
+    expect(screen.getByText('읽기 전용')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /테이블 추가/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /메모/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /자동 정렬/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /삭제/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: '실행 취소' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '다시 실행' })).toBeNull()
+  })
+
+  it('편집 권한이 있으면 읽기 전용 배지가 없다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderToolbar()
+
+    expect(screen.queryByText('읽기 전용')).toBeNull()
+    expect(screen.getByRole('button', { name: /테이블 추가/ })).toBeInTheDocument()
   })
 })
