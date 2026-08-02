@@ -15,13 +15,14 @@ const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000bb'
 const SELF_USER_ID = '018f6b0e-0000-7000-8000-0000000000cc'
 
 /*
- * `nodesDraggable`/`deleteKeyCode`는 실제 렌더된 노드 클래스·키보드 상호작용으로 관찰할 수 있다.
- * 하지만 `nodesConnectable`은 TableNode의 <Handle>이 isConnectable을 전달받지 않아
- * (table-node.tsx가 그 prop을 데이터로만 두고 Handle에 넘기지 않음 — 이 태스크 범위 밖의 별개
- * 배선 문제라 프로덕션 코드는 건드리지 않는다) DOM에서 canEdit 여부에 따라 전혀 달라지지 않는다.
- * 그래서 Canvas가 ReactFlow에 실제로 넘기는 리터럴 props도 함께 캡처해 세 가지 모두를 직접
- * 단언한다. 캡처 wrapper는 진짜 ReactFlow에 위임하므로 나머지 렌더·상호작용은 실제 그대로다
- * (mock으로 인한 손실이 없다 — nodesDraggable/deleteKeyCode의 실동작 검증은 그대로 유지된다).
+ * `nodesDraggable`/`deleteKeyCode`/`nodesConnectable`은 모두 실제 렌더된 노드 클래스·키보드
+ * 상호작용·핸들 DOM으로 관찰할 수 있다(nodesConnectable은 TableNode/GhostNode가 isConnectable
+ * prop을 <Handle>에 전달하도록 고친 뒤부터 — 이전에는 그 배선이 없어 핸들이 canEdit과 무관하게
+ * 항상 연결 가능했다. 아래 '핸들 수준 연결 가능 여부' 단언 참조).
+ * 그와 별개로 Canvas가 ReactFlow에 실제로 넘기는 리터럴 props도 캡처해 세 가지를 직접 단언한다
+ * — 이는 "React Flow 자체가 그 값으로 무엇을 하는가"와 무관하게 "Canvas가 옳은 값을 넘겼는가"를
+ * 독립적으로 검증하는 보강 신호다. 캡처 wrapper는 진짜 ReactFlow에 위임하므로 나머지 렌더·상호
+ * 작용은 실제 그대로다(mock으로 인한 손실이 없다).
  */
 const { capturedProps } = vi.hoisted(() => ({ capturedProps: [] as Record<string, unknown>[] }))
 
@@ -103,6 +104,18 @@ describe('Canvas — 읽기 전용 잠금', () => {
     expect(node.className).not.toMatch(/(^|\s)draggable(\s|$)/)
     expect(node.className).not.toMatch(/(^|\s)nopan(\s|$)/)
 
+    // 핸들 수준 연결 가능 여부: React Flow는 Handle의 isConnectable prop이 true일 때만
+    // 'connectable' 클래스 토큰을 붙인다(HandleComponent가 cc()로 `{ connectable: isConnectable }`
+    // 을 넣어 계산 — @xyflow/react dist/esm/index.mjs). 'connectablestart'/'connectableend'는
+    // isConnectableStart/End(별개 prop, 항상 기본 true)에서 오므로 이름이 겹치지 않는 정확한
+    // 토큰 매치가 필요하다. TableNode가 isConnectable을 <Handle>에 전달하지 않으면 이 값은
+    // canEdit과 무관하게 항상 true로 남아 아래 두 단언 중 하나가 실패한다.
+    const handles = node.querySelectorAll('.react-flow__handle')
+    expect(handles.length).toBeGreaterThan(0)
+    for (const h of handles) {
+      expect(h.className).not.toMatch(/(^|\s)connectable(\s|$)/)
+    }
+
     // 조회(선택)는 그대로 된다: 클릭하면 선택 링이 표시된다.
     fireEvent.click(node)
     expect(node.querySelector('.ring-2')).not.toBeNull()
@@ -130,6 +143,13 @@ describe('Canvas — 읽기 전용 잠금', () => {
     const node = screen.getByTestId('rf__node-t1')
     expect(node.className).toMatch(/(^|\s)draggable(\s|$)/)
     expect(node.className).toMatch(/(^|\s)nopan(\s|$)/)
+
+    // 대조군: 편집 권한이 있으면 핸들도 실제로 연결 가능 상태(class="connectable")로 렌더된다.
+    const handles = node.querySelectorAll('.react-flow__handle')
+    expect(handles.length).toBeGreaterThan(0)
+    for (const h of handles) {
+      expect(h.className).toMatch(/(^|\s)connectable(\s|$)/)
+    }
 
     // 대조군: 클릭으로도 여전히 선택(조회)된다.
     fireEvent.click(node)
