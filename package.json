@@ -7,6 +7,6 @@
     "dev": "pnpm --parallel -r dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "verify": "pnpm -r typecheck && pnpm -C packages/core test && pnpm -C apps/web test && pnpm -C apps/server test"
+    "verify": "pnpm -r typecheck && pnpm -C packages/core test && pnpm -C packages/cli test && pnpm -C apps/web test && pnpm -C apps/server test"
   }
 }
