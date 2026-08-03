@@ -401,6 +401,20 @@ function parseCreateTable(
     }
   }
 
+  // MySQL은 테이블 코멘트를 닫는 괄호 뒤 꼬리 절로 낸다: ) ENGINE=InnoDB COMMENT='회원'
+  // 'COMMENT' 뒤의 = 는 있을 수도 없을 수도 있다. 위치는 마스킹본에서 찾아 ENGINE=...
+  // 문자열 값이나 다른 꼬리 절 안의 우연한 'COMMENT' 텍스트에 속지 않는다(이 파일의 기존
+  // 관례 — parseColumnDef·인라인 REFERENCES와 동일한 방식). group.tail만 보므로 컬럼 정의
+  // 안의 인라인 COMMENT(테이블 코멘트가 아니라 컬럼 코멘트)는 여기 들어오지 않는다.
+  // 마스킹은 리터럴 내용뿐 아니라 여는/닫는 따옴표까지 자리표시로 덮으므로(maskStringLiterals
+  // 참고) 따옴표를 포함해 찾으면 안 된다 — 키워드까지만 마스킹본에서 찾고 값은 원본에서 잘라낸다.
+  const tailScan = maskStringLiterals(group.tail)
+  const cIdx = tailScan.search(/\bCOMMENT\b/i)
+  if (cIdx >= 0) {
+    const m = /^COMMENT\s*=?\s*'((?:[^']|'')*)'/is.exec(group.tail.slice(cIdx))
+    if (m) out.comments.push({ table, column: null, text: m[1]!.replace(/''/g, "'") })
+  }
+
   out.tables.push({ name: table, columns })
   return true
 }

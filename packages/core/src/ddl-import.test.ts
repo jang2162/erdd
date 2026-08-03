@@ -195,22 +195,24 @@ function assertRoundTrip(dialect: Dialect): void {
 }
 
 describe('왕복 — 내보낸 DDL을 다시 읽으면 같은 계획이 나온다', () => {
-  for (const dialect of DIALECTS.filter((d) => d !== 'mysql' && d !== 'mssql')) {
+  for (const dialect of DIALECTS.filter((d) => d !== 'mssql')) {
     it(`${dialect}`, () => { assertRoundTrip(dialect) })
   }
 
-  // mysql·mssql은 테이블 논리명이 물리명으로 도로 떨어진다(둘 다 파서 쪽 결함 — task-6-report.md
-  // 참고, ddl-parse.ts는 이전 태스크 소관이라 이 태스크에서 고치지 않는다):
-  //  - mysql: CREATE TABLE ... COMMENT '회원' 처럼 괄호 뒤에 붙는 테이블 수준 코멘트를
-  //    parseCreateTable이 아예 읽지 않는다(firstParenGroup의 tail을 버림). 컬럼 수준 인라인
-  //    COMMENT는 ddl-import.ts가 정상적으로 되살린다(위 로직으로 c.comment를 코멘트 출처에 추가).
-  //  - mssql: 테이블·컬럼 코멘트가 EXEC sys.sp_addextendedproperty로 나가는데 파서가 이를
-  //    전혀 이해하지 못해(설계 §3의 파싱 범위에도 없음) skipped로 빠진다.
-  // it.fails()로 결함을 재현 가능하게 문서화하되 스위트는 초록으로 유지한다.
-  it.fails('mysql — 테이블 수준 COMMENT가 파서에서 소실된다(파서 결함, 보고만)', () => {
-    assertRoundTrip('mysql')
-  })
-  it.fails('mssql — 테이블·컬럼 코멘트(sp_addextendedproperty)를 파서가 이해하지 못한다(설계 범위 밖, 보고만)', () => {
-    assertRoundTrip('mssql')
+  it('mssql — 코멘트가 sp_addextendedproperty로 나가 논리명이 복원되지 않는다(알려진 한계)', () => {
+    // EXEC sys.sp_addextendedproperty는 파싱 범위 밖이다(설계 §3). 코멘트가 없으므로
+    // 논리명은 사전 → 물리명 순으로 떨어지고, 구조(테이블·컬럼·타입·PK)는 정상 왕복한다.
+    const model = roundTripModel()
+    const ddl = generateDdl(model, 'mssql')
+    const p = planDdlImport(createEmptyModel(), parseDdl(ddl), 'mssql', DEFAULT_NAMING_RULES)
+
+    const t = p.tables[0]!
+    expect(t.physicalName).toBe('MBR')
+    expect(t.columns.map((c) => c.physicalName)).toEqual(['MBR_NO', 'MBR_NM'])
+    expect(t.columns[0]).toMatchObject({ type: 'BIGINT', isPk: true, nullable: false })
+    expect(t.columns[1]).toMatchObject({ type: 'VARCHAR(100)', nullable: true })
+    // 논리명은 물리명으로 떨어지고 경고가 남는다.
+    expect(t.logicalName).toBe('MBR')
+    expect(p.warnings.some((w) => w.kind === 'unknown-word')).toBe(true)
   })
 })

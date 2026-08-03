@@ -256,6 +256,22 @@ describe('parseDdl — CREATE TABLE', () => {
       columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
     })
   })
+
+  it('MySQL의 꼬리 테이블 COMMENT를 잡는다', () => {
+    const r = parseDdl("CREATE TABLE MBR (ID INT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원';")
+    expect(r.comments).toContainEqual({ table: 'MBR', column: null, text: '회원' })
+  })
+
+  it('= 없는 형태도 잡는다', () => {
+    const r = parseDdl("CREATE TABLE MBR (ID INT) COMMENT '회원 - 설명';")
+    expect(r.comments).toContainEqual({ table: 'MBR', column: null, text: '회원 - 설명' })
+  })
+
+  it('컬럼 정의 안의 COMMENT를 테이블 코멘트로 오인하지 않는다(대조군)', () => {
+    const r = parseDdl("CREATE TABLE MBR (ID INT COMMENT '회원번호');")
+    expect(r.comments).toEqual([])
+    expect(r.tables[0]!.columns[0]!.comment).toBe('회원번호')
+  })
 })
 
 describe('parseDdl — 나머지 문장', () => {
