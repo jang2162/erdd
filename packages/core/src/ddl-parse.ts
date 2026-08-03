@@ -395,11 +395,111 @@ function parseCreateTable(
   return true
 }
 
+const ALTER_ADD_RE = /^ALTER\s+TABLE\s+(?:ONLY\s+)?(.+?)\s+ADD\s+(?:CONSTRAINT\s+("(?:[^"]|"")*"|`(?:[^`]|``)*`|\[(?:[^\]]|\]\])*\]|[A-Za-z_][\w$]*)\s+)?(.*)$/is
+
+function parseAlterTable(stmt: RawStatement, out: ParsedDdl): boolean {
+  const m = ALTER_ADD_RE.exec(stmt.text)
+  if (!m) return false
+  const table = unquoteIdentifier(m[1]!.trim())
+  const name = m[2] ? unquoteIdentifier(m[2]) : null
+  const body = m[3]!.trim()
+
+  if (/^PRIMARY\s+KEY\b/i.test(body)) {
+    const g = firstParenGroup(body)
+    if (!g) return false
+    out.constraints.push({ kind: 'pk', table, columns: identifierList(g.inner) })
+    return true
+  }
+  if (/^UNIQUE\b/i.test(body)) {
+    const g = firstParenGroup(body)
+    if (!g) return false
+    out.constraints.push({ kind: 'unique', table, name, columns: identifierList(g.inner) })
+    return true
+  }
+  if (/^FOREIGN\s+KEY\b/i.test(body)) {
+    const cols = firstParenGroup(body)
+    if (!cols) return false
+    const ref = /REFERENCES\s+(.+?)\s*(\(|$)/is.exec(cols.tail)
+    const refCols = firstParenGroup(cols.tail)
+    if (!ref) return false
+    out.constraints.push({
+      kind: 'fk', table, name,
+      columns: identifierList(cols.inner),
+      refTable: unquoteIdentifier(ref[1]!.trim()),
+      refColumns: refCols ? identifierList(refCols.inner) : [],
+    })
+    return true
+  }
+  return false   // CHECK·그 밖의 ADD는 skipped로 간다
+}
+
+const CREATE_INDEX_RE = /^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s+ON\s+(.+?)\s*(?=\()/is
+
+function parseCreateIndex(stmt: RawStatement, out: ParsedDdl): boolean {
+  const m = CREATE_INDEX_RE.exec(stmt.text)
+  if (!m) return false
+  // m[0]은 lookahead로 끝나므로 여기서부터가 컬럼 목록의 여는 괄호다.
+  const group = firstParenGroup(stmt.text.slice(m[0].length))
+  if (!group) return false
+  out.indexes.push({
+    table: unquoteIdentifier(m[3]!.trim()),
+    name: unquoteIdentifier(m[2]!.trim()),
+    columns: identifierList(group.inner),
+    unique: m[1] !== undefined,
+  })
+  return true
+}
+
+const COMMENT_ON_RE = /^COMMENT\s+ON\s+(TABLE|COLUMN)\s+(.+?)\s+IS\s+'((?:[^']|'')*)'/is
+
+function parseCommentOn(stmt: RawStatement, out: ParsedDdl): boolean {
+  const m = COMMENT_ON_RE.exec(stmt.text)
+  if (!m) return false
+  const text = m[3]!.replace(/''/g, "'")
+  const target = m[2]!.trim()
+  if (m[1]!.toUpperCase() === 'TABLE') {
+    out.comments.push({ table: unquoteIdentifier(target), column: null, text })
+    return true
+  }
+  // COLUMN은 마지막 조각이 컬럼, 그 앞이 테이블이다.
+  const parts = splitQualified(target)
+  if (parts.length < 2) return false
+  out.comments.push({
+    table: parts[parts.length - 2]!, column: parts[parts.length - 1]!, text,
+  })
+  return true
+}
+
+/** 'a.b.c'를 따옴표를 존중하며 조각으로 나눈다(unquoteIdentifier의 다중 조각판). */
+function splitQualified(raw: string): string[] {
+  const parts: string[] = []
+  let cur = ''
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]!
+    if (c === '"' || c === '`' || c === '[') {
+      const close = c === '[' ? ']' : c
+      i++
+      while (i < raw.length) {
+        if (raw[i] === close && raw[i + 1] === close) { cur += close; i += 2; continue }
+        if (raw[i] === close) break
+        cur += raw[i]!; i++
+      }
+      continue
+    }
+    if (c === '.') { parts.push(cur.trim()); cur = ''; continue }
+    cur += c
+  }
+  parts.push(cur.trim())
+  return parts.filter((p) => p !== '')
+}
+
 export function parseDdl(ddl: string): ParsedDdl {
   const result: ParsedDdl = { tables: [], constraints: [], indexes: [], comments: [], skipped: [] }
   for (const stmt of splitStatements(ddl)) {
     if (parseCreateTable(stmt, result)) continue
-    // Task 5가 ALTER TABLE·CREATE INDEX·COMMENT ON 분기를 여기에 더한다.
+    if (parseAlterTable(stmt, result)) continue
+    if (parseCreateIndex(stmt, result)) continue
+    if (parseCommentOn(stmt, result)) continue
     result.skipped.push({
       keyword: statementKeyword(stmt.text),
       line: stmt.line,

@@ -257,3 +257,86 @@ describe('parseDdl — CREATE TABLE', () => {
     })
   })
 })
+
+describe('parseDdl — 나머지 문장', () => {
+  it('ALTER TABLE ADD CONSTRAINT로 분리된 PK·UNIQUE·FK를 잡는다', () => {
+    const r = parseDdl(`
+      ALTER TABLE MBR ADD CONSTRAINT PK_MBR PRIMARY KEY (MBR_NO);
+      ALTER TABLE ORD ADD CONSTRAINT UX_ORD UNIQUE (ORD_NM);
+      ALTER TABLE ORD ADD CONSTRAINT FK_ORD_MBR FOREIGN KEY (MBR_NO)
+        REFERENCES MBR (MBR_NO) ON DELETE CASCADE;`)
+    expect(r.constraints).toContainEqual({ kind: 'pk', table: 'MBR', columns: ['MBR_NO'] })
+    expect(r.constraints).toContainEqual({ kind: 'unique', table: 'ORD', name: 'UX_ORD', columns: ['ORD_NM'] })
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK_ORD_MBR',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+
+  it('CREATE INDEX와 CREATE UNIQUE INDEX를 구분해 잡는다', () => {
+    const r = parseDdl(`
+      CREATE INDEX IX_MBR_01 ON MBR (MBR_NM);
+      CREATE UNIQUE INDEX UX_MBR_01 ON "public"."MBR" (MBR_NM DESC, REG_DT);`)
+    expect(r.indexes).toContainEqual({ table: 'MBR', name: 'IX_MBR_01', columns: ['MBR_NM'], unique: false })
+    expect(r.indexes).toContainEqual({
+      table: 'MBR', name: 'UX_MBR_01', columns: ['MBR_NM', 'REG_DT'], unique: true,
+    })
+  })
+
+  it('COMMENT ON TABLE·COLUMN을 잡고 이스케이프를 되돌린다', () => {
+    const r = parseDdl(`
+      COMMENT ON TABLE MBR IS '회원';
+      COMMENT ON COLUMN MBR.MBR_NO IS '회원번호 - it''s';`)
+    expect(r.comments).toContainEqual({ table: 'MBR', column: null, text: '회원' })
+    expect(r.comments).toContainEqual({ table: 'MBR', column: 'MBR_NO', text: "회원번호 - it's" })
+  })
+
+  it('ALTER TABLE의 인식 못 하는 형태는 건너뛴다', () => {
+    const r = parseDdl('ALTER TABLE MBR ENABLE ROW MOVEMENT;')
+    expect(r.constraints).toEqual([])
+    expect(r.skipped.some((s) => s.keyword === 'ALTER TABLE')).toBe(true)
+  })
+
+  it('트리거·시퀀스·뷰·권한을 건너뛴다', () => {
+    const r = parseDdl(`
+      CREATE SEQUENCE SEQ_MBR START WITH 1;
+      CREATE VIEW V_MBR AS SELECT * FROM MBR;
+      GRANT SELECT ON MBR TO APP;`)
+    expect(r.skipped.map((s) => s.keyword)).toEqual(['CREATE SEQUENCE', 'CREATE VIEW', 'GRANT'])
+  })
+})
+
+describe('parseDdl — 나머지 문장의 문자열 리터럴 오탐 점검', () => {
+  it('COMMENT 텍스트 안의 구조 키워드(TABLE/COLUMN/IS)가 파싱을 흔들지 않는다', () => {
+    const r = parseDdl(
+      "COMMENT ON TABLE MBR IS 'This TABLE IS the COLUMN registry, see MBR.OTHER_COL IS unused';",
+    )
+    expect(r.comments).toContainEqual({
+      table: 'MBR', column: null,
+      text: 'This TABLE IS the COLUMN registry, see MBR.OTHER_COL IS unused',
+    })
+  })
+
+  it('CHECK 절 리터럴 안의 PRIMARY KEY/FOREIGN KEY 텍스트를 제약으로 오인하지 않는다', () => {
+    const r = parseDdl(
+      "ALTER TABLE MBR ADD CONSTRAINT CK_MBR CHECK (NOTE = 'PRIMARY KEY (X) FOREIGN KEY (Y) REFERENCES Z (W)');",
+    )
+    expect(r.constraints).toEqual([])
+    expect(r.skipped.some((s) => s.keyword === 'ALTER TABLE')).toBe(true)
+  })
+
+  // 알려진 결함(수정하지 않음, task-5-report.md 참고): 명시 참조 컬럼 없이 부모의 암묵적
+  // PK를 참조하는 FK(`REFERENCES MBR ON DELETE CASCADE`, 유효한 SQL)에서 브리프의
+  // `/REFERENCES\s+(.+?)\s*(\(|$)/is`가 "(" 또는 문자열 끝에서만 멈추기 때문에 ON DELETE/
+  // ON UPDATE 절까지 refTable에 섞여 들어간다. parseCreateTable의 테이블 수준 FK 경로에도
+  // 동일한 정규식이 이미 있어 똑같이 재현된다(사전 리뷰를 통과한 기존 코드라 손대지 않음).
+  // it.fails로 남겨 회귀를 문서화한다: 언젠가 고쳐지면 이 테스트가 실패로 뒤집혀 알려준다.
+  it.fails('명시적 참조 컬럼 없는 FK에서 REFERENCES 뒤 절(ON DELETE 등)이 refTable에 섞이지 않는다', () => {
+    const r = parseDdl(
+      'ALTER TABLE ORD ADD CONSTRAINT FK_ORD_MBR FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE CASCADE;',
+    )
+    const fk = r.constraints.find((c) => c.kind === 'fk')
+    expect(fk).toBeDefined()
+    expect(fk!.refTable).toBe('MBR')
+  })
+})
