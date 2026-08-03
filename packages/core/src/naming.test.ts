@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { generatePhysicalName, decomposeByWords, DEFAULT_NAMING_RULES } from './naming.js'
+import { generatePhysicalName, decomposeByWords, restoreLogicalName, DEFAULT_NAMING_RULES } from './naming.js'
+import type { Term, Word } from './model.js'
 const words = {
   w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
   w2: { id:'w2', logicalName:'상태', abbreviation:'STAT', englishName:null, description:null, origin:null },
@@ -49,5 +50,65 @@ describe('decomposeByWords', () => {
 
   it('세그먼트 text를 이어붙이면 원본 논리명이 복원된다', () => {
     expect(decomposeByWords('회원쿠폰번호', words).map((s) => s.text).join('')).toBe('회원쿠폰번호')
+  })
+})
+
+const word = (id: string, logicalName: string, abbreviation: string): Word => ({
+  id, logicalName, abbreviation, englishName: null, description: null, origin: null,
+})
+const term = (id: string, logicalName: string, physicalName: string): Term => ({
+  id, logicalName, physicalName, domainId: null, description: null, origin: null,
+})
+
+const WORDS: Record<string, Word> = {
+  w1: word('w1', '회원', 'MBR'),
+  w2: word('w2', '번호', 'NO'),
+  w3: word('w3', '주문', 'ORD'),
+}
+const TERMS: Record<string, Term> = {
+  t1: term('t1', '회원식별번호', 'MBR_ID'),
+}
+
+describe('restoreLogicalName', () => {
+  it('용어 물리명이 통째로 일치하면 단어 분해보다 우선한다', () => {
+    expect(restoreLogicalName('MBR_ID', WORDS, TERMS, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: true, logicalName: '회원식별번호' })
+  })
+
+  it('모든 토큰이 매칭되면 논리명을 이어붙인다', () => {
+    expect(restoreLogicalName('MBR_NO', WORDS, TERMS, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: true, logicalName: '회원번호' })
+  })
+
+  it('한 토큰이라도 실패하면 논리명을 만들지 않고 미매칭 토큰을 돌려준다', () => {
+    expect(restoreLogicalName('MBR_NO_SEQ', WORDS, TERMS, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: false, unknownTokens: ['SEQ'] })
+  })
+
+  it('대소문자를 무시하고 매칭한다', () => {
+    expect(restoreLogicalName('mbr_no', WORDS, TERMS, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: true, logicalName: '회원번호' })
+  })
+
+  it('구분자가 없는 규칙에서는 최장일치로 쪼갠다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, separator: '' as const }
+    expect(restoreLogicalName('MBRNO', WORDS, TERMS, rules))
+      .toEqual({ ok: true, logicalName: '회원번호' })
+    expect(restoreLogicalName('MBRXNO', WORDS, TERMS, rules))
+      .toEqual({ ok: false, unknownTokens: ['X'] })
+  })
+
+  it('빈 사전에서는 언제나 실패한다', () => {
+    expect(restoreLogicalName('MBR_NO', {}, {}, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: false, unknownTokens: ['MBR', 'NO'] })
+  })
+
+  it('왕복 — generatePhysicalName이 만든 물리명을 원래 논리명으로 되돌린다', () => {
+    for (const logical of ['회원번호', '주문번호', '회원식별번호']) {
+      const gen = generatePhysicalName(logical, WORDS, TERMS, DEFAULT_NAMING_RULES)
+      expect(gen.unknownWords, `${logical} 은 사전으로 완전히 분해돼야 한다`).toEqual([])
+      expect(restoreLogicalName(gen.physicalName, WORDS, TERMS, DEFAULT_NAMING_RULES))
+        .toEqual({ ok: true, logicalName: logical })
+    }
   })
 })

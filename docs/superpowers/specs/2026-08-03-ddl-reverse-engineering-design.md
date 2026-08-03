@@ -64,6 +64,8 @@ generateDdl(model, dialect) → parseDdl → planDdlImport(…, dialect, …) �
 
 논리명·설명은 **코멘트를 통해** 왕복한다(§5). `commentText`가 `'논리명 - 설명'`으로 합치고 가져오기가 첫 `' - '`에서 되나눈다. 설명 자체에 `' - '`가 들어 있으면 뒤쪽이 설명으로 온전히 남으므로 왕복이 유지된다.
 
+**단, MSSQL에서는 코멘트가 왕복하지 않는다.** 내보내기가 MSSQL 코멘트를 `EXEC sys.sp_addextendedproperty`로 내는데, 이것은 `CREATE TABLE`·`ALTER TABLE`·`CREATE INDEX`·`COMMENT ON`과 완전히 다른 문장 형태이고 §3의 파싱 범위 밖이다. MSSQL DDL을 가져오면 **구조(테이블·컬럼·타입·PK·관계·인덱스)는 정상 왕복하지만 논리명은 사전 → 물리명 순으로 떨어지고 `unknown-word` 경고가 남는다.** 이 동작을 테스트로 고정해 두었다 — 나중에 구조까지 깨지는 회귀가 생기면 드러난다. MySQL은 테이블 코멘트가 닫는 괄호 뒤 꼬리 절(`) … COMMENT '…'`)로 나가는데 이는 `CREATE TABLE` 문장의 일부라 파싱 범위 안이며 정상 왕복한다.
+
 **PostgreSQL에서는 정확히 성립해야 한다.** `dialect.ts`의 PostgreSQL 매핑은 단사다(`text`/`jsonb`/`uuid`/`timestamp`/`timestamptz`/`boolean`/`date`/`time`이 모두 구별된다).
 
 **나머지 3방언은 내보내기 자체가 이미 손실적이다.** 두 논리타입이 같은 방언 타입으로 나가면 되돌릴 때 하나는 반드시 진다. 이것은 이번 작업이 만드는 손실이 아니라 기존 매핑의 성질이고, `dialect.ts`의 `ORACLE_WARN`이 이미 일부를 경고하고 있다.
@@ -360,4 +362,5 @@ export function applyDdlImport(
 - 기존 테이블과의 병합·재동기화(운영 DB가 바뀐 뒤 다시 가져오기)
 - `CHECK` 제약 → 도메인 허용값 변환
 - 가져온 컬럼의 도메인 자동 매칭(현재는 타입만 넣고 도메인은 비운다)
+- MSSQL의 `EXEC sys.sp_addextendedproperty` 파싱 — 넣으면 MSSQL 코멘트도 왕복하고 실무 MSSQL 추출본의 논리명이 복원된다
 - 실제 DB 접속 스캔(로드맵 "추후 검토")

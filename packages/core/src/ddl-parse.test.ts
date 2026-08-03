@@ -1,0 +1,391 @@
+import { describe, expect, it } from 'vitest'
+import { detectDialect, parseDdl, splitStatements, unquoteIdentifier } from './ddl-parse.js'
+
+describe('splitStatements', () => {
+  it('세미콜론으로 나누고 각 문장의 시작 줄 번호를 남긴다', () => {
+    const s = splitStatements('CREATE TABLE A (X INT);\nCREATE TABLE B (Y INT);')
+    expect(s).toHaveLength(2)
+    expect(s[0]!.line).toBe(1)
+    expect(s[1]!.line).toBe(2)
+  })
+
+  it('줄 주석과 블록 주석을 제거하되 줄 번호는 유지한다', () => {
+    const s = splitStatements('-- 머리말\n/* 블록\n   주석 */\nCREATE TABLE A (X INT);')
+    expect(s).toHaveLength(1)
+    expect(s[0]!.text).toContain('CREATE TABLE A')
+    expect(s[0]!.line).toBe(4)
+  })
+
+  it('문자열 리터럴 안의 세미콜론·주석 기호로 나누지 않는다', () => {
+    const s = splitStatements("COMMENT ON TABLE A IS 'a;b -- c';\nCREATE TABLE B (Y INT);")
+    expect(s).toHaveLength(2)
+    expect(s[0]!.text).toContain("'a;b -- c'")
+  })
+
+  it('문자열 안의 작은따옴표 이스케이프를 문자열의 일부로 본다', () => {
+    const s = splitStatements("COMMENT ON TABLE A IS 'it''s; ok';\nCREATE TABLE B (Y INT);")
+    expect(s).toHaveLength(2)
+  })
+
+  it('Oracle 스크립트의 / 구분자로도 나눈다', () => {
+    const s = splitStatements('CREATE TABLE A (X INT)\n/\nCREATE TABLE B (Y INT)\n/')
+    expect(s).toHaveLength(2)
+  })
+
+  it('빈 문장을 버린다', () => {
+    expect(splitStatements(';;\n  \n;')).toEqual([])
+  })
+
+  it('CRLF 줄바꿈에서도 Oracle / 구분자와 줄 번호가 정상이다', () => {
+    const s = splitStatements('CREATE TABLE A (X INT)\r\n/\r\nCREATE TABLE B (Y INT)\r\n/')
+    expect(s).toHaveLength(2)
+    expect(s[0]!.line).toBe(1)
+    expect(s[1]!.line).toBe(3)
+  })
+
+  it('CRLF 줄바꿈에서 줄 주석이 문장을 삼키지 않는다', () => {
+    const s = splitStatements('-- 머리말\r\nCREATE TABLE A (X INT);\r\nCREATE TABLE B (Y INT);')
+    expect(s).toHaveLength(2)
+    expect(s[0]!.line).toBe(2)
+  })
+})
+
+describe('unquoteIdentifier', () => {
+  it('방언별 따옴표를 벗긴다', () => {
+    expect(unquoteIdentifier('"MBR"')).toBe('MBR')
+    expect(unquoteIdentifier('`MBR`')).toBe('MBR')
+    expect(unquoteIdentifier('[MBR]')).toBe('MBR')
+    expect(unquoteIdentifier('MBR')).toBe('MBR')
+  })
+
+  it('스키마 접두사를 떼고 마지막 조각만 남긴다', () => {
+    expect(unquoteIdentifier('public.MBR')).toBe('MBR')
+    expect(unquoteIdentifier('"public"."MBR"')).toBe('MBR')
+    expect(unquoteIdentifier('[dbo].[MBR]')).toBe('MBR')
+    expect(unquoteIdentifier('SCOTT.MBR')).toBe('MBR')
+  })
+
+  it('따옴표 안의 점은 구분자가 아니다', () => {
+    expect(unquoteIdentifier('"a.b"')).toBe('a.b')
+  })
+
+  it('이스케이프된 따옴표를 되돌린다', () => {
+    expect(unquoteIdentifier('"a""b"')).toBe('a"b')
+  })
+})
+
+describe('detectDialect', () => {
+  it('특징 토큰으로 방언을 맞힌다', () => {
+    expect(detectDialect('CREATE TABLE `a` (id INT AUTO_INCREMENT);')).toBe('mysql')
+    expect(detectDialect('CREATE TABLE a (id NUMBER(10), nm VARCHAR2(10), memo CLOB);')).toBe('oracle')
+    expect(detectDialect('CREATE TABLE [a] ([id] INT IDENTITY(1,1), nm NVARCHAR(10));')).toBe('mssql')
+    expect(detectDialect('CREATE TABLE a (id serial, doc jsonb, at timestamptz);')).toBe('postgresql')
+  })
+
+  it('근거가 없으면 null을 준다', () => {
+    expect(detectDialect('CREATE TABLE a (id INT, nm VARCHAR(10));')).toBeNull()
+  })
+})
+
+describe('parseDdl', () => {
+  it('인식하지 못한 문장을 skipped에 키워드·줄 번호와 함께 남긴다', () => {
+    const r = parseDdl('GRANT SELECT ON a TO b;\nCREATE SEQUENCE s;')
+    expect(r.skipped.map((s) => s.keyword)).toEqual(['GRANT', 'CREATE SEQUENCE'])
+    expect(r.skipped[0]!.line).toBe(1)
+    expect(r.skipped[1]!.line).toBe(2)
+    expect(r.skipped[0]!.excerpt).toContain('GRANT SELECT')
+  })
+
+  it('빈 입력에서 빈 결과를 준다', () => {
+    expect(parseDdl('')).toEqual({
+      tables: [], constraints: [], indexes: [], comments: [], skipped: [],
+    })
+  })
+})
+
+describe('parseDdl — CREATE TABLE', () => {
+  it('컬럼의 타입·NOT NULL·DEFAULT를 읽는다', () => {
+    const r = parseDdl(`
+      CREATE TABLE MBR (
+        MBR_NO bigint NOT NULL,
+        MBR_NM varchar(100),
+        REG_DT timestamp DEFAULT now(),
+        PRIMARY KEY (MBR_NO)
+      );`)
+    expect(r.tables).toHaveLength(1)
+    const t = r.tables[0]!
+    expect(t.name).toBe('MBR')
+    expect(t.columns.map((c) => c.name)).toEqual(['MBR_NO', 'MBR_NM', 'REG_DT'])
+    expect(t.columns[0]).toMatchObject({ rawType: 'bigint', notNull: true, defaultValue: null })
+    expect(t.columns[1]).toMatchObject({ rawType: 'varchar(100)', notNull: false })
+    expect(t.columns[2]!.defaultValue).toBe('now()')
+    expect(r.constraints).toContainEqual({ kind: 'pk', table: 'MBR', columns: ['MBR_NO'] })
+  })
+
+  it('인라인 PRIMARY KEY를 컬럼에 표시한다', () => {
+    const r = parseDdl('CREATE TABLE A (ID bigint PRIMARY KEY, NM varchar(10));')
+    expect(r.tables[0]!.columns[0]!.inlinePk).toBe(true)
+    expect(r.tables[0]!.columns[1]!.inlinePk).toBe(false)
+  })
+
+  it('방언별 자동증가를 인식한다', () => {
+    expect(parseDdl('CREATE TABLE A (ID INT AUTO_INCREMENT);')
+      .tables[0]!.columns[0]!.autoIncrement).toBe(true)
+    expect(parseDdl('CREATE TABLE A (ID INT IDENTITY(1,1));')
+      .tables[0]!.columns[0]!.autoIncrement).toBe(true)
+    expect(parseDdl('CREATE TABLE A (ID bigint GENERATED BY DEFAULT AS IDENTITY);')
+      .tables[0]!.columns[0]!.autoIncrement).toBe(true)
+    expect(parseDdl('CREATE TABLE A (ID serial);')
+      .tables[0]!.columns[0]!.autoIncrement).toBe(true)
+  })
+
+  it('테이블 수준 UNIQUE·FOREIGN KEY를 제약으로 뽑는다', () => {
+    const r = parseDdl(`
+      CREATE TABLE ORD (
+        ORD_NO bigint NOT NULL,
+        MBR_NO bigint NOT NULL,
+        CONSTRAINT PK_ORD PRIMARY KEY (ORD_NO),
+        CONSTRAINT UX_ORD_01 UNIQUE (MBR_NO, ORD_NO),
+        CONSTRAINT FK_ORD_MBR FOREIGN KEY (MBR_NO) REFERENCES MBR (MBR_NO)
+      );`)
+    expect(r.constraints).toContainEqual({ kind: 'pk', table: 'ORD', columns: ['ORD_NO'] })
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'ORD', name: 'UX_ORD_01', columns: ['MBR_NO', 'ORD_NO'],
+    })
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK_ORD_MBR',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+
+  it('인라인 REFERENCES를 FK 제약으로 만든다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES MBR (MBR_NO));')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+
+  it('따옴표 식별자와 스키마 접두사를 벗긴다', () => {
+    const r = parseDdl('CREATE TABLE "public"."MBR" ("MBR NO" bigint);')
+    expect(r.tables[0]!.name).toBe('MBR')
+    expect(r.tables[0]!.columns[0]!.name).toBe('MBR NO')
+  })
+
+  it('MySQL 인라인 COMMENT를 컬럼에 담는다', () => {
+    const r = parseDdl("CREATE TABLE A (ID INT COMMENT '회원번호 - 식별자') ENGINE=InnoDB;")
+    expect(r.tables[0]!.columns[0]!.comment).toBe('회원번호 - 식별자')
+  })
+
+  it('CHECK 제약을 건너뛰고 경고한다', () => {
+    const r = parseDdl("CREATE TABLE A (ST varchar(2), CHECK (ST IN ('01','02')));")
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['ST'])
+    expect(r.skipped.some((s) => s.keyword === 'CHECK')).toBe(true)
+  })
+
+  it('컬럼 타입의 괄호 안 쉼표에 속지 않는다', () => {
+    const r = parseDdl('CREATE TABLE A (AMT numeric(12,3), NM varchar(10));')
+    expect(r.tables[0]!.columns.map((c) => c.rawType)).toEqual(['numeric(12,3)', 'varchar(10)'])
+  })
+
+  it('꼬리 절(테이블스페이스·ENGINE·파티션)을 건너뛴다', () => {
+    const r = parseDdl('CREATE TABLE A (ID INT) TABLESPACE users;')
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['ID'])
+  })
+
+  it('GENERATED … AS IDENTITY의 DEFAULT를 기본값으로 오인하지 않는다', () => {
+    const byDefault = parseDdl('CREATE TABLE A (ID bigint GENERATED BY DEFAULT AS IDENTITY);')
+      .tables[0]!.columns[0]!
+    expect(byDefault.autoIncrement).toBe(true)
+    expect(byDefault.defaultValue).toBeNull()
+
+    const always = parseDdl('CREATE TABLE A (ID bigint GENERATED ALWAYS AS IDENTITY);')
+      .tables[0]!.columns[0]!
+    expect(always.autoIncrement).toBe(true)
+    expect(always.defaultValue).toBeNull()
+  })
+
+  it('IDENTITY 절을 걷어내도 진짜 DEFAULT는 그대로 읽는다', () => {
+    const c = parseDdl("CREATE TABLE A (ST varchar(2) DEFAULT '01' NOT NULL);").tables[0]!.columns[0]!
+    expect(c.defaultValue).toBe("'01'")
+    expect(c.notNull).toBe(true)
+  })
+
+  it('IDENTITY와 진짜 DEFAULT가 함께 와도 각각 옳게 읽는다', () => {
+    const c = parseDdl("CREATE TABLE A (ID bigint GENERATED BY DEFAULT AS IDENTITY, ST varchar(2) DEFAULT 'X');")
+      .tables[0]!.columns
+    expect(c[0]!.defaultValue).toBeNull()
+    expect(c[1]!.defaultValue).toBe("'X'")
+  })
+
+  it('문자열 리터럴 안의 키워드가 구조 플래그를 뒤집지 않는다', () => {
+    const c = parseDdl("CREATE TABLE A (ID INT COMMENT 'legacy identity primary key not null candidate');")
+      .tables[0]!.columns[0]!
+    expect(c.notNull).toBe(false)
+    expect(c.inlinePk).toBe(false)
+    expect(c.autoIncrement).toBe(false)
+    expect(c.comment).toBe('legacy identity primary key not null candidate')
+  })
+
+  it('문자열 리터럴 안의 REFERENCES가 가짜 FK를 만들지 않는다', () => {
+    const r = parseDdl("CREATE TABLE A (NOTE varchar(50) DEFAULT 'REFERENCES old system (v1)');")
+    expect(r.constraints).toEqual([])
+    expect(r.tables[0]!.columns[0]!.defaultValue).toBe("'REFERENCES old system (v1)'")
+  })
+
+  it('문자열 안의 종결 키워드가 DEFAULT 값을 일찍 끊지 않는다', () => {
+    const c = parseDdl("CREATE TABLE A (ST varchar(10) DEFAULT 'a COMMENT b' NOT NULL);")
+      .tables[0]!.columns[0]!
+    expect(c.defaultValue).toBe("'a COMMENT b'")
+    expect(c.notNull).toBe(true)
+  })
+
+  it('진짜 구조 키워드는 여전히 인식한다(대조군)', () => {
+    const c = parseDdl("CREATE TABLE A (ID INT NOT NULL PRIMARY KEY AUTO_INCREMENT COMMENT '설명');")
+      .tables[0]!.columns[0]!
+    expect(c.notNull).toBe(true)
+    expect(c.inlinePk).toBe(true)
+    expect(c.autoIncrement).toBe(true)
+    expect(c.comment).toBe('설명')
+  })
+
+  it('진짜 인라인 REFERENCES는 여전히 잡는다(대조군)', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES MBR (MBR_NO));')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+
+  it('MySQL의 꼬리 테이블 COMMENT를 잡는다', () => {
+    const r = parseDdl("CREATE TABLE MBR (ID INT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='회원';")
+    expect(r.comments).toContainEqual({ table: 'MBR', column: null, text: '회원' })
+  })
+
+  it('= 없는 형태도 잡는다', () => {
+    const r = parseDdl("CREATE TABLE MBR (ID INT) COMMENT '회원 - 설명';")
+    expect(r.comments).toContainEqual({ table: 'MBR', column: null, text: '회원 - 설명' })
+  })
+
+  it('컬럼 정의 안의 COMMENT를 테이블 코멘트로 오인하지 않는다(대조군)', () => {
+    const r = parseDdl("CREATE TABLE MBR (ID INT COMMENT '회원번호');")
+    expect(r.comments).toEqual([])
+    expect(r.tables[0]!.columns[0]!.comment).toBe('회원번호')
+  })
+})
+
+describe('parseDdl — 나머지 문장', () => {
+  it('ALTER TABLE ADD CONSTRAINT로 분리된 PK·UNIQUE·FK를 잡는다', () => {
+    const r = parseDdl(`
+      ALTER TABLE MBR ADD CONSTRAINT PK_MBR PRIMARY KEY (MBR_NO);
+      ALTER TABLE ORD ADD CONSTRAINT UX_ORD UNIQUE (ORD_NM);
+      ALTER TABLE ORD ADD CONSTRAINT FK_ORD_MBR FOREIGN KEY (MBR_NO)
+        REFERENCES MBR (MBR_NO) ON DELETE CASCADE;`)
+    expect(r.constraints).toContainEqual({ kind: 'pk', table: 'MBR', columns: ['MBR_NO'] })
+    expect(r.constraints).toContainEqual({ kind: 'unique', table: 'ORD', name: 'UX_ORD', columns: ['ORD_NM'] })
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK_ORD_MBR',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+
+  it('CREATE INDEX와 CREATE UNIQUE INDEX를 구분해 잡는다', () => {
+    const r = parseDdl(`
+      CREATE INDEX IX_MBR_01 ON MBR (MBR_NM);
+      CREATE UNIQUE INDEX UX_MBR_01 ON "public"."MBR" (MBR_NM DESC, REG_DT);`)
+    expect(r.indexes).toContainEqual({ table: 'MBR', name: 'IX_MBR_01', columns: ['MBR_NM'], unique: false })
+    expect(r.indexes).toContainEqual({
+      table: 'MBR', name: 'UX_MBR_01', columns: ['MBR_NM', 'REG_DT'], unique: true,
+    })
+  })
+
+  it('COMMENT ON TABLE·COLUMN을 잡고 이스케이프를 되돌린다', () => {
+    const r = parseDdl(`
+      COMMENT ON TABLE MBR IS '회원';
+      COMMENT ON COLUMN MBR.MBR_NO IS '회원번호 - it''s';`)
+    expect(r.comments).toContainEqual({ table: 'MBR', column: null, text: '회원' })
+    expect(r.comments).toContainEqual({ table: 'MBR', column: 'MBR_NO', text: "회원번호 - it's" })
+  })
+
+  it('ALTER TABLE의 인식 못 하는 형태는 건너뛴다', () => {
+    const r = parseDdl('ALTER TABLE MBR ENABLE ROW MOVEMENT;')
+    expect(r.constraints).toEqual([])
+    expect(r.skipped.some((s) => s.keyword === 'ALTER TABLE')).toBe(true)
+  })
+
+  it('트리거·시퀀스·뷰·권한을 건너뛴다', () => {
+    const r = parseDdl(`
+      CREATE SEQUENCE SEQ_MBR START WITH 1;
+      CREATE VIEW V_MBR AS SELECT * FROM MBR;
+      GRANT SELECT ON MBR TO APP;`)
+    expect(r.skipped.map((s) => s.keyword)).toEqual(['CREATE SEQUENCE', 'CREATE VIEW', 'GRANT'])
+  })
+})
+
+describe('parseDdl — 나머지 문장의 문자열 리터럴 오탐 점검', () => {
+  it('COMMENT 텍스트 안의 구조 키워드(TABLE/COLUMN/IS)가 파싱을 흔들지 않는다', () => {
+    const r = parseDdl(
+      "COMMENT ON TABLE MBR IS 'This TABLE IS the COLUMN registry, see MBR.OTHER_COL IS unused';",
+    )
+    expect(r.comments).toContainEqual({
+      table: 'MBR', column: null,
+      text: 'This TABLE IS the COLUMN registry, see MBR.OTHER_COL IS unused',
+    })
+  })
+
+  it('CHECK 절 리터럴 안의 PRIMARY KEY/FOREIGN KEY 텍스트를 제약으로 오인하지 않는다', () => {
+    const r = parseDdl(
+      "ALTER TABLE MBR ADD CONSTRAINT CK_MBR CHECK (NOTE = 'PRIMARY KEY (X) FOREIGN KEY (Y) REFERENCES Z (W)');",
+    )
+    expect(r.constraints).toEqual([])
+    expect(r.skipped.some((s) => s.keyword === 'ALTER TABLE')).toBe(true)
+  })
+
+  it('명시적 참조 컬럼 없는 FK에서 REFERENCES 뒤 절(ON DELETE 등)이 refTable에 섞이지 않는다', () => {
+    const r = parseDdl(
+      'ALTER TABLE ORD ADD CONSTRAINT FK_ORD_MBR FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE CASCADE;',
+    )
+    const fk = r.constraints.find((c) => c.kind === 'fk')
+    expect(fk).toBeDefined()
+    expect(fk!.refTable).toBe('MBR')
+  })
+
+  // Minor: Oracle의 RELY는 ENABLE 없이 단독으로 올 수 있는 제약 상태 키워드다.
+  it('Oracle의 RELY 같은 단독 제약 상태 키워드도 refTable에 섞이지 않는다', () => {
+    const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (X) REFERENCES MBR RELY;')
+    expect(r.constraints[0]).toMatchObject({ refTable: 'MBR' })
+  })
+
+  it('참조 컬럼을 생략해도 꼬리 절이 부모 테이블 이름에 섞이지 않는다', () => {
+    const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE CASCADE;')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK1',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('CREATE TABLE 안의 테이블 수준 FK도 같은 규칙을 따른다', () => {
+    const r = parseDdl(`
+      CREATE TABLE ORD (
+        MBR_NO bigint,
+        CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE SET NULL
+      );`)
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK1',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('컬럼 목록이 있으면 꼬리 절이 있어도 정상이다(대조군)', () => {
+    const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES MBR (MBR_NO) ON DELETE CASCADE;')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK1',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+
+  it('스키마 접두사가 붙은 부모도 마지막 조각만 남긴다(대조군)', () => {
+    const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES "public"."MBR" (MBR_NO);')
+    expect(r.constraints[0]).toMatchObject({ refTable: 'MBR', refColumns: ['MBR_NO'] })
+  })
+})

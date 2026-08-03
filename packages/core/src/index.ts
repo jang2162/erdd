@@ -18,8 +18,8 @@ export { deepEqual } from './equal.js'
 export { diffModels } from './diff.js'
 export { diffModelsForDisplay, DIFF_KIND_LABEL, CHANGE_KIND_LABEL } from './model-diff.js'
 export type { ModelDiff, DiffEntry, DiffFieldChange, DiffChangeKind } from './model-diff.js'
-export { DIALECTS, toDialectType, resolveColumnType } from './dialect.js'
-export type { Dialect } from './dialect.js'
+export { DIALECTS, toDialectType, fromDialectType, resolveColumnType } from './dialect.js'
+export type { Dialect, FromDialectResult } from './dialect.js'
 export { quoteIdentifier, isReservedWord } from './identifier.js'
 export { generateDdl, ddlWarnings } from './ddl.js'
 export type { DdlScope, ExportScope } from './ddl.js'
@@ -46,14 +46,23 @@ export {
   createRelationshipFromParentPk, remapRelationshipChildColumn, setRelationshipIdentifying,
   deleteRelationship, deleteTableCascade, deleteColumnCascade,
 } from './relationship.js'
+export { parseDdl, detectDialect, splitStatements, unquoteIdentifier } from './ddl-parse.js'
+export type {
+  ParsedColumn, ParsedTable, ParsedConstraint, ParsedIndex, ParsedComment,
+  SkippedStatement, ParsedDdl, RawStatement,
+} from './ddl-parse.js'
+export { planDdlImport } from './ddl-import.js'
+export type {
+  DdlImportWarning, DdlImportColumn, DdlImportTable, DdlImportRelationship, DdlImportPlan,
+} from './ddl-import.js'
 export { createGroup, updateGroup, deleteGroup, setTableGroup } from './group.js'
 export { createIndex, updateIndex, removeIndex } from './table-index.js'
 export { computeWarnings } from './warnings.js'
 export type { Warning } from './warnings.js'
 export { resolveColumn } from './domain-resolve.js'
 export type { ResolvedColumn } from './domain-resolve.js'
-export { generatePhysicalName, decomposeByWords, DEFAULT_NAMING_RULES } from './naming.js'
-export type { NamingRules, GenResult, WordSegment } from './naming.js'
+export { generatePhysicalName, decomposeByWords, restoreLogicalName, DEFAULT_NAMING_RULES } from './naming.js'
+export type { NamingRules, GenResult, WordSegment, RestoreLogicalResult } from './naming.js'
 export {
   customFieldsFor, resolveCustomValue, customFieldUsageCount, customOptionUsageCount,
 } from './custom-field.js'

@@ -38,7 +38,7 @@
 
 - [ ] **CLI 상세** — base 사본 저장 방식, push 충돌 출력 형식, `--json` 출력 스키마, 패키지명 확정(현 `schemantic` 가칭 → ERDD 네이밍 정리)
 - [ ] **에이전트 스킬 문서** — 동봉할 SKILL.md 내용 설계
-- [ ] **DDL 역설계 범위** — 지원 방언별 파싱 범위와 한계, 파서 라이브러리 선택
+- [x] **DDL 역설계 범위** — 손으로 쓴 좁은 파서(파서 라이브러리 미도입, `packages/core`의 무의존 원칙 유지). 범위는 "우리 내보내기의 왕복 + 실무 구문" — `CREATE TABLE`(인라인 PK·REFERENCES·자동증가·MySQL 인라인 COMMENT), `ALTER TABLE ADD CONSTRAINT`, `CREATE [UNIQUE] INDEX`, `COMMENT ON`. `CHECK`·파티션·트리거·시퀀스·권한은 건너뛰고 경고. 타입 역매핑은 보수적 기본값 + 대안 경고이며 **왕복이 깨지는 5건**을 테스트에 상수로 고정했다. 논리명은 코멘트 → 사전 → 물리명 순 → [설계](superpowers/specs/2026-08-03-ddl-reverse-engineering-design.md)
 
 ## 추후 검토 착수 전 (현재 비범위)
 

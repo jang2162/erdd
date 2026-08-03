@@ -31,8 +31,8 @@
 
 ## Phase 4 — 생태계
 
-- CLI: pull/push/diff, 파일 포맷 공개, 에이전트 스킬 ([16-cli](16-cli.md))
-- DDL 가져오기(역설계) ([17-import-export](17-import-export.md))
+- CLI: pull/push/diff, 파일 포맷 공개, 에이전트 스킬 ([16-cli](16-cli.md)) — **Phase 4 잔여 항목**
+- DDL 가져오기(역설계) 완료 — 손으로 쓴 좁은 파서(`CREATE TABLE`/`ALTER TABLE ADD CONSTRAINT`/`CREATE INDEX`/`COMMENT ON`)로 기존 DDL을 파싱해 미리보기 후 모델에 적용, 논리명은 코멘트→사전 순으로 복원 ([설계](superpowers/specs/2026-08-03-ddl-reverse-engineering-design.md)) ([17-import-export](17-import-export.md))
 
 ## 추후 검토 (현재 비범위)
 
