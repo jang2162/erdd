@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { members, organizations, users } from '../db/schema.js'
 import { getOrgMember } from '../services/perm.js'
 import { normalizeEmail } from '../services/accounts.js'
-import { authedProcedure, router } from '../trpc.js'
+import { apiProcedure, authedProcedure, router } from '../trpc.js'
 
 async function requireOrgManager(
   db: Parameters<typeof getOrgMember>[0], orgId: string, userId: string,
@@ -40,7 +40,7 @@ export const orgRouter = router({
       }),
     ),
 
-  list: authedProcedure.query(({ ctx }) =>
+  list: apiProcedure.query(({ ctx }) =>
     ctx.db
       .select({
         id: organizations.id, name: organizations.name,

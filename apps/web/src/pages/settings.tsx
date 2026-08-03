@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AccessTokensCard } from './settings-tokens.js'
 
 export function SettingsPage() {
   const trpc = useTRPC()
@@ -24,7 +25,7 @@ export function SettingsPage() {
   )
 
   return (
-    <div className="mx-auto w-full max-w-md">
+    <div className="mx-auto grid w-full max-w-md gap-6">
       <Card>
         <CardHeader>
           <CardTitle>비밀번호 변경</CardTitle>
@@ -60,6 +61,7 @@ export function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+      <AccessTokensCard />
     </div>
   )
 }

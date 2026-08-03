@@ -5,10 +5,10 @@ import { currentSeq } from '../services/mutation.js'
 import { mutateAndPublish } from '../services/mutate-publish.js'
 import { loadProjectModel } from '../services/model-store.js'
 import { requireProjectAccess } from '../services/perm.js'
-import { authedProcedure, router } from '../trpc.js'
+import { apiProcedure, authedProcedure, router } from '../trpc.js'
 
 export const modelRouter = router({
-  get: authedProcedure
+  get: apiProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')

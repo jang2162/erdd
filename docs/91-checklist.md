@@ -36,8 +36,8 @@
 
 ## Phase 4 착수 전
 
-- [ ] **CLI 상세** — base 사본 저장 방식, push 충돌 출력 형식, `--json` 출력 스키마, 패키지명 확정(현 `schemantic` 가칭 → ERDD 네이밍 정리)
-- [ ] **에이전트 스킬 문서** — 동봉할 SKILL.md 내용 설계
+- [x] **CLI 상세** — base는 `.erdd/base.json` 단일 JSON(사람이 열어볼 대상이 아니므로 분할하지 않음). `--json` 출력 스키마는 트랙 A 4개 명령(`init`/`pull`/`status`/`validate`)분을 확정(명령별 평면 객체, 공통 봉투 없음, 오류는 `{"error":{"code","message"}}`). 패키지명 `@erdd/cli`·바이너리 `erdd`로 확정. **push 충돌 출력 형식은 트랙 B 착수 전 결정 사항으로 남는다**(현재는 push·3-way 병합 자체가 미구현) → [설계](superpowers/specs/2026-08-03-cli-pull-design.md)
+- [ ] **에이전트 스킬 문서** — 동봉할 SKILL.md 내용 설계. 트랙 B
 - [x] **DDL 역설계 범위** — 손으로 쓴 좁은 파서(파서 라이브러리 미도입, `packages/core`의 무의존 원칙 유지). 범위는 "우리 내보내기의 왕복 + 실무 구문" — `CREATE TABLE`(인라인 PK·REFERENCES·자동증가·MySQL 인라인 COMMENT), `ALTER TABLE ADD CONSTRAINT`, `CREATE [UNIQUE] INDEX`, `COMMENT ON`. `CHECK`·파티션·트리거·시퀀스·권한은 건너뛰고 경고. 타입 역매핑은 보수적 기본값 + 대안 경고이며 **왕복이 깨지는 5건**을 테스트에 상수로 고정했다. 논리명은 코멘트 → 사전 → 물리명 순 → [설계](superpowers/specs/2026-08-03-ddl-reverse-engineering-design.md)
 
 ## 추후 검토 착수 전 (현재 비범위)
