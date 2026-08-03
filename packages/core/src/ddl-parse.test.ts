@@ -217,4 +217,43 @@ describe('parseDdl — CREATE TABLE', () => {
     expect(c[0]!.defaultValue).toBeNull()
     expect(c[1]!.defaultValue).toBe("'X'")
   })
+
+  it('문자열 리터럴 안의 키워드가 구조 플래그를 뒤집지 않는다', () => {
+    const c = parseDdl("CREATE TABLE A (ID INT COMMENT 'legacy identity primary key not null candidate');")
+      .tables[0]!.columns[0]!
+    expect(c.notNull).toBe(false)
+    expect(c.inlinePk).toBe(false)
+    expect(c.autoIncrement).toBe(false)
+    expect(c.comment).toBe('legacy identity primary key not null candidate')
+  })
+
+  it('문자열 리터럴 안의 REFERENCES가 가짜 FK를 만들지 않는다', () => {
+    const r = parseDdl("CREATE TABLE A (NOTE varchar(50) DEFAULT 'REFERENCES old system (v1)');")
+    expect(r.constraints).toEqual([])
+    expect(r.tables[0]!.columns[0]!.defaultValue).toBe("'REFERENCES old system (v1)'")
+  })
+
+  it('문자열 안의 종결 키워드가 DEFAULT 값을 일찍 끊지 않는다', () => {
+    const c = parseDdl("CREATE TABLE A (ST varchar(10) DEFAULT 'a COMMENT b' NOT NULL);")
+      .tables[0]!.columns[0]!
+    expect(c.defaultValue).toBe("'a COMMENT b'")
+    expect(c.notNull).toBe(true)
+  })
+
+  it('진짜 구조 키워드는 여전히 인식한다(대조군)', () => {
+    const c = parseDdl("CREATE TABLE A (ID INT NOT NULL PRIMARY KEY AUTO_INCREMENT COMMENT '설명');")
+      .tables[0]!.columns[0]!
+    expect(c.notNull).toBe(true)
+    expect(c.inlinePk).toBe(true)
+    expect(c.autoIncrement).toBe(true)
+    expect(c.comment).toBe('설명')
+  })
+
+  it('진짜 인라인 REFERENCES는 여전히 잡는다(대조군)', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES MBR (MBR_NO));')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
 })
