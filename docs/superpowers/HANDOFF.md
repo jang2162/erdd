@@ -320,8 +320,8 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - 파서는 `CREATE TABLE`·`ALTER TABLE ADD CONSTRAINT`·`CREATE INDEX`·`COMMENT ON`만 안다. 뷰·프로시저·트리거·시퀀스는 건너뛴다
 - **인덱스 컬럼의 정렬 방향(`ASC`/`DESC`)이 유실된다.** 파서의 `identifierList`가 방향 토큰을 버려 계획 타입에 자리가 없고, 적용 시 전부 `'asc'`로 고정된다
 - **관계 카디널리티가 항상 `1:N`이다.** 자식 FK 컬럼에 `UNIQUE`가 걸린 1:1 관계도 `1:N`으로 저장된다. 계획 단계가 UNIQUE 제약을 관계 판정에 쓰지 않기 때문이다
-- **테이블 코멘트의 `' - '` 뒤 설명이 유실된다.** `DdlImportTable`에 `comment` 필드가 없어 계획 단계에서 폐기된다. 컬럼은 정상이다
-- **Oracle의 `VALIDATE`/`NOVALIDATE`/`RELY`가 FK 종결 키워드 목록에 없다.** `ENABLE`/`DISABLE` 없이 단독으로 오면 `refTable`에 섞인다
+- **컬럼 인라인 `UNIQUE`(`ID INT UNIQUE`)를 파싱하지 않는다.** `ParsedColumn`에 자리가 없다. `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE`와 테이블 제약 `UNIQUE (...)`는 유니크 인덱스로 정상 합류한다
+- **`0개 테이블 만들기` 버튼이 눌러도 반응이 없다.** 만들 것이 0개여도 버튼이 활성이고, 눌러도 다이얼로그가 닫히지 않으며 토스트도 없다. 기능적으로는 안전(빈 Revision이 생기지 않고 모델도 불변)하나 사용자에게는 먹통으로 보인다 — 비활성화하거나 안내 후 닫는 편이 낫다
 - **MSSQL 코멘트는 왕복하지 않는다.** 내보내기가 `EXEC sys.sp_addextendedproperty`로 내는데 그 문장 형태는 파싱 범위 밖이다. 구조는 왕복하고 논리명만 물리명으로 떨어지며 경고가 남는다. 이 동작은 테스트로 고정돼 있어 나중에 `sp_addextendedproperty` 파싱을 구현하면 그 테스트가 깨져 재검토를 강제한다
 
 ---
