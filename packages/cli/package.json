@@ -1,0 +1,21 @@
+{
+  "name": "@erdd/cli",
+  "private": true,
+  "type": "module",
+  "main": "./src/main.ts",
+  "types": "./src/main.ts",
+  "bin": { "erdd": "./src/main.ts" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@erdd/core": "workspace:^",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
