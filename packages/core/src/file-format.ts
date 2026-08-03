@@ -15,14 +15,22 @@ export const TOP_LEVEL_FILES = [
 
 /**
  * 테이블 파일명. 물리명이 대소문자만 다른 테이블이 있으면(macOS·Windows에서 충돌)
- * 그 테이블들만 id 앞 8자를 접미사로 붙인다.
+ * 그 테이블들에만 id 접미사를 붙인다.
+ *
+ * 접미사는 id의 **뒤** 8자다. uuidv7의 앞 12자는 48비트 밀리초 타임스탬프라,
+ * 같은 65초 창에서 만들어진 두 id는 앞 8자가 완전히 같아져 충돌 회피가 무력해진다.
+ * 뒤쪽은 난수 비트다. 그마저 겹치면 id 전체를 써서 결정적으로 갈라 준다.
  */
 export function tableFileName(model: ProjectModel, tableId: string): string {
   const table = model.tables[tableId]!
-  const clash = Object.values(model.tables).some(
-    (t) => t.id !== tableId && t.physicalName.toUpperCase() === table.physicalName.toUpperCase(),
+  const clashing = Object.values(model.tables).filter(
+    (t) => t.physicalName.toUpperCase() === table.physicalName.toUpperCase(),
   )
-  return clash ? `${table.physicalName}.${table.id.slice(0, 8)}.yaml` : `${table.physicalName}.yaml`
+  if (clashing.length === 1) return `${table.physicalName}.yaml`
+  const shorts = clashing.map((t) => t.id.slice(-8))
+  const distinct = new Set(shorts).size === clashing.length
+  const suffix = distinct ? table.id.slice(-8) : table.id
+  return `${table.physicalName}.${suffix}.yaml`
 }
 
 /** 값이 기본값이면 키를 아예 넣지 않는다 — diff를 조용하게 유지한다. */

@@ -119,8 +119,46 @@ describe('modelToFiles', () => {
     }
     const { tree, issues } = modelToFiles(m)
     expect(Object.keys(tree)).toContain(`${TREE_ROOT}/tables/MBR.tb1.yaml`)
-    expect(Object.keys(tree)).toContain(`${TREE_ROOT}/tables/mbr.tb3abcde.yaml`)
+    expect(Object.keys(tree)).toContain(`${TREE_ROOT}/tables/mbr.def-0000.yaml`)
     expect(Object.keys(tree)).not.toContain(`${TREE_ROOT}/tables/MBR.yaml`)
     expect(issues.some((i) => i.message.includes('대소문자'))).toBe(true)
+  })
+
+  it('id 앞부분이 같아도(같은 65초 창에 생성) 파일명이 갈린다', () => {
+    const m = createEmptyModel()
+    // uuidv7의 앞 12자는 48비트 ms 타임스탬프 — 같은 65초 창이면 앞 8자가 동일하다.
+    const idA = '019fc671-b1ef-7e97-958b-4a888c73a323'
+    const idB = '019fc671-c2aa-7000-8000-000000000001'
+    expect(idA.slice(0, 8)).toBe(idB.slice(0, 8))   // 전제 확인
+    m.tables[idA] = {
+      id: idA, logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.tables[idB] = {
+      id: idB, logicalName: '회원소문자', physicalName: 'mbr', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const names = Object.keys(modelToFiles(m).tree).filter((p) => p.startsWith(`${TREE_ROOT}/tables/`))
+    expect(names).toHaveLength(2)
+    // 대소문자를 구분하지 않는 파일시스템에서도 서로 다른 경로여야 한다.
+    expect(new Set(names.map((n) => n.toLowerCase())).size).toBe(2)
+  })
+
+  it('뒤 8자까지 같으면 id 전체를 접미사로 쓴다', () => {
+    const m = createEmptyModel()
+    const idA = '019fc671-0000-7000-8000-4a888c73a323'
+    const idB = '019fc671-1111-7000-8000-4a888c73a323'
+    expect(idA.slice(-8)).toBe(idB.slice(-8))   // 전제 확인
+    m.tables[idA] = {
+      id: idA, logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.tables[idB] = {
+      id: idB, logicalName: '회원소문자', physicalName: 'mbr', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const names = Object.keys(modelToFiles(m).tree)
+    expect(names).toContain(`${TREE_ROOT}/tables/MBR.${idA}.yaml`)
+    expect(names).toContain(`${TREE_ROOT}/tables/mbr.${idB}.yaml`)
   })
 })
