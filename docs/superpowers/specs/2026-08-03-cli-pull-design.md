@@ -174,6 +174,7 @@ columns:
     name: MBR_NM
     logicalName: 회원명
     domain: 명
+    type: VARCHAR(100)
     nullable: false
 indexes:
   - id: 018f6b0e-…
@@ -190,7 +191,7 @@ relations:
 규칙:
 
 - **참조는 이름으로 쓰고 `id`를 함께 둔다.** `group`·`domain`·`to`는 사람이 읽을 이름이고, identity는 `id`다. 이름이 바뀌어도 `id`로 추적되므로 삭제+추가로 오인되지 않는다(→ [02-architecture](../../02-architecture.md)).
-- 컬럼은 `domain`(도메인 이름) 또는 `type`(논리 타입 문자열) 중 하나를 가진다. 도메인이 지정되면 타입은 도메인에서 해석되므로 파일에 쓰지 않는다.
+- 컬럼은 `type`(논리 타입 문자열)을 항상 쓰고, 도메인이 지정된 컬럼은 `domain`(도메인 이름)을 함께 쓴다. **둘 다 쓰는 이유는 모델이 실제로 둘 다 들고 있기 때문이다** — `setColumnDomain`(`apps/web/src/editor/column-edits.ts:36`)은 도메인을 지정할 때 기존 `type` 문자열을 지우지 않는다. `type`만 쓰면 도메인이 소실되고, `domain`만 쓰면 그 `type` 문자열이 소실된다. 읽을 때 실효 타입은 도메인이 우선하며(`resolveColumn`), 파일의 `type`은 도메인이 있을 때 참고값이다.
 - 관계는 **자식 테이블 파일**에 적는다(`to`가 부모). 한 관계가 두 파일에 나타나지 않는다.
 - 기본값이 있는 필드는 값이 기본값이면 파일에서 생략한다(`nullable: true`, `pk: false`, `unique: false`). diff를 조용하게 유지한다.
 - 로컬에서 새로 만든 객체는 `id` 없이 쓴다. 트랙 A에서는 `pull`이 항상 `id`를 채우므로 이 형태는 `validate`만 받아들이고, 실제 발급은 트랙 B의 `push`가 한다.
