@@ -1,4 +1,4 @@
-import type { ProjectModel } from './model.js'
+import { createEmptyModel, type ProjectModel } from './model.js'
 
 /** 상대 경로 → 파일 내용(plain object). YAML 인코딩은 이 파일의 책임이 아니다. */
 export type FileTree = Record<string, unknown>
@@ -185,4 +185,187 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
   }
 
   return { tree, issues }
+}
+
+export type FilesToModelResult =
+  | { ok: true; model: ProjectModel; warnings: FileIssue[] }
+  | { ok: false; issues: FileIssue[] }
+
+type Rec = Record<string, unknown>
+const isRec = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !Array.isArray(v)
+const asStr = (v: unknown): string | null => (typeof v === 'string' ? v : null)
+const asBool = (v: unknown, dflt: boolean): boolean => (typeof v === 'boolean' ? v : dflt)
+
+/** 새로 만든 객체는 파일에 id가 없다. 서버 발급 전이므로 빈 문자열로 둔다. */
+const idOf = (r: Rec): string => asStr(r['id']) ?? ''
+
+export function filesToModel(tree: FileTree): FilesToModelResult {
+  const issues: FileIssue[] = []
+  const warnings: FileIssue[] = []
+  const model = createEmptyModel()
+
+  const readList = (path: string, key: string): Rec[] => {
+    const file = tree[path]
+    if (file === undefined) return []
+    if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); return [] }
+    const list = file[key]
+    if (list === undefined) return []
+    if (!Array.isArray(list)) { issues.push({ path, message: `${key}는 배열이어야 합니다` }); return [] }
+    return list.filter(isRec)
+  }
+
+  // 1) 이름으로 참조되는 것부터 — 그룹·도메인.
+  for (const g of readList(`${TREE_ROOT}/groups.yaml`, 'groups')) {
+    const id = idOf(g)
+    model.tableGroups[id] = {
+      id, name: asStr(g['name']) ?? '', color: asStr(g['color']) ?? '#ffffff',
+      comment: asStr(g['comment']),
+    }
+  }
+  for (const d of readList(`${TREE_ROOT}/domains.yaml`, 'domains')) {
+    const id = idOf(d)
+    const dt = isRec(d['dialectTypes']) ? d['dialectTypes'] : {}
+    model.domains[id] = {
+      id, name: asStr(d['name']) ?? '', category: asStr(d['category']),
+      logicalType: asStr(d['logicalType']) ?? '',
+      dialectTypes: {
+        postgresql: asStr(dt['postgresql']), mysql: asStr(dt['mysql']),
+        oracle: asStr(dt['oracle']), mssql: asStr(dt['mssql']),
+      },
+      defaultValue: asStr(d['defaultValue']),
+      allowedValues: Array.isArray(d['allowedValues']) ? d['allowedValues'].filter((v): v is string => typeof v === 'string') : [],
+      description: asStr(d['description']), origin: null,
+    }
+  }
+  const groupIdByName = new Map(Object.values(model.tableGroups).map((g) => [g.name, g.id]))
+  const domainIdByName = new Map(Object.values(model.domains).map((d) => [d.name, d.id]))
+
+  for (const w of readList(`${TREE_ROOT}/words.yaml`, 'words')) {
+    const id = idOf(w)
+    model.words[id] = {
+      id, logicalName: asStr(w['logicalName']) ?? '', abbreviation: asStr(w['abbreviation']) ?? '',
+      englishName: asStr(w['englishName']), description: asStr(w['description']), origin: null,
+    }
+  }
+  for (const t of readList(`${TREE_ROOT}/terms.yaml`, 'terms')) {
+    const id = idOf(t)
+    const domainName = asStr(t['domain'])
+    let domainId: string | null = null
+    if (domainName !== null) {
+      const hit = domainIdByName.get(domainName)
+      if (hit === undefined) {
+        issues.push({ path: `${TREE_ROOT}/terms.yaml`, message: `도메인 ${domainName}을 찾지 못했습니다` })
+      } else domainId = hit
+    }
+    model.terms[id] = {
+      id, logicalName: asStr(t['logicalName']) ?? '', physicalName: asStr(t['physicalName']) ?? '',
+      domainId, description: asStr(t['description']), origin: null,
+    }
+  }
+  for (const f of readList(`${TREE_ROOT}/custom-fields.yaml`, 'customFields')) {
+    const id = idOf(f)
+    const target = f['target'] === 'table' ? 'table' : 'column'
+    const type = f['type'] === 'boolean' ? 'boolean' : f['type'] === 'select' ? 'select' : 'text'
+    model.customFields[id] = {
+      id, name: asStr(f['name']) ?? '', target, type,
+      options: Array.isArray(f['options']) ? f['options'].filter((v): v is string => typeof v === 'string') : [],
+      required: asBool(f['required'], false), defaultValue: asStr(f['defaultValue']),
+      order: typeof f['order'] === 'number' ? f['order'] : 0, origin: null,
+    }
+  }
+
+  // 2) 테이블 파일 — 두 번 훑는다. 관계가 다른 테이블의 컬럼을 참조하기 때문이다.
+  const tablePaths = Object.keys(tree).filter((p) => p.startsWith(`${TREE_ROOT}/tables/`))
+  const pending: { path: string; file: Rec; tableId: string }[] = []
+
+  for (const path of tablePaths.sort()) {
+    const file = tree[path]
+    if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); continue }
+    const tableId = idOf(file)
+    const groupName = asStr(file['group'])
+    let groupId: string | null = null
+    if (groupName !== null) {
+      const hit = groupIdByName.get(groupName)
+      if (hit === undefined) issues.push({ path, message: `그룹 ${groupName}을 찾지 못했습니다` })
+      else groupId = hit
+    }
+    model.tables[tableId] = {
+      id: tableId, physicalName: asStr(file['name']) ?? '', logicalName: asStr(file['logicalName']) ?? '',
+      comment: asStr(file['comment']), groupId,
+      position: { x: 0, y: 0 }, groupPosition: null,
+      custom: isRec(file['custom']) ? Object.fromEntries(
+        Object.entries(file['custom']).filter((e): e is [string, string] => typeof e[1] === 'string'),
+      ) : {},
+    }
+
+    const rawCols = Array.isArray(file['columns']) ? file['columns'].filter(isRec) : []
+    rawCols.forEach((c, order) => {
+      const id = idOf(c)
+      const domainName = asStr(c['domain'])
+      let domainId: string | null = null
+      if (domainName !== null) {
+        const hit = domainIdByName.get(domainName)
+        if (hit === undefined) issues.push({ path, message: `도메인 ${domainName}을 찾지 못했습니다` })
+        else domainId = hit
+      }
+      model.columns[id] = {
+        id, tableId, physicalName: asStr(c['name']) ?? '', logicalName: asStr(c['logicalName']) ?? '',
+        type: asStr(c['type']) ?? '',
+        isPk: asBool(c['pk'], false), autoIncrement: asBool(c['autoIncrement'], false),
+        nullable: asBool(c['nullable'], true), defaultValue: asStr(c['default']),
+        order, comment: asStr(c['comment']), domainId,
+        custom: isRec(c['custom']) ? Object.fromEntries(
+          Object.entries(c['custom']).filter((e): e is [string, string] => typeof e[1] === 'string'),
+        ) : {},
+      }
+    })
+
+    pending.push({ path, file, tableId })
+  }
+
+  const tableIdByName = new Map(Object.values(model.tables).map((t) => [t.physicalName, t.id]))
+  const colIdIn = (tableId: string, physicalName: string): string | undefined =>
+    Object.values(model.columns).find((c) => c.tableId === tableId && c.physicalName === physicalName)?.id
+
+  for (const { path, file, tableId } of pending) {
+    for (const ix of (Array.isArray(file['indexes']) ? file['indexes'].filter(isRec) : [])) {
+      const cols = (Array.isArray(ix['columns']) ? ix['columns'] : []).filter((v): v is string => typeof v === 'string')
+      const parsed = cols.map((raw) => {
+        const desc = /\s+DESC$/i.test(raw)
+        const name = raw.replace(/\s+(ASC|DESC)$/i, '')
+        const columnId = colIdIn(tableId, name)
+        if (columnId === undefined) issues.push({ path, message: `인덱스 컬럼 ${name}을 찾지 못했습니다` })
+        return { columnId: columnId ?? '', direction: (desc ? 'desc' : 'asc') as 'asc' | 'desc' }
+      })
+      const id = idOf(ix)
+      model.indexes[id] = { id, tableId, name: asStr(ix['name']) ?? '', columns: parsed, unique: asBool(ix['unique'], false) }
+    }
+
+    for (const r of (Array.isArray(file['relations']) ? file['relations'].filter(isRec) : [])) {
+      const to = asStr(r['to']) ?? ''
+      const parentTableId = tableIdByName.get(to)
+      if (parentTableId === undefined) {
+        issues.push({ path, message: `관계의 부모 테이블 ${to}을 찾지 못했습니다` })
+        continue
+      }
+      const mappings: { childColumnId: string; parentColumnId: string }[] = []
+      for (const [childName, parentName] of Object.entries(isRec(r['columns']) ? r['columns'] : {})) {
+        if (typeof parentName !== 'string') continue
+        const childColumnId = colIdIn(tableId, childName)
+        const parentColumnId = colIdIn(parentTableId, parentName)
+        if (childColumnId === undefined) issues.push({ path, message: `관계의 자식 컬럼 ${childName}을 찾지 못했습니다` })
+        if (parentColumnId === undefined) issues.push({ path, message: `관계의 부모 컬럼 ${to}.${parentName}을 찾지 못했습니다` })
+        mappings.push({ childColumnId: childColumnId ?? '', parentColumnId: parentColumnId ?? '' })
+      }
+      const id = idOf(r)
+      model.relationships[id] = {
+        id, parentTableId, childTableId: tableId, columnMappings: mappings,
+        cardinality: r['cardinality'] === '1:1' ? '1:1' : '1:N',
+        identifying: asBool(r['identifying'], false), name: asStr(r['name']),
+      }
+    }
+  }
+
+  if (issues.length > 0) return { ok: false, issues }
+  return { ok: true, model, warnings }
 }

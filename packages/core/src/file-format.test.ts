@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type ProjectModel } from './model.js'
 import { modelToFiles, TREE_ROOT, TOP_LEVEL_FILES } from './file-format.js'
+import { filesToModel } from './file-format.js'
 
 /** 9개 컬렉션을 전부 채운 픽스처. 왕복이 실제로 모든 경로를 지나가게 한다. */
 export function fullModel(): ProjectModel {
@@ -160,5 +161,76 @@ describe('modelToFiles', () => {
     const names = Object.keys(modelToFiles(m).tree)
     expect(names).toContain(`${TREE_ROOT}/tables/MBR.${idA}.yaml`)
     expect(names).toContain(`${TREE_ROOT}/tables/mbr.${idB}.yaml`)
+  })
+})
+
+/** 파일에 담지 않는 것을 복원 가능한 형태로 깎는다. 왕복 비교의 기준. */
+function normalizeForRoundTrip(m: ProjectModel): ProjectModel {
+  const clone: ProjectModel = JSON.parse(JSON.stringify(m))
+  clone.notes = {}
+  for (const t of Object.values(clone.tables)) {
+    t.position = { x: 0, y: 0 }
+    t.groupPosition = null
+  }
+  for (const d of Object.values(clone.domains)) d.origin = null
+  for (const w of Object.values(clone.words)) w.origin = null
+  for (const t of Object.values(clone.terms)) t.origin = null
+  for (const f of Object.values(clone.customFields)) f.origin = null
+  return clone
+}
+
+describe('filesToModel', () => {
+  it('왕복이 항등이다 — 9개 컬렉션 전부', () => {
+    const original = fullModel()
+    const { tree } = modelToFiles(original)
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.model).toEqual(normalizeForRoundTrip(original))
+  })
+
+  it('생략된 기본값을 복원한다', () => {
+    const { tree } = modelToFiles(fullModel())
+    const ord = tree['erdd/tables/ORD.yaml'] as Record<string, unknown>
+    // 파일에는 unique·identifying이 없다(기본값이라 생략됐다).
+    expect(JSON.stringify(ord)).not.toContain('"unique"')
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const ix = Object.values(result.model.indexes).find((i) => i.name === 'IX_ORD_01')!
+    expect(ix.unique).toBe(false)
+    expect(ix.columns[0]!.direction).toBe('desc')
+  })
+
+  it('이름 참조가 해소되지 않으면 issue를 낸다', () => {
+    const { tree } = modelToFiles(fullModel())
+    const mbr = tree['erdd/tables/MBR.yaml'] as Record<string, unknown>
+    ;(mbr as { group: string }).group = '없는그룹'
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.issues.some((i) => i.message.includes('없는그룹'))).toBe(true)
+  })
+
+  it('관계가 없는 부모 테이블을 가리키면 issue를 낸다', () => {
+    const { tree } = modelToFiles(fullModel())
+    const ord = tree['erdd/tables/ORD.yaml'] as { relations: { to: string }[] }
+    ord.relations[0]!.to = 'NOPE'
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.issues.some((i) => i.message.includes('NOPE'))).toBe(true)
+  })
+
+  it('id 없는 객체는 받아들이고 빈 문자열 id로 표시한다', () => {
+    const { tree } = modelToFiles(fullModel())
+    const mbr = tree['erdd/tables/MBR.yaml'] as { columns: Record<string, unknown>[] }
+    mbr.columns.push({ name: 'NEW_COL', logicalName: '새컬럼', type: 'INT' })
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const added = Object.values(result.model.columns).find((c) => c.physicalName === 'NEW_COL')!
+    expect(added.id).toBe('')
+    expect(added.nullable).toBe(true)
   })
 })
