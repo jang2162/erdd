@@ -35,6 +35,19 @@ describe('splitStatements', () => {
   it('빈 문장을 버린다', () => {
     expect(splitStatements(';;\n  \n;')).toEqual([])
   })
+
+  it('CRLF 줄바꿈에서도 Oracle / 구분자와 줄 번호가 정상이다', () => {
+    const s = splitStatements('CREATE TABLE A (X INT)\r\n/\r\nCREATE TABLE B (Y INT)\r\n/')
+    expect(s).toHaveLength(2)
+    expect(s[0]!.line).toBe(1)
+    expect(s[1]!.line).toBe(3)
+  })
+
+  it('CRLF 줄바꿈에서 줄 주석이 문장을 삼키지 않는다', () => {
+    const s = splitStatements('-- 머리말\r\nCREATE TABLE A (X INT);\r\nCREATE TABLE B (Y INT);')
+    expect(s).toHaveLength(2)
+    expect(s[0]!.line).toBe(2)
+  })
 })
 
 describe('unquoteIdentifier', () => {

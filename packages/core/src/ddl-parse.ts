@@ -36,6 +36,9 @@ export type RawStatement = { text: string; line: number }
  * 줄 번호는 원문 기준이므로 주석을 지워도 어긋나지 않는다.
  */
 export function splitStatements(ddl: string): RawStatement[] {
+  // CRLF·CR을 LF로 통일한다. 줄 수가 바뀌지 않으므로 줄 번호는 그대로 유지되고,
+  // '/' 구분자 판정처럼 줄 끝을 보는 로직이 \r에 걸리지 않는다.
+  const src = ddl.replace(/\r\n?/g, '\n')
   const out: RawStatement[] = []
   let buf = ''
   let line = 1
@@ -49,23 +52,23 @@ export function splitStatements(ddl: string): RawStatement[] {
     started = false
   }
 
-  for (let i = 0; i < ddl.length; i++) {
-    const c = ddl[i]!
-    const next = ddl[i + 1]
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i]!
+    const next = src[i + 1]
 
     if (c === '\n') { line += 1; buf += c; continue }
 
     // 줄 주석
     if (c === '-' && next === '-') {
-      while (i < ddl.length && ddl[i] !== '\n') i++
+      while (i < src.length && src[i] !== '\n') i++
       i--
       continue
     }
     // 블록 주석
     if (c === '/' && next === '*') {
       i += 2
-      while (i < ddl.length && !(ddl[i] === '*' && ddl[i + 1] === '/')) {
-        if (ddl[i] === '\n') line += 1
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
+        if (src[i] === '\n') line += 1
         i++
       }
       i += 1
@@ -76,11 +79,11 @@ export function splitStatements(ddl: string): RawStatement[] {
       if (!started) { startLine = line; started = true }
       buf += c
       i++
-      while (i < ddl.length) {
-        if (ddl[i] === "'" && ddl[i + 1] === "'") { buf += "''"; i += 2; continue }
-        if (ddl[i] === "'") { buf += "'"; break }
-        if (ddl[i] === '\n') line += 1
-        buf += ddl[i]!
+      while (i < src.length) {
+        if (src[i] === "'" && src[i + 1] === "'") { buf += "''"; i += 2; continue }
+        if (src[i] === "'") { buf += "'"; break }
+        if (src[i] === '\n') line += 1
+        buf += src[i]!
         i++
       }
       continue
@@ -91,11 +94,11 @@ export function splitStatements(ddl: string): RawStatement[] {
       if (!started) { startLine = line; started = true }
       buf += c
       i++
-      while (i < ddl.length) {
-        if (ddl[i] === close && ddl[i + 1] === close) { buf += close + close; i += 2; continue }
-        if (ddl[i] === close) { buf += close; break }
-        if (ddl[i] === '\n') line += 1
-        buf += ddl[i]!
+      while (i < src.length) {
+        if (src[i] === close && src[i + 1] === close) { buf += close + close; i += 2; continue }
+        if (src[i] === close) { buf += close; break }
+        if (src[i] === '\n') line += 1
+        buf += src[i]!
         i++
       }
       continue
@@ -103,7 +106,7 @@ export function splitStatements(ddl: string): RawStatement[] {
     // 구분자
     if (c === ';') { flush(); continue }
     // Oracle 스크립트의 / — 줄에 그것만 있을 때만 구분자다
-    if (c === '/' && /(^|\n)[ \t]*$/.test(buf.slice(-40)) && /^[ \t]*(\n|$)/.test(ddl.slice(i + 1))) {
+    if (c === '/' && /(^|\n)[ \t]*$/.test(buf.slice(-40)) && /^[ \t]*(\n|$)/.test(src.slice(i + 1))) {
       flush(); continue
     }
 
