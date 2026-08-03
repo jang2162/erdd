@@ -30,4 +30,15 @@ describe('main', () => {
     expect(await main(['status', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
     expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
   })
+
+  it('값 없는 플래그의 다음 플래그를 값으로 삼키지 않는다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    // --server에 값이 없다. --token을 값으로 삼키면 서버 URL이 "--token"이 되어
+    // NETWORK 오류로 번지고, 삼키지 않으면 대화형 입력이 없어 USAGE로 끝난다.
+    const code = await main(['init', '--json', '--server', '--token', 'erdd_pat_x'], '/tmp/erdd-none')
+    expect(code).toBe(2)
+    expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+  })
 })

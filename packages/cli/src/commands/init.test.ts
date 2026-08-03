@@ -3,6 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ApiClient } from '../client.js'
+import { CliError } from '../output.js'
 import { init } from './init.js'
 
 let dir: string
@@ -74,12 +75,15 @@ describe('init', () => {
 
   it('토큰이 유효하지 않으면 UNAUTHORIZED로 끝난다', async () => {
     const client: ApiClient = {
-      query: vi.fn(async () => { throw Object.assign(new Error('토큰이 유효하지 않습니다'), { code: 'UNAUTHORIZED', name: 'CliError' }) }) as ApiClient['query'],
+      query: vi.fn(async () => {
+        throw new CliError('UNAUTHORIZED', '토큰이 유효하지 않습니다')
+      }) as ApiClient['query'],
     }
     const code = await init({
       cwd: dir, json: true, yes: true, strict: false, client,
       serverUrl: 'https://x', token: 'bad', projectId: 'p1',
     })
     expect(code).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('UNAUTHORIZED')
   })
 })
