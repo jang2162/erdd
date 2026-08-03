@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { DIALECTS, type Dialect, type FileTree, type NamingRules } from '@erdd/core'
@@ -89,10 +89,11 @@ export async function resolveToken(cwd: string): Promise<string | null> {
 
 export async function writeToken(cwd: string, token: string): Promise<void> {
   await mkdir(join(cwd, STATE_DIR), { recursive: true })
-  await writeFile(
-    join(cwd, STATE_DIR, 'credentials.json'), `${JSON.stringify({ token }, null, 2)}\n`,
-    { encoding: 'utf8', mode: 0o600 },
-  )
+  const path = join(cwd, STATE_DIR, 'credentials.json')
+  await writeFile(path, `${JSON.stringify({ token }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+  // writeFile의 mode는 파일 생성 시에만 적용된다 — 이미 있는 파일의 권한이 넓어져 있으면
+  // 그대로 남아 평문 토큰이 노출된다. 매번 명시적으로 좁힌다.
+  await chmod(path, 0o600)
 }
 
 /** .erdd/를 .gitignore에 한 번만 추가한다. 기존 내용은 건드리지 않는다. */

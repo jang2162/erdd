@@ -36,4 +36,12 @@ describe('output', () => {
     expect(out).not.toHaveBeenCalled()
     expect(err.mock.calls[0]![0]).toContain('erdd.config.yaml이 없습니다')
   })
+
+  it('payload가 undefined여도 stdout이 파싱 가능한 JSON이다', () => {
+    const out = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+    emit(true, '사람용', undefined)
+    const written = out.mock.calls[0]![0] as string
+    expect(written).toBe('null\n')
+    expect(() => JSON.parse(written)).not.toThrow()
+  })
 })

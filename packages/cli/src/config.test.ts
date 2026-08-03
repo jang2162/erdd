@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -88,6 +88,17 @@ describe('config', () => {
 
   it('토큰이 아무 데도 없으면 null이다', async () => {
     expect(await resolveToken(dir)).toBeNull()
+  })
+
+  it('credentials는 0600이고 권한이 넓어져 있어도 다시 좁힌다', async () => {
+    await writeToken(dir, 'erdd_pat_a')
+    const path = join(dir, '.erdd', 'credentials.json')
+    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    // 외부 요인으로 권한이 넓어진 상황을 만든다.
+    await chmod(path, 0o644)
+    await writeToken(dir, 'erdd_pat_b')
+    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    expect(await resolveToken(dir)).toBe('erdd_pat_b')
   })
 
   it('ensureGitignore는 .erdd/를 한 번만 넣는다', async () => {

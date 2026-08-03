@@ -17,7 +17,9 @@ export function exitCodeFor(code: CliErrorCode): 1 | 2 {
 
 /** --json이면 stdout에 JSON 한 덩어리, 아니면 사람용 문구. 진행 메시지는 note()가 stderr로. */
 export function emit(json: boolean, human: string, payload: unknown): void {
-  process.stdout.write(json ? `${JSON.stringify(payload)}\n` : `${human}\n`)
+  // JSON.stringify(undefined)는 문자열이 아니라 undefined를 돌려준다 — 그대로 쓰면
+  // stdout에 리터럴 "undefined"가 나가 JSON.parse가 깨진다. null로 정규화한다.
+  process.stdout.write(json ? `${JSON.stringify(payload ?? null)}\n` : `${human}\n`)
 }
 
 export function emitError(json: boolean, err: CliError): void {
