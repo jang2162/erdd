@@ -177,10 +177,174 @@ function statementKeyword(text: string): string {
   return (/^[A-Z_]+/.exec(t)?.[0]) ?? '?'
 }
 
+/** 괄호 깊이 0의 쉼표로만 나눈다. 문자열 리터럴·따옴표 식별자 안은 건너뛴다. */
+function splitTopLevel(body: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let depth = 0
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]!
+    if (c === "'" || c === '"' || c === '`' || c === '[') {
+      const close = c === '[' ? ']' : c
+      cur += c; i++
+      while (i < body.length) {
+        if (body[i] === close && body[i + 1] === close) { cur += close + close; i += 2; continue }
+        cur += body[i]!
+        if (body[i] === close) break
+        i++
+      }
+      continue
+    }
+    if (c === '(') depth++
+    if (c === ')') depth--
+    if (c === ',' && depth === 0) { out.push(cur.trim()); cur = ''; continue }
+    cur += c
+  }
+  if (cur.trim() !== '') out.push(cur.trim())
+  return out
+}
+
+/** '(A, B)' 같은 괄호 목록을 식별자 배열로. */
+function identifierList(inner: string): string[] {
+  return splitTopLevel(inner).map((s) => unquoteIdentifier(s.replace(/\s+(ASC|DESC)$/i, '').trim()))
+}
+
+/** 문자열의 첫 최상위 괄호 쌍의 내용과 그 뒤 꼬리를 돌려준다. */
+function firstParenGroup(text: string): { inner: string; tail: string } | null {
+  const start = text.indexOf('(')
+  if (start < 0) return null
+  let depth = 0
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]!
+    if (c === "'" || c === '"' || c === '`' || c === '[') {
+      const close = c === '[' ? ']' : c
+      i++
+      while (i < text.length && text[i] !== close) i++
+      continue
+    }
+    if (c === '(') depth++
+    else if (c === ')') {
+      depth--
+      if (depth === 0) return { inner: text.slice(start + 1, i), tail: text.slice(i + 1) }
+    }
+  }
+  return null
+}
+
+const AUTO_INCREMENT_PATTERNS = [
+  /\bAUTO_INCREMENT\b/i,                   // mysql
+  /\bIDENTITY\b/i,                         // mssql, oracle
+  /\bGENERATED\s+(BY\s+DEFAULT|ALWAYS)\s+AS\s+IDENTITY\b/i,
+]
+const SERIAL_TYPES = /^(SERIAL|BIGSERIAL|SMALLSERIAL)$/i
+
+function parseColumnDef(def: string): ParsedColumn | null {
+  const nameMatch = /^\s*("(?:[^"]|"")*"|`(?:[^`]|``)*`|\[(?:[^\]]|\]\])*\]|[A-Za-z_][\w$]*)\s*(.*)$/s
+    .exec(def)
+  if (!nameMatch) return null
+  const name = unquoteIdentifier(nameMatch[1]!)
+  const rest = nameMatch[2]!.trim()
+  if (rest === '') return null
+
+  // 타입 = 첫 토큰(공백 허용 조합 포함) + 선택적 괄호
+  const typeMatch = /^((?:DOUBLE\s+PRECISION|CHARACTER\s+VARYING|TIMESTAMP\s+WITH(?:OUT)?\s+TIME\s+ZONE|[A-Za-z_][\w$]*)\s*(?:\([^)]*\))?)/i
+    .exec(rest)
+  if (!typeMatch) return null
+  const rawType = typeMatch[1]!.replace(/\s+/g, ' ').trim()
+  const attrs = rest.slice(typeMatch[0].length)
+
+  const defaultMatch = /\bDEFAULT\s+(.+?)(?=\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|REFERENCES|COMMENT|COLLATE|CHECK)\b|$)/is
+    .exec(attrs)
+  const commentMatch = /\bCOMMENT\s+'((?:[^']|'')*)'/is.exec(attrs)
+
+  return {
+    name,
+    rawType,
+    notNull: /\bNOT\s+NULL\b/i.test(attrs) || /\bPRIMARY\s+KEY\b/i.test(attrs),
+    defaultValue: defaultMatch ? defaultMatch[1]!.trim() : null,
+    autoIncrement: AUTO_INCREMENT_PATTERNS.some((p) => p.test(attrs)) || SERIAL_TYPES.test(rawType),
+    inlinePk: /\bPRIMARY\s+KEY\b/i.test(attrs),
+    comment: commentMatch ? commentMatch[1]!.replace(/''/g, "'") : null,
+  }
+}
+
+const CREATE_TABLE_RE = /^CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|TEMP\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s*(?=\()/is
+
+function parseCreateTable(
+  stmt: RawStatement, out: ParsedDdl,
+): boolean {
+  const head = CREATE_TABLE_RE.exec(stmt.text)
+  if (!head) return false
+  const group = firstParenGroup(stmt.text)
+  if (!group) return false
+  const table = unquoteIdentifier(head[1]!.trim())
+  const columns: ParsedColumn[] = []
+
+  for (const item of splitTopLevel(group.inner)) {
+    const named = /^CONSTRAINT\s+("(?:[^"]|"")*"|`(?:[^`]|``)*`|\[(?:[^\]]|\]\])*\]|[A-Za-z_][\w$]*)\s+(.*)$/is
+      .exec(item)
+    const constraintName = named ? unquoteIdentifier(named[1]!) : null
+    const body = named ? named[2]!.trim() : item
+
+    if (/^PRIMARY\s+KEY\b/i.test(body)) {
+      const g = firstParenGroup(body)
+      if (g) out.constraints.push({ kind: 'pk', table, columns: identifierList(g.inner) })
+      continue
+    }
+    if (/^UNIQUE\b/i.test(body)) {
+      const g = firstParenGroup(body)
+      if (g) out.constraints.push({ kind: 'unique', table, name: constraintName, columns: identifierList(g.inner) })
+      continue
+    }
+    if (/^FOREIGN\s+KEY\b/i.test(body)) {
+      const cols = firstParenGroup(body)
+      if (!cols) continue
+      const ref = /REFERENCES\s+(.+?)\s*(\(|$)/is.exec(cols.tail)
+      const refCols = firstParenGroup(cols.tail)
+      if (!ref) continue
+      out.constraints.push({
+        kind: 'fk', table, name: constraintName,
+        columns: identifierList(cols.inner),
+        refTable: unquoteIdentifier(ref[1]!.trim()),
+        refColumns: refCols ? identifierList(refCols.inner) : [],
+      })
+      continue
+    }
+    if (/^CHECK\b/i.test(body)) {
+      out.skipped.push({ keyword: 'CHECK', line: stmt.line, excerpt: item.replace(/\s+/g, ' ').slice(0, 80) })
+      continue
+    }
+
+    const col = parseColumnDef(item)
+    if (!col) {
+      out.skipped.push({ keyword: '?', line: stmt.line, excerpt: item.replace(/\s+/g, ' ').slice(0, 80) })
+      continue
+    }
+    columns.push(col)
+    if (col.inlinePk) out.constraints.push({ kind: 'pk', table, columns: [col.name] })
+
+    // 인라인 REFERENCES
+    // 컬럼 정의 한 줄에 REFERENCES는 많아야 하나다. 따옴표 식별자 때문에
+    // 물리명 길이로 자르면 어긋나므로 줄 전체에서 찾는다.
+    const inlineRef = /\bREFERENCES\s+(.+?)\s*\(([^)]*)\)/is.exec(item)
+    if (inlineRef) {
+      out.constraints.push({
+        kind: 'fk', table, name: null, columns: [col.name],
+        refTable: unquoteIdentifier(inlineRef[1]!.trim()),
+        refColumns: identifierList(inlineRef[2]!),
+      })
+    }
+  }
+
+  out.tables.push({ name: table, columns })
+  return true
+}
+
 export function parseDdl(ddl: string): ParsedDdl {
   const result: ParsedDdl = { tables: [], constraints: [], indexes: [], comments: [], skipped: [] }
   for (const stmt of splitStatements(ddl)) {
-    // Task 4·5가 여기에 분기를 채운다.
+    if (parseCreateTable(stmt, result)) continue
+    // Task 5가 ALTER TABLE·CREATE INDEX·COMMENT ON 분기를 여기에 더한다.
     result.skipped.push({
       keyword: statementKeyword(stmt.text),
       line: stmt.line,
