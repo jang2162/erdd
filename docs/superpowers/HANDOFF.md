@@ -29,7 +29,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 271 · web 321 · server 89 (erdd_test) · typecheck 0
+core 352 · web 335 · server 90 (erdd_test) · typecheck 0
 ```
 
 ⚠️ **`pnpm -s -r typecheck`의 출력만 보고 판정하지 말 것.** `-s`가 자식 출력을 삼켜서, 타입 오류가
@@ -53,11 +53,11 @@ pnpm -s -C packages/core typecheck
 
 ### 다음 작업
 
-**Phase 4(CLI·DDL 역설계)** (→ `docs/90-roadmap.md`, `docs/16-cli.md`)
+**Phase 4의 나머지 절반(CLI)** (→ `docs/90-roadmap.md`, `docs/16-cli.md`)
 
-Phase 1~3이 모두 main에 있고 권한 세분화 검토도 끝났다(새 권한 축 미도입 — 근거는 `docs/91-checklist.md`). 다음 후보는 (a) Phase 4 CLI·DDL 역설계, (b) 6절 이월 항목 정리다. 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
+Phase 1~3이 모두 main에 있고 권한 세분화 검토도 끝났다(새 권한 축 미도입 — 근거는 `docs/91-checklist.md`). Phase 4의 DDL 가져오기(역설계)도 완료했다(손으로 쓴 좁은 파서, 잔여 한계는 6절 참조 → [설계](superpowers/specs/2026-08-03-ddl-reverse-engineering-design.md)). 다음 후보는 (a) Phase 4 나머지 절반인 CLI, (b) 6절 이월 항목 정리다. 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
 
-Phase 4 착수 전 `docs/91-checklist.md`의 **CLI 상세**(base 사본 저장 방식, push 충돌 출력 형식, `--json` 스키마, 패키지명 확정)·**에이전트 스킬 문서**·**DDL 역설계 범위** 확정이 필요하다.
+CLI 착수 전 `docs/91-checklist.md`의 **CLI 상세**(base 사본 저장 방식, push 충돌 출력 형식, `--json` 출력 스키마, 패키지명 확정)·**에이전트 스킬 문서** 확정이 필요하다.
 
 > ⚠️ **CLI push는 세 번째 모델 변경 경로가 된다.** 반드시 `mutateAndPublish`(`apps/server/src/services/mutate-publish.ts`)를 거쳐야 한다 — `runMutation`을 직접 부르면 그 변경이 실시간 채널로 전파되지 않는다. 3.6절 참조.
 
@@ -67,7 +67,7 @@ Phase 4 착수 전 `docs/91-checklist.md`의 **CLI 상세**(base 사본 저장 �
 2. `docs/90-roadmap.md` — 단계별 범위(무엇이 어느 Phase인지)
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
 4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-28-phase3-snapshot-diff-design.md`와 `plans/2026-07-28-phase3-snapshot-diff.md`
-5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 3 남은 항목 = 실시간 프로토콜 상세)
+5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 4 남은 항목 = CLI 상세·에이전트 스킬 문서)
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
 
@@ -311,6 +311,19 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - **`project-settings.tsx:109`의 역할 조합식이 이제 중복이다.** `p.myOrgRole === 'owner' || … || p.myRole === 'admin'`은 오늘 `perm.ts`와 정확히 일치하지만, 같은 응답에 이제 `canManage`가 실려 온다. "클라가 역할 조합식을 재현하지 않는다"는 제약을 지키려면 한 줄 교체가 자연스럽다(설계가 이 파일을 범위 밖으로 뒀으므로 이월).
 - **잔여 커버리지 구멍:** `toolbar.tsx`의 Cmd+Z 가드(리포 전체에 키보드 단축키 테스트가 0건), `group-panel.tsx`의 색상 입력 `disabled`(같은 성격의 `note-panel`만 검증됨), `relationship-panel.tsx`의 관계명 `readOnly`·컬럼 매핑 select `disabled`, `resource-panel.tsx`의 충돌 라디오 숨김(테스트 픽스처에 충돌 항목이 없어 미도달), `ghost-node.tsx`의 `isConnectable` 배선(`ghost-nodes.ts`가 이미 `connectable:false`라 실질 no-op).
 
+**DDL 역설계 (구현 완료, 잔여 한계)**
+- **가져온 컬럼의 도메인이 비어 있다.** 내보내기가 도메인을 타입으로 풀어 쓰므로 DDL에 도메인의 흔적이 없다. 타입만 채우고 `domainId`는 `null`이다 — 도메인 자동 매칭은 후속
+- **왕복이 깨지는 조합이 5건 있다**(`JSON`→oracle/mssql, `DATE`·`TIME`→oracle, `UUID`→mysql). 내보내기 매핑이 단사가 아니어서 생기는 성질이고 `dialect.test.ts`의 `ROUND_TRIP_LOSSES`에 상수로 고정돼 있다. `toDialectType`을 고치면 이 목록도 함께 봐야 한다
+- **Oracle `TIMESTAMP`는 의도적으로 `DATETIME`으로 읽는다.** 우리 매핑상 `TIME`으로 읽으면 왕복이 살아나지만 실무 Oracle DDL의 `TIMESTAMP`는 거의 항상 일시다
+- 기존 테이블과의 **병합·재동기화가 없다** — 이름이 겹치면 건너뛴다. 운영 DB가 바뀐 뒤 다시 가져오는 시나리오는 미지원
+- `CHECK` 제약을 도메인 허용값으로 변환하지 않는다(건너뛰고 경고)
+- 파서는 `CREATE TABLE`·`ALTER TABLE ADD CONSTRAINT`·`CREATE INDEX`·`COMMENT ON`만 안다. 뷰·프로시저·트리거·시퀀스는 건너뛴다
+- **인덱스 컬럼의 정렬 방향(`ASC`/`DESC`)이 유실된다.** 파서의 `identifierList`가 방향 토큰을 버려 계획 타입에 자리가 없고, 적용 시 전부 `'asc'`로 고정된다
+- **관계 카디널리티가 항상 `1:N`이다.** 자식 FK 컬럼에 `UNIQUE`가 걸린 1:1 관계도 `1:N`으로 저장된다. 계획 단계가 UNIQUE 제약을 관계 판정에 쓰지 않기 때문이다
+- **테이블 코멘트의 `' - '` 뒤 설명이 유실된다.** `DdlImportTable`에 `comment` 필드가 없어 계획 단계에서 폐기된다. 컬럼은 정상이다
+- **Oracle의 `VALIDATE`/`NOVALIDATE`/`RELY`가 FK 종결 키워드 목록에 없다.** `ENABLE`/`DISABLE` 없이 단독으로 오면 `refTable`에 섞인다
+- **MSSQL 코멘트는 왕복하지 않는다.** 내보내기가 `EXEC sys.sp_addextendedproperty`로 내는데 그 문장 형태는 파싱 범위 밖이다. 구조는 왕복하고 논리명만 물리명으로 떨어지며 경고가 남는다. 이 동작은 테스트로 고정돼 있어 나중에 `sp_addextendedproperty` 파싱을 구현하면 그 테스트가 깨져 재검토를 강제한다
+
 ---
 
 ## 7. 새 세션 시작 프롬프트 (복사해서 사용)
@@ -325,9 +338,9 @@ ERDD 프로젝트를 이어서 작업한다. 먼저 docs/superpowers/HANDOFF.md�
 - 커밋 메시지는 한국어 + Co-Authored-By/Claude-Session 트레일러 2줄.
 - 임시 파일은 $CLAUDE_JOB_DIR/tmp 사용.
 
-다음 작업: <권한 세분화 검토 | Phase 4 CLI·역설계 | 6절 이월 항목 정리> 중 하나를 진행한다.
-Phase 4를 고른다면 착수 전 docs/91-checklist.md의 "CLI 상세"·"에이전트 스킬 문서"·
-"DDL 역설계 범위"를 먼저 확정해라. HANDOFF.md의 "작업 방식"대로
+다음 작업: <Phase 4 나머지 절반(CLI) | 6절 이월 항목 정리> 중 하나를 진행한다.
+CLI를 고른다면 착수 전 docs/91-checklist.md의 "CLI 상세"·"에이전트 스킬 문서"를
+먼저 확정해라. HANDOFF.md의 "작업 방식"대로
 brainstorming(설계 결정 확인) → spec → plan → SDD 구현/리뷰 → 최종 리뷰 → 브라우저 스모크 → main 머지
 순서로 가라.
 ```
