@@ -30,7 +30,7 @@ export function validate(ctx: CommandCtx): Promise<number> {
     ].join('\n')
 
     emit(ctx.json, human, {
-      ok: integrityIssues.length === 0,
+      ok,
       parseErrors: [], integrityIssues, warnings,
     })
     return ok ? 0 : 1

@@ -169,6 +169,17 @@ describe('validate', () => {
     expect(await validate({ cwd: dir, json: true, yes: false, strict: true })).toBe(1)
   })
 
+  it('--strict로 실패하면 JSON의 ok도 false다', async () => {
+    await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient() })
+    out.length = 0
+    const code = await validate({ cwd: dir, json: true, yes: false, strict: true })
+    const parsed = JSON.parse(out.join(''))
+    expect(parsed.warnings.length).toBeGreaterThan(0)
+    // 종료 코드와 JSON의 ok가 같은 것을 말해야 한다 — 어긋나면 --json을 믿는 스크립트가 오판한다.
+    expect(code).toBe(1)
+    expect(parsed.ok).toBe(false)
+  })
+
   it('validate는 서버를 부르지 않는다', async () => {
     await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient() })
     const client = stubClient()
