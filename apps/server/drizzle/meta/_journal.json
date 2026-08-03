@@ -71,6 +71,13 @@
       "when": 1785215749131,
       "tag": "0009_youthful_stick",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785749877048,
+      "tag": "0010_flippant_retro_girl",
+      "breakpoints": true
     }
   ]
 }
