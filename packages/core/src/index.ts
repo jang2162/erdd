@@ -52,8 +52,8 @@ export { computeWarnings } from './warnings.js'
 export type { Warning } from './warnings.js'
 export { resolveColumn } from './domain-resolve.js'
 export type { ResolvedColumn } from './domain-resolve.js'
-export { generatePhysicalName, decomposeByWords, DEFAULT_NAMING_RULES } from './naming.js'
-export type { NamingRules, GenResult, WordSegment } from './naming.js'
+export { generatePhysicalName, decomposeByWords, restoreLogicalName, DEFAULT_NAMING_RULES } from './naming.js'
+export type { NamingRules, GenResult, WordSegment, RestoreLogicalResult } from './naming.js'
 export {
   customFieldsFor, resolveCustomValue, customFieldUsageCount, customOptionUsageCount,
 } from './custom-field.js'

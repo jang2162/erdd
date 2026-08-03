@@ -48,3 +48,64 @@ export function generatePhysicalName(
   const physicalName = rules.case === 'lower_snake' ? joined.toLowerCase() : joined.toUpperCase()
   return { physicalName, unknownWords }
 }
+
+export type RestoreLogicalResult =
+  | { ok: true; logicalName: string }
+  | { ok: false; unknownTokens: string[] }
+
+/** 약어(대문자) → 단어. 같은 약어를 가진 단어가 여럿이면 id가 작은 쪽으로 결정론적으로 고른다. */
+function abbreviationIndex(words: Record<string, Word>): Map<string, Word> {
+  const index = new Map<string, Word>()
+  for (const w of Object.values(words).slice().sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const key = w.abbreviation.trim().toUpperCase()
+    if (key !== '' && !index.has(key)) index.set(key, w)
+  }
+  return index
+}
+
+/**
+ * generatePhysicalName의 역함수. 모든 토큰이 매칭될 때만 ok:true.
+ * ⚠️ generatePhysicalName의 분해 규칙을 고치면 이 함수도 함께 고쳐야 한다 — 그래서 같은 파일에 둔다.
+ */
+export function restoreLogicalName(
+  physicalName: string, words: Record<string, Word>, terms: Record<string, Term>, rules: NamingRules,
+): RestoreLogicalResult {
+  const name = physicalName.trim()
+  if (name === '') return { ok: false, unknownTokens: [] }
+
+  // 1) 용어 물리명 완전일치 — generatePhysicalName의 1단계와 대칭
+  const upper = name.toUpperCase()
+  const term = Object.values(terms).find((t) => t.physicalName.trim().toUpperCase() === upper)
+  if (term) return { ok: true, logicalName: term.logicalName }
+
+  const index = abbreviationIndex(words)
+
+  // 2-a) 구분자가 있으면 쪼개서 토큰별로 정확히 맞춘다
+  if (rules.separator !== '') {
+    const tokens = name.split(rules.separator).filter((t) => t !== '')
+    if (tokens.length === 0) return { ok: false, unknownTokens: [] }
+    const unknownTokens = tokens.filter((t) => !index.has(t.toUpperCase()))
+    if (unknownTokens.length > 0) return { ok: false, unknownTokens }
+    return { ok: true, logicalName: tokens.map((t) => index.get(t.toUpperCase())!.logicalName).join('') }
+  }
+
+  // 2-b) 구분자가 없으면 최장일치 그리디 — decomposeByWords의 약어판
+  const byLen = [...index.entries()].sort((a, b) => b[0].length - a[0].length)
+  const parts: string[] = []
+  const unknownTokens: string[] = []
+  let i = 0
+  let pending = ''
+  while (i < upper.length) {
+    const hit = byLen.find(([abbr]) => upper.startsWith(abbr, i))
+    if (hit) {
+      if (pending) { unknownTokens.push(pending); pending = '' }
+      parts.push(hit[1].logicalName)
+      i += hit[0].length
+    } else {
+      pending += upper[i]!; i += 1
+    }
+  }
+  if (pending) unknownTokens.push(pending)
+  if (unknownTokens.length > 0) return { ok: false, unknownTokens }
+  return { ok: true, logicalName: parts.join('') }
+}
