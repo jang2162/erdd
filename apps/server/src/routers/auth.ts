@@ -1,12 +1,14 @@
 import { randomBytes } from 'node:crypto'
 import { TRPCError } from '@trpc/server'
-import { and, eq, ne } from 'drizzle-orm'
+import { and, eq, isNull, ne } from 'drizzle-orm'
+import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
-import { sessions, users } from '../db/schema.js'
+import { accessTokens, sessions, users } from '../db/schema.js'
 import { hashPassword, verifyPassword } from '../auth/password.js'
+import { generateToken, hashToken } from '../auth/token.js'
 import { normalizeEmail } from '../services/accounts.js'
 import { SESSION_COOKIE } from '../context.js'
-import { authedProcedure, dbProcedure, router } from '../trpc.js'
+import { apiProcedure, authedProcedure, dbProcedure, router } from '../trpc.js'
 
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000
 
@@ -43,7 +45,7 @@ export const authRouter = router({
     return { ok: true as const }
   }),
 
-  me: authedProcedure.query(({ ctx }) => ctx.user),
+  me: apiProcedure.query(({ ctx }) => ctx.user),
 
   changePassword: authedProcedure
     .input(z.object({ currentPassword: z.string(), newPassword: z.string().min(8) }))
@@ -62,4 +64,37 @@ export const authRouter = router({
       }
       return { ok: true as const }
     }),
+
+  tokens: router({
+    list: authedProcedure.query(async ({ ctx }) =>
+      ctx.db
+        .select({
+          id: accessTokens.id, name: accessTokens.name,
+          createdAt: accessTokens.createdAt, lastUsedAt: accessTokens.lastUsedAt,
+        })
+        .from(accessTokens)
+        .where(and(eq(accessTokens.userId, ctx.user.id), isNull(accessTokens.revokedAt)))
+        .orderBy(accessTokens.createdAt),
+    ),
+
+    create: authedProcedure
+      .input(z.object({ name: z.string().min(1).max(50) }))
+      .mutation(async ({ ctx, input }) => {
+        const plain = generateToken()
+        await ctx.db.insert(accessTokens).values({
+          id: uuidv7(), userId: ctx.user.id, name: input.name, tokenHash: hashToken(plain),
+        })
+        // 평문은 여기서만 나간다. 이후 조회할 방법은 없다.
+        return { token: plain }
+      }),
+
+    revoke: authedProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        await ctx.db.update(accessTokens)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(accessTokens.id, input.id), eq(accessTokens.userId, ctx.user.id)))
+        return { ok: true as const }
+      }),
+  }),
 })

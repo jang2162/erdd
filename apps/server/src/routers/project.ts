@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { DEFAULT_NAMING_RULES, DIALECTS } from '@erdd/core'
 import { members, projectMembers, projects, users } from '../db/schema.js'
 import { getOrgMember, requireProjectAccess } from '../services/perm.js'
-import { authedProcedure, router } from '../trpc.js'
+import { apiProcedure, authedProcedure, router } from '../trpc.js'
 
 const dialectSchema = z.array(z.enum(DIALECTS)).min(1)
 const namingRulesSchema = z.object({
@@ -41,7 +41,7 @@ export const projectRouter = router({
       })
     }),
 
-  list: authedProcedure
+  list: apiProcedure
     .input(z.object({ orgId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const me = await getOrgMember(ctx.db, input.orgId, ctx.user.id)
@@ -61,7 +61,7 @@ export const projectRouter = router({
         .orderBy(projects.createdAt)
     }),
 
-  get: authedProcedure
+  get: apiProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
