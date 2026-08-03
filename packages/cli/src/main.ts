@@ -7,7 +7,7 @@ import { init } from './commands/init.js'
 import { pull } from './commands/pull.js'
 import { status } from './commands/status.js'
 import { validate } from './commands/validate.js'
-import { note } from './output.js'
+import { CliError, emitError, note } from './output.js'
 
 const USAGE = `사용법: erdd <명령> [옵션]
 
@@ -62,13 +62,21 @@ function interactive(json: boolean) {
   }
 }
 
+/** --json이면 stdout에 오류 봉투를, 아니면 stderr에 사용법을 낸다. */
+function usageError(json: boolean, message: string): number {
+  if (json) emitError(true, new CliError('USAGE', message))
+  else { note(message); note(USAGE) }
+  return 2
+}
+
 export async function main(argv: string[], cwd: string): Promise<number> {
-  const command = argv[0]
-  if (command === undefined || command === '--help' || command === '-h') {
-    note(USAGE)
-    return command === undefined ? 2 : 0
-  }
   const json = argv.includes('--json')
+  if (argv.includes('--help') || argv.includes('-h')) {
+    note(USAGE)
+    return 0
+  }
+  const command = argv[0]
+  if (command === undefined) return usageError(json, '명령이 필요합니다')
   const ctx = {
     cwd, json, yes: argv.includes('--yes'), strict: argv.includes('--strict'),
     ...interactive(json),
@@ -84,9 +92,7 @@ export async function main(argv: string[], cwd: string): Promise<number> {
     case 'status': return status(ctx)
     case 'validate': return validate(ctx)
     default:
-      note(`알 수 없는 명령: ${command}\n`)
-      note(USAGE)
-      return 2
+      return usageError(json, `알 수 없는 명령: ${command}`)
   }
 }
 

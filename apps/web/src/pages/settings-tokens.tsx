@@ -12,6 +12,7 @@ export function AccessTokensCard() {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [issued, setIssued] = useState<string | null>(null)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
   const listOptions = trpc.auth.tokens.list.queryOptions()
   const list = useQuery(listOptions)
@@ -31,6 +32,7 @@ export function AccessTokensCard() {
     trpc.auth.tokens.revoke.mutationOptions({
       onSuccess: () => {
         toast.success('토큰을 폐기했습니다')
+        setConfirmingId(null)
         void queryClient.invalidateQueries({ queryKey: listOptions.queryKey })
       },
       onError: (err) => toast.error(err.message),
@@ -88,9 +90,12 @@ export function AccessTokensCard() {
                 </span>
               </span>
               <Button
-                type="button" variant="ghost" size="sm"
-                onClick={() => revoke.mutate({ id: t.id })}
-              >폐기</Button>
+                type="button" variant={confirmingId === t.id ? 'destructive' : 'ghost'} size="sm"
+                onClick={() => {
+                  if (confirmingId === t.id) revoke.mutate({ id: t.id })
+                  else setConfirmingId(t.id)
+                }}
+              >{confirmingId === t.id ? '정말 폐기' : '폐기'}</Button>
             </li>
           ))}
           {(list.data ?? []).length === 0 && (

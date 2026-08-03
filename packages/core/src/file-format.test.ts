@@ -184,6 +184,27 @@ describe('modelToFiles', () => {
     expect(names).toContain(`${TREE_ROOT}/tables/MBR.${idA}.yaml`)
     expect(names).toContain(`${TREE_ROOT}/tables/mbr.${idB}.yaml`)
   })
+
+  it('경로 구분자나 ..가 든 물리명은 파일로 쓰지 않고 issue를 낸다', () => {
+    const m = fullModel()
+    m.tables['tbX'] = {
+      id: 'tbX', logicalName: '탈출', physicalName: '../../ESCAPED', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.tables['tbY'] = {
+      id: 'tbY', logicalName: '중첩', physicalName: 'sub/NESTED', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const { tree, issues } = modelToFiles(m)
+    // 트리 키가 erdd/tables/ 밖으로 나가지 않는다.
+    for (const key of Object.keys(tree)) {
+      expect(key.includes('..')).toBe(false)
+      if (key.startsWith(`${TREE_ROOT}/tables/`)) {
+        expect(key.slice(`${TREE_ROOT}/tables/`.length).includes('/')).toBe(false)
+      }
+    }
+    expect(issues.filter((i) => i.message.includes('파일명으로 쓸 수 없어'))).toHaveLength(2)
+  })
 })
 
 /** 파일에 담지 않는 것을 복원 가능한 형태로 깎는다. 왕복 비교의 기준. */

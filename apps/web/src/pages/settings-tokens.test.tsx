@@ -50,7 +50,7 @@ describe('AccessTokensCard', () => {
     expect((btn as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('폐기를 누르면 revoke를 호출한다', async () => {
+  it('폐기는 두 번 눌러야 실행된다', async () => {
     const revoke = vi.fn(() => ({ data: { ok: true } }))
     renderCard({
       'auth.tokens.list': () => ({ data: [
@@ -59,6 +59,9 @@ describe('AccessTokensCard', () => {
       'auth.tokens.revoke': revoke,
     })
     await userEvent.click(await screen.findByRole('button', { name: '폐기' }))
+    // 첫 클릭은 확인 단계일 뿐 — 아직 호출되면 안 된다.
+    expect(revoke).not.toHaveBeenCalled()
+    await userEvent.click(await screen.findByRole('button', { name: '정말 폐기' }))
     expect(revoke).toHaveBeenCalled()
   })
 })

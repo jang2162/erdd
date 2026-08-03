@@ -31,6 +31,24 @@ describe('main', () => {
     expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
   })
 
+  it('--json이면 사용법 오류도 stdout에 JSON 봉투로 낸다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['bogus', '--json'], '/tmp')).toBe(2)
+    expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    out.length = 0
+    expect(await main(['--json'], '/tmp')).toBe(2)
+    expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+  })
+
+  it('명령 뒤의 --help도 사용법으로 처리한다', async () => {
+    vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+    const err = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['pull', '--help'], '/tmp/erdd-none')).toBe(0)
+    expect(err.mock.calls.map((c) => String(c[0])).join('')).toContain('사용법')
+  })
+
   it('값 없는 플래그의 다음 플래그를 값으로 삼키지 않는다', async () => {
     const out: string[] = []
     vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })

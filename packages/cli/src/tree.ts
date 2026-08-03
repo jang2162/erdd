@@ -1,4 +1,5 @@
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import type { Dirent } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { TOP_LEVEL_FILES, TREE_ROOT, type FileTree } from '@erdd/core'
@@ -21,26 +22,24 @@ function canonical(v: unknown): string {
 export async function writeTree(
   cwd: string, tree: FileTree,
 ): Promise<{ written: string[]; deleted: string[] }> {
-  const written: string[] = []
-  for (const [rel, content] of Object.entries(tree)) {
-    const abs = join(cwd, rel)
-    await mkdir(dirname(abs), { recursive: true })
-    await writeFile(abs, stringifyYaml(content), 'utf8')
-    written.push(rel)
-  }
-
-  // 소유한 경로에서만 지운다: erdd/tables/*.yaml 과 최상위 5개.
-  const deleted: string[] = []
   const keep = new Set(Object.keys(tree))
-  let existing: string[] = []
+
+  // ── 삭제를 먼저 한다 ──
+  // 대소문자 무시 파일시스템(macOS APFS, Windows NTFS)은 기존 디렉터리 엔트리 이름을
+  // 보존한다. 물리명이 MBR → mbr로 개명되면, 먼저 쓸 경우 writeFile은 기존 MBR.yaml
+  // 엔트리에 내용을 쓰고 readdir은 여전히 MBR.yaml을 돌려주므로, 뒤따르는 삭제 패스가
+  // "keep에 없는 파일"로 보고 방금 쓴 것을 지운다. 쓰기 전에 지우면 그 창이 사라진다.
+  const deleted: string[] = []
+  let entries: Dirent[] = []
   try {
-    existing = await readdir(join(cwd, TABLES_DIR))
+    entries = await readdir(join(cwd, TABLES_DIR), { withFileTypes: true })
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
   }
-  for (const name of existing) {
-    if (!name.endsWith('.yaml')) continue
-    const rel = `${TABLES_DIR}/${name}`
+  for (const entry of entries) {
+    // .yaml로 끝나는 디렉터리가 있으면 rm이 EISDIR로 던져 최상위 정리까지 건너뛴다.
+    if (!entry.isFile() || !entry.name.endsWith('.yaml')) continue
+    const rel = `${TABLES_DIR}/${entry.name}`
     if (keep.has(rel)) continue
     await rm(join(cwd, rel))
     deleted.push(rel)
@@ -54,6 +53,16 @@ export async function writeTree(
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
     }
   }
+
+  // ── 그 다음 쓴다 ──
+  const written: string[] = []
+  for (const [rel, content] of Object.entries(tree)) {
+    const abs = join(cwd, rel)
+    await mkdir(dirname(abs), { recursive: true })
+    await writeFile(abs, stringifyYaml(content), 'utf8')
+    written.push(rel)
+  }
+
   return { written: written.sort(), deleted: deleted.sort() }
 }
 

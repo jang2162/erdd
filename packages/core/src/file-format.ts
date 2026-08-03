@@ -33,6 +33,16 @@ export function tableFileName(model: ProjectModel, tableId: string): string {
   return `${table.physicalName}.${suffix}.yaml`
 }
 
+/**
+ * 파일명으로 쓸 수 없는 물리명. 설계는 물리명이 [A-Za-z_][A-Za-z0-9_]* 범위라고 전제했지만
+ * Table.physicalName은 z.string()이라 그 전제를 강제하는 코드가 없다. 경로 구분자나 ..가
+ * 들어오면 erdd/tables/ 밖에 파일이 쓰인다.
+ */
+export function unsafeFileName(physicalName: string): boolean {
+  if (physicalName === '' || physicalName === '.' || physicalName === '..') return true
+  return /[/\\]/.test(physicalName)
+}
+
 /** 값이 기본값이면 키를 아예 넣지 않는다 — diff를 조용하게 유지한다. */
 function omitDefaults<T extends Record<string, unknown>>(
   obj: T, defaults: Partial<Record<keyof T, unknown>>,
@@ -63,6 +73,13 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
   for (const list of colsByTable.values()) list.sort((a, b) => a.order - b.order)
 
   for (const table of Object.values(model.tables)) {
+    if (unsafeFileName(table.physicalName)) {
+      issues.push({
+        path: `${TREE_ROOT}/tables`,
+        message: `물리명 ${table.physicalName}은 파일명으로 쓸 수 없어 이 테이블을 파일로 내보내지 않았습니다`,
+      })
+      continue
+    }
     const cols = colsByTable.get(table.id) ?? []
     const colById = new Map(cols.map((c) => [c.id, c]))
 
