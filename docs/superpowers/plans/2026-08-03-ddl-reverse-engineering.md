@@ -590,7 +590,7 @@ describe('splitStatements', () => {
     expect(s[0]!.text).toContain("'a;b -- c'")
   })
 
-  it('작은따옴표 이스케이프('''')를 문자열의 일부로 본다', () => {
+  it('문자열 안의 작은따옴표 이스케이프를 문자열의 일부로 본다', () => {
     const s = splitStatements("COMMENT ON TABLE A IS 'it''s; ok';\nCREATE TABLE B (Y INT);")
     expect(s).toHaveLength(2)
   })
@@ -1184,7 +1184,9 @@ function parseCreateTable(
     if (col.inlinePk) out.constraints.push({ kind: 'pk', table, columns: [col.name] })
 
     // 인라인 REFERENCES
-    const inlineRef = /\bREFERENCES\s+(.+?)\s*\(([^)]*)\)/is.exec(item.slice(col.name.length))
+    // 컬럼 정의 한 줄에 REFERENCES는 많아야 하나다. 따옴표 식별자 때문에
+    // 물리명 길이로 자르면 어긋나므로 줄 전체에서 찾는다.
+    const inlineRef = /\bREFERENCES\s+(.+?)\s*\(([^)]*)\)/is.exec(item)
     if (inlineRef) {
       out.constraints.push({
         kind: 'fk', table, name: null, columns: [col.name],
@@ -1365,8 +1367,8 @@ const CREATE_INDEX_RE = /^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?
 function parseCreateIndex(stmt: RawStatement, out: ParsedDdl): boolean {
   const m = CREATE_INDEX_RE.exec(stmt.text)
   if (!m) return false
-  const g = firstParenGroup(stmt.text.slice(m[0].length - 0))
-  const group = g ?? firstParenGroup(stmt.text)
+  // m[0]은 lookahead로 끝나므로 여기서부터가 컬럼 목록의 여는 괄호다.
+  const group = firstParenGroup(stmt.text.slice(m[0].length))
   if (!group) return false
   out.indexes.push({
     table: unquoteIdentifier(m[3]!.trim()),
@@ -1596,7 +1598,8 @@ describe('planDdlImport', () => {
       CREATE TABLE MBR (MBR_NO bigint, PRIMARY KEY (MBR_NO));
       CREATE UNIQUE INDEX PK_MBR ON MBR (MBR_NO);`)
     expect(p.tables[0]!.indexes).toEqual([])
-    expect(p.warnings).toEqual([])
+    // 사전이 비어 unknown-word 경고는 나온다. 인덱스에 대한 경고만 없어야 한다.
+    expect(p.warnings.some((w) => w.target.includes('PK_MBR'))).toBe(false)
   })
 
   it('PK와 겹치지만 일치하지 않는 유니크 인덱스는 만든다', () => {
@@ -2211,7 +2214,7 @@ describe('DdlImportDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste(DDL)
-    await userEvent.click(await screen.findByRole('button', { name: /가져오기$/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /만들기$/ }))
     await waitFor(() => expect(calls).toHaveLength(1))
   })
 
@@ -2235,7 +2238,7 @@ describe('DdlImportDialog', () => {
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste(many)
     expect(await screen.findByText(/나눠/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /가져오기$/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /만들기$/ })).toBeDisabled()
   })
 
   it('편집 권한이 없으면 진입점이 없다', () => {
@@ -2283,7 +2286,7 @@ const overLimit = plan !== null && plan.opCountEstimate > MAX_OPS_PER_MUTATION
 - 방언 select의 접근명은 `방언`, 옵션에 자동 감지 결과를 표시한다.
 - DDL 입력 textarea의 접근명은 `DDL`.
 - 미리보기: `테이블 N개 · 컬럼 N개 · 관계 N개 · 인덱스 N개`, `건너뜀 N개`(있을 때만), 경고 목록.
-- 적용 버튼 문구는 `` `${plan.tables.length}개 테이블 가져오기` `` — 접근명이 `가져오기`로 끝나므로 테스트의 `/가져오기$/`와 맞는다. `overLimit`이면 `disabled`.
+- 적용 버튼 문구는 `` `${plan.tables.length}개 테이블 만들기` `` — 진입점 버튼(`가져오기`)과 접근명이 겹치지 않아야 `getByRole`이 모호해지지 않는다. `overLimit`이면 `disabled`.
 - op 한도 안내 문구: `` `한 번에 가져올 수 있는 양을 넘었습니다. DDL을 나눠 올려주세요.` ``
 - 적용:
 
