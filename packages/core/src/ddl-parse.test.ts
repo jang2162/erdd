@@ -325,18 +325,45 @@ describe('parseDdl — 나머지 문장의 문자열 리터럴 오탐 점검', (
     expect(r.skipped.some((s) => s.keyword === 'ALTER TABLE')).toBe(true)
   })
 
-  // 알려진 결함(수정하지 않음, task-5-report.md 참고): 명시 참조 컬럼 없이 부모의 암묵적
-  // PK를 참조하는 FK(`REFERENCES MBR ON DELETE CASCADE`, 유효한 SQL)에서 브리프의
-  // `/REFERENCES\s+(.+?)\s*(\(|$)/is`가 "(" 또는 문자열 끝에서만 멈추기 때문에 ON DELETE/
-  // ON UPDATE 절까지 refTable에 섞여 들어간다. parseCreateTable의 테이블 수준 FK 경로에도
-  // 동일한 정규식이 이미 있어 똑같이 재현된다(사전 리뷰를 통과한 기존 코드라 손대지 않음).
-  // it.fails로 남겨 회귀를 문서화한다: 언젠가 고쳐지면 이 테스트가 실패로 뒤집혀 알려준다.
-  it.fails('명시적 참조 컬럼 없는 FK에서 REFERENCES 뒤 절(ON DELETE 등)이 refTable에 섞이지 않는다', () => {
+  it('명시적 참조 컬럼 없는 FK에서 REFERENCES 뒤 절(ON DELETE 등)이 refTable에 섞이지 않는다', () => {
     const r = parseDdl(
       'ALTER TABLE ORD ADD CONSTRAINT FK_ORD_MBR FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE CASCADE;',
     )
     const fk = r.constraints.find((c) => c.kind === 'fk')
     expect(fk).toBeDefined()
     expect(fk!.refTable).toBe('MBR')
+  })
+
+  it('참조 컬럼을 생략해도 꼬리 절이 부모 테이블 이름에 섞이지 않는다', () => {
+    const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE CASCADE;')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK1',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('CREATE TABLE 안의 테이블 수준 FK도 같은 규칙을 따른다', () => {
+    const r = parseDdl(`
+      CREATE TABLE ORD (
+        MBR_NO bigint,
+        CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE SET NULL
+      );`)
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK1',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('컬럼 목록이 있으면 꼬리 절이 있어도 정상이다(대조군)', () => {
+    const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES MBR (MBR_NO) ON DELETE CASCADE;')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK1',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+
+  it('스키마 접두사가 붙은 부모도 마지막 조각만 남긴다(대조군)', () => {
+    const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES "public"."MBR" (MBR_NO);')
+    expect(r.constraints[0]).toMatchObject({ refTable: 'MBR', refColumns: ['MBR_NO'] })
   })
 })

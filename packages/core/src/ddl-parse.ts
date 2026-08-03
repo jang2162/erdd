@@ -317,6 +317,16 @@ function parseColumnDef(def: string): ParsedColumn | null {
   }
 }
 
+/**
+ * REFERENCES 뒤의 부모 테이블 이름을 잡는다.
+ * 컬럼 목록이 없어도(부모 PK 암묵 참조) ON DELETE/UPDATE 같은 꼬리 절이
+ * 테이블 이름에 섞이지 않도록 종결 경계를 명시한다.
+ * 테이블 수준 FK(parseCreateTable)와 ALTER TABLE ADD CONSTRAINT FK(parseAlterTable)가
+ * 함께 쓴다 — 한 곳만 고치면 되게 상수로 뺐다.
+ */
+const REFERENCES_TARGET_RE =
+  /REFERENCES\s+(.+?)\s*(?=\(|\b(?:ON|MATCH|NOT|DEFERRABLE|INITIALLY|ENABLE|DISABLE|USING)\b|$)/is
+
 const CREATE_TABLE_RE = /^CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|TEMP\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s*(?=\()/is
 
 function parseCreateTable(
@@ -348,7 +358,7 @@ function parseCreateTable(
     if (/^FOREIGN\s+KEY\b/i.test(body)) {
       const cols = firstParenGroup(body)
       if (!cols) continue
-      const ref = /REFERENCES\s+(.+?)\s*(\(|$)/is.exec(cols.tail)
+      const ref = REFERENCES_TARGET_RE.exec(cols.tail)
       const refCols = firstParenGroup(cols.tail)
       if (!ref) continue
       out.constraints.push({
@@ -419,7 +429,7 @@ function parseAlterTable(stmt: RawStatement, out: ParsedDdl): boolean {
   if (/^FOREIGN\s+KEY\b/i.test(body)) {
     const cols = firstParenGroup(body)
     if (!cols) return false
-    const ref = /REFERENCES\s+(.+?)\s*(\(|$)/is.exec(cols.tail)
+    const ref = REFERENCES_TARGET_RE.exec(cols.tail)
     const refCols = firstParenGroup(cols.tail)
     if (!ref) return false
     out.constraints.push({
