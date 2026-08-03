@@ -230,6 +230,16 @@ describe('planDdlImport', () => {
     expect(p.warnings.some((w) => w.kind === 'unresolved-index')).toBe(true)
   })
 
+  // ALTER TABLE로 오는 UNIQUE 제약은 CREATE TABLE이 없는 테이블을 가리킬 수 있다.
+  // 인덱스와 같은 결함 클래스이므로 같은 규칙(조용히 버리지 않고 경고)이 적용돼야 한다.
+  it('소속 테이블이 없는 UNIQUE 제약을 경고한다', () => {
+    const p = plan(`
+      CREATE TABLE ORD (X bigint);
+      ALTER TABLE NOPE ADD CONSTRAINT UX1 UNIQUE (X);`)
+    expect(p.tables[0]!.indexes).toEqual([])
+    expect(p.warnings.some((w) => w.kind === 'unresolved-index' && w.target === 'NOPE.UX1')).toBe(true)
+  })
+
   // I-2(c): 같은 이름의 CREATE TABLE이 두 번 오면 뒤엣것을 버리고 경고한다.
   it('DDL에 같은 이름의 테이블이 두 번 오면 뒤엣것을 건너뛰고 경고한다', () => {
     const p = plan(`

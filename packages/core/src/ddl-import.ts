@@ -208,7 +208,16 @@ export function planDdlImport(
   for (const u of uniques) {
     const tableKey = upper(u.table)
     const table = tableByUpper.get(tableKey)
-    if (!table) continue // UNIQUE 제약은 CREATE TABLE 본문 안에서만 파싱되므로 항상 alive 테이블에 속한다
+    if (!table) {
+      // ALTER TABLE ... ADD CONSTRAINT ... UNIQUE는 CREATE TABLE이 없는 이름도 가리킬 수 있다
+      // (오타·이름 충돌로 건너뛴 테이블·DDL 밖의 테이블). 인덱스와 같은 결함 클래스이므로
+      // 같은 규칙으로 경고한다.
+      warnings.push({
+        kind: 'unresolved-index', target: `${u.table}.${u.name ?? 'UNIQUE'}`,
+        message: `소속 테이블을 찾지 못해 UNIQUE 제약을 인덱스로 만들지 않았습니다`,
+      })
+      continue
+    }
     const pkList = pkOf.get(tableKey) ?? []
     if (pkList.length > 0 && sameSet(u.columns, pkList)) continue
     const resolved = resolveIndexColumns(tableKey, u.columns)
