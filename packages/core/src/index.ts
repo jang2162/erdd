@@ -75,5 +75,7 @@ export { planResync, applyResyncPlan } from './resource-sync.js'
 export type {
   LibraryItem, ResyncStatus, ResyncDecision, ResyncEntry, ResyncPlan,
 } from './resource-sync.js'
-export { modelToFiles, filesToModel, tableFileName, TREE_ROOT, TOP_LEVEL_FILES } from './file-format.js'
+export {
+  modelToFiles, filesToModel, tableFileName, TREE_ROOT, TOP_LEVEL_FILES, NEW_ID_PREFIX, isNewId,
+} from './file-format.js'
 export type { FileTree, FileIssue, FilesToModelResult } from './file-format.js'

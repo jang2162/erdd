@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type ProjectModel } from './model.js'
 import { modelToFiles, TREE_ROOT, TOP_LEVEL_FILES } from './file-format.js'
-import { filesToModel } from './file-format.js'
+import { filesToModel, isNewId } from './file-format.js'
 
 /** 9개 컬렉션을 전부 채운 픽스처. 왕복이 실제로 모든 경로를 지나가게 한다. */
 export function fullModel(): ProjectModel {
@@ -59,6 +59,27 @@ export function fullModel(): ProjectModel {
     columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
     cardinality: '1:N', identifying: true, name: 'FK_ORD_MBR',
   }
+  // identifying:false · cardinality:'1:1' · name:null · nullable:true를 덮는다.
+  // 이 값들이 없으면 해당 복원 분기가 왕복에서 한 번도 실행되지 않는다.
+  m.tables['tb3'] = {
+    id: 'tb3', logicalName: '회원상세', physicalName: 'MBR_DTL', comment: null,
+    groupId: 'g1', position: { x: 50, y: 60 }, groupPosition: null, custom: {},
+  }
+  m.columns['c5'] = {
+    id: 'c5', tableId: 'tb3', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
+    isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+    comment: null, domainId: null, custom: {},
+  }
+  m.columns['c6'] = {
+    id: 'c6', tableId: 'tb3', logicalName: '비고', physicalName: 'RMK', type: 'TEXT',
+    isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 1,
+    comment: null, domainId: null, custom: {},
+  }
+  m.relationships['r2'] = {
+    id: 'r2', parentTableId: 'tb1', childTableId: 'tb3',
+    columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c1' }],
+    cardinality: '1:1', identifying: false, name: null,
+  }
   m.notes['n1'] = { id: 'n1', content: '메모', position: { x: 0, y: 0 }, color: '#ff0' }
   return m
 }
@@ -72,6 +93,7 @@ describe('modelToFiles', () => {
       `${TREE_ROOT}/domains.yaml`,
       `${TREE_ROOT}/groups.yaml`,
       `${TREE_ROOT}/tables/MBR.yaml`,
+      `${TREE_ROOT}/tables/MBR_DTL.yaml`,
       `${TREE_ROOT}/tables/ORD.yaml`,
       `${TREE_ROOT}/terms.yaml`,
       `${TREE_ROOT}/words.yaml`,
@@ -222,7 +244,7 @@ describe('filesToModel', () => {
     expect(result.issues.some((i) => i.message.includes('NOPE'))).toBe(true)
   })
 
-  it('id 없는 객체는 받아들이고 빈 문자열 id로 표시한다', () => {
+  it('id 없는 객체는 신규 표시가 붙은 유일한 임시 id를 받는다', () => {
     const { tree } = modelToFiles(fullModel())
     const mbr = tree['erdd/tables/MBR.yaml'] as { columns: Record<string, unknown>[] }
     mbr.columns.push({ name: 'NEW_COL', logicalName: '새컬럼', type: 'INT' })
@@ -230,7 +252,53 @@ describe('filesToModel', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     const added = Object.values(result.model.columns).find((c) => c.physicalName === 'NEW_COL')!
-    expect(added.id).toBe('')
+    expect(isNewId(added.id)).toBe(true)
     expect(added.nullable).toBe(true)
+  })
+
+  it('같은 테이블에 id 없는 컬럼이 둘이어도 둘 다 남는다', () => {
+    const { tree } = modelToFiles(fullModel())
+    const mbr = tree['erdd/tables/MBR.yaml'] as { columns: Record<string, unknown>[] }
+    mbr.columns.push({ name: 'NEW_A', logicalName: '가', type: 'INT' })
+    mbr.columns.push({ name: 'NEW_B', logicalName: '나', type: 'INT' })
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const names = Object.values(result.model.columns).map((c) => c.physicalName)
+    expect(names).toContain('NEW_A')
+    expect(names).toContain('NEW_B')
+    // 키가 겹치지 않아야 한다 — 겹치면 하나가 사라진다.
+    expect(new Set(Object.keys(result.model.columns)).size).toBe(Object.keys(result.model.columns).length)
+  })
+
+  it('id 없는 테이블이 둘이어도 둘 다 남는다', () => {
+    const { tree } = modelToFiles(fullModel())
+    tree['erdd/tables/NEW_A.yaml'] = { name: 'NEW_A', logicalName: '가', columns: [] }
+    tree['erdd/tables/NEW_B.yaml'] = { name: 'NEW_B', logicalName: '나', columns: [] }
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const names = Object.values(result.model.tables).map((t) => t.physicalName)
+    expect(names).toContain('NEW_A')
+    expect(names).toContain('NEW_B')
+  })
+
+  it('도메인 이름이 중복되면 issue를 낸다', () => {
+    const { tree } = modelToFiles(fullModel())
+    const file = tree['erdd/domains.yaml'] as { domains: Record<string, unknown>[] }
+    file.domains.push({ id: 'd2', name: '명', logicalType: 'VARCHAR(50)', dialectTypes: {} })
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.issues.some((i) => i.message.includes('도메인 이름 명이 중복'))).toBe(true)
+  })
+
+  it('테이블 물리명이 중복되면 issue를 낸다', () => {
+    const { tree } = modelToFiles(fullModel())
+    tree['erdd/tables/MBR.copy.yaml'] = { id: 'tbX', name: 'MBR', logicalName: '회원사본', columns: [] }
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.issues.some((i) => i.message.includes('테이블 물리명 MBR이 중복'))).toBe(true)
   })
 })
