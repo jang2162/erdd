@@ -350,6 +350,12 @@ describe('parseDdl — 나머지 문장의 문자열 리터럴 오탐 점검', (
     expect(fk!.refTable).toBe('MBR')
   })
 
+  // Minor: Oracle의 RELY는 ENABLE 없이 단독으로 올 수 있는 제약 상태 키워드다.
+  it('Oracle의 RELY 같은 단독 제약 상태 키워드도 refTable에 섞이지 않는다', () => {
+    const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (X) REFERENCES MBR RELY;')
+    expect(r.constraints[0]).toMatchObject({ refTable: 'MBR' })
+  })
+
   it('참조 컬럼을 생략해도 꼬리 절이 부모 테이블 이름에 섞이지 않는다', () => {
     const r = parseDdl('ALTER TABLE ORD ADD CONSTRAINT FK1 FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE CASCADE;')
     expect(r.constraints).toContainEqual({

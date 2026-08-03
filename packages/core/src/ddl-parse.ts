@@ -325,7 +325,7 @@ function parseColumnDef(def: string): ParsedColumn | null {
  * 함께 쓴다 — 한 곳만 고치면 되게 상수로 뺐다.
  */
 const REFERENCES_TARGET_RE =
-  /REFERENCES\s+(.+?)\s*(?=\(|\b(?:ON|MATCH|NOT|DEFERRABLE|INITIALLY|ENABLE|DISABLE|USING)\b|$)/is
+  /REFERENCES\s+(.+?)\s*(?=\(|\b(?:ON|MATCH|NOT|DEFERRABLE|INITIALLY|ENABLE|DISABLE|USING|VALIDATE|NOVALIDATE|RELY)\b|$)/is
 
 const CREATE_TABLE_RE = /^CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|TEMP\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s*(?=\()/is
 

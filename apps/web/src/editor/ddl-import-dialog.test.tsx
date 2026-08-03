@@ -102,6 +102,41 @@ describe('DdlImportDialog', () => {
     expect(screen.getByRole('button', { name: /만들기$/ })).toBeDisabled()
   })
 
+  // I-1: 경고의 target(어느 테이블·컬럼인지)이 렌더돼야 한다 — 그렇지 않으면 컬럼 여러
+  // 개를 가져올 때 같은 문구가 반복되고 어느 컬럼인지 알 수 없다.
+  it('경고에 대상 위치를 함께 보여준다', async () => {
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
+    await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await userEvent.paste('CREATE TABLE MBR (MBR_NO bigint);')
+    expect(await screen.findByText('MBR.MBR_NO')).toBeInTheDocument()
+  })
+
+  // I-1: 미리보기의 "건너뜀 N개"에 건너뛴 테이블 이름도 함께 보여야 어느 테이블이 겹쳤는지
+  // 알 수 있다(설계 §7 목업: "건너뜀 2개 (이미 있는 이름: MBR, ORD)").
+  //
+  // 브리프 원문은 `screen.findByText(/MBR/)`이었으나, 붙여넣은 DDL 텍스트 자체가
+  // <textarea>에 그대로 echo되어 그 안에 이미 'MBR'이 들어 있다 — 그래서 이 배너를
+  // 구현하지 않아도(수정 전 코드 그대로도) 항상 통과하는 가짜 양성 테스트였다(직접 확인:
+  // 수정 전 상태에서 이 assertion만 통과함). "건너뜀 N개"는 요약 문단에서만 나오는
+  // 문구이므로 그 문단 텍스트 안에 테이블 이름이 함께 있는지로 범위를 좁혔다.
+  it('건너뛴 테이블 이름을 미리보기에 보여준다', async () => {
+    const model = createEmptyModel()
+    model.tables['t1'] = {
+      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
+    await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await userEvent.paste('CREATE TABLE MBR (MBR_NO bigint);')
+    expect(await screen.findByText(/건너뜀 1개.*MBR/)).toBeInTheDocument()
+  })
+
   it('편집 권한이 없으면 진입점이 없다', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     // grantEditPermission을 부르지 않는다 — Viewer 상태.

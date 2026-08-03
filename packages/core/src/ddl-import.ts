@@ -5,7 +5,7 @@ import type { ParsedDdl, ParsedTable, ParsedConstraint } from './ddl-parse.js'
 
 export type DdlImportWarning = {
   kind: 'ambiguous-type' | 'unknown-type' | 'unknown-word'
-      | 'table-conflict' | 'unresolved-fk' | 'skipped-statement'
+      | 'table-conflict' | 'unresolved-fk' | 'unresolved-index' | 'skipped-statement'
   target: string
   message: string
 }
@@ -15,7 +15,7 @@ export type DdlImportColumn = {
   defaultValue: string | null; comment: string | null
 }
 export type DdlImportTable = {
-  physicalName: string; logicalName: string
+  physicalName: string; logicalName: string; comment: string | null
   columns: DdlImportColumn[]
   indexes: Array<{ name: string; columnPhysicalNames: string[]; unique: boolean }>
 }
@@ -55,25 +55,37 @@ export function planDdlImport(
 ): DdlImportPlan {
   const warnings: DdlImportWarning[] = []
 
-  // 1) 이름 충돌 판정 — 살아남은 테이블만 alive에 남는다
+  // 1) 이름 충돌 판정 — 살아남은 테이블만 alive에 남는다. 모델의 기존 테이블과 겹치는
+  // 경우뿐 아니라(I-2c) DDL 안에서 같은 이름의 CREATE TABLE이 두 번 오는 경우도 뒤엣것을
+  // 건너뛴다 — 그렇지 않으면 alive.set이 조용히 덮어써 앞 테이블의 컬럼이 소리 없이 사라진다.
   const existing = new Set(Object.values(model.tables).map((t) => upper(t.physicalName)))
   const skippedTables: string[] = []
   const alive = new Map<string, ParsedTable>()
   for (const t of parsed.tables) {
-    if (existing.has(upper(t.name))) {
+    const key = upper(t.name)
+    if (existing.has(key)) {
       skippedTables.push(t.name)
       warnings.push({ kind: 'table-conflict', target: t.name, message: '같은 이름의 테이블이 이미 있어 건너뜁니다' })
       continue
     }
-    alive.set(upper(t.name), t)
+    if (alive.has(key)) {
+      warnings.push({
+        kind: 'table-conflict', target: t.name,
+        message: 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+      })
+      continue
+    }
+    alive.set(key, t)
   }
 
   // 2) 제약 색인 — PK는 먼저 나온 것을 쓴다(인라인 + 테이블 수준 중복 방지)
   const pkOf = new Map<string, string[]>()
   const fks: Array<Extract<ParsedConstraint, { kind: 'fk' }>> = []
+  const uniques: Array<Extract<ParsedConstraint, { kind: 'unique' }>> = []
   for (const c of parsed.constraints) {
     if (c.kind === 'pk') { if (!pkOf.has(upper(c.table))) pkOf.set(upper(c.table), c.columns) }
     else if (c.kind === 'fk') fks.push(c)
+    else uniques.push(c)
   }
 
   // 3) 코멘트 색인
@@ -98,12 +110,16 @@ export function planDdlImport(
     return { logicalName: physicalName, comment: null }
   }
 
-  // 4) 테이블·컬럼 변환
+  // 4) 테이블·컬럼 변환. 컬럼 물리명 정규화 맵(대문자 → 실제 물리명)도 함께 만든다 — 인덱스·
+  // 관계가 DDL 원문 표기(대소문자·부모 PK 표기 등)를 실제 컬럼으로 해소하는 데 쓴다(I-3).
   const tables: DdlImportTable[] = []
+  const colMapByTable = new Map<string, Map<string, string>>()
   for (const t of alive.values()) {
     const pkCols = new Set((pkOf.get(upper(t.name)) ?? []).map(upper))
     const named = resolveName(t.name, tableComment.get(upper(t.name)), t.name)
+    const colMap = new Map<string, string>()
     const columns: DdlImportColumn[] = t.columns.map((c) => {
+      colMap.set(upper(c.name), c.name)
       const target = `${t.name}.${c.name}`
       const mapped = fromDialectType(c.rawType, dialect)
       let type: string
@@ -133,17 +149,88 @@ export function planDdlImport(
       }
     })
 
-    // 5) 인덱스 — PK와 컬럼이 정확히 같은 유니크 인덱스는 조용히 제외
-    const pkList = pkOf.get(upper(t.name)) ?? []
-    const indexes = parsed.indexes
-      .filter((ix) => upper(ix.table) === upper(t.name))
-      .filter((ix) => !(ix.unique && pkList.length > 0 && sameSet(ix.columns, pkList)))
-      .map((ix) => ({ name: ix.name, columnPhysicalNames: ix.columns, unique: ix.unique }))
+    colMapByTable.set(upper(t.name), colMap)
+    tables.push({
+      physicalName: t.name, logicalName: named.logicalName, comment: named.comment,
+      columns, indexes: [],
+    })
+  }
+  const tableByUpper = new Map(tables.map((t) => [upper(t.physicalName), t]))
 
-    tables.push({ physicalName: t.name, logicalName: named.logicalName, columns, indexes })
+  /** rawCols를 그 테이블의 실제 컬럼 물리명으로 정규화한다. 하나라도 없으면 첫 실패 컬럼명을 돌려준다. */
+  const resolveIndexColumns = (
+    tableKey: string, rawCols: string[],
+  ): { names: string[] } | { missing: string } => {
+    const colMap = colMapByTable.get(tableKey)!
+    const names: string[] = []
+    for (const raw of rawCols) {
+      const hit = colMap.get(upper(raw))
+      if (hit === undefined) return { missing: raw }
+      names.push(hit)
+    }
+    return { names }
   }
 
-  // 6) 관계 — 자식·부모가 둘 다 살아 있을 때만
+  // 5) 인덱스 — CREATE INDEX 전부를 훑는다(테이블별 필터가 아니라). alive 테이블에 속하지
+  // 않는 인덱스(I-2b: 이름 충돌로 건너뛴 테이블, CREATE TABLE 없이 CREATE INDEX만 온 경우)를
+  // 조용히 버리지 않고 경고한다. 컬럼은 실제 물리명으로 정규화하고(I-3) — 대소문자 불일치,
+  // 함수·표현식 인덱스, 파싱 범위 밖에서 추가된 컬럼처럼 해소되지 않는 경우 인덱스를 만들지
+  // 않고 경고한다. PK와 컬럼이 정확히 같은 유니크 인덱스는 여전히 조용히 제외한다.
+  for (const ix of parsed.indexes) {
+    const tableKey = upper(ix.table)
+    const table = tableByUpper.get(tableKey)
+    if (!table) {
+      warnings.push({
+        kind: 'unresolved-index', target: `${ix.table}.${ix.name}`,
+        message: `소속 테이블을 찾지 못해 인덱스 ${ix.name}을 만들지 않았습니다`,
+      })
+      continue
+    }
+    const pkList = pkOf.get(tableKey) ?? []
+    if (ix.unique && pkList.length > 0 && sameSet(ix.columns, pkList)) continue
+    const resolved = resolveIndexColumns(tableKey, ix.columns)
+    if ('missing' in resolved) {
+      warnings.push({
+        kind: 'unresolved-index', target: `${table.physicalName}.${ix.name}`,
+        message: `컬럼 ${resolved.missing}을 찾지 못해 인덱스 ${ix.name}을 만들지 않았습니다`,
+      })
+      continue
+    }
+    table.indexes.push({ name: ix.name, columnPhysicalNames: resolved.names, unique: ix.unique })
+  }
+
+  // UNIQUE 제약도 유니크 인덱스로 합류시킨다(I-2a) — 우리 자신의 내보내기도 1:1 관계에서
+  // ALTER TABLE ... ADD CONSTRAINT ... UNIQUE 형태를 낼 수 있어 왕복에도 구멍이었다.
+  // PK와 컬럼이 같은 UNIQUE는 앞의 인덱스와 같은 규칙으로 조용히 제외한다(PK를 뒷받침하는
+  // UNIQUE가 함께 오는 것은 흔하다). 이름이 없으면 테이블 안에서 유일한 이름을 만든다.
+  const usedIndexNames = new Map<string, Set<string>>()
+  for (const t of tables) usedIndexNames.set(upper(t.physicalName), new Set(t.indexes.map((ix) => ix.name)))
+  for (const u of uniques) {
+    const tableKey = upper(u.table)
+    const table = tableByUpper.get(tableKey)
+    if (!table) continue // UNIQUE 제약은 CREATE TABLE 본문 안에서만 파싱되므로 항상 alive 테이블에 속한다
+    const pkList = pkOf.get(tableKey) ?? []
+    if (pkList.length > 0 && sameSet(u.columns, pkList)) continue
+    const resolved = resolveIndexColumns(tableKey, u.columns)
+    if ('missing' in resolved) {
+      warnings.push({
+        kind: 'unresolved-index', target: `${table.physicalName}.${u.name ?? 'UNIQUE'}`,
+        message: `컬럼 ${resolved.missing}을 찾지 못해 UNIQUE 제약을 인덱스로 만들지 않았습니다`,
+      })
+      continue
+    }
+    const used = usedIndexNames.get(tableKey)!
+    let name = u.name
+    if (name === null) {
+      let n = 1
+      while (used.has(`UX_${table.physicalName}_${n}`)) n++
+      name = `UX_${table.physicalName}_${n}`
+    }
+    used.add(name)
+    table.indexes.push({ name, columnPhysicalNames: resolved.names, unique: true })
+  }
+
+  // 6) 관계 — 자식·부모가 둘 다 살아 있고 컬럼도 실제 컬럼으로 해소될 때만(I-3)
   const relationships: DdlImportRelationship[] = []
   for (const fk of fks) {
     const child = alive.get(upper(fk.table))
@@ -165,10 +252,30 @@ export function planDdlImport(
       })
       continue
     }
+    const childColMap = colMapByTable.get(upper(fk.table))!
+    const parentColMap = colMapByTable.get(upper(fk.refTable))!
+    const columnPairs: Array<{ child: string; parent: string }> = []
+    let unresolved: string | null = null
+    for (let i = 0; i < fk.columns.length; i++) {
+      const rawChild = fk.columns[i]!
+      const rawParent = refColumns[i]!
+      const childName = childColMap.get(upper(rawChild))
+      const parentName = parentColMap.get(upper(rawParent))
+      if (childName === undefined) { unresolved = `${fk.table}.${rawChild}`; break }
+      if (parentName === undefined) { unresolved = `${fk.refTable}.${rawParent}`; break }
+      columnPairs.push({ child: childName, parent: parentName })
+    }
+    if (unresolved) {
+      warnings.push({
+        kind: 'unresolved-fk', target: fk.table,
+        message: `참조 컬럼 ${unresolved}을 찾지 못해 관계를 만들지 않았습니다`,
+      })
+      continue
+    }
     const childPk = pkOf.get(upper(fk.table)) ?? []
     relationships.push({
       childPhysicalName: child.name, parentPhysicalName: parent.name,
-      columnPairs: fk.columns.map((c, i) => ({ child: c, parent: refColumns[i]! })),
+      columnPairs,
       identifying: childPk.length > 0 && isSubset(fk.columns, childPk),
     })
   }

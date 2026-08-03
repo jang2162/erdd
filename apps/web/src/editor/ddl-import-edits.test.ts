@@ -83,22 +83,54 @@ describe('applyDdlImport', () => {
   // 필수다(기본값 없음, packages/core/src/ddl.ts:193). 인자 1개로는 컴파일이 안 되므로
   // 이 테스트에서 이미 쓰는 dialect인 'postgresql'을 명시했다. 자세한 내용은
   // task-7-report.md 참고.
+  // 브리프의 회귀 방어 픽스처 — 부모·자식 테이블과 관계 1개, PK와 다른 컬럼의 인덱스 1개,
+  // 테이블 comment, autoIncrement 컬럼, defaultValue 컬럼을 포함한다(packages/core의
+  // ddl-import.test.ts roundTripModel과 같은 모양). shape()도 관계·인덱스까지 비교하도록
+  // 넓혔다 — 원래는 테이블·컬럼만 비교해 관계·인덱스 왕복 손상을 놓쳤다.
   it('왕복 — 내보낸 DDL을 다시 가져오면 같은 모델이 나온다(id·좌표 제외)', () => {
     seq = 0
     const original = createEmptyModel()
     original.tables['t1'] = {
-      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: '회원 기본 정보',
       groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    original.tables['t2'] = {
+      id: 't2', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: null, position: { x: 300, y: 0 }, groupPosition: null, custom: {},
     }
     original.columns['c1'] = {
       id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO',
-      type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
+      type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
       defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
     }
     original.columns['c2'] = {
       id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM',
       type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: true,
       defaultValue: null, order: 1, comment: null, domainId: null, custom: {},
+    }
+    original.columns['c3'] = {
+      id: 'c3', tableId: 't2', logicalName: '주문번호', physicalName: 'ORD_NO',
+      type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
+      defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    }
+    original.columns['c4'] = {
+      id: 'c4', tableId: 't2', logicalName: '회원번호', physicalName: 'MBR_NO',
+      type: 'BIGINT', isPk: false, autoIncrement: false, nullable: false,
+      defaultValue: null, order: 1, comment: null, domainId: null, custom: {},
+    }
+    original.columns['c5'] = {
+      id: 'c5', tableId: 't2', logicalName: '주문상태', physicalName: 'ORD_STTUS',
+      type: 'VARCHAR(20)', isPk: false, autoIncrement: false, nullable: false,
+      defaultValue: "'PENDING'", order: 2, comment: null, domainId: null, custom: {},
+    }
+    original.indexes['ix1'] = {
+      id: 'ix1', tableId: 't1', name: 'IX_MBR_NM', unique: false,
+      columns: [{ columnId: 'c2', direction: 'asc' }],
+    }
+    original.relationships['r1'] = {
+      id: 'r1', parentTableId: 't1', childTableId: 't2',
+      columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
+      cardinality: '1:N', identifying: false, name: null,
     }
 
     const ddl = generateDdl(original, 'postgresql')
@@ -112,11 +144,31 @@ describe('applyDdlImport', () => {
         .sort((a, b) => a.physicalName.localeCompare(b.physicalName)),
       columns: Object.values(m.columns)
         .map((c) => ({
+          table: m.tables[c.tableId]?.physicalName ?? c.tableId,
           logicalName: c.logicalName, physicalName: c.physicalName, type: c.type,
           isPk: c.isPk, nullable: c.nullable, autoIncrement: c.autoIncrement,
           defaultValue: c.defaultValue, comment: c.comment, order: c.order,
         }))
-        .sort((a, b) => a.physicalName.localeCompare(b.physicalName)),
+        .sort((a, b) => (a.table + a.physicalName).localeCompare(b.table + b.physicalName)),
+      indexes: Object.values(m.indexes)
+        .map((ix) => ({
+          table: m.tables[ix.tableId]?.physicalName ?? ix.tableId,
+          name: ix.name, unique: ix.unique,
+          columns: ix.columns.map((c) => m.columns[c.columnId]?.physicalName ?? c.columnId),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      relationships: Object.values(m.relationships)
+        .map((r) => ({
+          parent: m.tables[r.parentTableId]?.physicalName ?? r.parentTableId,
+          child: m.tables[r.childTableId]?.physicalName ?? r.childTableId,
+          cardinality: r.cardinality, identifying: r.identifying,
+          columnMappings: r.columnMappings
+            .map((cm) => ({
+              child: m.columns[cm.childColumnId]?.physicalName ?? cm.childColumnId,
+              parent: m.columns[cm.parentColumnId]?.physicalName ?? cm.parentColumnId,
+            })),
+        }))
+        .sort((a, b) => (a.parent + a.child).localeCompare(b.parent + b.child)),
     })
 
     expect(shape(restored)).toEqual(shape(original))

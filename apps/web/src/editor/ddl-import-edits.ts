@@ -15,8 +15,8 @@ const rowHeight = (columnCount: number) => 40 + columnCount * 28
  * 좌표는 렌더 전이라 실측 크기가 없으므로 컬럼 수 기반 추정 높이로 `computeAutoLayout`을
  * 돌려 정하고, 기존 테이블이 있으면 그 아래(y max + 200)로 밀어 겹치지 않게 한다.
  *
- * `DdlImportTable`에는 테이블 comment 필드가 없다(계획 단계에서 이미 버려진 정보) —
- * 그래서 새로 만든 테이블의 `comment`는 항상 `null`이다. 컬럼은 `DdlImportColumn.comment`가
+ * 테이블의 `comment`는 `DdlImportTable.comment`를 그대로 옮긴다(계획 단계에서 `COMMENT ON
+ * TABLE`의 설명 부분을 이미 분리해 담아 둔다). 컬럼은 `DdlImportColumn.comment`가
  * 있어 그대로 옮긴다.
  *
  * 인덱스 컬럼의 정렬 방향도 계획에 없는 정보다(파서가 ASC/DESC를 버림) — 항상 `'asc'`로 둔다.
@@ -55,7 +55,7 @@ export function applyDdlImport(
     tableIdByName.set(t.physicalName, id)
     const pos = layout.get(t.physicalName)
     const table: Table = {
-      id, logicalName: t.logicalName, physicalName: t.physicalName, comment: null,
+      id, logicalName: t.logicalName, physicalName: t.physicalName, comment: t.comment,
       groupId: null,
       position: pos ? { x: pos.x, y: pos.y + offsetY } : { x: 0, y: offsetY },
       groupPosition: null, custom: {},

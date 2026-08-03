@@ -153,24 +153,149 @@ describe('planDdlImport', () => {
     // 테이블 1 + 컬럼 2 + 인덱스 1 + 관계 0
     expect(p.opCountEstimate).toBe(4)
   })
+
+  // I-3: 계획이 내보내는 인덱스·관계의 컬럼 이름은 실제 컬럼 physicalName으로 정규화돼야
+  // 한다 — 그래야 ddl-import-edits.ts의 columnIdByKey.get(...)! 가 참인 불변식이 된다.
+  it('인덱스 컬럼 이름의 대소문자가 달라도 실제 컬럼으로 정규화한다', () => {
+    const p = plan(`
+      CREATE TABLE mbr (mbr_no bigint, mbr_nm varchar(10));
+      CREATE INDEX IX ON MBR (MBR_NM);`)
+    expect(p.tables[0]!.indexes).toEqual([
+      { name: 'IX', columnPhysicalNames: ['mbr_nm'], unique: false },
+    ])
+    expect(p.warnings.some((w) => w.kind === 'unresolved-index')).toBe(false)
+  })
+
+  it('참조 컬럼 생략 FK의 부모 PK 표기가 컬럼 정의와 대소문자만 달라도 해소한다', () => {
+    const p = plan(`
+      CREATE TABLE mbr (mbr_no bigint, PRIMARY KEY (MBR_NO));
+      CREATE TABLE ord (mbr_no bigint, FOREIGN KEY (MBR_NO) REFERENCES MBR);`)
+    expect(p.relationships).toEqual([{
+      childPhysicalName: 'ord', parentPhysicalName: 'mbr',
+      columnPairs: [{ child: 'mbr_no', parent: 'mbr_no' }], identifying: false,
+    }])
+  })
+
+  it('존재하지 않는 컬럼을 가리키는 인덱스는 만들지 않고 경고한다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (MBR_NO bigint);
+      CREATE INDEX IX ON MBR (NOPE);`)
+    expect(p.tables[0]!.indexes).toEqual([])
+    expect(p.warnings.some((w) => w.kind === 'unresolved-index' && w.message.includes('NOPE'))).toBe(true)
+  })
+
+  it('존재하지 않는 부모 컬럼을 가리키는 FK는 만들지 않고 경고한다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (MBR_NO bigint);
+      CREATE TABLE ORD (X bigint, FOREIGN KEY (X) REFERENCES MBR (NOPE));`)
+    expect(p.relationships).toEqual([])
+    expect(p.warnings.some((w) => w.kind === 'unresolved-fk')).toBe(true)
+  })
+
+  it('함수 인덱스처럼 컬럼이 아닌 표현식은 인덱스를 만들지 않고 경고한다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (NM varchar(10));
+      CREATE INDEX IX ON MBR (LOWER(NM));`)
+    expect(p.tables[0]!.indexes).toEqual([])
+    expect(p.warnings.some((w) => w.kind === 'unresolved-index')).toBe(true)
+  })
+
+  // I-2(a): UNIQUE 제약을 유니크 인덱스로 합류시킨다.
+  it('UNIQUE 제약을 유니크 인덱스로 만든다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (MBR_NO bigint, MBR_NM varchar(10), PRIMARY KEY (MBR_NO));
+      ALTER TABLE MBR ADD CONSTRAINT UX_MBR UNIQUE (MBR_NM);`)
+    expect(p.tables[0]!.indexes).toContainEqual({
+      name: 'UX_MBR', columnPhysicalNames: ['MBR_NM'], unique: true,
+    })
+  })
+
+  it('PK와 컬럼이 같은 UNIQUE 제약은 조용히 제외한다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (MBR_NO bigint, PRIMARY KEY (MBR_NO));
+      ALTER TABLE MBR ADD CONSTRAINT UX_MBR UNIQUE (MBR_NO);`)
+    expect(p.tables[0]!.indexes).toEqual([])
+  })
+
+  it('이름 없는 UNIQUE 제약에 이름을 붙인다', () => {
+    const p = plan('CREATE TABLE MBR (A bigint, B bigint, UNIQUE (A), UNIQUE (B));')
+    const names = p.tables[0]!.indexes.map((i) => i.name)
+    expect(names).toHaveLength(2)
+    expect(new Set(names).size).toBe(2)   // 서로 다른 이름
+  })
+
+  // I-2(b): alive에 없는 테이블의 인덱스를 조용히 버리지 않고 경고한다.
+  it('소속 테이블이 없는 인덱스를 경고한다', () => {
+    const p = plan('CREATE INDEX IX ON NOPE (X);')
+    expect(p.warnings.some((w) => w.kind === 'unresolved-index')).toBe(true)
+  })
+
+  // I-2(c): 같은 이름의 CREATE TABLE이 두 번 오면 뒤엣것을 버리고 경고한다.
+  it('DDL에 같은 이름의 테이블이 두 번 오면 뒤엣것을 건너뛰고 경고한다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (A bigint);
+      CREATE TABLE MBR (B bigint);`)
+    expect(p.tables).toHaveLength(1)
+    expect(p.tables[0]!.columns.map((c) => c.physicalName)).toEqual(['A'])
+    expect(p.warnings.some((w) => w.kind === 'table-conflict')).toBe(true)
+  })
+
+  // I-4: 테이블 코멘트의 설명 부분이 계획에서 보존돼야 한다.
+  it('테이블 코멘트의 설명 부분을 보존한다', () => {
+    const p = plan("CREATE TABLE MBR (A bigint);\nCOMMENT ON TABLE MBR IS '회원 - 회원 기본 정보';")
+    expect(p.tables[0]).toMatchObject({ logicalName: '회원', comment: '회원 기본 정보' })
+  })
 })
 
-/** 도메인·허용값을 쓰지 않는 왕복 픽스처. */
+/**
+ * 왕복 픽스처. 도메인·허용값은 여전히 쓰지 않는다(설계 §2 — 범위의 경계).
+ * 부모(MBR)·자식(ORD) 테이블과 그 사이 관계 1개, PK와 다른 컬럼의 인덱스 1개, 테이블
+ * comment, autoIncrement 컬럼, defaultValue 컬럼을 포함한다 — 이 브랜치가 새로 만든
+ * FK·인덱스·테이블 코멘트 경로가 왕복에서 실제로 실행되게 하기 위해서다.
+ */
 function roundTripModel(): ProjectModel {
   const m = createEmptyModel()
   m.tables['t1'] = {
-    id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+    id: 't1', logicalName: '회원', physicalName: 'MBR', comment: '회원 기본 정보',
     groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+  }
+  m.tables['t2'] = {
+    id: 't2', logicalName: '주문', physicalName: 'ORD', comment: null,
+    groupId: null, position: { x: 300, y: 0 }, groupPosition: null, custom: {},
   }
   m.columns['c1'] = {
     id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO',
-    type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
+    type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
     defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
   }
   m.columns['c2'] = {
     id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM',
     type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: true,
     defaultValue: null, order: 1, comment: '표시용 이름', domainId: null, custom: {},
+  }
+  m.columns['c3'] = {
+    id: 'c3', tableId: 't2', logicalName: '주문번호', physicalName: 'ORD_NO',
+    type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
+    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+  }
+  m.columns['c4'] = {
+    id: 'c4', tableId: 't2', logicalName: '회원번호', physicalName: 'MBR_NO',
+    type: 'BIGINT', isPk: false, autoIncrement: false, nullable: false,
+    defaultValue: null, order: 1, comment: null, domainId: null, custom: {},
+  }
+  m.columns['c5'] = {
+    id: 'c5', tableId: 't2', logicalName: '주문상태', physicalName: 'ORD_STTUS',
+    type: 'VARCHAR(20)', isPk: false, autoIncrement: false, nullable: false,
+    defaultValue: "'PENDING'", order: 2, comment: null, domainId: null, custom: {},
+  }
+  m.indexes['ix1'] = {
+    id: 'ix1', tableId: 't1', name: 'IX_MBR_NM', unique: false,
+    columns: [{ columnId: 'c2', direction: 'asc' }],
+  }
+  m.relationships['r1'] = {
+    id: 'r1', parentTableId: 't1', childTableId: 't2',
+    columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
+    cardinality: '1:N', identifying: false, name: null,
   }
   return m
 }
@@ -180,18 +305,33 @@ function assertRoundTrip(dialect: Dialect): void {
   const ddl = generateDdl(model, dialect)
   const p = planDdlImport(createEmptyModel(), parseDdl(ddl), dialect, DEFAULT_NAMING_RULES)
 
-  expect(p.tables).toHaveLength(1)
-  const t = p.tables[0]!
-  expect(t.physicalName).toBe('MBR')
-  expect(t.logicalName).toBe('회원')
-  expect(t.columns.map((c) => c.physicalName)).toEqual(['MBR_NO', 'MBR_NM'])
-  expect(t.columns[0]).toMatchObject({
-    logicalName: '회원번호', type: 'BIGINT', isPk: true, nullable: false,
+  // 이 셋은 "미리보기가 통과시킨 걸 무결성 검사가 거절하는" I-3류 결함의 회귀 방어다.
+  expect(p.warnings.filter((w) => w.kind === 'unresolved-index' || w.kind === 'unresolved-fk' || w.kind === 'table-conflict')).toEqual([])
+
+  expect(p.tables).toHaveLength(2)
+  const mbr = p.tables.find((t) => t.physicalName === 'MBR')!
+  const ord = p.tables.find((t) => t.physicalName === 'ORD')!
+
+  expect(mbr.logicalName).toBe('회원')
+  expect(mbr.comment).toBe('회원 기본 정보')
+  expect(mbr.columns.map((c) => c.physicalName)).toEqual(['MBR_NO', 'MBR_NM'])
+  expect(mbr.columns[0]).toMatchObject({
+    logicalName: '회원번호', type: 'BIGINT', isPk: true, nullable: false, autoIncrement: true,
   })
-  expect(t.columns[1]).toMatchObject({
+  expect(mbr.columns[1]).toMatchObject({
     logicalName: '회원명', type: 'VARCHAR(100)', isPk: false, nullable: true,
     comment: '표시용 이름',
   })
+  expect(mbr.indexes).toEqual([{ name: 'IX_MBR_NM', columnPhysicalNames: ['MBR_NM'], unique: false }])
+
+  expect(ord.logicalName).toBe('주문')
+  expect(ord.columns.map((c) => c.physicalName)).toEqual(['ORD_NO', 'MBR_NO', 'ORD_STTUS'])
+  expect(ord.columns[2]).toMatchObject({ defaultValue: "'PENDING'" })
+
+  expect(p.relationships).toEqual([{
+    childPhysicalName: 'ORD', parentPhysicalName: 'MBR',
+    columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }], identifying: false,
+  }])
 }
 
 describe('왕복 — 내보낸 DDL을 다시 읽으면 같은 계획이 나온다', () => {

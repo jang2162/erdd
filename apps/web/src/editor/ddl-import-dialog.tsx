@@ -84,11 +84,16 @@ export function DdlImportDialog({ projectId }: { projectId: string }) {
             <p className="text-sm">
               테이블 {plan.tables.length}개 · 컬럼 {columnCount}개 · 관계 {plan.relationships.length}개
               {' '}· 인덱스 {indexCount}개
-              {plan.skippedTables.length > 0 && ` · 건너뜀 ${plan.skippedTables.length}개`}
+              {plan.skippedTables.length > 0
+                && ` · 건너뜀 ${plan.skippedTables.length}개 (이미 있는 이름: ${plan.skippedTables.join(', ')})`}
             </p>
             {plan.warnings.length > 0 && (
               <ul aria-label="DDL 경고" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs text-key">
-                {plan.warnings.map((w, i) => <li key={i}>⚠ {w.message}</li>)}
+                {plan.warnings.map((w, i) => (
+                  <li key={i}>
+                    ⚠ <span className="font-mono text-muted-foreground">{w.target}</span> {w.message}
+                  </li>
+                ))}
               </ul>
             )}
             {overLimit && (
