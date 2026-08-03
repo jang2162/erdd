@@ -68,18 +68,21 @@ generateDdl(model, dialect) → parseDdl → planDdlImport → applyDdlImport  =
 
 **나머지 3방언은 내보내기 자체가 이미 손실적이다.** 두 논리타입이 같은 방언 타입으로 나가면 되돌릴 때 하나는 반드시 진다. 이것은 이번 작업이 만드는 손실이 아니라 기존 매핑의 성질이고, `dialect.ts`의 `ORACLE_WARN`이 이미 일부를 경고하고 있다.
 
-왕복이 깨지는 것은 다음 4건뿐이다. 각각 같은 자리를 다투는 상대에게 밀린 것이다:
+왕복이 깨지는 것은 다음 **5건**이다. 앞의 넷은 두 논리타입이 같은 방언 타입으로 나가서 하나가 밀린 것이고, 마지막 하나는 우리가 실무 정확성을 위해 일부러 포기한 것이다:
 
 | 논리타입 | 방언 | 내보내면 | 다시 읽으면 | 진 이유 |
 |---|---|---|---|---|
 | `JSON` | oracle | `CLOB` | `TEXT` | `TEXT`도 `CLOB`으로 나간다 |
+| `DATE` | oracle | `DATE` | `DATETIME` | `DATETIME`도 `DATE`로 나간다. Oracle `DATE`는 시각을 포함하므로 `DATETIME`이 더 정확하다 |
+| `TIME` | oracle | `TIMESTAMP` | `DATETIME` | **의도한 포기** — 아래 참조 |
 | `JSON` | mssql | `NVARCHAR(MAX)` | `TEXT` | `TEXT`도 `NVARCHAR(MAX)`로 나간다 |
 | `UUID` | mysql | `CHAR(36)` | `CHAR(36)` | `CHAR(36)`이 그대로 유효한 타입이다 |
-| `TIME` | oracle | `TIMESTAMP` | `DATETIME` | Oracle에 `TIME`이 없다(내보내기가 이미 경고 중) |
 
-나머지는 전부 왕복한다. Oracle `NUMBER(1)`→`BOOLEAN`, `CLOB`→`TEXT`처럼 우리가 고르는 쪽이 그 자리의 승자이기 때문이다. Oracle `DATE`는 시각을 포함하므로 `DATETIME`으로 읽는 것이 왕복에도 맞고 의미상으로도 정확하다.
+**Oracle `TIMESTAMP`는 왕복을 포기하고 실무를 택한다.** 우리 매핑에서 `TIMESTAMP`는 `TIME`에서만 나오므로 `TIME`으로 읽으면 왕복이 살아난다. 하지만 실무 Oracle DDL의 `TIMESTAMP` 컬럼은 거의 항상 시각(time-of-day)이 아니라 일시다. 왕복은 우리 테스트의 편의고 실무 DDL을 옳게 읽는 것이 제품의 목적이므로 `DATETIME`으로 읽고, 경고의 대안에 `TIME`을 적어 사용자가 고칠 수 있게 한다.
 
-**이 4건을 테스트에 상수 목록으로 박는다.** 매핑을 손대서 승패가 바뀌면 목록이 어긋나 바로 드러난다.
+나머지는 전부 왕복한다. **PostgreSQL은 충돌이 0건**이고, MySQL·MSSQL은 각 1건뿐이다.
+
+**이 5건을 테스트에 상수 목록으로 박는다.** 매핑을 손대서 승패가 바뀌면 목록이 어긋나 바로 드러난다.
 
 ### 3. 파싱 범위
 
@@ -116,6 +119,7 @@ generateDdl(model, dialect) → parseDdl → planDdlImport → applyDdlImport  =
 | oracle `NUMBER(p)` (위 외) | `DECIMAL(p,0)` | — |
 | oracle `NUMBER(p,s)` | `DECIMAL(p,s)` | — |
 | oracle `DATE` | `DATETIME` | `DATE` |
+| oracle `TIMESTAMP` | `DATETIME` | `TIME` |
 | oracle `CLOB` | `TEXT` | `JSON` |
 | mssql `NVARCHAR(MAX)` | `TEXT` | `JSON` |
 | mysql `TINYINT(1)` | `BOOLEAN` | `SMALLINT` |
@@ -304,7 +308,7 @@ export function applyDdlImport(
 **타입 역매핑** (`dialect.test.ts`에 추가)
 - 모호 케이스 표의 8행 각각이 지정한 값을 고르고 `alternatives`를 채운다
 - 인식 실패 시 `{ok:false, raw}`를 준다
-- **왕복**: 모든 `LogicalTypeKind`에 대해 `fromDialectType(toDialectType(t, d), d)`가 `t`와 같다 — **PostgreSQL은 전부**, 나머지 방언은 위 손실 표에 적힌 것만 예외로 허용한다(예외 목록을 테스트에 상수로 두어 매핑이 바뀌면 드러나게 한다)
+- **왕복**: 모든 `LogicalTypeKind`에 대해 `fromDialectType(toDialectType(t, d), d)`가 `t`와 같다 — **PostgreSQL은 전부**, 나머지 방언은 위 손실 표의 5건만 예외로 허용한다. 예외를 테스트에 상수 배열로 두고, 예외 목록에 없는 조합이 깨지거나 **예외로 적힌 조합이 오히려 왕복하면** 둘 다 실패시킨다(매핑이 바뀌면 어느 방향이든 드러난다)
 
 **논리명 복원** (`naming.test.ts`에 추가)
 - 용어 전체 일치가 단어 분해보다 우선한다
