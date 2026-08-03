@@ -1587,6 +1587,25 @@ describe('planDdlImport', () => {
     expect(p.warnings.some((w) => w.kind === 'unresolved-fk')).toBe(true)
   })
 
+  it('참조 컬럼을 생략한 FK는 부모 PK로 해석한다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (MBR_NO bigint, PRIMARY KEY (MBR_NO));
+      CREATE TABLE ORD (MBR_NO bigint, FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE CASCADE);`)
+    expect(p.relationships).toEqual([{
+      childPhysicalName: 'ORD', parentPhysicalName: 'MBR',
+      columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }], identifying: false,
+    }])
+    expect(p.warnings.some((w) => w.kind === 'unresolved-fk')).toBe(false)
+  })
+
+  it('참조 컬럼을 생략했는데 부모에 PK가 없으면 관계를 만들지 않고 경고한다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (MBR_NO bigint);
+      CREATE TABLE ORD (MBR_NO bigint, FOREIGN KEY (MBR_NO) REFERENCES MBR);`)
+    expect(p.relationships).toEqual([])
+    expect(p.warnings.some((w) => w.kind === 'unresolved-fk' && w.message.includes('참조 컬럼'))).toBe(true)
+  })
+
   it('참조 대상이 없는 FK를 경고한다', () => {
     const p = plan('CREATE TABLE ORD (X bigint, FOREIGN KEY (X) REFERENCES NOPE (X));')
     expect(p.relationships).toEqual([])
@@ -1787,17 +1806,27 @@ export function planDdlImport(
   for (const fk of fks) {
     const child = alive.get(upper(fk.table))
     const parent = alive.get(upper(fk.refTable))
-    if (!child || !parent || fk.columns.length !== fk.refColumns.length) {
+    // 참조 컬럼 생략(REFERENCES parent)은 "부모 PK를 참조한다"는 뜻이다. 파서는 이를
+    // refColumns: []로 표현하고, 부모 PK를 아는 여기서 해석한다.
+    const refColumns = fk.refColumns.length > 0 ? fk.refColumns : (pkOf.get(upper(fk.refTable)) ?? [])
+    if (!child || !parent) {
       warnings.push({
         kind: 'unresolved-fk', target: fk.table,
         message: `참조 대상 ${fk.refTable}을 찾지 못해 관계를 만들지 않았습니다`,
       })
       continue
     }
+    if (refColumns.length === 0 || fk.columns.length !== refColumns.length) {
+      warnings.push({
+        kind: 'unresolved-fk', target: fk.table,
+        message: `${fk.refTable}의 참조 컬럼을 확정하지 못해 관계를 만들지 않았습니다`,
+      })
+      continue
+    }
     const childPk = pkOf.get(upper(fk.table)) ?? []
     relationships.push({
       childPhysicalName: child.name, parentPhysicalName: parent.name,
-      columnPairs: fk.columns.map((c, i) => ({ child: c, parent: fk.refColumns[i]! })),
+      columnPairs: fk.columns.map((c, i) => ({ child: c, parent: refColumns[i]! })),
       identifying: childPk.length > 0 && sameSet(fk.columns, childPk),
     })
   }
