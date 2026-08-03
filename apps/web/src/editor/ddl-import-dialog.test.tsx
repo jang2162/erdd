@@ -72,14 +72,22 @@ describe('DdlImportDialog', () => {
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
-    await userEvent.paste('CREATE TABLE A (C1 CLOB);')
-    // 브리프 원문은 selectOptions에 값을 넘기지 않아(누락된 두 번째 인자) 런타임에
-    // "Value "undefined" not found in options"로 즉시 실패한다(task-8-report.md의
-    // "브리프 코드에서 발견한 결함" 참고). CLOB → TEXT 경고는 fromDialectType 매핑상 오직
-    // dialect==='oracle'일 때만 나오므로(다른 방언은 CLOB을 모르는 타입으로 그대로 둔다)
-    // 'oracle'을 명시해 검증 의도를 살렸다.
+    // 브리프 원문은 'CREATE TABLE A (C1 CLOB);'을 썼는데, CLOB 하나만으로 detectDialect가
+    // 이미 'oracle'을 자동 감지한다(ddl-parse.ts의 SIGNATURES, 경쟁 시그니처 없음). 그 상태에서
+    // selectOptions로 'oracle'을 고르면 이미 활성인 값을 다시 고르는 것이라 manualDialect
+    // 오버라이드 기구를 통째로 지워도(dialect = detected ?? 'postgresql') 테스트가 통과해
+    // 회귀 방어력이 0이었다(task-8-report.md "브리프 코드에서 발견한 결함" 두 번째 항목 참고).
+    // 백틱·ENGINE= 때문에 mysql로 자동 감지되게(detectDialect로 직접 확인: 'mysql') 픽스처를
+    // 바꿔, 자동 감지값(mysql)과 수동 선택값(oracle)이 실제로 달라지게 했다. mysql에는 CLOB
+    // 규칙이 없어 '알지 못해' 경고가 나고, oracle로 바꿔야 비로소 CLOB → TEXT 모호성 경고로
+    // 바뀐다 — 이제 오버라이드가 실제로 동작해야만 통과하는 테스트다.
+    await userEvent.paste('CREATE TABLE `A` (C1 CLOB) ENGINE=InnoDB;')
+    expect(await screen.findByText(/알지 못해/)).toBeInTheDocument()
+    expect(screen.queryByText(/TEXT로 읽었습니다/)).toBeNull()
+
     await userEvent.selectOptions(screen.getByRole('combobox', { name: '방언' }), 'oracle')
     expect(await screen.findByText(/TEXT로 읽었습니다/)).toBeInTheDocument()
+    expect(screen.queryByText(/알지 못해/)).toBeNull()
   })
 
   it('op 한도를 넘으면 적용을 막고 안내한다', async () => {
