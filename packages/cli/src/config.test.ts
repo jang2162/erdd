@@ -6,16 +6,16 @@ import {
   readConfig, writeConfig, readSync, writeSync, readBase, writeBase,
   resolveToken, writeToken, ensureGitignore,
 } from './config.js'
-import { CliError } from './output.js'
+import type { ErddConfig } from './config.js'
 
 let dir: string
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'erdd-cli-')) })
 afterEach(() => { delete process.env['ERDD_TOKEN'] })
 
-const CONFIG = {
+const CONFIG: ErddConfig = {
   serverUrl: 'https://erdd.example.com',
   projectId: '018f6b0e-0000-7000-8000-000000000000',
-  dialects: ['postgresql'] as const,
+  dialects: ['postgresql'],
   namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 },
 }
 
@@ -25,12 +25,12 @@ describe('config', () => {
   })
 
   it('쓰고 읽으면 같다', async () => {
-    await writeConfig(dir, { ...CONFIG, dialects: ['postgresql'] })
-    expect(await readConfig(dir)).toEqual({ ...CONFIG, dialects: ['postgresql'] })
+    await writeConfig(dir, CONFIG)
+    expect(await readConfig(dir)).toEqual(CONFIG)
   })
 
   it('설정 파일은 YAML이다', async () => {
-    await writeConfig(dir, { ...CONFIG, dialects: ['postgresql'] })
+    await writeConfig(dir, CONFIG)
     const raw = await readFile(join(dir, 'erdd.config.yaml'), 'utf8')
     expect(raw).toContain('serverUrl: https://erdd.example.com')
     expect(raw).not.toContain('{')
@@ -38,6 +38,32 @@ describe('config', () => {
 
   it('필수 필드가 빠지면 VALIDATION이다', async () => {
     await writeFile(join(dir, 'erdd.config.yaml'), 'serverUrl: https://x\n', 'utf8')
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
+  })
+
+  it('dialects에 알 수 없는 방언이 있으면 VALIDATION이다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'),
+      'serverUrl: https://x\nprojectId: p1\ndialects: [nope]\n'
+      + 'namingRules: {case: UPPER_SNAKE, separator: _, maxLengthBytes: 30}\n', 'utf8')
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
+  })
+
+  it('dialects가 빈 배열이면 VALIDATION이다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'),
+      'serverUrl: https://x\nprojectId: p1\ndialects: []\n'
+      + 'namingRules: {case: UPPER_SNAKE, separator: _, maxLengthBytes: 30}\n', 'utf8')
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
+  })
+
+  it('namingRules의 필드가 빠지면 VALIDATION이다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'),
+      'serverUrl: https://x\nprojectId: p1\ndialects: [postgresql]\n'
+      + 'namingRules: {case: UPPER_SNAKE}\n', 'utf8')
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
+  })
+
+  it('최상위가 객체가 아니면 VALIDATION이다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), '- a\n- b\n', 'utf8')
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
   })
 
