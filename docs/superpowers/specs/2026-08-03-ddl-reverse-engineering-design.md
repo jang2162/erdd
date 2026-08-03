@@ -53,7 +53,7 @@ DDL 텍스트를 붙여넣거나 파일로 올리면 파싱해 테이블·컬럼
 가장 강한 테스트는 이것이다:
 
 ```
-generateDdl(model, dialect) → parseDdl → planDdlImport → applyDdlImport  ===  원본 model
+generateDdl(model, dialect) → parseDdl → planDdlImport(…, dialect, …) → applyDdlImport  ===  원본 model
 ```
 
 (테이블·컬럼 id와 배치 좌표는 비교에서 제외한다 — id는 새로 발급되고 좌표는 DDL에 없다.)
@@ -207,7 +207,12 @@ export type ParsedDdl = {
 
 /** 특징 토큰 점수제. 근거가 없거나 동점이면 null. */
 export function detectDialect(ddl: string): Dialect | null
-export function parseDdl(ddl: string, dialect: Dialect): ParsedDdl
+
+/**
+ * 방언 인자를 받지 않는다 — 따옴표 세 종류를 모두 처리하고 자동증가 패턴도 한꺼번에 보므로
+ * 파싱 자체는 방언과 무관하다. 방언이 필요한 곳은 타입 매핑뿐이고 그것은 planDdlImport에서 한다.
+ */
+export function parseDdl(ddl: string): ParsedDdl
 ```
 
 ```ts
@@ -267,7 +272,7 @@ export type DdlImportPlan = {
 }
 
 export function planDdlImport(
-  model: ProjectModel, parsed: ParsedDdl, rules: NamingRules,
+  model: ProjectModel, parsed: ParsedDdl, dialect: Dialect, rules: NamingRules,
 ): DdlImportPlan
 ```
 
