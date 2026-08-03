@@ -52,4 +52,24 @@ describe('client', () => {
     await createClient('https://x/', 't').query('auth.me', {})
     expect(String(spy.mock.calls[0]![0])).toContain('https://x/trpc/auth.me')
   })
+
+  it('200인데 result도 error도 없으면 NETWORK로 실패한다', async () => {
+    stubFetch(() => new Response(JSON.stringify({ hello: 'world' }), { status: 200 }))
+    await expect(createClient('https://x', 't').query('auth.me', {}))
+      .rejects.toMatchObject({ code: 'NETWORK' })
+  })
+
+  it('result는 있고 data가 없는 정상 응답은 통과시킨다', async () => {
+    stubFetch(() => new Response(JSON.stringify({ result: {} }), { status: 200 }))
+    await expect(createClient('https://x', 't').query('auth.me', {})).resolves.toBeUndefined()
+  })
+
+  it('입력 검증 실패(BAD_REQUEST)는 VALIDATION이다', async () => {
+    stubFetch(() => new Response(
+      JSON.stringify({ error: { message: 'projectId는 uuid여야 합니다', data: { code: 'BAD_REQUEST' } } }),
+      { status: 400 },
+    ))
+    await expect(createClient('https://x', 't').query('model.get', { projectId: 'nope' }))
+      .rejects.toMatchObject({ code: 'VALIDATION', message: 'projectId는 uuid여야 합니다' })
+  })
 })
