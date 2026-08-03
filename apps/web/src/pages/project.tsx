@@ -7,6 +7,7 @@ import { PresenceBar } from '@/editor/presence'
 import { useEditorStore } from '@/editor/store'
 import { Canvas } from '@/editor/canvas'
 import { CustomFieldPanel } from '@/editor/custom-field-panel'
+import { DdlImportDialog } from '@/editor/ddl-import-dialog'
 import { DictPanel } from '@/editor/dict-panel'
 import { DomainPanel } from '@/editor/domain-panel'
 import { EditPanel } from '@/editor/edit-panel'
@@ -51,6 +52,7 @@ export function ProjectPage() {
             {loaded && <CustomFieldPanel projectId={projectId} />}
             {loaded && <ResourcePanel projectId={projectId} />}
             {loaded && <NamingCheck projectId={projectId} />}
+            {loaded && <DdlImportDialog projectId={projectId} />}
             {loaded && <ExportDialog />}
             <ViewModeToggle />
             <Button variant="ghost" size="sm" asChild>
