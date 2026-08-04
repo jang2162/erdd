@@ -288,4 +288,56 @@ describe('filesToModel', () => {
     if (result.ok) return
     expect(result.issues.some((i) => i.message.includes('테이블 물리명 MBR이 중복'))).toBe(true)
   })
+
+  it('같은 id가 두 파일에 있으면 issue를 낸다 — 파일 복사가 원본을 조용히 덮어쓴다', () => {
+    // 에이전트가 "이것과 비슷한 테이블"을 만들려고 MBR.yaml을 복사해 이름만 바꾼 상황이다.
+    // 검사가 없으면 model.tables[tb1]이 뒤 파일로 덮어써져, 새 테이블은 생기지 않고
+    // 원본이 PAY로 개명되는 update op가 나간다(충돌도 경고도 없이).
+    // MBR_DTL을 복사한다 — 아무도 부모로 참조하지 않는 테이블이라 id 충돌 말고는
+    // 다른 이슈가 섞이지 않는다(참조 오류로 우연히 ok:false가 되면 이 테스트는 무의미하다).
+    const { tree } = modelToFiles(fullModel())
+    tree['erdd/tables/PAY.yaml'] = {
+      ...(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>), name: 'PAY', logicalName: '결제',
+    }
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    const dup = result.issues.find((i) => i.message.includes('tb3'))
+    expect(dup).toBeDefined()
+    expect(dup!.path).toBe('erdd/tables/PAY.yaml')               // 뒤에 온 파일에서 보고한다
+    expect(dup!.message).toContain('erdd/tables/MBR_DTL.yaml')   // 먼저 쓴 파일도 짚어 준다
+  })
+
+  it('newId를 줘도(push 경로) 명시된 id 중복은 그대로 issue다', () => {
+    // push는 newId를 넘겨 id 없는 객체에 uuid를 발급한다 — 그 경로에서도 막아야
+    // 파괴적인 반영 전에 걸러진다.
+    const { tree } = modelToFiles(fullModel())
+    tree['erdd/tables/PAY.yaml'] = {
+      ...(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>), name: 'PAY', logicalName: '결제',
+    }
+    let n = 0
+    const result = filesToModel(tree, { newId: () => `gen-${(n += 1)}` })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.issues.every((i) => i.message.includes('id'))).toBe(true)
+  })
+
+  it('한 파일 안에서 id가 중복돼도 issue를 낸다', () => {
+    const { tree } = modelToFiles(fullModel())
+    const mbr = tree['erdd/tables/MBR.yaml'] as { columns: Record<string, unknown>[] }
+    mbr.columns.push({ ...mbr.columns[0]!, name: 'MBR_NO_2' })
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.issues.some((i) => i.message.includes('c1'))).toBe(true)
+  })
+
+  it('서로 다른 컬렉션이 같은 id를 써도 문제 삼지 않는다', () => {
+    // 컬렉션 키는 컬렉션별로 독립이라 덮어쓰기가 일어나지 않는다.
+    const result = filesToModel({
+      'erdd/groups.yaml': { groups: [{ id: 'x1', name: '공통' }] },
+      'erdd/tables/MBR.yaml': { id: 'x1', name: 'MBR', logicalName: '회원', columns: [] },
+    })
+    expect(result.ok).toBe(true)
+  })
 })

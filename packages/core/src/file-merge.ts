@@ -157,7 +157,18 @@ function pathOf(kind: MergeKind, e: Entity, models: readonly ProjectModel[]): st
   return `${TREE_ROOT}/tables`
 }
 
-function nameOf(kind: MergeKind, e: Entity, models: readonly ProjectModel[]): string {
+/**
+ * 사람이 읽을 이름. 이름만으로는 어느 것인지 알 수 없는 종류에 맥락을 붙인다 —
+ * 컬럼·인덱스는 소속 테이블로 한정하고(`MBR.MBR_NO`), 이름 없는 관계는 `자식→부모`로 푼다.
+ * (같은 물리명의 컬럼은 테이블마다 있는 게 정상이라, 한정 없이 보여 주면 삭제 확인 프롬프트
+ * 같은 곳에서 어느 것을 지우는지 구분할 수 없다.)
+ *
+ * `models`는 테이블 이름을 찾을 순서다 — 먼저 찾은 모델의 물리명을 쓰고, 어디에도 없으면
+ * id를 그대로 보여 준다.
+ */
+export function entityDisplayName(
+  kind: MergeKind, e: Record<string, unknown>, models: readonly ProjectModel[],
+): string {
   const table = (id: string): string => {
     for (const m of models) {
       const t = m.tables[id]
@@ -233,16 +244,16 @@ export function mergeModels(
       ): void => {
         conflicts.push({
           path: pathOf(kind, any, models),
-          kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${nameOf(kind, any, models)}`,
+          kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, any, models)}`,
           field, reason, changedFields: changed,
           base: modelField === null
-            ? (b === undefined ? null : nameOf(kind, b, models))
+            ? (b === undefined ? null : entityDisplayName(kind, b, models))
             : displayValue(base, modelField, b?.[modelField]),
           local: modelField === null
-            ? (l === undefined ? null : nameOf(kind, l, models))
+            ? (l === undefined ? null : entityDisplayName(kind, l, models))
             : displayValue(local, modelField, l?.[modelField]),
           server: modelField === null
-            ? (s === undefined ? null : nameOf(kind, s, models))
+            ? (s === undefined ? null : entityDisplayName(kind, s, models))
             : displayValue(server, modelField, s?.[modelField]),
         })
       }
@@ -325,15 +336,22 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
   const pruned: PrunedRef[] = []
   const reason = '참조 대상이 삭제됨'
 
+  // 존재 판정은 반드시 Object.hasOwn이다 — 이 함수의 존재 이유가 validateModelIntegrity를
+  // 만족시키는 것이고(integrity.ts:41 이하) 그쪽이 같은 판정을 쓴다. `col[id] !== undefined`는
+  // constructor·toString처럼 Object.prototype에 있는 이름에 대해 참이 되어, 무결성 검사는
+  // "없는 참조"라 하는데 정리는 건너뛰는 어긋남이 생긴다.
+  const has = (col: Record<string, unknown>, id: string): boolean => Object.hasOwn(col, id)
+  const columnIn = (id: string) => (has(model.columns, id) ? model.columns[id] : undefined)
+
   for (const [id, c] of Object.entries(model.columns)) {
-    if (model.tables[c.tableId] !== undefined) continue
+    if (has(model.tables, c.tableId)) continue
     delete model.columns[id]
     pruned.push({ kind: 'column', entityId: id, label: `컬럼 ${c.physicalName}`, reason })
   }
   for (const [id, ix] of Object.entries(model.indexes)) {
-    const bad = model.tables[ix.tableId] === undefined
+    const bad = !has(model.tables, ix.tableId)
       || ix.columns.some((c) => {
-        const col = model.columns[c.columnId]
+        const col = columnIn(c.columnId)
         return col === undefined || col.tableId !== ix.tableId
       })
     if (!bad) continue
@@ -341,11 +359,11 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     pruned.push({ kind: 'index', entityId: id, label: `인덱스 ${ix.name}`, reason })
   }
   for (const [id, r] of Object.entries(model.relationships)) {
-    const bad = model.tables[r.parentTableId] === undefined
-      || model.tables[r.childTableId] === undefined
+    const bad = !has(model.tables, r.parentTableId)
+      || !has(model.tables, r.childTableId)
       || r.columnMappings.some((m) => {
-        const child = model.columns[m.childColumnId]
-        const parent = model.columns[m.parentColumnId]
+        const child = columnIn(m.childColumnId)
+        const parent = columnIn(m.parentColumnId)
         return child === undefined || child.tableId !== r.childTableId
           || parent === undefined || parent.tableId !== r.parentTableId
       })
@@ -356,7 +374,7 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
 
   // 스칼라 참조는 끊기만 한다 — 엔티티는 살린다.
   for (const t of Object.values(model.tables)) {
-    if (t.groupId === null || model.tableGroups[t.groupId] !== undefined) continue
+    if (t.groupId === null || has(model.tableGroups, t.groupId)) continue
     t.groupId = null
     pruned.push({
       kind: 'table', entityId: t.id, label: `테이블 ${t.physicalName}`,
@@ -364,7 +382,7 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     })
   }
   for (const c of Object.values(model.columns)) {
-    if (c.domainId === null || model.domains[c.domainId] !== undefined) continue
+    if (c.domainId === null || has(model.domains, c.domainId)) continue
     c.domainId = null
     pruned.push({
       kind: 'column', entityId: c.id, label: `컬럼 ${c.physicalName}`,
@@ -372,7 +390,7 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     })
   }
   for (const t of Object.values(model.terms)) {
-    if (t.domainId === null || model.domains[t.domainId] !== undefined) continue
+    if (t.domainId === null || has(model.domains, t.domainId)) continue
     t.domainId = null
     pruned.push({
       kind: 'term', entityId: t.id, label: `용어 ${t.logicalName}`,

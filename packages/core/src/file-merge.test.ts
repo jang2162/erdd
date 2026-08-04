@@ -8,6 +8,7 @@ import {
   applyMerge, gridPositions, pruneDangling,
 } from './file-merge.js'
 import { diffModels } from './diff.js'
+import { validateModelIntegrity } from './integrity.js'
 import type { ProjectModel } from './model.js'
 import { fullModel } from './testing/fixtures.js'
 
@@ -414,5 +415,31 @@ describe('pruneDangling', () => {
       'c2.도메인이 삭제되어 참조를 해제함',
       't1.도메인이 삭제되어 참조를 해제함',
     ])
+  })
+
+  it('Object.prototype에 있는 이름(constructor·toString…)을 가리키는 참조도 매달린 것으로 본다', () => {
+    // 이 함수의 존재 이유가 validateModelIntegrity를 만족시키는 것이므로 두 곳이 같은
+    // 판정(Object.hasOwn)을 써야 한다. `collection[id] !== undefined`는 프로토타입 체인에
+    // 있는 이름에 대해 참이 되어, 무결성 검사는 "없는 참조"라고 하는데 정리는 건너뛴다.
+    const m = fullModel()
+    m.tables['tb1']!.groupId = 'hasOwnProperty'
+    m.columns['c2']!.domainId = 'toLocaleString'
+    m.terms['t1']!.domainId = 'isPrototypeOf'
+    m.columns['cx'] = { ...m.columns['c1']!, id: 'cx', tableId: 'toString' }
+    m.indexes['ixx'] = { id: 'ixx', tableId: 'constructor', name: 'IX_X', columns: [], unique: false }
+    m.relationships['rx'] = {
+      id: 'rx', parentTableId: 'valueOf', childTableId: 'tb1', columnMappings: [],
+      cardinality: '1:N', identifying: false, name: null,
+    }
+
+    pruneDangling(m)
+
+    expect(validateModelIntegrity(m)).toEqual([])
+    expect(m.columns['cx']).toBeUndefined()
+    expect(m.indexes['ixx']).toBeUndefined()
+    expect(m.relationships['rx']).toBeUndefined()
+    expect(m.tables['tb1']!.groupId).toBeNull()
+    expect(m.columns['c2']!.domainId).toBeNull()
+    expect(m.terms['t1']!.domainId).toBeNull()
   })
 })

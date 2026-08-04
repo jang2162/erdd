@@ -81,7 +81,7 @@ export {
 export type { FileTree, FileIssue, FilesToModelResult, FilesToModelOptions } from './file-format.js'
 export {
   MERGE_KINDS, FILE_FIELDS, FILE_INVISIBLE_FIELDS, fileVisibleModel, mergeModels,
-  applyMerge, pruneDangling, gridPositions,
+  applyMerge, pruneDangling, gridPositions, entityDisplayName,
 } from './file-merge.js'
 export type {
   MergeKind, MergeConflict, MergeResult, ConflictReason, PrunedRef,

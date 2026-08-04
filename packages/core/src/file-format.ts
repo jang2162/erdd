@@ -244,17 +244,41 @@ export type FilesToModelOptions = {
   newId?: () => string
 }
 
-function idOf(r: Rec, path: string, kind: string, index: number, newId?: () => string): string {
-  const explicit = asStr(r['id'])
-  if (explicit !== null) return explicit
-  return newId === undefined ? `${NEW_ID_PREFIX}${path}#${kind}[${index}]` : newId()
-}
-
 export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesToModelResult {
   const newId = opts?.newId
   const issues: FileIssue[] = []
   const warnings: FileIssue[] = []
   const model = createEmptyModel()
+
+  /**
+   * 컬렉션별로 "그 id를 처음 쓴 파일"을 기억한다. 컬렉션 키가 곧 엔티티 id라(op.ts:90)
+   * 같은 id가 두 번 나오면 뒤엣것이 앞엣것을 조용히 덮어쓴다. 파일을 복사해 새 테이블을
+   * 만들면서 id를 지우지 않는 것은 흔한 사고인데, push에서는 그것이 "새로 만들기"가 아니라
+   * "원본을 복사본 내용으로 개명"이 되어 복구 불가능한 반영이 나간다 — 계획을 세우기 전에
+   * 오류로 세운다. 생성된 id(new: 접두사·uuid)는 정의상 유일하므로 검사 대상이 아니다.
+   */
+  const firstUse = new Map<string, string>()
+  const idOf = (r: Rec, path: string, kind: string, index: number): string => {
+    const explicit = asStr(r['id'])
+    if (explicit === null) {
+      return newId === undefined ? `${NEW_ID_PREFIX}${path}#${kind}[${index}]` : newId()
+    }
+    const key = `${kind} ${explicit}`
+    const first = firstUse.get(key)
+    if (first === undefined) firstUse.set(key, path)
+    else if (first === path) {
+      issues.push({
+        path,
+        message: `id ${explicit}가 이 파일에서 두 번 쓰였습니다 — id는 서버가 발급한 identity라 하나만 가질 수 있습니다`,
+      })
+    } else {
+      issues.push({
+        path,
+        message: `id ${explicit}가 ${first}에도 있습니다 — 복사해서 새로 만든 것이라면 id를 지우세요(그대로 두면 원본을 덮어씁니다)`,
+      })
+    }
+    return explicit
+  }
 
   const readList = (path: string, key: string): Rec[] => {
     const file = tree[path]
@@ -268,14 +292,14 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
 
   // 1) 이름으로 참조되는 것부터 — 그룹·도메인.
   readList(`${TREE_ROOT}/groups.yaml`, 'groups').forEach((g, i) => {
-    const id = idOf(g, `${TREE_ROOT}/groups.yaml`, 'groups', i, newId)
+    const id = idOf(g, `${TREE_ROOT}/groups.yaml`, 'groups', i)
     model.tableGroups[id] = {
       id, name: asStr(g['name']) ?? '', color: asStr(g['color']) ?? '#ffffff',
       comment: asStr(g['comment']),
     }
   })
   readList(`${TREE_ROOT}/domains.yaml`, 'domains').forEach((d, i) => {
-    const id = idOf(d, `${TREE_ROOT}/domains.yaml`, 'domains', i, newId)
+    const id = idOf(d, `${TREE_ROOT}/domains.yaml`, 'domains', i)
     const dt = isRec(d['dialectTypes']) ? d['dialectTypes'] : {}
     model.domains[id] = {
       id, name: asStr(d['name']) ?? '', category: asStr(d['category']),
@@ -301,14 +325,14 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   const domainIdByName = new Map(Object.values(model.domains).map((d) => [d.name, d.id]))
 
   readList(`${TREE_ROOT}/words.yaml`, 'words').forEach((w, i) => {
-    const id = idOf(w, `${TREE_ROOT}/words.yaml`, 'words', i, newId)
+    const id = idOf(w, `${TREE_ROOT}/words.yaml`, 'words', i)
     model.words[id] = {
       id, logicalName: asStr(w['logicalName']) ?? '', abbreviation: asStr(w['abbreviation']) ?? '',
       englishName: asStr(w['englishName']), description: asStr(w['description']), origin: null,
     }
   })
   readList(`${TREE_ROOT}/terms.yaml`, 'terms').forEach((t, i) => {
-    const id = idOf(t, `${TREE_ROOT}/terms.yaml`, 'terms', i, newId)
+    const id = idOf(t, `${TREE_ROOT}/terms.yaml`, 'terms', i)
     const domainName = asStr(t['domain'])
     let domainId: string | null = null
     if (domainName !== null) {
@@ -323,7 +347,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     }
   })
   readList(`${TREE_ROOT}/custom-fields.yaml`, 'customFields').forEach((f, i) => {
-    const id = idOf(f, `${TREE_ROOT}/custom-fields.yaml`, 'customFields', i, newId)
+    const id = idOf(f, `${TREE_ROOT}/custom-fields.yaml`, 'customFields', i)
     const target = f['target'] === 'table' ? 'table' : 'column'
     const type = f['type'] === 'boolean' ? 'boolean' : f['type'] === 'select' ? 'select' : 'text'
     model.customFields[id] = {
@@ -341,7 +365,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   for (const path of tablePaths.sort()) {
     const file = tree[path]
     if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); continue }
-    const tableId = idOf(file, path, 'table', 0, newId)
+    const tableId = idOf(file, path, 'table', 0)
     const groupName = asStr(file['group'])
     let groupId: string | null = null
     if (groupName !== null) {
@@ -360,7 +384,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
 
     const rawCols = Array.isArray(file['columns']) ? file['columns'].filter(isRec) : []
     rawCols.forEach((c, order) => {
-      const id = idOf(c, path, 'columns', order, newId)
+      const id = idOf(c, path, 'columns', order)
       const domainName = asStr(c['domain'])
       let domainId: string | null = null
       if (domainName !== null) {
@@ -401,7 +425,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
         if (columnId === undefined) issues.push({ path, message: `인덱스 컬럼 ${name}을 찾지 못했습니다` })
         return { columnId: columnId ?? '', direction: (desc ? 'desc' : 'asc') as 'asc' | 'desc' }
       })
-      const id = idOf(ix, path, 'indexes', i, newId)
+      const id = idOf(ix, path, 'indexes', i)
       model.indexes[id] = { id, tableId, name: asStr(ix['name']) ?? '', columns: parsed, unique: asBool(ix['unique'], false) }
     })
 
@@ -421,7 +445,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
         if (parentColumnId === undefined) issues.push({ path, message: `관계의 부모 컬럼 ${to}.${parentName}을 찾지 못했습니다` })
         mappings.push({ childColumnId: childColumnId ?? '', parentColumnId: parentColumnId ?? '' })
       }
-      const id = idOf(r, path, 'relations', i, newId)
+      const id = idOf(r, path, 'relations', i)
       model.relationships[id] = {
         id, parentTableId, childTableId: tableId, columnMappings: mappings,
         cardinality: r['cardinality'] === '1:1' ? '1:1' : '1:N',
