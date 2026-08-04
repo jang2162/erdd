@@ -35,7 +35,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --project <id>        init 전용
   --help                이 도움말`
 
-function flagValue(argv: string[], name: string): string | undefined {
+export function flagValue(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(`--${name}`)
   if (i < 0) return undefined
   const next = argv[i + 1]
@@ -44,12 +44,18 @@ function flagValue(argv: string[], name: string): string | undefined {
   return next
 }
 
-/** -m 같은 한 글자 플래그. 값 자리에 다음 플래그가 오면 값이 빠진 것이다. */
-function shortFlagValue(argv: string[], name: string): string | undefined {
+/**
+ * -m 같은 한 글자 플래그. flagValue와 같은 규칙 — 값 자리에 다음 "긴" 플래그(--로 시작)가
+ * 오면 값이 빠진 것이다. 단일 대시로 시작하는 값(예: "-fix column")은 그대로 삼킨다 — 이
+ * CLI의 단일 대시 토큰은 -m·-h뿐이고 -h는 배차 전에 이미 short-circuit되므로 혼동될 여지가
+ * 없다. (한때 next.startsWith('-')로 단일 대시까지 거절했는데, 그러면 `-m "-fix column"`처럼
+ * 하이픈으로 시작하는 요약이 조용히 사라지고 자동 요약으로 대체됐다.)
+ */
+export function shortFlagValue(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(`-${name}`)
   if (i < 0) return undefined
   const next = argv[i + 1]
-  if (next === undefined || next.startsWith('-')) return undefined
+  if (next === undefined || next.startsWith('--')) return undefined
   return next
 }
 

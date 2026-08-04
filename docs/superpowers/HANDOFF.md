@@ -156,7 +156,7 @@ pnpm -s -C packages/cli typecheck
 ### 3.8 CLI push의 낙관적 동시성 (Phase 4 CLI 트랙 B)
 
 - **`runMutation`의 `deriveOps`가 `(model, seq)`를 받는다**(`apps/server/src/services/mutation.ts`, 예전엔 `model`만). `currentSeq` 조회를 `deriveOps` 호출 **위로** 끌어올려, `model.push`의 `expectedSeq` 비교가 프로젝트 행 `FOR UPDATE` 락 안에서 이뤄지는 유일한 지점이 됐다 — **이 지점이 CLI push의 유일한 경합 방어선**이다(락 밖에서 seq를 읽으면 읽기와 커밋 사이에 남이 끼어들 여지가 생긴다). 기존 호출자 `model.mutate`·`snapshot.restore`는 두 번째 인자를 무시해 무영향이고 `mutateAndPublish`도 시그니처를 그대로 통과시킨다. **이번 브랜치에서 두 번째 호출자가 생긴 기존 함수**(5절의 최종 리뷰 질문)로 `runMutation`/`mutateAndPublish`와 `filesToModel`(`opts.newId` 주입)이 해당한다.
-- **`FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`(`packages/core/src/file-merge.ts`)가 엔티티 필드 등록의 8번째 자리다**(3.2절의 6곳 + `model-diff.ts`의 `KIND_ORDER`가 7번째에 이어). 새 엔티티 필드를 추가하면 이 표에 `FILE_FIELDS`(파일에 보이는 필드) 또는 `FILE_INVISIBLE_FIELDS`(파일에 없는 필드)로 분류해야 하고, 하지 않으면 `file-merge.test.ts`의 분류 완전성 테스트가 깨진다(zod shape과 대조해 자동으로 잡는다 — `model-diff.ts`의 `KIND_ORDER` 완전성 테스트와 같은 선례).
+- **`FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`(`packages/core/src/file-merge.ts`)는 3.2절과는 별개의 체크리스트다.** 3.2절의 6곳(+ `model-diff.ts`의 `KIND_ORDER`)은 **새 op 엔티티 종류**를 등록하는 곳이고, 이건 **이미 등록된 엔티티에 필드를 추가**할 때 그 필드를 파일에 보이는 것(`FILE_FIELDS`)인지 안 보이는 것(`FILE_INVISIBLE_FIELDS`)인지 분류하는 곳이다 — 서로 다른 유지보수 범주라 하나로 이어 세면 안 된다. 분류하지 않으면 `file-merge.test.ts`의 분류 완전성 테스트가 깨진다(zod shape과 실제 필드 집합을 대조해 자동으로 잡는다 — `model-diff.ts`의 `KIND_ORDER` 완전성 테스트와 같은 선례).
 
 ## 4. 개발 환경
 

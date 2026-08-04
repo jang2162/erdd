@@ -6,10 +6,19 @@ import { modelToFiles, MAX_OPS_PER_MUTATION, type ProjectModel } from '@erdd/cor
 import { fullModel } from '@erdd/core/src/testing/fixtures.js'
 import type { ApiClient } from '../client.js'
 import { writeConfig } from '../config.js'
+import { flagValue, shortFlagValue } from '../main.js'
 import { CliError } from '../output.js'
 import { seedPulled, stubClient as stub, TEST_CONFIG as CONFIG } from '../testing/harness.js'
 import { writeTree } from '../tree.js'
 import { push } from './push.js'
+
+/**
+ * main.ts의 switch가 하는 것과 똑같은 표현으로 argv에서 -m/--message를 뽑는다. 여기서
+ * 직접 파싱 함수를 실행하는 것이 핵심이다 — ctx.message에 문자열을 바로 박아 넣으면
+ * shortFlagValue의 회귀(하이픈으로 시작하는 값을 삼키는지)가 있어도 테스트가 모르고
+ * 통과한다.
+ */
+const messageFrom = (argv: string[]) => flagValue(argv, 'message') ?? shortFlagValue(argv, 'm')
 
 let dir: string
 let out: string[]
@@ -328,5 +337,54 @@ describe('push', () => {
     const payload = JSON.parse(out.join('')) as { ops: number; pruned: unknown[] }
     expect(payload.ops).toBe(0)
     expect(payload.pruned.length).toBeGreaterThan(0)
+  })
+
+  it('-m으로 받은 요약이 하이픈으로 시작해도 그대로 model.push의 summary가 된다', async () => {
+    const server = fullModel()
+    await seed(server)
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+
+    // "-fix column"처럼 하이픈으로 시작하는 요약 — shortFlagValue가 예전처럼 단일 대시까지
+    // 거절하면 여기서 undefined가 나와 아래 summary 단언이 자동 요약과 어긋나 실패한다.
+    const argv = ['push', '-m', '-fix column', '--json']
+    const message = messageFrom(argv)
+    expect(message).toBe('-fix column')
+
+    const { client, pushCalls } = stub(server)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client, message })).toBe(0)
+    expect(pushCalls).toHaveLength(1)
+    expect((pushCalls[0] as { summary: string }).summary).toBe('-fix column')
+  })
+
+  it('--message로 받은 요약도 그대로 summary가 된다', async () => {
+    const server = fullModel()
+    await seed(server)
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+
+    const argv = ['push', '--message', '커스텀 요약', '--json']
+    const message = messageFrom(argv)
+    expect(message).toBe('커스텀 요약')
+
+    const { client, pushCalls } = stub(server)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client, message })).toBe(0)
+    expect((pushCalls[0] as { summary: string }).summary).toBe('커스텀 요약')
+  })
+
+  it('-m 뒤에 실제 플래그(--json)가 오면 값 없음으로 보고 자동 요약을 쓴다', async () => {
+    const server = fullModel()
+    await seed(server)
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+
+    // --json이 -m의 값 자리를 차지한다 — 삼키지 않고 값 없음으로 처리돼야 한다.
+    const argv = ['push', '-m', '--json']
+    const message = messageFrom(argv)
+    expect(message).toBeUndefined()
+
+    const { client, pushCalls } = stub(server)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client, message })).toBe(0)
+    expect((pushCalls[0] as { summary: string }).summary).toMatch(/^CLI push/)
   })
 })
