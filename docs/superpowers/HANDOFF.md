@@ -34,12 +34,13 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 424 · cli 101 · web 341 · server 107 (erdd_test) · typecheck EXIT=0
+core 429 · cli 113 · web 341 · server 108 (erdd_test) · typecheck EXIT=0
 ```
 
-CLI 트랙 B에서 `push`·`diff`·`skill install` 배선 테스트가 추가되며 `packages/cli`가 57 → 101로
-늘었다 — 루트 `pnpm verify`는 `packages/core` 뒤·`apps/web` 앞에 `pnpm -C packages/cli test`를
-끼워 넣어 네 스위트를 함께 돈다.
+CLI 트랙 B에서 `push`·`diff`·`skill install` 배선 테스트가 추가되며 `packages/cli`가 57 → 104로
+늘었고, 최종 리뷰 대응(파일 id 중복 거절·응답 유실 처리·확인 프롬프트 표기·커버리지 3건)으로
+core +5 · cli +9 · server +1이 더 붙었다 — 루트 `pnpm verify`는 `packages/core` 뒤·`apps/web`
+앞에 `pnpm -C packages/cli test`를 끼워 넣어 네 스위트를 함께 돈다.
 
 ⚠️ **`pnpm -s -r typecheck`의 출력만 보고 판정하지 말 것.** `-s`가 자식 출력을 삼켜서, 타입 오류가
 있어도 **출력이 0바이트이고 종료코드만 1**이다. 실시간 사이클에서 이 함정 때문에 구현자·태스크
@@ -363,6 +364,7 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - `push`가 `notes`·좌표·`origin`을 절대 건드리지 않는다 — 파일에서 메모를 관리할 수 없다(트랙 A 이월과 동일한 제약)
 - `--json` 실패 응답이 `{error:{code,message}}`와 `{ok:false,conflicts:[…]}` 두 형태다. 충돌은 오류가 아니라 **계획 결과**라 후자를 쓴다(exit 1은 동일)
 - `expectedSeq` 재시도는 1회다. 매우 활발한 프로젝트에서는 반복 실패할 수 있다
+- **`push`는 비멱등 쓰기다 — 커밋 후 응답이 유실되면 다음 push가 조용히 사본을 만든다.** 신규 id를 매 호출 새로 발급하기 때문이다. 지금은 CONFLICT가 아닌 `model.push` 실패를 `{ok:false,outcomeUnknown:true}`로 보고하고 `erdd pull`/`erdd diff` 확인을 안내하는 데까지만 한다. 멱등 키(요청 id를 Revision에 기록) 또는 계획의 신규 id를 `.erdd/`에 미리 적어 두는 것이 후속 과제다(→ [설계](specs/2026-08-04-cli-push-design.md) §9)
 - `skill install`은 Claude Code 형식만 낸다(`AGENTS.md`는 범위 밖)
 
 ---
