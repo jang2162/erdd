@@ -55,6 +55,9 @@ function stubClient(overrides: Partial<Record<string, unknown>> = {}): ApiClient
       if (path === 'model.get') return { model: model(), seq: 42, ...(overrides['model.get'] as object ?? {}) }
       throw new Error(`unexpected ${path}`)
     }) as ApiClient['query'],
+    mutate: vi.fn(async (path: string) => {
+      throw new Error(`unexpected mutate ${path}`)
+    }) as ApiClient['mutate'],
   }
 }
 

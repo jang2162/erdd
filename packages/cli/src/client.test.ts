@@ -72,4 +72,32 @@ describe('client', () => {
     await expect(createClient('https://x', 't').query('model.get', { projectId: 'nope' }))
       .rejects.toMatchObject({ code: 'VALIDATION', message: 'projectId는 uuid여야 합니다' })
   })
+
+  it('mutate는 POST로 body에 input을 싣는다', async () => {
+    const spy = stubFetch(() => new Response(JSON.stringify({ result: { data: { seq: 7 } } }), { status: 200 }))
+    const c = createClient('https://erdd.example.com/', 'erdd_pat_x')
+    expect(await c.mutate('model.push', { projectId: 'p', expectedSeq: 3, ops: [] })).toEqual({ seq: 7 })
+    expect(String(spy.mock.calls[0]![0])).toBe('https://erdd.example.com/trpc/model.push')
+    const init = spy.mock.calls[0]![1] as RequestInit
+    expect(init.method).toBe('POST')
+    expect((init.headers as Record<string, string>)['content-type']).toBe('application/json')
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer erdd_pat_x')
+    expect(JSON.parse(String(init.body))).toEqual({ projectId: 'p', expectedSeq: 3, ops: [] })
+  })
+
+  it('서버의 CONFLICT를 CliError CONFLICT로 옮긴다', async () => {
+    stubFetch(() => new Response(
+      JSON.stringify({ error: { message: '서버가 앞서 있습니다', data: { code: 'CONFLICT' } } }),
+      { status: 409 },
+    ))
+    await expect(createClient('https://x', 't').mutate('model.push', {}))
+      .rejects.toMatchObject({ code: 'CONFLICT' })
+  })
+
+  it('토큰이 없으면 mutate도 서버를 부르지 않고 UNAUTHORIZED다', async () => {
+    const spy = stubFetch(() => new Response('{}', { status: 200 }))
+    await expect(createClient('https://x', null).mutate('model.push', {}))
+      .rejects.toMatchObject({ code: 'UNAUTHORIZED' })
+    expect(spy).not.toHaveBeenCalled()
+  })
 })
