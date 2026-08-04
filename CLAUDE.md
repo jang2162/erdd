@@ -152,5 +152,22 @@ Claude-Session: <세션 URL>
 - **감독(supervised) vs 완전 위임(handoff):** 완료를 기다려 리뷰·병합하면 supervised(`task-create` +
   `dispatch --inject` + `check --wait`). 소유권을 넘기고 안 지켜보면 full handoff(`terminal send` 또는
   `worktree create --prompt`, lifecycle 프리앰블 안 붙임).
+- ⚠️ **`worker-start` 가 `input_accepted` 를 줘도 워커가 시작되지 않은 경우가 있다.** 프롬프트가 TUI
+  입력창에 **붙기만 하고 제출되지 않는다**(긴 멀티라인 spec에서 발생). `check --wait` 는 15분을 조용히
+  기다리다 `timedOut` 으로 끝나므로 워커가 죽은 것처럼 보이지 않는다. **띄운 직후 확인하고, 안 붙었으면
+  Enter를 보내라:**
+  ```bash
+  orca orchestration worker-read --dispatch <id> --limit 20 --json   # terminal.tail 에 프롬프트가 그대로 있고
+                                                                     # "Ctx Used: 0.0%" 면 미제출이다
+  orca terminal send --terminal <handle> --text "" --enter --json    # Enter만 보낸다
+  ```
+  제출되면 `worker-read` 의 `source` 가 `terminal` → `transcript` 로 바뀌고 실제 도구 호출이 보인다.
+  (2026-08-04 실측: 같은 방식으로 띄운 워커 둘 중 하나만 자동 제출됐다.)
+- ⚠️ **`--json` 출력은 NDJSON이고 keepalive가 섞인다.** `check --wait` 는 15초마다
+  `{"_keepalive":true,…}` 를 한 줄씩 내고 **마지막 실제 결과는 여러 줄 pretty-print** 다. `json.load`
+  로 통째 파싱하면 `Extra data` 로 깨지고, 줄 단위 파싱은 마지막 결과를 놓친다. `raw_decode` 로
+  스트리밍 파싱해 `_keepalive` 가 아닌 마지막 객체를 취한다.
+- **`check --wait` 의 `timedOut`/`count:0` 은 워커 실패가 아니라 체크포인트다.** 긴 작업은 15~60분이
+  보통이다. `worker_done`/`escalation` 을 받거나 터미널이 사라지지 않는 한 rolling wait 를 계속한다.
 - **Orca 환경이 아니거나 오케스트레이션이 불가하면** 기존대로 워크트리 + 서브에이전트(Agent 도구)로
   진행한다.
