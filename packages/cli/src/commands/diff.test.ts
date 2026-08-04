@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ProjectModel } from '@erdd/core'
@@ -49,10 +49,23 @@ describe('diff', () => {
     const { client } = stub(moved)
     expect(await diff({ cwd: dir, json: false, yes: false, strict: false, client })).toBe(0)
     const text = out.join('')
-    expect(text).toContain('올릴 변경 1건')
-    expect(text).toContain('컬럼 MBR.MBR_NM')
-    expect(text).toContain('내려올 변경 1건')
-    expect(text).toContain('테이블 ORD')
+    // 섹션 경계로 잘라 각 항목이 '자기' 섹션에만 있는지 본다 — 무경계 toContain은
+    // up·down이 통째로 뒤바뀌어도(diff.ts의 diffModelsForDisplay 두 호출이나 두
+    // section() 호출이 swap돼도) 네 문자열이 여전히 어딘가엔 있으니 못 잡는다.
+    const upIdx = text.indexOf('올릴 변경')
+    const downIdx = text.indexOf('내려올 변경')
+    const conflictIdx = text.indexOf('충돌', downIdx)
+    expect(upIdx).toBeGreaterThanOrEqual(0)
+    expect(downIdx).toBeGreaterThan(upIdx)
+    expect(conflictIdx).toBeGreaterThan(downIdx)
+    const upSection = text.slice(upIdx, downIdx)
+    const downSection = text.slice(downIdx, conflictIdx)
+    expect(upSection).toContain('올릴 변경 1건')
+    expect(upSection).toContain('컬럼 MBR.MBR_NM')
+    expect(upSection).not.toContain('테이블 ORD')
+    expect(downSection).toContain('내려올 변경 1건')
+    expect(downSection).toContain('테이블 ORD')
+    expect(downSection).not.toContain('컬럼 MBR.MBR_NM')
     expect(text).toContain('충돌 없음')
   })
 
@@ -74,6 +87,14 @@ describe('diff', () => {
     moved.columns['c2']!.logicalName = '회원성명'
 
     expect(await diff({ cwd: dir, json: false, yes: false, strict: false, client: stub(moved).client })).toBe(0)
+    const text = out.join('')
+    // renderConflicts(push와 공유하는 포매터)가 실제로 쓰였는지를 본다 — 이 구체적인
+    // 내용(라벨·필드·기준/로컬/서버 값)은 하드코딩된 문자열이나 별도 포매터로는 안 나온다.
+    expect(text).toContain('충돌 1건')
+    expect(text).toContain('컬럼 MBR.MBR_NM · logicalName')
+    expect(text).toContain('기준  회원명')
+    expect(text).toContain('로컬  회원 이름')
+    expect(text).toContain('서버  회원성명')
     out.length = 0
     expect(await diff({ cwd: dir, json: false, yes: false, strict: true, client: stub(moved).client })).toBe(1)
   })
@@ -98,6 +119,20 @@ describe('diff', () => {
     const { client, pushCalls } = stub(server)
     await diff({ cwd: dir, json: true, yes: false, strict: false, client })
     expect(pushCalls).toHaveLength(0)
+  })
+
+  it('추가·삭제 항목은 필드 목록 없이 마커만 붙는다', async () => {
+    const server = fullModel()
+    await seed(server)
+    // 테이블 파일을 통째로 지운다 — added/removed 엔트리는 항상 fields: []이므로
+    // (model-diff.ts) diff.ts:34의 "fields가 없으면 헤드만 반환" 분기를 지나가게 한다.
+    await rm(join(dir, 'erdd/tables/MBR_DTL.yaml'))
+    const { client } = stub(server)
+    expect(await diff({ cwd: dir, json: false, yes: false, strict: false, client })).toBe(0)
+    const text = out.join('')
+    // 필드 목록이 붙었다면 마커 다음에 "  <필드 라벨>: ..."가 이어져 줄이 곧장 끝나지
+    // 않는다. 여기서는 마커·이름 뒤 바로 줄바꿈이어야 한다.
+    expect(text).toMatch(/\n {2}- 테이블 MBR_DTL\n/)
   })
 
   it('diff는 로컬 파일을 하나도 건드리지 않는다', async () => {
