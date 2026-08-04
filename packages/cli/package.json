@@ -5,6 +5,7 @@
   "main": "./src/main.ts",
   "types": "./src/main.ts",
   "bin": { "erdd": "./src/main.ts" },
+  "files": ["src", "skill"],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
