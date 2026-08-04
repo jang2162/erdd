@@ -177,4 +177,32 @@ describe('push', () => {
     expect(pushCalls).toHaveLength(0)
     expect(out.join('')).toContain(String(MAX_OPS_PER_MUTATION))
   })
+
+  it('op 상한 초과 시 삭제 확인보다 먼저 막아 사용자에게 묻지 않는다', async () => {
+    const server = fullModel()
+    await seed(server)
+    // 컬럼을 상한 이상 늘리면서 동시에 테이블 하나(MBR_DTL)를 통째로 지운다 —
+    // 삭제 확인과 op 상한이 같은 계획 안에서 함께 걸리는 상황을 만든다.
+    const big = fullModel()
+    delete big.tables['tb3']         // MBR_DTL 삭제 — c5·c6·r2도 파일에서 함께 빠진다
+    for (let i = 0; i < MAX_OPS_PER_MUTATION + 10; i += 1) {
+      const id = `cx${String(i).padStart(6, '0')}`
+      big.columns[id] = {
+        id, tableId: 'tb1', logicalName: `추가${i}`, physicalName: `EXTRA_${i}`, type: 'BIGINT',
+        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 100 + i,
+        comment: null, domainId: null, custom: {},
+      }
+    }
+    await writeTree(dir, modelToFiles(big).tree)
+    const { client, pushCalls } = stub(server)
+    let confirmCalled = false
+    const code = await push({
+      cwd: dir, json: true, yes: false, strict: false, client,
+      confirm: async () => { confirmCalled = true; return true },
+    })
+    expect(code).toBe(1)
+    expect(pushCalls).toHaveLength(0)
+    expect(confirmCalled).toBe(false)   // 삭제 확인 프롬프트까지 가지 않고 상한에서 먼저 막힌다
+    expect(out.join('')).toContain(String(MAX_OPS_PER_MUTATION))
+  })
 })
