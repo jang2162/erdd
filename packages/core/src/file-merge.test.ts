@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   TableSchema, ColumnSchema, RelationshipSchema, IndexSchema, TableGroupSchema,
-  DomainSchema, WordSchema, TermSchema, CustomFieldSchema,
+  DomainSchema, WordSchema, TermSchema, CustomFieldSchema, createEmptyModel,
 } from './model.js'
 import {
   FILE_FIELDS, FILE_INVISIBLE_FIELDS, MERGE_KINDS, fileVisibleModel, mergeModels, type MergeKind,
+  applyMerge, gridPositions, pruneDangling,
 } from './file-merge.js'
+import { diffModels } from './diff.js'
 import type { ProjectModel } from './model.js'
 import { fullModel } from './testing/fixtures.js'
 
@@ -241,5 +243,129 @@ describe('mergeModels — 필드 단위', () => {
       kind: 'relationship', entityId: 'r1', field: 'name', reason: 'field',
       path: 'erdd/tables/ORD.yaml',
     })
+  })
+})
+
+describe('gridPositions', () => {
+  it('기존 테이블 bbox 아래에서 격자로 놓는다', () => {
+    // fullModel의 테이블 좌표: (10,20) (30,40) (50,60) → minX=10, maxY=60
+    const pos = gridPositions(fullModel(), 6)
+    expect(pos).toEqual([
+      { x: 10, y: 300 }, { x: 330, y: 300 }, { x: 650, y: 300 }, { x: 970, y: 300 },
+      { x: 10, y: 540 }, { x: 330, y: 540 },
+    ])
+  })
+
+  it('테이블이 하나도 없으면 원점부터 놓는다', () => {
+    expect(gridPositions(createEmptyModel(), 2)).toEqual([{ x: 0, y: 0 }, { x: 320, y: 0 }])
+  })
+})
+
+describe('applyMerge', () => {
+  it('메모·좌표·origin을 서버 값 그대로 보존한다', () => {
+    const server = fullModel()
+    server.domains['d1']!.origin = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 3, base: {} }
+    const base = fileVisibleModel(server)
+    const local = clone(base)
+    local.columns['c2']!.logicalName = '회원 이름'
+
+    const { merged } = mergeModels(base, local, fileVisibleModel(server))
+    const { model } = applyMerge(server, merged)
+
+    expect(model.notes['n1']).toEqual(server.notes['n1'])
+    expect(model.tables['tb1']!.position).toEqual({ x: 10, y: 20 })
+    expect(model.tables['tb1']!.groupPosition).toEqual({ x: 1, y: 2 })
+    expect(model.domains['d1']!.origin).toEqual(server.domains['d1']!.origin)
+    expect(model.columns['c2']!.logicalName).toBe('회원 이름')
+  })
+
+  it('diffModels가 좌표·메모 op를 만들지 않는다', () => {
+    const server = fullModel()
+    const base = fileVisibleModel(server)
+    const local = clone(base)
+    local.columns['c2']!.logicalName = '회원 이름'
+
+    const { merged } = mergeModels(base, local, fileVisibleModel(server))
+    const { model } = applyMerge(server, merged)
+    const ops = diffModels(server, model)
+
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toMatchObject({ entity: 'column', action: 'update', entityId: 'c2' })
+  })
+
+  it('신규 테이블에만 격자 좌표를 준다', () => {
+    const server = fullModel()
+    const base = fileVisibleModel(server)
+    const local = clone(base)
+    local.tables['tb9'] = {
+      id: 'tb9', logicalName: '결제', physicalName: 'PAY', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const { merged } = mergeModels(base, local, fileVisibleModel(server))
+    const { model } = applyMerge(server, merged)
+    expect(model.tables['tb9']!.position).toEqual({ x: 10, y: 300 })
+    expect(model.tables['tb1']!.position).toEqual({ x: 10, y: 20 })
+  })
+})
+
+describe('pruneDangling', () => {
+  it('서버가 추가한 관계가 로컬이 지운 테이블을 가리키면 함께 지운다', () => {
+    const server = fullModel()
+    // 서버가 pull 이후 MBR_DTL → MBR 관계를 하나 더 추가했다.
+    server.relationships['r9'] = {
+      id: 'r9', parentTableId: 'tb1', childTableId: 'tb3',
+      columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c1' }],
+      cardinality: '1:N', identifying: false, name: 'FK_EXTRA',
+    }
+    const base = fileVisibleModel(fullModel())     // r9 이전 시점
+    const local = clone(base)
+    // 로컬은 MBR_DTL 파일을 지웠다 — 그 테이블과 컬럼·관계가 전부 사라진다.
+    delete local.tables['tb3']
+    delete local.columns['c5']
+    delete local.columns['c6']
+    delete local.relationships['r2']
+
+    const { merged, conflicts } = mergeModels(base, local, fileVisibleModel(server))
+    expect(conflicts).toEqual([])
+    const { model, pruned } = applyMerge(server, merged)
+
+    expect(model.tables['tb3']).toBeUndefined()
+    expect(model.relationships['r9']).toBeUndefined()   // 매달린 관계를 정리했다
+    expect(pruned).toEqual([
+      { kind: 'relationship', entityId: 'r9', label: '관계 FK_EXTRA', reason: '참조 대상이 삭제됨' },
+    ])
+    // 정리하지 않으면 여기서 FK 위반 op가 나간다.
+    expect(diffModels(server, model).some((o) => o.entityId === 'r9' && o.action === 'delete')).toBe(true)
+  })
+
+  it('없는 컬럼을 가리키는 인덱스를 지운다', () => {
+    const m = fullModel()
+    delete m.columns['c2']            // ix1이 c2를 가리킨다
+    const pruned = pruneDangling(m)
+    expect(m.indexes['ix1']).toBeUndefined()
+    expect(pruned.map((p) => p.entityId)).toContain('ix1')
+  })
+
+  it('매달린 스칼라 참조는 엔티티를 지우지 않고 null로 끊는다', () => {
+    // 로컬이 테이블을 g1으로 옮겼는데 서버가 g1을 지운 상황. tables.group_id는 실제 FK라
+    // (apps/server/src/db/schema.ts:92) 그대로 두면 반영이 FK 위반으로 터진다.
+    const m = fullModel()
+    delete m.tableGroups['g1']        // tb1·tb3이 g1을 가리킨다
+    delete m.domains['d1']            // c2.domainId와 t1.domainId가 d1을 가리킨다
+    const pruned = pruneDangling(m)
+
+    expect(m.tables['tb1']!.groupId).toBeNull()
+    expect(m.tables['tb3']!.groupId).toBeNull()
+    expect(m.columns['c2']!.domainId).toBeNull()
+    expect(m.terms['t1']!.domainId).toBeNull()
+    // 엔티티 자체는 살아 있다 — 참조만 끊는다.
+    expect(m.tables['tb1']).toBeDefined()
+    expect(m.columns['c2']).toBeDefined()
+    expect(pruned.map((p) => `${p.entityId}.${p.reason}`)).toEqual([
+      'tb1.그룹이 삭제되어 참조를 해제함',
+      'tb3.그룹이 삭제되어 참조를 해제함',
+      'c2.도메인이 삭제되어 참조를 해제함',
+      't1.도메인이 삭제되어 참조를 해제함',
+    ])
   })
 })

@@ -1,7 +1,7 @@
 import { deepEqual } from './equal.js'
 import { TOP_LEVEL_FILES, TREE_ROOT, tableFileName } from './file-format.js'
 import { DIFF_KIND_LABEL } from './model-diff.js'
-import type { Origin, ProjectModel } from './model.js'
+import { createEmptyModel, type Origin, type Position, type ProjectModel } from './model.js'
 import { COLLECTION_BY_KIND, ENTITY_KINDS, type EntityKind } from './op.js'
 
 /**
@@ -282,4 +282,131 @@ export function mergeModels(
   }
 
   return { merged, conflicts }
+}
+
+export type PrunedRef = { kind: MergeKind; entityId: string; label: string; reason: string }
+
+const GRID_COLS = 4
+const GRID_DX = 320
+const GRID_DY = 240
+const GRID_GAP = 240
+
+/** 기존 테이블 bbox 아래에 격자로 놓는다. 순수 함수 — 같은 입력이면 같은 좌표다. */
+export function gridPositions(server: ProjectModel, count: number): Position[] {
+  const existing = Object.values(server.tables)
+  const originX = existing.length === 0 ? 0 : Math.min(...existing.map((t) => t.position.x))
+  const originY = existing.length === 0 ? 0 : Math.max(...existing.map((t) => t.position.y)) + GRID_GAP
+  return Array.from({ length: count }, (_, i) => ({
+    x: originX + (i % GRID_COLS) * GRID_DX,
+    y: originY + Math.floor(i / GRID_COLS) * GRID_DY,
+  }))
+}
+
+/**
+ * 매달린 참조를 정리하고 무엇을 어떻게 했는지 돌려준다. **model을 제자리에서 고친다** —
+ * applyMerge가 자기가 만든 새 모델에만 쓴다.
+ *
+ * 필요한 이유: 3-way 병합은 엔티티 단위라 "담는 것"과 "담기는 것"의 관계를 모른다. 서버가
+ * pull 이후 추가한 관계가 로컬에서 지운 테이블을 가리킬 수 있고, 로컬이 테이블을 옮겨 넣은
+ * 그룹을 서버가 지웠을 수도 있다. 그대로 두면 FK가 NOT DEFERRABLE이라 반영이 500으로 터진다
+ * (`tables.group_id`는 실제 FK다 — apps/server/src/db/schema.ts:92).
+ *
+ * 처리 방식이 둘로 갈린다:
+ * - **소속이 사라진 엔티티는 지운다**(컬럼·인덱스·관계) — 부모 없이 존재할 수 없다.
+ * - **매달린 스칼라 참조는 null로 끊는다**(table.groupId·column.domainId·term.domainId) —
+ *   엔티티 자체는 멀쩡하고 참조만 무효다. 지우면 사용자 데이터를 잃는다.
+ *
+ * 순서가 중요하다: 컬럼을 먼저 정리해야 인덱스·관계 검사가 정리된 결과를 본다.
+ */
+export function pruneDangling(model: ProjectModel): PrunedRef[] {
+  const pruned: PrunedRef[] = []
+  const reason = '참조 대상이 삭제됨'
+
+  for (const [id, c] of Object.entries(model.columns)) {
+    if (model.tables[c.tableId] !== undefined) continue
+    delete model.columns[id]
+    pruned.push({ kind: 'column', entityId: id, label: `컬럼 ${c.physicalName}`, reason })
+  }
+  for (const [id, ix] of Object.entries(model.indexes)) {
+    const bad = model.tables[ix.tableId] === undefined
+      || ix.columns.some((c) => model.columns[c.columnId] === undefined)
+    if (!bad) continue
+    delete model.indexes[id]
+    pruned.push({ kind: 'index', entityId: id, label: `인덱스 ${ix.name}`, reason })
+  }
+  for (const [id, r] of Object.entries(model.relationships)) {
+    const bad = model.tables[r.parentTableId] === undefined
+      || model.tables[r.childTableId] === undefined
+      || r.columnMappings.some((m) =>
+        model.columns[m.childColumnId] === undefined || model.columns[m.parentColumnId] === undefined)
+    if (!bad) continue
+    delete model.relationships[id]
+    pruned.push({ kind: 'relationship', entityId: id, label: `관계 ${r.name ?? id}`, reason })
+  }
+
+  // 스칼라 참조는 끊기만 한다 — 엔티티는 살린다.
+  for (const t of Object.values(model.tables)) {
+    if (t.groupId === null || model.tableGroups[t.groupId] !== undefined) continue
+    t.groupId = null
+    pruned.push({
+      kind: 'table', entityId: t.id, label: `테이블 ${t.physicalName}`,
+      reason: '그룹이 삭제되어 참조를 해제함',
+    })
+  }
+  for (const c of Object.values(model.columns)) {
+    if (c.domainId === null || model.domains[c.domainId] !== undefined) continue
+    c.domainId = null
+    pruned.push({
+      kind: 'column', entityId: c.id, label: `컬럼 ${c.physicalName}`,
+      reason: '도메인이 삭제되어 참조를 해제함',
+    })
+  }
+  for (const t of Object.values(model.terms)) {
+    if (t.domainId === null || model.domains[t.domainId] !== undefined) continue
+    t.domainId = null
+    pruned.push({
+      kind: 'term', entityId: t.id, label: `용어 ${t.logicalName}`,
+      reason: '도메인이 삭제되어 참조를 해제함',
+    })
+  }
+  return pruned
+}
+
+/**
+ * 병합 결과를 서버 모델 위에 얹는다.
+ *
+ * merged는 파일 가시 공간이라 좌표·origin이 비어 있고 notes가 없다. 그대로 diffModels에
+ * 넣으면 메모가 전멸하고 좌표가 0으로 초기화되며 fork 출처가 지워진다. 살아남은 엔티티는
+ * **서버 엔티티에서 출발해 가시 필드만 덮어쓰고**, notes는 서버 것을 그대로 통과시킨다.
+ */
+export function applyMerge(
+  server: ProjectModel, merged: ProjectModel,
+): { model: ProjectModel; pruned: PrunedRef[] } {
+  const out: ProjectModel = { ...createEmptyModel(), notes: { ...server.notes } }
+
+  // 신규 테이블 좌표는 id 오름차순으로 배정한다 — 같은 입력이면 같은 결과다.
+  const newTableIds = Object.keys(merged.tables)
+    .filter((id) => server.tables[id] === undefined).sort()
+  const positions = gridPositions(server, newTableIds.length)
+  const posById = new Map(newTableIds.map((id, i) => [id, positions[i]!]))
+
+  for (const kind of MERGE_KINDS) {
+    const sCol = collectionOf(server, kind)
+    const mCol = collectionOf(merged, kind)
+    const target = collectionOf(out, kind)
+    for (const [id, m] of Object.entries(mCol)) {
+      const s = sCol[id]
+      if (s !== undefined) {
+        const next: Entity = { ...s }
+        for (const f of Object.keys(FILE_FIELDS[kind])) next[f] = m[f]
+        target[id] = next
+      } else {
+        const next: Entity = { ...m }
+        if (kind === 'table') next['position'] = posById.get(id) ?? { x: 0, y: 0 }
+        target[id] = next
+      }
+    }
+  }
+
+  return { model: out, pruned: pruneDangling(out) }
 }
