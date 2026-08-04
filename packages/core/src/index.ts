@@ -80,6 +80,6 @@ export {
 } from './file-format.js'
 export type { FileTree, FileIssue, FilesToModelResult, FilesToModelOptions } from './file-format.js'
 export {
-  MERGE_KINDS, FILE_FIELDS, FILE_INVISIBLE_FIELDS, fileVisibleModel,
+  MERGE_KINDS, FILE_FIELDS, FILE_INVISIBLE_FIELDS, fileVisibleModel, mergeModels,
 } from './file-merge.js'
-export type { MergeKind } from './file-merge.js'
+export type { MergeKind, MergeConflict, MergeResult, ConflictReason } from './file-merge.js'

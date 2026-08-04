@@ -4,8 +4,9 @@ import {
   DomainSchema, WordSchema, TermSchema, CustomFieldSchema,
 } from './model.js'
 import {
-  FILE_FIELDS, FILE_INVISIBLE_FIELDS, MERGE_KINDS, fileVisibleModel, type MergeKind,
+  FILE_FIELDS, FILE_INVISIBLE_FIELDS, MERGE_KINDS, fileVisibleModel, mergeModels, type MergeKind,
 } from './file-merge.js'
+import type { ProjectModel } from './model.js'
 import { fullModel } from './testing/fixtures.js'
 
 /** zod 스키마에서 실제 키를 뽑는다 — 손으로 적은 목록은 드리프트한다. */
@@ -51,5 +52,151 @@ describe('fileVisibleModel', () => {
     expect(v.tables).not.toBe(m.tables)
     expect(v.columns).not.toBe(m.columns)
     expect(v.tableGroups).not.toBe(m.tableGroups)
+  })
+})
+
+const clone = (m: ProjectModel): ProjectModel => JSON.parse(JSON.stringify(m)) as ProjectModel
+
+/** 같은 뿌리에서 갈라진 base·local·server 셋. 전부 파일 가시 공간이다. */
+function trio(): { base: ProjectModel; local: ProjectModel; server: ProjectModel } {
+  const base = fileVisibleModel(fullModel())
+  return { base, local: clone(base), server: clone(base) }
+}
+
+describe('mergeModels — 상태표', () => {
+  it('서버만 추가한 것은 그대로 유지한다', () => {
+    const { base, local, server } = trio()
+    server.tableGroups['g2'] = { id: 'g2', name: '주문관리', color: '#fee', comment: null }
+    const { merged, conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toEqual([])
+    expect(merged.tableGroups['g2']).toBeDefined()
+  })
+
+  it('양쪽이 지웠으면 아무 일도 없다', () => {
+    const { base, local, server } = trio()
+    delete local.indexes['ix2']
+    delete server.indexes['ix2']
+    const { merged, conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toEqual([])
+    expect(merged.indexes['ix2']).toBeUndefined()
+  })
+
+  it('로컬만 지웠고 서버가 안 건드렸으면 삭제한다', () => {
+    const { base, local, server } = trio()
+    delete local.indexes['ix2']
+    const { merged, conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toEqual([])
+    expect(merged.indexes['ix2']).toBeUndefined()
+  })
+
+  it('로컬이 지운 것을 서버가 고쳤으면 충돌이다', () => {
+    const { base, local, server } = trio()
+    delete local.indexes['ix2']
+    server.indexes['ix2']!.name = 'IX_ORD_99'
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({
+      kind: 'index', entityId: 'ix2', field: '*', reason: 'local-delete',
+      local: null, changedFields: ['name'],
+    })
+  })
+
+  it('로컬만 추가한 것은 생성한다', () => {
+    const { base, local, server } = trio()
+    local.tableGroups['g9'] = { id: 'g9', name: '정산', color: '#efe', comment: null }
+    const { merged, conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toEqual([])
+    expect(merged.tableGroups['g9']!.name).toBe('정산')
+  })
+
+  it('양쪽이 같은 id로 다르게 추가하면 필드마다 충돌이다', () => {
+    const { base, local, server } = trio()
+    local.tableGroups['g9'] = { id: 'g9', name: '정산', color: '#efe', comment: null }
+    server.tableGroups['g9'] = { id: 'g9', name: '결제', color: '#efe', comment: null }
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({
+      kind: 'tableGroup', entityId: 'g9', field: 'name', reason: 'both-added',
+      base: null, local: '정산', server: '결제',
+    })
+  })
+
+  it('서버가 지운 것을 로컬이 안 건드렸으면 삭제를 수용한다', () => {
+    const { base, local, server } = trio()
+    delete server.indexes['ix2']
+    const { merged, conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toEqual([])
+    expect(merged.indexes['ix2']).toBeUndefined()
+  })
+
+  it('서버가 지운 것을 로컬이 고쳤으면 충돌이다', () => {
+    const { base, local, server } = trio()
+    delete server.indexes['ix2']
+    local.indexes['ix2']!.name = 'IX_ORD_99'
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({
+      kind: 'index', entityId: 'ix2', field: '*', reason: 'server-delete',
+      server: null, changedFields: ['name'],
+    })
+  })
+})
+
+describe('mergeModels — 필드 단위', () => {
+  it('서로 다른 필드를 고치면 자동 병합한다', () => {
+    const { base, local, server } = trio()
+    local.columns['c2']!.logicalName = '회원 이름'
+    server.columns['c2']!.comment = '이름 컬럼'
+    const { merged, conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toEqual([])
+    expect(merged.columns['c2']!.logicalName).toBe('회원 이름')
+    expect(merged.columns['c2']!.comment).toBe('이름 컬럼')
+  })
+
+  it('같은 필드를 다르게 고치면 충돌이다', () => {
+    const { base, local, server } = trio()
+    local.columns['c2']!.logicalName = '회원 이름'
+    server.columns['c2']!.logicalName = '회원성명'
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toEqual({
+      path: 'erdd/tables/MBR.yaml',
+      kind: 'column', entityId: 'c2', label: '컬럼 MBR.MBR_NM',
+      field: 'logicalName', reason: 'field',
+      base: '회원명', local: '회원 이름', server: '회원성명',
+      changedFields: [],
+    })
+  })
+
+  it('같은 필드를 같은 값으로 고치면 충돌이 아니다', () => {
+    const { base, local, server } = trio()
+    local.columns['c2']!.logicalName = '회원 이름'
+    server.columns['c2']!.logicalName = '회원 이름'
+    const { merged, conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toEqual([])
+    expect(merged.columns['c2']!.logicalName).toBe('회원 이름')
+  })
+
+  it('참조형 필드는 각자의 모델 기준으로 이름을 풀고 YAML 키 이름으로 보고한다', () => {
+    const { base, local, server } = trio()
+    server.domains['d2'] = { ...server.domains['d1']!, id: 'd2', name: '식별번호' }
+    local.columns['c1']!.domainId = 'd1'
+    server.columns['c1']!.domainId = 'd2'
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({
+      field: 'domain', reason: 'field',
+      base: null, local: '명', server: '식별번호',
+    })
+  })
+
+  it('최상위 파일 엔티티의 path는 그 파일이다', () => {
+    const { base, local, server } = trio()
+    local.words['w1']!.abbreviation = 'MEM'
+    server.words['w1']!.abbreviation = 'MB'
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts[0]).toMatchObject({
+      path: 'erdd/words.yaml', label: '단어 회원', field: 'abbreviation',
+    })
   })
 })
