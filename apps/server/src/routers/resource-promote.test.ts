@@ -73,7 +73,9 @@ describe.skipIf(!url)('resource.promote', () => {
     const wordId = await seedWord(app, ownerSession, projectId, '회원', 'MBR')
     const res = await post(app, 'resource.promote', ownerSession, {
       projectId, libraryId,
-      entries: [{ entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().result.data).toMatchObject({ inserted: 1, updated: 0, skipped: [] })
@@ -95,7 +97,9 @@ describe.skipIf(!url)('resource.promote', () => {
     const wordId = await seedWord(app, ownerSession, projectId, '회원', 'MBR')
     await post(app, 'resource.promote', ownerSession, {
       projectId, libraryId,
-      entries: [{ entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
     })
     const itemId = (await app.db!.select().from(resourceItems)
       .where(eq(resourceItems.libraryId, libraryId)))[0]!.id
@@ -111,7 +115,9 @@ describe.skipIf(!url)('resource.promote', () => {
     })
     const res = await post(app, 'resource.promote', ownerSession, {
       projectId, libraryId,
-      entries: [{ entityId: wordId, expectedStatus: 'update', expectedTargetItemId: itemId }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'update', expectedTargetItemId: itemId, expectedTargetVersion: 1,
+      }],
     })
     expect(res.json().result.data).toMatchObject({ inserted: 0, updated: 1, skipped: [] })
 
@@ -126,7 +132,9 @@ describe.skipIf(!url)('resource.promote', () => {
     const res = await post(app, 'resource.promote', ownerSession, {
       projectId, libraryId,
       // 실제로는 new인데 update로 요청한다
-      entries: [{ entityId: wordId, expectedStatus: 'update', expectedTargetItemId: uuidv7() }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'update', expectedTargetItemId: uuidv7(), expectedTargetVersion: 1,
+      }],
     })
     expect(res.json().result.data).toMatchObject({
       inserted: 0, updated: 0, skipped: [{ entityId: wordId, reason: 'plan-changed' }],
@@ -137,13 +145,93 @@ describe.skipIf(!url)('resource.promote', () => {
 
   it('계획에 없는 엔티티는 missing으로 건너뛰고 Revision을 만들지 않는다', async () => {
     const seqBefore = (await get(app, 'model.get', ownerSession, { projectId })).json().result.data.seq
+    const missingId = uuidv7()
     const res = await post(app, 'resource.promote', ownerSession, {
       projectId, libraryId,
-      entries: [{ entityId: uuidv7(), expectedStatus: 'new', expectedTargetItemId: null }],
+      entries: [{
+        entityId: missingId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
     })
     const data = res.json().result.data
-    expect(data.skipped).toEqual([{ entityId: expect.any(String), reason: 'missing' }])
+    expect(data.skipped).toEqual([{ entityId: missingId, reason: 'missing' }])
     expect(data.seq).toBe(seqBefore)
+  })
+
+  it('섞인 배치는 missing 항목만 제외하고 유효한 항목은 그대로 커밋한다', async () => {
+    // 기존 skip 테스트 둘은 모두 "건너뛸 항목 하나만" 요청해서, "그 항목만 빠지고 나머지는
+    // 커밋된다"와 "하나라도 skip이면 배치 전체가 무산된다"를 구분하지 못한다. 유효한 항목
+    // 하나 + missing 항목 하나를 함께 보내 partial commit을 직접 확인한다.
+    const validWordId = await seedWord(app, ownerSession, projectId, '회원', 'MBR')
+    const untouchedWordId = await seedWord(app, ownerSession, projectId, '주문', 'ORD')
+    const missingId = uuidv7()
+
+    const res = await post(app, 'resource.promote', ownerSession, {
+      projectId, libraryId,
+      entries: [
+        {
+          entityId: validWordId, expectedStatus: 'new', expectedTargetItemId: null,
+          expectedTargetVersion: null,
+        },
+        {
+          entityId: missingId, expectedStatus: 'new', expectedTargetItemId: null,
+          expectedTargetVersion: null,
+        },
+      ],
+    })
+    expect(res.json().result.data).toMatchObject({
+      inserted: 1, updated: 0, skipped: [{ entityId: missingId, reason: 'missing' }],
+    })
+
+    const items = await app.db!.select().from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId))
+    expect(items).toHaveLength(1)
+
+    const model = (await get(app, 'model.get', ownerSession, { projectId })).json().result.data
+      .model as ProjectModel
+    expect(model.words[validWordId]!.origin).not.toBeNull()
+    expect(model.words[untouchedWordId]!.origin).toBeNull()
+  })
+
+  it('두 번째 편집자가 대상 항목 버전을 올리면 낡은 expectedTargetVersion은 건너뛰고 최신 값을 보존한다', async () => {
+    const wordId = await seedWord(app, ownerSession, projectId, '회원', 'MBR')
+    await post(app, 'resource.promote', ownerSession, {
+      projectId, libraryId,
+      entries: [{
+        entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
+    })
+    const itemId = (await app.db!.select().from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId)))[0]!.id
+
+    // 다른 조직 관리자가 승격 다이얼로그가 열려 있는 동안 라이브러리 항목을 v1 → v2로 고친다.
+    await post(app, 'resource.items.update', ownerSession, {
+      itemId, payload: { logicalName: '회원', abbreviation: 'MEMBER', englishName: null, description: null },
+    })
+
+    // 프로젝트 쪽도 고쳐 상태가 여전히 update로 잡히게 하되, 클라는 v1 시점 미리보기(오래된
+    // expectedTargetVersion)를 그대로 보낸다.
+    const before = (await get(app, 'model.get', ownerSession, { projectId })).json().result.data
+      .model as ProjectModel
+    const after: ProjectModel = {
+      ...before, words: { [wordId]: { ...before.words[wordId]!, abbreviation: 'MB' } },
+    }
+    await post(app, 'model.mutate', ownerSession, {
+      projectId, ops: diffModels(before, after), summary: '약어 수정',
+    })
+
+    const res = await post(app, 'resource.promote', ownerSession, {
+      projectId, libraryId,
+      entries: [{
+        entityId: wordId, expectedStatus: 'update', expectedTargetItemId: itemId, expectedTargetVersion: 1,
+      }],
+    })
+    expect(res.json().result.data).toMatchObject({
+      inserted: 0, updated: 0, skipped: [{ entityId: wordId, reason: 'plan-changed' }],
+    })
+
+    const item = (await app.db!.select().from(resourceItems).where(eq(resourceItems.id, itemId)))[0]!
+    expect(item.version).toBe(2)
+    expect(item.payload).toMatchObject({ abbreviation: 'MEMBER' })
   })
 
   it('프로젝트 편집 권한이 없으면 거절한다', async () => {
@@ -156,7 +244,9 @@ describe.skipIf(!url)('resource.promote', () => {
     const outsider = await loginAs(app, 'x@t.dev', 'password-x')
     const res = await post(app, 'resource.promote', outsider, {
       projectId, libraryId,
-      entries: [{ entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
     })
     // 프로젝트는 존재하므로 NOT_FOUND가 아니라 FORBIDDEN이다(getProjectAccess가 access를 돌려주고
     // canEdit이 false라 requireProjectAccess가 FORBIDDEN을 던진다).
@@ -183,7 +273,9 @@ describe.skipIf(!url)('resource.promote', () => {
     })
     const res = await post(app, 'resource.promote', adminSession, {
       projectId, libraryId: globalLibraryId,
-      entries: [{ entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
     })
     expect(res.statusCode).toBe(403)
   })
@@ -192,7 +284,9 @@ describe.skipIf(!url)('resource.promote', () => {
     const wordId = await seedWord(app, ownerSession, projectId, '회원', 'MBR')
     const res = await post(app, 'resource.promote', memberSession, {
       projectId, libraryId,
-      entries: [{ entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
     })
     expect(res.statusCode).toBe(403)
   })
@@ -206,7 +300,9 @@ describe.skipIf(!url)('resource.promote', () => {
     })).json().result.data.id
     const res = await post(app, 'resource.promote', ownerSession, {
       projectId, libraryId: otherLibraryId,
-      entries: [{ entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
     })
     expect(res.statusCode).toBe(403)
   })
@@ -221,7 +317,9 @@ describe.skipIf(!url)('resource.promote', () => {
     received.length = 0
     await post(app, 'resource.promote', ownerSession, {
       projectId, libraryId,
-      entries: [{ entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null }],
+      entries: [{
+        entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
     })
     const opsMsg = received.find((m) => m.type === 'ops')
     expect(opsMsg).toBeDefined()

@@ -187,10 +187,19 @@ export const resourceRouter = router({
    *
    * 라이브러리 쓰기와 프로젝트 origin 갱신이 한 트랜잭션이다 — runMutation의 prepare 훅이
    * 프로젝트 행 락 안에서 돌고, 라이브러리 항목은 FOR UPDATE로 잠근 뒤 그 값으로 계획을
-   * 세우므로 버전 경합이 구조적으로 불가능하다.
+   * 세운다. 이 락이 보장하는 것은 "이미 존재하는 항목에 대한 갱신을 직렬화하고, 계획이 잠근
+   * 행의 값과 항상 일치한다"까지다 — 두 가지 한계가 있다.
+   * (1) READ COMMITTED에서 FOR UPDATE는 기존 행만 잠그고 INSERT는 막지 않으므로, 서로 다른
+   *     두 프로젝트가 동시에 같은 라이브러리로 같은 이름의 신규 항목을 승격하면 동명 항목이
+   *     두 개 생길 수 있다(버전 경합이 아니라 동시 삽입 경합).
+   * (2) 데드락 경로가 원리상 없지는 않다 — 이 프로시저는 (라이브러리 항목 행들 →
+   *     resourceLibraries.updatedAt 갱신) 순서로 잠그는데, library.remove는 반대로
+   *     (resourceLibraries 행 → cascade로 지워지는 항목 행들) 순서로 잠근다. 두 트랜잭션이
+   *     맞물리면 Postgres가 40P01로 한쪽을 중단시키며 끝난다 — 데이터 훼손은 없고
+   *     재시도하면 된다. 드물고(같은 라이브러리를 지우는 동시에 승격) 안전하게 실패한다.
    *
    * payload는 클라에서 받지 않는다. 서버가 트랜잭션 안에서 모델을 다시 읽어 계획을
-   * 재계산하고, 클라가 본 상태와 다른 항목만 건너뛴다.
+   * 재계산하고, 클라가 본 상태(상태·대상 항목·대상 버전)와 다른 항목만 건너뛴다.
    */
   promote: authedProcedure
     .input(z.object({
@@ -200,6 +209,7 @@ export const resourceRouter = router({
         entityId: z.string().uuid(),
         expectedStatus: z.enum(['new', 'update', 'name-match']),
         expectedTargetItemId: z.string().uuid().nullable(),
+        expectedTargetVersion: z.number().int().nullable(),
       })).min(1).max(MAX_OPS_PER_MUTATION),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -245,7 +255,11 @@ export const resourceRouter = router({
                 continue
               }
               if (entry.status !== req.expectedStatus
-                || entry.targetItemId !== req.expectedTargetItemId) {
+                || entry.targetItemId !== req.expectedTargetItemId
+                || entry.targetVersion !== req.expectedTargetVersion) {
+                // targetVersion까지 대조해야 한다 — 상태·대상 id가 같아도 그 사이 다른 사람이
+                // 대상 항목을 고쳤으면(버전만 바뀜) 클라가 본 미리보기가 이미 낡은 것이라
+                // 승격하면 최신 편집을 조용히 덮어쓴다.
                 outcome.skipped.push({ entityId: req.entityId, reason: 'plan-changed' })
                 continue
               }
