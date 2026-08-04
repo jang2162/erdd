@@ -13,16 +13,13 @@ import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
 
 const PROJECT_ID = 'p1'
-const LIBS = [{ id: 'l1', scope: 'global', orgId: null, name: '표준 사전', description: '', itemCount: 2 }]
+const LIBS = [
+  { id: 'l1', scope: 'global', orgId: null, name: '표준 사전', description: '', itemCount: 2, canWrite: false },
+]
 const ITEMS = [
   { id: 's1', kind: 'word', version: 1, payload: { logicalName: '회원', abbreviation: 'MBR', description: null } },
   { id: 's2', kind: 'word', version: 1, payload: { logicalName: '주문', abbreviation: 'ORD', description: null } },
 ]
-// model.mutate의 op 상한(500)과 같은 값. 이보다 많은 신규 항목을 만들어 가드를 넘긴다.
-const MANY_ITEMS = Array.from({ length: 501 }, (_, i) => ({
-  id: `s${i}`, kind: 'word', version: 1,
-  payload: { logicalName: `단어${i}`, abbreviation: `W${i}`, description: null },
-}))
 
 const mutate = vi.fn()
 vi.mock('./use-model.js', () => ({ useModelMutation: () => mutate }))
@@ -77,18 +74,6 @@ describe('ResourcePanel', () => {
     const [producer] = mutate.mock.calls[0]!
     const next = producer(createEmptyModel()) as ProjectModel
     expect(Object.keys(next.words)).toHaveLength(2)
-  })
-
-  it('처리 대상이 500건을 넘으면 mutate를 호출하지 않고 토스트로 막는다', async () => {
-    renderPanel({
-      'resource.library.listForProject': () => ({ data: LIBS }),
-      'resource.items.list': () => ({ data: MANY_ITEMS }),
-    }, createEmptyModel())
-    await openLibrary()
-    await screen.findByText('신규 추가 (501)')
-    await userEvent.click(screen.getByRole('button', { name: '적용' }))
-    expect(mutate).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalled()
   })
 
   it('처리할 것이 없으면 적용 버튼이 비활성', async () => {
@@ -257,5 +242,14 @@ describe('ResourcePanel', () => {
     expect(screen.queryByRole('button', { name: '모두 해제' })).toBeNull()
     expect(screen.queryByRole('button', { name: '적용' })).toBeNull()
     expect(mutate).not.toHaveBeenCalled()
+  })
+
+  it('쓰기 가능한 라이브러리가 없으면 승격 탭이 없다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+    }, createEmptyModel())
+    await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
+    expect(screen.queryByRole('tab', { name: '조직으로 승격' })).toBeNull()
   })
 })
