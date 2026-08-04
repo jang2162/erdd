@@ -129,6 +129,58 @@ describe('modelToFiles', () => {
 })
 
 describe('filesToModel', () => {
+  it('newId를 주면 신규 객체가 발급된 id를 받고 참조도 그 id로 조립된다', () => {
+    const tree = {
+      'erdd/groups.yaml': { groups: [{ name: '회원관리', color: '#eef' }] },
+      'erdd/tables/MBR.yaml': {
+        name: 'MBR', logicalName: '회원', group: '회원관리',
+        columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', pk: true, nullable: false }],
+        indexes: [{ name: 'UX_MBR_01', columns: ['MBR_NO'], unique: true }],
+      },
+      'erdd/tables/ORD.yaml': {
+        name: 'ORD', logicalName: '주문',
+        columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', nullable: false }],
+        relations: [{ to: 'MBR', columns: { MBR_NO: 'MBR_NO' } }],
+      },
+    }
+    let n = 0
+    const result = filesToModel(tree, { newId: () => `id-${++n}` })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const m = result.model
+
+    const allIds = [
+      ...Object.keys(m.tableGroups), ...Object.keys(m.tables),
+      ...Object.keys(m.columns), ...Object.keys(m.indexes), ...Object.keys(m.relationships),
+    ]
+    expect(allIds.every((id) => id.startsWith('id-'))).toBe(true)
+    expect(allIds.some(isNewId)).toBe(false)
+
+    // 참조가 발급된 id로 조립된다 — 별도의 리맵 단계 없이 무결하다.
+    const mbr = Object.values(m.tables).find((t) => t.physicalName === 'MBR')!
+    const ord = Object.values(m.tables).find((t) => t.physicalName === 'ORD')!
+    const mbrCol = Object.values(m.columns).find((c) => c.tableId === mbr.id)!
+    const ordCol = Object.values(m.columns).find((c) => c.tableId === ord.id)!
+    const rel = Object.values(m.relationships)[0]!
+    const ix = Object.values(m.indexes)[0]!
+
+    expect(mbr.groupId).toBe(Object.keys(m.tableGroups)[0])
+    expect(rel.parentTableId).toBe(mbr.id)
+    expect(rel.childTableId).toBe(ord.id)
+    expect(rel.columnMappings[0]!.childColumnId).toBe(ordCol.id)
+    expect(rel.columnMappings[0]!.parentColumnId).toBe(mbrCol.id)
+    expect(ix.columns[0]!.columnId).toBe(mbrCol.id)
+  })
+
+  it('newId를 주지 않으면 기존 임시 id 동작 그대로다', () => {
+    const result = filesToModel({
+      'erdd/tables/MBR.yaml': { name: 'MBR', logicalName: '회원', columns: [] },
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(Object.keys(result.model.tables).every(isNewId)).toBe(true)
+  })
+
   it('왕복이 항등이다 — 9개 컬렉션 전부', () => {
     const original = fullModel()
     const { tree } = modelToFiles(original)

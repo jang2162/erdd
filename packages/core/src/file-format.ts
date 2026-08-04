@@ -235,11 +235,23 @@ export function isNewId(id: string): boolean {
   return id.startsWith(NEW_ID_PREFIX)
 }
 
-function idOf(r: Rec, path: string, kind: string, index: number): string {
-  return asStr(r['id']) ?? `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
+export type FilesToModelOptions = {
+  /**
+   * id가 없는 객체(로컬 신규)에 줄 id 생성기. push는 uuidv7을 넘겨 처음부터 최종 id로
+   * 조립한다 — 나중에 리맵하면 참조 필드 하나만 빠뜨려도 조용히 깨진다.
+   * 생략하면 경로·종류·순번으로 만든 결정적 임시 id를 쓴다(validate가 위치를 알려 주기 위함).
+   */
+  newId?: () => string
 }
 
-export function filesToModel(tree: FileTree): FilesToModelResult {
+function idOf(r: Rec, path: string, kind: string, index: number, newId?: () => string): string {
+  const explicit = asStr(r['id'])
+  if (explicit !== null) return explicit
+  return newId === undefined ? `${NEW_ID_PREFIX}${path}#${kind}[${index}]` : newId()
+}
+
+export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesToModelResult {
+  const newId = opts?.newId
   const issues: FileIssue[] = []
   const warnings: FileIssue[] = []
   const model = createEmptyModel()
@@ -256,14 +268,14 @@ export function filesToModel(tree: FileTree): FilesToModelResult {
 
   // 1) 이름으로 참조되는 것부터 — 그룹·도메인.
   readList(`${TREE_ROOT}/groups.yaml`, 'groups').forEach((g, i) => {
-    const id = idOf(g, `${TREE_ROOT}/groups.yaml`, 'groups', i)
+    const id = idOf(g, `${TREE_ROOT}/groups.yaml`, 'groups', i, newId)
     model.tableGroups[id] = {
       id, name: asStr(g['name']) ?? '', color: asStr(g['color']) ?? '#ffffff',
       comment: asStr(g['comment']),
     }
   })
   readList(`${TREE_ROOT}/domains.yaml`, 'domains').forEach((d, i) => {
-    const id = idOf(d, `${TREE_ROOT}/domains.yaml`, 'domains', i)
+    const id = idOf(d, `${TREE_ROOT}/domains.yaml`, 'domains', i, newId)
     const dt = isRec(d['dialectTypes']) ? d['dialectTypes'] : {}
     model.domains[id] = {
       id, name: asStr(d['name']) ?? '', category: asStr(d['category']),
@@ -289,14 +301,14 @@ export function filesToModel(tree: FileTree): FilesToModelResult {
   const domainIdByName = new Map(Object.values(model.domains).map((d) => [d.name, d.id]))
 
   readList(`${TREE_ROOT}/words.yaml`, 'words').forEach((w, i) => {
-    const id = idOf(w, `${TREE_ROOT}/words.yaml`, 'words', i)
+    const id = idOf(w, `${TREE_ROOT}/words.yaml`, 'words', i, newId)
     model.words[id] = {
       id, logicalName: asStr(w['logicalName']) ?? '', abbreviation: asStr(w['abbreviation']) ?? '',
       englishName: asStr(w['englishName']), description: asStr(w['description']), origin: null,
     }
   })
   readList(`${TREE_ROOT}/terms.yaml`, 'terms').forEach((t, i) => {
-    const id = idOf(t, `${TREE_ROOT}/terms.yaml`, 'terms', i)
+    const id = idOf(t, `${TREE_ROOT}/terms.yaml`, 'terms', i, newId)
     const domainName = asStr(t['domain'])
     let domainId: string | null = null
     if (domainName !== null) {
@@ -311,7 +323,7 @@ export function filesToModel(tree: FileTree): FilesToModelResult {
     }
   })
   readList(`${TREE_ROOT}/custom-fields.yaml`, 'customFields').forEach((f, i) => {
-    const id = idOf(f, `${TREE_ROOT}/custom-fields.yaml`, 'customFields', i)
+    const id = idOf(f, `${TREE_ROOT}/custom-fields.yaml`, 'customFields', i, newId)
     const target = f['target'] === 'table' ? 'table' : 'column'
     const type = f['type'] === 'boolean' ? 'boolean' : f['type'] === 'select' ? 'select' : 'text'
     model.customFields[id] = {
@@ -329,7 +341,7 @@ export function filesToModel(tree: FileTree): FilesToModelResult {
   for (const path of tablePaths.sort()) {
     const file = tree[path]
     if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); continue }
-    const tableId = idOf(file, path, 'table', 0)
+    const tableId = idOf(file, path, 'table', 0, newId)
     const groupName = asStr(file['group'])
     let groupId: string | null = null
     if (groupName !== null) {
@@ -348,7 +360,7 @@ export function filesToModel(tree: FileTree): FilesToModelResult {
 
     const rawCols = Array.isArray(file['columns']) ? file['columns'].filter(isRec) : []
     rawCols.forEach((c, order) => {
-      const id = idOf(c, path, 'columns', order)
+      const id = idOf(c, path, 'columns', order, newId)
       const domainName = asStr(c['domain'])
       let domainId: string | null = null
       if (domainName !== null) {
@@ -389,7 +401,7 @@ export function filesToModel(tree: FileTree): FilesToModelResult {
         if (columnId === undefined) issues.push({ path, message: `인덱스 컬럼 ${name}을 찾지 못했습니다` })
         return { columnId: columnId ?? '', direction: (desc ? 'desc' : 'asc') as 'asc' | 'desc' }
       })
-      const id = idOf(ix, path, 'indexes', i)
+      const id = idOf(ix, path, 'indexes', i, newId)
       model.indexes[id] = { id, tableId, name: asStr(ix['name']) ?? '', columns: parsed, unique: asBool(ix['unique'], false) }
     })
 
@@ -409,7 +421,7 @@ export function filesToModel(tree: FileTree): FilesToModelResult {
         if (parentColumnId === undefined) issues.push({ path, message: `관계의 부모 컬럼 ${to}.${parentName}을 찾지 못했습니다` })
         mappings.push({ childColumnId: childColumnId ?? '', parentColumnId: parentColumnId ?? '' })
       }
-      const id = idOf(r, path, 'relations', i)
+      const id = idOf(r, path, 'relations', i, newId)
       model.relationships[id] = {
         id, parentTableId, childTableId: tableId, columnMappings: mappings,
         cardinality: r['cardinality'] === '1:1' ? '1:1' : '1:N',
