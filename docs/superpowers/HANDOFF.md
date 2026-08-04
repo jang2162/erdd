@@ -27,6 +27,8 @@
 | **Phase 4 #2 CLI 트랙 A** | 개인 액세스 토큰(`access_tokens` 테이블, `erdd_pat_` 접두 평문 + SHA-256 저장, 만료 없이 폐기만), 조직·프로젝트 역할에서 그대로 파생되는 권한(새 축 아님) + 토큰 노출 프로시저 5개 allowlist(`apiProcedure`), 파일 포맷(`packages/core/src/file-format.ts` — plain object만 다루고 YAML은 모름), 신규 패키지 `packages/cli`(`@erdd/cli`, 바이너리 `erdd`)의 읽기 명령 `init`/`pull`/`status`/`validate`, 마이그 0010 |
 | **Phase 4 #3 CLI 트랙 B** | 파일 3-way 병합 core 순수 함수(`packages/core/src/file-merge.ts` — `FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`·`fileVisibleModel`·`mergeModels`·`applyMerge`·`pruneDangling`·`gridPositions`), 신규 프로시저 `model.push`(토큰 allowlist 6번째, 필수 `expectedSeq`를 프로젝트 행 락 안에서 검증해 경합 차단, `model.mutate`는 세션 전용 유지), CLI `push`(필드 단위 자동 병합·충돌 시 블록형 출력+exit 1·삭제 확인 프롬프트·성공 후 암묵적 pull로 신규 id 채움)·`diff`(항상 3-way 계획 미리보기, `--base` 없음)·`skill install`(`.claude/skills/erdd/SKILL.md` 동봉, `--dir`/`--force`). **마이그레이션 없음** |
 
+| **공용 리소스 승격** | fork의 반대 방향 — 프로젝트 사전 4종을 조직/전역 라이브러리로 올린다. core 순수 함수 `resource-promote.ts`(`planPromote` 3상태 분류 / `applyPromotePlan` write+`origin` 갱신), `runMutation`의 트랜잭션 내 선행 훅 `prepare`로 라이브러리 쓰기와 모델 op를 한 트랜잭션에 묶는 신규 프로시저 `resource.promote`(권한 3중·라이브러리 항목 `FOR UPDATE`·기대치 불일치 skip), `listForProject`의 `canWrite`, 공용 리소스 다이얼로그를 탭 2개로 분리 + "조직으로 승격" 탭. **마이그레이션 없음** ([설계](specs/2026-08-04-resource-promotion-design.md)) |
+
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
 > **Phase 4 완료.** DDL 역설계 → CLI 트랙 A(읽기) → CLI 트랙 B(`push`·3-way 병합·`diff`·에이전트 스킬) 순으로 마쳤다.
@@ -34,13 +36,12 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 429 · cli 114 · web 341 · server 108 (erdd_test) · typecheck EXIT=0
+core 453 · cli 114 · web 358 · server 122 (erdd_test) · typecheck EXIT=0
 ```
 
-CLI 트랙 B에서 `push`·`diff`·`skill install` 배선 테스트가 추가되며 `packages/cli`가 57 → 104로
-늘었고, 최종 리뷰 대응(파일 id 중복 거절·응답 유실 처리·확인 프롬프트 표기·커버리지 3건)으로
-core +5 · cli +9 · server +1이 더 붙었다 — 루트 `pnpm verify`는 `packages/core` 뒤·`apps/web`
-앞에 `pnpm -C packages/cli test`를 끼워 넣어 네 스위트를 함께 돈다.
+루트 `pnpm verify`는 `packages/core` 뒤·`apps/web` 앞에 `pnpm -C packages/cli test`를 끼워 넣어
+네 스위트를 함께 돈다. 승격 사이클에서 core +24 · web +17 · server +14가 붙었다(계획·적용 엔진,
+`prepare` 훅의 트랜잭션 계약, 권한 3중, 혼합 배치, 탭 가시성, op 상한 가드 회귀).
 
 ⚠️ **`pnpm -s -r typecheck`의 출력만 보고 판정하지 말 것.** `-s`가 자식 출력을 삼켜서, 타입 오류가
 있어도 **출력이 0바이트이고 종료코드만 1**이다. 실시간 사이클에서 이 함정 때문에 구현자·태스크
@@ -65,14 +66,18 @@ pnpm -s -C packages/cli typecheck
 
 ### 다음 작업
 
-**Phase 4 완료 — 다음 후보** (→ `docs/90-roadmap.md`)
+**Phase 4 + 공용 리소스 승격 완료 — 다음 후보** (→ `docs/90-roadmap.md`)
 
-로드맵의 Phase 1~4가 모두 완료됐다(DDL 역설계, CLI 트랙 A·B — 이 브랜치가 머지되면 트랙 B도 main에 합류한다). 정해진 다음 Phase는 없다. 후보는 (a) 6절 이월 항목 정리 — 특히 CLI 트랙 B의 잔여 한계(→ [설계](specs/2026-08-04-cli-push-design.md) §9, 아래 6절), (b) `docs/90-roadmap.md` "추후 검토" 목록(과금 플랜, Excel 템플릿 커스터마이징, 셀프 가입, MCP 서버, 복수 스키마 등) 중 조직 내부 도구로서 가치가 큰 것부터 검토. 과금은 여전히 최우선이 아니다 — 조직 내에서 쓸 수 있는 도구 완성이 우선.
+로드맵의 Phase 1~4가 모두 완료됐고, 그 뒤 기획에만 있던 공용 리소스의 반대 방향(프로젝트 → 조직/전역 승격)도 채웠다. 정해진 다음 Phase는 없다. 후보는 (a) 6절 이월 항목 정리 — 특히 CLI 트랙 B의 잔여 한계(→ [설계](specs/2026-08-04-cli-push-design.md) §9)와 승격의 잔여 한계(→ [설계](specs/2026-08-04-resource-promotion-design.md) §9), (b) `docs/90-roadmap.md` "추후 검토" 목록(과금 플랜, Excel 템플릿 커스터마이징, 셀프 가입, MCP 서버, 복수 스키마 등) 중 조직 내부 도구로서 가치가 큰 것부터 검토. 과금은 여전히 최우선이 아니다 — 조직 내에서 쓸 수 있는 도구 완성이 우선.
 
 무엇을 고르든 착수 전에 brainstorming 스킬로 사용자와 우선순위·load-bearing 결정을 먼저 확정한다(5절 "작업 방식" 참조).
 
 ## 2. 읽을 문서 (순서)
 
+0. **`CLAUDE.md`**(저장소 루트, `AGENTS.md`가 같은 파일을 가리킨다) — 반드시 지켜야 할 작업 규칙:
+   메모리 기능 금지, git(최상위 체크아웃·스테이징·커밋 메시지), 워크트리 생성·포트·격리 DB, Orca
+   오케스트레이션 우선. Claude Code 세션에 자동 로드되지만, **재사용할 결정을 기록할 때 목적지를
+   정하려면 직접 읽어라.**
 1. **이 문서** — 현재 상태·불변식·환경·워크플로
 2. `docs/90-roadmap.md` — 단계별 범위(무엇이 어느 Phase인지)
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
@@ -121,6 +126,13 @@ pnpm -s -C packages/cli typecheck
 - 적용은 **새 엔드포인트 없이 기존 `model.mutate` 경로**를 탄다 → Revision 1건, undo 1회로 원복.
 - 원본에서 삭제된 항목은 프로젝트에 그대로 둔다(삭제 제안 없음 — 프로젝트 독립성 원칙).
 
+**반대 방향(승격, `resource-promote.ts` + `resource.promote`)** — 가져오기와 대칭이지만 규칙이 셋 더 있다.
+
+- **`origin.base`는 승격에서도 "가져오기 직후"와 같아야 한다.** 라이브러리에 쓴 payload를 **다시 프로젝트 공간으로 투영한 값**을 넣는다(프로젝트의 현재 payload를 그대로 넣으면 안 된다). 정상 케이스는 왕복이 항등이라 곧바로 동기 상태가 되고, **도메인을 빼고 올린 용어**는 `base.domainId=null ≠ 현재값`이라 "프로젝트가 고침"으로 잡혀 나중에 `auto-update`가 도메인 연결을 조용히 지우는 사고가 구조적으로 막힌다. core 테스트가 양방향으로 고정한다.
+- **승격은 프로젝트 엔티티의 `origin`만 바꾼다.** 그래서 op는 전부 `origin` 1필드 update이고 선택 항목 수 = op 수다. undo는 `origin`만 되돌리며 **라이브러리에 쓴 항목은 남는다**(op 로그 밖이라 구조적으로 그렇다).
+- **판정 순서가 DB 행 순서에 의존하면 안 된다.** `loadProjectModel`의 `SELECT`에는 `ORDER BY`가 없어서, 동명 항목이 둘일 때 클라와 서버가 서로 다른 쪽에 `name-match`를 주면 양쪽 다 `plan-changed`로 건너뛰어 **영원히 수렴하지 않는다.** `planPromote`가 엔티티를 **id 오름차순으로 정렬한 뒤** 선점을 판정해 막는다 — 새 선점 규칙을 넣을 때 이 정렬을 지워선 안 된다.
+- 클라는 payload를 보내지 않는다. `{entityId, expectedStatus, expectedTargetItemId, expectedTargetVersion}`만 보내고 서버가 락 안에서 계획을 재계산해 어긋난 항목만 건너뛴다(`missing`/`plan-changed`). **`expectedTargetVersion`이 없으면** 다이얼로그를 연 사이 남이 고친 원본을 낡은 미리보기 기준으로 덮어쓴다.
+
 ### 3.3 하위호환 (스냅샷·옛 리비전)
 - 모델에 새 컬렉션을 추가하면 `ProjectModelSchema`에서 `.default({})`. 단, **`z.infer` 출력 타입은 필수**이므로 `: ProjectModel` 리터럴(fixtures, model-store 반환 등)에는 전부 키를 추가해야 한다(typecheck-driven으로 훑기).
 - 엔티티에 새 필드를 추가하면 `.nullable().default(null)`(옛 op 페이로드 파싱).
@@ -146,7 +158,8 @@ pnpm -s -C packages/cli typecheck
 - **재접속 시 클라이언트 상태를 다시 알려야 한다.** 서버 `Entry`는 `selection: null`로 새로 시작하는데, 선택 발신 effect는 "값이 바뀔 때만" 보낸다. `socket.onopen`에서 현재 선택을 무조건 재발신하지 않으면 재접속 후 하이라이트가 사라진 채로 남는다. presence는 서버→클라 방향만 전체 스냅샷이고 클라→서버는 델타라 이 비대칭이 생긴다.
 - **인증 실패 close(4401/4403)는 재접속 백오프에서 제외한다** — 안 그러면 무한 루프다.
 - **수신 op는 기존 `serializeMutation` 체인에 태운다**(`use-model.ts`에서 export). 별도 직렬화를 만들면 내 낙관적 mutation과 교차한다.
-- `resync`는 `setLoaded`와 다르다 — **`activeGroupView`를 보존**한다(남이 편집할 때마다 그룹 뷰에서 튕기면 못 쓴다). 선택은 대상이 사라졌을 때만 해제한다.
+- `resync`는 `setLoaded`와 다르다 — **`activeGroupView`를 보존**한다(남이 편집할 때마다 그룹 뷰에서 튕기면 못 쓴다). 선택은 대상이 사라졌을 때만 해제한다. **서버가 모델을 바꾸는 경로**(스냅샷 복원·승격)는 성공 후 `model.get`으로 되맞추는데, 모델 전체가 바뀌는 복원은 `setLoaded`, 사전만 건드리는 승격은 `resync`가 맞다.
+- **모델 밖 테이블을 같은 트랜잭션에서 써야 하면 `runMutation`의 `prepare(tx, model)` 훅을 쓴다**(승격이 라이브러리 항목을 이렇게 쓴다). 프로젝트 행 락 획득·모델 로드 뒤, `deriveOps` 앞에 돌아 권위 모델을 손에 쥔 채 쓰고 여기서 던지면 모델 변경과 함께 롤백된다. **훅 없이 `runMutation`을 직접 부르면** 네 번째 직접 호출자가 생겨 브로드캐스트를 손으로 발행해야 하고, 그 순간 이 절의 첫 불변식이 깨진다.
 - dev에서 **React StrictMode가 effect를 2회 실행**해 소켓이 잠시 2개 생기고 presence 프레임이 중복된다. 프로덕션 빌드에는 없다 — dev 로그에서 중복 프레임을 보고 버그로 오인하지 말 것.
 - 허브는 **인메모리 단일 인스턴스** 전제다. 다중 인스턴스로 가면 Redis pub/sub 브리지가 필요하다(설계상 예정된 확장점, 현재 범위 밖). `publishOps`/`peers`가 동기 API라 그때 시그니처를 async로 바꿔야 한다.
 
@@ -171,6 +184,9 @@ docker ps --filter name=erdd-db      # erdd-db-1, postgres:17, :5432
 # ⚠️ dev 서버는 루트 .env를 자동 로드하지 않는다 → DATABASE_URL 없이 뜨면
 #    ctx.db=null → 모든 tRPC가 412 → 화면에 "연결에 문제가 있습니다"
 set -a; . ./.env; set +a; pnpm --parallel -r dev    # web :5173, server :3000
+# 워크트리에서는 포트·DB를 트랙별로 바꾼다: 서버 PORT + web ERDD_SERVER_PORT(같은 값) + vite --port
+# (할당표는 CLAUDE.md "워크트리 규칙". vite 프록시 타깃이 ERDD_SERVER_PORT로 파라미터화돼 있어,
+#  안 주면 워크트리의 web이 조용히 최상위 서버 3000에 붙는다)
 
 # 테스트
 pnpm --filter @erdd/core exec vitest run
@@ -185,11 +201,13 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @
 ```
 
 브라우저 스모크: 브라우저는 항상 **`127.0.0.1`로 접속**한다(`localhost`는 IPv6로 풀릴 수 있다).
+**SPA 라우트는 `/p/<projectId>`(프로젝트 에디터)와 `/org/<orgId>`다** — `/projects/<id>`로 가면 "페이지를 찾을 수 없습니다"가 뜬다. 배선 확인은 `/trpc/auth.me?batch=1&input=%7B%7D`로 프로브한다(**401 = DB 정상 + 로그아웃 상태, 412 = DB 미배선**). 서버 `/`와 맨 `/trpc`는 설계상 404다.
 
 스모크에서 매번 물리는 것들:
 - **vite가 IPv6 `[::1]`에만 바인딩**돼 Chrome이 접속을 못 한다(curl은 `localhost`를 `::1`로 풀어 200이라 서버 문제로 오인하기 쉽다). **`pnpm ... dev -- --host 127.0.0.1`은 인자가 전달되지 않는다** — `cd apps/web && ./node_modules/.bin/vite --host 127.0.0.1 --port 5173 --strictPort`로 바이너리를 직접 실행해야 먹는다(루트 `node_modules/.bin/vite`는 없다).
-- **`tsx watch` 부모가 세션을 넘어 살아남는다.** 자식만 kill하면 부모가 재기동하지 않아 **포트 3000을 잡은 채 구 코드를 서빙**한다(실시간 스모크에서 이틀 전 코드를 물고 있었다). `ps -eo pid,ppid,lstart,command | grep tsx`로 부모까지 확인해 둘 다 kill하고, 스모크 중에는 watch 없이 `./node_modules/.bin/tsx src/main.ts`로 띄우는 편이 안정적이다.
-- **서버 테스트가 전 테이블을 TRUNCATE한다**(`testing/db.ts`의 `resetDb`). 테스트를 돌린 뒤 스모크하려면 계정·조직·프로젝트를 다시 시드해야 한다. 부트스트랩 관리자는 `ADMIN_EMAIL`/`ADMIN_PASSWORD`를 export하고 서버를 띄우면 자동 생성되고, 나머지는 tRPC를 curl로 때리는 게 빠르다(`admin.users.create` → `org.create` → `org.members.add` → `project.create` → `project.members.add`).
+- **좀비 dev 프로세스가 구 코드를 조용히 서빙한다.** `tsx watch` 부모는 세션을 넘어 살아남고, 반대로 `pkill -f "tsx src/main.ts"` / `pkill -f vite`는 **부모만** 죽여 `node` 자식이 포트를 쥔 채 남는다. 어느 쪽이든 새로 띄운 서버가 `EADDRINUSE`로 죽고(vite는 `--strictPort`) 몇 시간 전 코드와 계속 대화하게 된다 — 증상은 API의 "No procedure found on path …"와 최신 변경이 빠진 UI다(실시간 스모크에서 이틀 전 코드를 물고 있었다). **띄우기 전에 항상 `lsof -nP -iTCP:3000 -iTCP:5173 -sTCP:LISTEN`으로 확인해 나온 PID를 `kill -9`** 하고, 새 서버가 최신인지 `/trpc/<이번에 추가한 프로시저>`가 404가 아니라 401을 주는 것으로 확증한다. vite는 `rm -rf apps/web/node_modules/.vite` 후 캐시버스팅 쿼리를 붙여 로드한다. 스모크 중에는 watch 없이 `./node_modules/.bin/tsx src/main.ts`로 띄우는 편이 안정적이다.
+- **테스트가 DB를 TRUNCATE한다**(`testing/db.ts`의 `resetDb`). 서버 스위트뿐 아니라 **루트 `pnpm verify`도 dev DB `erdd`를 비운다** — `.env`의 `DATABASE_URL`이 dev DB를 가리키기 때문이다. 테스트를 돌린 뒤 스모크하려면 계정·조직·프로젝트를 다시 시드해야 한다. 부트스트랩 관리자는 `ADMIN_EMAIL`/`ADMIN_PASSWORD`를 export하고 서버를 띄우면 `ensureBootstrapAdmin`이 자동 생성하고, 나머지는 node 스크립트에서 `fetch`로 tRPC를 때리는 게 빠르다: `auth.login` → `org.create` → `admin.users.create` → `org.members.add`(`memberId`를 반환한다) → `project.create`(`dialects` 필요) → Viewer용 `project.members.add`. **호출 사이에 `getSetCookie()`의 `erdd_session` 쿠키를 이어서 넘겨야 한다.**
+- **React 제어 인풋에 브라우저 도구로 타이핑하지 마라.** `computer:type`은 느리고 한글에서 불안정하다. `javascript_tool`로 네이티브 setter를 쓴다 — `Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, text)` 후 `ta.dispatchEvent(new Event('input',{bubbles:true}))`. 미리보기가 갱신되면 React가 받은 것이다. 다이얼로그를 먼저 열어 엘리먼트 존재를 확인한다 — `navigate` 후 stale 해진 엘리먼트 참조는 클릭이 조용히 no-op이 된다.
 - `psql`이 PATH에 없다. DB를 직접 봐야 하면 `apps/server`에서 `node` 스크립트로 `pg`를 import한다(pnpm 엄격 모드라 리포 루트에서는 `pg`·`ws`가 해석되지 않는다).
 
 **다중 사용자 스모크(실시간 등)**: 브라우저 2개를 띄우는 것보다 **연결된 Chrome 1개(A) + 헤드리스 WS 클라이언트(B)** 조합이 낫다. Claude 확장은 프로필 하나에만 있어서 새 프로필 창은 조작할 수 없고, 무엇보다 **경합 조건은 손으로 재현이 안 된다.** 실시간 사이클의 Critical 회귀 검증은 `SELECT ... FOR UPDATE`로 프로젝트 행 락을 12초 잡아 "B 먼저 커밋 / A는 대기 중" 순서를 강제해서 결정적으로 재현했다. 헤드리스 B는 `ws`를 pnpm 스토어 경로(`node_modules/.pnpm/ws@*/node_modules/ws`)에서 직접 import하면 된다.
@@ -211,24 +229,38 @@ sub-project 하나마다:
    - 최종 리뷰 프롬프트에 이 한 줄을 넣으면 그런 결함이 바로 드러난다: **"이번 브랜치에서 두 번째 호출자가 생긴 기존 함수를 전부 나열하고, 양쪽 호출자 기준으로 그 함수의 불변식을 재유도하라."** 실제로 Critical(`setSeq`가 두 가지 의미를 갖게 된 것)이 이 질문 하나로 잡힌다.
    - **수정의 구분력은 컨트롤러가 직접 실증하라** — 각 파일을 수정 전 버전으로 되돌려 새 테스트가 *실제로 실패*하는지 확인한다(`git show <base>:<path> > /tmp/x && cp /tmp/x <path>` → 테스트 → `git checkout -- <path>`). 실시간 사이클에서 리뷰 에이전트가 되돌린 파일을 남긴 채 스톨해서 컨트롤러가 복구해야 했다 — 되돌리기를 서브에이전트에게 시키면 워킹트리 오염을 각오할 것.
 
-**커밋 규칙(사용자 지정, 반드시 준수)**
-- `git add .` / `git add -A` **금지** — 명시 파일만 스테이징. `.idea/*` 변경과 루트 `.env`는 커밋하지 않는다(워킹트리에 항상 `.idea` 노이즈가 있음).
-- 커밋 메시지는 한국어. 말미에 트레일러 2줄:
-  ```
-  Co-Authored-By: Claude <노출용 이름> <noreply@anthropic.com>
-  Claude-Session: <세션 URL>
-  ```
-- 응답은 한국어.
+**커밋·git·워크트리 규칙은 `CLAUDE.md`(저장소 루트)에 있다** — `git add -A` 금지(경로 명시 스테이징),
+최상위 체크아웃 규칙, 커밋 메시지 형식, 워크트리 위치·포트·격리 DB, 메모리 기능 금지, 응답 한국어.
+규칙이 바뀌면 **그 파일 한 곳만** 고친다(여기에 사본을 두지 않는다).
+
+**서브에이전트 프롬프트에 반드시 넣을 두 문장.** ERDD의 지배적 결함군은 틀린 코드가 아니라 **아무것도
+붙잡아 두지 않는 맞는 코드**다 — CLI 트랙 B 사이클에서 Important 지적의 절반가량이 "방어 대상 코드를
+지우거나 뒤집어도 통과하는 테스트"였다. 다음 두 지시가 그것을 드러낸다:
+
+1. **구현자에게:** "브리프의 기대값이 실제와 어긋나면 프로덕션 코드를 기대값에 맞추지 말고, 이전 태스크
+   산출물도 고치지 마라 — **단언을 정정하고 관찰한 것을 명령 출력과 함께 보고하라. 판단은 컨트롤러가
+   한다.**" (사이클당 계획 결함 ~10건이 이걸로 드러났고, 그중 몇은 통과하면서 아무것도 검증하지 않던
+   테스트였다)
+2. **구현자에게, 수정 건마다:** "그 수정이 구분력이 있는지 확인하라 — 프로덕션 변경을 되돌려 테스트가
+   실패하는지 보고 복구하라. **실패하지 않으면 덮지 말고 그렇다고 보고하라.**" 부정적 결과를 보고해도
+   된다는 명시적 허용이 정직한 보고를 만든다.
+
+리뷰어에게는 "품질을 봐라"가 아니라 **그 태스크의 구체적 load-bearing 리스크**를 지목해 주고, 구현자의
+보고는 **미검증 주장**임을 알린다.
 
 **서브에이전트 한도:** 한 세션에서 200개까지. 명명 체계 세션은 Task 6에서 한도에 도달해 이후는 컨트롤러가 직접 구현+자기리뷰로 마쳤다. 커스텀 항목 세션(7태스크+최종리뷰+수정)은 한도 안에서 전 과정을 서브에이전트 구현+리뷰로 마쳤다(약 17개 서브에이전트 사용). 서브에이전트 리뷰를 계속 쓰려면 `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`을 올린다.
 
 ### 병렬 트랙(worktree 2개)으로 돌릴 때
 
-Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다음이 필수였다:
+Phase 2 #4·#5를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다음이 필수였다.
+
+> 워크트리 **생성·위치·포트·정리** 규칙과 Orca 오케스트레이션 우선 규칙은 `CLAUDE.md`에 있다. 여기에는
+> 그 위에서 실제로 든 비용과 트랙 운영 노하우만 남긴다.
 
 - **트랙별 격리 DB**를 미리 만들어 준다(`erdd_dev_a`/`erdd_test_a`, `erdd_dev_b`/`erdd_test_b`). 공유 `erdd_test`를 두 트랙이 함께 쓰면 서로의 데이터를 지운다.
-- **worktree base는 반드시 로컬 `main`으로 명시**한다(`--base-branch refs/heads/main`). `origin/main`이 뒤처져 있으면 Orca 기본값이 그 옛 커밋을 base로 잡는다(실제로 42커밋 뒤처진 상태였다).
-- 각 워커에게 **`main` 체크아웃·머지·브라우저 스모크 금지**를 명시한다(같은 저장소의 다른 worktree가 `main`을 잡고 있어 git이 거부한다). 워커는 구현+테스트+최종 리뷰까지, 병합·스모크·문서 갱신은 컨트롤러가 한다.
+- **base는 반드시 로컬 `main`으로 명시**한다(`git worktree add -b feat/<작업명> .worktrees/feat-<작업명> main`). 생략하면 진행 중인 주 트랙 위에 얹히고, `origin/main`을 쓰면 뒤처진 옛 커밋을 잡는다(실제로 42커밋 뒤처진 상태였다 — 당시 Orca 기본값이 `origin/main`이었다).
+- 각 워커에게 **`main` 체크아웃·머지 금지**를 명시한다(같은 저장소의 다른 워크트리가 `main`을 잡고 있으면 git이 거부한다). 워커는 구현+테스트+최종 리뷰까지, 병합·문서 갱신은 컨트롤러가 한다.
+- **브라우저 스모크는 컨트롤러가 병합 후 최상위에서 한다.** 워크트리에서도 격리 포트(`PORT`+`ERDD_SERVER_PORT`+`--port`)로 띄울 수는 있지만, 확인해야 할 것은 병합된 결과이고 Claude 확장이 붙은 Chrome 프로필도 하나뿐이다.
 - **`HANDOFF.md`·`91-checklist.md`는 어느 트랙도 건드리지 않게 한다** — 양쪽이 고치면 병합 충돌이 확정이다. 컨트롤러가 병합 후 일괄 갱신한다.
 - **마이그레이션 번호는 반드시 충돌한다**(둘 다 0007을 만든다). 워커에겐 신경 쓰지 말고 각자 격리 DB에 적용하라고 하고, 병합 시 컨트롤러가 나중 트랙의 파일을 버리고 **병합된 스키마에서 `drizzle-kit generate`로 새 번호를 뽑는다**(스냅샷 손수정보다 안전).
 - 병합 시 실제로 든 비용: 파일 충돌 11개 + 교차 타입/테스트 오류 20여 곳. 대부분 "두 트랙이 같은 엔티티에 각각 새 필드를 추가"해서 생긴 기계적 충돌이라, 양쪽 필드를 모두 살리면 된다. 다만 **의미 판단이 필요한 곳이 섞인다**(예: Excel 가져오기의 `draft`는 신규 생성용이라 `origin: null`이 맞지만, 부분 갱신용 `patch`에는 넣으면 안 된다 — 넣으면 업로드가 기존 항목의 fork 출처를 지운다).
@@ -289,6 +321,18 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - 패널 재오픈 시 라이브러리 목록 stale(`onOpenChange`에서 refetch 권장), `plan` 참조 변경 시 `useEffect`가 진행 중 선택을 리셋할 수 있음
 - `ensureStarterGlobalLibrary`의 동시 부팅 경합(단일 인스턴스면 무해), `changedFields`에 `domainId`가 허위로 낄 수 있음(표시 전용)
 - customField 로컬 순서변경·origin 왕복 회귀 테스트 없음(구조적으로 성립하나 미고정)
+
+**공용 리소스 승격 (구현 완료, 잔여 한계 — → [설계](specs/2026-08-04-resource-promotion-design.md) §9)**
+- **요청·승인 큐 없음** — 라이브러리 쓰기 권한이 없는 Editor는 승격 탭 자체를 못 본다. 확장점은 `promotion_requests` 테이블 + 조직 화면의 승인 목록
+- **전역 fork 항목을 조직으로 승격하면 전역 재동기화 목록에 그 원본이 `added`로 다시 뜬다**(`nameClash`가 붙어 기본 미선택이라 중복 생성은 막히지만 매번 남는다). "무시" 상태를 기록할 자리가 모델에 없다
+- **undo는 `origin`만 되돌린다** — 라이브러리에 쓴 항목은 남는다(관리 화면에서 삭제해야 한다)
+- `FOR UPDATE`는 **기존 행만** 잠근다 — 서로 다른 프로젝트가 동시에 승격하면 같은 이름의 항목이 2개 생길 수 있다(`resource_items`에 `(library_id, kind, name)` 유니크 제약 없음). 데드락 경로도 이론상 존재한다(승격은 항목→라이브러리 순, `library.remove`는 반대)
+- 동명 판정이 **표시 이름 완전일치**다(공백·대소문자 정규화, 동의어 매칭 없음). 대상에 동명이 여럿이면 `createdAt` 첫 항목을 고르고 사용자가 지목할 수 없다
+- 프로젝트에서 지운 항목이 원본에서 사라지지는 않는다(반대 방향의 보수적 정책과 대칭)
+- `parsePayload` 실패가 400으로 매핑된다(서버측 결함인데 클라 입력 오류로 보인다), `entries`에 같은 `entityId`가 중복되면 조용히 흡수된다
+- 승격 진행 중에도 체크박스·일괄 버튼이 활성(제출 버튼만 비활성), 탭을 전환하면 재동기화 탭의 진행 중 선택이 초기화된다
+- `EntryLabel`이 재동기화 탭과 승격 탭에 거의 동일하게 중복, `resource-panel.tsx`의 `as LibraryRow[]` 캐스트가 서버/클라 shape 드리프트를 컴파일에서 놓친다
+- `planResync`는 아직 정렬 없는 순회를 쓴다(라이브러리 항목 순서에 의존해 현재는 무해하나 `planPromote`와 같은 부류의 잠재 발산)
 
 **Excel 산출물/업로드 (#5)**
 - **"변경분 정의서" 시트 미구현** — 스냅샷 diff 기반이라 Phase 3의 diff 화면과 함께 설계(의도적으로 남긴 유일한 시트)
@@ -372,14 +416,12 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 ## 7. 새 세션 시작 프롬프트 (복사해서 사용)
 
 ```
-ERDD 프로젝트를 이어서 작업한다. 먼저 docs/superpowers/HANDOFF.md를 읽고
-현재 상태·아키텍처 불변식·환경·작업 방식을 파악해라.
+ERDD 프로젝트를 이어서 작업한다. 먼저 CLAUDE.md(반드시 지킬 작업 규칙)와
+docs/superpowers/HANDOFF.md(현재 상태·아키텍처 불변식·환경·작업 방식)를 순서대로 읽어라.
 
-작업 규칙:
-- 응답은 한국어.
-- 커밋은 명시 파일만 스테이징(git add . / -A 금지). .idea/* 와 .env 는 커밋하지 않는다.
-- 커밋 메시지는 한국어 + Co-Authored-By/Claude-Session 트레일러 2줄.
-- 임시 파일은 $CLAUDE_JOB_DIR/tmp 사용.
+CLAUDE.md의 규칙은 예외 없이 지킨다 — 특히 메모리 기능에 프로젝트 지식을 저장하지 않는 것
+(알게 된 것은 문서에 쓰고 커밋한다), 최상위에서 브랜치를 갈아타지 않는 것,
+커밋은 경로를 명시해 스테이징하는 것.
 
 다음 작업: <6절 이월 항목 정리 | docs/90-roadmap.md "추후 검토" 항목 중 하나>를 고른다.
 로드맵의 Phase 1~4(DDL 역설계, CLI 트랙 A·B)가 모두 끝나 정해진 다음 Phase가 없다 —

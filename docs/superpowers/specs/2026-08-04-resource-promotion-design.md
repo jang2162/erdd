@@ -134,6 +134,8 @@ export function applyPromotePlan(
 
 **같은 대상을 두 항목이 주장하지 못하게 한다.** 프로젝트에 같은 이름의 엔티티가 둘 있거나 두 엔티티가 같은 `origin.sourceId`를 들고 있으면 하나의 원본 항목에 두 번 쓰게 된다. `planPromote`는 먼저 나온 항목이 대상을 **선점**하게 하고, 뒤에 나온 항목은 `new`로 떨어뜨린다.
 
+여기서 "먼저 나온"은 **엔티티 id 오름차순**이다(§3.1이 라이브러리 항목 쪽에서 `createdAt` 오름차순을 쓰는 것과 대칭). 정렬을 두는 이유는 미학이 아니다 — `loadProjectModel`의 `SELECT`에 `ORDER BY`가 없어서 컬렉션 순회 순서가 행 재작성에 따라 흔들리고, 동명 항목이 둘일 때 클라이언트와 서버가 서로 다른 쪽에 `name-match`를 주면 **양쪽 다 `plan-changed`로 건너뛰어 재시도해도 영원히 수렴하지 않는다.** id는 uuidv7이라 생성 순서와 같다.
+
 ## 5. 서버
 
 ### 5.1 `runMutation`에 트랜잭션 내 선행 훅
@@ -156,8 +158,12 @@ runMutation(tx, {
 input: {
   projectId: uuid
   libraryId: uuid
-  entries: { entityId: uuid; expectedStatus: PromoteStatus; expectedTargetItemId: uuid | null }[]
-          // .min(1).max(MAX_OPS_PER_MUTATION)
+  entries: {
+    entityId: uuid
+    expectedStatus: PromoteStatus
+    expectedTargetItemId: uuid | null
+    expectedTargetVersion: number | null   // new면 null. update/name-match면 그 시점 targetVersion.
+  }[]   // .min(1).max(MAX_OPS_PER_MUTATION)
 }
 output: { seq: number; inserted: number; updated: number; skipped: { entityId: string; reason: 'missing' | 'plan-changed' }[] }
 ```
@@ -168,10 +174,10 @@ output: { seq: number; inserted: number; updated: number; skipped: { entityId: s
 2. `requireLibraryWrite(db, libraryId, user)` — 조직은 Owner/Admin, 전역은 서비스 관리자
 3. `library.scope === 'org' && library.orgId !== project.orgId` → `FORBIDDEN`. 3이 없으면 **두 조직에 속한 사용자가 A조직 프로젝트의 사전을 B조직 라이브러리로 흘릴 수 있다.**
 
-**payload는 클라에서 받지 않는다.** 서버가 트랜잭션 안에서 모델과 라이브러리 항목을 다시 읽어 `planPromote`를 재계산한다. 클라가 보낸 `expectedStatus`/`expectedTargetItemId`와 다르면 그 항목만 **건너뛴다**(`skipped`). 건너뛴 항목은 라이브러리에도 모델에도 아무것도 쓰지 않으므로 원자성은 그대로다.
+**payload는 클라에서 받지 않는다.** 서버가 트랜잭션 안에서 모델과 라이브러리 항목을 다시 읽어 `planPromote`를 재계산한다. 클라가 보낸 `expectedStatus`/`expectedTargetItemId`/`expectedTargetVersion`과 다르면 그 항목만 **건너뛴다**(`skipped`). `expectedTargetVersion`까지 대조하는 이유: 상태와 대상 id가 같아도 그 사이 다른 사람이 대상 항목의 내용만 고쳤으면(버전만 바뀜) 클라가 본 미리보기(`v3 → v4` 같은 diff)가 이미 낡은 것이고, 그대로 승격하면 최신 편집을 조용히 덮어쓴다 — 행 락은 이 상태 불일치 자체를 막아 주지 않으므로(§5.2 끝 문단) 대조 대상에 버전을 넣는 것으로 막는다. 건너뛴 항목은 라이브러리에도 모델에도 아무것도 쓰지 않으므로 원자성은 그대로다.
 
 - entry가 재계산 계획에 없음(그새 동기화됐거나 엔티티 삭제) → `missing`
-- `status`나 `targetItemId`가 다름 → `plan-changed`
+- `status`·`targetItemId`·`targetVersion` 중 하나라도 다름 → `plan-changed`
 
 **`prepare` 안의 순서:**
 
@@ -187,7 +193,7 @@ for (const w of writes) { /* insert(version: 1) 또는 update(payload, version: 
 await tx.update(resourceLibraries).set({ updatedAt: new Date() }).where(...)
 ```
 
-`FOR UPDATE`로 라이브러리 항목을 잠그고 그 값으로 계획을 세우므로 **버전 경합이 구조적으로 불가능하다**(`items.update`가 동시에 들어와도 우리 커밋 뒤로 밀린다). 락 순서는 항상 (프로젝트 행 → 라이브러리 항목)이고 반대로 잡는 경로가 없어 데드락이 없다.
+`FOR UPDATE`로 라이브러리 항목을 잠그고 그 값으로 계획을 세우므로 **이미 존재하는 항목에 대한 갱신은 직렬화되고, 계획은 항상 잠근 행의 값과 일치한다**(`items.update`가 동시에 들어와도 우리 커밋 뒤로 밀린다). 다만 이 락이 주는 보장은 거기까지다 — READ COMMITTED에서 `FOR UPDATE`는 기존 행만 잠그고 동시 `INSERT`는 막지 않으므로, 서로 다른 두 프로젝트가 동시에 같은 라이브러리로 같은 이름의 신규 항목을 승격하면 동명 항목이 두 개 생길 수 있다(버전 경합이 아니라 삽입 경합 — §9). 또한 데드락 경로가 원리상 없지는 않다: 이 프로시저는 (라이브러리 항목 행들 → `resourceLibraries.updatedAt` 갱신) 순서로 잠그는데 `library.remove`는 반대로 (`resourceLibraries` 행 → cascade로 지워지는 항목 행들) 순서로 잠근다 — 맞물리면 Postgres가 40P01로 한쪽을 중단시키고 끝난다(데이터 훼손 없음, 재시도하면 된다. §9).
 
 `deriveOps`는 `diffModels(model, nextModel)`이다. 전부 skip되면 `writes`도 ops도 비어 `runMutation`이 Revision 없이 현재 seq를 돌려준다.
 
@@ -289,3 +295,5 @@ web
 - 한 승격의 op 수가 `MAX_OPS_PER_MUTATION`(5000)을 넘으면 막는다. 청크 적용은 "단일 Revision = undo 1회" 계약과 충돌해 별도 설계 대상이다.
 - 승격 미리보기의 `payload`는 잠정값이라(§3.4) 도메인을 함께 선택하면 실제 저장되는 값과 `changedFields` 표시가 미세하게 다를 수 있다(표시 전용).
 - **라이브러리 항목 payload에 키가 아예 없으면 그 필드가 `changedFields`에 잡힌다.** 부팅 시드(`ensureStarterGlobalLibrary`)만 `RESOURCE_PAYLOAD_SCHEMAS` 파싱을 우회해 payload를 넣어서 `word.englishName` 키가 없다 — `items.create`/`update`를 거친 항목은 zod 기본값이 채워져 이 문제가 없다. 표시 전용 노이즈다.
+- **`FOR UPDATE`는 동시 `INSERT`를 막지 않는다.** READ COMMITTED에서 라이브러리 항목 행 락은 이미 존재하는 행에만 걸리므로, 서로 다른 두 프로젝트가 동시에 같은 라이브러리로 같은 이름의 신규 항목을 승격하면 동명 항목이 두 개 생길 수 있다(§5.2). 다음 재동기화에서 `nameClash`로 드러나긴 하지만 사전에 막지는 못한다.
+- **원리상 데드락 경로가 있다.** `resource.promote`는 (라이브러리 항목 행들 → `resourceLibraries` 행) 순서로 잠그고 `library.remove`는 (`resourceLibraries` 행 → cascade되는 항목 행들) 순서로 잠근다 — 같은 라이브러리를 동시에 지우면서 승격하면 맞물릴 수 있다. Postgres가 40P01로 한쪽을 중단시키고 끝나 데이터는 훼손되지 않지만(§5.2), 락 순서를 통일하는 별도 작업 없이는 원리상 남는다.

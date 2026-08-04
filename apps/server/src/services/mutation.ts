@@ -55,6 +55,12 @@ export async function runMutation(
     projectId: string
     actorUserId: string
     source: 'web' | 'cli' | 'system'
+    /**
+     * 락 획득·모델 로드 뒤, deriveOps 앞에 같은 트랜잭션에서 실행한다.
+     * 모델 밖 테이블(예: 공용 리소스 라이브러리)을 프로젝트 행 락 안에서 함께 쓰기 위한 훅이다.
+     * 여기서 던지면 모델 변경과 함께 롤백된다.
+     */
+    prepare?: (tx: MutationTx, model: ProjectModel) => Promise<void>
     deriveOps: (model: ProjectModel, seq: number) => Op[]
     summary?: string
   },
@@ -64,6 +70,7 @@ export async function runMutation(
     throw new TRPCError({ code: 'NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' })
   }
   const model = await loadProjectModel(tx, args.projectId)
+  if (args.prepare) await args.prepare(tx, model)
   // seq를 먼저 읽는다 — deriveOps가 낙관적 동시성 검사(CLI push의 expectedSeq)에 쓴다.
   // 둘 다 같은 락 안의 읽기라 순서는 결과에 영향이 없다.
   const seqNow = await currentSeq(tx, args.projectId)

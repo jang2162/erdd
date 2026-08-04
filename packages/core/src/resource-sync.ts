@@ -1,8 +1,8 @@
 import { deepEqual } from './equal.js'
 import type { Origin, ProjectModel } from './model.js'
 import {
-  RESOURCE_COLLECTION_BY_KIND, RESOURCE_KINDS, resourceDisplayName, resourcePayloadOf,
-  type ResourceKind,
+  RESOURCE_COLLECTION_BY_KIND, RESOURCE_KINDS, resourceDisplayName, resourceEntitiesOf,
+  resourcePayloadOf, type ResourceKind,
 } from './resource.js'
 
 /** 라이브러리 항목(서버 resource_items 한 행). payload는 라이브러리 공간이다. */
@@ -47,13 +47,6 @@ export type ResyncPlan = {
   keptDetached: number
 }
 
-type OriginBearing = { id: string; origin: Origin | null }
-
-function entitiesOf(model: ProjectModel, kind: ResourceKind): OriginBearing[] {
-  const collection = model[RESOURCE_COLLECTION_BY_KIND[kind]] as unknown as Record<string, OriginBearing>
-  return Object.values(collection)
-}
-
 function keyOf(kind: ResourceKind, sourceId: string): string {
   return `${kind}:${sourceId}`
 }
@@ -82,14 +75,16 @@ function projectPayload(
 export function planResync(
   model: ProjectModel, libraryId: string, items: readonly LibraryItem[],
 ): ResyncPlan {
-  const linked = new Map<string, { entity: OriginBearing; payload: Record<string, unknown> }>()
+  const linked = new Map<
+    string, { entity: { id: string; origin: Origin | null }; payload: Record<string, unknown> }
+  >()
   const idBySource = new Map<string, string>()
   const namesByKind = new Map<ResourceKind, Set<string>>()
   let keptLocal = 0
 
   for (const kind of RESOURCE_KINDS) {
     const names = new Set<string>()
-    for (const entity of entitiesOf(model, kind)) {
+    for (const entity of resourceEntitiesOf(model, kind)) {
       const payload = resourcePayloadOf(kind, entity as unknown as Record<string, unknown>)
       names.add(resourceDisplayName(kind, payload).trim())
       if (!entity.origin) { keptLocal += 1; continue }
@@ -172,7 +167,7 @@ export function applyResyncPlan(
   //    도메인을 용어가 참조할 수 있어야 한다.
   const idBySource = new Map<string, string>()
   for (const kind of RESOURCE_KINDS) {
-    for (const entity of entitiesOf(model, kind)) {
+    for (const entity of resourceEntitiesOf(model, kind)) {
       if (entity.origin) idBySource.set(keyOf(kind, entity.origin.sourceId), entity.id)
     }
   }
