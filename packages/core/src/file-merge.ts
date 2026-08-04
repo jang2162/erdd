@@ -1,5 +1,5 @@
 import { deepEqual } from './equal.js'
-import { TREE_ROOT, tableFileName } from './file-format.js'
+import { TOP_LEVEL_FILES, TREE_ROOT, tableFileName } from './file-format.js'
 import { DIFF_KIND_LABEL } from './model-diff.js'
 import type { Origin, ProjectModel } from './model.js'
 import { COLLECTION_BY_KIND, ENTITY_KINDS, type EntityKind } from './op.js'
@@ -124,12 +124,20 @@ function collectionOf(model: ProjectModel, kind: MergeKind): Record<string, Enti
   return model[COLLECTION_BY_KIND[kind]] as unknown as Record<string, Entity>
 }
 
+/**
+ * 최상위 파일 엔티티 → 경로. 리터럴을 여기 또 적지 않고 TOP_LEVEL_FILES(file-format.ts)에서
+ * 위치로 뽑아 쓴다 — 그쪽 배열 하나만 고치면 이쪽도 따라오므로, 파일명을 한쪽만 바꿔
+ * 존재하지 않는 파일을 가리키는 사고가 구조적으로 나지 않는다. 순서는
+ * TOP_LEVEL_FILES 정의 순서(groups·words·terms·domains·custom-fields)와 같다.
+ */
+const [GROUPS_PATH, WORDS_PATH, TERMS_PATH, DOMAINS_PATH, CUSTOM_FIELDS_PATH] = TOP_LEVEL_FILES
+
 const TOP_LEVEL_PATH: Partial<Record<MergeKind, string>> = {
-  tableGroup: `${TREE_ROOT}/groups.yaml`,
-  word: `${TREE_ROOT}/words.yaml`,
-  term: `${TREE_ROOT}/terms.yaml`,
-  domain: `${TREE_ROOT}/domains.yaml`,
-  customField: `${TREE_ROOT}/custom-fields.yaml`,
+  tableGroup: GROUPS_PATH,
+  word: WORDS_PATH,
+  term: TERMS_PATH,
+  domain: DOMAINS_PATH,
+  customField: CUSTOM_FIELDS_PATH,
 }
 
 /** 관계는 자식 테이블 파일에만 적힌다. */

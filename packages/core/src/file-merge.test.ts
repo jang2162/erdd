@@ -179,6 +179,10 @@ describe('mergeModels — 필드 단위', () => {
 
   it('참조형 필드는 각자의 모델 기준으로 이름을 풀고 YAML 키 이름으로 보고한다', () => {
     const { base, local, server } = trio()
+    // d1을 서버에서만 개명한다 — local·server 둘 다 같은 id('d1')를 서버 모델로만 풀면
+    // (버그: "항상 서버 모델로 해석") local 값이 우연히 base와 같아지는 일이 없도록
+    // local의 d1과 서버의 d1이 서로 다른 이름을 갖게 만든다.
+    server.domains['d1']!.name = '식별명'
     server.domains['d2'] = { ...server.domains['d1']!, id: 'd2', name: '식별번호' }
     local.columns['c1']!.domainId = 'd1'
     server.columns['c1']!.domainId = 'd2'
@@ -197,6 +201,45 @@ describe('mergeModels — 필드 단위', () => {
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts[0]).toMatchObject({
       path: 'erdd/words.yaml', label: '단어 회원', field: 'abbreviation',
+    })
+  })
+
+  it.each([
+    ['tableGroup', 'groups.yaml', (m: { local: ProjectModel; server: ProjectModel }) => {
+      m.local.tableGroups['g1']!.name = '회원관리부'
+      m.server.tableGroups['g1']!.name = '회원부'
+    }] as const,
+    ['domain', 'domains.yaml', (m: { local: ProjectModel; server: ProjectModel }) => {
+      m.local.domains['d1']!.name = '명칭'
+      m.server.domains['d1']!.name = '식별명'
+    }] as const,
+    ['term', 'terms.yaml', (m: { local: ProjectModel; server: ProjectModel }) => {
+      m.local.terms['t1']!.physicalName = 'MBR_NO_L'
+      m.server.terms['t1']!.physicalName = 'MBR_NO_S'
+    }] as const,
+    ['customField', 'custom-fields.yaml', (m: { local: ProjectModel; server: ProjectModel }) => {
+      m.local.customFields['cf1']!.name = '개인정보여부_L'
+      m.server.customFields['cf1']!.name = '개인정보여부_S'
+    }] as const,
+  ])('최상위 파일 엔티티(%s)의 path는 %s다', (kind, file, mutate) => {
+    const { base, local, server } = trio()
+    mutate({ local, server })
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({ kind, path: `erdd/${file}` })
+  })
+
+  it('관계 충돌의 path는 부모가 아니라 자식 테이블 파일이다', () => {
+    const { base, local, server } = trio()
+    // r1은 부모 tb1(MBR) → 자식 tb2(ORD). 관계는 자식 테이블 파일에만 적히므로
+    // path는 ORD.yaml이어야 한다 — parentTableId로 잘못 짚으면 MBR.yaml이 나온다.
+    local.relationships['r1']!.name = 'FK_LOCAL'
+    server.relationships['r1']!.name = 'FK_SERVER'
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({
+      kind: 'relationship', entityId: 'r1', field: 'name', reason: 'field',
+      path: 'erdd/tables/ORD.yaml',
     })
   })
 })
