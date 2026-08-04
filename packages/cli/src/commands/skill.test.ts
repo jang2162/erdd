@@ -36,6 +36,15 @@ describe('skill install', () => {
     expect(out.join('')).toContain('--force')
   })
 
+  it('디렉터리는 있어도 SKILL.md가 없으면 --force 없이도 설치한다', async () => {
+    await mkdir(join(dir, '.claude/skills/erdd'), { recursive: true })
+    await writeFile(join(dir, '.claude/skills/erdd/다른파일.txt'), '무관한 내용', 'utf8')
+    expect(await skill(ctx())).toBe(0)
+    const body = await readFile(join(dir, '.claude/skills/erdd/SKILL.md'), 'utf8')
+    expect(body).toContain('name: erdd')
+    expect(JSON.parse(out.join(''))).toMatchObject({ ok: true, overwritten: false })
+  })
+
   it('--force면 덮어쓴다', async () => {
     await mkdir(join(dir, '.claude/skills/erdd'), { recursive: true })
     await writeFile(join(dir, '.claude/skills/erdd/SKILL.md'), '내 것', 'utf8')
