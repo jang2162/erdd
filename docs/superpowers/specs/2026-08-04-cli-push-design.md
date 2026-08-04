@@ -451,7 +451,7 @@ description: Use when reading or changing this project's database schema — the
 **server (`model-push.test.ts`, 실 DB)** — §5.2의 5건
 
 **cli**
-- `push`: 충돌 시 exit 1이고 **서버를 호출하지 않는다**, 변경 없음 exit 0,
+- `push`: 충돌 시 exit 1이고 **`model.push`를 호출하지 않는다**(충돌을 알려면 `model.get`은 부른다), 변경 없음 exit 0,
   삭제 확인 거부 시 `CANCELLED`, `CONFLICT` 1회 재시도 후 성공, 두 번 연속 `CONFLICT`면 실패,
   성공 후 트리·base·sync가 갱신된다, op 상한 초과를 클라가 막는다, `erdd/` 부재 거부
 - `diff`: 세 묶음 출력, `--strict` 종료 코드, `--json` 스키마
