@@ -313,6 +313,9 @@ export function gridPositions(server: ProjectModel, count: number): Position[] {
  *
  * 처리 방식이 둘로 갈린다:
  * - **소속이 사라진 엔티티는 지운다**(컬럼·인덱스·관계) — 부모 없이 존재할 수 없다.
+ *   컬럼이 살아 있어도 다른 테이블로 옮겨갔으면(예: 파일을 옮기며 id를 유지) 인덱스·관계
+ *   입장에서는 "소속이 다른" 것과 같다 — integrity.ts(84-114)가 요구하는 소유권 불변식이라
+ *   같은 정책으로 지운다.
  * - **매달린 스칼라 참조는 null로 끊는다**(table.groupId·column.domainId·term.domainId) —
  *   엔티티 자체는 멀쩡하고 참조만 무효다. 지우면 사용자 데이터를 잃는다.
  *
@@ -329,7 +332,10 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
   }
   for (const [id, ix] of Object.entries(model.indexes)) {
     const bad = model.tables[ix.tableId] === undefined
-      || ix.columns.some((c) => model.columns[c.columnId] === undefined)
+      || ix.columns.some((c) => {
+        const col = model.columns[c.columnId]
+        return col === undefined || col.tableId !== ix.tableId
+      })
     if (!bad) continue
     delete model.indexes[id]
     pruned.push({ kind: 'index', entityId: id, label: `인덱스 ${ix.name}`, reason })
@@ -337,8 +343,12 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
   for (const [id, r] of Object.entries(model.relationships)) {
     const bad = model.tables[r.parentTableId] === undefined
       || model.tables[r.childTableId] === undefined
-      || r.columnMappings.some((m) =>
-        model.columns[m.childColumnId] === undefined || model.columns[m.parentColumnId] === undefined)
+      || r.columnMappings.some((m) => {
+        const child = model.columns[m.childColumnId]
+        const parent = model.columns[m.parentColumnId]
+        return child === undefined || child.tableId !== r.childTableId
+          || parent === undefined || parent.tableId !== r.parentTableId
+      })
     if (!bad) continue
     delete model.relationships[id]
     pruned.push({ kind: 'relationship', entityId: id, label: `관계 ${r.name ?? id}`, reason })
@@ -378,6 +388,11 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
  * merged는 파일 가시 공간이라 좌표·origin이 비어 있고 notes가 없다. 그대로 diffModels에
  * 넣으면 메모가 전멸하고 좌표가 0으로 초기화되며 fork 출처가 지워진다. 살아남은 엔티티는
  * **서버 엔티티에서 출발해 가시 필드만 덮어쓰고**, notes는 서버 것을 그대로 통과시킨다.
+ *
+ * `out`의 각 엔티티·`notes`는 `server`를 얕게 복사한 것이라 position·columnMappings·
+ * index.columns 같은 중첩 값은 여전히 server와 참조를 공유한다. pruneDangling이 스칼라
+ * 필드만 고치거나 엔티티를 통째로 지우기만 해서 지금은 안전하다 — 중첩 값을 제자리에서
+ * 고치는 정리 로직이 생기면 server를 오염시키므로 그때는 깊은 복사가 필요하다.
  */
 export function applyMerge(
   server: ProjectModel, merged: ProjectModel,

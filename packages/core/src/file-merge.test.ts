@@ -306,6 +306,29 @@ describe('applyMerge', () => {
     expect(model.tables['tb9']!.position).toEqual({ x: 10, y: 300 })
     expect(model.tables['tb1']!.position).toEqual({ x: 10, y: 20 })
   })
+
+  it('server 인자를 변형하지 않는다', () => {
+    const server = fullModel()
+    // pruneDangling이 지울 거리를 하나 만든다 — 스칼라 정리뿐 아니라
+    // 엔티티 통째 삭제 경로도 server를 건드리지 않는지 확인한다.
+    server.relationships['r9'] = {
+      id: 'r9', parentTableId: 'tb1', childTableId: 'tb3',
+      columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c1' }],
+      cardinality: '1:N', identifying: false, name: 'FK_EXTRA',
+    }
+    const before = clone(server)
+    const base = fileVisibleModel(fullModel())     // r9 이전 시점
+    const local = clone(base)
+    delete local.tables['tb3']
+    delete local.columns['c5']
+    delete local.columns['c6']
+    delete local.relationships['r2']
+
+    const { merged } = mergeModels(base, local, fileVisibleModel(server))
+    applyMerge(server, merged)
+
+    expect(server).toEqual(before)
+  })
 })
 
 describe('pruneDangling', () => {
@@ -344,6 +367,30 @@ describe('pruneDangling', () => {
     const pruned = pruneDangling(m)
     expect(m.indexes['ix1']).toBeUndefined()
     expect(pruned.map((p) => p.entityId)).toContain('ix1')
+  })
+
+  it('컬럼이 다른 테이블로 옮겨가면(존재는 하지만 소속이 다르면) 인덱스를 지운다', () => {
+    // c2는 여전히 존재한다 — 다만 tb1이 아니라 tb2 소속으로 파일이 옮겨졌다.
+    // ix1(tableId: tb1)이 그 컬럼을 계속 가리키면 integrity.ts의 소유권 검사에 걸린다.
+    const m = fullModel()
+    m.columns['c2']!.tableId = 'tb2'
+    const pruned = pruneDangling(m)
+    expect(m.indexes['ix1']).toBeUndefined()
+    expect(pruned).toContainEqual({
+      kind: 'index', entityId: 'ix1', label: '인덱스 UX_MBR_01', reason: '참조 대상이 삭제됨',
+    })
+  })
+
+  it('관계의 매핑 컬럼이 다른 테이블로 옮겨가면 관계를 지운다', () => {
+    // r2는 childTableId: tb3(c5) → parentTableId: tb1(c1). c5는 오직 r2만 참조하므로
+    // c5가 tb2로 옮겨가면(존재는 계속함) r2만 소유권 불일치로 걸린다.
+    const m = fullModel()
+    m.columns['c5']!.tableId = 'tb2'
+    const pruned = pruneDangling(m)
+    expect(m.relationships['r2']).toBeUndefined()
+    expect(pruned).toContainEqual({
+      kind: 'relationship', entityId: 'r2', label: '관계 r2', reason: '참조 대상이 삭제됨',
+    })
   })
 
   it('매달린 스칼라 참조는 엔티티를 지우지 않고 null로 끊는다', () => {
