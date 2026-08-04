@@ -4,6 +4,7 @@ import { Library } from 'lucide-react'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
 import { ResourceResyncTab } from './resource-resync-tab.js'
+import { ResourcePromoteTab } from './resource-promote-tab.js'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -97,6 +98,9 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
             )}
             {library !== null && tab === 'resync' && (
               <ResourceResyncTab projectId={projectId} library={library} />
+            )}
+            {library !== null && tab === 'promote' && (
+              <ResourcePromoteTab projectId={projectId} library={library} />
             )}
           </div>
         </div>
