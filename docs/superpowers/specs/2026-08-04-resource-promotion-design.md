@@ -99,9 +99,14 @@ export type PromotePlan = {
   syncedCount: number
 }
 
-export type PromoteWrite =
-  | { mode: 'insert'; itemId: string; kind: ResourceKind; payload: Record<string, unknown> }
-  | { mode: 'update'; itemId: string; kind: ResourceKind; payload: Record<string, unknown> }
+export type PromoteWrite = {
+  mode: 'insert' | 'update'
+  itemId: string
+  kind: ResourceKind
+  payload: Record<string, unknown>
+  /** 저장할 버전 — insert면 1, update면 targetVersion + 1. 서버는 이 값을 그대로 쓴다. */
+  version: number
+}
 
 /** 프로젝트 모델 + 대상 라이브러리 항목 → 승격 계획(순수). */
 export function planPromote(
@@ -125,7 +130,9 @@ export function applyPromotePlan(
 1. **색인 완성** — 선택된 `new` 항목에 id를 먼저 전부 발급하고, 선택 여부와 무관하게 이미 대상 라이브러리에 링크된 도메인의 `origin.sourceId`도 색인에 넣는다(§3.4의 1·2).
 2. **항목별 처리** — 최종 payload = `libraryPayload(kind, resourcePayloadOf(entity), 색인)`. `writes`에 insert/update를 쌓고, `nextModel`의 엔티티에 `origin = { libraryId, sourceId: itemId, sourceVersion: new ? 1 : targetVersion + 1, base }`를 넣는다. `base`는 §3.3대로 최종 payload를 **프로젝트 공간으로 되투영**한 값이며, 되투영 색인은 "기존 origin(대상 라이브러리) + 이번 배치에서 부여될 (itemId → entityId)"의 합집합이다.
 
-`update` 항목의 `mode: 'update'`에 버전을 싣지 않는 이유는 §5.2의 행 락 때문이다 — 계획을 세운 트랜잭션이 그 행을 이미 잠그고 있어 낙관적 검사가 필요 없다.
+`version`을 core가 계산해 싣는 이유는 §5.2의 행 락 때문이다 — 계획을 세운 트랜잭션이 그 행을 이미 잠그고 있으므로 `version + 1`을 SQL 식으로 미룰 필요가 없고, 값이 계획에 있으면 core 테스트가 버전 진행을 직접 고정할 수 있다.
+
+**같은 대상을 두 항목이 주장하지 못하게 한다.** 프로젝트에 같은 이름의 엔티티가 둘 있거나 두 엔티티가 같은 `origin.sourceId`를 들고 있으면 하나의 원본 항목에 두 번 쓰게 된다. `planPromote`는 먼저 나온 항목이 대상을 **선점**하게 하고, 뒤에 나온 항목은 `new`로 떨어뜨린다.
 
 ## 5. 서버
 
@@ -281,3 +288,4 @@ web
 - 대상에 동명이 여러 개면 첫 항목을 고른다(사용자가 어느 것인지 고를 수 없다).
 - 한 승격의 op 수가 `MAX_OPS_PER_MUTATION`(5000)을 넘으면 막는다. 청크 적용은 "단일 Revision = undo 1회" 계약과 충돌해 별도 설계 대상이다.
 - 승격 미리보기의 `payload`는 잠정값이라(§3.4) 도메인을 함께 선택하면 실제 저장되는 값과 `changedFields` 표시가 미세하게 다를 수 있다(표시 전용).
+- **라이브러리 항목 payload에 키가 아예 없으면 그 필드가 `changedFields`에 잡힌다.** 부팅 시드(`ensureStarterGlobalLibrary`)만 `RESOURCE_PAYLOAD_SCHEMAS` 파싱을 우회해 payload를 넣어서 `word.englishName` 키가 없다 — `items.create`/`update`를 거친 항목은 zod 기본값이 채워져 이 문제가 없다. 표시 전용 노이즈다.
