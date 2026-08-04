@@ -124,6 +124,35 @@ describe('planPromote — 분류', () => {
     expect(plan.entries.map((e) => [e.entityId, e.status])).toEqual([['w1', 'name-match'], ['w2', 'new']])
   })
 
+  it('동명 선점 판정은 모델 객체의 키 삽입 순서가 아니라 엔티티 id 순서를 따른다', () => {
+    // resourceEntitiesOf는 Object.values 순서를 낸다 — DB에서 다시 읽을 때(SELECT에
+    // ORDER BY 없음) 이 순서는 보장되지 않는다. 클라(스토어 모델)와 서버(재조회 모델)가
+    // 같은 두 엔티티를 반대 순서로 들고 있어도 planPromote는 같은 결과를 내야 한다 —
+    // 그렇지 않으면 두 쪽이 서로 다른 엔티티를 선점자로 보고, 재시도해도 영원히
+    // plan-changed로 건너뛴다(리뷰가 재현한 무한 skip).
+    const later = localWord('id-b-later', '회원', 'MB')     // id 사전식으로 더 큼
+    const earlier = localWord('id-a-earlier', '회원', 'MEM') // id 사전식으로 더 작음 → 먼저 나온 것으로 취급돼야 함
+    const items = [wordItem('s1', '회원', 'MBR')]
+
+    const modelLaterKeyFirst: ProjectModel = {
+      ...createEmptyModel(), words: { 'id-b-later': later, 'id-a-earlier': earlier },
+    }
+    const modelEarlierKeyFirst: ProjectModel = {
+      ...createEmptyModel(), words: { 'id-a-earlier': earlier, 'id-b-later': later },
+    }
+
+    const triples = (entries: { entityId: string; status: string; targetItemId: string | null }[]) =>
+      entries.map((e) => [e.entityId, e.status, e.targetItemId])
+
+    const planA = planPromote(modelLaterKeyFirst, LIB, items)
+    const planB = planPromote(modelEarlierKeyFirst, LIB, items)
+    expect(triples(planA.entries)).toEqual(triples(planB.entries))
+    expect(triples(planA.entries)).toEqual([
+      ['id-a-earlier', 'name-match', 's1'],
+      ['id-b-later', 'new', null],
+    ])
+  })
+
   it('용어의 도메인이 대상에 링크돼 있으면 라이브러리 항목 id로 역투영한다', () => {
     const model: ProjectModel = {
       ...createEmptyModel(),

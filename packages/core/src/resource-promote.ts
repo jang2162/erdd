@@ -1,8 +1,9 @@
 import { deepEqual } from './equal.js'
 import type { Origin, ProjectModel } from './model.js'
+import { OpApplyError } from './op.js'
 import {
-  RESOURCE_COLLECTION_BY_KIND, RESOURCE_KINDS, resourceDisplayName, resourceEntitiesOf,
-  resourcePayloadOf, type ResourceKind,
+  RESOURCE_COLLECTION_BY_KIND, RESOURCE_KINDS, RESOURCE_PAYLOAD_SCHEMAS, resourceDisplayName,
+  resourceEntitiesOf, resourcePayloadOf, type ResourceKind,
 } from './resource.js'
 import type { LibraryItem } from './resource-sync.js'
 
@@ -61,6 +62,18 @@ function nameKey(kind: ResourceKind, name: string): string {
 }
 
 /**
+ * resourceEntitiesOf는 Object.values 순서(= 모델에 쓰인 삽입 순서)를 낸다. 그 순서는
+ * DB에서 다시 읽을 때(SELECT에 ORDER BY 없음) 보장되지 않으므로, "먼저 나온 항목이
+ * 선점한다"는 승격 판정이 흔들리지 않도록 id(uuidv7 — 생성 순서) 오름차순으로 고정한다.
+ * 클라와 서버가 같은 모델 내용에서 같은 순서로 이 함수를 부르면 항상 같은 결과를 낸다.
+ */
+function sortedResourceEntities(
+  model: ProjectModel, kind: ResourceKind,
+): { id: string; origin: Origin | null }[] {
+  return [...resourceEntitiesOf(model, kind)].sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/**
  * 프로젝트 모델과 대상 라이브러리 항목을 비교해 승격 계획을 만든다.
  * "이미 올라가 있다"의 판정은 payload 비교다 — 재동기화와 달리 버전으로는 판정할 수 없다
  * (프로젝트가 원본을 마지막으로 본 시점이 아니라 지금 값이 같은지가 관심사다).
@@ -74,7 +87,7 @@ export function planPromote(
   const linkedItemId = new Map<string, string>()
   const claimed = new Set<string>()
   for (const kind of RESOURCE_KINDS) {
-    for (const entity of resourceEntitiesOf(model, kind)) {
+    for (const entity of sortedResourceEntities(model, kind)) {
       const origin = entity.origin
       if (!origin || origin.libraryId !== libraryId) continue
       if (!itemById.has(origin.sourceId) || claimed.has(origin.sourceId)) continue
@@ -95,7 +108,7 @@ export function planPromote(
   let syncedCount = 0
 
   for (const kind of RESOURCE_KINDS) {
-    for (const entity of resourceEntitiesOf(model, kind)) {
+    for (const entity of sortedResourceEntities(model, kind)) {
       const raw = resourcePayloadOf(kind, entity as unknown as Record<string, unknown>)
       const payload = libraryPayload(kind, raw, linkedItemId)
       const name = resourceDisplayName(kind, raw)
@@ -218,8 +231,17 @@ export function applyPromotePlan(
     const entity = collection[entry.entityId]
     if (!entity) continue   // 위 존재 확인과 같은 조건 — id 발급 단계에서 이미 걸러졌다
     const itemId = itemIdByEntity.get(entry.entityId)!
-    const payload = libraryPayload(
+    const projected = libraryPayload(
       entry.kind, resourcePayloadOf(entry.kind, entity), itemIdByEntity)
+    // 저장될 값(라이브러리 payload 스키마 파싱 결과)과 origin.base가 서로 다른 값에서
+    // 파생되지 않도록, 여기서 한 번 파싱해 그 결과를 write.payload와 base 계산 모두에 쓴다 —
+    // 스키마가 나중에 기본값·변환을 갖게 되어도 두 값이 갈라지지 않는다.
+    const parsed = RESOURCE_PAYLOAD_SCHEMAS[entry.kind].safeParse(projected)
+    if (!parsed.success) {
+      throw new OpApplyError(
+        `승격 payload 형식 오류(${entry.kind} ${entry.entityId}) — ${parsed.error.message}`)
+    }
+    const payload = parsed.data as Record<string, unknown>
     const version = entry.targetVersion === null ? 1 : entry.targetVersion + 1
     writes.push({
       mode: entry.targetItemId === null ? 'insert' : 'update',
