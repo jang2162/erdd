@@ -11,6 +11,7 @@ import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
+import { overLimitMessage } from './resource-decisions.js'
 
 const PROJECT_ID = 'p1'
 const LIBS = [
@@ -34,6 +35,12 @@ function term(id: string, logicalName: string, domainId: string | null): Term {
 
 vi.mock('./use-model.js', () => ({ useModelMutation: () => vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+// overLimitMessage는 실제 구현으로 통과시키되(다른 테스트는 그대로 동작), op 상한 가드
+// 테스트에서만 mockReturnValueOnce로 값을 강제해 수천 행을 렌더하지 않고 가드를 트리거한다.
+vi.mock('./resource-decisions.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./resource-decisions.js')>()
+  return { ...actual, overLimitMessage: vi.fn(actual.overLimitMessage) }
+})
 
 function renderPanel(
   handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel,
@@ -82,6 +89,24 @@ describe('ResourcePromoteTab', () => {
     await openPromoteTab()
     expect(await screen.findByText('신규 추가 (1)')).toBeDefined()
     expect(screen.getByRole('checkbox', { name: '회원 선택' })).toHaveProperty('checked', true)
+  })
+
+  it('op 상한 가드가 걸리면 승격을 눌러도 mutate를 부르지 않고 오류 토스트를 띄운다', async () => {
+    // 리팩터가 onPromote에서 overLimitMessage 호출을 지워도 다른 테스트는 모두 통과한다 —
+    // 이 테스트만 그 규약을 직접 지킨다. 수천 행을 렌더해 실제로 상한을 넘기는 대신
+    // overLimitMessage 자체를 이번 호출 한 번만 상한 초과로 흉내 낸다.
+    vi.mocked(overLimitMessage).mockReturnValueOnce('한 번에 너무 많은 항목입니다')
+    const promoted = vi.fn(() => ({ data: { seq: 1, inserted: 1, updated: 0, skipped: [] } }))
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+      'resource.promote': promoted,
+    }, { ...createEmptyModel(), words: { w1: word('w1', '회원', 'MBR') } })
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (1)')
+    await userEvent.click(screen.getByRole('button', { name: '승격' }))
+    expect(promoted).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith('한 번에 너무 많은 항목입니다')
   })
 
   it('동명 항목은 "동명 발견"으로 뜨고 기본 미선택이다', async () => {

@@ -11,6 +11,7 @@ import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
+import { overLimitMessage } from './resource-decisions.js'
 
 const PROJECT_ID = 'p1'
 const LIBS = [
@@ -24,6 +25,12 @@ const ITEMS = [
 const mutate = vi.fn()
 vi.mock('./use-model.js', () => ({ useModelMutation: () => mutate }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+// overLimitMessage는 실제 구현으로 통과시키되(다른 테스트는 그대로 동작), op 상한 가드
+// 테스트에서만 mockReturnValueOnce로 값을 강제해 수천 행을 렌더하지 않고 가드를 트리거한다.
+vi.mock('./resource-decisions.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./resource-decisions.js')>()
+  return { ...actual, overLimitMessage: vi.fn(actual.overLimitMessage) }
+})
 
 function renderPanel(
   handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel,
@@ -74,6 +81,22 @@ describe('ResourcePanel', () => {
     const [producer] = mutate.mock.calls[0]!
     const next = producer(createEmptyModel()) as ProjectModel
     expect(Object.keys(next.words)).toHaveLength(2)
+  })
+
+  it('op 상한 가드가 걸리면 적용을 눌러도 mutate를 부르지 않고 오류 토스트를 띄운다', async () => {
+    // 리팩터가 onApply에서 overLimitMessage 호출을 지워도 다른 테스트는 모두 통과한다 —
+    // 이 테스트만 그 규약을 직접 지킨다. 수천 행을 렌더해 실제로 상한을 넘기는 대신
+    // overLimitMessage 자체를 이번 호출 한 번만 상한 초과로 흉내 낸다.
+    vi.mocked(overLimitMessage).mockReturnValueOnce('한 번에 너무 많은 항목입니다')
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (2)')
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    expect(mutate).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith('한 번에 너무 많은 항목입니다')
   })
 
   it('처리할 것이 없으면 적용 버튼이 비활성', async () => {
@@ -251,5 +274,34 @@ describe('ResourcePanel', () => {
     }, createEmptyModel())
     await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
     expect(screen.queryByRole('tab', { name: '조직으로 승격' })).toBeNull()
+  })
+
+  it('라이브러리 조회가 끝나기 전에는 "사용할 수 있는 라이브러리가 없습니다"가 뜨지 않는다', async () => {
+    // rows는 libraries.data ?? []라 조회가 pending인 동안도 빈 배열이다 — isPending을
+    // 함께 보지 않으면 결국 데이터가 차는 라이브러리 목록에서도 로딩 중 잠깐 빈 상태
+    // 문구가 flash한다. fetch를 붙잡아 두고 pending 시점을 직접 확인한다.
+    let resolveFetch: (res: Response) => void = () => {}
+    const pending = new Promise<Response>((resolve) => { resolveFetch = resolve })
+    vi.stubGlobal('fetch', vi.fn(() => pending))
+    useEditorStore.getState().setLoaded(createEmptyModel(), 0, PROJECT_ID)
+    grantEditPermission({ canEdit: true, canManage: true })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+          <ResourcePanel projectId={PROJECT_ID} />
+        </TRPCProvider>
+      </QueryClientProvider>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
+    expect(screen.queryByText('사용할 수 있는 라이브러리가 없습니다')).toBeNull()
+
+    resolveFetch(new Response(JSON.stringify([{ result: { data: [] } }]), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }))
+    await waitFor(() =>
+      expect(screen.getByText('사용할 수 있는 라이브러리가 없습니다')).toBeDefined())
   })
 })

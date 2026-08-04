@@ -90,6 +90,7 @@ export function ResourcePromoteTab({
         entityId: entry.entityId,
         expectedStatus: entry.status,
         expectedTargetItemId: entry.targetItemId,
+        expectedTargetVersion: entry.targetVersion,
       })),
     })
   }

@@ -73,7 +73,7 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
             {libraries.isError && (
               <p role="alert" className="text-destructive">{libraries.error.message}</p>
             )}
-            {!libraries.isError && visible.length === 0 && (
+            {!libraries.isError && !libraries.isPending && visible.length === 0 && (
               <p className="text-sm text-muted-foreground">사용할 수 있는 라이브러리가 없습니다</p>
             )}
             {visible.map((lib) => (
