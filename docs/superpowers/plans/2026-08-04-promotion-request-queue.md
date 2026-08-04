@@ -563,7 +563,7 @@ import { and, asc, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import { MAX_OPS_PER_MUTATION, planPromote, type LibraryItem } from '@erdd/core'
-import { projects, promotionRequests, resourceItems, users } from '../db/schema.js'
+import { promotionRequests, resourceItems, users } from '../db/schema.js'
 import { loadProjectModel } from '../services/model-store.js'
 import { requireProjectAccess } from '../services/perm.js'
 import { requireLibraryRead } from '../services/resource-library.js'
@@ -685,7 +685,7 @@ export const promotionRouter = router({
 })
 ```
 
-> `projects` import는 Task 3에서 `listForOrg`가 쓴다. 이 태스크에서 안 쓰면 typecheck가 unused로 잡지는 않지만(리포에 eslint가 없다) **지금은 넣지 말고 Task 3에서 추가한다.**
+> `projects`·`resourceLibraries`·`members` 테이블은 이 태스크에서 쓰지 않는다(Task 3의 `listForOrg`·`pendingCount`가 쓴다). import에 미리 넣지 마라.
 
 - [ ] **Step 7: 라우터 등록**
 
@@ -1372,7 +1372,9 @@ Expected: PASS (16건)
   })
 ```
 
-> **구분력 확인(필수):** `resolve`의 `prepare` 훅에서 **락 안 status 확인 3줄을 지우고** 이 테스트를 돌려라. 트랜잭션 밖 사전 확인이 여전히 CONFLICT를 내므로 **테스트가 그대로 통과할 수 있다** — 그러면 이 테스트는 락 안 확인을 지키지 못한다. 그 경우 **사전 확인과 락 안 확인 중 어느 것이 이 테스트를 붙잡는지 보고하라.** 덮지 마라.
+> **이 테스트가 지키는 것을 정확히 알아 두라.** 이것은 "닫힌 요청은 라이브러리를 건드리지 않는다"는 **사용자 관찰 가능한 계약** 테스트이지, 락 안 확인만을 겨냥한 구분력 테스트가 아니다. 방어선이 둘(트랜잭션 밖 사전 확인 + 락 안 확인)이라 어느 하나를 지워도 통과한다 — 그것은 결함이 아니라 이중 방어의 성질이다.
+>
+> **구분력 확인(필수):** `resolve`의 사전 확인과 락 안 확인을 **둘 다** 지우고 돌려라. 그러면 실패해야 한다(닫힌 요청이 다시 승격된다). 실패하지 않으면 이 테스트는 아무것도 붙잡지 못하는 것이므로 **덮지 말고 그렇다고 보고하라.**
 
 - [ ] **Step 7: 실시간 브로드캐스트 테스트를 추가한다**
 
@@ -2143,9 +2145,9 @@ function ReviewDialog({
           <p role="alert" className="text-destructive">{detail.error.message}</p>
         )}
         <div className="grid max-h-[60vh] content-start gap-4 overflow-y-auto">
-          {detail.data?.request.note !== '' && (
+          {(detail.data?.request.note ?? '') !== '' && (
             <p className="text-sm text-muted-foreground">
-              요청 메모: {detail.data?.request.note}
+              요청 메모: {detail.data!.request.note}
             </p>
           )}
           {unavailable.length > 0 && (
