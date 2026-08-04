@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { modelToFiles, MAX_OPS_PER_MUTATION, type ProjectModel } from '@erdd/core'
 import { fullModel } from '@erdd/core/src/testing/fixtures.js'
+import type { ApiClient } from '../client.js'
 import { writeConfig } from '../config.js'
 import { CliError } from '../output.js'
 import { seedPulled, stubClient as stub, TEST_CONFIG as CONFIG } from '../testing/harness.js'
@@ -104,6 +105,67 @@ describe('push', () => {
     expect(JSON.stringify(base)).toContain('회원 이름')
   })
 
+  it('반영 성공 후 파일 갱신(syncDown)이 실패하면 커밋됐음을 알리고 재전송하지 않는다', async () => {
+    const server = fullModel()
+    await seed(server)
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+
+    const { client: base, pushCalls } = stub(server, { seq: 5 })
+    let queryCalls = 0
+    // buildPlan의 model.get(1번째 호출)은 통과시키고, 반영 성공 뒤 syncDown이 부르는
+    // project.get(2번째 호출)부터 실패시켜 "커밋은 됐는데 파일 갱신이 죽었다"를 재현한다.
+    const client: ApiClient = {
+      mutate: base.mutate,
+      query: (async (p: string, input: unknown) => {
+        queryCalls += 1
+        if (queryCalls > 1) throw new Error('디스크 쓰기 실패')
+        return base.query(p, input)
+      }) as ApiClient['query'],
+    }
+
+    const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
+    expect(code).toBe(1)
+    expect(pushCalls).toHaveLength(1)   // model.push는 정확히 한 번만 — 커밋 후 재전송하지 않는다
+    const payload = JSON.parse(out.join('')) as {
+      ok: boolean; committed: boolean; revisionSeq: number
+    }
+    expect(payload.ok).toBe(false)
+    expect(payload.committed).toBe(true)
+    expect(payload.revisionSeq).toBe(6)   // stub(server,{seq:5})의 기본 응답 = seq+1
+  })
+
+  it('반영 후 syncDown에서 CONFLICT가 나도 model.push를 다시 부르지 않는다', async () => {
+    // model.push(mutate)와 syncDown(query)을 같은 try로 묶으면, syncDown의 query 실패가
+    // CONFLICT 코드를 달고 있을 때 "재시도할 실패"로 오분류돼 이미 커밋된 반영을 향해
+    // model.push를 한 번 더 보낸다. syncDown 이후는 재시도 대상이 아니어야 한다.
+    const server = fullModel()
+    await seed(server)
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+
+    const { client: base, pushCalls } = stub(server, { seq: 5 })
+    let queryCalls = 0
+    // syncDown의 첫 쿼리(project.get, 2번째 호출)만 CONFLICT로 한 번 실패시키고 그 뒤는
+    // 정상으로 되돌린다 — "재시도 루프를 한 번 더 돌면 실제로 두 번째 model.push가
+    // 나가는지"까지 드러내려면 재시도가 실제로 진행될 수 있어야 한다(영원히 막아 buildPlan
+    // 자체가 죽게 하면 애초에 두 번째 mutate에 도달하지 못해 이 버그를 놓친다).
+    const client: ApiClient = {
+      mutate: base.mutate,
+      query: (async (p: string, input: unknown) => {
+        queryCalls += 1
+        if (queryCalls === 2) throw new CliError('CONFLICT', '동시 수정이 감지됐습니다')
+        return base.query(p, input)
+      }) as ApiClient['query'],
+    }
+
+    const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
+    expect(code).toBe(1)
+    expect(pushCalls).toHaveLength(1)   // 커밋은 이미 끝났다 — CONFLICT 재시도 대상이 아니다
+    const payload = JSON.parse(out.join('')) as { committed: boolean }
+    expect(payload.committed).toBe(true)
+  })
+
   it('CONFLICT를 한 번 만나면 다시 계산해 재시도한다', async () => {
     const server = fullModel()
     await seed(server)
@@ -121,6 +183,33 @@ describe('push', () => {
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
     expect(pushCalls).toHaveLength(2)
     expect(JSON.parse(out.join(''))).toMatchObject({ retried: true })
+  })
+
+  it('CONFLICT 재시도는 계획을 다시 계산한다 — 두 번째 model.push는 새 expectedSeq를 보낸다', async () => {
+    const server = fullModel()
+    await seed(server)
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+
+    // seq를 스텁 밖에서 들고 있다가 첫 mutate가 실패하며 앞으로 민다 — buildPlan을 루프
+    // 밖으로 끌어올리는 "최적화"를 하면 두 번째 model.push도 첫 번째와 같은 expectedSeq를
+    // 보내게 되어 이 단언이 깨진다(직접 되돌려서 확인함 — 자기 검토 기록 참고).
+    let serverSeq = 1
+    const { client, pushCalls } = stub(server, {
+      getImpl: () => ({ model: server, seq: serverSeq }),
+      pushImpl: async () => {
+        if (serverSeq === 1) {
+          serverSeq = 2   // 계산과 반영 사이에 남이 앞서 커밋한 것을 흉내낸다
+          throw new CliError('CONFLICT', '서버가 앞서 있습니다')
+        }
+        return { seq: serverSeq + 1 }
+      },
+    })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
+    expect(pushCalls).toHaveLength(2)
+    const first = pushCalls[0] as { expectedSeq: number }
+    const second = pushCalls[1] as { expectedSeq: number }
+    expect(second.expectedSeq).toBeGreaterThan(first.expectedSeq)
   })
 
   it('두 번 연속 CONFLICT면 실패한다', async () => {
@@ -204,5 +293,40 @@ describe('push', () => {
     expect(pushCalls).toHaveLength(0)
     expect(confirmCalled).toBe(false)   // 삭제 확인 프롬프트까지 가지 않고 상한에서 먼저 막힌다
     expect(out.join('')).toContain(String(MAX_OPS_PER_MUTATION))
+  })
+
+  it('op가 0건이어도 정리된(pruned) 항목이 있으면 결과에 알린다', async () => {
+    // 서버가 tb2(ORD) 서브트리를 이미 통째로 지운 상태(캐스케이드: 컬럼·관계·인덱스 포함)를
+    // 흉내낸다. base/local은 그 사실을 모른 채 tb2에 새 컬럼을 추가한다 — merge는 tb2를
+    // "서버가 지웠다"로 조용히 받아들이고(테이블 자체 필드는 로컬도 안 건드렸으므로 충돌 아님),
+    // 그 위에 로컬이 새로 추가한 컬럼은 소속 테이블이 사라져 pruneDangling이 지운다.
+    // diffModels는 서버(이미 tb2가 없음) 대비로 비교하므로 tb2/그 컬럼들은 애초에 서버에
+    // "없던" 것과 같아 op가 하나도 안 생긴다 — 그런데도 사용자가 로컬에서 한 작업(새 컬럼)은
+    // 사라졌으니 pruned로 알려야 한다.
+    const original = fullModel()
+    await seed(original)
+
+    const local = fullModel()
+    local.columns['cnew'] = {
+      id: 'cnew', tableId: 'tb2', logicalName: '추가', physicalName: 'EXTRA', type: 'BIGINT',
+      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 100,
+      comment: null, domainId: null, custom: {},
+    }
+    await writeTree(dir, modelToFiles(local).tree)
+
+    const server = fullModel()
+    delete server.tables['tb2']
+    delete server.columns['c3']
+    delete server.columns['c4']
+    delete server.relationships['r1']
+    delete server.indexes['ix2']
+
+    const { client, pushCalls } = stub(server)
+    const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
+    expect(code).toBe(0)
+    expect(pushCalls).toHaveLength(0)
+    const payload = JSON.parse(out.join('')) as { ops: number; pruned: unknown[] }
+    expect(payload.ops).toBe(0)
+    expect(payload.pruned.length).toBeGreaterThan(0)
   })
 })
