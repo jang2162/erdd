@@ -1,5 +1,5 @@
 import {
-  COLLECTION_BY_KIND, DIFF_KIND_LABEL, MAX_OPS_PER_MUTATION,
+  COLLECTION_BY_KIND, DIFF_KIND_LABEL, MAX_OPS_PER_MUTATION, entityDisplayName,
   type EntityKind, type Op, type ProjectModel,
 } from '@erdd/core'
 import { readConfig } from '../config.js'
@@ -14,12 +14,17 @@ export type PushCtx = CommandCtx & { message?: string }
 /** 서버 스키마의 summary 상한(z.string().min(1).max(200))과 맞춘다 — 자동/수동 요약 둘 다. */
 const MAX_SUMMARY_LENGTH = 200
 
+/**
+ * 삭제 확인 프롬프트의 한 줄. 되돌릴 수 없는 반영 직전 화면이라 "어느 것인지"가 남으면 안 된다 —
+ * core의 표시 규칙(entityDisplayName)을 그대로 쓴다. 컬럼은 `MBR.MBR_NO`처럼 테이블로
+ * 한정되고(픽스처만 해도 MBR_NO가 세 테이블에 있다) 이름 없는 관계는 `자식→부모`가 된다.
+ * pruned 목록도 같은 규칙으로 만들어지므로 한 프롬프트 안에서 표기가 갈리지 않는다.
+ */
 function opLabel(server: ProjectModel, op: Op): string {
   const entity = (server[COLLECTION_BY_KIND[op.entity]] as Record<string, Record<string, unknown>>)[op.entityId]
-  const name = entity === undefined
-    ? op.entityId
-    : entity['physicalName'] ?? entity['name'] ?? entity['logicalName'] ?? op.entityId
-  return `${DIFF_KIND_LABEL[op.entity]} ${String(name)}`
+  // note는 파일에 담기지 않아 push 계획에 나올 수 없다 — 그래도 타입이 허용하므로 id로 떨어뜨린다.
+  if (op.entity === 'note' || entity === undefined) return `${DIFF_KIND_LABEL[op.entity]} ${op.entityId}`
+  return `${DIFF_KIND_LABEL[op.entity]} ${entityDisplayName(op.entity, entity, [server])}`
 }
 
 function countByAction(ops: readonly Op[]): {
@@ -57,8 +62,12 @@ async function confirmDeletes(ctx: PushCtx, plan: PushPlan): Promise<void> {
     note(`참조가 끊겨 함께 정리되는 항목 ${plan.pruned.length}건:`)
     for (const p of plan.pruned) note(`  - ${p.label} (${p.reason})`)
   }
-  const ok = ctx.confirm === undefined ? false : await ctx.confirm('계속할까요?')
-  if (!ok) throw new CliError('CANCELLED', '사용자가 취소했습니다')
+  // 비대화형(--json)에서는 confirm이 없다. 아무도 취소하지 않았는데 "취소했습니다"라고 하면
+  // 이 CLI의 주 소비자인 에이전트가 원인도 해결책도 알 수 없다 — 무엇을 하면 되는지 말한다.
+  if (ctx.confirm === undefined) {
+    throw new CliError('CANCELLED', '확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요')
+  }
+  if (!await ctx.confirm('계속할까요?')) throw new CliError('CANCELLED', '사용자가 취소했습니다')
 }
 
 export function push(ctx: PushCtx): Promise<number> {
@@ -106,15 +115,35 @@ export function push(ctx: PushCtx): Promise<number> {
           projectId: config.projectId,
           expectedSeq: plan.seq,
           ops: plan.ops,
-          summary: (ctx.message ?? autoSummary(plan.ops)).slice(0, MAX_SUMMARY_LENGTH),
+          // 빈 요약(`-m ""`)은 서버의 z.string().min(1)에 걸려 zod BAD_REQUEST가 된다.
+          // 값을 안 준 것과 같이 보고 자동 요약으로 떨어뜨린다.
+          summary: (ctx.message !== undefined && ctx.message !== ''
+            ? ctx.message : autoSummary(plan.ops)).slice(0, MAX_SUMMARY_LENGTH),
         })
         seq = result.seq
       } catch (err) {
         const isConflict = err instanceof CliError && err.code === 'CONFLICT'
-        if (!isConflict || attempt >= 1) throw err
-        note('서버가 앞서 있어 다시 계산합니다')
-        retried = true
-        continue
+        if (isConflict) {
+          if (attempt >= 1) throw err
+          note('서버가 앞서 있어 다시 계산합니다')
+          retried = true
+          continue
+        }
+        // CONFLICT가 아닌 실패(연결 끊김·프록시 타임아웃·커밋 직후 서버 재시작)는 요청이
+        // 서버에 닿았는지조차 알 수 없다. 그냥 실패로 보고하면 다음 push가 같은 것을
+        // 새 uuid로 다시 만들어(filesToModel이 매번 새 id를 발급한다) 조용히 중복이 생긴다.
+        // 여기서 재전송도 하지 않는다 — 커밋된 경우 그쪽이 바로 중복이다.
+        const detail = err instanceof CliError ? err.message : (err as Error).message
+        emit(
+          ctx.json,
+          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — 다시 push하기 전에 `
+            + `erdd pull 또는 erdd diff로 서버 상태를 확인하세요 (${detail})`,
+          {
+            ok: false, outcomeUnknown: true, revisionSeq: null, ops: plan.ops.length,
+            ...countByAction(plan.ops), pruned: plan.pruned, retried, pushError: detail,
+          },
+        )
+        return 1
       }
 
       // 여기부터는 서버가 이미 커밋한 뒤다 — 실패해도 재시도하지 않고, "반영은 됐다"를
