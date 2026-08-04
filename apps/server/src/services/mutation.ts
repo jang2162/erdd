@@ -55,7 +55,7 @@ export async function runMutation(
     projectId: string
     actorUserId: string
     source: 'web' | 'cli' | 'system'
-    deriveOps: (model: ProjectModel) => Op[]
+    deriveOps: (model: ProjectModel, seq: number) => Op[]
     summary?: string
   },
 ): Promise<{ seq: number; ops: Op[] }> {
@@ -64,8 +64,10 @@ export async function runMutation(
     throw new TRPCError({ code: 'NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' })
   }
   const model = await loadProjectModel(tx, args.projectId)
-  const ops = args.deriveOps(model)
+  // seq를 먼저 읽는다 — deriveOps가 낙관적 동시성 검사(CLI push의 expectedSeq)에 쓴다.
+  // 둘 다 같은 락 안의 읽기라 순서는 결과에 영향이 없다.
   const seqNow = await currentSeq(tx, args.projectId)
+  const ops = args.deriveOps(model, seqNow)
   if (ops.length === 0) return { seq: seqNow, ops: [] }
   const authoritative = withAuthoritativeHistory(model, ops)
   applyOps(model, authoritative) // OpApplyError → 호출부가 매핑

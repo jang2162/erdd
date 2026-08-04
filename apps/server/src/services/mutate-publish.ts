@@ -20,7 +20,7 @@ export async function mutateAndPublish(
     actorUserId: string
     actorName: string
     source: 'web' | 'cli' | 'system'
-    deriveOps: (model: ProjectModel) => Op[]
+    deriveOps: (model: ProjectModel, seq: number) => Op[]
     summary?: string
   },
 ): Promise<{ seq: number }> {
