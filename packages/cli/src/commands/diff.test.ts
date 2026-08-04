@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ProjectModel } from '@erdd/core'
@@ -7,6 +7,21 @@ import { fullModel } from '@erdd/core/src/testing/fixtures.js'
 import { writeConfig } from '../config.js'
 import { seedPulled, stubClient as stub, TEST_CONFIG as CONFIG } from '../testing/harness.js'
 import { diff } from './diff.js'
+
+/** cwd 아래 모든 파일 내용을 상대경로 → 텍스트로 스냅샷한다 — diff가 쓰기를 하나라도
+ * 저지르면(새 파일이든 기존 파일 덮어쓰기든) before/after 비교가 어긋난다. */
+async function snapshot(root: string): Promise<Record<string, string>> {
+  const rels = (await readdir(root, { recursive: true })) as string[]
+  const out: Record<string, string> = {}
+  for (const rel of rels) {
+    try {
+      out[rel] = await readFile(join(root, rel), 'utf8')
+    } catch {
+      // 디렉터리 항목이면 readFile이 실패한다 — 건너뛴다.
+    }
+  }
+  return out
+}
 
 let dir: string
 let out: string[]
@@ -83,5 +98,14 @@ describe('diff', () => {
     const { client, pushCalls } = stub(server)
     await diff({ cwd: dir, json: true, yes: false, strict: false, client })
     expect(pushCalls).toHaveLength(0)
+  })
+
+  it('diff는 로컬 파일을 하나도 건드리지 않는다', async () => {
+    const server = fullModel()
+    await seed(server)
+    const before = await snapshot(dir)
+    const { client } = stub(server)
+    await diff({ cwd: dir, json: true, yes: false, strict: false, client })
+    expect(await snapshot(dir)).toEqual(before)
   })
 })
