@@ -147,6 +147,10 @@ describe.skipIf(!url)('resource.promote', () => {
   })
 
   it('프로젝트 편집 권한이 없으면 거절한다', async () => {
+    // 이 테스트는 "프로젝트 접근 자체가 없는" 경우를 확인한다 — 외부인은 조직 멤버도 아니므로
+    // requireProjectAccess와 requireLibraryWrite 두 게이트에 동시에 걸린다(어느 쪽이 막았는지는
+    // 이 테스트만으로 구분할 수 없다). 두 게이트를 분리해서 확인하는 테스트는 바로 아래
+    // '시스템 관리자이지만 이 프로젝트에서는 viewer면 거절한다'다.
     const wordId = await seedWord(app, ownerSession, projectId, '회원', 'MBR')
     await createAccount(app.db!, { email: 'x@t.dev', name: '외부', password: 'password-x', role: 'user' })
     const outsider = await loginAs(app, 'x@t.dev', 'password-x')
@@ -156,6 +160,31 @@ describe.skipIf(!url)('resource.promote', () => {
     })
     // 프로젝트는 존재하므로 NOT_FOUND가 아니라 FORBIDDEN이다(getProjectAccess가 access를 돌려주고
     // canEdit이 false라 requireProjectAccess가 FORBIDDEN을 던진다).
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('시스템 관리자이지만 이 프로젝트에서는 viewer면 거절한다 (라이브러리 쓰기는 통과, 프로젝트 편집만 막는다)', async () => {
+    // perm.ts 정책상 조직 owner/admin은 프로젝트 멤버가 아니어도 canEdit이 참이 된다. 그래서
+    // "라이브러리 쓰기는 통과하는데 프로젝트 편집만 막히는" 조합을 만들려면 조직 역할과 무관하게
+    // 쓸 수 있는 전역(global) 라이브러리 + 시스템 관리자(role: 'admin') 계정이 필요하다.
+    // 이 계정을 대상 조직의 'member'(owner/admin 아님)로, 대상 프로젝트의 'viewer'로 넣으면
+    // canView는 참이지만 canEdit은 거짓이 되어 requireProjectAccess(..., 'edit')만 단독으로 막는다.
+    const wordId = await seedWord(app, ownerSession, projectId, '회원', 'MBR')
+    await createAccount(app.db!, { email: 'a@t.dev', name: '관리자', password: 'password-a', role: 'admin' })
+    const adminSession = await loginAs(app, 'a@t.dev', 'password-a')
+    const globalLibraryId = (await post(app, 'resource.library.create', adminSession, {
+      scope: 'global', name: '전역 표준',
+    })).json().result.data.id
+    await post(app, 'org.members.add', ownerSession, { orgId, email: 'a@t.dev', role: 'member' })
+    const orgMembers = (await get(app, 'org.members.list', ownerSession, { orgId }))
+      .json().result.data as Array<{ id: string; email: string }>
+    await post(app, 'project.members.add', ownerSession, {
+      projectId, memberId: orgMembers.find((m) => m.email === 'a@t.dev')!.id, role: 'viewer',
+    })
+    const res = await post(app, 'resource.promote', adminSession, {
+      projectId, libraryId: globalLibraryId,
+      entries: [{ entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null }],
+    })
     expect(res.statusCode).toBe(403)
   })
 
