@@ -2,13 +2,17 @@ import { TRPCError } from '@trpc/server'
 import { and, asc, count, eq, isNull, or, type SQL } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
-import { deepEqual, RESOURCE_KINDS, RESOURCE_PAYLOAD_SCHEMAS, type ResourceKind } from '@erdd/core'
+import {
+  applyPromotePlan, deepEqual, diffModels, planPromote, MAX_OPS_PER_MUTATION, OpApplyError,
+  RESOURCE_KINDS, RESOURCE_PAYLOAD_SCHEMAS, type LibraryItem, type ProjectModel, type ResourceKind,
+} from '@erdd/core'
 import type { Db } from '../db/client.js'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { requireProjectAccess } from '../services/perm.js'
 import {
   requireLibraryRead, requireLibraryWrite, requireScopeRead, requireScopeWrite,
 } from '../services/resource-library.js'
+import { mutateAndPublish } from '../services/mutate-publish.js'
 import { authedProcedure, router } from '../trpc.js'
 
 const KindEnum = z.enum(RESOURCE_KINDS)
@@ -169,4 +173,108 @@ export const resourceRouter = router({
         return { ok: true as const }
       }),
   }),
+
+  /**
+   * 프로젝트 사전 항목을 라이브러리로 올린다(fork의 반대 방향).
+   *
+   * 라이브러리 쓰기와 프로젝트 origin 갱신이 한 트랜잭션이다 — runMutation의 prepare 훅이
+   * 프로젝트 행 락 안에서 돌고, 라이브러리 항목은 FOR UPDATE로 잠근 뒤 그 값으로 계획을
+   * 세우므로 버전 경합이 구조적으로 불가능하다.
+   *
+   * payload는 클라에서 받지 않는다. 서버가 트랜잭션 안에서 모델을 다시 읽어 계획을
+   * 재계산하고, 클라가 본 상태와 다른 항목만 건너뛴다.
+   */
+  promote: authedProcedure
+    .input(z.object({
+      projectId: z.string().uuid(),
+      libraryId: z.string().uuid(),
+      entries: z.array(z.object({
+        entityId: z.string().uuid(),
+        expectedStatus: z.enum(['new', 'update', 'name-match']),
+        expectedTargetItemId: z.string().uuid().nullable(),
+      })).min(1).max(MAX_OPS_PER_MUTATION),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'edit')
+      const library = await requireLibraryWrite(ctx.db, input.libraryId, ctx.user)
+      // 전역은 서비스 관리자만 requireLibraryWrite를 통과한다. 조직은 반드시 이 프로젝트의
+      // 조직이어야 한다 — 없으면 두 조직에 속한 사용자가 남의 조직으로 사전을 흘릴 수 있다.
+      if (library.scope === 'org' && library.orgId !== access.project.orgId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: '이 프로젝트의 조직 라이브러리가 아닙니다' })
+      }
+
+      const outcome = {
+        inserted: 0,
+        updated: 0,
+        skipped: [] as { entityId: string; reason: 'missing' | 'plan-changed' }[],
+      }
+      const state: { next: ProjectModel | null } = { next: null }
+
+      try {
+        const { seq } = await mutateAndPublish(ctx.db, ctx.hub, {
+          projectId: input.projectId,
+          actorUserId: ctx.user.id,
+          actorName: ctx.user.name,
+          source: 'web',
+          prepare: async (tx, model) => {
+            const items = await tx
+              .select({
+                id: resourceItems.id, kind: resourceItems.kind,
+                payload: resourceItems.payload, version: resourceItems.version,
+              })
+              .from(resourceItems)
+              .where(eq(resourceItems.libraryId, input.libraryId))
+              .orderBy(asc(resourceItems.createdAt))
+              .for('update')
+            const plan = planPromote(model, input.libraryId, items as LibraryItem[])
+            const byEntity = new Map(plan.entries.map((entry) => [entry.entityId, entry]))
+
+            const selected = new Set<string>()
+            for (const req of input.entries) {
+              const entry = byEntity.get(req.entityId)
+              if (!entry) {
+                outcome.skipped.push({ entityId: req.entityId, reason: 'missing' })
+                continue
+              }
+              if (entry.status !== req.expectedStatus
+                || entry.targetItemId !== req.expectedTargetItemId) {
+                outcome.skipped.push({ entityId: req.entityId, reason: 'plan-changed' })
+                continue
+              }
+              selected.add(req.entityId)
+            }
+
+            const applied = applyPromotePlan(model, plan, selected, uuidv7)
+            state.next = applied.nextModel
+            for (const write of applied.writes) {
+              const payload = parsePayload(write.kind, write.payload)
+              if (write.mode === 'insert') {
+                await tx.insert(resourceItems).values({
+                  id: write.itemId, libraryId: input.libraryId,
+                  kind: write.kind, payload, version: write.version,
+                })
+                outcome.inserted += 1
+              } else {
+                await tx.update(resourceItems)
+                  .set({ payload, version: write.version, updatedAt: new Date() })
+                  .where(eq(resourceItems.id, write.itemId))
+                outcome.updated += 1
+              }
+            }
+            if (applied.writes.length > 0) {
+              await tx.update(resourceLibraries).set({ updatedAt: new Date() })
+                .where(eq(resourceLibraries.id, input.libraryId))
+            }
+          },
+          deriveOps: (model) => (state.next ? diffModels(model, state.next) : []),
+          summary: `공용 리소스 승격 — ${library.name}`,
+        })
+        return { seq, ...outcome }
+      } catch (err) {
+        if (err instanceof OpApplyError) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
+        }
+        throw err
+      }
+    }),
 })
