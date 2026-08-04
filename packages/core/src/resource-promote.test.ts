@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type Domain, type ProjectModel, type Term, type Word } from './model.js'
-import { planPromote } from './resource-promote.js'
+import { applyPromotePlan, planPromote } from './resource-promote.js'
 import { RESOURCE_KINDS } from './resource.js'
-import type { LibraryItem } from './resource-sync.js'
+import { planResync, type LibraryItem } from './resource-sync.js'
+import { diffModels } from './diff.js'
+import { validateModelIntegrity } from './integrity.js'
 
 const LIB = 'lib-1'
 
@@ -190,5 +192,139 @@ describe('planPromote — 분류', () => {
     }
     const kinds = new Set(planPromote(model, LIB, []).entries.map((e) => e.kind))
     expect([...kinds].sort()).toEqual([...RESOURCE_KINDS].sort())
+  })
+})
+
+/** 테스트마다 1부터 다시 세는 id 발급기 — 단언이 호출 순서에 흔들리지 않는다. */
+function makeNewId(): () => string {
+  let n = 0
+  return () => `item-${++n}`
+}
+
+describe('applyPromotePlan', () => {
+  it('선택이 비면 입력 모델을 그대로 돌려주고 write가 없다', () => {
+    const model: ProjectModel = { ...createEmptyModel(), words: { w1: localWord('w1', '회원', 'MBR') } }
+    const plan = planPromote(model, LIB, [])
+    const out = applyPromotePlan(model, plan, new Set(), makeNewId())
+    expect(out.writes).toEqual([])
+    expect(out.nextModel).toBe(model)
+  })
+
+  it('new는 insert write와 origin 부여를 낸다', () => {
+    const model: ProjectModel = { ...createEmptyModel(), words: { w1: localWord('w1', '회원', 'MBR') } }
+    const plan = planPromote(model, LIB, [])
+    const { writes, nextModel } = applyPromotePlan(model, plan, new Set(['w1']), makeNewId())
+    const payload = { logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null }
+    expect(writes).toEqual([{ mode: 'insert', itemId: 'item-1', kind: 'word', payload, version: 1 }])
+    expect(nextModel.words.w1!.origin).toEqual({
+      libraryId: LIB, sourceId: 'item-1', sourceVersion: 1, base: payload,
+    })
+  })
+
+  it('update는 targetVersion + 1로 올린다', () => {
+    const forked = forkedWord('w1', 's1', '회원', 'MBR')
+    const model: ProjectModel = {
+      ...createEmptyModel(), words: { w1: { ...forked, abbreviation: 'MB' } },
+    }
+    const plan = planPromote(model, LIB, [wordItem('s1', '회원', 'MBR', 3)])
+    const { writes, nextModel } = applyPromotePlan(model, plan, new Set(['w1']), makeNewId())
+    expect(writes).toEqual([{
+      mode: 'update', itemId: 's1', kind: 'word', version: 4,
+      payload: { logicalName: '회원', abbreviation: 'MB', englishName: null, description: null },
+    }])
+    expect(nextModel.words.w1!.origin!.sourceVersion).toBe(4)
+  })
+
+  it('origin 외의 엔티티 필드는 절대 바꾸지 않는다', () => {
+    const model: ProjectModel = { ...createEmptyModel(), words: { w1: localWord('w1', '회원', 'MBR') } }
+    const plan = planPromote(model, LIB, [])
+    const { nextModel } = applyPromotePlan(model, plan, new Set(['w1']), makeNewId())
+    expect({ ...nextModel.words.w1!, origin: null }).toEqual({ ...model.words.w1! })
+  })
+
+  it('diffModels가 origin 하나만 바꾸는 update op를 낸다', () => {
+    const model: ProjectModel = { ...createEmptyModel(), words: { w1: localWord('w1', '회원', 'MBR') } }
+    const plan = planPromote(model, LIB, [])
+    const { nextModel } = applyPromotePlan(model, plan, new Set(['w1']), makeNewId())
+    const ops = diffModels(model, nextModel)
+    expect(ops).toHaveLength(1)
+    expect(ops[0]!.action).toBe('update')
+    expect(ops[0]!.entity).toBe('word')
+    expect(Object.keys((ops[0] as { changes: Record<string, unknown> }).changes)).toEqual(['origin'])
+    expect(validateModelIntegrity(nextModel)).toEqual([])
+  })
+
+  it('승격 직후 같은 라이브러리로 재동기화하면 그 항목은 동기 상태다 (두 엔진의 왕복)', () => {
+    const model: ProjectModel = { ...createEmptyModel(), words: { w1: localWord('w1', '회원', 'MBR') } }
+    const plan = planPromote(model, LIB, [])
+    const { writes, nextModel } = applyPromotePlan(model, plan, new Set(['w1']), makeNewId())
+    const promoted: LibraryItem[] = writes.map((w) => ({
+      id: w.itemId, kind: w.kind, version: w.version, payload: w.payload,
+    }))
+    const resync = planResync(nextModel, LIB, promoted)
+    expect(resync.entries).toHaveLength(0)
+    expect(resync.keptSynced).toBe(1)
+  })
+
+  it('도메인을 함께 승격하면 용어가 새 라이브러리 항목을 참조하고 base는 프로젝트 도메인 id다', () => {
+    const model: ProjectModel = {
+      ...createEmptyModel(),
+      domains: { d1: localDomain('d1', '금액') },
+      terms: { t1: term('t1', '주문금액', 'ORD_AMT', 'd1') },
+    }
+    const plan = planPromote(model, LIB, [])
+    const { writes, nextModel } = applyPromotePlan(model, plan, new Set(['d1', 't1']), makeNewId())
+    const domainWrite = writes.find((w) => w.kind === 'domain')!
+    const termWrite = writes.find((w) => w.kind === 'term')!
+    expect(termWrite.payload.domainId).toBe(domainWrite.itemId)
+    expect(nextModel.terms.t1!.origin!.base).toMatchObject({ domainId: 'd1' })
+
+    // 왕복: 승격 결과를 그대로 재동기화하면 둘 다 동기 상태다
+    const promoted: LibraryItem[] = writes.map((w) => ({
+      id: w.itemId, kind: w.kind, version: w.version, payload: w.payload,
+    }))
+    expect(planResync(nextModel, LIB, promoted).keptSynced).toBe(2)
+  })
+
+  it('도메인을 빼고 용어만 승격하면 연결이 비고, 다음 원본 변경은 auto-update가 아니라 conflict다', () => {
+    const model: ProjectModel = {
+      ...createEmptyModel(),
+      domains: { d1: localDomain('d1', '금액') },
+      terms: { t1: term('t1', '주문금액', 'ORD_AMT', 'd1') },
+    }
+    const plan = planPromote(model, LIB, [])
+    const { writes, nextModel } = applyPromotePlan(model, plan, new Set(['t1']), makeNewId())
+    const termWrite = writes[0]!
+    expect(termWrite.payload.domainId).toBeNull()
+    expect(nextModel.terms.t1!.origin!.base).toMatchObject({ domainId: null })
+
+    const bumped: LibraryItem[] = [{
+      id: termWrite.itemId, kind: 'term', version: 2,
+      payload: { ...termWrite.payload, physicalName: 'ORD_AMOUNT' },
+    }]
+    expect(planResync(nextModel, LIB, bumped).entries[0]!.status).toBe('conflict')
+  })
+
+  it('커스텀 항목의 order는 payload에서 빠지고 프로젝트 값은 보존된다', () => {
+    const model: ProjectModel = {
+      ...createEmptyModel(),
+      customFields: {
+        f1: {
+          id: 'f1', name: '비고', target: 'table', type: 'text',
+          options: [], required: false, defaultValue: null, order: 4, origin: null,
+        },
+      },
+    }
+    const plan = planPromote(model, LIB, [])
+    const { writes, nextModel } = applyPromotePlan(model, plan, new Set(['f1']), makeNewId())
+    expect(writes[0]!.payload).not.toHaveProperty('order')
+    expect(nextModel.customFields.f1!.order).toBe(4)
+  })
+
+  it('입력 모델을 변경하지 않는다', () => {
+    const model: ProjectModel = { ...createEmptyModel(), words: { w1: localWord('w1', '회원', 'MBR') } }
+    const plan = planPromote(model, LIB, [])
+    applyPromotePlan(model, plan, new Set(['w1']), makeNewId())
+    expect(model.words.w1!.origin).toBeNull()
   })
 })

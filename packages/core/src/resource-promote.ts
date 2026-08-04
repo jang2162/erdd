@@ -1,8 +1,8 @@
 import { deepEqual } from './equal.js'
 import type { Origin, ProjectModel } from './model.js'
 import {
-  RESOURCE_KINDS, resourceDisplayName, resourceEntitiesOf, resourcePayloadOf,
-  type ResourceKind,
+  RESOURCE_COLLECTION_BY_KIND, RESOURCE_KINDS, resourceDisplayName, resourceEntitiesOf,
+  resourcePayloadOf, type ResourceKind,
 } from './resource.js'
 import type { LibraryItem } from './resource-sync.js'
 
@@ -139,13 +139,95 @@ export function planPromote(
 
 function domainRefOf(
   kind: ResourceKind,
-  payload: Record<string, unknown>,
+  raw: Record<string, unknown>,
   model: ProjectModel,
   linkedItemId: ReadonlyMap<string, string>,
 ): { entityId: string; targetItemId: string | null } | null {
   if (kind !== 'term') return null
-  const domainId = payload.domainId
+  const domainId = raw.domainId
   if (typeof domainId !== 'string') return null
   if (!Object.hasOwn(model.domains, domainId)) return null   // dangling — 참조 없음으로 본다
   return { entityId: domainId, targetItemId: linkedItemId.get(domainId) ?? null }
+}
+
+export type PromoteWrite = {
+  mode: 'insert' | 'update'
+  itemId: string
+  kind: ResourceKind
+  payload: Record<string, unknown>
+  /** 저장할 버전 — insert면 1, update면 targetVersion + 1. */
+  version: number
+}
+
+/**
+ * 라이브러리 공간 payload를 프로젝트 공간으로 되투영한다(origin.base 계산용).
+ * base는 "가져오기 직후"와 같아야 하므로 import 경로와 같은 규칙을 한 번 더 통과시킨다 —
+ * 도메인을 함께 올리지 않은 용어는 base.domainId가 null이 되어 "프로젝트가 고침"으로 잡히고,
+ * 나중에 auto-update가 조용히 도메인 연결을 지우는 사고를 막는다.
+ */
+function projectSpace(
+  kind: ResourceKind,
+  payload: Record<string, unknown>,
+  entityByItemId: ReadonlyMap<string, string>,
+): Record<string, unknown> {
+  if (kind !== 'term') return { ...payload }
+  const itemId = payload.domainId
+  const mapped = typeof itemId === 'string' ? entityByItemId.get(itemId) ?? null : null
+  return { ...payload, domainId: mapped }
+}
+
+/**
+ * 선택된 항목에 대해 라이브러리 write 목록과 origin이 갱신된 다음 모델을 함께 낸다(입력 모델 불변).
+ * 선택이 비면 입력 모델을 그대로 돌려준다(diffModels가 빈 배열을 내 뮤테이션이 일어나지 않는다).
+ */
+export function applyPromotePlan(
+  model: ProjectModel,
+  plan: PromotePlan,
+  selected: ReadonlySet<string>,
+  newId: () => string,
+): { writes: PromoteWrite[]; nextModel: ProjectModel } {
+  const chosen = plan.entries.filter((entry) => selected.has(entry.entityId))
+  if (chosen.length === 0) return { writes: [], nextModel: model }
+
+  // 1) 색인 완성 — 이미 링크된 것 + 이번 배치에서 대상이 정해지는 것.
+  //    같은 배치의 도메인을 용어가 참조할 수 있어야 하므로 id를 먼저 전부 발급한다.
+  const itemIdByEntity = new Map(Object.entries(plan.linkedItemIds))
+  for (const entry of chosen) {
+    itemIdByEntity.set(entry.entityId, entry.targetItemId ?? newId())
+  }
+  const entityByItemId = new Map<string, string>()
+  for (const [entityId, itemId] of itemIdByEntity) entityByItemId.set(itemId, entityId)
+
+  const next: ProjectModel = {
+    ...model,
+    domains: { ...model.domains },
+    words: { ...model.words },
+    terms: { ...model.terms },
+    customFields: { ...model.customFields },
+  }
+
+  const writes: PromoteWrite[] = []
+  for (const entry of chosen) {
+    const collection = next[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as
+      Record<string, Record<string, unknown>>
+    const entity = collection[entry.entityId]
+    if (!entity) continue   // 계획 계산 후 삭제된 경우 방어
+    const itemId = itemIdByEntity.get(entry.entityId)!
+    const payload = libraryPayload(
+      entry.kind, resourcePayloadOf(entry.kind, entity), itemIdByEntity)
+    const version = entry.targetVersion === null ? 1 : entry.targetVersion + 1
+    writes.push({
+      mode: entry.targetItemId === null ? 'insert' : 'update',
+      itemId, kind: entry.kind, payload, version,
+    })
+    const origin: Origin = {
+      libraryId: plan.libraryId,
+      sourceId: itemId,
+      sourceVersion: version,
+      base: projectSpace(entry.kind, payload, entityByItemId),
+    }
+    collection[entry.entityId] = { ...entity, origin }
+  }
+
+  return { writes, nextModel: next }
 }
