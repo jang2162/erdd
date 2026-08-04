@@ -263,7 +263,17 @@ describe('applyPromotePlan', () => {
     }))
     const resync = planResync(nextModel, LIB, promoted)
     expect(resync.entries).toHaveLength(0)
+    // keptSynced는 sourceVersion==version 장부 일치만 본다 — planResync는 버전이 같으면
+    // base를 비교하지 않고 곧장 "동기"로 판정하므로 이 단언은 base의 내용을 검증하지 못한다.
     expect(resync.keptSynced).toBe(1)
+
+    // base가 실제로 옳은지는 원본이 그 뒤에 갱신돼야 드러난다 — 버전이 갈라지면
+    // planResync는 버전 분기를 지나 deepEqual(link.payload, origin.base)로 판정한다.
+    // 프로젝트 쪽은 그대로이므로 base가 맞다면 auto-update, 틀리면 conflict가 나온다.
+    const bumped: LibraryItem[] = promoted.map((item) => (
+      { ...item, version: item.version + 1, payload: { ...item.payload, englishName: 'MEMBER' } }
+    ))
+    expect(planResync(nextModel, LIB, bumped).entries[0]!.status).toBe('auto-update')
   })
 
   it('도메인을 함께 승격하면 용어가 새 라이브러리 항목을 참조하고 base는 프로젝트 도메인 id다', () => {
@@ -279,11 +289,37 @@ describe('applyPromotePlan', () => {
     expect(termWrite.payload.domainId).toBe(domainWrite.itemId)
     expect(nextModel.terms.t1!.origin!.base).toMatchObject({ domainId: 'd1' })
 
-    // 왕복: 승격 결과를 그대로 재동기화하면 둘 다 동기 상태다
+    // 왕복: 승격 결과를 그대로 재동기화하면 둘 다 동기 상태다(버전 장부만 검증 — 위 주석 참고)
     const promoted: LibraryItem[] = writes.map((w) => ({
       id: w.itemId, kind: w.kind, version: w.version, payload: w.payload,
     }))
     expect(planResync(nextModel, LIB, promoted).keptSynced).toBe(2)
+
+    // base 내용을 실제로 검증: 용어 원본만 그 뒤에 갱신되면 버전 분기를 지나 base와
+    // 비교한다. 프로젝트 쪽 용어·도메인은 그대로이므로 auto-update여야 한다.
+    const bumpedTerm: LibraryItem[] = promoted.map((item) => (
+      item.id === termWrite.itemId
+        ? { ...item, version: item.version + 1, payload: { ...item.payload, description: '설명 추가' } }
+        : item
+    ))
+    expect(planResync(nextModel, LIB, bumpedTerm).entries[0]!.status).toBe('auto-update')
+  })
+
+  it('계획 이후 도메인 엔티티가 삭제되면 함께 선택된 용어에 유령 id가 남지 않는다', () => {
+    const model: ProjectModel = {
+      ...createEmptyModel(),
+      domains: { d1: localDomain('d1', '금액') },
+      terms: { t1: term('t1', '주문금액', 'ORD_AMT', 'd1') },
+    }
+    const plan = planPromote(model, LIB, [])
+    // 계획을 세운 뒤 적용 직전에 도메인 엔티티가 사라진 상황(동시 편집)을 재현한다.
+    const modelWithoutDomain: ProjectModel = { ...model, domains: {} }
+    const { writes, nextModel } = applyPromotePlan(
+      modelWithoutDomain, plan, new Set(['d1', 't1']), makeNewId())
+    expect(writes.some((w) => w.kind === 'domain')).toBe(false)
+    const termWrite = writes.find((w) => w.kind === 'term')!
+    expect(termWrite.payload.domainId).toBeNull()
+    expect(nextModel.terms.t1!.origin!.base).toMatchObject({ domainId: null })
   })
 
   it('도메인을 빼고 용어만 승격하면 연결이 비고, 다음 원본 변경은 auto-update가 아니라 conflict다', () => {
@@ -323,8 +359,9 @@ describe('applyPromotePlan', () => {
 
   it('입력 모델을 변경하지 않는다', () => {
     const model: ProjectModel = { ...createEmptyModel(), words: { w1: localWord('w1', '회원', 'MBR') } }
+    const before = structuredClone(model)
     const plan = planPromote(model, LIB, [])
     applyPromotePlan(model, plan, new Set(['w1']), makeNewId())
-    expect(model.words.w1!.origin).toBeNull()
+    expect(model).toEqual(before)
   })
 })

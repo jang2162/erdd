@@ -191,8 +191,13 @@ export function applyPromotePlan(
 
   // 1) 색인 완성 — 이미 링크된 것 + 이번 배치에서 대상이 정해지는 것.
   //    같은 배치의 도메인을 용어가 참조할 수 있어야 하므로 id를 먼저 전부 발급한다.
+  //    계획을 세운 뒤 삭제된 엔티티는 여기서부터 제외한다 — id를 미리 발급해버리면
+  //    형제 항목(예: 함께 선택된 용어)의 참조가 실제로 쓰이지 않는 유령 id를 가리키게 된다.
   const itemIdByEntity = new Map(Object.entries(plan.linkedItemIds))
   for (const entry of chosen) {
+    const collection = model[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as
+      Record<string, unknown>
+    if (!Object.hasOwn(collection, entry.entityId)) continue
     itemIdByEntity.set(entry.entityId, entry.targetItemId ?? newId())
   }
   const entityByItemId = new Map<string, string>()
@@ -211,7 +216,7 @@ export function applyPromotePlan(
     const collection = next[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as
       Record<string, Record<string, unknown>>
     const entity = collection[entry.entityId]
-    if (!entity) continue   // 계획 계산 후 삭제된 경우 방어
+    if (!entity) continue   // 위 존재 확인과 같은 조건 — id 발급 단계에서 이미 걸러졌다
     const itemId = itemIdByEntity.get(entry.entityId)!
     const payload = libraryPayload(
       entry.kind, resourcePayloadOf(entry.kind, entity), itemIdByEntity)
