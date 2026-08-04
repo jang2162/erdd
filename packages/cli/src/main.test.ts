@@ -1,3 +1,6 @@
+import { mkdtemp, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { main } from './main.js'
 
@@ -58,5 +61,34 @@ describe('main', () => {
     const code = await main(['init', '--json', '--server', '--token', 'erdd_pat_x'], '/tmp/erdd-none')
     expect(code).toBe(2)
     expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+  })
+
+  it('도움말에 새 명령이 모두 나온다', async () => {
+    const err: string[] = []
+    vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+    expect(await main(['--help'], '/tmp')).toBe(0)
+    for (const c of ['push', 'diff', 'skill install']) expect(err.join('')).toContain(c)
+  })
+
+  it('push·diff가 사용법 오류로 떨어지지 않고 명령으로 배선돼 있다', async () => {
+    // config가 없는 곳이면 NO_CONFIG(1)여야 한다 — USAGE(2)면 switch에 배선되지 않은 것이다.
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    for (const cmd of ['push', 'diff']) {
+      out.length = 0
+      expect(await main([cmd, '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
+      expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+    }
+  })
+
+  it('skill install이 배선돼 있고 -m이 push의 요약으로 전달된다', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'erdd-main-'))
+    vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['skill', 'install'], dir)).toBe(0)
+    expect(await readFile(join(dir, '.claude/skills/erdd/SKILL.md'), 'utf8')).toContain('name: erdd')
+    // -m은 config가 없어 NO_CONFIG로 끝나지만, 플래그 파싱이 깨지면 USAGE(2)가 된다.
+    expect(await main(['push', '-m', '요약', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
   })
 })

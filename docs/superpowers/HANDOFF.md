@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-08-01 / **main HEAD:** `9dbdeef` / **마이그레이션:** 0009까지
+**최종 갱신:** 2026-08-04 / **main HEAD:** `412054c` / **마이그레이션:** 0010까지(이번 사이클엔 추가 없음)
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -25,19 +25,21 @@
 
 | **Phase 4 #1 DDL 역설계** | 손으로 쓴 좁은 파서(`CREATE TABLE`/`ALTER TABLE ADD CONSTRAINT`/`CREATE INDEX`/`COMMENT ON`)로 기존 DDL을 파싱해 미리보기 후 모델에 적용. 논리명은 코멘트→사전→물리명 순으로 복원, 왕복이 깨지는 5건은 테스트 상수로 고정. **마이그레이션 없음** |
 | **Phase 4 #2 CLI 트랙 A** | 개인 액세스 토큰(`access_tokens` 테이블, `erdd_pat_` 접두 평문 + SHA-256 저장, 만료 없이 폐기만), 조직·프로젝트 역할에서 그대로 파생되는 권한(새 축 아님) + 토큰 노출 프로시저 5개 allowlist(`apiProcedure`), 파일 포맷(`packages/core/src/file-format.ts` — plain object만 다루고 YAML은 모름), 신규 패키지 `packages/cli`(`@erdd/cli`, 바이너리 `erdd`)의 읽기 명령 `init`/`pull`/`status`/`validate`, 마이그 0010 |
+| **Phase 4 #3 CLI 트랙 B** | 파일 3-way 병합 core 순수 함수(`packages/core/src/file-merge.ts` — `FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`·`fileVisibleModel`·`mergeModels`·`applyMerge`·`pruneDangling`·`gridPositions`), 신규 프로시저 `model.push`(토큰 allowlist 6번째, 필수 `expectedSeq`를 프로젝트 행 락 안에서 검증해 경합 차단, `model.mutate`는 세션 전용 유지), CLI `push`(필드 단위 자동 병합·충돌 시 블록형 출력+exit 1·삭제 확인 프롬프트·성공 후 암묵적 pull로 신규 id 채움)·`diff`(항상 3-way 계획 미리보기, `--base` 없음)·`skill install`(`.claude/skills/erdd/SKILL.md` 동봉, `--dir`/`--force`). **마이그레이션 없음** |
 
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
-> **Phase 4 진행 중.** DDL 역설계와 CLI 트랙 A(읽기 경로)를 완료했다. CLI 트랙 B(`push`·3-way 병합·`diff`·에이전트 스킬)가 남았다.
+> **Phase 4 완료.** DDL 역설계 → CLI 트랙 A(읽기) → CLI 트랙 B(`push`·3-way 병합·`diff`·에이전트 스킬) 순으로 마쳤다.
 
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 380 · cli 57 · web 341 · server 102 (erdd_test) · typecheck EXIT=0
+core 424 · cli 101 · web 341 · server 107 (erdd_test) · typecheck EXIT=0
 ```
 
-CLI 트랙 A에서 신설된 `packages/cli`(57테스트)가 이 기준선에 추가됐다 — 루트 `pnpm verify`도
-`packages/core` 뒤·`apps/web` 앞에 `pnpm -C packages/cli test`를 끼워 넣어 함께 돈다.
+CLI 트랙 B에서 `push`·`diff`·`skill install` 배선 테스트가 추가되며 `packages/cli`가 57 → 101로
+늘었다 — 루트 `pnpm verify`는 `packages/core` 뒤·`apps/web` 앞에 `pnpm -C packages/cli test`를
+끼워 넣어 네 스위트를 함께 돈다.
 
 ⚠️ **`pnpm -s -r typecheck`의 출력만 보고 판정하지 말 것.** `-s`가 자식 출력을 삼켜서, 타입 오류가
 있어도 **출력이 0바이트이고 종료코드만 1**이다. 실시간 사이클에서 이 함정 때문에 구현자·태스크
@@ -62,13 +64,11 @@ pnpm -s -C packages/cli typecheck
 
 ### 다음 작업
 
-**CLI 트랙 B** (→ `docs/90-roadmap.md`, `docs/16-cli.md`)
+**Phase 4 완료 — 다음 후보** (→ `docs/90-roadmap.md`)
 
-Phase 1~3이 모두 main에 있고 권한 세분화 검토도 끝났다(새 권한 축 미도입 — 근거는 `docs/91-checklist.md`). Phase 4의 DDL 가져오기(역설계)도 완료했다(손으로 쓴 좁은 파서, 잔여 한계는 6절 참조 → [설계](superpowers/specs/2026-08-03-ddl-reverse-engineering-design.md)). CLI 트랙 A(개인 액세스 토큰·파일 포맷·`init`/`pull`/`status`/`validate`)도 완료했다(잔여 한계는 6절 참조 → [설계](superpowers/specs/2026-08-03-cli-pull-design.md)). 다음 후보는 (a) CLI 트랙 B(`push`·3-way 병합·`diff`·에이전트 스킬), (b) 6절 이월 항목 정리다. 과금은 "추후 검토"로 이동됨 — 최우선 목표는 조직 내에서 쓸 수 있는 도구 완성.
+로드맵의 Phase 1~4가 모두 완료됐다(DDL 역설계, CLI 트랙 A·B — 이 브랜치가 머지되면 트랙 B도 main에 합류한다). 정해진 다음 Phase는 없다. 후보는 (a) 6절 이월 항목 정리 — 특히 CLI 트랙 B의 잔여 한계(→ [설계](specs/2026-08-04-cli-push-design.md) §9, 아래 6절), (b) `docs/90-roadmap.md` "추후 검토" 목록(과금 플랜, Excel 템플릿 커스터마이징, 셀프 가입, MCP 서버, 복수 스키마 등) 중 조직 내부 도구로서 가치가 큰 것부터 검토. 과금은 여전히 최우선이 아니다 — 조직 내에서 쓸 수 있는 도구 완성이 우선.
 
-트랙 B 착수 전 **push 충돌 출력 형식**과 **`SKILL.md` 설계**의 확정이 필요하다. base 저장 방식(`.erdd/base.json` 단일 JSON)·`--json` 출력 스키마·패키지명(`@erdd/cli`, 바이너리 `erdd`)은 트랙 A에서 이미 확정됐다(→ `docs/91-checklist.md`).
-
-> ⚠️ **CLI push는 세 번째 모델 변경 경로가 된다.** 반드시 `mutateAndPublish`(`apps/server/src/services/mutate-publish.ts`)를 거쳐야 한다 — `runMutation`을 직접 부르면 그 변경이 실시간 채널로 전파되지 않는다. 3.6절 참조.
+무엇을 고르든 착수 전에 brainstorming 스킬로 사용자와 우선순위·load-bearing 결정을 먼저 확정한다(5절 "작업 방식" 참조).
 
 ## 2. 읽을 문서 (순서)
 
@@ -76,7 +76,7 @@ Phase 1~3이 모두 main에 있고 권한 세분화 검토도 끝났다(새 권�
 2. `docs/90-roadmap.md` — 단계별 범위(무엇이 어느 Phase인지)
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
 4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-28-phase3-snapshot-diff-design.md`와 `plans/2026-07-28-phase3-snapshot-diff.md`
-5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 4 남은 항목 = 에이전트 스킬 문서. CLI 상세는 트랙 A 범위에서 확정됨)
+5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 1~4 전 항목 확정 완료. 다음 Phase 착수 시 이 문서에 새 항목을 추가한다)
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
 
@@ -139,7 +139,7 @@ Phase 1~3이 모두 main에 있고 권한 세분화 검토도 끝났다(새 권�
 
 ### 3.6 실시간 협업 (Phase 3 #2에서 실제로 물린 것들)
 
-- **모델을 바꾸는 모든 경로는 `mutateAndPublish`를 거친다**(`apps/server/src/services/mutate-publish.ts`). `runMutation`을 직접 부르면 커밋은 되지만 **실시간 채널로 전파되지 않는다.** 현재 호출처는 `model.mutate`·`snapshot.restore` 둘이고, Phase 4 CLI push가 셋째가 된다. 발행은 `db.transaction()`이 resolve된 **뒤**에만 일어나야 한다 — 콜백 안에서 발행하면 롤백된 op가 채널로 나간다(drizzle의 `transaction()`은 `commit`을 await한 뒤에만 resolve하므로 현재 구조에선 구조적으로 불가능).
+- **모델을 바꾸는 모든 경로는 `mutateAndPublish`를 거친다**(`apps/server/src/services/mutate-publish.ts`). `runMutation`을 직접 부르면 커밋은 되지만 **실시간 채널로 전파되지 않는다.** 호출처는 `model.mutate`·`snapshot.restore`·CLI `model.push`(Phase 4 트랙 B) 셋이다. 발행은 `db.transaction()`이 resolve된 **뒤**에만 일어나야 한다 — 콜백 안에서 발행하면 롤백된 op가 채널로 나간다(drizzle의 `transaction()`은 `commit`을 await한 뒤에만 resolve하므로 현재 구조에선 구조적으로 불가능).
 - **`store.seq`에는 의미가 하나여야 한다.** 이 사이클의 Critical 결함이 여기서 나왔다: `use-model.ts`의 `submit()`이 서버 응답 seq로 `setSeq`하고, `use-realtime.ts`는 그 값을 "내가 적용한 마지막 seq"로 읽었다. 두 의미가 갈리면, 내 mutation이 서버 락에 대기하는 동안 커밋된 **남의 op가 "에코"로 오인돼 영구 유실**된다(seq 불연속도 안 잡혀 자가 치유도 발동 안 함). 현재는 `submit()`이 `seq !== seqBefore + 1`이면 `model.get`으로 통째 resync해서 막는다. **seq에 새 writer를 추가하려면 이 불변식을 먼저 확인하라.**
 - **소켓 핸들러에서 `await` 앞에 close 리스너를 걸어라.** `hub.subscribe()` 직후·`await` 이전에 `socket.on('close', ...)`를 등록하지 않으면, 인증(DB 왕복 3회)이나 `currentSeq` 대기 중 끊긴 소켓이 허브에 **영구 유령 항목**을 남긴다 — 다른 참여자에게 유령 아바타·잔상 하이라이트가 서버 재시작 전까지 남고 하트비트 타이머도 누수된다.
 - **재접속 시 클라이언트 상태를 다시 알려야 한다.** 서버 `Entry`는 `selection: null`로 새로 시작하는데, 선택 발신 effect는 "값이 바뀔 때만" 보낸다. `socket.onopen`에서 현재 선택을 무조건 재발신하지 않으면 재접속 후 하이라이트가 사라진 채로 남는다. presence는 서버→클라 방향만 전체 스냅샷이고 클라→서버는 델타라 이 비대칭이 생긴다.
@@ -152,6 +152,11 @@ Phase 1~3이 모두 main에 있고 권한 세분화 검토도 끝났다(새 권�
 ### 3.7 액세스 토큰 인증 (Phase 4 CLI 트랙 A)
 
 > **새 tRPC 프로시저의 기본은 `authedProcedure`(세션 전용)다.** 액세스 토큰으로 호출 가능하게 하려면 `apiProcedure`로 명시적으로 열어야 하고, 그 목록은 CLI가 실제로 쓰는 것으로 한정한다. 기본이 거부이므로 프로시저를 추가해도 토큰에 저절로 열리지 않는다.
+
+### 3.8 CLI push의 낙관적 동시성 (Phase 4 CLI 트랙 B)
+
+- **`runMutation`의 `deriveOps`가 `(model, seq)`를 받는다**(`apps/server/src/services/mutation.ts`, 예전엔 `model`만). `currentSeq` 조회를 `deriveOps` 호출 **위로** 끌어올려, `model.push`의 `expectedSeq` 비교가 프로젝트 행 `FOR UPDATE` 락 안에서 이뤄지는 유일한 지점이 됐다 — **이 지점이 CLI push의 유일한 경합 방어선**이다(락 밖에서 seq를 읽으면 읽기와 커밋 사이에 남이 끼어들 여지가 생긴다). 기존 호출자 `model.mutate`·`snapshot.restore`는 두 번째 인자를 무시해 무영향이고 `mutateAndPublish`도 시그니처를 그대로 통과시킨다. **이번 브랜치에서 두 번째 호출자가 생긴 기존 함수**(5절의 최종 리뷰 질문)로 `runMutation`/`mutateAndPublish`와 `filesToModel`(`opts.newId` 주입)이 해당한다.
+- **`FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`(`packages/core/src/file-merge.ts`)가 엔티티 필드 등록의 8번째 자리다**(3.2절의 6곳 + `model-diff.ts`의 `KIND_ORDER`가 7번째에 이어). 새 엔티티 필드를 추가하면 이 표에 `FILE_FIELDS`(파일에 보이는 필드) 또는 `FILE_INVISIBLE_FIELDS`(파일에 없는 필드)로 분류해야 하고, 하지 않으면 `file-merge.test.ts`의 분류 완전성 테스트가 깨진다(zod shape과 대조해 자동으로 잡는다 — `model-diff.ts`의 `KIND_ORDER` 완전성 테스트와 같은 선례).
 
 ## 4. 개발 환경
 
@@ -339,7 +344,7 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 
 **CLI 트랙 A (구현 완료, 잔여 한계)**
 - `erdd.config.yaml`의 방언·명명 규칙은 pull 시점 사본이다. 서버에서 바꾸면 다음 pull 전까지 로컬 `validate` 결과가 서버와 다를 수 있다
-- 파일에 `notes`·배치 좌표·`origin`을 담지 않는다. 트랙 B의 push는 "파일에 없는 것은 서버에서 건드리지 않는다"를 계약으로 삼아야 한다
+- 파일에 `notes`·배치 좌표·`origin`을 담지 않는다. 트랙 B의 `push`는 "파일에 없는 것은 서버에서 건드리지 않는다"를 계약으로 지켰다(`applyMerge`가 서버 값을 그대로 통과시킨다 — 아래 "CLI 트랙 B" 이월 참조)
 - 토큰에 만료가 없다. 폐기만 가능하다
 - npm 공개 배포 파이프라인이 없다
 - **인덱스 컬럼 방향을 `"MBR_NM DESC"` 한 문자열로 적는다.** 물리명이 정확히 `' ASC'`/`' DESC'`로 끝나면 되읽기가 모호하다. 사용자 판단으로 현행 유지했고, 기존 `ddl-parse.ts:209`도 리포 전역으로 같은 가정을 쓴다
@@ -350,6 +355,15 @@ Phase 2 #4·#5를 Orca worktree 2개로 동시에 진행했다. 잘 돌아갔고
 - **토큰 발급 화면의 "복사" 버튼이 `navigator.clipboard` 결과를 확인하지 않는다.** 비-HTTPS 환경에서 복사되지 않아도 성공 토스트가 뜬다
 - **CLI의 깨진 YAML·손상된 JSON이 `CliError`로 감싸이지 않고** 원본 예외가 새어 `run()`이 `NETWORK`로 감싼다(파일 파싱 실패에 `NETWORK`는 의미상 부정확)
 - **`erdd/tables/` 아래에 `.yaml`로 끝나는 디렉터리가 있으면** `writeTree`가 `EISDIR`로 실패하고 최상위 파일 정리까지 건너뛴다
+
+**CLI 트랙 B (구현 완료, 잔여 한계 — → [설계](specs/2026-08-04-cli-push-design.md) §9)**
+- 배열 안 원소 단위 병합 없음 — `index.columns` 한 원소만 달라도 필드 전체가 충돌한다
+- 충돌의 대화형 해소 없음 — `erdd pull`로 서버 변경을 받은 뒤 파일에서 손으로 정리한다
+- 한 push가 `MAX_OPS_PER_MUTATION`(5000)을 넘으면 거부한다. 대규모 최초 push(300테이블+)는 청크가 필요한데 "단일 Revision = undo 1회" 계약과 상충하므로 별도 설계 대상이다
+- `push`가 `notes`·좌표·`origin`을 절대 건드리지 않는다 — 파일에서 메모를 관리할 수 없다(트랙 A 이월과 동일한 제약)
+- `--json` 실패 응답이 `{error:{code,message}}`와 `{ok:false,conflicts:[…]}` 두 형태다. 충돌은 오류가 아니라 **계획 결과**라 후자를 쓴다(exit 1은 동일)
+- `expectedSeq` 재시도는 1회다. 매우 활발한 프로젝트에서는 반복 실패할 수 있다
+- `skill install`은 Claude Code 형식만 낸다(`AGENTS.md`는 범위 밖)
 
 ---
 
@@ -365,12 +379,11 @@ ERDD 프로젝트를 이어서 작업한다. 먼저 docs/superpowers/HANDOFF.md�
 - 커밋 메시지는 한국어 + Co-Authored-By/Claude-Session 트레일러 2줄.
 - 임시 파일은 $CLAUDE_JOB_DIR/tmp 사용.
 
-다음 작업: <CLI 트랙 B(push·3-way 병합·diff·에이전트 스킬) | 6절 이월 항목 정리> 중 하나를 진행한다.
-CLI 트랙 B를 고른다면 착수 전 docs/91-checklist.md의 "에이전트 스킬 문서"와
-push 충돌 출력 형식을 먼저 확정해라(base 저장 방식·`--json` 스키마·패키지명은 트랙 A에서
-이미 확정됨). HANDOFF.md의 "작업 방식"대로
+다음 작업: <6절 이월 항목 정리 | docs/90-roadmap.md "추후 검토" 항목 중 하나>를 고른다.
+로드맵의 Phase 1~4(DDL 역설계, CLI 트랙 A·B)가 모두 끝나 정해진 다음 Phase가 없다 —
+착수 전 브레인스토밍으로 범위를 사용자와 먼저 확정해라. HANDOFF.md의 "작업 방식"대로
 brainstorming(설계 결정 확인) → spec → plan → SDD 구현/리뷰 → 최종 리뷰 → 브라우저 스모크 → main 머지
 순서로 가라.
 ```
 
-> 다른 것부터 하고 싶으면 마지막 문단만 바꾼다. 예: "6절 이월 항목을 정리한다" / "프로젝트→조직 리소스 승격(공용 리소스 반대 방향)을 구현한다" / "실시간 협업의 이월 항목(멀티 인스턴스·토스트 정교화)을 정리한다".
+> 마지막 문단에 실제로 고를 것을 채운다. 예: "6절 이월 항목을 정리한다" / "프로젝트→조직 리소스 승격(공용 리소스 반대 방향)을 구현한다" / "실시간 협업의 이월 항목(멀티 인스턴스·토스트 정교화)을 정리한다" / "CLI npm 공개 배포 파이프라인을 구축한다".
