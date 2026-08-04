@@ -1,12 +1,22 @@
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
+import { RESOURCE_PAYLOAD_SCHEMAS, type ResourceKind } from '@erdd/core'
 import type { Db } from '../db/client.js'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { getOrgMember } from './perm.js'
 
 export type LibraryRow = typeof resourceLibraries.$inferSelect
 type Actor = { id: string; role: 'admin' | 'user' }
+
+/** 라이브러리에 저장할 payload를 종류별 스키마로 검증한다. */
+export function parsePayload(kind: ResourceKind, payload: unknown): Record<string, unknown> {
+  const parsed = RESOURCE_PAYLOAD_SCHEMAS[kind].safeParse(payload)
+  if (!parsed.success) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: `항목 형식 오류 — ${parsed.error.message}` })
+  }
+  return parsed.data as Record<string, unknown>
+}
 
 async function loadLibrary(db: Db, libraryId: string): Promise<LibraryRow> {
   const row = (
