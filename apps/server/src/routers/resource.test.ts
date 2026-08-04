@@ -217,16 +217,25 @@ describe.skipIf(!url)('resource', () => {
       orgId, name: 'P', dialects: ['postgresql'],
     })).json().result.data.id
     await post(app, 'org.members.add', ownerToken, { orgId, email: 'me@t.dev', role: 'member' })
+    await post(app, 'org.members.add', ownerToken, { orgId, email: 'sa@t.dev', role: 'member' })
     const members = (await get(app, 'org.members.list', ownerToken, { orgId }))
       .json().result.data as Array<{ id: string; email: string }>
     await post(app, 'project.members.add', ownerToken, {
       projectId, memberId: members.find((m) => m.email === 'me@t.dev')!.id, role: 'editor',
+    })
+    await post(app, 'project.members.add', ownerToken, {
+      projectId, memberId: members.find((m) => m.email === 'sa@t.dev')!.id, role: 'viewer',
     })
 
     const asOwner = (await get(app, 'resource.library.listForProject', ownerToken, { projectId }))
       .json().result.data as Array<{ name: string; canWrite: boolean }>
     expect(asOwner.find((l) => l.name === '조직')!.canWrite).toBe(true)
     expect(asOwner.find((l) => l.name === '전역')!.canWrite).toBe(false)
+
+    const asAdmin = (await get(app, 'resource.library.listForProject', saToken, { projectId }))
+      .json().result.data as Array<{ name: string; canWrite: boolean }>
+    expect(asAdmin.find((l) => l.name === '전역')!.canWrite).toBe(true)
+    expect(asAdmin.find((l) => l.name === '조직')!.canWrite).toBe(false)
 
     const asMember = (await get(app, 'resource.library.listForProject', memberToken, { projectId }))
       .json().result.data as Array<{ name: string; canWrite: boolean }>
