@@ -235,14 +235,50 @@ export function isNewId(id: string): boolean {
   return id.startsWith(NEW_ID_PREFIX)
 }
 
-function idOf(r: Rec, path: string, kind: string, index: number): string {
-  return asStr(r['id']) ?? `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
+export type FilesToModelOptions = {
+  /**
+   * id가 없는 객체(로컬 신규)에 줄 id 생성기. push는 uuidv7을 넘겨 처음부터 최종 id로
+   * 조립한다 — 나중에 리맵하면 참조 필드 하나만 빠뜨려도 조용히 깨진다.
+   * 생략하면 경로·종류·순번으로 만든 결정적 임시 id를 쓴다(validate가 위치를 알려 주기 위함).
+   */
+  newId?: () => string
 }
 
-export function filesToModel(tree: FileTree): FilesToModelResult {
+export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesToModelResult {
+  const newId = opts?.newId
   const issues: FileIssue[] = []
   const warnings: FileIssue[] = []
   const model = createEmptyModel()
+
+  /**
+   * 컬렉션별로 "그 id를 처음 쓴 파일"을 기억한다. 컬렉션 키가 곧 엔티티 id라(op.ts:90)
+   * 같은 id가 두 번 나오면 뒤엣것이 앞엣것을 조용히 덮어쓴다. 파일을 복사해 새 테이블을
+   * 만들면서 id를 지우지 않는 것은 흔한 사고인데, push에서는 그것이 "새로 만들기"가 아니라
+   * "원본을 복사본 내용으로 개명"이 되어 복구 불가능한 반영이 나간다 — 계획을 세우기 전에
+   * 오류로 세운다. 생성된 id(new: 접두사·uuid)는 정의상 유일하므로 검사 대상이 아니다.
+   */
+  const firstUse = new Map<string, string>()
+  const idOf = (r: Rec, path: string, kind: string, index: number): string => {
+    const explicit = asStr(r['id'])
+    if (explicit === null) {
+      return newId === undefined ? `${NEW_ID_PREFIX}${path}#${kind}[${index}]` : newId()
+    }
+    const key = `${kind} ${explicit}`
+    const first = firstUse.get(key)
+    if (first === undefined) firstUse.set(key, path)
+    else if (first === path) {
+      issues.push({
+        path,
+        message: `id ${explicit}가 이 파일에서 두 번 쓰였습니다 — id는 서버가 발급한 identity라 하나만 가질 수 있습니다`,
+      })
+    } else {
+      issues.push({
+        path,
+        message: `id ${explicit}가 ${first}에도 있습니다 — 복사해서 새로 만든 것이라면 id를 지우세요(그대로 두면 원본을 덮어씁니다)`,
+      })
+    }
+    return explicit
+  }
 
   const readList = (path: string, key: string): Rec[] => {
     const file = tree[path]

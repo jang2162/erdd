@@ -3,8 +3,11 @@ import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
+import { diff } from './commands/diff.js'
 import { init } from './commands/init.js'
 import { pull } from './commands/pull.js'
+import { push } from './commands/push.js'
+import { skill } from './commands/skill.js'
 import { status } from './commands/status.js'
 import { validate } from './commands/validate.js'
 import { CliError, emitError, note } from './output.js'
@@ -12,25 +15,46 @@ import { CliError, emitError, note } from './output.js'
 const USAGE = `사용법: erdd <명령> [옵션]
 
 명령
-  init       서버·토큰·프로젝트를 연결하고 erdd.config.yaml을 만든다
-  pull       서버 스키마를 파일로 내려받는다
-  status     연결 정보와 로컬 변경을 보여준다
-  validate   서버 없이 파일을 검사한다
+  init         서버·토큰·프로젝트를 연결하고 erdd.config.yaml을 만든다
+  pull         서버 스키마를 파일로 내려받는다
+  push         로컬 파일의 변경을 서버에 반영한다
+  diff         로컬 파일과 서버의 차이를 미리 본다
+  status       연결 정보와 로컬 변경을 보여준다
+  validate     서버 없이 파일을 검사한다
+  skill install 에이전트 스킬 문서를 프로젝트에 설치한다
 
 옵션
   --json                기계용 JSON 출력
   --yes                 확인 프롬프트를 건너뛴다
-  --strict              validate에서 명명 경고도 실패로 본다
+  --strict              validate·diff에서 경고·충돌도 실패로 본다
+  -m, --message <요약>  push의 Revision 요약
+  --dir <경로>          skill install 전용 — 설치 위치
+  --force               skill install 전용 — 기존 파일 덮어쓰기
   --server <url>        init 전용
   --token <token>       init 전용
   --project <id>        init 전용
   --help                이 도움말`
 
-function flagValue(argv: string[], name: string): string | undefined {
+export function flagValue(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(`--${name}`)
   if (i < 0) return undefined
   const next = argv[i + 1]
   // 값 자리에 다음 플래그가 오면 값이 빠진 것이다 — 삼키면 엉뚱한 오류로 번진다.
+  if (next === undefined || next.startsWith('--')) return undefined
+  return next
+}
+
+/**
+ * -m 같은 한 글자 플래그. flagValue와 같은 규칙 — 값 자리에 다음 "긴" 플래그(--로 시작)가
+ * 오면 값이 빠진 것이다. 단일 대시로 시작하는 값(예: "-fix column")은 그대로 삼킨다 — 이
+ * CLI의 단일 대시 토큰은 -m·-h뿐이고 -h는 배차 전에 이미 short-circuit되므로 혼동될 여지가
+ * 없다. (한때 next.startsWith('-')로 단일 대시까지 거절했는데, 그러면 `-m "-fix column"`처럼
+ * 하이픈으로 시작하는 요약이 조용히 사라지고 자동 요약으로 대체됐다.)
+ */
+export function shortFlagValue(argv: string[], name: string): string | undefined {
+  const i = argv.indexOf(`-${name}`)
+  if (i < 0) return undefined
+  const next = argv[i + 1]
   if (next === undefined || next.startsWith('--')) return undefined
   return next
 }
@@ -89,8 +113,13 @@ export async function main(argv: string[], cwd: string): Promise<number> {
       projectId: flagValue(argv, 'project'),
     })
     case 'pull': return pull(ctx)
+    case 'push': return push({ ...ctx, message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm') })
+    case 'diff': return diff(ctx)
     case 'status': return status(ctx)
     case 'validate': return validate(ctx)
+    case 'skill': return skill({
+      ...ctx, sub: argv[1], dir: flagValue(argv, 'dir'), force: argv.includes('--force'),
+    })
     default:
       return usageError(json, `알 수 없는 명령: ${command}`)
   }

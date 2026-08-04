@@ -30,6 +30,9 @@ function stubClient(): ApiClient {
       }
       throw new Error(`unexpected ${path}`)
     }) as ApiClient['query'],
+    mutate: vi.fn(async (path: string) => {
+      throw new Error(`unexpected mutate ${path}`)
+    }) as ApiClient['mutate'],
   }
 }
 
@@ -78,6 +81,9 @@ describe('init', () => {
       query: vi.fn(async () => {
         throw new CliError('UNAUTHORIZED', '토큰이 유효하지 않습니다')
       }) as ApiClient['query'],
+      mutate: vi.fn(async () => {
+        throw new CliError('UNAUTHORIZED', '토큰이 유효하지 않습니다')
+      }) as ApiClient['mutate'],
     }
     const code = await init({
       cwd: dir, json: true, yes: true, strict: false, client,

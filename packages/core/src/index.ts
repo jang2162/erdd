@@ -78,4 +78,11 @@ export type {
 export {
   modelToFiles, filesToModel, tableFileName, unsafeFileName, TREE_ROOT, TOP_LEVEL_FILES, NEW_ID_PREFIX, isNewId,
 } from './file-format.js'
-export type { FileTree, FileIssue, FilesToModelResult } from './file-format.js'
+export type { FileTree, FileIssue, FilesToModelResult, FilesToModelOptions } from './file-format.js'
+export {
+  MERGE_KINDS, FILE_FIELDS, FILE_INVISIBLE_FIELDS, fileVisibleModel, mergeModels,
+  applyMerge, pruneDangling, gridPositions, entityDisplayName,
+} from './file-merge.js'
+export type {
+  MergeKind, MergeConflict, MergeResult, ConflictReason, PrunedRef,
+} from './file-merge.js'

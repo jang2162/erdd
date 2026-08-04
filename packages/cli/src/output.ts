@@ -1,6 +1,6 @@
 export type CliErrorCode =
   | 'UNAUTHORIZED' | 'FORBIDDEN' | 'NOT_FOUND' | 'NO_CONFIG'
-  | 'NETWORK' | 'VALIDATION' | 'USAGE' | 'CANCELLED'
+  | 'NETWORK' | 'VALIDATION' | 'USAGE' | 'CANCELLED' | 'CONFLICT'
 
 export class CliError extends Error {
   readonly code: CliErrorCode

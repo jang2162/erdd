@@ -5,12 +5,14 @@
   "main": "./src/main.ts",
   "types": "./src/main.ts",
   "bin": { "erdd": "./src/main.ts" },
+  "files": ["src", "skill"],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@erdd/core": "workspace:^",
+    "uuidv7": "^1.2.1",
     "yaml": "^2.8.1"
   },
   "devDependencies": {

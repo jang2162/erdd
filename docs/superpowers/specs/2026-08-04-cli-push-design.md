@@ -273,10 +273,15 @@ push: apiProcedure                                  // 토큰 allowlist 6번째
 
 **서버 테스트(실 DB):**
 - `expectedSeq`가 맞으면 반영되고 Revision `source='cli'`로 남는다
-- `expectedSeq`가 어긋나면 `CONFLICT`이고 **모델이 변하지 않는다**(롤백 확인)
+- `expectedSeq`가 어긋나면 `CONFLICT`이고 **이미 반영된 상태가 살아남는다**(롤백 확인).
+  빈 프로젝트로 검사하면 "롤백됐다"와 "애초에 아무것도 없었다"가 구분되지 않으므로,
+  성공 push로 상태를 만든 뒤 그 상태를 전부 지우는 ops를 낡은 `expectedSeq`로 보낸다
 - 토큰으로 `model.push`는 되고 `model.mutate`는 `UNAUTHORIZED`다(allowlist 경계 회귀)
 - Viewer 토큰은 `FORBIDDEN`이다
-- 반영이 실시간 채널로 발행된다(`mutateAndPublish` 경유 확인)
+- 세션 쿠키로도 호출할 수 있다(`apiProcedure`가 토큰 전용이 아님)
+- 반영이 실시간 채널로 발행된다(`mutateAndPublish` 경유 확인) — 허브에 구독을 붙여
+  `ops` 프레임이 그 프로젝트 채널에만 도착하는지 본다. 이 테스트가 없으면 라우터가
+  `runMutation`을 직접 불러도 서버 스위트 전체가 그린이다(실제로 확인함)
 
 ## 6. CLI 변경
 
@@ -307,8 +312,10 @@ push: apiProcedure                                  // 토큰 allowlist 6번째
 7.  applyMerge(server, merged) → { model, pruned }
 8.  ops = diffModels(server, applied)
 9.  ops.length === 0 → '변경 없음' + exit 0
-10. 삭제 op가 있으면 목록(+ pruned) 출력 후 확인 — --yes면 생략
-11. ops.length > MAX_OPS_PER_MUTATION → 서버에 보내기 전에 막고 안내 (§3.2 선례)
+10. ops.length > MAX_OPS_PER_MUTATION → 서버에 보내기 전에 막고 안내 (§3.2 선례)
+11. 삭제 op(또는 pruned)가 있으면 목록 출력 후 확인 — --yes면 생략
+    · 상한 검사가 먼저다. 어차피 거절될 계획을 두고 삭제 확인을 묻지 않는다(테스트로 고정)
+    · 비대화형(--json)이라 confirm이 없으면 "--yes를 함께 주세요"로 안내하고 CANCELLED
 12. client.mutate('model.push', { projectId, expectedSeq: seq, ops, summary })
     · CONFLICT면 4부터 1회 자동 재시도. 두 번째도 CONFLICT면 실패
 13. syncDown() — 신규 id가 파일에 채워지고 다음 status가 깨끗해진다
@@ -448,12 +455,15 @@ description: Use when reading or changing this project's database schema — the
 - `diffModels(server, applyMerge(...).model)`이 **좌표·메모 op를 만들지 않는다**(통합)
 - `filesToModel(tree, { newId })`가 참조까지 최종 id로 조립한다
 
-**server (`model-push.test.ts`, 실 DB)** — §5.2의 5건
+**server (`model-push.test.ts`, 실 DB)** — §5.2의 6건
 
 **cli**
-- `push`: 충돌 시 exit 1이고 **서버를 호출하지 않는다**, 변경 없음 exit 0,
-  삭제 확인 거부 시 `CANCELLED`, `CONFLICT` 1회 재시도 후 성공, 두 번 연속 `CONFLICT`면 실패,
-  성공 후 트리·base·sync가 갱신된다, op 상한 초과를 클라가 막는다, `erdd/` 부재 거부
+- `push`: 충돌 시 exit 1이고 **`model.push`를 호출하지 않는다**(충돌을 알려면 `model.get`은 부른다), 변경 없음 exit 0,
+  삭제 확인 거부 시 `CANCELLED`, **삭제 확인 수락 시 그대로 반영**, `CONFLICT` 1회 재시도 후 성공, 두 번 연속 `CONFLICT`면 실패,
+  성공 후 트리·base·sync가 갱신된다, **암묵적 pull이 신규 id를 파일에 채워 두 번째 push가 no-op이 된다**,
+  op 상한 초과를 클라가 막는다, `erdd/` 부재 거부,
+  **id가 중복된 파일(복사)은 `model.push` 전에 거절**, **CONFLICT가 아닌 `model.push` 실패는
+  `outcomeUnknown`으로 보고하고 재전송하지 않는다**
 - `diff`: 세 묶음 출력, `--strict` 종료 코드, `--json` 스키마
 - `conflict-report`: 블록형 렌더(그룹핑·정렬·`(없음)`·`reason='*'` 문구)
 - `skill install`: 설치, 기존 파일 보호, `--force`, `--dir`
@@ -469,7 +479,17 @@ description: Use when reading or changing this project's database schema — the
 - 한 push가 `MAX_OPS_PER_MUTATION`(5000)을 넘으면 거부한다. 대규모 최초 push(300테이블+)는
   청크가 필요한데 "단일 Revision = undo 1회" 계약과 상충하므로 별도 설계 대상이다
 - `push`가 `notes`·좌표·`origin`을 절대 건드리지 않는다 — 파일에서 메모를 관리할 수 없다
-- `--json` 실패 응답이 `{error:{code,message}}`와 `{ok:false,conflicts:[…]}` 두 형태다.
-  충돌은 오류가 아니라 **계획 결과**라 후자를 쓴다(exit 1은 동일)
+- `--json` 실패 응답이 `{error:{code,message}}`·`{ok:false,conflicts:[…]}`·
+  `{ok:false,committed:true,…}`/`{ok:false,outcomeUnknown:true,…}` 여러 형태다.
+  충돌은 오류가 아니라 **계획 결과**라, 서버 반영 여부는 **오류 코드로 표현할 수 없는
+  상태**라 각각 다른 봉투를 쓴다(exit 1은 동일)
 - `expectedSeq` 재시도는 1회다. 매우 활발한 프로젝트에서는 반복 실패할 수 있다
+- **`push`는 신뢰할 수 없는 전송로 위를 지나는 비멱등 쓰기다.** 서버가 커밋한 뒤 응답만
+  유실되면(TCP reset·프록시 타임아웃·커밋 직후 재시작) 클라이언트는 반영 여부를 알 수 없다.
+  `filesToModel(local, { newId: uuidv7 })`이 호출마다 새 uuid를 발급하므로, 그대로 다시
+  push하면 서버의 엔티티는 "서버 전용(유지)", 같은 파일 항목은 "로컬 전용(새 id로 생성)"이
+  되어 **경고 없이 사본이 하나 더 생긴다**. 지금은 감지만 한다 — CONFLICT가 아닌 `model.push`
+  실패는 `{ ok:false, outcomeUnknown:true }`로 보고하고 `erdd pull`/`erdd diff`로 서버 상태를
+  먼저 확인하도록 안내한다. 제대로 된 해법은 멱등 키(요청 id를 Revision에 저장해 재전송을
+  같은 리비전으로 흡수)나 계획의 신규 id를 `.erdd/`에 미리 적어 두는 것이다 — 후속 과제
 - `skill install`은 Claude Code 형식만 낸다(`AGENTS.md`는 범위 밖)

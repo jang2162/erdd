@@ -32,7 +32,7 @@
 ## Phase 4 — 생태계
 
 - CLI 트랙 A 완료 — 개인 액세스 토큰(조직·프로젝트 역할에서 파생, 새 권한 축 아님), 파일 포맷(분할 YAML), 읽기 명령 `init`/`pull`/`status`/`validate` ([16-cli](16-cli.md), [설계](superpowers/specs/2026-08-03-cli-pull-design.md))
-- CLI 트랙 B 예정 — `push`, 3-way 병합, `diff`, 에이전트 스킬(`SKILL.md`) ([16-cli](16-cli.md)) — **Phase 4 잔여 항목**
+- CLI 트랙 B 완료 — `push`(3-way 병합, 필드 단위 충돌 감지), `diff`(항상 3-way 계획 미리보기), 에이전트 스킬(`erdd skill install`이 `.claude/skills/erdd/SKILL.md`로 설치) ([16-cli](16-cli.md), [설계](superpowers/specs/2026-08-04-cli-push-design.md))
 - DDL 가져오기(역설계) 완료 — 손으로 쓴 좁은 파서(`CREATE TABLE`/`ALTER TABLE ADD CONSTRAINT`/`CREATE INDEX`/`COMMENT ON`)로 기존 DDL을 파싱해 미리보기 후 모델에 적용, 논리명은 코멘트→사전 순으로 복원 ([설계](superpowers/specs/2026-08-03-ddl-reverse-engineering-design.md)) ([17-import-export](17-import-export.md))
 
 ## 추후 검토 (현재 비범위)
