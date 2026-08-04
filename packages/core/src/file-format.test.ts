@@ -132,9 +132,13 @@ describe('filesToModel', () => {
   it('newId를 주면 신규 객체가 발급된 id를 받고 참조도 그 id로 조립된다', () => {
     const tree = {
       'erdd/groups.yaml': { groups: [{ name: '회원관리', color: '#eef' }] },
+      'erdd/domains.yaml': { domains: [{ name: '명칭', logicalType: 'VARCHAR(100)', dialectTypes: {} }] },
+      'erdd/words.yaml': { words: [{ logicalName: '회원', abbreviation: 'MBR' }] },
+      'erdd/terms.yaml': { terms: [{ logicalName: '회원번호', physicalName: 'MBR_NO' }] },
+      'erdd/custom-fields.yaml': { customFields: [{ name: 'cf1', target: 'table', type: 'text' }] },
       'erdd/tables/MBR.yaml': {
         name: 'MBR', logicalName: '회원', group: '회원관리',
-        columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', pk: true, nullable: false }],
+        columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', pk: true, nullable: false, domain: '명칭' }],
         indexes: [{ name: 'UX_MBR_01', columns: ['MBR_NO'], unique: true }],
       },
       'erdd/tables/ORD.yaml': {
@@ -152,6 +156,7 @@ describe('filesToModel', () => {
     const allIds = [
       ...Object.keys(m.tableGroups), ...Object.keys(m.tables),
       ...Object.keys(m.columns), ...Object.keys(m.indexes), ...Object.keys(m.relationships),
+      ...Object.keys(m.domains), ...Object.keys(m.words), ...Object.keys(m.terms), ...Object.keys(m.customFields),
     ]
     expect(allIds.every((id) => id.startsWith('id-'))).toBe(true)
     expect(allIds.some(isNewId)).toBe(false)
@@ -170,6 +175,9 @@ describe('filesToModel', () => {
     expect(rel.columnMappings[0]!.childColumnId).toBe(ordCol.id)
     expect(rel.columnMappings[0]!.parentColumnId).toBe(mbrCol.id)
     expect(ix.columns[0]!.columnId).toBe(mbrCol.id)
+
+    // domainId가 발급된 도메인 id를 가리킨다
+    expect(mbrCol.domainId).toBe(Object.keys(m.domains)[0])
   })
 
   it('newId를 주지 않으면 기존 임시 id 동작 그대로다', () => {
