@@ -34,7 +34,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 429 · cli 113 · web 341 · server 108 (erdd_test) · typecheck EXIT=0
+core 429 · cli 114 · web 341 · server 108 (erdd_test) · typecheck EXIT=0
 ```
 
 CLI 트랙 B에서 `push`·`diff`·`skill install` 배선 테스트가 추가되며 `packages/cli`가 57 → 104로

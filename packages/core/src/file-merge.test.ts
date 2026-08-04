@@ -377,8 +377,9 @@ describe('pruneDangling', () => {
     m.columns['c2']!.tableId = 'tb2'
     const pruned = pruneDangling(m)
     expect(m.indexes['ix1']).toBeUndefined()
+    // ix1 자신의 tableId(tb1)는 그대로다 — entityDisplayName이 테이블로 한정한다.
     expect(pruned).toContainEqual({
-      kind: 'index', entityId: 'ix1', label: '인덱스 UX_MBR_01', reason: '참조 대상이 삭제됨',
+      kind: 'index', entityId: 'ix1', label: '인덱스 MBR.UX_MBR_01', reason: '참조 대상이 삭제됨',
     })
   })
 
@@ -389,8 +390,9 @@ describe('pruneDangling', () => {
     m.columns['c5']!.tableId = 'tb2'
     const pruned = pruneDangling(m)
     expect(m.relationships['r2']).toBeUndefined()
+    // r2는 이름이 없다(name: null) — entityDisplayName은 raw id 대신 자식→부모로 보여준다.
     expect(pruned).toContainEqual({
-      kind: 'relationship', entityId: 'r2', label: '관계 r2', reason: '참조 대상이 삭제됨',
+      kind: 'relationship', entityId: 'r2', label: '관계 MBR_DTL→MBR', reason: '참조 대상이 삭제됨',
     })
   })
 

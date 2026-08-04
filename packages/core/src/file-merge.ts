@@ -343,10 +343,15 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
   const has = (col: Record<string, unknown>, id: string): boolean => Object.hasOwn(col, id)
   const columnIn = (id: string) => (has(model.columns, id) ? model.columns[id] : undefined)
 
+  // entityDisplayName(kind, e, [model])은 e['tableId']로 model.tables를 찾는다 — pruneDangling은
+  // model.tables를 지우지 않으므로(스칼라 groupId만 null로 바꾼다) 아래 모든 호출 시점에
+  // 테이블은 여전히 조회 가능하다. 유일한 예외는 컬럼·관계 자신의 소속 테이블이 바로 이 함수가
+  // 지우는 이유인 경우(테이블 자체가 model에 없음) — 그때는 entityDisplayName도 동일하게
+  // id로 떨어진다(그 이상 보여줄 정보가 없다).
   for (const [id, c] of Object.entries(model.columns)) {
     if (has(model.tables, c.tableId)) continue
     delete model.columns[id]
-    pruned.push({ kind: 'column', entityId: id, label: `컬럼 ${c.physicalName}`, reason })
+    pruned.push({ kind: 'column', entityId: id, label: `컬럼 ${entityDisplayName('column', c, [model])}`, reason })
   }
   for (const [id, ix] of Object.entries(model.indexes)) {
     const bad = !has(model.tables, ix.tableId)
@@ -356,7 +361,7 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
       })
     if (!bad) continue
     delete model.indexes[id]
-    pruned.push({ kind: 'index', entityId: id, label: `인덱스 ${ix.name}`, reason })
+    pruned.push({ kind: 'index', entityId: id, label: `인덱스 ${entityDisplayName('index', ix, [model])}`, reason })
   }
   for (const [id, r] of Object.entries(model.relationships)) {
     const bad = !has(model.tables, r.parentTableId)
@@ -369,7 +374,9 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
       })
     if (!bad) continue
     delete model.relationships[id]
-    pruned.push({ kind: 'relationship', entityId: id, label: `관계 ${r.name ?? id}`, reason })
+    pruned.push({
+      kind: 'relationship', entityId: id, label: `관계 ${entityDisplayName('relationship', r, [model])}`, reason,
+    })
   }
 
   // 스칼라 참조는 끊기만 한다 — 엔티티는 살린다.
@@ -377,7 +384,7 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     if (t.groupId === null || has(model.tableGroups, t.groupId)) continue
     t.groupId = null
     pruned.push({
-      kind: 'table', entityId: t.id, label: `테이블 ${t.physicalName}`,
+      kind: 'table', entityId: t.id, label: `테이블 ${entityDisplayName('table', t, [model])}`,
       reason: '그룹이 삭제되어 참조를 해제함',
     })
   }
@@ -385,7 +392,7 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     if (c.domainId === null || has(model.domains, c.domainId)) continue
     c.domainId = null
     pruned.push({
-      kind: 'column', entityId: c.id, label: `컬럼 ${c.physicalName}`,
+      kind: 'column', entityId: c.id, label: `컬럼 ${entityDisplayName('column', c, [model])}`,
       reason: '도메인이 삭제되어 참조를 해제함',
     })
   }
@@ -393,7 +400,7 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     if (t.domainId === null || has(model.domains, t.domainId)) continue
     t.domainId = null
     pruned.push({
-      kind: 'term', entityId: t.id, label: `용어 ${t.logicalName}`,
+      kind: 'term', entityId: t.id, label: `용어 ${entityDisplayName('term', t, [model])}`,
       reason: '도메인이 삭제되어 참조를 해제함',
     })
   }

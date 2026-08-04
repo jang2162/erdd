@@ -436,10 +436,34 @@ describe('push', () => {
     const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
     expect(code).toBe(1)
     expect(pushCalls).toHaveLength(1)          // 재전송하지 않는다 — 중복이 생긴다
-    const payload = lastJson<{ ok: boolean; outcomeUnknown: boolean; committed?: boolean }>()
+    const payload = lastJson<{
+      ok: boolean; outcomeUnknown: boolean; committed?: boolean; pushErrorCode?: string | null
+    }>()
     expect(payload.ok).toBe(false)
     expect(payload.outcomeUnknown).toBe(true)
     expect(payload.committed).toBeUndefined()  // "커밋됨"과 구분된다
+    expect(payload.pushErrorCode).toBe('NETWORK')   // --json 소비자가 원인 코드로 분기할 수 있다
+  })
+
+  it('model.push가 서버 응답 오류(FORBIDDEN)로 실패하면 outcome-unknown이 아니라 평범한 오류로 전달한다', async () => {
+    // UNAUTHORIZED·FORBIDDEN·NOT_FOUND·VALIDATION은 살아있는 연결로 왕복해 서버가 직접
+    // 거절한 응답이다(client.ts의 CODE_MAP) — 반영 여부가 불분명한 전송 실패(NETWORK)와
+    // 달리 아무것도 커밋되지 않았다는 것이 확실하다. outcome-unknown으로 뭉뚱그리면 토큰이
+    // 만료된 사용자가 인증 오류 대신 "반영 여부를 확인할 수 없습니다"를 읽게 된다.
+    const server = fullModel()
+    await seed(server)
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+
+    const { client, pushCalls } = stub(server, {
+      pushImpl: async () => { throw new CliError('FORBIDDEN', '권한이 없습니다') },
+    })
+    const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
+    expect(code).toBe(1)
+    expect(pushCalls).toHaveLength(1)
+    const payload = lastJson<{ error?: { code: string; message: string }; outcomeUnknown?: boolean }>()
+    expect(payload.error).toMatchObject({ code: 'FORBIDDEN' })
+    expect(payload.outcomeUnknown).toBeUndefined()
   })
 
   it('model.push가 CONFLICT가 아닌 이유로 실패하면 사람용 문구가 확인 방법을 알려 준다', async () => {
@@ -458,12 +482,19 @@ describe('push', () => {
     expect(text).toContain('socket hang up')
   })
 
-  it('삭제 목록은 컬럼을 테이블로 한정하고 이름 없는 관계도 이름으로 보여 준다', async () => {
+  it('삭제 목록은 컬럼을 테이블로 한정하고, 정리(pruned) 목록도 같은 규칙을 쓴다', async () => {
     // 픽스처에는 MBR_NO 컬럼이 세 테이블에 있다. `컬럼 MBR_NO`라고만 쓰면 어느 것을
     // 지우는지 알 수 없고, 이름 없는 관계(r2)는 원시 id가 그대로 찍힌다.
-    const server = fullModel()
-    await seed(server)
+    // 도메인 d1도 서버에서만 지워 c2(MBR.MBR_NM)의 domainId를 매달아 놓는다 — 삭제(deletes)와
+    // 정리(pruned)가 한 프롬프트에 함께 나오게 해야, pruneDangling이 만드는 라벨이 opLabel과
+    // 다른 표기를 쓰는 회귀를 이 테스트가 잡을 수 있다(따로 검증하면 한쪽만 옳아도 통과한다).
+    const original = fullModel()
+    await seed(original)
     await rm(join(dir, 'erdd/tables/MBR_DTL.yaml'))
+
+    const server = fullModel()
+    delete server.domains['d1']
+
     const { client, pushCalls } = stub(server)
     const code = await push({
       cwd: dir, json: false, yes: false, strict: false, client, confirm: async () => false,
@@ -471,9 +502,11 @@ describe('push', () => {
     expect(code).toBe(1)
     expect(pushCalls).toHaveLength(0)
     const text = err.join('')
-    expect(text).toContain('컬럼 MBR_DTL.MBR_NO')
-    expect(text).toContain('관계 MBR_DTL→MBR')
-    expect(text).not.toContain('컬럼 MBR_NO\n')   // 한정 없는 옛 표기가 남아 있으면 안 된다
+    expect(text).toContain('컬럼 MBR_DTL.MBR_NO')   // 삭제 목록 — 테이블로 한정된 컬럼
+    expect(text).toContain('관계 MBR_DTL→MBR')       // 삭제 목록 — 이름 없는 관계
+    expect(text).toContain('컬럼 MBR.MBR_NM')        // 정리(pruned) 목록도 같은 한정 규칙을 쓴다
+    expect(text).not.toContain('컬럼 MBR_NO\n')       // 한정 없는 옛 표기가 삭제 목록에 남으면 안 된다
+    expect(text).not.toContain('컬럼 MBR_NM (')       // 한정 없는 표기가 정리 목록에 남으면 안 된다
   })
 
   it('삭제 확인을 수락하면 그대로 반영한다', async () => {
@@ -548,8 +581,8 @@ describe('push', () => {
     expect(pushCalls).toHaveLength(1)
 
     const sent = (pushCalls[0] as { ops: Op[] }).ops
-    const created = sent.find((o) => o.entity === 'table' && o.action === 'create')!
-    expect(created).toBeDefined()
+    const created = sent.find((o) => o.entity === 'table' && o.action === 'create')
+    if (created === undefined) throw new Error('table create op가 sent에 없다')
     const file = await readFile(join(dir, 'erdd/tables/PAY.yaml'), 'utf8')
     expect(file).toContain(created.entityId)      // 발급된 id가 파일에 채워졌다
 

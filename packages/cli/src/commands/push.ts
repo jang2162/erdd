@@ -4,7 +4,7 @@ import {
 } from '@erdd/core'
 import { readConfig } from '../config.js'
 import { buildPlan, type PushPlan } from '../plan.js'
-import { CliError, emit, note } from '../output.js'
+import { CliError, emit, note, type CliErrorCode } from '../output.js'
 import { renderConflicts } from './conflict-report.js'
 import { clientFor, run, type CommandCtx } from './context.js'
 import { syncDown } from './sync-down.js'
@@ -13,6 +13,15 @@ export type PushCtx = CommandCtx & { message?: string }
 
 /** 서버 스키마의 summary 상한(z.string().min(1).max(200))과 맞춘다 — 자동/수동 요약 둘 다. */
 const MAX_SUMMARY_LENGTH = 200
+
+/**
+ * client.ts의 CODE_MAP이 서버 *응답*에서 붙이는 코드. 살아있는 연결로 왕복해 서버가 직접
+ * 거절한 것이라 반영 여부가 분명하다(아무것도 커밋되지 않았다) — outcome-unknown이 아니라
+ * 평범한 오류로 run()까지 그대로 올려보낸다.
+ */
+const SERVER_REJECTION_CODES: ReadonlySet<CliErrorCode> = new Set(
+  ['UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'VALIDATION'] satisfies CliErrorCode[],
+)
 
 /**
  * 삭제 확인 프롬프트의 한 줄. 되돌릴 수 없는 반영 직전 화면이라 "어느 것인지"가 남으면 안 된다 —
@@ -129,8 +138,13 @@ export function push(ctx: PushCtx): Promise<number> {
           retried = true
           continue
         }
-        // CONFLICT가 아닌 실패(연결 끊김·프록시 타임아웃·커밋 직후 서버 재시작)는 요청이
-        // 서버에 닿았는지조차 알 수 없다. 그냥 실패로 보고하면 다음 push가 같은 것을
+        // UNAUTHORIZED·FORBIDDEN·NOT_FOUND·VALIDATION은 서버가 요청을 받아 직접 거절한
+        // 응답이다(client.ts의 CODE_MAP) — 전송 실패와 달리 반영 여부가 불분명하지 않다.
+        // outcome-unknown으로 뭉뚱그리지 않고 평범한 오류로 그대로 올려보내 run()이
+        // 처리하게 한다(호출자가 code로 분기할 수 있도록 이전과 동일하게 동작한다).
+        if (err instanceof CliError && SERVER_REJECTION_CODES.has(err.code)) throw err
+        // 그 외 실패(연결 끊김·프록시 타임아웃·커밋 직후 서버 재시작 등 전송 계층 실패)는
+        // 요청이 서버에 닿았는지조차 알 수 없다. 그냥 실패로 보고하면 다음 push가 같은 것을
         // 새 uuid로 다시 만들어(filesToModel이 매번 새 id를 발급한다) 조용히 중복이 생긴다.
         // 여기서 재전송도 하지 않는다 — 커밋된 경우 그쪽이 바로 중복이다.
         const detail = err instanceof CliError ? err.message : (err as Error).message
@@ -141,6 +155,7 @@ export function push(ctx: PushCtx): Promise<number> {
           {
             ok: false, outcomeUnknown: true, revisionSeq: null, ops: plan.ops.length,
             ...countByAction(plan.ops), pruned: plan.pruned, retried, pushError: detail,
+            pushErrorCode: err instanceof CliError ? err.code : null,
           },
         )
         return 1
