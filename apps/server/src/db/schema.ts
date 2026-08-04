@@ -238,3 +238,35 @@ export const resourceItems = pgTable('resource_items', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('ix_resource_items_library_id').on(t.libraryId)])
+
+/**
+ * 승격 요청 큐 — op 로그 밖의 일반 테이블이다(resource_libraries와 같은 계층).
+ *
+ * 요청은 **엔티티 포인터만** 담는다. payload를 동결하지 않으므로 승인 시점에 planPromote를
+ * 다시 돌려 최신 값으로 승격한다. orgId 비정규화 컬럼을 두지 않는 것은 의도다 —
+ * 조직 단위 조회는 resource_libraries.orgId 조인으로 얻고, 요청 생성이
+ * library.orgId === project.orgId를 강제하므로 두 경로가 같은 값을 가리킨다.
+ */
+export const promotionRequests = pgTable('promotion_requests', {
+  id: uuid('id').primaryKey(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  libraryId: uuid('library_id').notNull()
+    .references(() => resourceLibraries.id, { onDelete: 'cascade' }),
+  requesterId: uuid('requester_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 프로젝트 엔티티 id 묶음. */
+  entityIds: jsonb('entity_ids').$type<string[]>().notNull(),
+  note: text('note').notNull().default(''),
+  status: text('status', { enum: ['pending', 'resolved', 'rejected', 'cancelled'] })
+    .notNull().default('pending'),
+  /** 처리자(승인·반려) 또는 취소자. */
+  resolvedBy: uuid('resolved_by').references(() => users.id, { onDelete: 'set null' }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolutionNote: text('resolution_note').notNull().default(''),
+  /** 실제로 승격된 엔티티 id(부분 승인의 결과). pending이면 null. */
+  approvedEntityIds: jsonb('approved_entity_ids').$type<string[]>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('ix_promotion_requests_library_status').on(t.libraryId, t.status),
+  index('ix_promotion_requests_project').on(t.projectId),
+])
