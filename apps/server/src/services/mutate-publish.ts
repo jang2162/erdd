@@ -3,6 +3,8 @@ import type { Db } from '../db/client.js'
 import { runMutation } from './mutation.js'
 import type { RealtimeHub } from './realtime.js'
 
+type MutationTx = Parameters<typeof runMutation>[0]
+
 /**
  * 모델 변경의 유일한 외부 진입점.
  *
@@ -20,6 +22,12 @@ export async function mutateAndPublish(
     actorUserId: string
     actorName: string
     source: 'web' | 'cli' | 'system'
+    /**
+     * 락 획득·모델 로드 뒤, deriveOps 앞에 같은 트랜잭션에서 실행한다.
+     * 모델 밖 테이블(예: 공용 리소스 라이브러리)을 프로젝트 행 락 안에서 함께 쓰기 위한 훅이다.
+     * 여기서 던지면 모델 변경과 함께 롤백된다.
+     */
+    prepare?: (tx: MutationTx, model: ProjectModel) => Promise<void>
     deriveOps: (model: ProjectModel, seq: number) => Op[]
     summary?: string
   },
@@ -28,6 +36,7 @@ export async function mutateAndPublish(
     projectId: args.projectId,
     actorUserId: args.actorUserId,
     source: args.source,
+    prepare: args.prepare,
     deriveOps: args.deriveOps,
     summary: args.summary,
   }))

@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
+import { eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import type { Op } from '@erdd/core'
-import { organizations, projects } from '../db/schema.js'
+import { organizations, projects, resourceLibraries } from '../db/schema.js'
 import { resetDb } from '../testing/db.js'
 import { createTestApp } from '../testing/helpers.js'
 import { createAccount } from './accounts.js'
@@ -73,6 +74,44 @@ describe.skipIf(!url)('mutateAndPublish', () => {
     await expect(mutateAndPublish(app.db!, hub, {
       projectId, actorUserId: userId, actorName: '오너', source: 'web', deriveOps: () => [ghost],
     })).rejects.toThrow()
+    expect(received).toEqual([])
+  })
+
+  it('prepare는 락 안에서 그 시점의 권위 모델과 함께 호출된다', async () => {
+    const seen: number[] = []
+    const record = async (_tx: unknown, model: { notes: Record<string, unknown> }) => {
+      seen.push(Object.keys(model.notes).length)
+    }
+    await mutateAndPublish(app.db!, hub, {
+      projectId, actorUserId: userId, actorName: '오너', source: 'web',
+      prepare: record, deriveOps: () => [noteOp()],
+    })
+    await mutateAndPublish(app.db!, hub, {
+      projectId, actorUserId: userId, actorName: '오너', source: 'web',
+      prepare: record, deriveOps: () => [noteOp()],
+    })
+    expect(seen).toEqual([0, 1])   // 두 번째 호출은 첫 메모가 반영된 모델을 본다
+  })
+
+  it('prepare가 쓴 행은 모델 변경과 한 트랜잭션이다 — op 적용이 실패하면 함께 롤백된다', async () => {
+    const libraryId = uuidv7()
+    await expect(mutateAndPublish(app.db!, hub, {
+      projectId, actorUserId: userId, actorName: '오너', source: 'web',
+      prepare: async (tx) => {
+        await tx.insert(resourceLibraries).values({
+          id: libraryId, scope: 'global', orgId: null, name: '롤백 확인', description: '',
+        })
+      },
+      // 존재하지 않는 메모를 수정하는 op — applyOps가 거부한다
+      deriveOps: () => [{
+        action: 'update', entity: 'note', entityId: uuidv7(),
+        changes: { content: { from: 'a', to: 'b' } },
+      }],
+    })).rejects.toThrow()
+
+    const rows = await app.db!.select().from(resourceLibraries)
+      .where(eq(resourceLibraries.id, libraryId))
+    expect(rows).toHaveLength(0)
     expect(received).toEqual([])
   })
 })
