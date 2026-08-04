@@ -201,4 +201,35 @@ describe.skipIf(!url)('resource', () => {
     const memberList = await get(app, 'resource.items.list', memberToken, { libraryId: lib.id })
     expect(memberList.statusCode).toBe(200)
   })
+
+  it('listForProject는 라이브러리별 쓰기 권한을 함께 준다', async () => {
+    await createAccount(app.db!, { email: 'sa@t.dev', name: 'SA', password: 'pw-123456', role: 'admin' })
+    await createAccount(app.db!, { email: 'ow@t.dev', name: 'OW', password: 'pw-123456', role: 'user' })
+    await createAccount(app.db!, { email: 'me@t.dev', name: 'ME', password: 'pw-123456', role: 'user' })
+    const saToken = await loginAs(app, 'sa@t.dev', 'pw-123456')
+    const ownerToken = await loginAs(app, 'ow@t.dev', 'pw-123456')
+    const memberToken = await loginAs(app, 'me@t.dev', 'pw-123456')
+
+    await post(app, 'resource.library.create', saToken, { scope: 'global', name: '전역' })
+    const orgId = (await post(app, 'org.create', ownerToken, { name: '팀' })).json().result.data.id
+    await post(app, 'resource.library.create', ownerToken, { scope: 'org', orgId, name: '조직' })
+    const projectId = (await post(app, 'project.create', ownerToken, {
+      orgId, name: 'P', dialects: ['postgresql'],
+    })).json().result.data.id
+    await post(app, 'org.members.add', ownerToken, { orgId, email: 'me@t.dev', role: 'member' })
+    const members = (await get(app, 'org.members.list', ownerToken, { orgId }))
+      .json().result.data as Array<{ id: string; email: string }>
+    await post(app, 'project.members.add', ownerToken, {
+      projectId, memberId: members.find((m) => m.email === 'me@t.dev')!.id, role: 'editor',
+    })
+
+    const asOwner = (await get(app, 'resource.library.listForProject', ownerToken, { projectId }))
+      .json().result.data as Array<{ name: string; canWrite: boolean }>
+    expect(asOwner.find((l) => l.name === '조직')!.canWrite).toBe(true)
+    expect(asOwner.find((l) => l.name === '전역')!.canWrite).toBe(false)
+
+    const asMember = (await get(app, 'resource.library.listForProject', memberToken, { projectId }))
+      .json().result.data as Array<{ name: string; canWrite: boolean }>
+    expect(asMember.every((l) => l.canWrite === false)).toBe(true)
+  })
 })

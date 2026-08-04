@@ -60,10 +60,18 @@ export const resourceRouter = router({
       .input(z.object({ projectId: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
         const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
-        return listWithCounts(ctx.db, or(
+        const rows = await listWithCounts(ctx.db, or(
           and(eq(resourceLibraries.scope, 'global'), isNull(resourceLibraries.orgId)),
           eq(resourceLibraries.orgId, access.project.orgId),
         ))
+        // 클라가 역할 조합식을 재현하지 않도록 쓰기 가능 여부를 서버가 판정해 싣는다.
+        // 목록의 조직 라이브러리는 전부 이 프로젝트의 조직 것이다.
+        const isServiceAdmin = ctx.user.role === 'admin'
+        const isOrgManager = access.orgRole === 'owner' || access.orgRole === 'admin'
+        return rows.map((row) => ({
+          ...row,
+          canWrite: row.scope === 'global' ? isServiceAdmin : isOrgManager,
+        }))
       }),
 
     create: authedProcedure
