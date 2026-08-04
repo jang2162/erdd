@@ -1,6 +1,6 @@
 import type { z } from 'zod'
 import {
-  CustomFieldSchema, DomainSchema, TermSchema, WordSchema, type ProjectModel,
+  CustomFieldSchema, DomainSchema, TermSchema, WordSchema, type Origin, type ProjectModel,
 } from './model.js'
 
 /** 공용 리소스로 다루는 엔티티 종류. 배열 순서 = 화면 표시 순서. */
@@ -49,4 +49,13 @@ export function resourceDisplayName(
   const key = kind === 'domain' || kind === 'customField' ? 'name' : 'logicalName'
   const value = payload[key]
   return typeof value === 'string' ? value : ''
+}
+
+/** 공용 리소스 4종의 프로젝트 엔티티 목록. planResync·planPromote가 함께 쓴다. */
+export function resourceEntitiesOf(
+  model: ProjectModel, kind: ResourceKind,
+): { id: string; origin: Origin | null }[] {
+  const collection = model[RESOURCE_COLLECTION_BY_KIND[kind]] as unknown as
+    Record<string, { id: string; origin: Origin | null }>
+  return Object.values(collection)
 }

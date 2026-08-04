@@ -68,13 +68,15 @@ export {
 } from './custom-field.js'
 export {
   RESOURCE_KINDS, RESOURCE_COLLECTION_BY_KIND, RESOURCE_KIND_LABEL, RESOURCE_PAYLOAD_SCHEMAS,
-  resourcePayloadOf, resourceDisplayName,
+  resourcePayloadOf, resourceDisplayName, resourceEntitiesOf,
 } from './resource.js'
 export type { ResourceKind } from './resource.js'
 export { planResync, applyResyncPlan } from './resource-sync.js'
 export type {
   LibraryItem, ResyncStatus, ResyncDecision, ResyncEntry, ResyncPlan,
 } from './resource-sync.js'
+export { planPromote } from './resource-promote.js'
+export type { PromoteStatus, PromoteEntry, PromotePlan } from './resource-promote.js'
 export {
   modelToFiles, filesToModel, tableFileName, unsafeFileName, TREE_ROOT, TOP_LEVEL_FILES, NEW_ID_PREFIX, isNewId,
 } from './file-format.js'
