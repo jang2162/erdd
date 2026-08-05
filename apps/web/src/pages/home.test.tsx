@@ -43,10 +43,20 @@ describe('HomePage', () => {
           { id: 'o1', name: '사용자의 공간', kind: 'personal', role: 'owner' },
         ],
       }),
+      'promotion.pendingCount': () => ({ data: { total: 0, byOrg: [] } }),
     })
     await waitFor(() => expect(screen.getByText('팀A')).toBeDefined())
     expect(screen.getByText('개인 공간')).toBeDefined()
     const cards = screen.getAllByRole('link')
     expect(cards[0]?.textContent).toContain('사용자의 공간')
+  })
+
+  it('대기 요청이 있는 조직 카드에 건수를 보여준다', async () => {
+    renderHome({
+      'auth.me': () => ({ data: { id: 'u1', name: '나', email: 'me@t.dev', role: 'user' } }),
+      'org.list': () => ({ data: [{ id: 'o1', name: '팀', kind: 'team', role: 'owner' }] }),
+      'promotion.pendingCount': () => ({ data: { total: 2, byOrg: [{ orgId: 'o1', count: 2 }] } }),
+    })
+    expect(await screen.findByText('승격 요청 2건')).toBeTruthy()
   })
 })

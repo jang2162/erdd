@@ -3,27 +3,20 @@ import { and, asc, count, eq, isNull, or, type SQL } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  applyPromotePlan, deepEqual, diffModels, planPromote, MAX_OPS_PER_MUTATION, OpApplyError,
-  RESOURCE_KINDS, RESOURCE_PAYLOAD_SCHEMAS, type LibraryItem, type ProjectModel, type ResourceKind,
+  deepEqual, diffModels, MAX_OPS_PER_MUTATION, OpApplyError,
+  RESOURCE_KINDS, type ProjectModel,
 } from '@erdd/core'
 import type { Db } from '../db/client.js'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { requireProjectAccess } from '../services/perm.js'
 import {
-  requireLibraryRead, requireLibraryWrite, requireScopeRead, requireScopeWrite,
+  parsePayload, requireLibraryRead, requireLibraryWrite, requireScopeRead, requireScopeWrite,
 } from '../services/resource-library.js'
+import { emptyOutcome, runPromoteInTx } from '../services/promote.js'
 import { mutateAndPublish } from '../services/mutate-publish.js'
 import { authedProcedure, router } from '../trpc.js'
 
 const KindEnum = z.enum(RESOURCE_KINDS)
-
-function parsePayload(kind: ResourceKind, payload: unknown): Record<string, unknown> {
-  const parsed = RESOURCE_PAYLOAD_SCHEMAS[kind].safeParse(payload)
-  if (!parsed.success) {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: `항목 형식 오류 — ${parsed.error.message}` })
-  }
-  return parsed.data as Record<string, unknown>
-}
 
 /** 라이브러리 목록 + 항목 수. where 조건은 호출부가 만든다. */
 async function listWithCounts(db: Db, where: SQL | undefined) {
@@ -200,6 +193,8 @@ export const resourceRouter = router({
    *
    * payload는 클라에서 받지 않는다. 서버가 트랜잭션 안에서 모델을 다시 읽어 계획을
    * 재계산하고, 클라가 본 상태(상태·대상 항목·대상 버전)와 다른 항목만 건너뛴다.
+   *
+   * 본문은 `runPromoteInTx`에 있다.
    */
   promote: authedProcedure
     .input(z.object({
@@ -221,11 +216,7 @@ export const resourceRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: '이 프로젝트의 조직 라이브러리가 아닙니다' })
       }
 
-      const outcome = {
-        inserted: 0,
-        updated: 0,
-        skipped: [] as { entityId: string; reason: 'missing' | 'plan-changed' }[],
-      }
+      const outcome = emptyOutcome()
       const state: { next: ProjectModel | null } = { next: null }
 
       try {
@@ -235,58 +226,9 @@ export const resourceRouter = router({
           actorName: ctx.user.name,
           source: 'web',
           prepare: async (tx, model) => {
-            const items = await tx
-              .select({
-                id: resourceItems.id, kind: resourceItems.kind,
-                payload: resourceItems.payload, version: resourceItems.version,
-              })
-              .from(resourceItems)
-              .where(eq(resourceItems.libraryId, input.libraryId))
-              .orderBy(asc(resourceItems.createdAt))
-              .for('update')
-            const plan = planPromote(model, input.libraryId, items as LibraryItem[])
-            const byEntity = new Map(plan.entries.map((entry) => [entry.entityId, entry]))
-
-            const selected = new Set<string>()
-            for (const req of input.entries) {
-              const entry = byEntity.get(req.entityId)
-              if (!entry) {
-                outcome.skipped.push({ entityId: req.entityId, reason: 'missing' })
-                continue
-              }
-              if (entry.status !== req.expectedStatus
-                || entry.targetItemId !== req.expectedTargetItemId
-                || entry.targetVersion !== req.expectedTargetVersion) {
-                // targetVersion까지 대조해야 한다 — 상태·대상 id가 같아도 그 사이 다른 사람이
-                // 대상 항목을 고쳤으면(버전만 바뀜) 클라가 본 미리보기가 이미 낡은 것이라
-                // 승격하면 최신 편집을 조용히 덮어쓴다.
-                outcome.skipped.push({ entityId: req.entityId, reason: 'plan-changed' })
-                continue
-              }
-              selected.add(req.entityId)
-            }
-
-            const applied = applyPromotePlan(model, plan, selected, uuidv7)
-            state.next = applied.nextModel
-            for (const write of applied.writes) {
-              const payload = parsePayload(write.kind, write.payload)
-              if (write.mode === 'insert') {
-                await tx.insert(resourceItems).values({
-                  id: write.itemId, libraryId: input.libraryId,
-                  kind: write.kind, payload, version: write.version,
-                })
-                outcome.inserted += 1
-              } else {
-                await tx.update(resourceItems)
-                  .set({ payload, version: write.version, updatedAt: new Date() })
-                  .where(eq(resourceItems.id, write.itemId))
-                outcome.updated += 1
-              }
-            }
-            if (applied.writes.length > 0) {
-              await tx.update(resourceLibraries).set({ updatedAt: new Date() })
-                .where(eq(resourceLibraries.id, input.libraryId))
-            }
+            state.next = await runPromoteInTx(tx, {
+              libraryId: input.libraryId, model, entries: input.entries, outcome,
+            })
           },
           deriveOps: (model) => (state.next ? diffModels(model, state.next) : []),
           summary: `공용 리소스 승격 — ${library.name}`,

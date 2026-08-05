@@ -18,6 +18,11 @@ const LIBS = [
   { id: 'l1', scope: 'global', orgId: null, name: '표준 사전', description: '', itemCount: 0, canWrite: false },
   { id: 'l2', scope: 'org', orgId: 'o1', name: '조직 표준', description: '', itemCount: 0, canWrite: true },
 ]
+// 요청 모드용 — 조직 라이브러리에도 쓰기 권한이 없다(Project Editor의 시야).
+const LIBS_NO_WRITE = [
+  { id: 'l1', scope: 'global', orgId: null, name: '표준 사전', description: '', itemCount: 0, canWrite: false },
+  { id: 'l2', scope: 'org', orgId: 'o1', name: '조직 표준', description: '', itemCount: 0, canWrite: false },
+]
 
 function word(id: string, logicalName: string, abbreviation: string): Word {
   return { id, logicalName, abbreviation, englishName: null, description: null, origin: null }
@@ -169,5 +174,74 @@ describe('ResourcePromoteTab', () => {
     }, { ...createEmptyModel(), words: { w1: word('w1', '회원', 'MBR') } }, { canEdit: false, canManage: false })
     await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
     expect(screen.queryByRole('tab', { name: '조직으로 승격' })).toBeNull()
+  })
+
+  it('쓰기 권한이 없으면 승격 탭이 요청 모드로 열린다', async () => {
+    const w = word('w1', '회원', 'MBR')
+    // 인자를 선언해야 mock.calls[0]이 빈 튜플이 아니라 [unknown]이 되어 입력을 검사할 수 있다.
+    const create = vi.fn((_input: unknown) => ({ data: { id: 'r1', requested: 1, dropped: [] } }))
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
+      'resource.items.list': () => ({ data: [] }),
+      'promotion.listForProject': () => ({ data: [] }),
+      'promotion.create': create,
+    }, { ...createEmptyModel(), words: { w1: w } })
+
+    await openPromoteTab()
+    expect(await screen.findByRole('button', { name: /승격 요청/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^승격$/ })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /승격 요청/ }))
+    await waitFor(() => expect(create).toHaveBeenCalled())
+    expect(create.mock.calls[0]![0]).toMatchObject({
+      projectId: PROJECT_ID, libraryId: 'l2', entityIds: ['w1'],
+    })
+  })
+
+  it('요청 성공 후 모델을 되맞추지 않는다 — 서버가 모델을 바꾸지 않았다', async () => {
+    const w = word('w1', '회원', 'MBR')
+    const modelGet = vi.fn(() => ({ data: { model: createEmptyModel(), seq: 9 } }))
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
+      'resource.items.list': () => ({ data: [] }),
+      'promotion.listForProject': () => ({ data: [] }),
+      'promotion.create': () => ({ data: { id: 'r1', requested: 1, dropped: [] } }),
+      'model.get': modelGet,
+    }, { ...createEmptyModel(), words: { w1: w } })
+
+    await openPromoteTab()
+    await userEvent.click(await screen.findByRole('button', { name: /승격 요청/ }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(modelGet).not.toHaveBeenCalled()
+  })
+
+  it('쓰기 권한이 없어도 조직 라이브러리가 있으면 승격 탭이 보인다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
+      'resource.items.list': () => ({ data: [] }),
+      'promotion.listForProject': () => ({ data: [] }),
+    }, createEmptyModel())
+
+    await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
+    expect(await screen.findByRole('tab', { name: '조직으로 승격' })).toBeTruthy()
+  })
+
+  it('대기 중인 요청이 목록에 보이고 취소할 수 있다', async () => {
+    const cancel = vi.fn(() => ({ data: { ok: true } }))
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
+      'resource.items.list': () => ({ data: [] }),
+      'promotion.listForProject': () => ({ data: [{
+        id: 'r1', libraryId: 'l2', entityIds: ['w1'], note: '올려 주세요',
+        status: 'pending', createdAt: '2026-08-04T00:00:00.000Z', resolvedAt: null,
+        resolutionNote: '', approvedEntityIds: null, requesterId: 'u1', requesterName: '에디터',
+      }] }),
+      'promotion.cancel': cancel,
+    }, { ...createEmptyModel(), words: { w1: word('w1', '회원', 'MBR') } })
+
+    await openPromoteTab()
+    expect(await screen.findByText(/올려 주세요/)).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: /요청 취소/ }))
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith({ requestId: 'r1' }))
   })
 })

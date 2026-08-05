@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { PromoteEntry, PromotePlan } from '@erdd/core'
+import type { PromoteEntry } from '@erdd/core'
 import {
   danglingDomain, initialSelection, promoteSummary, setAllForStatus,
 } from './promote-selection.js'
@@ -10,30 +10,26 @@ function entry(over: Partial<PromoteEntry> & Pick<PromoteEntry, 'entityId' | 'st
     payload: {}, changedFields: [], domainRef: null, ...over,
   }
 }
-function plan(entries: PromoteEntry[]): PromotePlan {
-  return { libraryId: 'lib-1', entries, syncedCount: 0, linkedItemIds: {} }
-}
-
 describe('initialSelection', () => {
   it('new·update는 선택하고 name-match는 보류한다', () => {
-    const selected = initialSelection(plan([
+    const selected = initialSelection([
       entry({ entityId: 'a', status: 'new' }),
       entry({ entityId: 'b', status: 'update' }),
       entry({ entityId: 'c', status: 'name-match' }),
-    ]))
+    ])
     expect([...selected].sort()).toEqual(['a', 'b'])
   })
 })
 
 describe('setAllForStatus', () => {
   it('같은 상태의 항목만 켜고 끈다', () => {
-    const p = plan([
+    const entries = [
       entry({ entityId: 'a', status: 'new' }),
       entry({ entityId: 'c', status: 'name-match' }),
-    ])
-    const on = setAllForStatus(new Set<string>(), p, 'name-match', true)
+    ]
+    const on = setAllForStatus(new Set<string>(), entries, 'name-match', true)
     expect([...on]).toEqual(['c'])
-    const off = setAllForStatus(new Set(['a', 'c']), p, 'new', false)
+    const off = setAllForStatus(new Set(['a', 'c']), entries, 'new', false)
     expect([...off]).toEqual(['c'])
   })
 })
