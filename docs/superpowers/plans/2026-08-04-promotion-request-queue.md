@@ -827,14 +827,13 @@ Expected: 새 4건 FAIL (`No procedure found on path "promotion.listForOrg"` 등
 
 - [ ] **Step 3: import 보강**
 
-`routers/promotion.ts`의 import를 아래로 늘린다.
+`routers/promotion.ts`의 import를 아래로 늘린다. `resourceItems`·`LibraryItem`은 **넣지 않는다** — Step 4의 `planFor`가 `loadLibraryItems`를 부르므로 이 파일이 항목 테이블을 직접 만지지 않는다.
 
 ```ts
 import { and, asc, count, eq, inArray } from 'drizzle-orm'
-import { MAX_OPS_PER_MUTATION, planPromote, type LibraryItem } from '@erdd/core'
-import {
-  members, projects, promotionRequests, resourceItems, resourceLibraries, users,
-} from '../db/schema.js'
+import { MAX_OPS_PER_MUTATION, planPromote } from '@erdd/core'
+import { members, projects, promotionRequests, resourceLibraries, users } from '../db/schema.js'
+import { loadLibraryItems } from '../services/promote.js'
 import { requireLibraryRead, requireLibraryWrite, requireScopeWrite } from '../services/resource-library.js'
 ```
 
@@ -842,23 +841,24 @@ import { requireLibraryRead, requireLibraryWrite, requireScopeWrite } from '../s
 
 `loadRequest` 아래에 넣는다. `create`도 같은 일을 하므로 **`create`의 계획 계산 부분을 이 헬퍼로 바꾼다**(중복 제거).
 
+> **Task 2 수정 라운드 결과를 반드시 반영할 것.** 라이브러리 항목 조회는 이미
+> `services/promote.ts`의 **`loadLibraryItems(dbOrTx, libraryId)`** 로 일원화돼 있다(커밋 `5109c50`).
+> 여기서 조회를 다시 쓰지 마라 — 그 헬퍼를 부른다. `as LibraryItem[]` 캐스트도 넣지 마라(제거됐고
+> 반환 타입이 이미 호환된다). 이 조회가 두 곳으로 갈리면 "요청 시점 판정 = 승인 시점 판정" 불변식이
+> 깨지고, `orderBy(asc(createdAt))`가 `planPromote`의 동명 선점 순서를 정하므로 판정이 갈린다.
+
 ```ts
 /** 요청 시점이 아니라 **지금**의 계획을 계산한다(§2.1 — 요청은 포인터만 담는다). */
 async function planFor(db: Db, projectId: string, libraryId: string) {
   const model = await loadProjectModel(db, projectId)
-  const items = await db
-    .select({
-      id: resourceItems.id, kind: resourceItems.kind,
-      payload: resourceItems.payload, version: resourceItems.version,
-    })
-    .from(resourceItems)
-    .where(eq(resourceItems.libraryId, libraryId))
-    .orderBy(asc(resourceItems.createdAt))
-  return planPromote(model, libraryId, items as LibraryItem[])
+  const items = await loadLibraryItems(db, libraryId)
+  return planPromote(model, libraryId, items)
 }
 ```
 
-`create` 안의 `const model = …` ~ `const plan = …` 5줄을 `const plan = await planFor(ctx.db, input.projectId, input.libraryId)` 한 줄로 바꾼다.
+import에 `import { loadLibraryItems } from '../services/promote.js'`를 더한다.
+
+`create` 안의 계획 계산 부분을 `const plan = await planFor(ctx.db, input.projectId, input.libraryId)` 한 줄로 바꾼다. 그 결과 `promotion.ts`에서 `resourceItems` import가 필요 없어지면 지운다(`asc`는 `listForProject`의 `orderBy`가 계속 쓴다).
 
 - [ ] **Step 5: 세 프로시저 추가**
 
@@ -1212,6 +1212,11 @@ import { OpApplyError, diffModels, type ProjectModel } from '@erdd/core'
 import { mutateAndPublish } from '../services/mutate-publish.js'
 import { emptyOutcome, runPromoteInTx, type PromoteOutcome } from '../services/promote.js'
 ```
+
+> **`cancel`의 패턴을 복사하지 마라.** Task 2 리뷰가 `cancel`을 read-then-write로 지적했다(Minor M-1):
+> 락 없이 `status`를 읽어 확인한 뒤 `where(eq(id))`로만 갱신한다. `resolve`는 그러면 안 된다 — 아래
+> 구현처럼 **요청 행을 `FOR UPDATE`로 잠근 뒤** 확인한다. `cancel` 자체를 고치는 것은 이 태스크 범위
+> 밖이다(deferred minor로 기록돼 있다).
 
 - [ ] **Step 4: `resolve` 구현**
 
