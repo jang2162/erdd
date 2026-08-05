@@ -36,15 +36,19 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
 
   const libraries = useQuery(trpc.resource.library.listForProject.queryOptions({ projectId }))
   const rows = (libraries.data ?? []) as LibraryRow[]
-  const visible = tab === 'promote' ? rows.filter((row) => row.canWrite) : rows
+  // 승격 탭에는 쓸 수 있는 라이브러리(직접 승격)와 이 조직의 라이브러리(요청)가 보인다.
+  // 전역은 쓰기 권한이 있을 때만 — 요청 대상이 아니다.
+  const visible = tab === 'promote'
+    ? rows.filter((row) => row.canWrite || row.scope === 'org')
+    : rows
   const library = visible.find((row) => row.id === libraryId) ?? null
-  const canPromote = canEdit && rows.some((row) => row.canWrite)
+  const canPromote = canEdit && rows.some((row) => row.canWrite || row.scope === 'org')
 
   // 탭을 옮길 때 그 탭에서 못 쓰는 라이브러리 선택은 버린다.
   const switchTab = (next: Tab) => {
     setTab(next)
     if (next === 'promote' && libraryId !== null
-      && !rows.some((row) => row.id === libraryId && row.canWrite)) {
+      && !rows.some((row) => row.id === libraryId && (row.canWrite || row.scope === 'org'))) {
       setLibraryId(null)
     }
   }
