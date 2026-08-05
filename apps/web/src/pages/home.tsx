@@ -56,6 +56,9 @@ export function HomePage() {
   const trpc = useTRPC()
   const me = useMe()
   const orgs = useQuery(trpc.org.list.queryOptions())
+  // refetchInterval을 여기 걸지 않는 것은 의도다 — 헤더의 PendingPromotionsBadge가 같은
+  // queryKey로 60초 폴링을 돌리고 홈은 AppShell 안이라 그 갱신을 함께 받는다. 배지를 셸에서
+  // 떼면 이 카드의 건수도 함께 굳는다(app-shell.test.tsx가 그 배선을 지킨다).
   const pending = useQuery(trpc.promotion.pendingCount.queryOptions())
   const pendingByOrg = new Map(
     (pending.data?.byOrg ?? []).map((row) => [row.orgId, row.count]),
@@ -74,21 +77,24 @@ export function HomePage() {
         <CreateOrgDialog />
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {sorted.map((org) => (
-          <Link key={org.id} to={`/org/${org.id}`}>
-            <Card className="transition-colors hover:border-primary">
-              <CardHeader className="flex flex-row items-center gap-3">
-                <Building2 className="size-5 text-muted-foreground" />
-                <CardTitle className="flex-1 text-base">{org.name}</CardTitle>
-                {org.kind === 'personal' && <Badge variant="secondary">개인 공간</Badge>}
-                {(pendingByOrg.get(org.id) ?? 0) > 0 && (
-                  <Badge variant="outline">승격 요청 {pendingByOrg.get(org.id)}건</Badge>
-                )}
-                <ChevronRight className="size-4 text-muted-foreground" />
-              </CardHeader>
-            </Card>
-          </Link>
-        ))}
+        {sorted.map((org) => {
+          const pendingCount = pendingByOrg.get(org.id) ?? 0
+          return (
+            <Link key={org.id} to={`/org/${org.id}`}>
+              <Card className="transition-colors hover:border-primary">
+                <CardHeader className="flex flex-row items-center gap-3">
+                  <Building2 className="size-5 text-muted-foreground" />
+                  <CardTitle className="flex-1 text-base">{org.name}</CardTitle>
+                  {org.kind === 'personal' && <Badge variant="secondary">개인 공간</Badge>}
+                  {pendingCount > 0 && (
+                    <Badge variant="outline">승격 요청 {pendingCount}건</Badge>
+                  )}
+                  <ChevronRight className="size-4 text-muted-foreground" />
+                </CardHeader>
+              </Card>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )
