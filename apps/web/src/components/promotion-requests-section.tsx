@@ -42,8 +42,9 @@ function ReviewDialog({
 
   const resolve = useMutation(trpc.promotion.resolve.mutationOptions({
     onSuccess: async (result) => {
+      // status를 빼고 지운다 — 처리 후에는 대기 목록과 처리됨 목록이 **둘 다** 낡는다.
       await queryClient.invalidateQueries({
-        queryKey: trpc.promotion.listForOrg.queryKey({ orgId, status: 'pending' }),
+        queryKey: trpc.promotion.listForOrg.queryKey(),
       })
       await queryClient.invalidateQueries({ queryKey: trpc.promotion.pendingCount.queryKey() })
       // 승격은 같은 화면의 라이브러리 관리 목록도 낡게 만든다 — QueryClient가
@@ -147,8 +148,12 @@ export function PromotionRequestsSection({
   const trpc = useTRPC()
   // 프로젝트명까지 들고 간다 — 검토 다이얼로그가 계획 조회를 기다리는 동안에도 제목이 비지 않는다.
   const [reviewing, setReviewing] = useState<{ id: string; projectName: string } | null>(null)
+  // 기본은 대기 목록이고 토글로 처리 이력을 본다(설계 §6.3). 이 화면이 아니면 승인자가 남긴
+  // 처리 메모(resolutionNote)를 읽을 자리가 없다 — 저장만 되고 아무도 못 보는 값이 된다.
+  const [showResolved, setShowResolved] = useState(false)
+  const status = showResolved ? 'resolved' : 'pending'
   const list = useQuery({
-    ...trpc.promotion.listForOrg.queryOptions({ orgId, status: 'pending' }),
+    ...trpc.promotion.listForOrg.queryOptions({ orgId, status }),
     enabled: canManage,
   })
 
@@ -156,10 +161,17 @@ export function PromotionRequestsSection({
 
   return (
     <section className="grid gap-3">
-      <h2 className="text-lg font-semibold">승격 요청</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">승격 요청</h2>
+        <Button variant="ghost" size="sm" onClick={() => setShowResolved((prev) => !prev)}>
+          {showResolved ? '대기 중 보기' : '처리됨 보기'}
+        </Button>
+      </div>
       {list.isError && <p role="alert" className="text-destructive">{list.error.message}</p>}
       {!list.isError && !list.isPending && (list.data ?? []).length === 0 && (
-        <p className="text-sm text-muted-foreground">대기 중인 요청이 없습니다.</p>
+        <p className="text-sm text-muted-foreground">
+          {showResolved ? '처리된 요청이 없습니다.' : '대기 중인 요청이 없습니다.'}
+        </p>
       )}
       {(list.data ?? []).length > 0 && (
         <div className="rounded-lg border bg-card">
@@ -170,7 +182,7 @@ export function PromotionRequestsSection({
                 <TableHead>라이브러리</TableHead>
                 <TableHead>요청자</TableHead>
                 <TableHead>항목</TableHead>
-                <TableHead>메모</TableHead>
+                <TableHead>{showResolved ? '처리 메모' : '메모'}</TableHead>
                 <TableHead className="text-right">동작</TableHead>
               </TableRow>
             </TableHeader>
@@ -180,13 +192,22 @@ export function PromotionRequestsSection({
                   <TableCell>{row.projectName}</TableCell>
                   <TableCell>{row.libraryName}</TableCell>
                   <TableCell>{row.requesterName}</TableCell>
-                  <TableCell>{row.itemCount}건</TableCell>
-                  <TableCell className="text-muted-foreground">{row.note}</TableCell>
+                  <TableCell>
+                    {showResolved
+                      ? `${(row.approvedEntityIds ?? []).length}/${row.itemCount}건 승격`
+                      : `${row.itemCount}건`}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {showResolved ? row.resolutionNote : row.note}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="outline" size="sm"
-                      onClick={() => setReviewing({ id: row.id, projectName: row.projectName })}>
-                      검토
-                    </Button>
+                    {/* 검토는 아직 열려 있는 요청에만 — 처리된 행은 읽기 전용 이력이다. */}
+                    {!showResolved && (
+                      <Button variant="outline" size="sm"
+                        onClick={() => setReviewing({ id: row.id, projectName: row.projectName })}>
+                        검토
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

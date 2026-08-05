@@ -52,8 +52,10 @@ function renderSection(
 }
 
 /** 무효화된 queryKey들을 평평한 문자열로 — 키 내부 형태에 의존하지 않고 검사한다. */
-function invalidatedKeys(spy: ReturnType<typeof vi.spyOn>): string[] {
-  return spy.mock.calls.map((call) => JSON.stringify((call[0] as { queryKey?: unknown } | undefined)?.queryKey))
+function invalidatedKeys(spy: { mock: { calls: unknown[][] } }): string[] {
+  return spy.mock.calls.map(
+    (call) => JSON.stringify((call[0] as { queryKey?: unknown } | undefined)?.queryKey),
+  )
 }
 
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
@@ -145,6 +147,39 @@ describe('PromotionRequestsSection', () => {
     const keys = invalidatedKeys(invalidate)
     expect(keys.some((k) => k.includes('"items"') && k.includes('"l2"'))).toBe(true)
     expect(keys.some((k) => k.includes('"library"') && k.includes('"list"'))).toBe(true)
+  })
+
+  it('"처리됨 보기"로 처리 이력과 처리 메모를 읽을 수 있다', async () => {
+    // 이 토글이 없으면 승인자가 남긴 resolutionNote를 어느 화면에서도 읽을 수 없다 —
+    // 저장만 되고 아무도 못 보는 값이 된다(설계 §6.3).
+    const listForOrg = vi.fn((input: unknown) => {
+      const status = (input as { status?: string } | undefined)?.status
+      return status === 'resolved'
+        ? { data: [{
+            ...ROW, id: 'r9', status: 'resolved', note: '올려 주세요',
+            resolutionNote: '좋습니다 — 두 건만 올렸습니다',
+            approvedEntityIds: ['w1'], resolvedAt: '2026-08-04T01:00:00.000Z',
+          }] }
+        : { data: [ROW] }
+    })
+    renderSection({ 'promotion.listForOrg': listForOrg })
+
+    // 기본은 대기 목록이다.
+    expect(await screen.findByText(/올려 주세요/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '검토' })).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: '처리됨 보기' }))
+
+    expect(await screen.findByText(/좋습니다 — 두 건만 올렸습니다/)).toBeTruthy()
+    expect(screen.getByText('1/2건 승격')).toBeTruthy()
+    // 처리된 행은 읽기 전용 이력이라 검토 버튼이 없다.
+    expect(screen.queryByRole('button', { name: '검토' })).toBeNull()
+
+    // 서버에 실제로 다른 status로 물었는지 — 화면만 바꾸고 같은 목록을 보여 주면 안 된다.
+    const statuses = listForOrg.mock.calls
+      .map((call) => (call[0] as { status?: string } | undefined)?.status)
+    expect(statuses).toContain('pending')
+    expect(statuses).toContain('resolved')
   })
 
   it('선택을 모두 풀면 버튼이 반려로 바뀌고 빈 approve를 보낸다', async () => {
