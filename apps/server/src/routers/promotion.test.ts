@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
+import type pg from 'pg'
 import { eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import {
@@ -63,6 +64,27 @@ async function seedForeignPendingRequest(app: FastifyInstance): Promise<void> {
     projectId: foreignProjectId, libraryId: foreignLibraryId, entityIds: [wordId],
   })
   expect(res.statusCode).toBe(200)
+}
+
+/**
+ * 다른 커넥션이 이 트랜잭션의 행 락을 기다리기 시작할 때까지 기다린다.
+ *
+ * 행 락 대기는 pg_locks에 `locktype='transactionid'`, `granted=false`로 나타난다(잠근 쪽의
+ * xid를 기다린다). 서버 테스트는 fileParallelism:false라 이 시점에 다른 대기자가 없다.
+ */
+async function waitForLockWaiter(client: pg.PoolClient): Promise<void> {
+  // vitest 기본 타임아웃(5초)보다 앞서 끝나야 아래 진단 메시지가 보인다.
+  const deadline = Date.now() + 3_000
+  for (;;) {
+    const { rows } = await client.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND locktype = 'transactionid'",
+    )
+    if (rows[0]!.n > 0) return
+    if (Date.now() > deadline) {
+      throw new Error('락을 기다리는 커넥션이 나타나지 않았다 — 경합이 재현되지 않았다')
+    }
+    await new Promise((done) => { setTimeout(done, 25) })
+  }
 }
 
 describe.skipIf(!url)('promotion', () => {
@@ -599,7 +621,11 @@ describe.skipIf(!url)('promotion', () => {
 
       // cancel은 사전 확인(pending)을 통과한 뒤 UPDATE에서 막힌다.
       const pendingCancel = post(app, 'promotion.cancel', editorSession, { requestId })
-      await new Promise((done) => { setTimeout(done, 150) })
+      // 고정 sleep으로 넘어가면 안 된다 — 느린 환경에서 cancel의 사전 확인이 아래 COMMIT
+      // **뒤에** 도착하면 거기서 이미 409를 내고 UPDATE에 닿지 않는데, 두 경로가 같은 상태·
+      // 같은 메시지를 내므로 마지막 단언이 그대로 성립한다(조용한 거짓 통과). cancel이 실제로
+      // 이 트랜잭션의 락을 기다리는 것을 확인하고 진행하면 그 경우가 타임아웃 실패로 바뀐다.
+      await waitForLockWaiter(client)
 
       // 그 사이 승인이 끝난 것처럼 요청 행을 종결한다(라이브러리 쓰기는 이 테스트의 관심이 아니다).
       await client.query(
@@ -613,6 +639,10 @@ describe.skipIf(!url)('promotion', () => {
 
       cancelRes = await pendingCancel
     } finally {
+      // 위에서 무엇이든 던지면 BEGIN한 트랜잭션이 열린 채로 남는다. node-postgres 풀은
+      // release 시 자동 롤백하지 않으므로, 요청 행 락을 쥔 커넥션이 앱 풀로 돌아가
+      // 다음 beforeEach의 TRUNCATE(ACCESS EXCLUSIVE)가 거기 걸려 스위트가 멎는다.
+      await client.query('ROLLBACK').catch(() => {})
       client.release()
     }
 
