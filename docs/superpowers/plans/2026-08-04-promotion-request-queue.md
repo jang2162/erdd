@@ -1935,7 +1935,63 @@ EOF
 
 **Files:**
 - Create: `apps/web/src/components/promotion-requests-section.tsx`, `apps/web/src/components/promotion-requests-section.test.tsx`
+- Create: `apps/web/src/components/promote-entry-list.test.tsx` (아래 Step 0)
 - Modify: `apps/web/src/pages/org-detail.tsx`
+
+- [ ] **Step 0: `PromoteEntryList` 의 미검증 배선을 먼저 잠근다**
+
+Task 5 리뷰가 남긴 것: 구역 일괄 버튼(`onSetAll`)과 "유지" 섹션(`syncedCount`)이 **어느 렌더 테스트로도 잠기지 않는다.** Task 5 시점에는 선재 공백이라 Minor였지만, 이 태스크에서 이 컴포넌트가 **두 화면이 공유하는 추상**이 되므로 배선이 깨지면 양쪽이 동시에 조용히 망가진다. 컴포넌트가 store 비의존이라 에디터 픽스처 없이 순수 렌더로 테스트할 수 있다 — 추출이 만들어 준 이점이다.
+
+`apps/web/src/components/promote-entry-list.test.tsx`에 3건:
+
+```tsx
+import { describe, expect, it, afterEach, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { PromoteEntry } from '@erdd/core'
+import { PromoteEntryList } from './promote-entry-list'
+
+const ENTRY: PromoteEntry = {
+  kind: 'word', entityId: 'w1', name: '회원', status: 'new',
+  targetItemId: null, targetVersion: null, payload: {}, changedFields: [], domainRef: null,
+}
+
+afterEach(cleanup)
+
+describe('PromoteEntryList', () => {
+  it('구역 일괄 버튼이 onSetAll을 그 구역의 상태로 부른다', async () => {
+    const onSetAll = vi.fn()
+    render(
+      <PromoteEntryList entries={[ENTRY]} selected={new Set()}
+        onToggle={vi.fn()} onSetAll={onSetAll} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: '모두 선택' }))
+    expect(onSetAll).toHaveBeenCalledWith('new', true)
+    await userEvent.click(screen.getByRole('button', { name: '모두 해제' }))
+    expect(onSetAll).toHaveBeenCalledWith('new', false)
+  })
+
+  it('syncedCount를 주면 유지 섹션을 보여준다', () => {
+    render(
+      <PromoteEntryList entries={[ENTRY]} selected={new Set()}
+        onToggle={vi.fn()} onSetAll={vi.fn()} syncedCount={3} />,
+    )
+    expect(screen.getByText(/이미 이 라이브러리와 같은 항목 3건/)).toBeTruthy()
+  })
+
+  it('syncedCount를 주지 않으면 유지 섹션이 없다', () => {
+    render(
+      <PromoteEntryList entries={[ENTRY]} selected={new Set()}
+        onToggle={vi.fn()} onSetAll={vi.fn()} />,
+    )
+    expect(screen.queryByText(/유지/)).toBeNull()
+  })
+})
+```
+
+> **구현자 주의:** `ENTRY`의 필드는 core의 `PromoteEntry` 타입에서 확인하고 맞춰라. 세 번째 테스트의 `syncedCount` 미전달 분기는 **Task 5의 추출이 새로 만든 것**이라 특히 값이 있다. 각 테스트가 구분력이 있는지 확인하라 — `onSetAll` 호출 제거, `syncedCount` 가드 반전으로 실제 실패하는지.
+
+이 셋을 먼저 통과시킨 뒤 아래 Step 1로 간다.
 
 **Interfaces:**
 - Consumes: Task 3의 `promotion.listForOrg`/`get`, Task 4의 `promotion.resolve`, Task 5의 `PromoteEntryList`, `@/lib/promote-selection`의 `initialSelection`/`setAllForStatus`
