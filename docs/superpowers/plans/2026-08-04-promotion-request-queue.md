@@ -1706,7 +1706,9 @@ const LIBS_NO_WRITE = [
 
 it('쓰기 권한이 없으면 승격 탭이 요청 모드로 열린다', async () => {
   const w = word('w1', '회원', 'MBR')
-  const create = vi.fn(() => ({ data: { id: 'r1', requested: 1, dropped: [] } }))
+  // mockTrpcFetch의 Handler는 (input: unknown)을 받는다. 인자를 선언하지 않으면 mock.calls[0]이
+  // 빈 튜플로 추론돼 [0] 접근이 TS2493으로 깨진다 — vitest는 통과시키고 typecheck만 잡는다.
+  const create = vi.fn((_input: unknown) => ({ data: { id: 'r1', requested: 1, dropped: [] } }))
   renderPanel({
     'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
     'resource.items.list': () => ({ data: [] }),
@@ -1727,7 +1729,7 @@ it('쓰기 권한이 없으면 승격 탭이 요청 모드로 열린다', async 
 
 it('요청 성공 후 모델을 되맞추지 않는다 — 서버가 모델을 바꾸지 않았다', async () => {
   const w = word('w1', '회원', 'MBR')
-  const modelGet = vi.fn(() => ({ data: { model: createEmptyModel(), seq: 9 } }))
+  const modelGet = vi.fn((_input: unknown) => ({ data: { model: createEmptyModel(), seq: 9 } }))
   renderPanel({
     'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
     'resource.items.list': () => ({ data: [] }),
@@ -1754,7 +1756,7 @@ it('쓰기 권한이 없어도 조직 라이브러리가 있으면 승격 탭이
 })
 
 it('대기 중인 요청이 목록에 보이고 취소할 수 있다', async () => {
-  const cancel = vi.fn(() => ({ data: { ok: true } }))
+  const cancel = vi.fn((_input: unknown) => ({ data: { ok: true } }))
   renderPanel({
     'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
     'resource.items.list': () => ({ data: [] }),
