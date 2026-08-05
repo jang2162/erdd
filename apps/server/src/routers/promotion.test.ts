@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
+import { eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
-import { createEmptyModel, diffModels, type ProjectModel } from '@erdd/core'
+import {
+  createEmptyModel, diffModels, type ProjectModel, type ServerMessage,
+} from '@erdd/core'
 import { resetDb } from '../testing/db.js'
-import { resourceLibraries } from '../db/schema.js'
+import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
 
@@ -264,5 +267,248 @@ describe.skipIf(!url)('promotion', () => {
     // 에디터는 같은 조직의 Member라 셀 것이 없다.
     const forEditor = await get(app, 'promotion.pendingCount', editorSession)
     expect(forEditor.json().result.data).toMatchObject({ total: 0, byOrg: [] })
+  })
+
+  it('승인하면 라이브러리에 쓰이고 요청이 resolved가 된다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+    const plan = (await get(app, 'promotion.get', ownerSession, { requestId }))
+      .json().result.data as {
+        entries: Array<{
+          entityId: string; status: string
+          targetItemId: string | null; targetVersion: number | null
+        }>
+      }
+
+    const res = await post(app, 'promotion.resolve', ownerSession, {
+      requestId,
+      approve: plan.entries.map((e) => ({
+        entityId: e.entityId, expectedStatus: e.status,
+        expectedTargetItemId: e.targetItemId, expectedTargetVersion: e.targetVersion,
+      })),
+      note: '좋습니다',
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().result.data).toMatchObject({
+      status: 'resolved', inserted: 1, updated: 0, skipped: [],
+    })
+
+    const items = await app.db!.select().from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId))
+    expect(items).toHaveLength(1)
+    expect(items[0]!.payload).toMatchObject({ logicalName: '회원', abbreviation: 'MBR' })
+
+    const rows = (await get(app, 'promotion.listForProject', editorSession, { projectId }))
+      .json().result.data as Array<{
+        status: string; approvedEntityIds: string[] | null; resolutionNote: string
+      }>
+    expect(rows[0]).toMatchObject({
+      status: 'resolved', approvedEntityIds: [wordId], resolutionNote: '좋습니다',
+    })
+  })
+
+  it('부분 승인 — 고르지 않은 항목은 올라가지 않고 요청은 한 번에 닫힌다', async () => {
+    const a = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const b = await seedWord(app, editorSession, projectId, '주문', 'ORD')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [a, b],
+    })).json().result.data.id
+    const plan = (await get(app, 'promotion.get', ownerSession, { requestId }))
+      .json().result.data as {
+        entries: Array<{
+          entityId: string; status: string
+          targetItemId: string | null; targetVersion: number | null
+        }>
+      }
+    const only = plan.entries.find((e) => e.entityId === a)!
+
+    const res = await post(app, 'promotion.resolve', ownerSession, {
+      requestId,
+      approve: [{
+        entityId: only.entityId, expectedStatus: only.status,
+        expectedTargetItemId: only.targetItemId, expectedTargetVersion: only.targetVersion,
+      }],
+    })
+    expect(res.json().result.data).toMatchObject({ status: 'resolved', inserted: 1 })
+
+    const items = await app.db!.select().from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId))
+    expect(items).toHaveLength(1)
+
+    const rows = (await get(app, 'promotion.listForProject', editorSession, { projectId }))
+      .json().result.data as Array<{ status: string; approvedEntityIds: string[] | null }>
+    expect(rows[0]).toMatchObject({ status: 'resolved', approvedEntityIds: [a] })
+  })
+
+  it('반려는 모델을 건드리지 않는다 — Revision이 생기지 않고 seq가 그대로다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const before = (await get(app, 'model.get', ownerSession, { projectId })).json().result.data.seq
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+
+    const res = await post(app, 'promotion.resolve', ownerSession, {
+      requestId, approve: [], note: '아직 이릅니다',
+    })
+    expect(res.json().result.data).toMatchObject({
+      status: 'rejected', seq: null, inserted: 0, updated: 0,
+    })
+
+    const after = (await get(app, 'model.get', ownerSession, { projectId })).json().result.data.seq
+    expect(after).toBe(before)
+    const items = await app.db!.select().from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId))
+    expect(items).toHaveLength(0)
+
+    const rows = (await get(app, 'promotion.listForProject', editorSession, { projectId }))
+      .json().result.data as Array<{ status: string; resolutionNote: string }>
+    expect(rows[0]).toMatchObject({ status: 'rejected', resolutionNote: '아직 이릅니다' })
+  })
+
+  it('두 번째 처리는 CONFLICT다 — 요청은 한 번만 닫힌다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+
+    const first = await post(app, 'promotion.resolve', ownerSession, { requestId, approve: [] })
+    expect(first.statusCode).toBe(200)
+    const second = await post(app, 'promotion.resolve', ownerSession, { requestId, approve: [] })
+    expect(second.statusCode).toBe(409)
+  })
+
+  it('요청에 없는 항목은 승인 목록에 넣을 수 없다', async () => {
+    const a = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const b = await seedWord(app, editorSession, projectId, '주문', 'ORD')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [a],
+    })).json().result.data.id
+
+    const res = await post(app, 'promotion.resolve', ownerSession, {
+      requestId,
+      approve: [{
+        entityId: b, expectedStatus: 'new',
+        expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
+    })
+    expect(res.statusCode).toBe(400)
+
+    // 거절됐으므로 요청은 그대로 pending이고 라이브러리도 비어 있다.
+    const rows = (await get(app, 'promotion.listForProject', editorSession, { projectId }))
+      .json().result.data as Array<{ status: string }>
+    expect(rows[0]!.status).toBe('pending')
+    const items = await app.db!.select().from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId))
+    expect(items).toHaveLength(0)
+  })
+
+  it('기대치가 낡은 항목은 skip되고 approvedEntityIds에서 빠진다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+    const plan = (await get(app, 'promotion.get', ownerSession, { requestId }))
+      .json().result.data as {
+        entries: Array<{
+          entityId: string; status: string
+          targetItemId: string | null; targetVersion: number | null
+        }>
+      }
+    const entry = plan.entries[0]!
+
+    // 그 사이 Owner가 직접 승격해 상태가 new에서 벗어난다.
+    await post(app, 'resource.promote', ownerSession, {
+      projectId, libraryId,
+      entries: [{
+        entityId: wordId, expectedStatus: 'new',
+        expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
+    })
+
+    const res = await post(app, 'promotion.resolve', ownerSession, {
+      requestId,
+      approve: [{
+        entityId: entry.entityId, expectedStatus: entry.status,
+        expectedTargetItemId: entry.targetItemId, expectedTargetVersion: entry.targetVersion,
+      }],
+    })
+    expect(res.statusCode).toBe(200)
+    const data = res.json().result.data as {
+      status: string; inserted: number; skipped: Array<{ entityId: string; reason: string }>
+    }
+    // 승인자의 의사는 승인이었으므로 resolved다(§3.1). 실제 승격은 0건이다.
+    expect(data.status).toBe('resolved')
+    expect(data.inserted).toBe(0)
+    expect(data.skipped).toEqual([{ entityId: wordId, reason: 'missing' }])
+
+    const rows = (await get(app, 'promotion.listForProject', editorSession, { projectId }))
+      .json().result.data as Array<{ approvedEntityIds: string[] | null }>
+    expect(rows[0]!.approvedEntityIds).toEqual([])
+  })
+
+  it('이미 처리된 요청을 다시 승인해도 라이브러리에 아무것도 쓰이지 않는다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+    const plan = (await get(app, 'promotion.get', ownerSession, { requestId }))
+      .json().result.data as {
+        entries: Array<{
+          entityId: string; status: string
+          targetItemId: string | null; targetVersion: number | null
+        }>
+      }
+    const approve = plan.entries.map((e) => ({
+      entityId: e.entityId, expectedStatus: e.status,
+      expectedTargetItemId: e.targetItemId, expectedTargetVersion: e.targetVersion,
+    }))
+
+    // 먼저 반려해 요청을 닫는다.
+    expect((await post(app, 'promotion.resolve', ownerSession, {
+      requestId, approve: [],
+    })).statusCode).toBe(200)
+
+    // 닫힌 요청에 대한 승인은 CONFLICT이고, 라이브러리는 그대로 비어 있어야 한다.
+    const res = await post(app, 'promotion.resolve', ownerSession, { requestId, approve })
+    expect(res.statusCode).toBe(409)
+    const items = await app.db!.select().from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId))
+    expect(items).toHaveLength(0)
+  })
+
+  it('승인이 origin update op를 실시간 채널로 발행한다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+    const plan = (await get(app, 'promotion.get', ownerSession, { requestId }))
+      .json().result.data as {
+        entries: Array<{
+          entityId: string; status: string
+          targetItemId: string | null; targetVersion: number | null
+        }>
+      }
+    const entry = plan.entries[0]!
+
+    // resource-promote.test.ts의 '승격이 실시간 채널로 발행된다'와 같은 셋업이다.
+    const received: ServerMessage[] = []
+    app.hub.subscribe(projectId, {
+      userId: 'observer', name: '구독자',
+      send: (text: string) => { received.push(JSON.parse(text) as ServerMessage) },
+    })
+    received.length = 0
+
+    await post(app, 'promotion.resolve', ownerSession, {
+      requestId,
+      approve: [{
+        entityId: entry.entityId, expectedStatus: entry.status,
+        expectedTargetItemId: entry.targetItemId, expectedTargetVersion: entry.targetVersion,
+      }],
+    })
+
+    const opsMsg = received.find((m) => m.type === 'ops')
+    expect(opsMsg).toBeDefined()
   })
 })

@@ -2,11 +2,16 @@ import { TRPCError } from '@trpc/server'
 import { and, asc, count, eq, inArray } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
-import { MAX_OPS_PER_MUTATION, planPromote } from '@erdd/core'
+import {
+  MAX_OPS_PER_MUTATION, OpApplyError, diffModels, planPromote, type ProjectModel,
+} from '@erdd/core'
 import { members, projects, promotionRequests, resourceLibraries, users } from '../db/schema.js'
 import { loadProjectModel } from '../services/model-store.js'
+import { mutateAndPublish } from '../services/mutate-publish.js'
 import { requireProjectAccess } from '../services/perm.js'
-import { loadLibraryItems } from '../services/promote.js'
+import {
+  emptyOutcome, loadLibraryItems, runPromoteInTx, type PromoteOutcome,
+} from '../services/promote.js'
 import {
   requireLibraryRead, requireLibraryWrite, requireScopeWrite,
 } from '../services/resource-library.js'
@@ -194,6 +199,111 @@ export const promotionRouter = router({
         },
         entries,
         unavailable,
+      }
+    }),
+
+  /**
+   * 승인·반려 한 입구.
+   *
+   * approve가 비면 반려다 — 모델을 건드리지 않으므로 mutateAndPublish를 아예 타지 않고
+   * Revision도 생기지 않는다(seq는 null).
+   *
+   * 승인이면 prepare 훅 안에서 (1) 요청 행을 FOR UPDATE로 잠가 pending인지 확인하고
+   * (2) 요청 범위 밖 항목을 거르고 (3) resource.promote와 **같은 함수**로 승격한 뒤
+   * (4) 요청 행을 종결한다. 넷이 한 트랜잭션이라 승격이 실패하면 요청도 pending으로 남는다.
+   *
+   * 락 순서는 projects → promotion_requests → resource_items → resource_libraries다.
+   * runMutation이 프로젝트 행을 먼저 잠그므로 이미 처리된 요청이어도 프로젝트 락을 잡은
+   * 뒤에야 알게 된다 — 트랜잭션 밖에서 status를 한 번 싸게 걸러 두되, 권위 있는 판정은
+   * 락 안의 확인이다.
+   */
+  resolve: authedProcedure
+    .input(z.object({
+      requestId: z.string().uuid(),
+      approve: z.array(z.object({
+        entityId: z.string().uuid(),
+        expectedStatus: z.enum(['new', 'update', 'name-match']),
+        expectedTargetItemId: z.string().uuid().nullable(),
+        expectedTargetVersion: z.number().int().nullable(),
+      })).max(MAX_OPS_PER_MUTATION),
+      note: z.string().max(500).default(''),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const request = await loadRequest(ctx.db, input.requestId)
+      await requireLibraryWrite(ctx.db, request.libraryId, ctx.user)
+      // 승인자가 Org Owner/Admin이면 perm.ts의 canEdit가 항상 참이라 구조적으로 통과한다.
+      // 새 권한 축을 만들지 않으려고 기존 게이트를 그대로 쓴다.
+      await requireProjectAccess(ctx.db, request.projectId, ctx.user.id, 'edit')
+      // 싼 사전 거르기 — 권위 있는 판정은 트랜잭션 안에 있다.
+      if (request.status !== 'pending') {
+        throw new TRPCError({ code: 'CONFLICT', message: '이미 처리된 요청입니다' })
+      }
+      const allowed = new Set(request.entityIds)
+      if (input.approve.some((entry) => !allowed.has(entry.entityId))) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: '요청에 없는 항목은 승인할 수 없습니다' })
+      }
+
+      if (input.approve.length === 0) {
+        await ctx.db.transaction(async (tx) => {
+          const locked = (
+            await tx.select().from(promotionRequests)
+              .where(eq(promotionRequests.id, input.requestId)).for('update')
+          )[0]
+          if (!locked) throw new TRPCError({ code: 'NOT_FOUND', message: '요청을 찾을 수 없습니다' })
+          if (locked.status !== 'pending') {
+            throw new TRPCError({ code: 'CONFLICT', message: '이미 처리된 요청입니다' })
+          }
+          await tx.update(promotionRequests).set({
+            status: 'rejected', resolvedBy: ctx.user.id, resolvedAt: new Date(),
+            resolutionNote: input.note, approvedEntityIds: [], updatedAt: new Date(),
+          }).where(eq(promotionRequests.id, input.requestId))
+        })
+        return {
+          status: 'rejected' as const,
+          seq: null, inserted: 0, updated: 0,
+          skipped: [] as PromoteOutcome['skipped'],
+        }
+      }
+
+      const outcome = emptyOutcome()
+      const state: { next: ProjectModel | null } = { next: null }
+      try {
+        const { seq } = await mutateAndPublish(ctx.db, ctx.hub, {
+          projectId: request.projectId,
+          actorUserId: ctx.user.id,
+          actorName: ctx.user.name,
+          source: 'web',
+          prepare: async (tx, model) => {
+            const locked = (
+              await tx.select().from(promotionRequests)
+                .where(eq(promotionRequests.id, input.requestId)).for('update')
+            )[0]
+            if (!locked) throw new TRPCError({ code: 'NOT_FOUND', message: '요청을 찾을 수 없습니다' })
+            if (locked.status !== 'pending') {
+              throw new TRPCError({ code: 'CONFLICT', message: '이미 처리된 요청입니다' })
+            }
+            state.next = await runPromoteInTx(tx, {
+              libraryId: request.libraryId, model, entries: input.approve, outcome,
+            })
+            const skipped = new Set(outcome.skipped.map((s) => s.entityId))
+            await tx.update(promotionRequests).set({
+              status: 'resolved', resolvedBy: ctx.user.id, resolvedAt: new Date(),
+              resolutionNote: input.note, updatedAt: new Date(),
+              // 승인한 것이 아니라 **실제로 올라간 것**이다.
+              approvedEntityIds: input.approve
+                .map((entry) => entry.entityId)
+                .filter((id) => !skipped.has(id)),
+            }).where(eq(promotionRequests.id, input.requestId))
+          },
+          deriveOps: (model) => (state.next ? diffModels(model, state.next) : []),
+          summary: `승격 요청 승인 — ${request.entityIds.length}건 검토`,
+        })
+        return { status: 'resolved' as const, seq, ...outcome }
+      } catch (err) {
+        if (err instanceof OpApplyError) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
+        }
+        throw err
       }
     }),
 
