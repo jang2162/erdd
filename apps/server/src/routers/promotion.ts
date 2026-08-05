@@ -2,10 +2,11 @@ import { TRPCError } from '@trpc/server'
 import { and, asc, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
-import { MAX_OPS_PER_MUTATION, planPromote, type LibraryItem } from '@erdd/core'
-import { promotionRequests, resourceItems, users } from '../db/schema.js'
+import { MAX_OPS_PER_MUTATION, planPromote } from '@erdd/core'
+import { promotionRequests, users } from '../db/schema.js'
 import { loadProjectModel } from '../services/model-store.js'
 import { requireProjectAccess } from '../services/perm.js'
+import { loadLibraryItems } from '../services/promote.js'
 import { requireLibraryRead } from '../services/resource-library.js'
 import { authedProcedure, router } from '../trpc.js'
 import type { Db } from '../db/client.js'
@@ -44,15 +45,8 @@ export const promotionRouter = router({
       }
 
       const model = await loadProjectModel(ctx.db, input.projectId)
-      const items = await ctx.db
-        .select({
-          id: resourceItems.id, kind: resourceItems.kind,
-          payload: resourceItems.payload, version: resourceItems.version,
-        })
-        .from(resourceItems)
-        .where(eq(resourceItems.libraryId, input.libraryId))
-        .orderBy(asc(resourceItems.createdAt))
-      const plan = planPromote(model, input.libraryId, items as LibraryItem[])
+      const items = await loadLibraryItems(ctx.db, input.libraryId)
+      const plan = planPromote(model, input.libraryId, items)
       const valid = new Set(plan.entries.map((entry) => entry.entityId))
       const entityIds = input.entityIds.filter((id) => valid.has(id))
       const dropped = input.entityIds.filter((id) => !valid.has(id))

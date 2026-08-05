@@ -2,10 +2,11 @@ import { asc, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import {
   applyPromotePlan, planPromote,
-  type LibraryItem, type ProjectModel, type PromoteStatus,
+  type ProjectModel, type PromoteStatus,
 } from '@erdd/core'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { parsePayload } from './resource-library.js'
+import type { Db } from '../db/client.js'
 import type { runMutation } from './mutation.js'
 
 type MutationTx = Parameters<typeof runMutation>[0]
@@ -29,6 +30,24 @@ export function emptyOutcome(): PromoteOutcome {
 }
 
 /**
+ * planPromote의 입력이 되는 라이브러리 항목을 읽는다.
+ *
+ * 요청 시점(promotion.create)과 승인 시점(runPromoteInTx)이 **같은 값**을 계산해야 하므로 조회를
+ * 한 곳에 둔다. orderBy는 장식이 아니라 planPromote의 동명 선점 순서를 정한다 — 한쪽만 바뀌면
+ * 두 시점의 판정이 갈린다. 트랜잭션 안에서 잠글 때는 반환값에 .for('update')를 이어 붙인다.
+ */
+export function loadLibraryItems(dbOrTx: Db | MutationTx, libraryId: string) {
+  return dbOrTx
+    .select({
+      id: resourceItems.id, kind: resourceItems.kind,
+      payload: resourceItems.payload, version: resourceItems.version,
+    })
+    .from(resourceItems)
+    .where(eq(resourceItems.libraryId, libraryId))
+    .orderBy(asc(resourceItems.createdAt))
+}
+
+/**
  * 승격의 트랜잭션 본문 — runMutation의 prepare 훅 안에서 돈다.
  *
  * 라이브러리 항목을 FOR UPDATE로 잠그고 그 값으로 계획을 재계산해, 기대치와 일치하는 항목만
@@ -48,16 +67,8 @@ export async function runPromoteInTx(
     outcome: PromoteOutcome
   },
 ): Promise<ProjectModel> {
-  const items = await tx
-    .select({
-      id: resourceItems.id, kind: resourceItems.kind,
-      payload: resourceItems.payload, version: resourceItems.version,
-    })
-    .from(resourceItems)
-    .where(eq(resourceItems.libraryId, args.libraryId))
-    .orderBy(asc(resourceItems.createdAt))
-    .for('update')
-  const plan = planPromote(args.model, args.libraryId, items as LibraryItem[])
+  const items = await loadLibraryItems(tx, args.libraryId).for('update')
+  const plan = planPromote(args.model, args.libraryId, items)
   const byEntity = new Map(plan.entries.map((entry) => [entry.entityId, entry]))
 
   const selected = new Set<string>()
