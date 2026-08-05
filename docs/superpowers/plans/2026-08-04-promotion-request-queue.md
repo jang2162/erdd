@@ -1639,7 +1639,7 @@ export function PromoteEntryList({
           else next.delete(entityId)
           return next
         })}
-        onSetAll={(status, on) => setSelected((prev) => setAllForStatus(prev, plan, status, on))}
+        onSetAll={(status, on) => setSelected((prev) => setAllForStatus(prev, plan.entries, status, on))}
       />
 ```
 
