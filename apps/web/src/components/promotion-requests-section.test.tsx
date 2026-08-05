@@ -48,6 +48,12 @@ function renderSection(
       </TRPCProvider>
     </QueryClientProvider>,
   )
+  return queryClient
+}
+
+/** 무효화된 queryKey들을 평평한 문자열로 — 키 내부 형태에 의존하지 않고 검사한다. */
+function invalidatedKeys(spy: ReturnType<typeof vi.spyOn>): string[] {
+  return spy.mock.calls.map((call) => JSON.stringify((call[0] as { queryKey?: unknown } | undefined)?.queryKey))
 }
 
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
@@ -113,6 +119,32 @@ describe('PromotionRequestsSection', () => {
     // 승격 op가 실시간 채널로 전파된다(Task 6의 요청 경로와 같은 규약).
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
     expect(modelGet).not.toHaveBeenCalled()
+  })
+
+  it('승인 성공 후 같은 화면의 라이브러리 목록·항목 캐시를 무효화한다', async () => {
+    // 같은 org-detail 화면의 ResourceLibraryManager가 두 쿼리를 들고 있다. QueryClient가
+    // refetchOnWindowFocus:false라 자동 회복 트리거가 없어, 무효화를 빠뜨리면 화면이 낡은
+    // "항목 0개"를 계속 보여 주고 삭제 확인창이 거짓을 말한다.
+    const queryClient = renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => ({ data: {
+        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+        entries: [ENTRY], unavailable: [],
+      } }),
+      'promotion.resolve': () => ({ data: {
+        status: 'resolved', seq: 5, inserted: 1, updated: 0, skipped: [],
+      } }),
+    })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    await screen.findByLabelText('회원 선택')
+    await userEvent.click(screen.getByRole('button', { name: /1건 승격/ }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+
+    const keys = invalidatedKeys(invalidate)
+    expect(keys.some((k) => k.includes('"items"') && k.includes('"l2"'))).toBe(true)
+    expect(keys.some((k) => k.includes('"library"') && k.includes('"list"'))).toBe(true)
   })
 
   it('선택을 모두 풀면 버튼이 반려로 바뀌고 빈 approve를 보낸다', async () => {
