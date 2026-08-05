@@ -231,7 +231,10 @@ export const promotionRouter = router({
     .mutation(async ({ ctx, input }) => {
       const request = await loadRequest(ctx.db, input.requestId)
       await requireLibraryWrite(ctx.db, request.libraryId, ctx.user)
-      // 승인자가 Org Owner/Admin이면 perm.ts의 canEdit가 항상 참이라 구조적으로 통과한다.
+      // 이 게이트는 다중 방어다 — 거부로 도달할 수 있는 호출자를 구성할 수 없다.
+      // 위 requireLibraryWrite가 org 라이브러리에 대해 그 조직의 owner/admin을 요구하고,
+      // create가 library.orgId === project.orgId를 강제하며 전역 라이브러리 요청은 400으로
+      // 막으므로, 여기 닿은 사용자는 그 프로젝트 조직의 owner/admin이고 canEdit도 참이다.
       // 새 권한 축을 만들지 않으려고 기존 게이트를 그대로 쓴다.
       await requireProjectAccess(ctx.db, request.projectId, ctx.user.id, 'edit')
       // 싼 사전 거르기 — 권위 있는 판정은 트랜잭션 안에 있다.
@@ -296,7 +299,10 @@ export const promotionRouter = router({
             }).where(eq(promotionRequests.id, input.requestId))
           },
           deriveOps: (model) => (state.next ? diffModels(model, state.next) : []),
-          summary: `승격 요청 승인 — ${request.entityIds.length}건 검토`,
+          // 실제 승격 건수(outcome.inserted+updated)는 쓸 수 없다 — summary는 문자열 값이라
+          // 이 호출 시점에 확정되는데 outcome은 prepare 훅이 돈 뒤에야 채워진다. 호출 시점에
+          // 아는 값으로 적는다: 요청 전체와 승인자가 고른 건수다(실제 승격은 skip으로 더 적을 수 있다).
+          summary: `승격 요청 승인 — 요청 ${request.entityIds.length}건 중 ${input.approve.length}건 승인`,
         })
         return { status: 'resolved' as const, seq, ...outcome }
       } catch (err) {

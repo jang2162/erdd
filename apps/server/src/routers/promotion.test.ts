@@ -253,6 +253,21 @@ describe.skipIf(!url)('promotion', () => {
     expect(res.statusCode).toBe(403)
   })
 
+  it('resolve는 라이브러리 쓰기 권한이 있어야 한다 — 요청자는 자기 요청을 승인할 수 없다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+    // 권한 검사가 승인/반려 분기보다 앞에 있으므로 반려 호출로도 게이트가 잠긴다.
+    // Editor는 requireProjectAccess(edit)는 통과하지만 requireLibraryWrite에서 막혀야 한다.
+    const res = await post(app, 'promotion.resolve', editorSession, { requestId, approve: [] })
+    expect(res.statusCode).toBe(403)
+
+    const rows = (await get(app, 'promotion.listForProject', editorSession, { projectId }))
+      .json().result.data as Array<{ status: string }>
+    expect(rows[0]!.status).toBe('pending')
+  })
+
   it('pendingCount는 내가 Owner/Admin인 조직의 것만 센다', async () => {
     const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
     await post(app, 'promotion.create', editorSession, { projectId, libraryId, entityIds: [wordId] })
@@ -510,5 +525,15 @@ describe.skipIf(!url)('promotion', () => {
 
     const opsMsg = received.find((m) => m.type === 'ops')
     expect(opsMsg).toBeDefined()
+    // 어떤 op든 하나 나갔는지가 아니라, 그 단어의 origin이 채워졌는지를 본다.
+    const originOp = opsMsg!.ops.find(
+      (op) => op.action === 'update' && op.entity === 'word' && op.entityId === wordId,
+    )
+    expect(originOp).toBeDefined()
+    expect(originOp!.action).toBe('update')
+    const changes = (originOp as { changes: Record<string, { from: unknown; to: unknown }> }).changes
+    expect(Object.keys(changes)).toEqual(['origin'])
+    expect(changes.origin!.from).toBeNull()
+    expect(changes.origin!.to).toMatchObject({ libraryId })
   })
 })
