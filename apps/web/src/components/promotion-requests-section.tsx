@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { PromoteEntry, PromoteStatus } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
-import { initialSelection, setAllForStatus } from '@/lib/promote-selection'
+import { initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
 import { PromoteEntryList } from '@/components/promote-entry-list'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,8 +22,8 @@ import {
  * 실시간 채널로 전파된다.
  */
 function ReviewDialog({
-  requestId, orgId, onClose,
-}: { requestId: string; orgId: string; onClose: () => void }) {
+  requestId, projectName, orgId, onClose,
+}: { requestId: string; projectName: string; orgId: string; onClose: () => void }) {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -35,6 +35,8 @@ function ReviewDialog({
 
   useEffect(() => {
     // 기본 선택 규칙은 승격 탭과 같다 — name-match만 사람이 확인하도록 꺼 둔다.
+    // 의존성이 entries가 아니라 detail.data인 것은 의도다. entries는 `?? []`라 매 렌더 새
+    // 배열이고, [entries]로 두면 setSelected가 다시 렌더를 부르는 무한 루프가 된다.
     setSelected(initialSelection(entries))
   }, [detail.data])
 
@@ -44,12 +46,7 @@ function ReviewDialog({
         queryKey: trpc.promotion.listForOrg.queryKey({ orgId, status: 'pending' }),
       })
       await queryClient.invalidateQueries({ queryKey: trpc.promotion.pendingCount.queryKey() })
-      toast.success(result.status === 'rejected'
-        ? '요청을 반려했습니다'
-        : `추가 ${result.inserted}건 · 갱신 ${result.updated}건을 올렸습니다`
-          + (result.skipped.length > 0
-            ? ` — ${result.skipped.length}건은 그 사이 상태가 바뀌어 건너뛰었습니다`
-            : ''))
+      toast.success(result.status === 'rejected' ? '요청을 반려했습니다' : promoteSummary(result))
       onClose()
     },
     onError: (err) => toast.error(err.message),
@@ -72,9 +69,8 @@ function ReviewDialog({
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
-            승격 요청 검토 — {detail.data?.request.projectName ?? ''}
-          </DialogTitle>
+          {/* 프로젝트명은 목록 행이 이미 갖고 있다 — 계획 조회 전에도 어느 요청인지 보인다. */}
+          <DialogTitle>승격 요청 검토 — {projectName}</DialogTitle>
         </DialogHeader>
         {detail.isError && (
           <p role="alert" className="text-destructive">{detail.error.message}</p>
@@ -90,7 +86,11 @@ function ReviewDialog({
               {unavailable.length}건은 이미 반영됐거나 삭제되어 처리할 수 없습니다.
             </p>
           )}
-          {entries.length === 0 && !detail.isPending && (
+          {detail.isPending && (
+            <p className="text-sm text-muted-foreground">계획을 계산하는 중입니다…</p>
+          )}
+          {/* 목록의 빈 상태와 같은 규율 — 로딩·오류 중에는 "없다"고 말하지 않는다. */}
+          {entries.length === 0 && !detail.isPending && !detail.isError && (
             <p className="text-sm text-muted-foreground">처리할 항목이 없습니다.</p>
           )}
           <PromoteEntryList
@@ -110,7 +110,14 @@ function ReviewDialog({
           <Input placeholder="처리 메모 (선택)" value={note} maxLength={500}
             onChange={(e) => setNote(e.target.value)} />
           <div className="flex justify-end">
-            <Button type="button" disabled={resolve.isPending} onClick={submit}>
+            {/*
+              계획을 아직 못 봤거나 조회가 실패한 상태에서는 누를 수 없다. 그때는 selected가
+              비어 라벨이 "반려"인데, 그대로 누르면 빈 approve가 나가 서버가 요청을 rejected로
+              닫아 버린다 — 승인자가 내용을 한 번도 보지 못한 채 되돌릴 수 없게 닫는 셈이다.
+            */}
+            <Button type="button"
+              disabled={resolve.isPending || detail.isPending || detail.isError}
+              onClick={submit}>
               {selected.size === 0 ? '반려' : `${selected.size}건 승격`}
             </Button>
           </div>
@@ -125,7 +132,8 @@ export function PromotionRequestsSection({
   orgId, canManage,
 }: { orgId: string; canManage: boolean }) {
   const trpc = useTRPC()
-  const [reviewing, setReviewing] = useState<string | null>(null)
+  // 프로젝트명까지 들고 간다 — 검토 다이얼로그가 계획 조회를 기다리는 동안에도 제목이 비지 않는다.
+  const [reviewing, setReviewing] = useState<{ id: string; projectName: string } | null>(null)
   const list = useQuery({
     ...trpc.promotion.listForOrg.queryOptions({ orgId, status: 'pending' }),
     enabled: canManage,
@@ -162,7 +170,8 @@ export function PromotionRequestsSection({
                   <TableCell>{row.itemCount}건</TableCell>
                   <TableCell className="text-muted-foreground">{row.note}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="outline" size="sm" onClick={() => setReviewing(row.id)}>
+                    <Button variant="outline" size="sm"
+                      onClick={() => setReviewing({ id: row.id, projectName: row.projectName })}>
                       검토
                     </Button>
                   </TableCell>
@@ -173,7 +182,10 @@ export function PromotionRequestsSection({
         </div>
       )}
       {reviewing !== null && (
-        <ReviewDialog requestId={reviewing} orgId={orgId} onClose={() => setReviewing(null)} />
+        <ReviewDialog
+          requestId={reviewing.id} projectName={reviewing.projectName}
+          orgId={orgId} onClose={() => setReviewing(null)}
+        />
       )}
     </section>
   )

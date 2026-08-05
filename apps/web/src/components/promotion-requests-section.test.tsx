@@ -24,8 +24,21 @@ const ENTRY = {
   targetItemId: null, targetVersion: null, payload: {}, changedFields: [], domainRef: null,
 }
 
-function renderSection(handlers: Parameters<typeof mockTrpcFetch>[0], canManage = true) {
-  mockTrpcFetch(handlers)
+/**
+ * `stall`에 경로를 주면 그 요청만 영원히 pending으로 붙든다 — mockTrpcFetch는 즉시
+ * 응답하므로 로딩 상태를 관찰하려면 fetch를 한 겹 더 감싸야 한다.
+ */
+function renderSection(
+  handlers: Parameters<typeof mockTrpcFetch>[0], canManage = true,
+  opts: { stall?: string } = {},
+) {
+  const base = mockTrpcFetch(handlers)
+  if (opts.stall !== undefined) {
+    const stalled = opts.stall
+    vi.stubGlobal('fetch', (url: RequestInfo | URL, init?: RequestInit) => (
+      String(url).includes(stalled) ? new Promise<Response>(() => {}) : base(url, init)
+    ))
+  }
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   render(
@@ -41,9 +54,14 @@ beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('PromotionRequestsSection', () => {
-  it('관리 권한이 없으면 아무것도 렌더하지 않는다', () => {
-    renderSection({ 'promotion.listForOrg': () => ({ data: [ROW] }) }, false)
+  it('관리 권한이 없으면 렌더도 조회도 하지 않는다', async () => {
+    const listForOrg = vi.fn(() => ({ data: [ROW] }))
+    renderSection({ 'promotion.listForOrg': listForOrg }, false)
     expect(screen.queryByText(/승격 요청/)).toBeNull()
+    // 렌더를 막는 것만으로는 부족하다 — 권한 없는 사용자의 조회 자체가 나가면 안 된다.
+    // react-query는 마운트 뒤 비동기로 요청을 띄우므로 바로 단언하면 무엇이든 통과한다.
+    await new Promise((done) => { setTimeout(done, 50) })
+    expect(listForOrg).not.toHaveBeenCalled()
   })
 
   it('대기 요청을 목록에 보여준다', async () => {
@@ -70,6 +88,7 @@ describe('PromotionRequestsSection', () => {
     const resolve = vi.fn((_input: unknown) => ({ data: {
       status: 'resolved', seq: 5, inserted: 1, updated: 0, skipped: [],
     } }))
+    const modelGet = vi.fn(() => ({ data: { model: null, seq: 9 } }))
     renderSection({
       'promotion.listForOrg': () => ({ data: [ROW] }),
       'promotion.get': () => ({ data: {
@@ -77,6 +96,7 @@ describe('PromotionRequestsSection', () => {
         entries: [ENTRY], unavailable: [],
       } }),
       'promotion.resolve': resolve,
+      'model.get': modelGet,
     })
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
     await screen.findByLabelText('회원 선택')
@@ -89,6 +109,10 @@ describe('PromotionRequestsSection', () => {
         expectedTargetItemId: null, expectedTargetVersion: null,
       }],
     })
+    // 조직 화면은 모델을 만지지 않는다 — 그 프로젝트를 열고 있는 사용자에게는
+    // 승격 op가 실시간 채널로 전파된다(Task 6의 요청 경로와 같은 규약).
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(modelGet).not.toHaveBeenCalled()
   })
 
   it('선택을 모두 풀면 버튼이 반려로 바뀌고 빈 approve를 보낸다', async () => {
@@ -108,5 +132,33 @@ describe('PromotionRequestsSection', () => {
     await userEvent.click(screen.getByRole('button', { name: '반려' }))
     await waitFor(() => expect(resolve).toHaveBeenCalled())
     expect(resolve.mock.calls[0]![0]).toMatchObject({ requestId: 'r1', approve: [] })
+  })
+
+  it('계획을 아직 못 받았으면 반려 버튼이 비활성이다', async () => {
+    // promotion.get을 영원히 붙들어 로딩 상태를 유지한다. 이때 selected가 비어 라벨은
+    // '반려'인데, 누를 수 있으면 승인자가 내용을 보지 못한 채 요청을 닫아 버린다.
+    const resolve = vi.fn((_input: unknown) => ({ data: {
+      status: 'rejected', seq: null, inserted: 0, updated: 0, skipped: [],
+    } }))
+    renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.resolve': resolve,
+    }, true, { stall: 'promotion.get' })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    expect(await screen.findByText(/계획을 계산하는 중입니다/)).toBeTruthy()
+    // 로딩 중에 "처리할 항목이 없습니다"로 오인하게 두지 않는다.
+    expect(screen.queryByText(/처리할 항목이 없습니다/)).toBeNull()
+    expect(screen.getByRole('button', { name: '반려' })).toHaveProperty('disabled', true)
+  })
+
+  it('계획 조회가 실패하면 오류를 알리고 반려 버튼이 비활성이다', async () => {
+    renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => ({ error: { code: -32001, message: '승인 권한이 없습니다' } }),
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', '승인 권한이 없습니다')
+    expect(screen.queryByText(/처리할 항목이 없습니다/)).toBeNull()
+    expect(screen.getByRole('button', { name: '반려' })).toHaveProperty('disabled', true)
   })
 })
