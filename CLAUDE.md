@@ -147,22 +147,42 @@ Claude-Session: <세션 URL>
   릴리스마다 바뀐다). 요지: `git worktree add` 로 만든 `.worktrees/*` 도 Orca 가 인식한다
   (`orca worktree list --json` 에 id 로 나옴) → 그 워크트리 id 로
   `orca terminal create --worktree id:<fullId> --command "claude"` → `terminal wait --for tui-idle` →
-  **감독**이면 `orchestration task-create` + `dispatch --inject` +
+  **감독**이면 `orchestration task-create` + 그 핸들로 주입(`worker-start --terminal <handle>` 또는
+  `dispatch --inject`) → **제출 확인**(아래 ⚠️, 생략 금지) →
   `check --wait --types worker_done,escalation,decision_gate`.
 - **감독(supervised) vs 완전 위임(handoff):** 완료를 기다려 리뷰·병합하면 supervised(`task-create` +
   `dispatch --inject` + `check --wait`). 소유권을 넘기고 안 지켜보면 full handoff(`terminal send` 또는
   `worktree create --prompt`, lifecycle 프리앰블 안 붙임).
-- ⚠️ **`worker-start` 가 `input_accepted` 를 줘도 워커가 시작되지 않은 경우가 있다.** 프롬프트가 TUI
-  입력창에 **붙기만 하고 제출되지 않는다**(긴 멀티라인 spec에서 발생). `check --wait` 는 15분을 조용히
-  기다리다 `timedOut` 으로 끝나므로 워커가 죽은 것처럼 보이지 않는다. **띄운 직후 확인하고, 안 붙었으면
-  Enter를 보내라:**
-  ```bash
-  orca orchestration worker-read --dispatch <id> --limit 20 --json   # terminal.tail 에 프롬프트가 그대로 있고
-                                                                     # "Ctx Used: 0.0%" 면 미제출이다
-  orca terminal send --terminal <handle> --text "" --enter --json    # Enter만 보낸다
-  ```
-  제출되면 `worker-read` 의 `source` 가 `terminal` → `transcript` 로 바뀌고 실제 도구 호출이 보인다.
-  (2026-08-04 실측: 같은 방식으로 띄운 워커 둘 중 하나만 자동 제출됐다.)
+- ⚠️ **주입의 성공 응답은 "전송"까지만 보증한다. 제출은 따로 확인해야 한다.** `worker-start` 의
+  `stage: input_accepted` 도, `dispatch --inject` 의 `dispatch_input.state: accepted` 도 **터미널에 바이트를
+  썼다**는 뜻이지 TUI 가 그 입력을 **제출했다**는 뜻이 아니다. 반환값만으로는 실행 여부를 알 수 없다.
+  실패하면 브리프가 입력창에 텍스트로 남은 채 워커는 아무것도 하지 않는데, `check --wait` 는 15분을 조용히
+  기다리다 `timedOut` 으로 끝나므로 워커가 죽은 것처럼 보이지도 않는다. **성공 여부가 타이밍에 달려 있어
+  같은 명령이 될 때도 있고 안 될 때도 있다** — 한 세션에서 워커 3개를 띄워 1·2번째만 실행되고 3번째만
+  방치된 적이 있고, 2026-08-04 에도 같은 방식으로 띄운 둘 중 하나만 자동 제출됐다.
+  - **예방 — 터미널 생성과 브리프 주입을 분리한다.** `--terminal` 없이 부르면 `worker-start` 가 **터미널
+    생성과 주입을 한 번에** 처리해서 그 사이에 TUI 준비 대기가 없다. Claude Code TUI 가 시작 화면을 그리는
+    중에 여러 줄 브리프가 들어가면 **마지막 Enter 가 제출이 아니라 줄바꿈으로 흡수된다.** 터미널을 먼저
+    만들어 `tui-idle` 까지 기다린 뒤, 그 핸들에 주입하라.
+    ```bash
+    orca terminal create --worktree id:<fullId> --command "claude"        # handle 확보
+    orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000
+    orca orchestration worker-start --task <task_id> --terminal <handle> --json
+    ```
+  - **검증 — 생략 금지. 확인 없이 `check --wait` 로 넘어가지 않는다.** 예방책만으로는 타이밍 레이스를
+    완전히 없앨 수 없다. 주입 직후 터미널을 읽어 제출됐는지 **눈으로** 확인한다.
+    ```bash
+    orca terminal read --terminal <handle> --json
+    ```
+    입력창(`❯`)에 브리프 텍스트가 그대로 보이면 미제출이다. 엔터만 보내 제출시키고, **다시 읽어 입력창이
+    비었는지 확인한 뒤에** 대기로 넘어간다.
+    ```bash
+    orca terminal send --terminal <handle> --text "" --enter --json      # Enter만 보낸다
+    orca terminal read  --terminal <handle> --json                       # 입력창이 비어 있어야 한다
+    ```
+    `worker-read` 로도 같은 것을 본다 — `orca orchestration worker-read --dispatch <id> --limit 20 --json`
+    의 `terminal.tail` 에 프롬프트가 그대로 있고 "Ctx Used: 0.0%" 면 미제출이다. 제출되면 `source` 가
+    `terminal` → `transcript` 로 바뀌고 실제 도구 호출이 보인다.
 - ⚠️ **`--json` 출력은 NDJSON이고 keepalive가 섞인다.** `check --wait` 는 15초마다
   `{"_keepalive":true,…}` 를 한 줄씩 내고 **마지막 실제 결과는 여러 줄 pretty-print** 다. `json.load`
   로 통째 파싱하면 `Extra data` 로 깨지고, 줄 단위 파싱은 마지막 결과를 놓친다. `raw_decode` 로
