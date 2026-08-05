@@ -37,6 +37,31 @@ async function seedWord(
   return id
 }
 
+/**
+ * 이 테스트의 오너·에디터와 아무 관계 없는 **다른 조직**에 대기 요청을 하나 만든다.
+ *
+ * 조직 경계를 잠그는 픽스처다 — 조직이 하나뿐인 DB에서는 listForOrg의 orgId 필터나
+ * pendingCount의 멤버십 조인 조건을 통째로 지워도 결과가 같아 회귀가 잡히지 않는다.
+ * 오너 계정을 따로 두어 ownerSession이 이 조직에 아무 권한도 갖지 않게 한다.
+ */
+async function seedForeignPendingRequest(app: FastifyInstance): Promise<void> {
+  await createAccount(app.db!, { email: 'x@t.dev', name: '외부인', password: 'password-x', role: 'user' })
+  const session = await loginAs(app, 'x@t.dev', 'password-x')
+  const foreignOrgId = (await post(app, 'org.create', session, { name: '남의 팀' }))
+    .json().result.data.id
+  const foreignProjectId = (await post(app, 'project.create', session, {
+    orgId: foreignOrgId, name: 'Q', dialects: ['postgresql'],
+  })).json().result.data.id
+  const foreignLibraryId = (await post(app, 'resource.library.create', session, {
+    scope: 'org', orgId: foreignOrgId, name: '남의 표준',
+  })).json().result.data.id
+  const wordId = await seedWord(app, session, foreignProjectId, '상품', 'PRD')
+  const res = await post(app, 'promotion.create', session, {
+    projectId: foreignProjectId, libraryId: foreignLibraryId, entityIds: [wordId],
+  })
+  expect(res.statusCode).toBe(200)
+}
+
 describe.skipIf(!url)('promotion', () => {
   let app: FastifyInstance
   let ownerSession: string      // Org Owner — 라이브러리 쓰기 권한 있음(승인자)
@@ -161,9 +186,11 @@ describe.skipIf(!url)('promotion', () => {
     expect(rows[0]!.status).toBe('cancelled')
   })
 
-  it('조직 승인 목록은 Org Owner/Admin만 볼 수 있다', async () => {
+  it('조직 승인 목록은 Org Owner/Admin만 볼 수 있고, 내 조직 것만 나온다', async () => {
     const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
     await post(app, 'promotion.create', editorSession, { projectId, libraryId, entityIds: [wordId] })
+    // 오너가 아무 권한도 없는 다른 조직의 대기 요청 — 목록에 새어 나오면 안 된다.
+    await seedForeignPendingRequest(app)
 
     const denied = await get(app, 'promotion.listForOrg', editorSession, { orgId })
     expect(denied.statusCode).toBe(403)
@@ -171,9 +198,11 @@ describe.skipIf(!url)('promotion', () => {
     const allowed = await get(app, 'promotion.listForOrg', ownerSession, { orgId })
     expect(allowed.statusCode).toBe(200)
     const rows = allowed.json().result.data as Array<{
-      projectName: string; requesterName: string; itemCount: number; libraryName: string
+      projectId: string; projectName: string; requesterName: string
+      itemCount: number; libraryName: string
     }>
     expect(rows).toHaveLength(1)
+    expect(rows[0]!.projectId).toBe(projectId)
     expect(rows[0]).toMatchObject({
       projectName: 'P', requesterName: '에디터', itemCount: 1, libraryName: '조직 표준',
     })
@@ -182,6 +211,9 @@ describe.skipIf(!url)('promotion', () => {
   it('get이 지금 계산한 계획을 내려주고, 그새 승격된 항목은 unavailable로 뺀다', async () => {
     const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
     const otherId = await seedWord(app, editorSession, projectId, '주문', 'ORD')
+    // 요청에 넣지 않는 단어. 계획에는 남아 있으므로, entries가 계획 전체가 아니라
+    // 요청에 담긴 것만 담는지 잠근다 — 아니면 승인자가 요청되지 않은 항목까지 보게 된다.
+    await seedWord(app, editorSession, projectId, '상품', 'PRD')
     const requestId = (await post(app, 'promotion.create', editorSession, {
       projectId, libraryId, entityIds: [wordId, otherId],
     })).json().result.data.id
@@ -201,11 +233,12 @@ describe.skipIf(!url)('promotion', () => {
     const data = res.json().result.data as {
       entries: Array<{ entityId: string; status: string; name: string }>
       unavailable: string[]
-      request: { note: string; projectName: string }
+      request: { note: string; projectName: string; requesterName: string }
     }
     expect(data.unavailable).toEqual([wordId])
     expect(data.entries.map((e) => e.entityId)).toEqual([otherId])
     expect(data.entries[0]).toMatchObject({ status: 'new', name: '주문' })
+    expect(data.request).toMatchObject({ projectName: 'P', requesterName: '에디터' })
   })
 
   it('get은 라이브러리 쓰기 권한이 있어야 한다', async () => {
@@ -220,6 +253,8 @@ describe.skipIf(!url)('promotion', () => {
   it('pendingCount는 내가 Owner/Admin인 조직의 것만 센다', async () => {
     const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
     await post(app, 'promotion.create', editorSession, { projectId, libraryId, entityIds: [wordId] })
+    // 오너가 멤버가 아닌 조직의 대기 요청 — 멤버십 조인이 조직을 맞춰 보지 않으면 함께 세어진다.
+    await seedForeignPendingRequest(app)
 
     const forOwner = await get(app, 'promotion.pendingCount', ownerSession)
     expect(forOwner.json().result.data).toMatchObject({
