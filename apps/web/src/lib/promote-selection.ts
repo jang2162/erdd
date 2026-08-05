@@ -1,9 +1,9 @@
-import type { PromoteEntry, PromotePlan, PromoteStatus } from '@erdd/core'
+import type { PromoteEntry, PromoteStatus } from '@erdd/core'
 
 /** 기본 선택: 신규·원본 갱신은 켜고, 동명 발견은 사람이 확인해야 하므로 끈다. */
-export function initialSelection(plan: PromotePlan): Set<string> {
+export function initialSelection(entries: readonly PromoteEntry[]): Set<string> {
   const out = new Set<string>()
-  for (const entry of plan.entries) {
+  for (const entry of entries) {
     if (entry.status !== 'name-match') out.add(entry.entityId)
   }
   return out
@@ -11,10 +11,11 @@ export function initialSelection(plan: PromotePlan): Set<string> {
 
 /** 특정 상태의 항목 전부를 한 번에 켜거나 끈다(구역 일괄 버튼). */
 export function setAllForStatus(
-  selected: ReadonlySet<string>, plan: PromotePlan, status: PromoteStatus, on: boolean,
+  selected: ReadonlySet<string>, entries: readonly PromoteEntry[],
+  status: PromoteStatus, on: boolean,
 ): Set<string> {
   const out = new Set(selected)
-  for (const entry of plan.entries) {
+  for (const entry of entries) {
     if (entry.status !== status) continue
     if (on) out.add(entry.entityId)
     else out.delete(entry.entityId)
