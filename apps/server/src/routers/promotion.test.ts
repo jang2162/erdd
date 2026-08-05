@@ -536,4 +536,92 @@ describe.skipIf(!url)('promotion', () => {
     expect(changes.origin!.from).toBeNull()
     expect(changes.origin!.to).toMatchObject({ libraryId })
   })
+
+  /**
+   * 동시 처리 — 두 요청을 같은 시각에 쏘면 서로 다른 pg 커넥션을 잡고, runMutation의
+   * `SELECT id FROM projects … FOR UPDATE`가 같은 프로젝트 행에서 직렬화한다.
+   * 어느 쪽이 이기는지는 정하지 않고 **결과의 대칭성**만 단언하므로 flaky하지 않다.
+   */
+  it('두 승인이 동시에 들어와도 한 번만 승격된다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+    const plan = (await get(app, 'promotion.get', ownerSession, { requestId }))
+      .json().result.data as {
+        entries: Array<{
+          entityId: string; status: string
+          targetItemId: string | null; targetVersion: number | null
+        }>
+      }
+    const approve = plan.entries.map((e) => ({
+      entityId: e.entityId, expectedStatus: e.status,
+      expectedTargetItemId: e.targetItemId, expectedTargetVersion: e.targetVersion,
+    }))
+
+    const [a, b] = await Promise.all([
+      post(app, 'promotion.resolve', ownerSession, { requestId, approve }),
+      post(app, 'promotion.resolve', ownerSession, { requestId, approve }),
+    ])
+    // 하나는 성공하고 하나는 락 안 pending 확인에 걸려 CONFLICT다.
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409])
+
+    // 진 쪽이 두 번째 승격을 시도했다면 항목이 2개가 되거나 버전이 올라간다.
+    const items = await app.db!.select().from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId))
+    expect(items).toHaveLength(1)
+    expect(items[0]!.version).toBe(1)
+
+    const rows = (await get(app, 'promotion.listForProject', editorSession, { projectId }))
+      .json().result.data as Array<{ status: string; approvedEntityIds: string[] | null }>
+    expect(rows[0]).toMatchObject({ status: 'resolved', approvedEntityIds: [wordId] })
+  })
+
+  /**
+   * cancel의 읽기와 쓰기 사이에 승인이 끼어드는 경합을 **결정적으로** 재현한다.
+   *
+   * `Promise.all`로 cancel과 resolve를 동시에 쏘는 형태로는 이 창이 너무 좁아 재현되지 않는다
+   * (실제로 그 형태에서는 조건부 where를 되돌려도 테스트가 통과했다). 그래서 요청 행을 밖에서
+   * FOR UPDATE로 잠가 cancel의 UPDATE를 붙들어 두고, 그 사이 승인 결과를 써넣은 뒤 풀어 준다.
+   */
+  it('cancel이 그 사이 기록된 승인 결과를 덮어쓰지 않는다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+
+    const client = await app.pgPool!.connect()
+    let cancelRes: Awaited<ReturnType<typeof post>>
+    try {
+      await client.query('BEGIN')
+      // 요청 행을 잠근다 — 이제 cancel의 UPDATE는 여기서 대기한다.
+      await client.query('SELECT id FROM promotion_requests WHERE id = $1 FOR UPDATE', [requestId])
+
+      // cancel은 사전 확인(pending)을 통과한 뒤 UPDATE에서 막힌다.
+      const pendingCancel = post(app, 'promotion.cancel', editorSession, { requestId })
+      await new Promise((done) => { setTimeout(done, 150) })
+
+      // 그 사이 승인이 끝난 것처럼 요청 행을 종결한다(라이브러리 쓰기는 이 테스트의 관심이 아니다).
+      await client.query(
+        `UPDATE promotion_requests
+           SET status = 'resolved', resolved_by = requester_id, resolved_at = now(),
+               approved_entity_ids = $2::jsonb
+         WHERE id = $1`,
+        [requestId, JSON.stringify([wordId])],
+      )
+      await client.query('COMMIT')
+
+      cancelRes = await pendingCancel
+    } finally {
+      client.release()
+    }
+
+    // 깨어난 cancel은 status='pending' 조건에 걸려 0행을 갱신하고 CONFLICT를 낸다.
+    expect(cancelRes.statusCode).toBe(409)
+
+    const rows = (await get(app, 'promotion.listForProject', editorSession, { projectId }))
+      .json().result.data as Array<{ status: string; approvedEntityIds: string[] | null }>
+    // 승인 기록이 그대로 남아 있어야 한다 — 덮어쓰였다면 'cancelled'가 된다.
+    expect(rows[0]).toMatchObject({ status: 'resolved', approvedEntityIds: [wordId] })
+  })
 })

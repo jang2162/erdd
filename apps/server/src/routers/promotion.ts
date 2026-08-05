@@ -119,13 +119,23 @@ export const promotionRouter = router({
       } else {
         await requireProjectAccess(ctx.db, request.projectId, ctx.user.id, 'view')
       }
+      // 싼 사전 거르기 — 권위 있는 판정은 아래 UPDATE의 status 조건이다.
       if (request.status !== 'pending') {
         throw new TRPCError({ code: 'CONFLICT', message: '이미 처리된 요청입니다' })
       }
-      await ctx.db.update(promotionRequests).set({
+      // where에 status='pending'을 함께 건다. 이것이 없으면 위 읽기와 이 쓰기 사이에 resolve가
+      // 끼어들었을 때 그 승인 결과(status·resolvedBy·approvedEntityIds)를 통째로 덮어써,
+      // 라이브러리에는 항목이 올라갔는데 요청 행은 "취소됨"인 자기모순 상태가 된다.
+      const cancelled = await ctx.db.update(promotionRequests).set({
         // 취소도 처리의 일종이라 같은 칸을 쓴다 — resolvedBy는 취소자다.
         status: 'cancelled', resolvedBy: ctx.user.id, resolvedAt: new Date(), updatedAt: new Date(),
-      }).where(eq(promotionRequests.id, input.requestId))
+      }).where(and(
+        eq(promotionRequests.id, input.requestId),
+        eq(promotionRequests.status, 'pending'),
+      )).returning({ id: promotionRequests.id })
+      if (cancelled.length === 0) {
+        throw new TRPCError({ code: 'CONFLICT', message: '이미 처리된 요청입니다' })
+      }
       return { ok: true as const }
     }),
 
