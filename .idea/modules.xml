@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/schemantic.iml" filepath="$PROJECT_DIR$/.idea/schemantic.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/ERDD.iml" filepath="$PROJECT_DIR$/.idea/ERDD.iml" />
     </modules>
   </component>
 </project>
