@@ -2539,7 +2539,7 @@ Expected: PASS
 pnpm --filter @erdd/web exec vitest run
 pnpm -r typecheck; echo "EXIT=$?"
 ```
-Expected: 371 pass · EXIT=0
+Expected: 376 pass · EXIT=0 (372 + 배지 3건 + 홈 1건)
 
 - [ ] **Step 9: 커밋**
 
