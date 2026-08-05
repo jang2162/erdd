@@ -14,6 +14,30 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 
+type RequestStatus = 'pending' | 'resolved' | 'rejected' | 'cancelled'
+
+/**
+ * 상태 필터. cancelled까지 넣는 것은 의도다 — 요청자가 스스로 닫은 것이라 승인자가 할 일은
+ * 없지만, 대기 목록에서 사라진 요청의 행방을 확인할 유일한 자리다.
+ */
+const STATUS_OPTIONS: { value: RequestStatus; label: string; empty: string }[] = [
+  { value: 'pending', label: '대기 중', empty: '대기 중인 요청이 없습니다.' },
+  { value: 'resolved', label: '승인됨', empty: '승인된 요청이 없습니다.' },
+  { value: 'rejected', label: '반려됨', empty: '반려된 요청이 없습니다.' },
+  { value: 'cancelled', label: '취소됨', empty: '취소된 요청이 없습니다.' },
+]
+
+/**
+ * 항목 칸 문구. 승인만 "실제로 올라간 수"를 셀 값이 있다 — 반려는 approvedEntityIds가 빈
+ * 배열이고 취소는 null이라, 둘 다 `0/N건 승격`으로 쓰면 "0건 승격됨"으로 잘못 읽힌다.
+ */
+function itemCountLabel(
+  status: RequestStatus, row: { itemCount: number; approvedEntityIds: string[] | null },
+): string {
+  if (status !== 'resolved') return `${row.itemCount}건`
+  return `${(row.approvedEntityIds ?? []).length}/${row.itemCount}건 승격`
+}
+
 /**
  * 요청 검토 다이얼로그.
  *
@@ -148,10 +172,11 @@ export function PromotionRequestsSection({
   const trpc = useTRPC()
   // 프로젝트명까지 들고 간다 — 검토 다이얼로그가 계획 조회를 기다리는 동안에도 제목이 비지 않는다.
   const [reviewing, setReviewing] = useState<{ id: string; projectName: string } | null>(null)
-  // 기본은 대기 목록이고 토글로 처리 이력을 본다(설계 §6.3). 이 화면이 아니면 승인자가 남긴
+  // 기본은 대기 목록이고 상태를 골라 이력을 본다(설계 §6.3). 이 화면이 아니면 승인자가 남긴
   // 처리 메모(resolutionNote)를 읽을 자리가 없다 — 저장만 되고 아무도 못 보는 값이 된다.
-  const [showResolved, setShowResolved] = useState(false)
-  const status = showResolved ? 'resolved' : 'pending'
+  // 반려에도 같은 칸에 사유가 저장되므로 'resolved'만 열면 정작 사유가 필요한 쪽이 가려진다.
+  const [status, setStatus] = useState<RequestStatus>('pending')
+  const isPendingView = status === 'pending'
   const list = useQuery({
     ...trpc.promotion.listForOrg.queryOptions({ orgId, status }),
     enabled: canManage,
@@ -163,14 +188,20 @@ export function PromotionRequestsSection({
     <section className="grid gap-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">승격 요청</h2>
-        <Button variant="ghost" size="sm" onClick={() => setShowResolved((prev) => !prev)}>
-          {showResolved ? '대기 중 보기' : '처리됨 보기'}
-        </Button>
+        <div className="flex gap-1" role="group" aria-label="상태 필터">
+          {STATUS_OPTIONS.map(({ value, label }) => (
+            <Button key={value} size="sm" aria-pressed={status === value}
+              variant={status === value ? 'secondary' : 'ghost'}
+              onClick={() => setStatus(value)}>
+              {label}
+            </Button>
+          ))}
+        </div>
       </div>
       {list.isError && <p role="alert" className="text-destructive">{list.error.message}</p>}
       {!list.isError && !list.isPending && (list.data ?? []).length === 0 && (
         <p className="text-sm text-muted-foreground">
-          {showResolved ? '처리된 요청이 없습니다.' : '대기 중인 요청이 없습니다.'}
+          {STATUS_OPTIONS.find((o) => o.value === status)!.empty}
         </p>
       )}
       {(list.data ?? []).length > 0 && (
@@ -182,7 +213,7 @@ export function PromotionRequestsSection({
                 <TableHead>라이브러리</TableHead>
                 <TableHead>요청자</TableHead>
                 <TableHead>항목</TableHead>
-                <TableHead>{showResolved ? '처리 메모' : '메모'}</TableHead>
+                <TableHead>{isPendingView ? '메모' : '처리 메모'}</TableHead>
                 <TableHead className="text-right">동작</TableHead>
               </TableRow>
             </TableHeader>
@@ -192,17 +223,13 @@ export function PromotionRequestsSection({
                   <TableCell>{row.projectName}</TableCell>
                   <TableCell>{row.libraryName}</TableCell>
                   <TableCell>{row.requesterName}</TableCell>
-                  <TableCell>
-                    {showResolved
-                      ? `${(row.approvedEntityIds ?? []).length}/${row.itemCount}건 승격`
-                      : `${row.itemCount}건`}
-                  </TableCell>
+                  <TableCell>{itemCountLabel(status, row)}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {showResolved ? row.resolutionNote : row.note}
+                    {isPendingView ? row.note : row.resolutionNote}
                   </TableCell>
                   <TableCell className="text-right">
                     {/* 검토는 아직 열려 있는 요청에만 — 처리된 행은 읽기 전용 이력이다. */}
-                    {!showResolved && (
+                    {isPendingView && (
                       <Button variant="outline" size="sm"
                         onClick={() => setReviewing({ id: row.id, projectName: row.projectName })}>
                         검토

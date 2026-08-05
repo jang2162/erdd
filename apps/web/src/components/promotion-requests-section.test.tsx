@@ -149,26 +149,51 @@ describe('PromotionRequestsSection', () => {
     expect(keys.some((k) => k.includes('"library"') && k.includes('"list"'))).toBe(true)
   })
 
-  it('"처리됨 보기"로 처리 이력과 처리 메모를 읽을 수 있다', async () => {
-    // 이 토글이 없으면 승인자가 남긴 resolutionNote를 어느 화면에서도 읽을 수 없다 —
-    // 저장만 되고 아무도 못 보는 값이 된다(설계 §6.3).
-    const listForOrg = vi.fn((input: unknown) => {
-      const status = (input as { status?: string } | undefined)?.status
-      return status === 'resolved'
-        ? { data: [{
-            ...ROW, id: 'r9', status: 'resolved', note: '올려 주세요',
+  /** 상태별로 다른 행을 돌려주는 listForOrg 스텁 + 호출된 status 목록. */
+  function statusAwareList() {
+    return vi.fn((input: unknown) => {
+      switch ((input as { status?: string } | undefined)?.status) {
+        case 'resolved':
+          return { data: [{
+            ...ROW, id: 'r9', status: 'resolved',
             resolutionNote: '좋습니다 — 두 건만 올렸습니다',
             approvedEntityIds: ['w1'], resolvedAt: '2026-08-04T01:00:00.000Z',
           }] }
-        : { data: [ROW] }
+        case 'rejected':
+          return { data: [{
+            ...ROW, id: 'r8', status: 'rejected',
+            resolutionNote: '아직 이릅니다 — 이름부터 합의해 주세요',
+            approvedEntityIds: [], resolvedAt: '2026-08-04T02:00:00.000Z',
+          }] }
+        case 'cancelled':
+          return { data: [{
+            ...ROW, id: 'r7', status: 'cancelled', resolutionNote: '',
+            approvedEntityIds: [], resolvedAt: '2026-08-04T03:00:00.000Z',
+          }] }
+        default:
+          return { data: [ROW] }
+      }
     })
+  }
+  const askedStatuses = (spy: { mock: { calls: unknown[][] } }): (string | undefined)[] =>
+    spy.mock.calls.map((call) => (call[0] as { status?: string } | undefined)?.status)
+
+  /** 상태 필터에서 한 상태를 고른다. */
+  async function pickStatus(label: string) {
+    await userEvent.click(screen.getByRole('button', { name: label }))
+  }
+
+  it('상태 필터로 승인 이력과 처리 메모를 읽을 수 있다', async () => {
+    // 이 필터가 없으면 승인자가 남긴 resolutionNote를 어느 화면에서도 읽을 수 없다 —
+    // 저장만 되고 아무도 못 보는 값이 된다(설계 §6.3).
+    const listForOrg = statusAwareList()
     renderSection({ 'promotion.listForOrg': listForOrg })
 
     // 기본은 대기 목록이다.
     expect(await screen.findByText(/올려 주세요/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '검토' })).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('button', { name: '처리됨 보기' }))
+    await pickStatus('승인됨')
 
     expect(await screen.findByText(/좋습니다 — 두 건만 올렸습니다/)).toBeTruthy()
     expect(screen.getByText('1/2건 승격')).toBeTruthy()
@@ -176,10 +201,36 @@ describe('PromotionRequestsSection', () => {
     expect(screen.queryByRole('button', { name: '검토' })).toBeNull()
 
     // 서버에 실제로 다른 status로 물었는지 — 화면만 바꾸고 같은 목록을 보여 주면 안 된다.
-    const statuses = listForOrg.mock.calls
-      .map((call) => (call[0] as { status?: string } | undefined)?.status)
-    expect(statuses).toContain('pending')
-    expect(statuses).toContain('resolved')
+    expect(askedStatuses(listForOrg)).toContain('pending')
+    expect(askedStatuses(listForOrg)).toContain('resolved')
+  })
+
+  it('반려 사유를 읽을 수 있다 — I-4의 핵심 케이스다', async () => {
+    // 승인자가 반려 사유를 적어 보내도 'resolved'만 열리면 정작 사유가 필요한 쪽이 가려진다.
+    const listForOrg = statusAwareList()
+    renderSection({ 'promotion.listForOrg': listForOrg })
+    await screen.findByText(/올려 주세요/)
+
+    await pickStatus('반려됨')
+
+    expect(await screen.findByText(/아직 이릅니다 — 이름부터 합의해 주세요/)).toBeTruthy()
+    expect(askedStatuses(listForOrg)).toContain('rejected')
+    // 반려는 approvedEntityIds가 빈 배열이다 — "0건 승격"으로 읽히면 안 된다.
+    expect(screen.queryByText(/0\/2건 승격/)).toBeNull()
+    expect(screen.getByText('2건')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '검토' })).toBeNull()
+  })
+
+  it('취소된 요청도 확인할 수 있다 — 대기 목록에서 사라진 요청의 행방', async () => {
+    const listForOrg = statusAwareList()
+    renderSection({ 'promotion.listForOrg': listForOrg })
+    await screen.findByText(/올려 주세요/)
+
+    await pickStatus('취소됨')
+
+    expect(await screen.findByText('2건')).toBeTruthy()
+    expect(askedStatuses(listForOrg)).toContain('cancelled')
+    expect(screen.queryByRole('button', { name: '검토' })).toBeNull()
   })
 
   it('선택을 모두 풀면 버튼이 반려로 바뀌고 빈 approve를 보낸다', async () => {
