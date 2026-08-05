@@ -56,6 +56,10 @@ export function HomePage() {
   const trpc = useTRPC()
   const me = useMe()
   const orgs = useQuery(trpc.org.list.queryOptions())
+  const pending = useQuery(trpc.promotion.pendingCount.queryOptions())
+  const pendingByOrg = new Map(
+    (pending.data?.byOrg ?? []).map((row) => [row.orgId, row.count]),
+  )
   const sorted = [...(orgs.data ?? [])].sort((a, b) =>
     a.kind === b.kind ? 0 : a.kind === 'personal' ? -1 : 1,
   )
@@ -77,6 +81,9 @@ export function HomePage() {
                 <Building2 className="size-5 text-muted-foreground" />
                 <CardTitle className="flex-1 text-base">{org.name}</CardTitle>
                 {org.kind === 'personal' && <Badge variant="secondary">개인 공간</Badge>}
+                {(pendingByOrg.get(org.id) ?? 0) > 0 && (
+                  <Badge variant="outline">승격 요청 {pendingByOrg.get(org.id)}건</Badge>
+                )}
                 <ChevronRight className="size-4 text-muted-foreground" />
               </CardHeader>
             </Card>

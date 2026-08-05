@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { BrandWordmark } from '@/components/brand-mark'
+import { PendingPromotionsBadge } from '@/components/pending-promotions-badge'
 
 /** 로그인 이후 화면의 공통 셸 — 상단바 + 콘텐츠. userMenu는 Task 2에서 주입. */
 export function AppShell({ children, userMenu }: { children: ReactNode; userMenu?: ReactNode }) {
@@ -11,7 +12,10 @@ export function AppShell({ children, userMenu }: { children: ReactNode; userMenu
           <Link to="/" aria-label="홈으로">
             <BrandWordmark />
           </Link>
-          {userMenu}
+          <div className="flex items-center gap-3">
+            <PendingPromotionsBadge />
+            {userMenu}
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
