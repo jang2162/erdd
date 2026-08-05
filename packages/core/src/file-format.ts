@@ -205,7 +205,7 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
 }
 
 export type FilesToModelResult =
-  | { ok: true; model: ProjectModel; warnings: FileIssue[] }
+  | { ok: true; model: ProjectModel; warnings: FileIssue[]; assignedTree?: FileTree }
   | { ok: false; issues: FileIssue[] }
 
 type Rec = Record<string, unknown>
@@ -246,6 +246,10 @@ export type FilesToModelOptions = {
 
 export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesToModelResult {
   const newId = opts?.newId
+  // newId가 있으면(push 경로) 복사본에 발급 id를 되써 넣어 "id를 채운 트리"를 함께 낸다.
+  // 입력은 절대 변형하지 않는다 — 호출자가 원본 트리를 계속 쓴다(reserveIds가 둘을 비교한다).
+  // JSON 왕복이 아니라 structuredClone인 이유는 YAML이 낼 수 있는 Date 스칼라를 보존하기 위해서다.
+  const src = newId === undefined ? tree : structuredClone(tree)
   const issues: FileIssue[] = []
   const warnings: FileIssue[] = []
   const model = createEmptyModel()
@@ -261,7 +265,13 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   const idOf = (r: Rec, path: string, kind: string, index: number): string => {
     const explicit = asStr(r['id'])
     if (explicit === null) {
-      return newId === undefined ? `${NEW_ID_PREFIX}${path}#${kind}[${index}]` : newId()
+      if (newId === undefined) return `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
+      // r은 src 안의 객체다(입력 tree는 그대로다). 발급 자리가 곧 기록 자리이므로 순회를
+      // 복제할 필요가 없고, 나중에 자리가 늘어도 자동으로 따라간다 — 이것이 별도
+      // assignMissingIds를 만들지 않은 이유다.
+      const id = newId()
+      r['id'] = id
+      return id
     }
     const key = `${kind} ${explicit}`
     const first = firstUse.get(key)
@@ -281,7 +291,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   }
 
   const readList = (path: string, key: string): Rec[] => {
-    const file = tree[path]
+    const file = src[path]
     if (file === undefined) return []
     if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); return [] }
     const list = file[key]
@@ -359,11 +369,11 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   })
 
   // 2) 테이블 파일 — 두 번 훑는다. 관계가 다른 테이블의 컬럼을 참조하기 때문이다.
-  const tablePaths = Object.keys(tree).filter((p) => p.startsWith(`${TREE_ROOT}/tables/`))
+  const tablePaths = Object.keys(src).filter((p) => p.startsWith(`${TREE_ROOT}/tables/`))
   const pending: { path: string; file: Rec; tableId: string }[] = []
 
   for (const path of tablePaths.sort()) {
-    const file = tree[path]
+    const file = src[path]
     if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); continue }
     const tableId = idOf(file, path, 'table', 0)
     const groupName = asStr(file['group'])
@@ -455,5 +465,6 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   }
 
   if (issues.length > 0) return { ok: false, issues }
-  return { ok: true, model, warnings }
+  // 파싱에 실패한 트리에 id를 기록할 이유가 없다 — ok:false에는 싣지 않는다.
+  return { ok: true, model, warnings, ...(newId === undefined ? {} : { assignedTree: src }) }
 }

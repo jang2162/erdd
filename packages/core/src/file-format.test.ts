@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel } from './model.js'
 import { modelToFiles, TREE_ROOT, TOP_LEVEL_FILES } from './file-format.js'
-import { filesToModel, isNewId } from './file-format.js'
+import { filesToModel, isNewId, type FileTree } from './file-format.js'
 import { fileVisibleModel } from './file-merge.js'
 import { fullModel } from './testing/fixtures.js'
 
@@ -339,5 +339,121 @@ describe('filesToModel', () => {
       'erdd/tables/MBR.yaml': { id: 'x1', name: 'MBR', logicalName: '회원', columns: [] },
     })
     expect(result.ok).toBe(true)
+  })
+})
+
+/**
+ * 9종 전부에 id가 빠진 항목이 있는 트리. groups·domains·words·terms·customFields·
+ * table·columns·indexes·relations 각각이 idOf를 지나므로, 한 자리라도 되쓰기를
+ * 빠뜨리면 아래 완전성 테스트가 잡는다.
+ */
+function treeWithNewEverywhere(): FileTree {
+  return {
+    'erdd/groups.yaml': { groups: [{ name: '회원관리', color: '#eef' }] },
+    'erdd/domains.yaml': { domains: [{ name: '명칭', logicalType: 'VARCHAR(100)', dialectTypes: {} }] },
+    'erdd/words.yaml': { words: [{ logicalName: '회원', abbreviation: 'MBR' }] },
+    'erdd/terms.yaml': { terms: [{ logicalName: '회원번호', physicalName: 'MBR_NO' }] },
+    'erdd/custom-fields.yaml': { customFields: [{ name: 'cf1', target: 'table', type: 'text' }] },
+    'erdd/tables/MBR.yaml': {
+      name: 'MBR', logicalName: '회원', group: '회원관리',
+      columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', pk: true, nullable: false, domain: '명칭' }],
+      indexes: [{ name: 'UX_MBR_01', columns: ['MBR_NO'], unique: true }],
+    },
+    'erdd/tables/ORD.yaml': {
+      name: 'ORD', logicalName: '주문',
+      columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', nullable: false }],
+      relations: [{ to: 'MBR', columns: { MBR_NO: 'MBR_NO' } }],
+    },
+  }
+}
+
+/** 재귀적으로 id 키를 걷어낸다 — "원본 + id뿐"임을 확인하는 데 쓴다. */
+function stripIds(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stripIds)
+  if (typeof v === 'object' && v !== null) {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>)
+        .filter(([k]) => k !== 'id')
+        .map(([k, x]) => [k, stripIds(x)]),
+    )
+  }
+  return v
+}
+
+describe('filesToModel — assignedTree (push 멱등성)', () => {
+  it('id가 빠진 자리를 하나도 남기지 않는다', () => {
+    let n = 0
+    const first = filesToModel(treeWithNewEverywhere(), { newId: () => `id-${++n}` })
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+    expect(first.assignedTree).toBeDefined()
+
+    // 채운 트리를 newId 없이 다시 파싱하면 임시 id가 하나도 없어야 한다. 임시 id는 정확히
+    // "id가 없는 자리"의 표식이라, 되쓰기를 한 자리라도 빠뜨리면 여기서 드러난다.
+    // 새 파일 종류나 새 배열이 붙어도 이 단언이 자동으로 따라간다.
+    const again = filesToModel(first.assignedTree!)
+    expect(again.ok).toBe(true)
+    if (!again.ok) return
+    const m = again.model
+    const allIds = [
+      ...Object.keys(m.tableGroups), ...Object.keys(m.tables),
+      ...Object.keys(m.columns), ...Object.keys(m.indexes), ...Object.keys(m.relationships),
+      ...Object.keys(m.domains), ...Object.keys(m.words), ...Object.keys(m.terms),
+      ...Object.keys(m.customFields),
+    ]
+    // 그룹1·도메인1·단어1·용어1·커스텀1·테이블2·컬럼2·인덱스1·관계1
+    expect(allIds).toHaveLength(11)
+    expect(allIds.some(isNewId)).toBe(false)
+  })
+
+  it('입력 트리를 변형하지 않는다', () => {
+    const tree = treeWithNewEverywhere()
+    const before = structuredClone(tree)
+    filesToModel(tree, { newId: () => 'id-x' })
+    expect(tree).toEqual(before)
+  })
+
+  it('채운 트리는 원본에 id만 더한 것이다', () => {
+    const tree = treeWithNewEverywhere()
+    let n = 0
+    const result = filesToModel(tree, { newId: () => `id-${++n}` })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(stripIds(result.assignedTree!)).toEqual(tree)
+  })
+
+  it('이미 적힌 id는 그대로 두고 새로 발급하지 않는다', () => {
+    const result = filesToModel({
+      'erdd/tables/MBR.yaml': {
+        id: 'table-keep', name: 'MBR', logicalName: '회원',
+        columns: [{ id: 'col-keep', name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT' }],
+      },
+    }, { newId: () => 'issued' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const file = result.assignedTree!['erdd/tables/MBR.yaml'] as { id: string; columns: { id: string }[] }
+    expect(file.id).toBe('table-keep')
+    expect(file.columns[0]!.id).toBe('col-keep')
+    expect(Object.keys(result.model.tables)).toEqual(['table-keep'])
+  })
+
+  it('newId를 주지 않으면 assignedTree가 없다', () => {
+    const result = filesToModel(treeWithNewEverywhere())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.assignedTree).toBeUndefined()
+  })
+
+  it('파싱에 실패하면 assignedTree를 내지 않는다', () => {
+    // 없는 부모 테이블을 가리키는 관계 — 기존 테스트가 쓰는 것과 같은 실패 경로다.
+    const result = filesToModel({
+      'erdd/tables/ORD.yaml': {
+        name: 'ORD', logicalName: '주문', columns: [],
+        relations: [{ to: 'NOPE', columns: {} }],
+      },
+    }, { newId: () => 'id-x' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result).not.toHaveProperty('assignedTree')
   })
 })
