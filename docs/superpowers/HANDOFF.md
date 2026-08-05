@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-08-04 / **main HEAD:** `ec844a8` / **마이그레이션:** 0010까지(이번 사이클엔 추가 없음)
+**최종 갱신:** 2026-08-05 / **main HEAD:** `<머지 후 갱신>` / **마이그레이션:** 0011까지(승격 요청 큐에서 `promotion_requests` 추가)
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -28,6 +28,7 @@
 | **Phase 4 #3 CLI 트랙 B** | 파일 3-way 병합 core 순수 함수(`packages/core/src/file-merge.ts` — `FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`·`fileVisibleModel`·`mergeModels`·`applyMerge`·`pruneDangling`·`gridPositions`), 신규 프로시저 `model.push`(토큰 allowlist 6번째, 필수 `expectedSeq`를 프로젝트 행 락 안에서 검증해 경합 차단, `model.mutate`는 세션 전용 유지), CLI `push`(필드 단위 자동 병합·충돌 시 블록형 출력+exit 1·삭제 확인 프롬프트·성공 후 암묵적 pull로 신규 id 채움)·`diff`(항상 3-way 계획 미리보기, `--base` 없음)·`skill install`(`.claude/skills/erdd/SKILL.md` 동봉, `--dir`/`--force`). **마이그레이션 없음** |
 
 | **공용 리소스 승격** | fork의 반대 방향 — 프로젝트 사전 4종을 조직/전역 라이브러리로 올린다. core 순수 함수 `resource-promote.ts`(`planPromote` 3상태 분류 / `applyPromotePlan` write+`origin` 갱신), `runMutation`의 트랜잭션 내 선행 훅 `prepare`로 라이브러리 쓰기와 모델 op를 한 트랜잭션에 묶는 신규 프로시저 `resource.promote`(권한 3중·라이브러리 항목 `FOR UPDATE`·기대치 불일치 skip), `listForProject`의 `canWrite`, 공용 리소스 다이얼로그를 탭 2개로 분리 + "조직으로 승격" 탭. **마이그레이션 없음** ([설계](specs/2026-08-04-resource-promotion-design.md)) |
+| **승격 요청·승인 큐** | 라이브러리 쓰기 권한이 없는 Editor의 요청 경로. `promotion_requests`(op 로그 밖, 마이그 0011)는 **엔티티 포인터만** 담고 승인 시 `planPromote`를 재계산한다. `resource.promote`의 트랜잭션 본문을 `services/promote.ts`(`runPromoteInTx`·`loadLibraryItems`)로 추출해 승인이 같은 엔진을 타고, 요청 행 종결이 같은 `prepare` 훅에 들어가 함께 롤백된다. 프로시저 7개(`create`/`listForProject`/`cancel`/`listForOrg`/`get`/`pendingCount`/`resolve`), 승격 탭의 요청 모드, 조직 화면 승인 목록·검토 다이얼로그, 헤더·홈 배지 ([설계](specs/2026-08-04-promotion-request-queue-design.md)) |
 
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
@@ -36,12 +37,13 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 453 · cli 114 · web 358 · server 122 (erdd_test) · typecheck EXIT=0
+core 453 · cli 114 · web 378 · server 141 (erdd_test) · typecheck EXIT=0
 ```
 
 루트 `pnpm verify`는 `packages/core` 뒤·`apps/web` 앞에 `pnpm -C packages/cli test`를 끼워 넣어
-네 스위트를 함께 돈다. 승격 사이클에서 core +24 · web +17 · server +14가 붙었다(계획·적용 엔진,
-`prepare` 훅의 트랜잭션 계약, 권한 3중, 혼합 배치, 탭 가시성, op 상한 가드 회귀).
+네 스위트를 함께 돈다. 승격 요청 큐 사이클에서 web +20 · server +19가 붙었다(core·cli는 무변경).
+그중 상당수는 **구분력 확인이 드러낸 커버리지 구멍을 메운 것**이다 — 조직 경계(테넌트 격리), 승인
+쓰기 권한, 요청 범위, `PromoteEntryList` 배선, 배지가 앱 셸에 꽂혀 있다는 사실.
 
 ⚠️ **`pnpm -s -r typecheck`의 출력만 보고 판정하지 말 것.** `-s`가 자식 출력을 삼켜서, 타입 오류가
 있어도 **출력이 0바이트이고 종료코드만 1**이다. 실시간 사이클에서 이 함정 때문에 구현자·태스크
@@ -66,9 +68,16 @@ pnpm -s -C packages/cli typecheck
 
 ### 다음 작업
 
-**Phase 4 + 공용 리소스 승격 완료 — 다음 후보** (→ `docs/90-roadmap.md`)
+**Phase 4 + 공용 리소스 승격 + 요청·승인 큐 완료 — 다음 후보** (→ `docs/90-roadmap.md`)
 
-로드맵의 Phase 1~4가 모두 완료됐고, 그 뒤 기획에만 있던 공용 리소스의 반대 방향(프로젝트 → 조직/전역 승격)도 채웠다. 정해진 다음 Phase는 없다. 후보는 (a) 6절 이월 항목 정리 — 특히 CLI 트랙 B의 잔여 한계(→ [설계](specs/2026-08-04-cli-push-design.md) §9)와 승격의 잔여 한계(→ [설계](specs/2026-08-04-resource-promotion-design.md) §9), (b) `docs/90-roadmap.md` "추후 검토" 목록(과금 플랜, Excel 템플릿 커스터마이징, 셀프 가입, MCP 서버, 복수 스키마 등) 중 조직 내부 도구로서 가치가 큰 것부터 검토. 과금은 여전히 최우선이 아니다 — 조직 내에서 쓸 수 있는 도구 완성이 우선.
+로드맵의 Phase 1~4가 모두 완료됐고, 공용 리소스의 반대 방향(승격)과 그 위의 요청·승인 큐까지 채웠다. 정해진 다음 Phase는 없다. 후보는 (a) 6절 이월 항목 정리, (b) `docs/90-roadmap.md` "추후 검토" 목록 중 조직 내부 도구로서 가치가 큰 것. 과금은 여전히 최우선이 아니다 — 조직 내에서 쓸 수 있는 도구 완성이 우선.
+
+값이 큰 순서로 추린 것:
+
+1. **CLI push의 비멱등 쓰기**(→ [설계](specs/2026-08-04-cli-push-design.md) §9) — 커밋 후 응답이 유실되면 다음 push가 조용히 사본을 만든다. 이월 중 **유일하게 데이터를 잘못 만드는 항목**이다.
+2. **`cancel`의 read-then-write**(→ 6절 "승격 요청 큐") — `resolve`가 생기면서 실제 위험해졌다. 승격은 끝났는데 요청이 "취소됨"으로 남는 상태를 만든다. 고치는 비용은 조건부 UPDATE 한 줄이다.
+3. **셀프 가입·초대 메일·비밀번호 재설정** — 지금은 관리자가 계정을 직접 만들어야 해 실배포 마찰이 가장 크다. **승격 요청 큐의 알림도 여기에 얹힌다**(현재는 폴링 배지뿐). 메일 인프라 선택이 선행 결정이다.
+4. 실제 DB 접속 스키마 스캔(DDL 역설계의 다음 단계 — 기존 모델과의 병합·재동기화가 딸려 온다), 프로젝트당 복수 스키마, MCP 서버, Excel 양식 템플릿.
 
 무엇을 고르든 착수 전에 brainstorming 스킬로 사용자와 우선순위·load-bearing 결정을 먼저 확정한다(5절 "작업 방식" 참조).
 
@@ -132,6 +141,24 @@ pnpm -s -C packages/cli typecheck
 - **승격은 프로젝트 엔티티의 `origin`만 바꾼다.** 그래서 op는 전부 `origin` 1필드 update이고 선택 항목 수 = op 수다. undo는 `origin`만 되돌리며 **라이브러리에 쓴 항목은 남는다**(op 로그 밖이라 구조적으로 그렇다).
 - **판정 순서가 DB 행 순서에 의존하면 안 된다.** `loadProjectModel`의 `SELECT`에는 `ORDER BY`가 없어서, 동명 항목이 둘일 때 클라와 서버가 서로 다른 쪽에 `name-match`를 주면 양쪽 다 `plan-changed`로 건너뛰어 **영원히 수렴하지 않는다.** `planPromote`가 엔티티를 **id 오름차순으로 정렬한 뒤** 선점을 판정해 막는다 — 새 선점 규칙을 넣을 때 이 정렬을 지워선 안 된다.
 - 클라는 payload를 보내지 않는다. `{entityId, expectedStatus, expectedTargetItemId, expectedTargetVersion}`만 보내고 서버가 락 안에서 계획을 재계산해 어긋난 항목만 건너뛴다(`missing`/`plan-changed`). **`expectedTargetVersion`이 없으면** 다이얼로그를 연 사이 남이 고친 원본을 낡은 미리보기 기준으로 덮어쓴다.
+
+**요청·승인 큐(`promotion_requests` + `promotion.*`)** — 위 승격 위에 얹힌 층이라 규칙이 셋 더 있다.
+
+- **승격의 유일한 엔진은 `services/promote.ts`의 `runPromoteInTx`다.** `resource.promote`(직접 승격)와
+  `promotion.resolve`(요청 승인)가 이것을 공유한다. 세 번째 승격 경로를 만들면 반드시 이 함수를 거쳐야
+  하고, **`prepare` 훅 밖에서 부르면** 프로젝트 행 락 밖에서 라이브러리를 쓰게 된다. 라이브러리 항목
+  조회도 같은 파일의 `loadLibraryItems` 하나뿐이어야 한다 — 요청 시점(`promotion.create`)과 승인
+  시점(`runPromoteInTx`)이 **같은 값을 계산해야 하고**, `orderBy(asc(createdAt))`가 `planPromote`의
+  동명 선점 순서를 정하므로 한쪽만 바뀌면 판정이 갈린다.
+- **요청 행은 엔티티 포인터(`entityIds`)만 담는다.** payload를 동결하면 `origin.base` 규칙(3.2b 첫
+  항목)을 요청 시점 기준으로 다시 유도해야 하고, 그 사이 엔티티가 삭제되면 `origin`을 쓸 대상이 없어지며,
+  요청 행이 모델과 별개의 진실 원본이 된다. 승인 화면은 `promotion.get`이 **지금** 계산한 계획을 쓰고,
+  요청 당시 있었으나 계획에서 사라진 항목은 `unavailable`로 분리한다.
+- **`promotion_requests`에 `orgId` 컬럼을 두지 않는다.** 조직 단위 조회는 `resource_libraries.orgId`
+  조인으로 얻는다 — `create`가 `library.orgId === project.orgId`를 강제하므로 두 경로가 같은 값을
+  가리키고, 컬럼을 따로 두면 그 둘이 어긋날 자리가 생긴다. **조직 경계는 테스트로 잠겨 있다**(외부인이
+  소유한 조직에 pending 요청을 심는 `seedForeignPendingRequest` 픽스처) — 이 픽스처를 지우면
+  `listForOrg`의 행 필터와 `pendingCount`의 조인 조건이 동시에 무방비가 된다.
 
 ### 3.3 하위호환 (스냅샷·옛 리비전)
 - 모델에 새 컬렉션을 추가하면 `ProjectModelSchema`에서 `.default({})`. 단, **`z.infer` 출력 타입은 필수**이므로 `: ProjectModel` 리터럴(fixtures, model-store 반환 등)에는 전부 키를 추가해야 한다(typecheck-driven으로 훑기).
@@ -324,7 +351,7 @@ Phase 2 #4·#5를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다
 - customField 로컬 순서변경·origin 왕복 회귀 테스트 없음(구조적으로 성립하나 미고정)
 
 **공용 리소스 승격 (구현 완료, 잔여 한계 — → [설계](specs/2026-08-04-resource-promotion-design.md) §9)**
-- **요청·승인 큐 없음** — 라이브러리 쓰기 권한이 없는 Editor는 승격 탭 자체를 못 본다. 확장점은 `promotion_requests` 테이블 + 조직 화면의 승인 목록
+- ~~요청·승인 큐 없음~~ → **해소됨**(승격 요청 큐 사이클, 마이그 0011). 아래 "승격 요청 큐" 항목 참조
 - **전역 fork 항목을 조직으로 승격하면 전역 재동기화 목록에 그 원본이 `added`로 다시 뜬다**(`nameClash`가 붙어 기본 미선택이라 중복 생성은 막히지만 매번 남는다). "무시" 상태를 기록할 자리가 모델에 없다
 - **undo는 `origin`만 되돌린다** — 라이브러리에 쓴 항목은 남는다(관리 화면에서 삭제해야 한다)
 - `FOR UPDATE`는 **기존 행만** 잠근다 — 서로 다른 프로젝트가 동시에 승격하면 같은 이름의 항목이 2개 생길 수 있다(`resource_items`에 `(library_id, kind, name)` 유니크 제약 없음). 데드락 경로도 이론상 존재한다(승격은 항목→라이브러리 순, `library.remove`는 반대)
@@ -334,6 +361,19 @@ Phase 2 #4·#5를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다
 - 승격 진행 중에도 체크박스·일괄 버튼이 활성(제출 버튼만 비활성), 탭을 전환하면 재동기화 탭의 진행 중 선택이 초기화된다
 - `EntryLabel`이 재동기화 탭과 승격 탭에 거의 동일하게 중복, `resource-panel.tsx`의 `as LibraryRow[]` 캐스트가 서버/클라 shape 드리프트를 컴파일에서 놓친다
 - `planResync`는 아직 정렬 없는 순회를 쓴다(라이브러리 항목 순서에 의존해 현재는 무해하나 `planPromote`와 같은 부류의 잠재 발산)
+
+**승격 요청 큐 (구현 완료, 잔여 한계 — → [설계](specs/2026-08-04-promotion-request-queue-design.md) §9)**
+- **알림이 폴링 배지뿐이다.** 승인자가 로그인해 있지 않으면 모른다. 메일 발송은 인프라 선택이 선행 결정이라 별도 사이클(로드맵 "추후 검토"의 초대·비밀번호 재설정 메일과 함께 다루는 것이 자연스럽다)
+- **배지는 `bare` 라우트(에디터)에는 뜨지 않는다.** 실제 도달 범위는 "`AppShell`을 쓰는 화면"이라 **프로젝트 오너가 에디터에 오래 머무는 동안에는 대기 요청을 못 본다.** 승인 동선이 홈·조직 화면이라 치명적이진 않으나 설계 §1.1의 "어느 화면에 있든 보인다"와 실제가 다르다
+- **`cancel`이 read-then-write다** — `resolve`가 요청 행을 잠그고 승격을 마치는 동안 `cancel`의 UPDATE가 락에서 대기하다 커밋 후 `where(eq(id))`만으로 `status`를 `cancelled`로 덮어쓴다. 라이브러리에는 항목이 올라갔는데 요청은 "취소됨"이고 `approvedEntityIds`는 그대로 남는다. 고치는 법: `and(eq(id), eq(status,'pending'))` + `rowCount === 0`이면 CONFLICT
+- **`resolve`의 락 안 pending 확인은 이 스위트로 검증 불가능하다.** 구분력 확인이 증명한 것은 "트랜잭션 밖 사전 확인과 락 안 확인의 논리합이 부하를 진다"까지다 — 락 안 확인이 단독으로 필요한 이유는 동시성(두 관리자의 동시 승인)인데 순차 스위트는 원리적으로 재현할 수 없다. 실제 겹치는 두 트랜잭션을 띄우는 테스트가 필요하다
+- **원자성(승격 실패 시 요청 행 롤백)을 실증하는 테스트가 없다.** `promotion_requests`가 `projectId`·`libraryId` 양쪽으로 cascade라 실패를 주입하려 프로젝트나 라이브러리를 지우면 요청 행도 함께 사라지고, `origin` 1필드 update뿐이라 `persistOps`를 깨뜨릴 자연스러운 지점도 없다. 보장은 "라이브러리 쓰기와 요청 종결이 단일 `prepare` 훅 안에 있다"는 코드 구조에서 온다 — **`resolve`를 두 트랜잭션으로 쪼개는 변경은 이 공백 때문에 조용히 통과한다**
+- **`loadLibraryItems`의 `orderBy(asc(createdAt))`가 어떤 서버 테스트로도 잠겨 있지 않다.** 이 정렬은 `planPromote`의 동명 선점 순서를 정하므로 조용히 바뀌면 승격 대상이 달라진다. core의 순서 결정성 테스트는 `planPromote` 함수의 성질만 보고 서버가 먹이는 순서는 검증하지 않는다. 잠그려면 같은 표시명 항목 2개를 `createdAt` 역순으로 심고 `targetItemId`가 어느 쪽을 가리키는지 보는 테스트가 필요하며 자리는 `resource-promote.test.ts`다(이 사이클 이전부터 있던 공백)
+- **`pendingCount`의 다중 조직 집계가 미검증이다** — `byOrg`가 2원소 이상인 경로가 한 번도 실행되지 않는다. 덮으려면 오너가 소유한 세 번째 조직 + 정렬 안정화(`orgId` 정렬 또는 `expect.arrayContaining`)가 필요하다
+- **생성 후 요청을 편집할 수 없다**(항목을 더하거나 빼려면 취소하고 다시 만든다), **pending 요청이 만료되지 않는다**, **요청 시점의 상태를 저장하지 않아** 승인 화면이 "요청 당시 이랬는데 지금 이렇다"를 보여줄 수 없다, **요청자에게 결과가 푸시되지 않는다**(프로젝트 승격 탭을 열어야 안다)
+- **`resolve`가 0건 승격을 포함해 `resolved`로 남긴다** — 승인자가 골랐으나 전부 `skipped`된 경우도 `resolved`이고 `approvedEntityIds`가 빈 배열인 것으로만 구분된다
+- **`summary`에 실제 승격 건수를 넣을 수 없다** — `summary`는 string이라 `mutateAndPublish` 호출 시점에 확정되는데 `outcome`은 `prepare` 훅이 돈 뒤에야 채워진다. 현재는 호출 시점에 아는 값("요청 N건 중 M건 승인")을 쓴다
+- 코드 정리 여지: `mutateAndPublish` 스캐폴딩이 `routers/resource.ts`와 `promotion.ts`에 축자 중복(배선이라 값이 갈리지는 않는다), `resolve`가 88줄 단일 함수, 승인 권한 규칙이 `requireScopeWrite`와 `pendingCount`의 `inArray`에 따로 표현(`ORG_WRITE_ROLES` 공유 상수 권장), `promotion.get`이 요청 행을 통째로 스프레드, `org-detail.tsx`의 `canManage` 식 중복, 요청 경로의 op 상한 가드·요청 메모(`note`)·대기 목록의 `libraryId` 필터·목록의 `isError` 알림·`resolve`의 `onError` 토스트가 미검증
 
 **Excel 산출물/업로드 (#5)**
 - **"변경분 정의서" 시트 미구현** — 스냅샷 diff 기반이라 Phase 3의 diff 화면과 함께 설계(의도적으로 남긴 유일한 시트)
@@ -431,4 +471,4 @@ brainstorming(설계 결정 확인) → spec → plan → SDD 구현/리뷰 → 
 순서로 가라.
 ```
 
-> 마지막 문단에 실제로 고를 것을 채운다. 예: "6절 이월 항목을 정리한다" / "프로젝트→조직 리소스 승격(공용 리소스 반대 방향)을 구현한다" / "실시간 협업의 이월 항목(멀티 인스턴스·토스트 정교화)을 정리한다" / "CLI npm 공개 배포 파이프라인을 구축한다".
+> 마지막 문단에 실제로 고를 것을 채운다. 예: "CLI push를 멱등하게 만든다(이월 중 유일하게 데이터를 잘못 만드는 항목)" / "승격 요청 큐의 cancel 경합을 고친다" / "셀프 가입·초대 메일을 붙인다(승격 요청 알림도 여기에 얹힌다)" / "6절 이월 항목을 정리한다".

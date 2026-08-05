@@ -20,7 +20,7 @@
 - 단어/용어 사전, 물리명 자동생성, 경고 체계, 명명 검사 화면 ([13-naming](13-naming.md))
 - 도메인 정의·지정·일괄 반영 ([14-domain](14-domain.md))
 - 커스텀 항목 ([15-custom-fields](15-custom-fields.md))
-- 서비스 전역·조직 공용 리소스와 fork/재동기화, 프로젝트 → 조직/전역 승격 ([01-concepts](01-concepts.md), [승격 설계](superpowers/specs/2026-08-04-resource-promotion-design.md))
+- 서비스 전역·조직 공용 리소스와 fork/재동기화, 프로젝트 → 조직/전역 승격, 권한 없는 Editor의 승격 요청·승인 큐 ([01-concepts](01-concepts.md), [승격 설계](superpowers/specs/2026-08-04-resource-promotion-design.md), [요청 큐 설계](superpowers/specs/2026-08-04-promotion-request-queue-design.md))
 - Excel 산출물 내보내기, Excel 사전 업로드, 그룹 단위 내보내기 ([17-import-export](17-import-export.md))
 
 ## Phase 3 — 협업 완성
