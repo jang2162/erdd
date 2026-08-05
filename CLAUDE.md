@@ -169,5 +169,13 @@ Claude-Session: <세션 URL>
   스트리밍 파싱해 `_keepalive` 가 아닌 마지막 객체를 취한다.
 - **`check --wait` 의 `timedOut`/`count:0` 은 워커 실패가 아니라 체크포인트다.** 긴 작업은 15~60분이
   보통이다. `worker_done`/`escalation` 을 받거나 터미널이 사라지지 않는 한 rolling wait 를 계속한다.
+- ⚠️ **받은 Delivery 는 반드시 `--ack` 하라.** `check` 는 가장 오래된 Delivery 배치를 `--ack <delivery_id>`
+  할 때까지 **그대로 재생한다.** ack 없이 다음 `check --wait` 를 걸면 새 워커가 아직 일하는 중인데도
+  **직전 메일이 즉시 다시 나와** 완료로 오인한다(실제로 수정 라운드 대기에서 직전 리뷰 결과를 다시 받았다).
+  ack 와 대기를 한 번에: `check --ack <delivery_id> --wait --types … --json`.
+- **터미널 핸들은 재발급된다.** `worker-start` 응답의 핸들을 나중에 다시 쓰면 `terminal_worktree_mismatch`
+  가 난다. `orca terminal list --json` 에서 워크트리·제목으로 다시 찾아 **새 핸들만** 쓴다(옛 핸들과
+  양쪽으로 보내지 않는다). 기존 워커를 이어 쓸 때는 `--terminal <handle>` 과 `--worktree` 를 **함께** 준다 —
+  `--terminal` 만 주면 워크트리가 기본값(최상위)으로 잡혀 거부된다.
 - **Orca 환경이 아니거나 오케스트레이션이 불가하면** 기존대로 워크트리 + 서브에이전트(Agent 도구)로
   진행한다.
