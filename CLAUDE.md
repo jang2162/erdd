@@ -169,6 +169,12 @@ Claude-Session: <세션 URL>
   스트리밍 파싱해 `_keepalive` 가 아닌 마지막 객체를 취한다.
 - **`check --wait` 의 `timedOut`/`count:0` 은 워커 실패가 아니라 체크포인트다.** 긴 작업은 15~60분이
   보통이다. `worker_done`/`escalation` 을 받거나 터미널이 사라지지 않는 한 rolling wait 를 계속한다.
+- ⚠️ **`runtime_unavailable`("The Orca runtime closed the connection before responding") 도 워커 실패가
+  아니다.** 코디네이터의 **대기 연결만** 끊긴 것이고 워커 프로세스는 그대로 돈다. 재시작하지 말고 확인부터
+  하라 — `orca status --json`(런타임 ready 인지), `worker-show --dispatch`(상태), `worker-read --dispatch`
+  (`source: transcript` + terminal `running` 이면 살아 있다), 그리고 **워크트리의 `git log`**(워커가 이미
+  커밋했는지). 살아 있으면 `check --wait` 를 다시 걸면 된다. 워커를 죽이고 재디스패치하면 진행 중인
+  작업을 버리게 된다.
 - ⚠️ **받은 Delivery 는 반드시 `--ack` 하라.** `check` 는 가장 오래된 Delivery 배치를 `--ack <delivery_id>`
   할 때까지 **그대로 재생한다.** ack 없이 다음 `check --wait` 를 걸면 새 워커가 아직 일하는 중인데도
   **직전 메일이 즉시 다시 나와** 완료로 오인한다(실제로 수정 라운드 대기에서 직전 리뷰 결과를 다시 받았다).
