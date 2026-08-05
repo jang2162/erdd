@@ -2071,7 +2071,9 @@ describe('PromotionRequestsSection', () => {
   })
 
   it('선택한 항목만 승인한다', async () => {
-    const resolve = vi.fn(() => ({ data: {
+    // mockTrpcFetch의 Handler는 (input: unknown)을 받는다. 인자를 선언하지 않으면
+    // mock.calls[0]이 빈 튜플로 추론돼 [0] 접근이 TS2493으로 깨진다(vitest는 통과시킨다).
+    const resolve = vi.fn((_input: unknown) => ({ data: {
       status: 'resolved', seq: 5, inserted: 1, updated: 0, skipped: [],
     } }))
     renderSection({
@@ -2096,7 +2098,9 @@ describe('PromotionRequestsSection', () => {
   })
 
   it('선택을 모두 풀면 버튼이 반려로 바뀌고 빈 approve를 보낸다', async () => {
-    const resolve = vi.fn(() => ({ data: {
+    // mockTrpcFetch의 Handler는 (input: unknown)을 받는다. 인자를 선언하지 않으면
+    // mock.calls[0]이 빈 튜플로 추론돼 [0] 접근이 TS2493으로 깨진다(vitest는 통과시킨다).
+    const resolve = vi.fn((_input: unknown) => ({ data: {
       status: 'rejected', seq: null, inserted: 0, updated: 0, skipped: [],
     } }))
     renderSection({
@@ -2338,12 +2342,12 @@ Expected: PASS (5건)
 pnpm --filter @erdd/web exec vitest run
 pnpm -r typecheck; echo "EXIT=$?"
 ```
-Expected: 367 pass · EXIT=0
+Expected: 370 pass · EXIT=0 (362 + Step 0의 3건 + 섹션 5건)
 
 - [ ] **Step 7: 커밋**
 
 ```bash
-git add apps/web/src/components/promotion-requests-section.tsx apps/web/src/components/promotion-requests-section.test.tsx apps/web/src/pages/org-detail.tsx && git commit -m "$(cat <<'EOF'
+git add apps/web/src/components/promote-entry-list.test.tsx apps/web/src/components/promotion-requests-section.tsx apps/web/src/components/promotion-requests-section.test.tsx apps/web/src/pages/org-detail.tsx && git commit -m "$(cat <<'EOF'
 feat(web): 조직 화면의 승격 요청 승인 목록
 
 검토 다이얼로그는 서버가 지금 계산해 내려준 계획을 렌더한다 — 조직 화면에는 프로젝트
