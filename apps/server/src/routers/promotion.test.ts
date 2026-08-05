@@ -160,4 +160,74 @@ describe.skipIf(!url)('promotion', () => {
       .json().result.data as Array<{ status: string }>
     expect(rows[0]!.status).toBe('cancelled')
   })
+
+  it('조직 승인 목록은 Org Owner/Admin만 볼 수 있다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    await post(app, 'promotion.create', editorSession, { projectId, libraryId, entityIds: [wordId] })
+
+    const denied = await get(app, 'promotion.listForOrg', editorSession, { orgId })
+    expect(denied.statusCode).toBe(403)
+
+    const allowed = await get(app, 'promotion.listForOrg', ownerSession, { orgId })
+    expect(allowed.statusCode).toBe(200)
+    const rows = allowed.json().result.data as Array<{
+      projectName: string; requesterName: string; itemCount: number; libraryName: string
+    }>
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      projectName: 'P', requesterName: '에디터', itemCount: 1, libraryName: '조직 표준',
+    })
+  })
+
+  it('get이 지금 계산한 계획을 내려주고, 그새 승격된 항목은 unavailable로 뺀다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const otherId = await seedWord(app, editorSession, projectId, '주문', 'ORD')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId, otherId],
+    })).json().result.data.id
+
+    // 요청과 승인 사이에 Owner가 wordId를 직접 승격해 버린다.
+    const direct = await post(app, 'resource.promote', ownerSession, {
+      projectId, libraryId,
+      entries: [{
+        entityId: wordId, expectedStatus: 'new',
+        expectedTargetItemId: null, expectedTargetVersion: null,
+      }],
+    })
+    expect(direct.statusCode).toBe(200)
+
+    const res = await get(app, 'promotion.get', ownerSession, { requestId })
+    expect(res.statusCode).toBe(200)
+    const data = res.json().result.data as {
+      entries: Array<{ entityId: string; status: string; name: string }>
+      unavailable: string[]
+      request: { note: string; projectName: string }
+    }
+    expect(data.unavailable).toEqual([wordId])
+    expect(data.entries.map((e) => e.entityId)).toEqual([otherId])
+    expect(data.entries[0]).toMatchObject({ status: 'new', name: '주문' })
+  })
+
+  it('get은 라이브러리 쓰기 권한이 있어야 한다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id
+    const res = await get(app, 'promotion.get', editorSession, { requestId })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('pendingCount는 내가 Owner/Admin인 조직의 것만 센다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    await post(app, 'promotion.create', editorSession, { projectId, libraryId, entityIds: [wordId] })
+
+    const forOwner = await get(app, 'promotion.pendingCount', ownerSession)
+    expect(forOwner.json().result.data).toMatchObject({
+      total: 1, byOrg: [{ orgId, count: 1 }],
+    })
+
+    // 에디터는 같은 조직의 Member라 셀 것이 없다.
+    const forEditor = await get(app, 'promotion.pendingCount', editorSession)
+    expect(forEditor.json().result.data).toMatchObject({ total: 0, byOrg: [] })
+  })
 })
