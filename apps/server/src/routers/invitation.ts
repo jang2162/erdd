@@ -3,6 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import type { DbOrTx } from '../db/client.js'
+import { isUniqueViolation } from '../db/errors.js'
 import { invitations, members, organizations, users } from '../db/schema.js'
 import { hashToken } from '../auth/token.js'
 import { createAccount, normalizeEmail } from '../services/accounts.js'
@@ -32,11 +33,13 @@ export const invitationRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       await requireOrgManager(ctx.db, input.orgId, ctx.user.id)
+      // 없는 조직은 여기 도달하지 않는다 — requireOrgManager가 멤버를 못 찾아 FORBIDDEN을 먼저
+      // 던진다. 404를 따로 두지 않는 것이 의도다: 404와 403이 갈리면 임의 orgId를 던져
+      // "그 조직이 존재하는가"를 물을 수 있게 된다(존재 오라클).
       const org = (
         await ctx.db.select().from(organizations).where(eq(organizations.id, input.orgId))
       )[0]
-      if (!org) throw new TRPCError({ code: 'NOT_FOUND', message: '조직을 찾을 수 없습니다' })
-      if (org.kind === 'personal') {
+      if (org?.kind === 'personal') {
         throw new TRPCError({ code: 'FORBIDDEN', message: '개인 조직에는 초대를 만들 수 없습니다' })
       }
       const email = normalizeEmail(input.email)
@@ -109,8 +112,8 @@ export const invitationRouter = router({
 
   /**
    * 공개(세션 불필요). 유효한 토큰이 유일한 자격이고, 토큰은 해시로만 조회되어 열거할 수 없다.
-   * query가 아니라 mutation인 것은 의도다 — query면 토큰이 URL 쿼리스트링에 실려
-   * 접근 로그·리퍼러에 남는다.
+   * query가 아니라 mutation인 것은 의도다 — 이 저장소의 tRPC query는 input을 GET URL의
+   * 쿼리스트링에 싣는다. 그러면 토큰이 역방향 프록시·접근 로그에 평문으로 남는다.
    */
   peek: dbProcedure
     .input(z.object({ token: z.string() }))
@@ -145,9 +148,19 @@ export const invitationRouter = router({
           throw new TRPCError({ code: 'CONFLICT', message: '이미 가입한 이메일입니다' })
         }
         // 서비스 역할은 초대 행이 정한다 — 입력으로 올릴 수 없다.
-        const user = await createAccount(tx, {
-          email: inv.email, name: input.name, password: input.password, role: inv.userRole,
-        })
+        // 위 재검사와 users INSERT 사이에 같은 이메일이 가입할 수 있다. 최종 판정은 유니크
+        // 제약이 하고, 그 예외는 500이 아니라 재검사와 같은 CONFLICT여야 한다.
+        let user: { id: string; email: string }
+        try {
+          user = await createAccount(tx, {
+            email: inv.email, name: input.name, password: input.password, role: inv.userRole,
+          })
+        } catch (err) {
+          if (isUniqueViolation(err)) {
+            throw new TRPCError({ code: 'CONFLICT', message: '이미 가입한 이메일입니다' })
+          }
+          throw err
+        }
         if (inv.orgId !== null) {
           await tx.insert(members).values({
             id: uuidv7(), orgId: inv.orgId, userId: user.id,

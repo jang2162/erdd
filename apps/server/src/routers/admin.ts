@@ -1,16 +1,11 @@
 import { TRPCError } from '@trpc/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { isUniqueViolation } from '../db/errors.js'
 import { sessions, users } from '../db/schema.js'
 import { hashPassword } from '../auth/password.js'
 import { createAccount } from '../services/accounts.js'
 import { adminProcedure, router } from '../trpc.js'
-
-function isUniqueViolation(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false
-  const e = err as { code?: unknown; cause?: { code?: unknown } }
-  return e.code === '23505' || e.cause?.code === '23505'
-}
 
 export const adminRouter = router({
   users: router({

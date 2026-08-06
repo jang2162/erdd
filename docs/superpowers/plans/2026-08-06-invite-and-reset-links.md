@@ -399,8 +399,12 @@ Expected: server **164 passed**(148 + 16, 16번을 뺐다면 163) · EXIT=0. **�
 - [ ] **Step 7: 커밋**
 
 ```bash
+# db/client.ts(Tx·DbOrTx의 자리는 accounts.ts가 아니라 여기다) · routers/org.ts ·
+# services/perm.ts(requireOrgManager 이동 — Interfaces가 이미 perm.ts라고 적어 둔 것)까지 포함한다.
 git add apps/server/src/services/accounts.ts apps/server/src/routers/invitation.ts \
-        apps/server/src/routers/invitation.test.ts apps/server/src/router.ts && \
+        apps/server/src/routers/invitation.test.ts apps/server/src/router.ts \
+        apps/server/src/db/client.ts apps/server/src/routers/org.ts \
+        apps/server/src/services/perm.ts && \
 git commit -m "$(cat <<'EOF'
 feat(server): 초대 생성·수락 경로
 
@@ -421,7 +425,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01JWohC7dLRgZQ4oFZBJdBsC
 EOF
 )" -- apps/server/src/services/accounts.ts apps/server/src/routers/invitation.ts \
-      apps/server/src/routers/invitation.test.ts apps/server/src/router.ts
+      apps/server/src/routers/invitation.test.ts apps/server/src/router.ts \
+      apps/server/src/db/client.ts apps/server/src/routers/org.ts \
+      apps/server/src/services/perm.ts
 ```
 
 ---
@@ -487,6 +493,10 @@ Expected: server **174 내외**(정확한 수는 실측해 보고). EXIT=0.
 
 `admin.test.tsx:1-33`의 `renderAdmin` 패턴을 그대로 쓴다(`createRoutesStub` + `mockTrpcFetch`).
 `initialEntries`에 토큰이 든 경로를 준다.
+
+⚠️ **`invitation.peek`은 query가 아니라 mutation이다**(설계 §3.5 — query면 토큰이 GET URL에 실린다).
+`useQuery`로는 부를 수 없으므로 **`useMutation`으로 부르고, 마운트 시 `useEffect`에서 한 번 호출한다.**
+로딩·에러 상태도 `useQuery`가 주는 것이 아니라 mutation의 `isPending`/`error`로 다룬다.
 
 **초대 수락**(각각 `it`): peek 결과(이메일·조직명)가 보인다 · 이름·비밀번호를 넣고 제출하면 `accept`가
 그 값으로 불린다 · 죽은 토큰이면 사유가 보이고 폼이 없다 · 성공하면 `/login`으로 간다 ·

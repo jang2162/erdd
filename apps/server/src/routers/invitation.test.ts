@@ -121,7 +121,7 @@ describe.skipIf(!url)('invitation', () => {
   })
 
   it('다른 조직의 초대는 listForOrg에 안 나온다', async () => {
-    await invite('mine@test.dev')
+    const mine = await invite('mine@test.dev')
     await createAccount(app.db!, {
       email: 'outsider@test.dev', name: '외부', password: 'password-x', role: 'user',
     })
@@ -135,6 +135,18 @@ describe.skipIf(!url)('invitation', () => {
     const list = (await get(app, 'invitation.listForOrg', ownerToken, { orgId }))
       .json().result.data as Array<{ email: string }>
     expect(list.map((i) => i.email)).toEqual(['mine@test.dev'])
+
+    // 남의 조직 id를 그냥 넣어서는 목록을 못 본다. 이 단언이 없으면 로그인한 아무나 임의 orgId로
+    // 남의 조직 초대 이메일을 전부 읽는다.
+    expect((await get(app, 'invitation.listForOrg', outsiderToken, { orgId })).statusCode).toBe(403)
+
+    // 자기 조직의 매니저라는 자격으로 남의 조직 초대를 취소하지도 못한다. requireOrgManager는
+    // 팀B에 대해서만 통과시키므로, 크로스-테넌트를 막는 것은 revoke의 orgId 조건뿐이다.
+    expect((await post(app, 'invitation.revoke', outsiderToken, {
+      orgId: otherOrgId, id: mine.id,
+    })).statusCode).toBe(409)
+    // 실제로 살아 있어야 한다 — 상태코드만 보고 만족하면 "만료시켜 놓고 409"를 놓친다.
+    expect((await postPublic(app, 'invitation.peek', { token: mine.token })).statusCode).toBe(200)
   })
 
   it('재발급이 이전 초대를 죽인다 — 두 링크가 동시에 살아 있지 않다', async () => {
@@ -260,6 +272,38 @@ describe.skipIf(!url)('invitation', () => {
     // 초대는 소비되지 않고 남는다 — 관리자가 취소하거나 멤버 추가로 처리한다.
     const row = (await app.db!.select().from(invitations).where(eq(invitations.id, created.id)))[0]!
     expect(row.usedAt).toBeNull()
+  })
+
+  it('재검사와 INSERT 사이에 그 이메일이 가입하면 accept가 500이 아니라 409다', async () => {
+    const created = await invite('racer@test.dev')
+    const pool = app.pgPool!
+    // 재검사(select)는 통과시키고 users INSERT만 unique 위반으로 터뜨린다 — 재검사와 INSERT
+    // 사이에 남이 먼저 가입한 상황과 DB가 내는 오류가 같다. 트랜잭션 안이라 실제 동시 커밋을
+    // 밖에서 끼워 넣을 수 없어 SQLSTATE를 직접 낸다.
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION erdd_probe_dup() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN
+        RAISE EXCEPTION 'probe: 동시 가입' USING ERRCODE = '23505';
+      END $$`)
+    await pool.query('DROP TRIGGER IF EXISTS erdd_probe_users ON users')
+    await pool.query(`
+      CREATE TRIGGER erdd_probe_users BEFORE INSERT ON users FOR EACH ROW
+      WHEN (NEW.email = 'racer@test.dev') EXECUTE FUNCTION erdd_probe_dup()`)
+    try {
+      const res = await postPublic(app, 'invitation.accept', {
+        token: created.token, name: '경합', password: 'password-r',
+      })
+      // 500이면 클라이언트는 재시도할지 포기할지 구분하지 못한다. 재검사가 잡았을 때와 같은 409다.
+      expect(res.statusCode).toBe(409)
+      // 초대는 소비되지 않고 남는다(전체 롤백).
+      const row = (
+        await app.db!.select().from(invitations).where(eq(invitations.id, created.id))
+      )[0]!
+      expect(row.usedAt).toBeNull()
+    } finally {
+      await pool.query('DROP TRIGGER IF EXISTS erdd_probe_users ON users')
+      await pool.query('DROP FUNCTION IF EXISTS erdd_probe_dup()')
+    }
   })
 
   it('accept가 원자적이다 — 조직 멤버 insert가 실패하면 계정도 남지 않는다', async () => {
