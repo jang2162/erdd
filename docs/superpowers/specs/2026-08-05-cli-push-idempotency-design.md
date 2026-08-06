@@ -94,8 +94,31 @@ id가 빠질 수 있는 자리는 9곳(`groups`·`domains`·`words`·`terms`·`c
 
 ### 3.3 `idOf`의 id 중복 검사와 충돌하지 않는다
 
-`firstUse` 검사는 **파일에 적힌 explicit id만** 대상으로 한다(발급된 id는 정의상 유일해 검사를 받지
-않는다). 기록 이후 그 id는 explicit이 되어 검사 대상에 들어가지만, 한 파일에 한 번만 있으므로 통과한다.
+`firstUse` 검사는 파일에 적힌 explicit id를 대상으로 한다. 기록 이후 그 id는 explicit이 되어 검사
+대상에 들어가지만, 한 파일에 한 번만 있으므로 통과한다.
+
+**발급한 id도 `firstUse`에 등록한다.** uuid 자체는 유일하지만 **되쓴 자리**는 유일하지 않기 때문이다 —
+YAML anchor/alias(`&이름` … `*이름`)는 배열의 두 원소를 **같은 객체 하나**로 파싱하고
+`structuredClone`이 그 공유를 그대로 보존하므로, 첫 방문이 되써 넣은 id를 두 번째 방문이 explicit으로
+읽는다. 등록하지 않으면 두 방문이 서로를 못 보고 **두 항목이 조용히 한 항목으로 합쳐진 채 `ok:true`가
+나간다**(실측: 컬럼 2개 → 1개). 되쓰기 이전에는 두 방문 모두 `explicit === null`이라 각자 id를 받아
+정상이었으므로, 이것은 이번 변경이 만드는 회귀다.
+
+공유 참조를 끊는 재귀 복사는 **채택하지 않는다.** 순환 보존 memo가 곧 공유 참조 보존이라 "공유는 끊고
+순환은 살린다"가 원리적으로 불가능하고, 무엇보다 `yaml.stringify`가 공유 참조를 다시 anchor/alias로
+내보내므로 참조를 끊으면 `reserveIds`가 사용자의 alias 파일을 전개형으로 덮어쓴다 — 조용한 데이터 손실이
+조용한 파일 파괴로 바뀔 뿐이다.
+
+**충돌 메시지는 세 갈래다.**
+
+| 상황 | 메시지 |
+|---|---|
+| 발급한 id가 두 번 읽혔다(anchor/alias) | anchor/alias를 지원하지 않음을 알리고 별칭을 풀라고 안내 |
+| 같은 파일 안에서 explicit id 중복 | "id는 하나만 가질 수 있습니다" |
+| 다른 파일에도 같은 explicit id | "복사해서 새로 만든 것이라면 id를 지우세요" |
+
+alias 갈래에 전용 메시지가 필요한 이유는, 그 id가 **우리가 방금 되써 넣은 것이라 사용자 파일에는 지울
+id 자체가 없기** 때문이다 — 기존 두 메시지는 실행 불가능한 지시가 된다.
 
 단, **사용자가 그 파일을 복사해 새 테이블을 만들면** 이제 id가 들어 있어 "복사해서 새로 만든 것이라면
 id를 지우세요" 오류가 뜬다. 이는 pull 직후 파일을 복사했을 때와 **완전히 같은 기존 동작**이고, 그
@@ -116,12 +139,14 @@ export type FilesToModelResult =
 
 1. 진입부에서 `const src = newId === undefined ? tree : structuredClone(tree)`.
 2. 그 3곳의 `tree`를 `src`로 바꾼다.
-3. `idOf`가 id를 발급할 때 그 자리에 되써 넣는다:
+3. `idOf`가 id를 발급할 때 그 자리에 되써 넣고, **중복 검사에도 등록한다**(§3.3):
    ```ts
    if (explicit === null) {
      if (newId === undefined) return `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
      const id = newId()
      r['id'] = id          // r은 src 안의 객체다 — 입력 tree는 그대로다
+     issued.add(id)
+     firstUse.set(`${kind} ${id}`, path)   // YAML alias가 같은 자리를 두 번 지나는 것을 잡는다
      return id
    }
    ```
@@ -130,8 +155,17 @@ export type FilesToModelResult =
 - **입력 `tree`는 변형하지 않는다.** 복사본에만 쓴다.
 - **`ok:false`에는 담지 않는다.** 파싱이 실패한 트리에 id를 기록할 이유가 없고, 담으면 CLI가 그것을
   쓸 수 있다고 오해할 여지가 생긴다.
-- `structuredClone`은 전역 함수라 core의 "IO·런타임 의존성 free" 규칙에 걸리지 않는다. YAML이 낼 수
-  있는 `Date`(타임스탬프 스칼라)도 보존한다 — JSON 왕복 복사를 쓰면 안 되는 이유다.
+- **`newId`가 없으면 복사하지 않는다.** pull·validate·base 파싱에는 되쓸 것이 없으므로 큰 트리를
+  통째로 복사할 이유가 없다. 무조건 복사로 바뀌는 성능 회귀는 눈에 보이지 않으므로 테스트로 잠근다
+  (`vi.spyOn(globalThis, 'structuredClone')` → "호출되지 않는다", §7.1).
+- `structuredClone`은 전역 함수라 core의 "IO·런타임 의존성 free" 규칙에 걸리지 않는다. **JSON 왕복이
+  아닌 이유는 yaml이 JSON으로 표현되지 않는 값을 내기 때문이다** — core 스키마의 `.inf`/`.nan`은
+  `Infinity`/`NaN`이 되는데 JSON 왕복은 그것을 `null`로 뭉갠다. anchor/alias가 만든 순환 참조
+  (`root: &a {self: *a}`)에서는 `JSON.stringify`가 아예 던진다.
+  ~~`Date`(타임스탬프 스칼라)를 보존하기 위해서다~~ — **거짓이다.** `yaml@2.9.0`의 기본 core 스키마
+  (YAML 1.2)는 타임스탬프를 **문자열로** 낸다(`Date`가 되려면 `version: '1.1'`이나 `!!timestamp` 태그가
+  필요한데 둘 다 쓰지 않는다). 2026-08-06 실측으로 확인해 근거를 위 두 가지로 정정했다 — `structuredClone`을
+  쓰는 선택 자체는 그대로다.
   현재 `tsconfig.base.json` 아래에서 타입이 잡히는 것을 확인했다(2026-08-05, core `typecheck` EXIT=0).
 
 **키 순서:** 새 `id`는 객체의 **맨 뒤**에 붙는다(`modelToFiles`는 맨 앞에 둔다). 값 구조는 같고
@@ -197,18 +231,28 @@ CONFLICT 재시도(`continue`)는 손대지 않는다 — 두 번째 `buildPlan`
 
 ## 7. 테스트 전략
 
-### 7.1 core — `file-format.test.ts` (+6)
+### 7.1 core — `file-format.test.ts` (+8)
 
-1. **완전성** — 9종 전부에 id 없는 항목이 있는 트리를 `filesToModel(tree, {newId})`에 넣고, 나온
-   `assignedTree`를 **`newId` 없이** 다시 `filesToModel`에 넣으면 모델의 **모든 엔티티 id에
-   `NEW_ID_PREFIX`가 하나도 없다.** 임시 id는 정확히 "id가 없는 자리"의 표식이므로, 자리를 하나라도
-   빠뜨리면 이 단언이 깨진다. 새 파일 종류·새 배열이 붙을 때도 자동으로 감시한다.
+1. **완전성 + 동일성** — 9종 전부에 id 없는 항목이 있는 트리를 `filesToModel(tree, {newId})`에 넣고,
+   나온 `assignedTree`를 **`newId` 없이** 다시 `filesToModel`에 넣으면 (a) 모델의 **모든 엔티티 id에
+   `NEW_ID_PREFIX`가 하나도 없고**, (b) 그 **id 집합이 첫 모델의 id 집합과 같다.**
+   (a)는 자리를 빠뜨렸는지를 잡는다 — 임시 id는 정확히 "id가 없는 자리"의 표식이기 때문이다.
+   **(b)가 이 커밋의 유일한 계약이다** — "파일에 적은 id"와 "op가 나르는 id"가 갈리면 다음 push가
+   파일의 id를 서버에서 못 찾아 원래 버그 그대로 사본을 만든다. (a)만으로는 `r['id'] = newId()`처럼
+   **자리마다 아무 id나 채워 넣는 구현도 통과한다**(실측 확인).
+   자리를 하나에서 되쓰므로 구현은 새 배열을 자동으로 따라가지만, **이 단언이 새 자리를 감시하려면
+   fixture에 그 자리를 함께 추가해야 한다** — 테스트가 저절로 따라가지는 않는다.
 2. **입력 불변** — 호출 전 트리를 깊은 복사해 두고, 호출 후 원본이 그대로인지 비교한다.
 3. **id만 늘었다** — `assignedTree`의 각 파일에서 `id` 키를 재귀적으로 제거하면 원본 트리와 canonical
    동일하다. (2번이 "원본을 안 건드림", 이것이 "복사본에 id 외에는 아무것도 안 함"이다.)
 4. **explicit id는 그대로** — 이미 id가 적힌 항목의 id가 유지되고 새로 발급되지 않는다.
 5. **`newId`가 없으면 `assignedTree`가 `undefined`**.
 6. **`ok:false`면 `assignedTree`가 없다** — 참조 실패 등으로 실패하는 트리로 확인한다.
+7. **`newId`가 없으면 복사하지 않는다** — `vi.spyOn(globalThis, 'structuredClone')`으로 호출 0회를
+   확인한다. 조건 없는 복사로 바꾸면 pull·validate·base가 큰 트리를 매번 복사하는데, 그 회귀는
+   결과가 같아서 다른 어떤 단언에도 걸리지 않는다.
+8. **YAML alias 회귀(§3.3)** — 같은 객체를 `columns` 배열에 두 번 넣은 트리가 `ok:false`가 되고,
+   메시지가 anchor/alias를 지목하며 "id를 지우세요"를 **말하지 않는다**(지울 id가 사용자 파일에 없다).
 
 ### 7.2 cli — `push.test.ts` (+9)
 
@@ -240,7 +284,8 @@ CONFLICT 재시도(`continue`)는 손대지 않는다 — 두 번째 `buildPlan`
 `erdd diff`가 파일을 안 건드리는 것은 `reserveIds`를 `push.ts`에서만 부르므로 구조적으로 성립한다 —
 `diff.test.ts`에 한 건을 더할지는 계획에서 정한다(위 산술에는 넣지 않았다).
 
-**예상 증가: core 453 → 459 · cli 114 → 125.** web·server는 무변경.
+**예상 증가: core 453 → 461 · cli 114 → 125.** web·server는 무변경.
+(core는 리뷰에서 7·8번이 더해져 +6 → +8이 되었다. 2026-08-06 실측 461.)
 
 ## 8. 문서 정정 (이 사이클에서 함께 한다)
 

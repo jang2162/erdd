@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { createEmptyModel } from './model.js'
+import { describe, expect, it, vi } from 'vitest'
+import { createEmptyModel, type ProjectModel } from './model.js'
 import { modelToFiles, TREE_ROOT, TOP_LEVEL_FILES } from './file-format.js'
 import { filesToModel, isNewId, type FileTree } from './file-format.js'
 import { fileVisibleModel } from './file-merge.js'
@@ -367,6 +367,16 @@ function treeWithNewEverywhere(): FileTree {
   }
 }
 
+/** 모델이 쥔 모든 엔티티 id. 컬렉션 키가 곧 id다(op.ts:90). */
+function idsOf(m: ProjectModel): string[] {
+  return [
+    ...Object.keys(m.tableGroups), ...Object.keys(m.tables),
+    ...Object.keys(m.columns), ...Object.keys(m.indexes), ...Object.keys(m.relationships),
+    ...Object.keys(m.domains), ...Object.keys(m.words), ...Object.keys(m.terms),
+    ...Object.keys(m.customFields),
+  ]
+}
+
 /** 재귀적으로 id 키를 걷어낸다 — "원본 + id뿐"임을 확인하는 데 쓴다. */
 function stripIds(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(stripIds)
@@ -390,20 +400,21 @@ describe('filesToModel — assignedTree (push 멱등성)', () => {
 
     // 채운 트리를 newId 없이 다시 파싱하면 임시 id가 하나도 없어야 한다. 임시 id는 정확히
     // "id가 없는 자리"의 표식이라, 되쓰기를 한 자리라도 빠뜨리면 여기서 드러난다.
-    // 새 파일 종류나 새 배열이 붙어도 이 단언이 자동으로 따라간다.
+    // (idOf 한 자리에서 되쓰므로 구현은 새 배열을 자동으로 따라가지만, 이 단언이 그 자리를
+    //  감시하려면 위 fixture에 그 자리를 함께 추가해야 한다.)
     const again = filesToModel(first.assignedTree!)
     expect(again.ok).toBe(true)
     if (!again.ok) return
-    const m = again.model
-    const allIds = [
-      ...Object.keys(m.tableGroups), ...Object.keys(m.tables),
-      ...Object.keys(m.columns), ...Object.keys(m.indexes), ...Object.keys(m.relationships),
-      ...Object.keys(m.domains), ...Object.keys(m.words), ...Object.keys(m.terms),
-      ...Object.keys(m.customFields),
-    ]
+    const allIds = idsOf(again.model)
     // 그룹1·도메인1·단어1·용어1·커스텀1·테이블2·컬럼2·인덱스1·관계1
     expect(allIds).toHaveLength(11)
     expect(allIds.some(isNewId)).toBe(false)
+
+    // 그리고 그 id들은 첫 모델이 서버로 보낼 id와 **같은 것**이어야 한다. 이것이 이 커밋의
+    // 유일한 계약이다 — 파일에 적은 id와 op가 나르는 id가 갈리면 다음 push가 파일의 id를
+    // 서버에서 찾지 못해 원래 버그 그대로 사본을 만든다. 위 두 단언만으로는 "각 자리에
+    // 아무 id나 채워 넣기"도 통과한다.
+    expect(allIds.slice().sort()).toEqual(idsOf(first.model).slice().sort())
   })
 
   it('입력 트리를 변형하지 않는다', () => {
@@ -442,6 +453,37 @@ describe('filesToModel — assignedTree (push 멱등성)', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.assignedTree).toBeUndefined()
+  })
+
+  it('newId가 없으면 트리를 복사하지 않는다', () => {
+    // 복사는 되쓰기가 필요한 push 경로에서만 한다. 무조건 복사로 바꾸면 pull·validate·base
+    // 파싱이 큰 트리를 매번 통째로 복사하게 되는데, 그 회귀는 테스트 없이는 안 보인다.
+    const spy = vi.spyOn(globalThis, 'structuredClone')
+    try {
+      const result = filesToModel(treeWithNewEverywhere())
+      expect(result.ok).toBe(true)
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('같은 객체가 배열에 두 번 들어가면(YAML alias) 오류로 세운다', () => {
+    // YAML anchor/alias(`&a` … `*a`)는 배열의 두 원소를 **같은 객체 하나**로 파싱한다.
+    // structuredClone이 그 공유를 보존하므로 되쓴 id를 두 번째 방문이 그대로 읽는다 —
+    // 잡지 않으면 컬럼 2개가 조용히 1개로 합쳐진 채 ok:true가 나간다.
+    const shared = { name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT' }
+    let n = 0
+    const result = filesToModel({
+      'erdd/tables/MBR.yaml': { name: 'MBR', logicalName: '회원', columns: [shared, shared] },
+    }, { newId: () => `id-${++n}` })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.issues).toHaveLength(1)
+    expect(result.issues[0]!.path).toBe('erdd/tables/MBR.yaml')
+    // 사용자 파일에는 지울 id 자체가 없다 — "id를 지우세요"는 실행 불가능한 지시다.
+    expect(result.issues[0]!.message).toContain('anchor/alias')
+    expect(result.issues[0]!.message).not.toContain('id를 지우세요')
   })
 
   it('파싱에 실패하면 assignedTree를 내지 않는다', () => {
