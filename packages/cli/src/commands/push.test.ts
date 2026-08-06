@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { applyOps, modelToFiles, MAX_OPS_PER_MUTATION, type Op, type ProjectModel } from '@erdd/core'
 import { fullModel } from '@erdd/core/src/testing/fixtures.js'
 import type { ApiClient } from '../client.js'
@@ -9,7 +10,7 @@ import { writeConfig } from '../config.js'
 import { flagValue, shortFlagValue } from '../main.js'
 import { CliError } from '../output.js'
 import { seedPulled, stubClient as stub, TEST_CONFIG as CONFIG } from '../testing/harness.js'
-import { writeTree } from '../tree.js'
+import { readTree, writeTree } from '../tree.js'
 import { push } from './push.js'
 
 /**
@@ -619,5 +620,177 @@ describe('push', () => {
     const { client, pushCalls } = stub(server)
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client, message })).toBe(0)
     expect((pushCalls[0] as { summary: string }).summary).toMatch(/^CLI push/)
+  })
+
+  /** MBR 테이블에 id 없는 컬럼을 하나 더한다 — 계획에 create가 하나 생긴다. */
+  const addNewColumn = async (name = 'NEW_COL'): Promise<void> => {
+    const tree = await readTree(dir)
+    const mbr = tree['erdd/tables/MBR.yaml'] as { columns: Record<string, unknown>[] }
+    mbr.columns.push({ name, logicalName: '새컬럼', type: 'INT' })
+    await writeTree(dir, tree)
+  }
+
+  /** pushCalls[i]의 컬럼 create op가 쓴 entityId. */
+  const createdColumnId = (calls: unknown[], i: number): string =>
+    (calls[i] as { ops: Array<{ entity: string; action: string; entityId: string }> }).ops
+      .find((o) => o.entity === 'column' && o.action === 'create')!.entityId
+
+  it('커밋 뒤 응답이 유실돼도 다시 push하면 사본이 생기지 않는다', async () => {
+    // 이 사이클의 핵심 회귀. 서버는 커밋을 마쳤는데 응답만 사라진 상황을 만든 뒤,
+    // 사용자가 아무것도 모르고 그냥 다시 push하는 것을 재현한다.
+    const server = fullModel()
+    await seed(server)
+    await addNewColumn()
+
+    const first = stub(server, {
+      pushImpl: async (input) => {
+        Object.assign(server, applyOps(server, (input as { ops: Op[] }).ops))
+        throw new CliError('NETWORK', 'socket hang up')
+      },
+    })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client: first.client })).toBe(1)
+    expect(lastJson<{ outcomeUnknown: boolean }>().outcomeUnknown).toBe(true)
+    expect(Object.values(server.columns).filter((c) => c.physicalName === 'NEW_COL')).toHaveLength(1)
+
+    // 파일은 그대로, 서버는 이미 반영된 상태. 다시 실행한다.
+    const second = stub(server, { seq: 2 })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client: second.client })).toBe(0)
+    expect(second.pushCalls).toHaveLength(0)          // 보낼 것이 없다
+    expect(lastJson<{ ops: number }>().ops).toBe(0)
+    // 사본이 없다. id를 기록하지 않으면 여기가 2가 된다.
+    expect(Object.values(server.columns).filter((c) => c.physicalName === 'NEW_COL')).toHaveLength(1)
+  })
+
+  it('전송이 실패해 아무것도 커밋되지 않았어도 다음 push가 같은 id를 쓴다', async () => {
+    const server = fullModel()
+    await seed(server)
+    await addNewColumn()
+
+    const first = stub(server, { pushImpl: async () => { throw new CliError('NETWORK', 'lost') } })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client: first.client })).toBe(1)
+
+    const second = stub(server, { pushImpl: applyingPush(server, 2) })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client: second.client })).toBe(0)
+    expect(createdColumnId(second.pushCalls, 0)).toBe(createdColumnId(first.pushCalls, 0))
+  })
+
+  it('파일명과 물리명이 달라도 원래 파일에 id를 기록한다', async () => {
+    // filesToModel은 파일명과 name의 일치를 강제하지 않는다. 정규 경로(NEWTBL.yaml)에
+    // 기록하면 같은 테이블이 두 파일에 남아 다음 filesToModel이 id 중복으로 막는다.
+    const server = fullModel()
+    await seed(server)
+    await writeFile(join(dir, 'erdd/tables/새테이블.yaml'), stringifyYaml({
+      name: 'NEWTBL', logicalName: '새테이블',
+      columns: [{ name: 'ID', logicalName: '아이디', type: 'INT' }],
+    }), 'utf8')
+
+    // 실패시켜야 syncDown이 파일을 정규화하기 전 상태를 볼 수 있다.
+    const { client } = stub(server, { pushImpl: async () => { throw new CliError('NETWORK', 'lost') } })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
+
+    const written = parseYaml(await readFile(join(dir, 'erdd/tables/새테이블.yaml'), 'utf8')) as { id?: string }
+    expect(typeof written.id).toBe('string')
+    await expect(readFile(join(dir, 'erdd/tables/NEWTBL.yaml'), 'utf8')).rejects.toThrow()
+  })
+
+  it('CONFLICT로 다시 계산해도 신규 id가 바뀌지 않는다', async () => {
+    const server = fullModel()
+    await seed(server)
+    await addNewColumn()
+
+    let attempt = 0
+    const { client, pushCalls } = stub(server, {
+      getImpl: () => ({ model: server, seq: attempt === 0 ? 1 : 2 }),
+      pushImpl: async () => {
+        if (attempt++ === 0) throw new CliError('CONFLICT', '서버가 앞서 있습니다')
+        return { seq: 3 }
+      },
+    })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
+    expect(pushCalls).toHaveLength(2)
+    expect(createdColumnId(pushCalls, 1)).toBe(createdColumnId(pushCalls, 0))
+  })
+
+  it('삭제 확인에서 취소하면 파일에 아무것도 기록하지 않는다', async () => {
+    const original = fullModel()
+    await seed(original)
+    await rm(join(dir, 'erdd/tables/MBR_DTL.yaml'))   // 삭제를 만든다
+    await addNewColumn()                              // 신규 항목도 함께 만든다
+    const before = await readTree(dir)
+
+    const { client, pushCalls } = stub(fullModel())
+    const code = await push({
+      cwd: dir, json: false, yes: false, strict: false, client, confirm: async () => false,
+    })
+    expect(code).toBe(1)
+    expect(pushCalls).toHaveLength(0)
+    expect(await readTree(dir)).toEqual(before)
+  })
+
+  it('충돌이 있으면 파일에 아무것도 기록하지 않는다', async () => {
+    const original = fullModel()
+    await seed(original)
+    // 같은 필드를 로컬과 서버가 서로 다르게 고친다.
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 로컬'))
+    await addNewColumn()
+    const before = await readTree(dir)
+
+    const server = fullModel()
+    Object.values(server.columns).find((c) => c.logicalName === '회원명')!.logicalName = '서버'
+
+    const { client, pushCalls } = stub(server)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
+    expect(pushCalls).toHaveLength(0)
+    expect(await readTree(dir)).toEqual(before)
+  })
+
+  it('보낼 변경이 없으면 파일에 아무것도 기록하지 않는다', async () => {
+    const server = fullModel()
+    await seed(server)
+    const before = await readTree(dir)
+
+    const { client } = stub(server)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
+    expect(await readTree(dir)).toEqual(before)
+  })
+
+  it('기록에 실패하면 model.push를 보내지 않는다', async () => {
+    // id를 못 남긴 채 보내면 원래의 사본 문제가 그대로다 — 조용히 넘어가서는 안 된다.
+    if (typeof process.getuid === 'function' && process.getuid() === 0) {
+      throw new Error('root로 실행 중이라 chmod 444가 무의미하다 — 이 테스트는 검증력이 없다')
+    }
+    const server = fullModel()
+    await seed(server)
+    await addNewColumn()
+    await chmod(join(dir, 'erdd/tables/MBR.yaml'), 0o444)
+
+    const { client, pushCalls } = stub(server)
+    await expect(push({ cwd: dir, json: true, yes: true, strict: false, client })).resolves.toBe(1)
+    expect(pushCalls).toHaveLength(0)
+    await chmod(join(dir, 'erdd/tables/MBR.yaml'), 0o644)
+  })
+
+  it('성공 봉투에 기록한 파일 목록이 담긴다', async () => {
+    const server = fullModel()
+    await seed(server)
+    await addNewColumn()
+
+    const { client } = stub(server, { pushImpl: applyingPush(server, 2) })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
+    expect(lastJson<{ reservedFiles: string[] }>().reservedFiles).toEqual(['erdd/tables/MBR.yaml'])
+  })
+
+  it('반영 여부 불명 문구가 다시 push해도 안전하다고 알린다', async () => {
+    const server = fullModel()
+    await seed(server)
+    await addNewColumn()
+
+    const { client } = stub(server, { pushImpl: async () => { throw new CliError('NETWORK', 'lost') } })
+    expect(await push({ cwd: dir, json: false, yes: true, strict: false, client })).toBe(1)
+    const text = out.join('')
+    expect(text).toContain('반영 여부를 확인할 수 없습니다')
+    expect(text).toContain('중복 없이 수렴')
+    expect(text).toContain('erdd pull')     // 기존 안내도 남는다
   })
 })

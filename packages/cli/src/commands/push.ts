@@ -7,6 +7,7 @@ import { buildPlan, type PushPlan } from '../plan.js'
 import { CliError, emit, note, type CliErrorCode } from '../output.js'
 import { renderConflicts } from './conflict-report.js'
 import { clientFor, run, type CommandCtx } from './context.js'
+import { reserveIds } from './reserve-ids.js'
 import { syncDown } from './sync-down.js'
 
 export type PushCtx = CommandCtx & { message?: string }
@@ -114,10 +115,17 @@ export function push(ctx: PushCtx): Promise<number> {
       }
       await confirmDeletes(ctx, plan)
 
+      // 서버로 보내기 직전에 신규 id를 파일에 박는다. 이 뒤로 무슨 일이 있어도 파일이 id를
+      // 쥐고 있으므로, 응답이 유실돼 사용자가 다시 push해도 서버는 "이미 있는 것"으로 본다.
+      // 여기서 실패하면 전송하지 않고 그대로 던진다 — id를 못 남긴 채 보내면 바로 그 사본
+      // 문제가 남는다. 실패해도 기록한 id를 되돌리지 않는다(되돌리는 순간 문제가 부활한다).
+      const reservedFiles = await reserveIds(ctx.cwd, plan.localTree, plan.assignedTree)
+
       // model.push(mutate) 하나만 CONFLICT 재시도 대상이다. 이 아래(syncDown)에서 실패하면
       // 서버는 이미 커밋을 마쳤으므로, 같은 try에 묶어 두면 "재시도해야 할 실패"로
-      // 잘못 분류돼 두 번째 model.push가 나가 중복 op가 생긴다(신규 id도 아직 파일에
-      // 못 채워졌으니 base와 로컬이 서버가 이미 아는 엔티티를 다시 create로 잡는다).
+      // 잘못 분류돼 이미 커밋된 반영을 향해 두 번째 model.push가 나간다(신규 id는 이제
+      // reserveIds가 박아 두어 create가 중복되지는 않지만, base가 아직 낡아 같은 update·
+      // delete가 다시 나가고 리비전이 하나 더 생긴다 — undo 1회 계약이 어긋난다).
       let seq: number
       try {
         const result = await client.mutate<{ seq: number }>('model.push', {
@@ -144,17 +152,20 @@ export function push(ctx: PushCtx): Promise<number> {
         // 처리하게 한다(호출자가 code로 분기할 수 있도록 이전과 동일하게 동작한다).
         if (err instanceof CliError && SERVER_REJECTION_CODES.has(err.code)) throw err
         // 그 외 실패(연결 끊김·프록시 타임아웃·커밋 직후 서버 재시작 등 전송 계층 실패)는
-        // 요청이 서버에 닿았는지조차 알 수 없다. 그냥 실패로 보고하면 다음 push가 같은 것을
-        // 새 uuid로 다시 만들어(filesToModel이 매번 새 id를 발급한다) 조용히 중복이 생긴다.
-        // 여기서 재전송도 하지 않는다 — 커밋된 경우 그쪽이 바로 중복이다.
+        // 요청이 서버에 닿았는지조차 알 수 없다. 신규 id는 위에서 파일에 박아 두었으므로
+        // 사용자가 그대로 다시 push해도 사본은 생기지 않지만, 반영 여부 자체는 여전히
+        // 알 수 없으니 성공으로 뭉뚱그리지 않고 그 사실을 그대로 알린다.
+        // 여기서 자동 재전송은 하지 않는다 — 이미 커밋된 경우 리비전이 하나 더 생긴다.
         const detail = err instanceof CliError ? err.message : (err as Error).message
         emit(
           ctx.json,
-          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — 다시 push하기 전에 `
-            + `erdd pull 또는 erdd diff로 서버 상태를 확인하세요 (${detail})`,
+          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — 신규 항목의 id를 파일에 `
+            + `기록해 두었으므로 그대로 다시 push하면 중복 없이 수렴합니다. `
+            + `먼저 확인하려면 erdd pull 또는 erdd diff를 실행하세요 (${detail})`,
           {
             ok: false, outcomeUnknown: true, revisionSeq: null, ops: plan.ops.length,
-            ...countByAction(plan.ops), pruned: plan.pruned, retried, pushError: detail,
+            ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
+            pushError: detail,
             pushErrorCode: err instanceof CliError ? err.code : null,
           },
         )
@@ -174,7 +185,8 @@ export function push(ctx: PushCtx): Promise<number> {
             + `파일 갱신에 실패했습니다 — erdd pull을 실행하세요 (${detail})`,
           {
             ok: false, committed: true, revisionSeq: seq, ops: plan.ops.length,
-            ...countByAction(plan.ops), pruned: plan.pruned, retried, syncError: detail,
+            ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
+            syncError: detail,
           },
         )
         return 1
@@ -182,7 +194,7 @@ export function push(ctx: PushCtx): Promise<number> {
 
       emit(ctx.json, `반영했습니다 (리비전 ${seq}, 변경 ${plan.ops.length}건)`, {
         ok: true, revisionSeq: seq, ops: plan.ops.length,
-        ...countByAction(plan.ops), pruned: plan.pruned, retried,
+        ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
       })
       return 0
     }
