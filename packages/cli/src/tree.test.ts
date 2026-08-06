@@ -3,7 +3,8 @@ import { mkdtemp, mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createEmptyModel, filesToModel, modelToFiles, type ProjectModel } from '@erdd/core'
-import { diffTrees, readTree, writeTree } from './tree.js'
+import { CliError } from './output.js'
+import { canonical, diffTrees, readTree, writeTree } from './tree.js'
 
 let dir: string
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'erdd-tree-')) })
@@ -59,6 +60,31 @@ describe('tree', () => {
     const base = { a: { x: 1, y: 2 } }
     const cur = { a: { y: 2, x: 1 } }
     expect(diffTrees(base, cur).modified).toEqual([])
+  })
+
+  it('순환 참조는 무한 재귀 대신 무엇을 하면 되는지 아는 오류가 된다', () => {
+    // YAML anchor/alias(`&a … *a`)가 만드는 자기 참조. 잡지 않으면 walk가 무한 재귀해
+    // RangeError가 나고, 그것이 명령의 catch-all에 걸려 엉뚱한 코드로 보고된다.
+    const cyclic: Record<string, unknown> = { name: 'CYC' }
+    cyclic['self'] = cyclic
+    expect(() => diffTrees({ 'erdd/tables/CYC.yaml': { name: 'CYC' } }, { 'erdd/tables/CYC.yaml': cyclic }))
+      .toThrow(CliError)
+    try {
+      canonical(cyclic, 'erdd/tables/CYC.yaml')
+      expect.unreachable('순환 참조인데 던지지 않았다')
+    } catch (err) {
+      expect(err).toBeInstanceOf(CliError)
+      expect((err as CliError).code).toBe('VALIDATION')
+      expect((err as CliError).message).toContain('erdd/tables/CYC.yaml')
+    }
+  })
+
+  it('순환이 아닌 공유 참조는 그대로 통과한다', () => {
+    // alias가 늘 순환인 것은 아니다 — 두 자리가 같은 값을 나눠 쓰기만 하는 파일은 walk가
+    // 정상 종료한다. "이미 본 것 전부"를 순환으로 세면 지금 도는 파일이 막힌다.
+    const shared = { postgresql: 'BIGINT' }
+    expect(canonical({ a: shared, b: shared }, 'erdd/domains.yaml'))
+      .toBe(canonical({ a: { postgresql: 'BIGINT' }, b: { postgresql: 'BIGINT' } }, 'erdd/domains.yaml'))
   })
 
   it('대소문자만 다른 이름으로 바뀌어도 새 파일이 남는다', async () => {

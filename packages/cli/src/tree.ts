@@ -7,14 +7,43 @@ import { CliError } from './output.js'
 
 const TABLES_DIR = `${TREE_ROOT}/tables`
 
-/** 키 순서와 무관하게 값이 같은지 본다 — YAML 재작성으로 순서가 흔들려도 수정으로 잡지 않는다. */
-function canonical(v: unknown): string {
+/**
+ * 키 순서와 무관하게 값이 같은지 본다 — YAML 재작성으로 순서가 흔들려도 수정으로 잡지 않는다.
+ *
+ * `undefined`를 받으면 `JSON.stringify`가 `undefined`를 내므로 반환 타입도 그렇게 적는다
+ * (`lib.es5.d.ts`의 `stringify(value: any): string`이 감추는 사실이다). 지금 두 호출자는
+ * 모두 키가 있는지 먼저 확인하고 비교만 하므로 이 갈래에 닿지 않는다.
+ *
+ * `path`는 오류 문구에만 쓴다. 순환 참조는 파일 하나에서 생기고, 어느 파일인지 모르면
+ * 사용자가 할 수 있는 일이 없다.
+ */
+export function canonical(v: unknown, path: string): string | undefined {
+  /**
+   * 지금 내려온 길 위의 객체들. YAML anchor/alias는 `&a {self: *a}`처럼 자기 조상을 가리키는
+   * 값을 만들 수 있고, 그러면 walk가 무한 재귀해 RangeError가 난다. 그 오류는 push의 임계
+   * 경로(reserveIds)에서 run()의 catch-all에 걸려 `code:"NETWORK"`가 되는데, code로 분기하는
+   * 이 CLI의 주 소비자(에이전트)는 그것을 전송 실패로 읽고 같은 명령을 영원히 재시도한다 —
+   * 파일이 그대로면 영원히 실패한다. 무엇을 하면 되는지 아는 자리에서 세운다.
+   *
+   * 빠져나올 때 지운다. "이미 본 것 전부"로 두면 순환이 아닌 공유 참조(두 도메인이 같은
+   * dialectTypes 매핑을 alias로 나눠 쓰는 것 같은)까지 걸려, 지금 멀쩡히 도는 파일이 막힌다.
+   */
+  const onPath = new WeakSet<object>()
   const walk = (x: unknown): unknown => {
-    if (Array.isArray(x)) return x.map(walk)
-    if (typeof x === 'object' && x !== null) {
-      return Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, y]) => [k, walk(y)]))
+    if (typeof x !== 'object' || x === null) return x
+    if (onPath.has(x)) {
+      throw new CliError(
+        'VALIDATION',
+        `${path}에 순환 참조가 있습니다 — YAML anchor/alias(\`&이름\` … \`*이름\`)가 자기 자신을 가리킵니다. `
+          + '별칭을 풀어 내용을 그대로 적어 주세요',
+      )
     }
-    return x
+    onPath.add(x)
+    const out = Array.isArray(x)
+      ? x.map(walk)
+      : Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, y]) => [k, walk(y)]))
+    onPath.delete(x)
+    return out
   }
   return JSON.stringify(walk(v))
 }
@@ -103,7 +132,7 @@ export function diffTrees(
   const deleted: string[] = []
   for (const key of Object.keys(current)) {
     if (!(key in base)) added.push(key)
-    else if (canonical(base[key]) !== canonical(current[key])) modified.push(key)
+    else if (canonical(base[key], key) !== canonical(current[key], key)) modified.push(key)
   }
   for (const key of Object.keys(base)) if (!(key in current)) deleted.push(key)
   return { added: added.sort(), modified: modified.sort(), deleted: deleted.sort() }

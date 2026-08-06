@@ -205,7 +205,7 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
 }
 
 export type FilesToModelResult =
-  | { ok: true; model: ProjectModel; warnings: FileIssue[] }
+  | { ok: true; model: ProjectModel; warnings: FileIssue[]; assignedTree?: FileTree }
   | { ok: false; issues: FileIssue[] }
 
 type Rec = Record<string, unknown>
@@ -246,6 +246,15 @@ export type FilesToModelOptions = {
 
 export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesToModelResult {
   const newId = opts?.newId
+  // newId가 있으면(push 경로) 복사본에 발급 id를 되써 넣어 "id를 채운 트리"를 함께 낸다.
+  // 입력은 절대 변형하지 않는다 — 호출자가 원본 트리를 계속 쓴다(reserveIds가 둘을 비교한다).
+  // newId가 없으면(pull·validate·base) 되쓸 것이 없으므로 복사하지 않는다 — 큰 트리를 매번
+  // 통째로 복사할 이유가 없다.
+  // JSON 왕복이 아니라 structuredClone인 이유는 yaml이 JSON으로 표현되지 않는 값을 내기
+  // 때문이다 — `.inf`/`.nan`은 Infinity/NaN이 되는데 JSON 왕복은 그것을 null로 뭉갠다.
+  // anchor/alias가 만든 순환 참조에서는 JSON.stringify가 아예 던진다.
+  // (Date는 이유가 아니다 — yaml@2.9.0의 기본 core 스키마는 타임스탬프를 문자열로 낸다.)
+  const src = newId === undefined ? tree : structuredClone(tree)
   const issues: FileIssue[] = []
   const warnings: FileIssue[] = []
   const model = createEmptyModel()
@@ -255,13 +264,42 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
    * 같은 id가 두 번 나오면 뒤엣것이 앞엣것을 조용히 덮어쓴다. 파일을 복사해 새 테이블을
    * 만들면서 id를 지우지 않는 것은 흔한 사고인데, push에서는 그것이 "새로 만들기"가 아니라
    * "원본을 복사본 내용으로 개명"이 되어 복구 불가능한 반영이 나간다 — 계획을 세우기 전에
-   * 오류로 세운다. 생성된 id(new: 접두사·uuid)는 정의상 유일하므로 검사 대상이 아니다.
+   * 오류로 세운다.
    */
   const firstUse = new Map<string, string>()
+  /**
+   * idOf가 이미 지나간 객체들. YAML anchor/alias(`&이름` … `*이름`)는 배열의 두 원소를
+   * **같은 객체 하나**로 파싱하므로, 재방문은 곧 "두 항목이 실은 한 항목"이라는 뜻이다 —
+   * 잡지 않으면 두 항목이 조용히 하나로 합쳐진 채 ok:true가 나간다.
+   *
+   * **참조 동일성으로 본다.** 발급한 id를 firstUse에 등록해 두 번째 방문이 explicit으로
+   * 읽게 하는 방식은 되쓰기가 있는 push 갈래에서만 동작해서, 같은 파일을 `erdd validate`는
+   * 통과시키고 `erdd push`는 거절하는 갈림을 만들었다(push의 오류 문구가 그 validate를
+   * 가리킨다). 참조 동일성은 id와 무관하게 직접 보이므로 두 갈래가 같은 판정을 낸다.
+   */
+  const visited = new WeakSet<Rec>()
   const idOf = (r: Rec, path: string, kind: string, index: number): string => {
+    if (visited.has(r)) {
+      // 사용자 파일에 지울 id가 없을 수도 있으므로("id를 지우세요"가 실행 불가능한 지시가
+      // 된다) 무엇이 문제이고 무엇을 하면 되는지 말한다.
+      issues.push({
+        path,
+        message: `${kind} 항목 하나가 두 번 나타납니다 — YAML anchor/alias(\`&이름\` … \`*이름\`)로 같은 항목을 재사용한 것으로 보입니다. ERDD는 anchor/alias를 지원하지 않습니다(두 항목이 한 항목으로 합쳐집니다) — 별칭을 풀어 항목마다 내용을 그대로 적어 주세요`,
+      })
+      // 결과 모델은 ok:false와 함께 버려지지만, 두 방문이 한 키로 합쳐져 뒤따르는 순회가
+      // 엉뚱한 것을 보지 않도록 자리로 만든 임시 id를 준다.
+      return `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
+    }
+    visited.add(r)
     const explicit = asStr(r['id'])
     if (explicit === null) {
-      return newId === undefined ? `${NEW_ID_PREFIX}${path}#${kind}[${index}]` : newId()
+      if (newId === undefined) return `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
+      // r은 src 안의 객체다(입력 tree는 그대로다). 발급 자리가 곧 기록 자리이므로 순회를
+      // 복제할 필요가 없고, 나중에 자리가 늘어도 자동으로 따라간다 — 이것이 별도
+      // assignMissingIds를 만들지 않은 이유다.
+      const id = newId()
+      r['id'] = id
+      return id
     }
     const key = `${kind} ${explicit}`
     const first = firstUse.get(key)
@@ -281,7 +319,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   }
 
   const readList = (path: string, key: string): Rec[] => {
-    const file = tree[path]
+    const file = src[path]
     if (file === undefined) return []
     if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); return [] }
     const list = file[key]
@@ -359,11 +397,11 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   })
 
   // 2) 테이블 파일 — 두 번 훑는다. 관계가 다른 테이블의 컬럼을 참조하기 때문이다.
-  const tablePaths = Object.keys(tree).filter((p) => p.startsWith(`${TREE_ROOT}/tables/`))
+  const tablePaths = Object.keys(src).filter((p) => p.startsWith(`${TREE_ROOT}/tables/`))
   const pending: { path: string; file: Rec; tableId: string }[] = []
 
   for (const path of tablePaths.sort()) {
-    const file = tree[path]
+    const file = src[path]
     if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); continue }
     const tableId = idOf(file, path, 'table', 0)
     const groupName = asStr(file['group'])
@@ -455,5 +493,6 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   }
 
   if (issues.length > 0) return { ok: false, issues }
-  return { ok: true, model, warnings }
+  // 파싱에 실패한 트리에 id를 기록할 이유가 없다 — ok:false에는 싣지 않는다.
+  return { ok: true, model, warnings, ...(newId === undefined ? {} : { assignedTree: src }) }
 }

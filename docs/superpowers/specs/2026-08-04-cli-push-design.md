@@ -492,4 +492,13 @@ description: Use when reading or changing this project's database schema — the
   실패는 `{ ok:false, outcomeUnknown:true }`로 보고하고 `erdd pull`/`erdd diff`로 서버 상태를
   먼저 확인하도록 안내한다. 제대로 된 해법은 멱등 키(요청 id를 Revision에 저장해 재전송을
   같은 리비전으로 흡수)나 계획의 신규 id를 `.erdd/`에 미리 적어 두는 것이다 — 후속 과제
+
+  **→ 해소됨(2026-08-06):** [CLI push 멱등성 설계](2026-08-05-cli-push-idempotency-design.md).
+  **멱등 키가 아니라 "신규 id를 전송 직전 로컬 파일에 기록"으로 닫았다** — 멱등 키는 같은 요청의
+  재전송만 흡수하고, 사용자가 나중에 `erdd push`를 다시 실행하는 경로(새 요청 id·새 uuid)는 막지
+  못한다. 로컬 id 고정은 반대 방향으로 닫는다: `buildPlan`이 매번 `model.get`으로 서버를 다시 읽어
+  계획을 새로 만들므로, 신규 id만 안정되면 재실행이 저절로 수렴한다(update·delete는 원래부터 서버
+  상태 기준 재계산이라 이미 멱등이었다). 기록 위치는 `.erdd/`가 아니라 **사용자가 만든 원래 파일
+  경로**다 — 정규 경로에 쓰면 같은 테이블이 두 파일에 남아 다음 push가 id 중복으로 막힌다.
+  남는 한계는 그 설계의 §9에 있다.
 - `skill install`은 Claude Code 형식만 낸다(`AGENTS.md`는 범위 밖)

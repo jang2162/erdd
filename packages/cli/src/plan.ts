@@ -1,7 +1,7 @@
 import { uuidv7 } from 'uuidv7'
 import {
   applyMerge, diffModels, filesToModel, fileVisibleModel, mergeModels,
-  type MergeConflict, type Op, type PrunedRef, type ProjectModel,
+  type FileTree, type MergeConflict, type Op, type PrunedRef, type ProjectModel,
 } from '@erdd/core'
 import type { ApiClient } from './client.js'
 import { readBase, type ErddConfig } from './config.js'
@@ -17,6 +17,13 @@ export type PushPlan = {
   base: ProjectModel
   local: ProjectModel
   serverVisible: ProjectModel
+  /** 읽은 그대로의 로컬 트리 — reserveIds가 "실제로 id가 늘었는지" 비교하는 기준이다. */
+  localTree: FileTree
+  /**
+   * filesToModel이 신규 id를 채워 넣은 트리. buildPlan은 이것을 쓰지 않는다 —
+   * erdd diff도 이 함수를 쓰므로 계획 수립이 파일을 건드리면 안 된다. push만 기록한다.
+   */
+  assignedTree: FileTree | undefined
   /** 충돌이 있으면 빈 배열이다(충돌 필드에 서버 값이 남은 merged로 op를 내면 틀린다). */
   ops: Op[]
   conflicts: MergeConflict[]
@@ -61,6 +68,7 @@ export async function buildPlan(
 
   return {
     seq, server, base: baseResult.model, local: localResult.model, serverVisible,
+    localTree, assignedTree: localResult.assignedTree,
     ops: conflicts.length > 0 ? [] : diffModels(server, applied),
     conflicts, pruned,
   }

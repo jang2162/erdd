@@ -7,6 +7,7 @@ import { buildPlan, type PushPlan } from '../plan.js'
 import { CliError, emit, note, type CliErrorCode } from '../output.js'
 import { renderConflicts } from './conflict-report.js'
 import { clientFor, run, type CommandCtx } from './context.js'
+import { reserveIds } from './reserve-ids.js'
 import { syncDown } from './sync-down.js'
 
 export type PushCtx = CommandCtx & { message?: string }
@@ -84,13 +85,26 @@ export function push(ctx: PushCtx): Promise<number> {
     const config = await readConfig(ctx.cwd)
     const client = await clientFor(ctx)
     let retried = false
+    // 시도를 가로질러 누적한다. CONFLICT로 다시 계산하면 두 번째 reserveIds는 아무것도 쓸
+    // 것이 없어(첫 시도가 이미 박아 뒀다) 빈 배열을 돌려주는데, 시도마다 덮어쓰면 그 빈
+    // 배열이 첫 시도의 결과를 지운다 — 파일은 실제로 바뀌었는데 봉투는 "그대로"라고 말하고,
+    // 같은 봉투의 사람용 문구("id를 파일에 기록해 두었으므로")와 정면으로 어긋난다.
+    const reserved = new Set<string>()
+    /**
+     * 지금까지 실제로 기록한 파일들(정렬). 재시도로 다시 도는 갈래도 이 값을 봉투에 실어야
+     * 한다 — 첫 시도가 파일을 이미 바꿔 놓았는데 두 번째 계산에서 끝나면, --json 소비자는
+     * 워킹트리가 재작성된 사실을 알 길이 없다. 첫 시도에서는 아직 빈 배열이다.
+     */
+    let reservedFiles: string[] = []
 
     // 최대 2회. 계산과 반영 사이에 남이 커밋하면(CONFLICT) 한 번만 다시 계산한다.
     for (let attempt = 0; ; attempt++) {
       const plan = await buildPlan(ctx.cwd, config, client)
 
       if (plan.conflicts.length > 0) {
-        emit(ctx.json, renderConflicts(plan.conflicts), { ok: false, conflicts: plan.conflicts })
+        emit(ctx.json, renderConflicts(plan.conflicts), {
+          ok: false, conflicts: plan.conflicts, reservedFiles,
+        })
         return 1
       }
       if (plan.ops.length === 0) {
@@ -110,14 +124,24 @@ export function push(ctx: PushCtx): Promise<number> {
         throw new CliError(
           'VALIDATION',
           `변경이 ${plan.ops.length}건으로 한 번에 반영할 수 있는 ${MAX_OPS_PER_MUTATION}건을 넘습니다. 나눠서 반영하세요`,
+          { reservedFiles },
         )
       }
       await confirmDeletes(ctx, plan)
 
+      // 서버로 보내기 직전에 신규 id를 파일에 박는다. 이 뒤로 무슨 일이 있어도 파일이 id를
+      // 쥐고 있으므로, 응답이 유실돼 사용자가 다시 push해도 서버는 "이미 있는 것"으로 본다.
+      // 여기서 실패하면 전송하지 않고 그대로 던진다 — id를 못 남긴 채 보내면 바로 그 사본
+      // 문제가 남는다. 실패해도 기록한 id를 되돌리지 않는다(되돌리는 순간 문제가 부활한다).
+      for (const rel of await reserveIds(ctx.cwd, plan.localTree, plan.assignedTree)) reserved.add(rel)
+      reservedFiles = [...reserved].sort()
+
       // model.push(mutate) 하나만 CONFLICT 재시도 대상이다. 이 아래(syncDown)에서 실패하면
-      // 서버는 이미 커밋을 마쳤으므로, 같은 try에 묶어 두면 "재시도해야 할 실패"로
-      // 잘못 분류돼 두 번째 model.push가 나가 중복 op가 생긴다(신규 id도 아직 파일에
-      // 못 채워졌으니 base와 로컬이 서버가 이미 아는 엔티티를 다시 create로 잡는다).
+      // 서버는 이미 커밋을 마쳤으므로, 같은 try에 묶어 두면 "재시도해야 할 실패"로 잘못
+      // 분류돼 재계산 루프로 돌아간다. 그 재계산은 이미 커밋된 서버 상태를 다시 읽으므로
+      // ops가 0건이 되고("변경 없음"), push는 exit 0으로 끝난다 — syncDown이 죽어 파일이
+      // 낡은 채 남았다는 사실이 성공 보고 뒤에 숨는다. 문제는 중복 리비전이 아니라 실패의
+      // 은폐다(신규 id는 위에서 이미 파일에 박았으므로 create가 중복되지는 않는다).
       let seq: number
       try {
         const result = await client.mutate<{ seq: number }>('model.push', {
@@ -144,17 +168,33 @@ export function push(ctx: PushCtx): Promise<number> {
         // 처리하게 한다(호출자가 code로 분기할 수 있도록 이전과 동일하게 동작한다).
         if (err instanceof CliError && SERVER_REJECTION_CODES.has(err.code)) throw err
         // 그 외 실패(연결 끊김·프록시 타임아웃·커밋 직후 서버 재시작 등 전송 계층 실패)는
-        // 요청이 서버에 닿았는지조차 알 수 없다. 그냥 실패로 보고하면 다음 push가 같은 것을
-        // 새 uuid로 다시 만들어(filesToModel이 매번 새 id를 발급한다) 조용히 중복이 생긴다.
-        // 여기서 재전송도 하지 않는다 — 커밋된 경우 그쪽이 바로 중복이다.
+        // 요청이 서버에 닿았는지조차 알 수 없다. 신규 id는 위에서 파일에 박아 두었으므로
+        // 사용자가 그대로 다시 push해도 사본은 생기지 않지만, 반영 여부 자체는 여전히
+        // 알 수 없으니 성공으로 뭉뚱그리지 않고 그 사실을 그대로 알린다.
+        // 여기서 자동 재전송은 하지 않는다 — 이미 커밋된 경우 리비전이 하나 더 생긴다.
         const detail = err instanceof CliError ? err.message : (err as Error).message
+        // 신규 항목이 없는 push(update만 있는 경우)에서는 기록한 파일도 없다. 그때도
+        // "id를 파일에 기록해 두었으므로"라고 말하면 근거가 거짓이라, 사용자·에이전트가
+        // 바뀌지도 않은 파일을 확인하러 간다. 결론(다시 push해도 수렴한다)만 남긴다.
+        //
+        // 확인 수단으로 erdd pull을 권하지 않는다. 반영되지 않았다면 pull은 서버 상태로
+        // 트리를 다시 쓰면서(writeTree의 삭제 패스) 방금 기록한 id째로 로컬 변경을 지운다 —
+        // 바로 앞 문장의 "그대로 다시 push하면 수렴한다"를 스스로 무효화한다. erdd diff는
+        // 읽기만 하므로 안전하다. pull도 알려는 주되 그 대가를 함께 말한다.
+        const resumeHint = reservedFiles.length > 0
+          ? '신규 항목의 id를 파일에 기록해 두었으므로 그대로 다시 push하면 중복 없이 수렴합니다. '
+            + '먼저 확인하려면 erdd diff를 실행하세요 — erdd pull은 반영되지 않았을 경우 '
+            + '그 id까지 서버 상태로 덮어써 지웁니다. '
+          : '그대로 다시 push하면 중복 없이 수렴합니다. '
+            + '먼저 확인하려면 erdd diff를 실행하세요 — erdd pull은 반영되지 않았을 경우 '
+            + '이번 로컬 변경을 서버 상태로 덮어써 지웁니다. '
         emit(
           ctx.json,
-          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — 다시 push하기 전에 `
-            + `erdd pull 또는 erdd diff로 서버 상태를 확인하세요 (${detail})`,
+          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — ${resumeHint}(${detail})`,
           {
             ok: false, outcomeUnknown: true, revisionSeq: null, ops: plan.ops.length,
-            ...countByAction(plan.ops), pruned: plan.pruned, retried, pushError: detail,
+            ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
+            pushError: detail,
             pushErrorCode: err instanceof CliError ? err.code : null,
           },
         )
@@ -174,7 +214,8 @@ export function push(ctx: PushCtx): Promise<number> {
             + `파일 갱신에 실패했습니다 — erdd pull을 실행하세요 (${detail})`,
           {
             ok: false, committed: true, revisionSeq: seq, ops: plan.ops.length,
-            ...countByAction(plan.ops), pruned: plan.pruned, retried, syncError: detail,
+            ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
+            syncError: detail,
           },
         )
         return 1
@@ -182,7 +223,7 @@ export function push(ctx: PushCtx): Promise<number> {
 
       emit(ctx.json, `반영했습니다 (리비전 ${seq}, 변경 ${plan.ops.length}건)`, {
         ok: true, revisionSeq: seq, ops: plan.ops.length,
-        ...countByAction(plan.ops), pruned: plan.pruned, retried,
+        ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
       })
       return 0
     }
