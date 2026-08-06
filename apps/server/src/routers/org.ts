@@ -3,19 +3,9 @@ import { and, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import { members, organizations, users } from '../db/schema.js'
-import { getOrgMember } from '../services/perm.js'
+import { getOrgMember, requireOrgManager } from '../services/perm.js'
 import { normalizeEmail } from '../services/accounts.js'
 import { apiProcedure, authedProcedure, router } from '../trpc.js'
-
-async function requireOrgManager(
-  db: Parameters<typeof getOrgMember>[0], orgId: string, userId: string,
-) {
-  const me = await getOrgMember(db, orgId, userId)
-  if (!me || (me.role !== 'owner' && me.role !== 'admin')) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: '조직 관리 권한이 없습니다' })
-  }
-  return me
-}
 
 async function countOwners(db: Parameters<typeof getOrgMember>[0], orgId: string) {
   const rows = await db.select({ id: members.id })

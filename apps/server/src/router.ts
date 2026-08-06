@@ -3,6 +3,7 @@ import { parseLogicalType } from '@erdd/core'
 import { authRouter } from './routers/auth.js'
 import { adminRouter } from './routers/admin.js'
 import { orgRouter } from './routers/org.js'
+import { invitationRouter } from './routers/invitation.js'
 import { projectRouter } from './routers/project.js'
 import { modelRouter } from './routers/model.js'
 import { revisionRouter } from './routers/revision.js'
@@ -21,6 +22,7 @@ export const appRouter = router({
   auth: authRouter,
   admin: adminRouter,
   org: orgRouter,
+  invitation: invitationRouter,
   project: projectRouter,
   model: modelRouter,
   revision: revisionRouter,
