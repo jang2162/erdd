@@ -8,7 +8,7 @@ import { CliError } from './output.js'
 const TABLES_DIR = `${TREE_ROOT}/tables`
 
 /** 키 순서와 무관하게 값이 같은지 본다 — YAML 재작성으로 순서가 흔들려도 수정으로 잡지 않는다. */
-function canonical(v: unknown): string {
+export function canonical(v: unknown): string {
   const walk = (x: unknown): unknown => {
     if (Array.isArray(x)) return x.map(walk)
     if (typeof x === 'object' && x !== null) {
