@@ -85,6 +85,11 @@ export function push(ctx: PushCtx): Promise<number> {
     const config = await readConfig(ctx.cwd)
     const client = await clientFor(ctx)
     let retried = false
+    // 시도를 가로질러 누적한다. CONFLICT로 다시 계산하면 두 번째 reserveIds는 아무것도 쓸
+    // 것이 없어(첫 시도가 이미 박아 뒀다) 빈 배열을 돌려주는데, 시도마다 덮어쓰면 그 빈
+    // 배열이 첫 시도의 결과를 지운다 — 파일은 실제로 바뀌었는데 봉투는 "그대로"라고 말하고,
+    // 같은 봉투의 사람용 문구("id를 파일에 기록해 두었으므로")와 정면으로 어긋난다.
+    const reserved = new Set<string>()
 
     // 최대 2회. 계산과 반영 사이에 남이 커밋하면(CONFLICT) 한 번만 다시 계산한다.
     for (let attempt = 0; ; attempt++) {
@@ -119,13 +124,15 @@ export function push(ctx: PushCtx): Promise<number> {
       // 쥐고 있으므로, 응답이 유실돼 사용자가 다시 push해도 서버는 "이미 있는 것"으로 본다.
       // 여기서 실패하면 전송하지 않고 그대로 던진다 — id를 못 남긴 채 보내면 바로 그 사본
       // 문제가 남는다. 실패해도 기록한 id를 되돌리지 않는다(되돌리는 순간 문제가 부활한다).
-      const reservedFiles = await reserveIds(ctx.cwd, plan.localTree, plan.assignedTree)
+      for (const rel of await reserveIds(ctx.cwd, plan.localTree, plan.assignedTree)) reserved.add(rel)
+      const reservedFiles = [...reserved].sort()
 
       // model.push(mutate) 하나만 CONFLICT 재시도 대상이다. 이 아래(syncDown)에서 실패하면
-      // 서버는 이미 커밋을 마쳤으므로, 같은 try에 묶어 두면 "재시도해야 할 실패"로
-      // 잘못 분류돼 이미 커밋된 반영을 향해 두 번째 model.push가 나간다(신규 id는 이제
-      // reserveIds가 박아 두어 create가 중복되지는 않지만, base가 아직 낡아 같은 update·
-      // delete가 다시 나가고 리비전이 하나 더 생긴다 — undo 1회 계약이 어긋난다).
+      // 서버는 이미 커밋을 마쳤으므로, 같은 try에 묶어 두면 "재시도해야 할 실패"로 잘못
+      // 분류돼 재계산 루프로 돌아간다. 그 재계산은 이미 커밋된 서버 상태를 다시 읽으므로
+      // ops가 0건이 되고("변경 없음"), push는 exit 0으로 끝난다 — syncDown이 죽어 파일이
+      // 낡은 채 남았다는 사실이 성공 보고 뒤에 숨는다. 문제는 중복 리비전이 아니라 실패의
+      // 은폐다(신규 id는 위에서 이미 파일에 박았으므로 create가 중복되지는 않는다).
       let seq: number
       try {
         const result = await client.mutate<{ seq: number }>('model.push', {
@@ -157,10 +164,15 @@ export function push(ctx: PushCtx): Promise<number> {
         // 알 수 없으니 성공으로 뭉뚱그리지 않고 그 사실을 그대로 알린다.
         // 여기서 자동 재전송은 하지 않는다 — 이미 커밋된 경우 리비전이 하나 더 생긴다.
         const detail = err instanceof CliError ? err.message : (err as Error).message
+        // 신규 항목이 없는 push(update만 있는 경우)에서는 기록한 파일도 없다. 그때도
+        // "id를 파일에 기록해 두었으므로"라고 말하면 근거가 거짓이라, 사용자·에이전트가
+        // 바뀌지도 않은 파일을 확인하러 간다. 결론(다시 push해도 수렴한다)만 남긴다.
+        const resumeHint = reservedFiles.length > 0
+          ? '신규 항목의 id를 파일에 기록해 두었으므로 그대로 다시 push하면 중복 없이 수렴합니다. '
+          : '그대로 다시 push하면 중복 없이 수렴합니다. '
         emit(
           ctx.json,
-          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — 신규 항목의 id를 파일에 `
-            + `기록해 두었으므로 그대로 다시 push하면 중복 없이 수렴합니다. `
+          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — ${resumeHint}`
             + `먼저 확인하려면 erdd pull 또는 erdd diff를 실행하세요 (${detail})`,
           {
             ok: false, outcomeUnknown: true, revisionSeq: null, ops: plan.ops.length,
