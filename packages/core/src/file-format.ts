@@ -265,16 +265,32 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
    * 만들면서 id를 지우지 않는 것은 흔한 사고인데, push에서는 그것이 "새로 만들기"가 아니라
    * "원본을 복사본 내용으로 개명"이 되어 복구 불가능한 반영이 나간다 — 계획을 세우기 전에
    * 오류로 세운다.
-   *
-   * 발급한 id도 등록한다. uuid 자체는 유일하지만 **되쓴 자리**는 유일하지 않기 때문이다 —
-   * YAML anchor/alias는 배열의 두 원소를 같은 객체 하나로 파싱하고 structuredClone이 그
-   * 공유를 보존하므로, 첫 방문이 되쓴 id를 두 번째 방문이 explicit으로 읽는다. 등록하지
-   * 않으면 두 항목이 조용히 한 항목으로 합쳐진 채 ok:true가 나간다.
    */
   const firstUse = new Map<string, string>()
-  /** 이 호출에서 발급해 트리에 되써 넣은 id들 — 충돌 메시지를 가르는 데 쓴다. */
-  const issued = new Set<string>()
+  /**
+   * idOf가 이미 지나간 객체들. YAML anchor/alias(`&이름` … `*이름`)는 배열의 두 원소를
+   * **같은 객체 하나**로 파싱하므로, 재방문은 곧 "두 항목이 실은 한 항목"이라는 뜻이다 —
+   * 잡지 않으면 두 항목이 조용히 하나로 합쳐진 채 ok:true가 나간다.
+   *
+   * **참조 동일성으로 본다.** 발급한 id를 firstUse에 등록해 두 번째 방문이 explicit으로
+   * 읽게 하는 방식은 되쓰기가 있는 push 갈래에서만 동작해서, 같은 파일을 `erdd validate`는
+   * 통과시키고 `erdd push`는 거절하는 갈림을 만들었다(push의 오류 문구가 그 validate를
+   * 가리킨다). 참조 동일성은 id와 무관하게 직접 보이므로 두 갈래가 같은 판정을 낸다.
+   */
+  const visited = new WeakSet<Rec>()
   const idOf = (r: Rec, path: string, kind: string, index: number): string => {
+    if (visited.has(r)) {
+      // 사용자 파일에 지울 id가 없을 수도 있으므로("id를 지우세요"가 실행 불가능한 지시가
+      // 된다) 무엇이 문제이고 무엇을 하면 되는지 말한다.
+      issues.push({
+        path,
+        message: `${kind} 항목 하나가 두 번 나타납니다 — YAML anchor/alias(\`&이름\` … \`*이름\`)로 같은 항목을 재사용한 것으로 보입니다. ERDD는 anchor/alias를 지원하지 않습니다(두 항목이 한 항목으로 합쳐집니다) — 별칭을 풀어 항목마다 내용을 그대로 적어 주세요`,
+      })
+      // 결과 모델은 ok:false와 함께 버려지지만, 두 방문이 한 키로 합쳐져 뒤따르는 순회가
+      // 엉뚱한 것을 보지 않도록 자리로 만든 임시 id를 준다.
+      return `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
+    }
+    visited.add(r)
     const explicit = asStr(r['id'])
     if (explicit === null) {
       if (newId === undefined) return `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
@@ -283,21 +299,12 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
       // assignMissingIds를 만들지 않은 이유다.
       const id = newId()
       r['id'] = id
-      issued.add(id)
-      firstUse.set(`${kind} ${id}`, path)
       return id
     }
     const key = `${kind} ${explicit}`
     const first = firstUse.get(key)
     if (first === undefined) firstUse.set(key, path)
-    else if (issued.has(explicit)) {
-      // 이 id는 방금 우리가 되써 넣은 것이라 사용자 파일에는 없다 — "id를 지우세요"는
-      // 지울 것이 없어 실행 불가능한 지시다. 무엇이 문제이고 무엇을 하면 되는지 말한다.
-      issues.push({
-        path,
-        message: `${kind} 항목 하나가 두 번 나타납니다 — YAML anchor/alias(\`&이름\` … \`*이름\`)로 같은 항목을 재사용한 것으로 보입니다. ERDD는 anchor/alias를 지원하지 않습니다(두 항목이 한 항목으로 합쳐집니다) — 별칭을 풀어 항목마다 내용을 그대로 적어 주세요`,
-      })
-    } else if (first === path) {
+    else if (first === path) {
       issues.push({
         path,
         message: `id ${explicit}가 이 파일에서 두 번 쓰였습니다 — id는 서버가 발급한 identity라 하나만 가질 수 있습니다`,

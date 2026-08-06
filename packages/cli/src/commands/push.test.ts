@@ -3,7 +3,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { applyOps, modelToFiles, MAX_OPS_PER_MUTATION, type Op, type ProjectModel } from '@erdd/core'
+import { applyOps, filesToModel, modelToFiles, MAX_OPS_PER_MUTATION, type Op, type ProjectModel } from '@erdd/core'
 import { fullModel } from '@erdd/core/src/testing/fixtures.js'
 import type { ApiClient } from '../client.js'
 import { writeConfig } from '../config.js'
@@ -572,9 +572,12 @@ describe('push', () => {
     // uuid를 다시 발급해 서버에 이미 있는 테이블을 한 번 더 create한다. 그 id를 남기는
     // 경로는 둘(전송 직전의 reserveIds, 성공 뒤의 암묵적 pull=syncDown)이고, 성공 경로에서는
     // 하나만 살아 있어도 계약이 지켜지므로 이 테스트는 둘 다 죽었을 때 잡는다(실측: 각각
-    // 무력화하면 통과, 둘 다 무력화하면 여기서 FAIL). 각 메커니즘의 개별 검증은
-    // syncDown 쪽이 '성공하면 트리와 base를 서버 상태로 다시 쓴다' 외 2건, reserveIds 쪽이
-    // '커밋 뒤 응답이 유실돼도...' 외 5건이 나눠 맡는다.
+    // 무력화하면 통과, 둘 다 무력화하면 여기서 FAIL). 개별 검증은 reserveIds 쪽을
+    // '커밋 뒤 응답이 유실돼도...' 외 5건이 이 파일에서 맡고, **syncDown의 트리 쓰기는 이
+    // 파일이 아니라 commands.test.ts의 pull·status·validate가 맡는다**(실측: sync-down.ts의
+    // writeTree 호출을 무력화하면 push.test.ts는 전부 통과하고 commands.test.ts만 실패한다).
+    // 같은 파일의 '성공하면 트리와 base를 서버 상태로 다시 쓴다'는 제목과 달리
+    // `.erdd/base.json`만 단언하므로 트리 쓰기의 근거가 되지 못한다.
     const server = fullModel()
     await seed(server)
     await writeFile(
@@ -740,6 +743,68 @@ describe('push', () => {
     expect(lastJson<{ reservedFiles: string[] }>().reservedFiles).toEqual(['erdd/tables/MBR.yaml'])
   })
 
+  it('CONFLICT 재계산에서 충돌이 나면 이미 기록한 파일을 봉투에 싣는다', async () => {
+    // 첫 시도가 파일에 id를 박은 뒤 CONFLICT → 재계산에서 충돌 → conflicts 봉투로 끝난다.
+    // 워킹트리는 이미 재작성됐는데 봉투가 말하지 않으면 --json 소비자가 알 길이 없다.
+    const server = fullModel()
+    await seed(server)
+    const path = join(dir, 'erdd/tables/MBR.yaml')
+    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 로컬'))
+    await addNewColumn()                       // 기록할 신규 항목 — 같은 MBR.yaml에 들어간다
+
+    // 재계산 때 서버가 같은 필드를 다르게 고친 상태로 바뀐다 → 두 번째 buildPlan이 충돌을 낸다.
+    const moved = fullModel()
+    Object.values(moved.columns).find((c) => c.logicalName === '회원명')!.logicalName = '서버'
+    let attempt = 0
+    const { client, pushCalls } = stub(server, {
+      getImpl: () => (attempt === 0 ? { model: server, seq: 1 } : { model: moved, seq: 2 }),
+      pushImpl: async () => { attempt += 1; throw new CliError('CONFLICT', '서버가 앞서 있습니다') },
+    })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
+    expect(pushCalls).toHaveLength(1)          // 재계산이 충돌로 끝나 두 번째 전송은 없다
+    const payload = lastJson<{ ok: boolean; conflicts: unknown[]; reservedFiles: string[] }>()
+    expect(payload.ok).toBe(false)
+    expect(payload.conflicts.length).toBeGreaterThan(0)
+    expect(payload.reservedFiles).toEqual(['erdd/tables/MBR.yaml'])
+  })
+
+  it('CONFLICT 재계산에서 op 상한을 넘어도 이미 기록한 파일을 알린다', async () => {
+    // 봉투를 못 만들고 던져서 끝나는 자리다 — 오류 객체에 실어 보낸다. 재계산 결과가
+    // 첫 계산보다 커질 수 있는 것은 서버가 그 사이에 로컬과 같은 항목들을 잃었을 때다.
+    const base = fullModel()
+    await seed(base)                           // base = 원본(추가 컬럼 없음)
+
+    const withExtras = fullModel()
+    for (let i = 0; i < MAX_OPS_PER_MUTATION + 10; i += 1) {
+      const id = `cx${String(i).padStart(6, '0')}`
+      withExtras.columns[id] = {
+        id, tableId: 'tb1', logicalName: `추가${i}`, physicalName: `EXTRA_${i}`, type: 'BIGINT',
+        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 100 + i,
+        comment: null, domainId: null, custom: {},
+      }
+    }
+    // 로컬과 첫 서버가 그 컬럼들을 똑같이 갖고 있다(base에는 없다) → 첫 계산의 op는 신규 1건뿐.
+    // 서버 모델은 로컬 트리를 그대로 파싱해서 만든다 — 컬럼의 order는 파일에서 배열 위치로
+    // 정해지므로, 모델을 직접 세워 두면 order가 어긋나 전부 충돌로 잡힌다(실측 5010건).
+    const localTree = modelToFiles(withExtras).tree
+    await writeTree(dir, localTree)
+    const parsed = filesToModel(localTree)
+    if (!parsed.ok) throw new Error('fixture가 파싱되지 않는다')
+    await addNewColumn()
+
+    let attempt = 0
+    const { client, pushCalls } = stub(parsed.model, {
+      getImpl: () => (attempt === 0 ? { model: parsed.model, seq: 1 } : { model: fullModel(), seq: 2 }),
+      pushImpl: async () => { attempt += 1; throw new CliError('CONFLICT', '서버가 앞서 있습니다') },
+    })
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
+    expect(pushCalls).toHaveLength(1)
+    const payload = lastJson<{ error: { code: string; message: string; reservedFiles: string[] } }>()
+    expect(payload.error.code).toBe('VALIDATION')
+    expect(payload.error.message).toContain(String(MAX_OPS_PER_MUTATION))
+    expect(payload.error.reservedFiles).toEqual(['erdd/tables/MBR.yaml'])
+  })
+
   it('삭제 확인에서 취소하면 파일에 아무것도 기록하지 않는다', async () => {
     const original = fullModel()
     await seed(original)
@@ -755,6 +820,38 @@ describe('push', () => {
     expect(code).toBe(1)
     expect(pushCalls).toHaveLength(0)
     expect(await rawTree()).toEqual(before)
+  })
+
+  it('CONFLICT 재계산 뒤 삭제 확인에서 취소해도 첫 시도가 기록한 id는 남는다', async () => {
+    // 설계 §2.4의 전단("취소했는데 파일이 바뀌면 안 된다")과 후단("실패해도 지우지 않는다")이
+    // 재시도 경로에서 부딪히는 자리다. 코드는 후단을 택했다 — 되돌리는 순간 다음 push가
+    // 새 id를 발급해 사본 문제가 부활한다. 그 선택을 고정한다.
+    const original = fullModel()
+    await seed(original)
+    await rm(join(dir, 'erdd/tables/MBR_DTL.yaml'))   // 삭제 확인을 부르는 변경
+    await addNewColumn()                              // 기록할 신규 항목
+
+    let attempt = 0
+    const { client, pushCalls } = stub(original, {
+      getImpl: () => ({ model: original, seq: attempt === 0 ? 1 : 2 }),
+      pushImpl: async () => { attempt += 1; throw new CliError('CONFLICT', '서버가 앞서 있습니다') },
+    })
+    const asked: boolean[] = []
+    // 첫 확인은 통과시키고(→ 기록 → CONFLICT → 재계산), 두 번째 확인에서 취소한다.
+    const code = await push({
+      cwd: dir, json: true, yes: false, strict: false, client,
+      confirm: async () => { asked.push(true); return asked.length === 1 },
+    })
+    expect(code).toBe(1)
+    expect(asked).toHaveLength(2)                     // 재계산이 삭제 확인을 다시 물었다
+    expect(pushCalls).toHaveLength(1)
+    expect(lastJson<{ error: { code: string } }>().error.code).toBe('CANCELLED')
+
+    const mbr = parseYaml(await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')) as {
+      columns: Array<{ name: string; id?: string }>
+    }
+    const created = mbr.columns.find((c) => c.name === 'NEW_COL')
+    expect(typeof created?.id).toBe('string')         // 취소했어도 id는 남는다
   })
 
   it('충돌이 있으면 파일에 아무것도 기록하지 않는다', async () => {
@@ -815,6 +912,28 @@ describe('push', () => {
     }
   })
 
+  it('순환 참조 YAML을 전송 전에 막고 NETWORK로 오분류하지 않는다', async () => {
+    // YAML anchor/alias는 자기 자신을 가리키는 값을 만들 수 있다. canonical의 walk가 거기서
+    // 무한 재귀하면 RangeError가 run()의 catch-all에 걸려 code:"NETWORK"가 되는데, code로
+    // 분기하는 에이전트는 그것을 전송 실패로 읽고 파일이 그대로인 채 영원히 재시도한다.
+    const server = fullModel()
+    await seed(server)
+    await addNewColumn()                       // reserveIds가 실제로 비교를 하도록 신규 항목을 만든다
+    await writeFile(
+      join(dir, 'erdd/tables/CYC.yaml'),
+      '&root\nname: CYC\nlogicalName: 순환\ncolumns: []\nself: *root\n',
+      'utf8',
+    )
+
+    const { client, pushCalls } = stub(server)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
+    expect(pushCalls).toHaveLength(0)          // 서버로 아무것도 나가지 않는다
+    const payload = lastJson<{ error: { code: string; message: string } }>()
+    expect(payload.error.code).toBe('VALIDATION')
+    expect(payload.error.message).toContain('erdd/tables/CYC.yaml')
+    expect(payload.error.message).toContain('순환 참조')
+  })
+
   it('성공 봉투에 기록한 파일 목록이 담긴다', async () => {
     const server = fullModel()
     await seed(server)
@@ -836,7 +955,10 @@ describe('push', () => {
     expect(text).toContain('반영 여부를 확인할 수 없습니다')
     expect(text).toContain('id를 파일에 기록해 두었으므로')   // 실제로 기록한 경우에만 나오는 근거
     expect(text).toContain('중복 없이 수렴')
-    expect(text).toContain('erdd pull')     // 기존 안내도 남는다
+    // 확인 수단은 erdd diff다. erdd pull을 권하면 방금 기록한 id를 지우라고 말하는 셈이라
+    // 같은 문장의 "그대로 다시 push하면 수렴한다"와 서로를 무효화한다.
+    expect(text).toContain('erdd diff')
+    expect(text).toMatch(/erdd pull은[^.]*지웁니다/)
   })
 
   it('신규 항목이 없는 push가 실패하면 기록했다는 근거를 붙이지 않는다', async () => {
@@ -854,6 +976,7 @@ describe('push', () => {
     expect(text).toContain('반영 여부를 확인할 수 없습니다')
     expect(text).not.toContain('기록해 두었으므로')
     expect(text).toContain('중복 없이 수렴')
-    expect(text).toContain('erdd pull')     // 두 갈래 모두에 남는다
+    expect(text).toContain('erdd diff')     // 두 갈래 모두에 남는다
+    expect(text).toMatch(/erdd pull은[^.]*지웁니다/)
   })
 })

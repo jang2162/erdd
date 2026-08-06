@@ -65,6 +65,17 @@ id가 빠질 수 있는 자리는 9곳(`groups`·`domains`·`words`·`terms`·`c
   손해가 없다.
 - **`erdd diff`는 기록하지 않는다** — 계획 미리보기라 파일을 건드리지 않는 것이 계약이다.
 
+**CONFLICT 재시도에서는 위 첫 항목과 넷째 항목이 부딪힌다. 넷째가 이긴다.**
+첫 시도에서 사용자가 삭제를 확인 → `reserveIds`가 id를 기록 → `model.push`가 CONFLICT → 재계산 →
+**두 번째 삭제 확인에서 취소**하면, 취소했는데도 파일에는 id가 남는다(2026-08-06 실측: exit 1
+`{"error":{"code":"CANCELLED"}}`, `MBR.yaml`에 신규 컬럼 id 있음). 첫 항목이 막으려던 것은 "확인 화면을
+한 번도 통과하지 않았는데 파일이 바뀌는 것"이고, 그 계약은 그대로다 — 여기서는 사용자가 첫 확인을
+**통과시켰고** 그 시점의 기록은 정당했다. 되돌리면 넷째 항목이 막는 사본 문제가 정확히 부활한다
+(다음 push가 같은 항목에 새 id를 발급한다). 삭제 자체는 서버로 나가지 않았으므로 손해는 없다 —
+파일에 서버가 모르는 id가 하나 남을 뿐이고, 그것은 §3.2가 정상이라고 적은 상태다.
+`push.test.ts`의 `CONFLICT 재계산 뒤 삭제 확인에서 취소해도 첫 시도가 기록한 id는 남는다`가 이 상태를
+고정한다(기존 취소 테스트는 첫 시도 취소만 덮는다).
+
 ### 2.5 전송 실패 시 자동 재시도는 넣지 않는다
 
 동작은 지금대로 두고 **보고 문구만 바꾼다**("다시 push하면 중복 없이 수렴합니다"가 이제 참이다).
@@ -97,12 +108,21 @@ id가 빠질 수 있는 자리는 9곳(`groups`·`domains`·`words`·`terms`·`c
 `firstUse` 검사는 파일에 적힌 explicit id를 대상으로 한다. 기록 이후 그 id는 explicit이 되어 검사
 대상에 들어가지만, 한 파일에 한 번만 있으므로 통과한다.
 
-**발급한 id도 `firstUse`에 등록한다.** uuid 자체는 유일하지만 **되쓴 자리**는 유일하지 않기 때문이다 —
-YAML anchor/alias(`&이름` … `*이름`)는 배열의 두 원소를 **같은 객체 하나**로 파싱하고
-`structuredClone`이 그 공유를 그대로 보존하므로, 첫 방문이 되써 넣은 id를 두 번째 방문이 explicit으로
-읽는다. 등록하지 않으면 두 방문이 서로를 못 보고 **두 항목이 조용히 한 항목으로 합쳐진 채 `ok:true`가
-나간다**(실측: 컬럼 2개 → 1개). 되쓰기 이전에는 두 방문 모두 `explicit === null`이라 각자 id를 받아
-정상이었으므로, 이것은 이번 변경이 만드는 회귀다.
+**같은 객체를 두 번 지나는 것은 참조 동일성으로 잡는다** — `idOf`가 지나간 객체를 `WeakSet`에 담고
+재방문이면 issue를 낸다. YAML anchor/alias(`&이름` … `*이름`)는 배열의 두 원소를 **같은 객체 하나**로
+파싱하고 `structuredClone`이 그 공유를 그대로 보존하므로, 잡지 않으면 **두 항목이 조용히 한 항목으로
+합쳐진 채 `ok:true`가 나간다**(실측: 컬럼 2개 → 1개). 되쓰기 이전에는 두 방문 모두
+`explicit === null`이라 각자 임시 id를 받아 정상이었으므로, 이것은 이번 변경이 만드는 회귀다.
+
+**참조 동일성으로 보는 이유**(2026-08-06 리뷰 I-4). 처음에는 "발급한 id도 `firstUse`에 등록해 두 번째
+방문이 explicit으로 읽게 한다"로 구현했는데, 그 판별은 **되쓰기가 있는 `newId` 갈래에서만** 성립한다.
+그래서 같은 파일을 `erdd push`는 거절하고 `erdd validate`는 `ok:true`로 통과시켰다(실측). push의 파일
+오류 문구가 "erdd validate로 확인하세요"라고 그 명령을 가리키므로, 지시를 따른 사용자·에이전트가
+"문제 없음"을 받고 막히는 형태였다. 참조 동일성은 id와 무관하게 직접 보이므로 두 갈래가 같은 판정을
+낸다. `firstUse`는 다시 **사용자가 파일에 적은 explicit id**만 다루는 원래 역할로 돌아간다.
+
+**순환이 아닌 공유는 대상이 아니다.** `idOf`를 지나지 않는 자리(두 도메인이 같은 `dialectTypes` 매핑을
+alias로 나눠 쓰는 것 같은)는 합쳐질 id가 없으므로 통과한다 — §9의 이월 항목이다.
 
 공유 참조를 끊는 재귀 복사는 **채택하지 않는다.** 순환 보존 memo가 곧 공유 참조 보존이라 "공유는 끊고
 순환은 살린다"가 원리적으로 불가능하고, 무엇보다 `yaml.stringify`가 공유 참조를 다시 anchor/alias로
@@ -113,12 +133,12 @@ YAML anchor/alias(`&이름` … `*이름`)는 배열의 두 원소를 **같은 �
 
 | 상황 | 메시지 |
 |---|---|
-| 발급한 id가 두 번 읽혔다(anchor/alias) | anchor/alias를 지원하지 않음을 알리고 별칭을 풀라고 안내 |
+| 같은 객체를 두 번 지났다(anchor/alias) | anchor/alias를 지원하지 않음을 알리고 별칭을 풀라고 안내 |
 | 같은 파일 안에서 explicit id 중복 | "id는 하나만 가질 수 있습니다" |
 | 다른 파일에도 같은 explicit id | "복사해서 새로 만든 것이라면 id를 지우세요" |
 
-alias 갈래에 전용 메시지가 필요한 이유는, 그 id가 **우리가 방금 되써 넣은 것이라 사용자 파일에는 지울
-id 자체가 없기** 때문이다 — 기존 두 메시지는 실행 불가능한 지시가 된다.
+alias 갈래에 전용 메시지가 필요한 이유는, 사용자 파일에 **지울 id 자체가 없을 수 있기** 때문이다
+(id 없는 항목을 alias로 재사용한 경우) — 기존 두 메시지는 실행 불가능한 지시가 된다.
 
 단, **사용자가 그 파일을 복사해 새 테이블을 만들면** 이제 id가 들어 있어 "복사해서 새로 만든 것이라면
 id를 지우세요" 오류가 뜬다. 이는 pull 직후 파일을 복사했을 때와 **완전히 같은 기존 동작**이고, 그
@@ -139,17 +159,23 @@ export type FilesToModelResult =
 
 1. 진입부에서 `const src = newId === undefined ? tree : structuredClone(tree)`.
 2. 그 3곳의 `tree`를 `src`로 바꾼다.
-3. `idOf`가 id를 발급할 때 그 자리에 되써 넣고, **중복 검사에도 등록한다**(§3.3):
+3. `idOf`가 **먼저 재방문을 걸러 내고**(§3.3), 그 다음 id를 발급할 때 그 자리에 되써 넣는다:
    ```ts
+   if (visited.has(r)) {                    // YAML alias가 같은 항목을 두 번 지나는 것을 잡는다
+     issues.push({ path, message: /* anchor/alias 안내 */ })
+     return `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
+   }
+   visited.add(r)
+   const explicit = asStr(r['id'])
    if (explicit === null) {
      if (newId === undefined) return `${NEW_ID_PREFIX}${path}#${kind}[${index}]`
      const id = newId()
      r['id'] = id          // r은 src 안의 객체다 — 입력 tree는 그대로다
-     issued.add(id)
-     firstUse.set(`${kind} ${id}`, path)   // YAML alias가 같은 자리를 두 번 지나는 것을 잡는다
      return id
    }
    ```
+   재방문 검사가 `newId` 갈래 **바깥**에 있는 것이 핵심이다 — `validate`와 `push`의 판정이 갈리지
+   않는다(§3.3).
 4. 성공 갈래에 `assignedTree: newId === undefined ? undefined : src`.
 
 - **입력 `tree`는 변형하지 않는다.** 복사본에만 쓴다.
@@ -208,11 +234,21 @@ CONFLICT 재시도(`continue`)는 손대지 않는다 — 두 번째 `buildPlan`
 문구:
 
 - `outcomeUnknown`: "다시 push하기 전에 erdd pull 또는 erdd diff로 서버 상태를 확인하세요" →
-  **"신규 항목의 id를 파일에 기록해 두었으므로 그대로 다시 push하면 중복 없이 수렴합니다
-  (erdd diff로 먼저 확인할 수 있습니다)"**.
+  **`reservedFiles`의 유무로 두 갈래를 낸다.**
+  - 기록한 파일이 있으면: "신규 항목의 id를 파일에 기록해 두었으므로 그대로 다시 push하면 중복 없이
+    수렴합니다."
+  - 없으면(update만 있는 push): "그대로 다시 push하면 중복 없이 수렴합니다."만 남긴다. 기록한 것이
+    없는데 "기록해 두었으므로"라고 말하면 근거가 거짓이라, 바뀌지도 않은 파일을 확인하러 가게 된다.
+
+  뒤이어 붙는 확인 안내는 **`erdd diff`를 권하고 `erdd pull`의 대가를 함께 말한다.** `pull`은 반영되지
+  않았을 경우 서버 상태로 트리를 다시 써서(`writeTree`의 삭제 패스) 방금 기록한 id째로 로컬 변경을
+  지우므로, 같은 문장의 "그대로 다시 push하면 수렴한다"를 스스로 무효화한다. `diff`는 읽기만 한다.
 - `committed:true`(syncDown 실패): 기존 "erdd pull을 실행하세요"를 유지한다(반영이 확정된 경우라
-  안내가 이미 정확하다).
+  안내가 이미 정확하다 — 서버가 진실이므로 덮어써도 잃을 것이 없다).
 - 두 JSON 봉투와 성공 봉투에 `reservedFiles: string[]`을 더한다 — 에이전트가 무엇이 바뀌었는지 안다.
+  **재시도 뒤에만 닿는 두 종료 경로에도 싣는다**: conflicts 봉투와 op 상한 초과. 둘 다 첫 시도가 이미
+  파일을 재작성한 뒤에 도달할 수 있다. 상한 초과는 던져서 끝나 자기 봉투가 없으므로
+  `CliError`의 `details`로 실어 `{"error":{code,message,reservedFiles}}`가 되게 한다.
 
 ## 6. 파일 구조
 
@@ -231,7 +267,7 @@ CONFLICT 재시도(`continue`)는 손대지 않는다 — 두 번째 `buildPlan`
 
 ## 7. 테스트 전략
 
-### 7.1 core — `file-format.test.ts` (+8)
+### 7.1 core — `file-format.test.ts` (+10)
 
 1. **완전성 + 동일성** — 9종 전부에 id 없는 항목이 있는 트리를 `filesToModel(tree, {newId})`에 넣고,
    나온 `assignedTree`를 **`newId` 없이** 다시 `filesToModel`에 넣으면 (a) 모델의 **모든 엔티티 id에
@@ -253,8 +289,13 @@ CONFLICT 재시도(`continue`)는 손대지 않는다 — 두 번째 `buildPlan`
    결과가 같아서 다른 어떤 단언에도 걸리지 않는다.
 8. **YAML alias 회귀(§3.3)** — 같은 객체를 `columns` 배열에 두 번 넣은 트리가 `ok:false`가 되고,
    메시지가 anchor/alias를 지목하며 "id를 지우세요"를 **말하지 않는다**(지울 id가 사용자 파일에 없다).
+9. **`newId`가 없어도 같은 판정을 낸다**(I-4) — 8번과 같은 트리를 `newId` 없이 넣어도 `ok:false`다.
+   이것이 `validate`와 `push`가 갈리지 않는다는 계약이고, `commands.test.ts`에 YAML 원문으로 `validate`를
+   실제로 돌리는 한 건이 함께 있다(파서가 정말 같은 객체를 두 자리에 놓는지까지 본다).
+10. **id를 나르지 않는 공유는 오류가 아니다** — 두 도메인이 같은 `dialectTypes` 객체를 나눠 쓰는 트리는
+    `ok:true`다. 재방문 검사를 `idOf` 바깥으로 넓히는 잘못된 수선을 막는다.
 
-### 7.2 cli — `push.test.ts` (+9)
+### 7.2 cli — `push.test.ts` (+15)
 
 7. **핵심 회귀: 응답 유실 후 재push가 사본을 만들지 않는다.** `pushImpl`이 **서버 모델을 실제로 갱신한
    뒤** 네트워크 오류를 던진다 → 첫 `push()`는 exit 1 · `outcomeUnknown`. 이어서 `getImpl`이 갱신된
@@ -274,18 +315,35 @@ CONFLICT 재시도(`continue`)는 손대지 않는다 — 두 번째 `buildPlan`
     (주입 방법은 계획에서 확정한다. 파일 권한은 환경에 따라 흔들리므로, 대상 경로를 디렉터리로 만들어
     `EISDIR`을 내는 쪽이 이식성이 높다.)
 15. **성공 봉투에 `reservedFiles`가 담긴다.**
+16. **`outcomeUnknown` 문구의 두 갈래**(§5.3) — 기록한 파일이 있으면 근거를 대고, 없으면 대지 않는다.
+    두 갈래 모두 `erdd diff`를 권하고 `erdd pull`의 대가를 말한다.
+17. **CONFLICT 재계산에서 충돌이 나면 conflicts 봉투에 `reservedFiles`가 실린다**(I-1).
+18. **CONFLICT 재계산에서 op 상한을 넘으면 오류 봉투에 `reservedFiles`가 실린다**(I-1) —
+    첫 계산은 상한 아래, 재계산은 위가 되게 만들려면 **서버 모델을 로컬 트리를 파싱해서** 세워야 한다.
+    컬럼의 `order`는 파일에서 배열 위치로 정해지므로 모델을 손으로 세우면 전부 충돌로 잡힌다(실측 5010건).
+19. **CONFLICT 재계산 뒤 취소해도 기록한 id는 남는다**(§2.4, I-2).
+20. **순환 참조 YAML을 전송 전에 막고 `NETWORK`로 오분류하지 않는다**(M-4) — `code`가 `VALIDATION`이고
+    파일 경로가 문구에 있다. *구분력:* 순환 가드를 지우면 `NETWORK` + "Maximum call stack size exceeded".
 
-### 7.3 cli — `reserve-ids.test.ts` (+2)
+### 7.3 cli — `reserve-ids.test.ts` (+6)
 
-16. **변경 없는 파일은 쓰지 않는다** — id가 이미 다 있는 트리를 주면 반환이 `[]`이고 파일 mtime이
+21. **변경 없는 파일은 쓰지 않는다** — id가 이미 다 있는 트리를 주면 반환이 `[]`이고 파일 mtime이
     그대로다.
-17. **`assigned`가 `undefined`면 no-op**.
+22. **`assigned`가 `undefined`면 no-op**. (나머지 4건은 기록 경로·정렬·새 파일 생성이다.)
+
+### 7.4 cli — `tree.test.ts` (+2) · `commands.test.ts` (+1)
+
+23. **순환 참조는 `CliError('VALIDATION')`이 된다** — `canonical`·`diffTrees` 양쪽에서 확인한다(M-4).
+24. **순환이 아닌 공유 참조는 그대로 통과한다** — "이미 본 것 전부"를 순환으로 세는 잘못된 수선을 막는다.
+    *구분력:* `onPath.delete`를 지우면 이 건만 FAIL한다.
+25. **`erdd validate`가 alias 파일을 통과시키지 않는다**(I-4, `commands.test.ts`).
 
 `erdd diff`가 파일을 안 건드리는 것은 `reserveIds`를 `push.ts`에서만 부르므로 구조적으로 성립한다 —
 `diff.test.ts`에 한 건을 더할지는 계획에서 정한다(위 산술에는 넣지 않았다).
 
-**예상 증가: core 453 → 461 · cli 114 → 125.** web·server는 무변경.
-(core는 리뷰에서 7·8번이 더해져 +6 → +8이 되었다. 2026-08-06 실측 461.)
+**증가: core 453 → 463 · cli 114 → 138.** web·server는 무변경.
+(2026-08-06 실측. 사이클 중 리뷰가 더한 것까지 반영한 값이다 — core `file-format.test.ts` +10,
+cli `push.test.ts` +15 · `reserve-ids.test.ts` +6 · `tree.test.ts` +2 · `commands.test.ts` +1.)
 
 ## 8. 문서 정정 (이 사이클에서 함께 한다)
 
@@ -312,5 +370,19 @@ CONFLICT 재시도(`continue`)는 손대지 않는다 — 두 번째 `buildPlan`
   생긴 동작이다.
 - **`id`가 매핑의 맨 뒤에 붙는다**(`modelToFiles`는 맨 앞). push가 성공하면 `syncDown`이 정규화한다.
 - **자동 재시도 없음**(§2.5) — 전송 실패 시 사용자가 다시 실행해야 한다.
+- **던져서 끝나는 경로의 봉투에는 `reservedFiles`가 없다**(2026-08-06 리뷰 I-1의 나머지). `push.ts`가
+  직접 만드는 두 봉투(conflicts · op 상한 초과)에는 실었지만, `throw err`로 `run()`이 만드는 봉투 —
+  서버 거절(UNAUTHORIZED·FORBIDDEN·NOT_FOUND·VALIDATION)과 **CONFLICT 2회** — 는 그대로다. 둘 다
+  재시도 뒤에 닿을 수 있고, 그때 워킹트리는 이미 재작성돼 있다. `CliError`에 `details`가 생겼으므로
+  수단은 이미 있다 — 던지는 자리마다 `reservedFiles`를 붙이면 된다.
+- **`rel in local` 가드와 `mkdir`은 프로덕션에서 도달하지 않는다**(리뷰 M-5). `assigned`는 `localTree`의
+  `structuredClone`이라 키 집합이 항상 같아 `reserveIds`의 두 방어 코드가 실행될 일이 없다(실측: 가드를
+  지워도 cli 전부 통과 — `canonical(undefined)`가 `undefined`라 우연히 같은 결과가 난다).
+  `reserve-ids.test.ts`는 그 갈래를 검증하는데 `tree.ts`의 주석은 "닿지 않는다"고 적어, 둘이 서로 다른
+  이야기를 한다. 방어 코드로 남기는 것 자체는 타당하나 어느 쪽이 사실인지 한 번 정리해야 한다.
+- **id를 나르지 않는 공유 참조는 검사에 걸리지 않는다**(리뷰 M-7). `idOf`를 지나지 않는 자리(두 도메인이
+  같은 `dialectTypes` 매핑을 alias로 공유하는 것 등)는 합쳐질 id가 없어 §3.3의 검사 대상이 아니고,
+  그 파일이 기록 대상이 되면 `stringifyYaml`이 `&a1`/`*a1` 같은 **생성된 이름**으로 anchor를 다시 쓴다.
+  위 "주석·서식 미보존"에 준하지만 이름이 바뀌는 것은 별개 손실이다.
 - `pull`의 네 단계 쓰기 비원자성, 배열 원소 단위 병합, 대화형 충돌 해소 등 push 설계 §9의 나머지
   한계는 그대로다.

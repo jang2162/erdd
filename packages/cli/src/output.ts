@@ -4,10 +4,17 @@ export type CliErrorCode =
 
 export class CliError extends Error {
   readonly code: CliErrorCode
-  constructor(code: CliErrorCode, message: string) {
+  /**
+   * --json 오류 봉투의 `error` 객체에 함께 실을 사실들. 던져서 끝나는 자리는 자기 봉투를
+   * 만들지 못하는데, 그 사이에 워킹트리가 이미 바뀌었다면(push의 신규 id 기록) 소비자가
+   * 그것을 알 길이 없다. 기존 `{code, message}`에 키를 더하기만 하므로 모양은 그대로다.
+   */
+  readonly details: Readonly<Record<string, unknown>>
+  constructor(code: CliErrorCode, message: string, details: Record<string, unknown> = {}) {
     super(message)
     this.name = 'CliError'
     this.code = code
+    this.details = details
   }
 }
 
@@ -24,7 +31,7 @@ export function emit(json: boolean, human: string, payload: unknown): void {
 
 export function emitError(json: boolean, err: CliError): void {
   if (json) {
-    process.stdout.write(`${JSON.stringify({ error: { code: err.code, message: err.message } })}\n`)
+    process.stdout.write(`${JSON.stringify({ error: { code: err.code, message: err.message, ...err.details } })}\n`)
     return
   }
   process.stderr.write(`오류: ${err.message}\n`)

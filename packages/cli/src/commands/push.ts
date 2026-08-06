@@ -90,13 +90,21 @@ export function push(ctx: PushCtx): Promise<number> {
     // 배열이 첫 시도의 결과를 지운다 — 파일은 실제로 바뀌었는데 봉투는 "그대로"라고 말하고,
     // 같은 봉투의 사람용 문구("id를 파일에 기록해 두었으므로")와 정면으로 어긋난다.
     const reserved = new Set<string>()
+    /**
+     * 지금까지 실제로 기록한 파일들(정렬). 재시도로 다시 도는 갈래도 이 값을 봉투에 실어야
+     * 한다 — 첫 시도가 파일을 이미 바꿔 놓았는데 두 번째 계산에서 끝나면, --json 소비자는
+     * 워킹트리가 재작성된 사실을 알 길이 없다. 첫 시도에서는 아직 빈 배열이다.
+     */
+    let reservedFiles: string[] = []
 
     // 최대 2회. 계산과 반영 사이에 남이 커밋하면(CONFLICT) 한 번만 다시 계산한다.
     for (let attempt = 0; ; attempt++) {
       const plan = await buildPlan(ctx.cwd, config, client)
 
       if (plan.conflicts.length > 0) {
-        emit(ctx.json, renderConflicts(plan.conflicts), { ok: false, conflicts: plan.conflicts })
+        emit(ctx.json, renderConflicts(plan.conflicts), {
+          ok: false, conflicts: plan.conflicts, reservedFiles,
+        })
         return 1
       }
       if (plan.ops.length === 0) {
@@ -116,6 +124,7 @@ export function push(ctx: PushCtx): Promise<number> {
         throw new CliError(
           'VALIDATION',
           `변경이 ${plan.ops.length}건으로 한 번에 반영할 수 있는 ${MAX_OPS_PER_MUTATION}건을 넘습니다. 나눠서 반영하세요`,
+          { reservedFiles },
         )
       }
       await confirmDeletes(ctx, plan)
@@ -125,7 +134,7 @@ export function push(ctx: PushCtx): Promise<number> {
       // 여기서 실패하면 전송하지 않고 그대로 던진다 — id를 못 남긴 채 보내면 바로 그 사본
       // 문제가 남는다. 실패해도 기록한 id를 되돌리지 않는다(되돌리는 순간 문제가 부활한다).
       for (const rel of await reserveIds(ctx.cwd, plan.localTree, plan.assignedTree)) reserved.add(rel)
-      const reservedFiles = [...reserved].sort()
+      reservedFiles = [...reserved].sort()
 
       // model.push(mutate) 하나만 CONFLICT 재시도 대상이다. 이 아래(syncDown)에서 실패하면
       // 서버는 이미 커밋을 마쳤으므로, 같은 try에 묶어 두면 "재시도해야 할 실패"로 잘못
@@ -167,13 +176,21 @@ export function push(ctx: PushCtx): Promise<number> {
         // 신규 항목이 없는 push(update만 있는 경우)에서는 기록한 파일도 없다. 그때도
         // "id를 파일에 기록해 두었으므로"라고 말하면 근거가 거짓이라, 사용자·에이전트가
         // 바뀌지도 않은 파일을 확인하러 간다. 결론(다시 push해도 수렴한다)만 남긴다.
+        //
+        // 확인 수단으로 erdd pull을 권하지 않는다. 반영되지 않았다면 pull은 서버 상태로
+        // 트리를 다시 쓰면서(writeTree의 삭제 패스) 방금 기록한 id째로 로컬 변경을 지운다 —
+        // 바로 앞 문장의 "그대로 다시 push하면 수렴한다"를 스스로 무효화한다. erdd diff는
+        // 읽기만 하므로 안전하다. pull도 알려는 주되 그 대가를 함께 말한다.
         const resumeHint = reservedFiles.length > 0
           ? '신규 항목의 id를 파일에 기록해 두었으므로 그대로 다시 push하면 중복 없이 수렴합니다. '
+            + '먼저 확인하려면 erdd diff를 실행하세요 — erdd pull은 반영되지 않았을 경우 '
+            + '그 id까지 서버 상태로 덮어써 지웁니다. '
           : '그대로 다시 push하면 중복 없이 수렴합니다. '
+            + '먼저 확인하려면 erdd diff를 실행하세요 — erdd pull은 반영되지 않았을 경우 '
+            + '이번 로컬 변경을 서버 상태로 덮어써 지웁니다. '
         emit(
           ctx.json,
-          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — ${resumeHint}`
-            + `먼저 확인하려면 erdd pull 또는 erdd diff를 실행하세요 (${detail})`,
+          `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — ${resumeHint}(${detail})`,
           {
             ok: false, outcomeUnknown: true, revisionSeq: null, ops: plan.ops.length,
             ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,

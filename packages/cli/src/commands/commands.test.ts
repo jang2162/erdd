@@ -183,6 +183,25 @@ describe('validate', () => {
     expect(parsed.ok).toBe(false)
   })
 
+  it('YAML alias로 같은 항목을 재사용한 파일을 통과시키지 않는다', async () => {
+    // push는 파일 오류에서 "erdd validate로 확인하세요"라고 안내한다(plan.ts). alias 검사가
+    // push 갈래(newId 있음)에서만 성립하면, 그 지시를 따른 사용자·에이전트는 여기서
+    // "문제 없음"을 받고 막힌다 — 두 명령의 판정이 갈리면 안 된다. 파서가 실제로 같은
+    // 객체를 두 자리에 놓는지까지 보려면 트리를 직접 만들지 말고 YAML 원문을 써야 한다.
+    await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient() })
+    await writeFile(
+      join(dir, 'erdd/tables/MBR.yaml'),
+      'id: tb1\nname: MBR\nlogicalName: 회원\ncolumns:\n  - &c\n    id: c1\n    name: MBR_NO\n    logicalName: 회원번호\n    type: BIGINT\n  - *c\n',
+      'utf8',
+    )
+    out.length = 0
+    const code = await validate({ cwd: dir, json: true, yes: false, strict: false })
+    expect(code).toBe(1)
+    const parsed = JSON.parse(out.join('')) as { ok: boolean; parseErrors: unknown[] }
+    expect(parsed.ok).toBe(false)
+    expect(JSON.stringify(parsed.parseErrors)).toContain('anchor/alias')
+  })
+
   it('validate는 서버를 부르지 않는다', async () => {
     await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient() })
     const client = stubClient()

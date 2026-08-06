@@ -289,6 +289,19 @@ describe('filesToModel', () => {
     expect(result.issues.some((i) => i.message.includes('테이블 물리명 MBR이 중복'))).toBe(true)
   })
 
+  /**
+   * MBR_DTL.yaml을 **디스크에 복사한 것과 같은 상태**로 만든다 — 아무도 부모로 참조하지
+   * 않는 테이블이라 id 충돌 말고 다른 이슈가 섞이지 않는다.
+   *
+   * 깊은 복사여야 한다. 얕은 전개(`{...file}`)는 `columns` 배열과 그 안의 객체를 두 파일이
+   * **같은 객체로 공유**하게 만드는데, 파일마다 따로 파싱하는 실제 트리에서는 그런 공유가
+   * 생길 수 없다. 그 상태는 alias 검사(같은 객체 재방문)에 걸려 "id 중복"이 아닌 다른
+   * 오류를 부르므로, 테스트가 잡으려는 상황과 어긋난다.
+   */
+  const copiedFile = (tree: FileTree, name: string, logicalName: string): Record<string, unknown> => ({
+    ...structuredClone(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>), name, logicalName,
+  })
+
   it('같은 id가 두 파일에 있으면 issue를 낸다 — 파일 복사가 원본을 조용히 덮어쓴다', () => {
     // 에이전트가 "이것과 비슷한 테이블"을 만들려고 MBR.yaml을 복사해 이름만 바꾼 상황이다.
     // 검사가 없으면 model.tables[tb1]이 뒤 파일로 덮어써져, 새 테이블은 생기지 않고
@@ -296,9 +309,7 @@ describe('filesToModel', () => {
     // MBR_DTL을 복사한다 — 아무도 부모로 참조하지 않는 테이블이라 id 충돌 말고는
     // 다른 이슈가 섞이지 않는다(참조 오류로 우연히 ok:false가 되면 이 테스트는 무의미하다).
     const { tree } = modelToFiles(fullModel())
-    tree['erdd/tables/PAY.yaml'] = {
-      ...(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>), name: 'PAY', logicalName: '결제',
-    }
+    tree['erdd/tables/PAY.yaml'] = copiedFile(tree, 'PAY', '결제')
     const result = filesToModel(tree)
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -312,9 +323,7 @@ describe('filesToModel', () => {
     // push는 newId를 넘겨 id 없는 객체에 uuid를 발급한다 — 그 경로에서도 막아야
     // 파괴적인 반영 전에 걸러진다.
     const { tree } = modelToFiles(fullModel())
-    tree['erdd/tables/PAY.yaml'] = {
-      ...(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>), name: 'PAY', logicalName: '결제',
-    }
+    tree['erdd/tables/PAY.yaml'] = copiedFile(tree, 'PAY', '결제')
     let n = 0
     const result = filesToModel(tree, { newId: () => `gen-${(n += 1)}` })
     expect(result.ok).toBe(false)
@@ -484,6 +493,39 @@ describe('filesToModel — assignedTree (push 멱등성)', () => {
     // 사용자 파일에는 지울 id 자체가 없다 — "id를 지우세요"는 실행 불가능한 지시다.
     expect(result.issues[0]!.message).toContain('anchor/alias')
     expect(result.issues[0]!.message).not.toContain('id를 지우세요')
+  })
+
+  it('newId가 없어도 같은 판정을 낸다 — validate와 push가 갈리면 안 된다', () => {
+    // push는 파일 오류에서 "erdd validate로 확인하세요"라고 안내한다(plan.ts). 그런데
+    // alias 검사가 되쓴 id로만 성립하면 validate(newId 없음)는 같은 파일을 ok:true로
+    // 통과시켜, 그 지시를 따른 사용자·에이전트가 "문제 없음"을 받고 막힌다.
+    // 참조 동일성은 id와 무관하게 보이므로 두 갈래의 판정이 같아야 한다.
+    const shared = { name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT' }
+    const tree = {
+      'erdd/tables/MBR.yaml': { name: 'MBR', logicalName: '회원', columns: [shared, shared] },
+    }
+    const result = filesToModel(tree)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.issues).toHaveLength(1)
+    expect(result.issues[0]!.path).toBe('erdd/tables/MBR.yaml')
+    expect(result.issues[0]!.message).toContain('anchor/alias')
+  })
+
+  it('id를 나르지 않는 값이 두 자리에서 공유돼도 오류가 아니다', () => {
+    // 검사 대상은 "id를 가질 수 있는 항목"이 한 항목으로 합쳐지는 것뿐이다. 두 도메인이
+    // 같은 dialectTypes 매핑을 alias로 공유하는 것 같은 자리는 idOf를 지나지 않으므로
+    // 합쳐질 것이 없다 — 여기까지 오류로 세우면 멀쩡한 파일이 막힌다.
+    const sharedTypes = { postgresql: 'BIGINT' }
+    const result = filesToModel({
+      'erdd/domains.yaml': {
+        domains: [
+          { id: 'd1', name: '식별자', logicalType: 'number', dialectTypes: sharedTypes },
+          { id: 'd2', name: '수량', logicalType: 'number', dialectTypes: sharedTypes },
+        ],
+      },
+    })
+    expect(result.ok).toBe(true)
   })
 
   it('파싱에 실패하면 assignedTree를 내지 않는다', () => {

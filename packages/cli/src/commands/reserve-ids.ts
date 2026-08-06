@@ -24,7 +24,8 @@ import { canonical } from '../tree.js'
  * catch-all에 걸려 code:"NETWORK"가 되는데, 이 CLI의 주 소비자인 에이전트는 code로 분기하므로
  * 파일 권한 문제를 전송 실패로 읽고 같은 명령을 영원히 재시도한다(권한이 그대로면 영원히
  * 실패한다). 읽기 실패를 VALIDATION으로 감싸는 tree.ts의 관례와 같은 자리다 — 파일 IO를 하는
- * 쪽이 자기 실패에 무엇을 하면 되는지를 붙인다.
+ * 쪽이 자기 실패에 무엇을 하면 되는지를 붙인다. 값 비교(`canonical`)가 순환 참조를 만나 던지는
+ * 것도 같은 이유로 `CliError('VALIDATION')`이다.
  *
  * 반환은 실제로 기록한 상대 경로들이다(정렬됨).
  */
@@ -36,7 +37,7 @@ export async function reserveIds(
   for (const [rel, content] of Object.entries(assigned)) {
     // id가 실제로 늘어난 파일만 쓴다. 매번 전부 쓰면 push할 때마다 사용자 트리가 재작성된다.
     // local에 없는 경로는 새 파일이므로 쓴다(비교할 원본이 없다).
-    if (rel in local && canonical(local[rel]) === canonical(content)) continue
+    if (rel in local && canonical(local[rel], rel) === canonical(content, rel)) continue
     const abs = join(cwd, rel)
     try {
       await mkdir(dirname(abs), { recursive: true })
