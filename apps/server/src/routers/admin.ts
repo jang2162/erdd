@@ -39,6 +39,7 @@ export const adminRouter = router({
         }
         const { plain, hash } = issueToken('invitation')
         const id = uuidv7()
+        const expiresAt = tokenExpiry('invitation')
         await ctx.db.transaction(async (tx) => {
           // 재발급은 이전 링크를 죽인다. 두 링크가 동시에 살아 있으면 첫 것이 어디로 갔는지
           // 아무도 모른다. 조직 초대(orgId 있음)는 별개 묶음이라 건드리지 않는다.
@@ -51,11 +52,12 @@ export const adminRouter = router({
             ))
           await tx.insert(invitations).values({
             id, email, orgId: null, orgRole: null, userRole: input.role,
-            tokenHash: hash, expiresAt: tokenExpiry('invitation'), createdBy: ctx.user.id,
+            tokenHash: hash, expiresAt, createdBy: ctx.user.id,
           })
         })
         // 평문은 여기서만 나간다. 이후 조회할 방법은 없다 — 잃으면 재발급이다.
-        return { id, token: plain }
+        // 만료 시각은 함께 준다 — 링크를 전달하는 관리자가 언제까지 유효한지 말할 수 있어야 한다.
+        return { id, token: plain, expiresAt }
       }),
 
     /**
@@ -67,10 +69,19 @@ export const adminRouter = router({
       .input(z.object({ userId: z.string().uuid() }))
       .mutation(async ({ ctx, input }) => {
         const target = (
-          await ctx.db.select({ id: users.id }).from(users).where(eq(users.id, input.userId))
+          await ctx.db.select({ id: users.id, isActive: users.isActive })
+            .from(users).where(eq(users.id, input.userId))
         )[0]
         if (!target) {
           throw new TRPCError({ code: 'NOT_FOUND', message: '사용자를 찾을 수 없습니다' })
+        }
+        // 비활성 계정에는 링크를 내지 않는다. 링크는 동작해 비밀번호를 실제로 바꾸지만 로그인은
+        // isActive에서 막히므로, 관리자는 "재설정해 줬는데 왜 안 되지"를 겪고 원인이 어디에도
+        // 나오지 않는다. 여기서 거절해야 다음 행동(활성화)이 화면에 보인다.
+        if (!target.isActive) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST', message: '비활성 계정입니다 — 먼저 활성화하세요',
+          })
         }
         const { plain, hash } = issueToken('reset')
         const id = uuidv7()
@@ -105,6 +116,48 @@ export const adminRouter = router({
         }
         if (!input.isActive) {
           await ctx.db.delete(sessions).where(eq(sessions.userId, input.userId))
+        }
+        return { ok: true as const }
+      }),
+  }),
+
+  /**
+   * 관리자 초대(= `orgId`가 null인 초대) 전용 조회·취소.
+   *
+   * 조직 초대의 것(`invitation.listForOrg`·`invitation.revoke`)에 합치지 않는다 — **권한 축이
+   * 다르다**(서비스 관리자 vs 그 조직의 매니저). 합치면 한 프로시저가 `orgId` 유무로 권한 판정을
+   * 갈라야 하고, 그 분기는 "orgId를 빼면 관리자 검사로 넘어간다"가 되어 조직 매니저가 관리자
+   * 초대를 건드릴 틈이 된다. 여기서는 두 프로시저 모두 자격이 하나(admin)다.
+   */
+  invitations: router({
+    /** 평문 토큰도 해시도 나가지 않는다 — 링크를 잃으면 조회가 아니라 재발급이다. */
+    list: adminProcedure.query(({ ctx }) =>
+      ctx.db
+        .select({
+          id: invitations.id, email: invitations.email, userRole: invitations.userRole,
+          expiresAt: invitations.expiresAt, usedAt: invitations.usedAt,
+          createdAt: invitations.createdAt,
+        })
+        .from(invitations)
+        .where(isNull(invitations.orgId))
+        .orderBy(invitations.createdAt),
+    ),
+
+    revoke: adminProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        // 조건부 UPDATE다 — 이미 사용된 초대를 되살리지 않고, 조직 초대(orgId 있음)도 건드리지
+        // 못한다. 잘못된 주소로 나간 링크를 7일 내내 죽일 수 없으면 안 된다(설계 3.2 "취소: 가능").
+        const revoked = await ctx.db.update(invitations)
+          .set({ expiresAt: new Date() })
+          .where(and(
+            eq(invitations.id, input.id),
+            isNull(invitations.orgId),
+            isNull(invitations.usedAt),
+          ))
+          .returning({ id: invitations.id })
+        if (revoked.length === 0) {
+          throw new TRPCError({ code: 'CONFLICT', message: '이미 사용되었거나 없는 초대입니다' })
         }
         return { ok: true as const }
       }),

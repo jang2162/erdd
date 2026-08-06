@@ -5,6 +5,8 @@ import { uuidv7 } from 'uuidv7'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
+import { hashToken } from '../auth/token.js'
+import { appRouter } from '../router.js'
 import { invitations, members, organizations, passwordResetTokens, users } from '../db/schema.js'
 
 const url = process.env.DATABASE_URL
@@ -15,6 +17,10 @@ function post(app: FastifyInstance, path: string, token: string, input: unknown)
     headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
   })
 }
+function get(app: FastifyInstance, path: string, token: string, input?: unknown) {
+  const qs = input === undefined ? '' : `?input=${encodeURIComponent(JSON.stringify(input))}`
+  return app.inject({ method: 'GET', url: `/trpc/${path}${qs}`, cookies: { erdd_session: token } })
+}
 /** 세션 쿠키 없이 호출한다 — 초대 수락·비밀번호 재설정은 공개 프로시저다. */
 function postPublic(app: FastifyInstance, path: string, input: unknown) {
   return app.inject({
@@ -22,6 +28,47 @@ function postPublic(app: FastifyInstance, path: string, input: unknown) {
     headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
   })
 }
+
+type ProcedureType = 'query' | 'mutation' | 'subscription'
+
+/**
+ * 라우터에 실제로 등록된 프로시저 전부를 `[점 표기 경로, 종류]`로 준다.
+ * tRPC 11의 `_def.procedures`는 점 표기 경로를 키로 갖는 평평한 레코드다.
+ *
+ * 문자열 상수를 손으로 적어 호출해 보는 방식은 **오타가 통과한다** — 없는 경로를 부르면
+ * 404가 나고, "없어야 한다"는 단언은 그대로 만족된다. 표면을 열거해 전수 비교해야 추가·삭제·
+ * 오타가 모두 깨진다.
+ */
+function procedureEntries(): Array<[string, ProcedureType]> {
+  const procedures = (appRouter as unknown as {
+    _def: { procedures: Record<string, { _def: { type: ProcedureType } }> }
+  })._def.procedures
+  return Object.entries(procedures).map(([path, p]) => [path, p._def.type])
+}
+
+/** admin 라우터의 표면 전체. 이 배열과 실제가 한 글자라도 어긋나면 깨진다. */
+const ADMIN_PATHS = [
+  'admin.users.list',
+  'admin.users.invite',
+  'admin.users.resetLink',
+  'admin.users.setActive',
+  'admin.invitations.list',
+  'admin.invitations.revoke',
+]
+
+/**
+ * 세션 없이 부를 수 있는 프로시저 전부(설계 3.5). 앞의 넷은 이 사이클 이전부터 공개였고,
+ * 뒤의 셋이 설계 3.5가 허용한 셋이다. **여기 없는 공개 프로시저는 규칙 위반이다.**
+ */
+const PUBLIC_PATHS = [
+  'health.ping',
+  'logicalType.parse',
+  'auth.login',
+  'auth.logout',
+  'invitation.peek',
+  'invitation.accept',
+  'auth.resetPassword',
+]
 
 describe.skipIf(!url)('admin.users', () => {
   let app: FastifyInstance
@@ -42,7 +89,25 @@ describe.skipIf(!url)('admin.users', () => {
   async function invite(email: string, role: 'admin' | 'user' = 'user') {
     const res = await post(app, 'admin.users.invite', adminToken, { email, role })
     expect(res.statusCode).toBe(200)
+    return res.json().result.data as { id: string; token: string; expiresAt: string }
+  }
+  /** 팀 조직 하나를 만들고 그 id를 준다(관리자가 owner가 된다). */
+  async function makeTeamOrg(name = '팀A') {
+    const res = await post(app, 'org.create', adminToken, { name })
+    expect(res.statusCode).toBe(200)
+    return res.json().result.data.id as string
+  }
+  /** 그 조직의 조직 초대를 만든다 — 관리자 초대(orgId null)와 대비되는 별개 묶음이다. */
+  async function orgInvite(orgId: string, email: string) {
+    const res = await post(app, 'invitation.create', adminToken, {
+      orgId, email, orgRole: 'member',
+    })
+    expect(res.statusCode).toBe(200)
     return res.json().result.data as { id: string; token: string }
+  }
+  /** 초대 링크가 아직 살아 있는지 공개 경로로 확인한다(200이면 살아 있다, 400이면 죽었다). */
+  async function peekStatus(token: string) {
+    return (await postPublic(app, 'invitation.peek', { token })).statusCode
   }
   /** 재설정 링크를 발급한다(정상 경로). */
   async function resetLink(userId: string) {
@@ -61,6 +126,8 @@ describe.skipIf(!url)('admin.users', () => {
   it('invite가 계정을 만들지 않고 초대만 만든다', async () => {
     const created = await invite('U1@Test.dev')
     expect(created.token.startsWith('erdd_inv_')).toBe(true)
+    // 만료 시각도 함께 나간다 — 링크를 전달하는 관리자가 언제까지 유효한지 말할 수 있어야 한다.
+    expect(new Date(created.expiresAt).getTime()).toBeGreaterThan(Date.now())
 
     // 계정은 아직 없다 — 관리자 하나뿐이다. 초대는 "계정을 만들 자격"이지 계정이 아니다.
     expect(await app.db!.select().from(users)).toHaveLength(1)
@@ -75,6 +142,9 @@ describe.skipIf(!url)('admin.users', () => {
   })
 
   it('invite로 만든 초대를 수락하면 개인 조직만 생기고 팀 조직에는 안 들어간다', async () => {
+    // 팀 조직이 하나도 없으면 "팀 조직에는 안 들어간다"는 검증되지 않는다 — 들어갈 팀이 없으니
+    // 어떤 구현이어도 통과한다. 실제로 존재하는 팀을 두고 그 멤버 목록을 본다.
+    const teamOrgId = await makeTeamOrg()
     const created = await invite('u1@test.dev')
     expect((await postPublic(app, 'invitation.accept', {
       token: created.token, name: '사용자1', password: 'password-1',
@@ -83,7 +153,7 @@ describe.skipIf(!url)('admin.users', () => {
     // 옛 admin.users.create가 보장하던 것 — 계정과 개인 조직이 함께 생긴다.
     await loginAs(app, 'u1@test.dev', 'password-1')
     const orgs = await app.db!.select().from(organizations)
-    expect(orgs).toHaveLength(2) // 관리자 개인 조직 + 신규 개인 조직
+    expect(orgs).toHaveLength(3) // 관리자 개인 조직 + 팀A + 신규 개인 조직
 
     const user = (await app.db!.select().from(users).where(eq(users.email, 'u1@test.dev')))[0]!
     const mine = await app.db!.select().from(members).where(eq(members.userId, user.id))
@@ -91,6 +161,10 @@ describe.skipIf(!url)('admin.users', () => {
     expect(mine).toHaveLength(1)
     expect(mine[0]!.role).toBe('owner')
     expect(orgs.find((o) => o.id === mine[0]!.orgId)!.kind).toBe('personal')
+
+    // 팀 쪽에서도 본다 — 팀A에는 만든 사람(관리자)뿐이고 수락자는 없다.
+    const teamMembers = await app.db!.select().from(members).where(eq(members.orgId, teamOrgId))
+    expect(teamMembers.map((m) => m.userId)).toEqual([adminId])
   })
 
   it('invite의 서비스 역할이 수락한 계정에 그대로 적용된다', async () => {
@@ -126,6 +200,19 @@ describe.skipIf(!url)('admin.users', () => {
 
     expect((await postPublic(app, 'invitation.peek', { token: first.token })).statusCode).toBe(400)
     expect((await postPublic(app, 'invitation.peek', { token: second.token })).statusCode).toBe(200)
+  })
+
+  it('invite 재발급이 같은 이메일의 조직 초대는 죽이지 않는다', async () => {
+    // 관리자 재발급의 무효화 범위는 (email, orgId is null)이다. 조직 초대는 별개 묶음이라
+    // 관리자가 계정 초대를 다시 내는 것만으로 팀 초대까지 쓸려 가면 안 된다.
+    const orgId = await makeTeamOrg()
+    const teamInv = await orgInvite(orgId, 'both@test.dev')
+    const first = await invite('both@test.dev')
+    const second = await invite('both@test.dev')
+
+    expect(await peekStatus(first.token)).toBe(400)   // 관리자 초대끼리는 죽인다
+    expect(await peekStatus(second.token)).toBe(200)
+    expect(await peekStatus(teamInv.token)).toBe(200) // 조직 초대는 그대로 살아 있다
   })
 
   it('resetLink는 링크만 낸다 — 비밀번호도 세션도 그대로다', async () => {
@@ -172,6 +259,77 @@ describe.skipIf(!url)('admin.users', () => {
     expect(await app.db!.select().from(passwordResetTokens)).toHaveLength(0)
   })
 
+  it('resetLink가 비활성 계정을 거절한다', async () => {
+    const targetId = await makeTarget()
+    expect((await post(app, 'admin.users.setActive', adminToken, {
+      userId: targetId, isActive: false,
+    })).statusCode).toBe(200)
+
+    // 링크를 내주면 비밀번호는 실제로 바뀌지만 로그인은 isActive에서 막힌다. 관리자는
+    // "재설정해 줬는데 왜 안 되지"를 겪고 원인이 어디에도 나오지 않는다.
+    const res = await post(app, 'admin.users.resetLink', adminToken, { userId: targetId })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error.message).toBe('비활성 계정입니다 — 먼저 활성화하세요')
+    // 거절이 진짜인지 본다 — 400을 내면서 토큰을 남기면 링크가 화면에 안 뜰 뿐 살아 있다.
+    expect(await app.db!.select().from(passwordResetTokens)).toHaveLength(0)
+  })
+
+  it('관리자 초대를 취소하면 그 링크가 죽는다 — 조직 초대는 이 경로로 못 건드린다', async () => {
+    const orgId = await makeTeamOrg()
+    const teamInv = await orgInvite(orgId, 'team@test.dev')
+    const created = await invite('gone@test.dev')
+    expect(await peekStatus(created.token)).toBe(200)
+
+    expect((await post(app, 'admin.invitations.revoke', adminToken, { id: created.id })).statusCode)
+      .toBe(200)
+    // 잘못된 주소로 나간 링크를 7일 내내 죽일 수 없으면 안 된다(설계 3.2 "취소: 가능").
+    expect(await peekStatus(created.token)).toBe(400)
+
+    // 조직 초대는 이 경로의 대상이 아니다 — 그 조직 매니저의 invitation.revoke 몫이다.
+    const other = await post(app, 'admin.invitations.revoke', adminToken, { id: teamInv.id })
+    expect(other.statusCode).toBe(409)
+    expect(await peekStatus(teamInv.token)).toBe(200)
+  })
+
+  it('관리자 초대 목록에 평문 토큰이 없고 조직 초대가 섞이지 않는다', async () => {
+    const orgId = await makeTeamOrg()
+    const teamInv = await orgInvite(orgId, 'team@test.dev')
+    const created = await invite('mine@test.dev', 'admin')
+
+    const res = await get(app, 'admin.invitations.list', adminToken)
+    expect(res.statusCode).toBe(200)
+    const rows = res.json().result.data as Array<{
+      id: string; email: string; userRole: string; expiresAt: string; usedAt: string | null
+    }>
+    // 관리자 초대(orgId null)만 나온다. 조직 초대는 invitation.listForOrg가 담당한다.
+    expect(rows.map((r) => r.id)).toEqual([created.id])
+    expect(rows[0]!.email).toBe('mine@test.dev')
+    expect(rows[0]!.userRole).toBe('admin')
+    expect(rows[0]!.usedAt).toBeNull()
+    expect(new Date(rows[0]!.expiresAt).getTime()).toBeGreaterThan(Date.now())
+
+    // 평문도 해시도 목록으로 새지 않는다 — 링크를 잃으면 조회가 아니라 재발급이다.
+    expect(res.body).not.toContain(created.token)
+    expect(res.body).not.toContain(hashToken(created.token))
+    expect(res.body).not.toContain(teamInv.token)
+  })
+
+  it('조직 매니저는 관리자 초대를 조회하지도 취소하지도 못한다', async () => {
+    const created = await invite('gone@test.dev')
+    // 자기 조직의 초대는 다루는 사람이다 — 그래도 권한 축이 달라 관리자 초대에는 닿지 않는다.
+    await createAccount(app.db!, {
+      email: 'mgr@test.dev', name: '매니저', password: 'password-m', role: 'user',
+    })
+    const mgrToken = await loginAs(app, 'mgr@test.dev', 'password-m')
+    expect((await post(app, 'org.create', mgrToken, { name: '팀M' })).statusCode).toBe(200)
+
+    expect((await get(app, 'admin.invitations.list', mgrToken)).statusCode).toBe(403)
+    expect((await post(app, 'admin.invitations.revoke', mgrToken, { id: created.id })).statusCode)
+      .toBe(403)
+    // 거절이 진짜인지 본다 — 403을 내면서 만료시키면 아무도 모른다.
+    expect(await peekStatus(created.token)).toBe(200)
+  })
+
   it('rejects non-admin callers with 403', async () => {
     await createAccount(app.db!, {
       email: 'u2@test.dev', name: '일반', password: 'password-2', role: 'user',
@@ -213,6 +371,28 @@ describe.skipIf(!url)('admin.users', () => {
     // 살아 있었다면 계정이 생기거나 관리자 비밀번호가 바뀌었을 것이다.
     expect(await app.db!.select().from(users)).toHaveLength(1)
     await loginAs(app, 'admin@test.dev', 'admin-pass-1')
+  })
+
+  it('admin 라우터의 표면이 정확히 이 여섯이다', () => {
+    // 위 404 단언은 "적어 둔 경로가 없다"만 본다 — 경로 상수에 오타가 나도 통과하고, 새 프로시저가
+    // 하나 늘어도 아무도 모른다. 표면을 열거해 전수 비교하면 추가·삭제·오타가 전부 여기서 깨진다.
+    const paths = procedureEntries().map(([p]) => p).filter((p) => p.startsWith('admin.'))
+    expect([...paths].sort()).toEqual([...ADMIN_PATHS].sort())
+  })
+
+  it('세션 없이 부를 수 있는 프로시저가 설계 3.5의 목록과 정확히 같다', async () => {
+    // 설계 3.5의 "새 프로시저의 기본은 authedProcedure(fail-closed)"를 라우터 전수로 잠근다.
+    // 새 프로시저를 dbProcedure로 잘못 열면 목록에 없는 경로가 401을 피해 여기서 잡힌다.
+    const reachable: string[] = []
+    for (const [path, type] of procedureEntries()) {
+      // 입력은 일부러 비운다. 인증 미들웨어가 입력 파싱보다 먼저 돌므로 보호된 경로는 401이고,
+      // 공개 경로는 (입력이 필요하면) 400·(아니면) 200이 되어 401이 아닌 것으로 갈린다.
+      const res = type === 'query'
+        ? await app.inject({ method: 'GET', url: `/trpc/${path}` })
+        : await postPublic(app, path, {})
+      if (res.statusCode !== 401) reachable.push(path)
+    }
+    expect(reachable.sort()).toEqual([...PUBLIC_PATHS].sort())
   })
 
   it('setActive(false) blocks login and self-deactivation is rejected', async () => {
