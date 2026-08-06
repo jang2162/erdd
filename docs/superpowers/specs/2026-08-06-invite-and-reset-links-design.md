@@ -164,11 +164,16 @@ nullable이 되어 **"둘 다 null"과 "둘 다 채워진" 불가능한 상태�
 ### 5.1 `services/one-time-token.ts` (신규) — 두 토큰이 공유하는 것
 
 ```ts
-export function issueToken(prefix: 'inv' | 'rst'): { plain: string; hash: string }
-export function tokenExpiry(kind: 'invitation' | 'reset'): Date       // 7일 / 24시간
+export type TokenKind = 'invitation' | 'reset'
+
+export function issueToken(kind: TokenKind): { plain: string; hash: string }
+export function tokenExpiry(kind: TokenKind): Date                    // 7일 / 24시간
 /** 만료·사용됨을 한 곳에서 판정한다. 살아 있지 않으면 사유를 담아 던진다. */
 export function assertLive(row: { expiresAt: Date; usedAt: Date | null }): void
 ```
+
+세 함수가 같은 `TokenKind`를 받는다 — 접두(`erdd_inv_`/`erdd_rst_`)는 이 함수 안에서 종류로부터
+정해진다. 호출자가 접두 문자열을 직접 넘기면 `issueToken`과 `tokenExpiry`의 인자 어휘가 갈린다.
 
 만료·1회용 판정이 두 곳에 흩어지면 한쪽만 고쳐질 수 있다. `assertLive` 하나만 쓴다.
 
