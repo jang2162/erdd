@@ -1,9 +1,11 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 
 export const TOKEN_PREFIX = 'erdd_pat_'
+export const INVITE_PREFIX = 'erdd_inv_'
+export const RESET_PREFIX = 'erdd_rst_'
 
-export function generateToken(): string {
-  return TOKEN_PREFIX + randomBytes(32).toString('base64url')
+export function generateToken(prefix: string = TOKEN_PREFIX): string {
+  return prefix + randomBytes(32).toString('base64url')
 }
 
 /**

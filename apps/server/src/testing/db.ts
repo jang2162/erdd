@@ -1,6 +1,7 @@
 import pg from 'pg'
 
 export const TEST_TABLES = [
+  'invitations', 'password_reset_tokens',
   'promotion_requests',
   'revisions', 'snapshots',
   'model_columns', 'model_indexes', 'model_relationships', 'model_notes',
