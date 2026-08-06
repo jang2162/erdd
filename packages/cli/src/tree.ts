@@ -7,8 +7,14 @@ import { CliError } from './output.js'
 
 const TABLES_DIR = `${TREE_ROOT}/tables`
 
-/** 키 순서와 무관하게 값이 같은지 본다 — YAML 재작성으로 순서가 흔들려도 수정으로 잡지 않는다. */
-export function canonical(v: unknown): string {
+/**
+ * 키 순서와 무관하게 값이 같은지 본다 — YAML 재작성으로 순서가 흔들려도 수정으로 잡지 않는다.
+ *
+ * `undefined`를 받으면 `JSON.stringify`가 `undefined`를 내므로 반환 타입도 그렇게 적는다
+ * (`lib.es5.d.ts`의 `stringify(value: any): string`이 감추는 사실이다). 지금 두 호출자는
+ * 모두 키가 있는지 먼저 확인하고 비교만 하므로 이 갈래에 닿지 않는다.
+ */
+export function canonical(v: unknown): string | undefined {
   const walk = (x: unknown): unknown => {
     if (Array.isArray(x)) return x.map(walk)
     if (typeof x === 'object' && x !== null) {
