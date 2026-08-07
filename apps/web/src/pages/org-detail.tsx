@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { DIALECTS, type Dialect } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { DIALECT_LABEL } from '@/lib/labels'
+import { INVITATION_STATUS_LABEL, invitationStatus } from '@/lib/invitation-status'
+import { OneTimeLink } from '@/components/one-time-link'
 import { PromotionRequestsSection } from '@/components/promotion-requests-section'
 import { ResourceLibraryManager } from '@/components/resource-library-manager'
 import { Badge } from '@/components/ui/badge'
@@ -188,6 +190,117 @@ function MembersSection({ orgId, myRole }: { orgId: string; myRole: string }) {
   )
 }
 
+/**
+ * 조직 초대 섹션. **Org Owner/Admin에게만 보인다** — 서버도 `requireOrgManager`로 막지만,
+ * 멤버에게 보여 주면 누를 때마다 403이 나는 폼이 된다.
+ *
+ * 여기 목록은 **이 조직의 초대만**이다(`orgId`가 이 조직). 관리자 초대(`orgId`가 null)는
+ * 다른 묶음이고 관리자 화면에서만 보인다(설계 §3.2).
+ */
+function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: boolean }) {
+  const trpc = useTRPC()
+  const queryClient = useQueryClient()
+  const [email, setEmail] = useState('')
+  const [orgRole, setOrgRole] = useState<'admin' | 'member'>('member')
+  // 발급 결과는 다음 발급까지 남긴다 — 평문 토큰은 생성 응답에서만 나오므로 여기서 지우면
+  // 다시 볼 방법이 없다(목록에도 없다).
+  const [issued, setIssued] = useState<string | null>(null)
+  const listOptions = trpc.invitation.listForOrg.queryOptions({ orgId })
+  const list = useQuery({ ...listOptions, enabled: canManage })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: listOptions.queryKey })
+  const create = useMutation(
+    trpc.invitation.create.mutationOptions({
+      onSuccess: async (data) => {
+        setIssued(data.token)
+        setEmail('')
+        await invalidate()
+      },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
+  const revoke = useMutation(
+    trpc.invitation.revoke.mutationOptions({
+      onSuccess: async () => { toast.success('초대를 취소했습니다'); await invalidate() },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
+
+  if (!canManage) return null
+
+  return (
+    <section className="grid gap-3">
+      <h2 className="text-lg font-semibold">초대</h2>
+      <p className="text-sm text-muted-foreground">
+        아직 계정이 없는 사람을 부릅니다. 이미 가입한 사람은 위 멤버 추가를 쓰세요.
+      </p>
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => { e.preventDefault(); create.mutate({ orgId, email, orgRole }) }}
+      >
+        <div className="grid gap-1">
+          <Label htmlFor="invite-email" className="text-xs">초대할 이메일</Label>
+          <Input id="invite-email" type="email" required placeholder="user@example.com"
+            className="w-64 font-mono" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <Select value={orgRole} onValueChange={(v) => setOrgRole(v as 'admin' | 'member')}>
+          <SelectTrigger className="w-28" aria-label="초대 역할"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="member">Member</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button type="submit" disabled={create.isPending}>초대 링크 만들기</Button>
+      </form>
+      {issued !== null && <OneTimeLink kind="invite" token={issued} />}
+      {list.isError && <p role="alert" className="text-destructive">{list.error.message}</p>}
+      <div className="rounded-lg border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>이메일</TableHead>
+              <TableHead>역할</TableHead>
+              <TableHead>상태</TableHead>
+              <TableHead>만료</TableHead>
+              <TableHead className="text-right">동작</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(list.data ?? []).map((inv) => {
+              const status = invitationStatus(inv)
+              return (
+                <TableRow key={inv.id}>
+                  <TableCell className="font-mono">{inv.email}</TableCell>
+                  <TableCell><Badge variant="secondary">{inv.orgRole}</Badge></TableCell>
+                  <TableCell>
+                    {status === 'pending'
+                      ? <Badge variant="outline">{INVITATION_STATUS_LABEL[status]}</Badge>
+                      : <Badge variant="secondary">{INVITATION_STATUS_LABEL[status]}</Badge>}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(inv.expiresAt).toLocaleString('ko-KR')}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {/* 취소는 아직 살아 있는 초대에만 — 서버도 조건부 UPDATE로 나머지를 거절한다. */}
+                    {status === 'pending' && (
+                      <Button variant="outline" size="sm" disabled={revoke.isPending}
+                        onClick={() => revoke.mutate({ orgId, id: inv.id })}>
+                        취소
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+        {!list.isPending && !list.isError && (list.data ?? []).length === 0 && (
+          <p className="p-8 text-center text-muted-foreground">보낸 초대가 없습니다.</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export function OrgDetailPage() {
   const { orgId = '' } = useParams()
   const trpc = useTRPC()
@@ -251,6 +364,13 @@ export function OrgDetailPage() {
       )}
 
       {org && org.kind === 'team' && <MembersSection orgId={orgId} myRole={org.role} />}
+
+      {org && org.kind === 'team' && (
+        <InvitationsSection
+          orgId={orgId}
+          canManage={org.role === 'owner' || org.role === 'admin'}
+        />
+      )}
 
       {org && (
         <PromotionRequestsSection
