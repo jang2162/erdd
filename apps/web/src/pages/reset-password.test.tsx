@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { TRANSIENT_FAILURE_MESSAGE } from '@/lib/link-error'
 import { ResetPasswordPage } from './reset-password.js'
 
 const TOKEN = 'erdd_rst_TESTTOKEN'
@@ -89,5 +90,47 @@ describe('ResetPasswordPage', () => {
     await waitFor(() => expect(screen.getByText('이미 사용된 링크입니다')).toBeDefined())
     expect(screen.getByText(/관리자에게/)).toBeDefined()
     expect(screen.queryByLabelText('새 비밀번호')).toBeNull()
+  })
+
+  // 폼을 지우는 판정은 "오류가 있는가"가 아니라 "다시 제출해도 결과가 같은가"다. 네트워크가
+  // 끊긴 것뿐이면 토큰은 아직 살아 있다 — 여기서 폼을 지우면 살아 있는 링크가 죽은 것으로 보이고
+  // 회복 경로가 새로고침뿐이 된다.
+  it('keeps the form and offers a retry when the network drops', async () => {
+    renderReset({ 'auth.resetPassword': () => ({ offline: true }) })
+    await userEvent.type(screen.getByLabelText('새 비밀번호'), 'password-1')
+    await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'password-1')
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 설정' }))
+    await waitFor(() => expect(screen.getByText(TRANSIENT_FAILURE_MESSAGE)).toBeDefined())
+    // 죽은 링크 안내가 아니어야 한다 — 새 링크를 요청할 이유가 없다.
+    expect(screen.queryByText(/관리자에게/)).toBeNull()
+    expect(screen.getByRole('button', { name: '비밀번호 설정' })).toBeDefined()
+    expect((screen.getByLabelText('새 비밀번호') as HTMLInputElement).value).toBe('password-1')
+  })
+
+  // 5xx도 같다. `data`가 없는 네트워크 오류만 통과시키는 판정으로는 이것이 잡히지 않는다.
+  it('keeps the form when the server answers 500', async () => {
+    renderReset({
+      'auth.resetPassword': () => ({ error: { code: -32603, message: 'Internal server error' } }),
+    })
+    await userEvent.type(screen.getByLabelText('새 비밀번호'), 'password-1')
+    await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'password-1')
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 설정' }))
+    await waitFor(() => expect(screen.getByText(TRANSIENT_FAILURE_MESSAGE)).toBeDefined())
+    expect(screen.queryByText(/관리자에게/)).toBeNull()
+    expect(screen.getByLabelText('새 비밀번호')).toBeDefined()
+  })
+
+  it('resubmits after a transient failure and goes to /login', async () => {
+    const reset = vi.fn()
+      .mockReturnValueOnce({ offline: true })
+      .mockReturnValue({ data: { ok: true } })
+    renderReset({ 'auth.resetPassword': reset })
+    await userEvent.type(screen.getByLabelText('새 비밀번호'), 'password-1')
+    await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'password-1')
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 설정' }))
+    await waitFor(() => expect(screen.getByText(TRANSIENT_FAILURE_MESSAGE)).toBeDefined())
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 설정' }))
+    await waitFor(() => expect(screen.getByText('로그인 화면')).toBeDefined())
+    expect(reset).toHaveBeenCalledTimes(2)
   })
 })

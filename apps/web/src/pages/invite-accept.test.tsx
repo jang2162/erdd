@@ -8,6 +8,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { TRANSIENT_FAILURE_MESSAGE } from '@/lib/link-error'
 import { InviteAcceptPage } from './invite-accept.js'
 
 const TOKEN = 'erdd_inv_TESTTOKEN'
@@ -31,7 +32,7 @@ function renderInvite(
       </TRPCProvider>
     </QueryClientProvider>
   )
-  render(opts.strict ? <StrictMode>{tree}</StrictMode> : tree)
+  return render(opts.strict ? <StrictMode>{tree}</StrictMode> : tree)
 }
 
 afterEach(() => {
@@ -119,10 +120,11 @@ describe('InviteAcceptPage', () => {
   })
 
   // peek과 accept 사이에 초대가 죽거나(취소·재발급) 그 이메일이 가입할 수 있다.
+  // 서버는 "이미 가입한 이메일"에 CONFLICT(-32009)를 준다(`invitation.accept`).
   it('shows the reason and hides the form when accept is rejected', async () => {
     renderInvite({
       'invitation.peek': () => ({ data: PEEK_OK }),
-      'invitation.accept': () => ({ error: { code: -32600, message: '이미 가입한 이메일입니다' } }),
+      'invitation.accept': () => ({ error: { code: -32009, message: '이미 가입한 이메일입니다' } }),
     })
     await waitFor(() => expect(screen.getByText('new@test.dev')).toBeDefined())
     await userEvent.type(screen.getByLabelText('이름'), '신규')
@@ -140,5 +142,53 @@ describe('InviteAcceptPage', () => {
     })
     await waitFor(() => expect(screen.getByText('solo@test.dev')).toBeDefined())
     expect(screen.queryByText(/조직/)).toBeNull()
+  })
+
+  // peek이 네트워크로 실패한 것은 토큰이 죽었다는 뜻이 아니다. 여기서 죽은 링크 안내를 띄우면
+  // 사용자는 헛되이 새 링크를 요청하고, 마운트 1회 가드 때문에 다시 시도할 길도 없다.
+  it('offers a retry instead of a dead-link notice when peek fails transiently', async () => {
+    renderInvite({ 'invitation.peek': () => ({ offline: true }) })
+    await waitFor(() => expect(screen.getByText(TRANSIENT_FAILURE_MESSAGE)).toBeDefined())
+    expect(screen.queryByText(/관리자에게/)).toBeNull()
+    expect(screen.getByRole('button', { name: '다시 시도' })).toBeDefined()
+  })
+
+  it('peeks again when the retry button is pressed', async () => {
+    const peeked = vi.fn()
+      .mockReturnValueOnce({ offline: true })
+      .mockReturnValue({ data: PEEK_OK })
+    renderInvite({ 'invitation.peek': peeked })
+    await waitFor(() => expect(screen.getByText(TRANSIENT_FAILURE_MESSAGE)).toBeDefined())
+    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    await waitFor(() => expect(screen.getByText('new@test.dev')).toBeDefined())
+    expect(peeked).toHaveBeenCalledTimes(2)
+  })
+
+  // 최악의 변형이 여기 있다 — accept가 서버에서 커밋된 뒤 응답만 유실되면 계정은 만들어졌는데
+  // 화면은 "링크가 죽었다"고 말한다. 폼과 입력한 이름을 유지하고 다시 제출할 수 있어야 한다.
+  it('keeps the form and the typed name when accept fails transiently', async () => {
+    const accepted = vi.fn()
+      .mockReturnValueOnce({ offline: true })
+      .mockReturnValue({ data: { ok: true, email: 'new@test.dev' } })
+    renderInvite({ 'invitation.peek': () => ({ data: PEEK_OK }), 'invitation.accept': accepted })
+    await waitFor(() => expect(screen.getByText('new@test.dev')).toBeDefined())
+    await userEvent.type(screen.getByLabelText('이름'), '신규')
+    await userEvent.type(screen.getByLabelText('비밀번호'), 'password-1')
+    await userEvent.type(screen.getByLabelText('비밀번호 확인'), 'password-1')
+    await userEvent.click(screen.getByRole('button', { name: '계정 만들기' }))
+    await waitFor(() => expect(screen.getByText(TRANSIENT_FAILURE_MESSAGE)).toBeDefined())
+    expect(screen.queryByText(/관리자에게/)).toBeNull()
+    expect((screen.getByLabelText('이름') as HTMLInputElement).value).toBe('신규')
+    await userEvent.click(screen.getByRole('button', { name: '계정 만들기' }))
+    await waitFor(() => expect(screen.getByText('로그인 화면')).toBeDefined())
+    expect(accepted).toHaveBeenCalledTimes(2)
+  })
+
+  // 비밀번호 관리자가 새 비밀번호를 어느 계정에 묶을지 알려면 username 필드가 폼 안에 있어야 한다.
+  it('carries the invited email as a username field for password managers', async () => {
+    const { container } = renderInvite({ 'invitation.peek': () => ({ data: PEEK_OK }) })
+    await waitFor(() => expect(screen.getByText('new@test.dev')).toBeDefined())
+    const username = container.querySelector<HTMLInputElement>('form input[autocomplete="username"]')
+    expect(username?.value).toBe('new@test.dev')
   })
 })

@@ -1,6 +1,33 @@
 import { vi } from 'vitest'
 
-type Handler = (input: unknown) => { data?: unknown; error?: { code: number; message: string } }
+type Handler = (input: unknown) => {
+  data?: unknown
+  error?: { code: number; message: string }
+  /**
+   * 응답 대신 **fetch 자체를 거절시킨다** — 네트워크 단절·프록시 끊김처럼 요청이 서버에 닿았는지도
+   * 알 수 없는 경우다. 브라우저가 내는 것과 같은 `TypeError('Failed to fetch')`로 거절한다.
+   * tRPC는 이것을 `data`가 없는 `TRPCClientError`로 감싸므로, 오류 코드로 종료성을 판정하는
+   * 화면(초대 수락·비밀번호 재설정)에서 "죽은 링크"와 갈라진다.
+   */
+  offline?: true
+}
+
+/**
+ * JSON-RPC 코드 → tRPC 오류 키·HTTP 상태. **서버의 `getErrorShape`가 실제로 내는 표와 같다**
+ * (2026-08-07 `@trpc/server` 11.18.0으로 실행해 확인: BAD_REQUEST → -32600/400,
+ * CONFLICT → -32009/409, INTERNAL_SERVER_ERROR → -32603/500).
+ * `data.code`를 고정 문자열로 두면 코드로 갈라지는 화면을 이 목으로 검증할 수 없다.
+ */
+const ERROR_CODES: Record<number, readonly [key: string, httpStatus: number]> = {
+  [-32600]: ['BAD_REQUEST', 400],
+  [-32603]: ['INTERNAL_SERVER_ERROR', 500],
+  [-32001]: ['UNAUTHORIZED', 401],
+  [-32003]: ['FORBIDDEN', 403],
+  [-32004]: ['NOT_FOUND', 404],
+  [-32009]: ['CONFLICT', 409],
+  [-32012]: ['PRECONDITION_FAILED', 412],
+  [-32029]: ['TOO_MANY_REQUESTS', 429],
+}
 
 /**
  * tRPC httpBatchLink 요청을 경로별로 스텁한다.
@@ -18,13 +45,17 @@ export function mockTrpcFetch(handlers: Record<string, Handler>) {
       const parsed = JSON.parse(raw) as Record<string, unknown>
       return isBatch ? parsed : { 0: parsed }
     })()
+    const shape = (code: number, message: string) => {
+      const [key, httpStatus] = ERROR_CODES[code] ?? ['INTERNAL_SERVER_ERROR', 500]
+      return { error: { code, message, data: { code: key, httpStatus } } }
+    }
     const results = paths.map((path, i) => {
       const handler = handlers[path]
-      if (!handler) return { error: { code: -32004, message: `no handler: ${path}`, data: { httpStatus: 404 } } }
+      if (!handler) return shape(-32004, `no handler: ${path}`)
       const out = handler(inputs[String(i)])
-      if (out.error) {
-        return { error: { code: out.error.code, message: out.error.message, data: { httpStatus: out.error.code === -32001 ? 401 : 400, code: 'ERROR' } } }
-      }
+      // 배치 전체를 거절시킨다 — 실제 네트워크 단절도 응답 하나만 골라 잃지 않는다.
+      if (out.offline) throw new TypeError('Failed to fetch')
+      if (out.error) return shape(out.error.code, out.error.message)
       return { result: { data: out.data } }
     })
     const body = isBatch ? results : results[0]
