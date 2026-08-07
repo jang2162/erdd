@@ -31,12 +31,16 @@ function InviteAccountDialog() {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<'admin' | 'user'>('user')
   // 발급 결과는 다이얼로그를 닫을 때까지 남긴다 — 평문 토큰은 이 응답에서만 나오므로
-  // 성공하자마자 닫으면 관리자가 링크를 잃는다.
-  const [issued, setIssued] = useState<{ token: string; expiresAt: Date | string } | null>(null)
+  // 성공하자마자 닫으면 관리자가 링크를 잃는다. **수신자 이메일도 함께 들고 있는다** — 링크는
+  // 그 이메일에 묶여 있고(수락하면 이 주소로 계정이 생긴다) 발급 성공 시 입력은 비워지므로,
+  // 여기서 담지 않으면 화면에 "누구에게 줄 링크인지"가 남지 않는다.
+  const [issued, setIssued] = useState<
+    { token: string; email: string; expiresAt: Date | string } | null
+  >(null)
   const invite = useMutation(
     trpc.admin.users.invite.mutationOptions({
-      onSuccess: async (data) => {
-        setIssued({ token: data.token, expiresAt: data.expiresAt })
+      onSuccess: async (data, variables) => {
+        setIssued({ token: data.token, email: variables.email, expiresAt: data.expiresAt })
         setEmail(''); setRole('user')
         await queryClient.invalidateQueries({ queryKey: trpc.admin.invitations.list.queryKey() })
       },
@@ -61,7 +65,10 @@ function InviteAccountDialog() {
         </DialogHeader>
         {issued !== null ? (
           <div className="grid gap-4">
-            <OneTimeLink kind="invite" token={issued.token} expiresAt={issued.expiresAt} />
+            <OneTimeLink
+              kind="invite" token={issued.token}
+              recipient={issued.email} expiresAt={issued.expiresAt}
+            />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>닫기</Button>
             </DialogFooter>
@@ -107,10 +114,12 @@ function InviteAccountDialog() {
 function ResetLinkDialog({ userId, email }: { userId: string; email: string }) {
   const trpc = useTRPC()
   const [open, setOpen] = useState(false)
-  const [issued, setIssued] = useState<string | null>(null)
+  // 재설정 링크는 24시간짜리다 — 초대(7일)보다 훨씬 짧고 목록 화면도 없어서, 이 상자가
+  // 기한을 말하지 않으면 관리자가 확인할 자리가 어디에도 없다. 그래서 만료도 함께 들고 있는다.
+  const [issued, setIssued] = useState<{ token: string; expiresAt: Date | string } | null>(null)
   const resetLink = useMutation(
     trpc.admin.users.resetLink.mutationOptions({
-      onSuccess: (data) => setIssued(data.token),
+      onSuccess: (data) => setIssued({ token: data.token, expiresAt: data.expiresAt }),
       onError: (err) => toast.error(err.message),
     }),
   )
@@ -129,7 +138,7 @@ function ResetLinkDialog({ userId, email }: { userId: string; email: string }) {
         </DialogHeader>
         {issued !== null ? (
           <div className="grid gap-4">
-            <OneTimeLink kind="reset" token={issued} />
+            <OneTimeLink kind="reset" token={issued.token} expiresAt={issued.expiresAt} />
             <p className="text-sm text-muted-foreground">
               이 링크를 사용자에게 전달하세요. 사용자가 링크를 열어 새 비밀번호를 정해야
               비밀번호가 바뀝니다.
@@ -246,8 +255,10 @@ export function AdminPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">계정 관리</h1>
+          {/* 초대는 계정을 만들지 않는다 — 수락자가 만든다(같은 화면의 다이얼로그 설명과 같은 말). */}
           <p className="text-sm text-muted-foreground">
-            초대 링크로 계정을 만들고 사용 상태를 관리합니다. 비밀번호는 본인만 정합니다.
+            초대 링크를 만들어 사람을 부르고, 만들어진 계정의 사용 상태를 관리합니다.
+            계정은 초대를 수락한 본인이 만들고 비밀번호도 본인만 정합니다.
           </p>
         </div>
         <InviteAccountDialog />

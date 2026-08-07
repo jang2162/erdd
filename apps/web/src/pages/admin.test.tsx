@@ -46,16 +46,30 @@ function renderAdmin(handlers: Parameters<typeof mockTrpcFetch>[0]) {
 }
 
 /**
- * **비밀번호를 받는 입력이 화면 어디에도 없다**(설계 §3.1). 두 갈래로 본다 — `type="password"`
- * 입력과, 라벨에 "비밀번호"가 붙은 입력. 옛 폼(`초기 비밀번호`)은 평문 `type` 없는 Input이었으므로
- * 앞의 하나만 보면 그것을 되살려도 잡히지 않는다.
+ * **비밀번호를 받는 입력이 화면 어디에도 없다**(설계 §3.1). 세 갈래로 본다 — `type="password"`
+ * 입력, 라벨이 비밀번호를 가리키는 입력, `autocomplete`가 `-password`로 끝나는 입력.
+ * 옛 폼(`초기 비밀번호`)은 평문 `type` 없는 Input이었으므로 첫 갈래만 보면 그것을 되살려도
+ * 잡히지 않는다.
+ *
+ * 라벨 갈래는 문구를 넓게 본다 — `비밀번호`만 보면 라벨을 `초기 암호`로 바꾼 같은 입력이 그대로
+ * 통과했다(실측). 라벨은 자유 문구라 완전히 봉인할 수는 없고, 이것은 흔한 표기를 덮는 저비용
+ * 보강이다. `autocomplete` 갈래가 라벨과 무관한 두 번째 축이다 — 브라우저 자동완성을 받으려면
+ * 무슨 라벨을 붙이든 `new-password`/`current-password`를 써야 한다.
  *
  * `selector`로 폼 컨트롤에 한정하는 것이 의도다 — 재설정 다이얼로그는 제목이
  * "비밀번호 재설정 링크"라 `aria-labelledby`로 다이얼로그 자체가 이름에 걸린다.
  */
 function expectNoPasswordField() {
   expect(document.querySelectorAll('input[type="password"]')).toHaveLength(0)
-  expect(screen.queryAllByLabelText(/비밀번호/, { selector: 'input, textarea' })).toHaveLength(0)
+  expect(screen.queryAllByLabelText(/비밀번호|암호|password|pw/i, { selector: 'input, textarea' }))
+    .toHaveLength(0)
+  expect(document.querySelectorAll('input[autocomplete$="-password"]')).toHaveLength(0)
+}
+
+/** Radix Select는 트리거를 눌러 열고 옵션을 눌러 고른다 — 네이티브 `select`가 아니다. */
+async function chooseOption(trigger: HTMLElement, option: string) {
+  await userEvent.click(trigger)
+  await userEvent.click(await screen.findByRole('option', { name: option }))
 }
 
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
@@ -80,14 +94,20 @@ describe('AdminPage', () => {
     await waitFor(() => expect(screen.getByText('admin@test.dev')).toBeDefined())
     await userEvent.click(screen.getByRole('button', { name: '계정 초대' }))
     await userEvent.type(screen.getByLabelText('이메일'), 'new@test.dev')
+    // 서비스 역할은 초대 행이 들고 간다(설계 §5.4) — 화면이 고른 값이 실제로 실려야 한다.
+    // 기본값만 단언하면 이 Select가 죽어도 통과한다(실측: onValueChange를 비워도 통과했다).
+    expect(screen.getByLabelText('역할')).toHaveTextContent('일반') // 기본은 일반 사용자다
+    await chooseOption(screen.getByLabelText('역할'), '관리자')
     await userEvent.click(screen.getByRole('button', { name: '초대 링크 만들기' }))
     await waitFor(() => expect(invite).toHaveBeenCalled())
-    // 서비스 역할은 초대 행이 들고 간다 — 기본은 일반 사용자다.
-    expect(invite.mock.calls[0]![0]).toEqual({ email: 'new@test.dev', role: 'user' })
+    expect(invite.mock.calls[0]![0]).toEqual({ email: 'new@test.dev', role: 'admin' })
     // 평문 토큰은 이 응답에서만 나온다. 목록을 다시 불러도 없다 — 잃으면 재발급이다.
     expect(await screen.findByText(/\/invite\/erdd_inv_new/)).toBeDefined()
     expect(screen.getByText(/지금만/)).toBeDefined()
     expect(screen.getByText(/까지 유효/)).toBeDefined()
+    // 링크는 이 이메일에 묶여 있다 — 엉뚱한 사람에게 주면 그가 남의 이메일로 계정을 갖는다.
+    // 발급 성공은 입력을 비우므로 상자가 말하지 않으면 수신자가 화면에서 사라진다.
+    expect(screen.getByText('new@test.dev')).toBeDefined()
   })
 
   it('관리자 화면에는 비밀번호 입력란이 하나도 없다', async () => {
@@ -107,7 +127,9 @@ describe('AdminPage', () => {
   })
 
   it('재설정은 링크만 내고 비밀번호가 바뀌었다고 말하지 않는다', async () => {
-    const resetLink = vi.fn((_input: unknown) => ({ data: { id: 'r1', token: 'erdd_rst_new' } }))
+    const resetLink = vi.fn((_input: unknown) => ({
+      data: { id: 'r1', token: 'erdd_rst_new', expiresAt: FUTURE },
+    }))
     renderAdmin({ 'admin.users.resetLink': resetLink })
     await waitFor(() => expect(screen.getByText('admin@test.dev')).toBeDefined())
     await userEvent.click(screen.getAllByRole('button', { name: '비밀번호 재설정 링크' })[0]!)
@@ -115,9 +137,19 @@ describe('AdminPage', () => {
     await waitFor(() => expect(resetLink).toHaveBeenCalled())
     expect(resetLink.mock.calls[0]![0]).toEqual({ userId: 'u1' })
     expect(await screen.findByText(/\/reset\/erdd_rst_new/)).toBeDefined()
-    // 발급은 링크를 만들 뿐이다. 비밀번호는 사용자가 그 링크를 열어 정해야 바뀐다 —
-    // 화면이 "바꿨다"고 말하면 거짓이고, 관리자는 전달을 그만둔다.
-    expect(screen.queryByText(/재설정했습니다|변경했습니다|바꿨습니다/)).toBeNull()
+    // 재설정은 24시간짜리다 — 초대(7일)보다 훨씬 짧고 목록 화면도 없어서, 이 상자가 말하지
+    // 않으면 기한을 확인할 자리가 어디에도 없다.
+    expect(screen.getByText(/까지 유효/)).toBeDefined()
+    /*
+     * 발급은 링크를 만들 뿐이다. 비밀번호는 사용자가 그 링크를 열어 정해야 바뀐다 —
+     * 화면이 "바꿨다"고 말하면 거짓이고, 관리자는 전달을 그만둔다.
+     *
+     * 그 성질을 잡는 것은 **아래 두 줄**이다. 거짓 문구를 정규식으로 나열해 막으려던 줄은
+     * 지웠다 — 실측으로 '비밀번호가 변경되었습니다.'가 그대로 통과했다. 거짓말의 표현은
+     * 무한하므로 리터럴 나열은 봉인이 아니고, 남겨 두면 "잡고 있다"는 인상만 준다.
+     * 성공 토스트 부재는 이 화면이 성공을 선언하는 유일한 수단을 막고, 안내문 존재는
+     * "아직 안 바뀌었고 사용자가 열어야 한다"는 정확한 문장이 실제로 화면에 있음을 잠근다.
+     */
     expect(vi.mocked(toast.success)).not.toHaveBeenCalled()
     expect(screen.getByText(/링크를 열어/)).toBeDefined()
   })

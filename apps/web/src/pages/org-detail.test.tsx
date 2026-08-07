@@ -47,6 +47,12 @@ function renderOrg(
   )
 }
 
+/** Radix Select는 트리거를 눌러 열고 옵션을 눌러 고른다 — 네이티브 `select`가 아니다. */
+async function chooseOption(trigger: HTMLElement, option: string) {
+  await userEvent.click(trigger)
+  await userEvent.click(await screen.findByRole('option', { name: option }))
+}
+
 beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
 afterEach(() => {
   cleanup()
@@ -58,15 +64,48 @@ describe('OrgDetailPage 초대 섹션', () => {
     const create = vi.fn((_input: unknown) => ({ data: { id: 'inv9', token: 'erdd_inv_org' } }))
     renderOrg({ 'invitation.create': create })
     await userEvent.type(await screen.findByLabelText('초대할 이메일'), 'new@test.dev')
+    // 조직 역할은 이 폼이 정한다 — 화면이 고른 값이 실제로 실려야 한다. 기본값만 단언하면
+    // 이 Select가 죽어도 통과한다(실측: onValueChange를 비워도 통과했다).
+    expect(screen.getByLabelText('초대 역할')).toHaveTextContent('Member') // 기본은 Member다
+    await chooseOption(screen.getByLabelText('초대 역할'), 'Admin')
     await userEvent.click(screen.getByRole('button', { name: '초대 링크 만들기' }))
     await waitFor(() => expect(create).toHaveBeenCalled())
-    // 조직 역할은 이 폼이 정하고, 서비스 역할은 서버가 항상 'user'로 고정한다.
+    // 서비스 역할은 서버가 항상 'user'로 고정한다 — 조직 초대로 관리자가 되지 않는다.
     expect(create.mock.calls[0]![0]).toEqual({
-      orgId: ORG_ID, email: 'new@test.dev', orgRole: 'member',
+      orgId: ORG_ID, email: 'new@test.dev', orgRole: 'admin',
     })
     // 평문 토큰은 이 응답에서만 나온다. 목록을 다시 불러도 없다 — 잃으면 재발급이다.
     expect(await screen.findByText(/\/invite\/erdd_inv_org/)).toBeDefined()
     expect(screen.getByText(/지금만/)).toBeDefined()
+    // 링크는 이 이메일에 묶여 있다 — 엉뚱한 사람에게 주면 그가 남의 이메일로 계정을 갖는다.
+    // 발급 성공은 입력을 비우므로 상자가 말하지 않으면 수신자가 화면에서 사라진다.
+    expect(screen.getByText('new@test.dev')).toBeDefined()
+
+    // 이 상자는 다이얼로그가 아니라 섹션 안에 있다 — 닫을 자리가 없으면 죽은 뒤에도 남는다.
+    await userEvent.click(screen.getByRole('button', { name: '닫기' }))
+    expect(screen.queryByText(/\/invite\/erdd_inv_org/)).toBeNull()
+  })
+
+  /**
+   * 취소하면 그 초대의 링크는 죽는다. 상자가 남아 있으면 "지금만 볼 수 있습니다"를 달고 못 쓰는
+   * 링크가 화면에 서 있게 되고, 관리자는 그것을 전달한다.
+   */
+  it('초대를 취소하면 발급 상자가 사라진다', async () => {
+    const create = vi.fn((_input: unknown) => ({ data: { id: 'inv9', token: 'erdd_inv_org' } }))
+    const revoke = vi.fn((_input: unknown) => ({ data: { ok: true } }))
+    renderOrg({
+      'invitation.create': create,
+      'invitation.listForOrg': () => ({ data: INVITATIONS }),
+      'invitation.revoke': revoke,
+    })
+    await userEvent.type(await screen.findByLabelText('초대할 이메일'), 'new@test.dev')
+    await userEvent.click(screen.getByRole('button', { name: '초대 링크 만들기' }))
+    expect(await screen.findByText(/\/invite\/erdd_inv_org/)).toBeDefined()
+
+    const pending = screen.getByText('pending@test.dev').closest('tr')!
+    await userEvent.click(within(pending).getByRole('button', { name: '취소' }))
+    await waitFor(() => expect(revoke).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByText(/\/invite\/erdd_inv_org/)).toBeNull())
   })
 
   it('대기 중인 초대를 만료 시각과 함께 보여주고 대기 중인 것만 취소한다', async () => {
@@ -90,14 +129,22 @@ describe('OrgDetailPage 초대 섹션', () => {
 
   it('매니저가 아닌 멤버에게는 초대 섹션이 보이지도 조회되지도 않는다', async () => {
     const listForOrg = vi.fn(() => ({ data: INVITATIONS }))
-    renderOrg({ 'invitation.listForOrg': listForOrg }, 'member')
+    const membersList = vi.fn(() => ({ data: [] }))
+    renderOrg({ 'invitation.listForOrg': listForOrg, 'org.members.list': membersList }, 'member')
     // 멤버 섹션은 보이므로 화면 자체는 렌더된 상태다.
     expect(await screen.findByRole('heading', { name: '멤버' })).toBeDefined()
     expect(screen.queryByRole('heading', { name: '초대' })).toBeNull()
     expect(screen.queryByLabelText('초대할 이메일')).toBeNull()
-    // 렌더를 막는 것만으로는 부족하다 — 권한 없는 사용자의 조회 자체가 나가면 안 된다.
-    // react-query는 마운트 뒤 비동기로 요청을 띄우므로 바로 단언하면 무엇이든 통과한다.
-    await new Promise((done) => { setTimeout(done, 50) })
+    /*
+     * 렌더를 막는 것만으로는 부족하다 — 권한 없는 사용자의 조회 자체가 나가면 안 된다.
+     * react-query는 마운트 뒤 비동기로 요청을 띄우므로 바로 단언하면 무엇이든 통과한다.
+     *
+     * 기다리는 신호로 **시간이 아니라 같은 화면의 다른 조회**를 쓴다. 고정 sleep은 오차가
+     * 항상 거짓 통과 방향이다 — CI가 느려 요청이 늦게 나가면 조용히 통과한다. 멤버 목록은
+     * 초대 목록과 같은 마운트 사이클에서 뜨므로, 그것이 나갔다면 초대 조회도 (켜져 있었다면)
+     * 이미 나갔어야 한다.
+     */
+    await waitFor(() => expect(membersList).toHaveBeenCalled())
     expect(listForOrg).not.toHaveBeenCalled()
   })
 })

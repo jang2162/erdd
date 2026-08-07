@@ -85,6 +85,7 @@ export const adminRouter = router({
         }
         const { plain, hash } = issueToken('reset')
         const id = uuidv7()
+        const expiresAt = tokenExpiry('reset')
         await ctx.db.transaction(async (tx) => {
           // 재발급은 그 사용자의 이전 미사용 토큰을 죽인다(초대와 같은 규칙).
           await tx.update(passwordResetTokens)
@@ -94,11 +95,12 @@ export const adminRouter = router({
               isNull(passwordResetTokens.usedAt),
             ))
           await tx.insert(passwordResetTokens).values({
-            id, userId: input.userId, tokenHash: hash,
-            expiresAt: tokenExpiry('reset'), createdBy: ctx.user.id,
+            id, userId: input.userId, tokenHash: hash, expiresAt, createdBy: ctx.user.id,
           })
         })
-        return { id, token: plain }
+        // 만료 시각도 함께 준다(초대와 같다). 재설정은 24시간으로 초대보다 훨씬 짧고 목록 화면도
+        // 없어서, 여기서 주지 않으면 "언제까지 유효한지"를 확인할 자리가 어디에도 없다.
+        return { id, token: plain, expiresAt }
       }),
 
     setActive: adminProcedure

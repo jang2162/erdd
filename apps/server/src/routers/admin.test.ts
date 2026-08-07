@@ -113,7 +113,7 @@ describe.skipIf(!url)('admin.users', () => {
   async function resetLink(userId: string) {
     const res = await post(app, 'admin.users.resetLink', adminToken, { userId })
     expect(res.statusCode).toBe(200)
-    return res.json().result.data as { id: string; token: string }
+    return res.json().result.data as { id: string; token: string; expiresAt: string }
   }
   /** 비밀번호 재설정용 대상 계정 하나를 만들고 그 id를 준다. */
   async function makeTarget(email = 'u3@test.dev', password = 'password-3') {
@@ -221,6 +221,14 @@ describe.skipIf(!url)('admin.users', () => {
 
     const link = await resetLink(targetId)
     expect(link.token.startsWith('erdd_rst_')).toBe(true)
+    // 만료 시각도 함께 나간다 — 재설정은 목록 화면이 없어서 발급 응답이 유효 기한을 말할 유일한
+    // 자리다. 초대(7일)보다 훨씬 짧으므로(24시간) 값이 초대 것으로 바뀌어도 깨져야 한다.
+    const validFor = new Date(link.expiresAt).getTime() - Date.now()
+    expect(validFor).toBeGreaterThan(23 * 60 * 60 * 1000)
+    expect(validFor).toBeLessThan(25 * 60 * 60 * 1000)
+    // DB에 실제로 박힌 만료와 같은 값이다 — 화면이 말하는 기한과 서버 판정이 갈리면 안 된다.
+    const row = (await app.db!.select().from(passwordResetTokens))[0]!
+    expect(row.expiresAt.toISOString()).toBe(new Date(link.expiresAt).toISOString())
 
     // 링크를 만들었을 뿐 비밀번호는 아직 그대로다.
     await loginAs(app, 'u3@test.dev', 'password-3')

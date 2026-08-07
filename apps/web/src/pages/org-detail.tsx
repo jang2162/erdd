@@ -202,16 +202,18 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
   const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [orgRole, setOrgRole] = useState<'admin' | 'member'>('member')
-  // 발급 결과는 다음 발급까지 남긴다 — 평문 토큰은 생성 응답에서만 나오므로 여기서 지우면
-  // 다시 볼 방법이 없다(목록에도 없다).
-  const [issued, setIssued] = useState<string | null>(null)
+  // 발급 결과는 관리자가 닫을 때까지 남긴다 — 평문 토큰은 생성 응답에서만 나오므로 마음대로
+  // 지우면 다시 볼 방법이 없다(목록에도 없다). **수신자 이메일도 함께 들고 있는다** — 링크는
+  // 그 이메일에 묶여 있고(수락하면 이 주소로 계정이 생긴다) 발급 성공 시 입력은 비워지므로,
+  // 여기서 담지 않으면 화면에 "누구에게 줄 링크인지"가 남지 않는다.
+  const [issued, setIssued] = useState<{ token: string; email: string } | null>(null)
   const listOptions = trpc.invitation.listForOrg.queryOptions({ orgId })
   const list = useQuery({ ...listOptions, enabled: canManage })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: listOptions.queryKey })
   const create = useMutation(
     trpc.invitation.create.mutationOptions({
-      onSuccess: async (data) => {
-        setIssued(data.token)
+      onSuccess: async (data, variables) => {
+        setIssued({ token: data.token, email: variables.email })
         setEmail('')
         await invalidate()
       },
@@ -220,7 +222,13 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
   )
   const revoke = useMutation(
     trpc.invitation.revoke.mutationOptions({
-      onSuccess: async () => { toast.success('초대를 취소했습니다'); await invalidate() },
+      onSuccess: async () => {
+        toast.success('초대를 취소했습니다')
+        // 취소된 초대의 링크는 이미 죽었다. 상자를 남겨 두면 "지금만 볼 수 있습니다"를 달고
+        // 못 쓰는 링크가 화면에 서 있게 된다 — 취소한 그 초대의 것이면 특히 그렇다.
+        setIssued(null)
+        await invalidate()
+      },
       onError: (err) => toast.error(err.message),
     }),
   )
@@ -251,7 +259,13 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
         </Select>
         <Button type="submit" disabled={create.isPending}>초대 링크 만들기</Button>
       </form>
-      {issued !== null && <OneTimeLink kind="invite" token={issued} />}
+      {/* 관리자 화면과 달리 다이얼로그가 아니라 섹션 안이라 닫을 자리가 따로 없다 — 상자가 낸다. */}
+      {issued !== null && (
+        <OneTimeLink
+          kind="invite" token={issued.token} recipient={issued.email}
+          onDismiss={() => setIssued(null)}
+        />
+      )}
       {list.isError && <p role="alert" className="text-destructive">{list.error.message}</p>}
       <div className="rounded-lg border bg-card">
         <Table>
