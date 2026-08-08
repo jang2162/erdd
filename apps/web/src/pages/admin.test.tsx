@@ -154,7 +154,13 @@ describe('AdminPage', () => {
     expect(screen.getByText(/링크를 열어/)).toBeDefined()
   })
 
-  it('관리자 초대 목록을 상태와 함께 보여주고 대기 중인 것만 취소한다', async () => {
+  /**
+   * 취소는 **아직 소비되지 않은 초대 전부**에 있어야 한다 — '만료됨'으로 보이는 것까지다.
+   * 만료 판정은 클라이언트 시계(`Date.now()`) 기준이라, 시계가 앞서 있으면 아직 살아 있는
+   * 초대가 만료로 보이고 그 행에서 취소 버튼이 사라져 그 초대를 죽일 방법이 없어진다.
+   * 서버는 조건부 UPDATE라 이미 사용된 것을 되살리지도 덮어쓰지도 않는다.
+   */
+  it('관리자 초대를 상태와 함께 보여주고 소비되지 않은 것은 만료로 보여도 취소할 수 있다', async () => {
     const revoke = vi.fn((_input: unknown) => ({ data: { ok: true } }))
     renderAdmin({
       'admin.invitations.list': () => ({ data: INVITATIONS }),
@@ -166,12 +172,16 @@ describe('AdminPage', () => {
     expect(within(used).getByText('사용됨')).toBeDefined()
     expect(within(expired).getByText('만료됨')).toBeDefined()
     expect(within(pending).getByText('대기 중')).toBeDefined()
-    // 이미 소비됐거나 기한이 지난 초대에는 취소가 없다 — 서버도 조건부 UPDATE로 거절한다.
+    // 이미 소비된 초대에만 취소가 없다 — 되돌릴 것이 없고 서버도 거절한다. 이 판정은 서버가
+    // 보낸 usedAt이라 클라이언트 시계와 무관하다.
     expect(within(used).queryByRole('button', { name: '취소' })).toBeNull()
-    expect(within(expired).queryByRole('button', { name: '취소' })).toBeNull()
+
+    await userEvent.click(within(expired).getByRole('button', { name: '취소' }))
+    await waitFor(() => expect(revoke).toHaveBeenCalled())
+    expect(revoke.mock.calls[0]![0]).toEqual({ id: 'i3' })
 
     await userEvent.click(within(pending).getByRole('button', { name: '취소' }))
-    await waitFor(() => expect(revoke).toHaveBeenCalled())
-    expect(revoke.mock.calls[0]![0]).toEqual({ id: 'i1' })
+    await waitFor(() => expect(revoke).toHaveBeenCalledTimes(2))
+    expect(revoke.mock.calls[1]![0]).toEqual({ id: 'i1' })
   })
 })

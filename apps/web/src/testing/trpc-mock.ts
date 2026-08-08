@@ -2,7 +2,17 @@ import { vi } from 'vitest'
 
 type Handler = (input: unknown) => {
   data?: unknown
-  error?: { code: number; message: string }
+  error?: {
+    code: number
+    message: string
+    /**
+     * 서버가 오류 응답에 항상 싣는 종료성 표식(`trpc.ts`의 errorFormatter). 일회용 링크 화면이
+     * 폼을 지우는 판정의 **유일한** 근거이므로 목도 이것을 재현해야 한다 — 코드만 보내고
+     * 종료성을 기대하는 목은 실제 서버와 다른 것을 시험하게 된다. 생략하면 `false`다:
+     * zod 입력 검증 실패·5xx처럼 링크가 살아 있는 오류가 기본값이다.
+     */
+    linkDead?: true
+  }
   /**
    * 응답 대신 **fetch 자체를 거절시킨다** — 네트워크 단절·프록시 끊김처럼 요청이 서버에 닿았는지도
    * 알 수 없는 경우다. 브라우저가 내는 것과 같은 `TypeError('Failed to fetch')`로 거절한다.
@@ -45,9 +55,9 @@ export function mockTrpcFetch(handlers: Record<string, Handler>) {
       const parsed = JSON.parse(raw) as Record<string, unknown>
       return isBatch ? parsed : { 0: parsed }
     })()
-    const shape = (code: number, message: string) => {
+    const shape = (code: number, message: string, linkDead = false) => {
       const [key, httpStatus] = ERROR_CODES[code] ?? ['INTERNAL_SERVER_ERROR', 500]
-      return { error: { code, message, data: { code: key, httpStatus } } }
+      return { error: { code, message, data: { code: key, httpStatus, linkDead } } }
     }
     const results = paths.map((path, i) => {
       const handler = handlers[path]
@@ -55,7 +65,7 @@ export function mockTrpcFetch(handlers: Record<string, Handler>) {
       const out = handler(inputs[String(i)])
       // 배치 전체를 거절시킨다 — 실제 네트워크 단절도 응답 하나만 골라 잃지 않는다.
       if (out.offline) throw new TypeError('Failed to fetch')
-      if (out.error) return shape(out.error.code, out.error.message)
+      if (out.error) return shape(out.error.code, out.error.message, out.error.linkDead ?? false)
       return { result: { data: out.data } }
     })
     const body = isBatch ? results : results[0]

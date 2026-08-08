@@ -7,7 +7,7 @@ import { accessTokens, passwordResetTokens, sessions, users } from '../db/schema
 import { hashPassword, verifyPassword } from '../auth/password.js'
 import { generateToken, hashToken } from '../auth/token.js'
 import { normalizeEmail } from '../services/accounts.js'
-import { assertLive } from '../services/one-time-token.js'
+import { LinkDeadError, assertLive } from '../services/one-time-token.js'
 import { SESSION_COOKIE } from '../context.js'
 import { apiProcedure, authedProcedure, dbProcedure, router } from '../trpc.js'
 
@@ -84,7 +84,7 @@ export const authRouter = router({
         )[0]
         // 없는 토큰과 기한이 지난 토큰을 같은 문구로 거절한다 — 갈리면 임의 토큰을 던져
         // "그 링크가 존재하는가"를 물을 수 있게 된다(존재 오라클).
-        if (!row) throw new TRPCError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
+        if (!row) throw new LinkDeadError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
         assertLive(row)
         await tx.update(users).set({ passwordHash }).where(eq(users.id, row.userId))
         const used = await tx.update(passwordResetTokens)
@@ -96,7 +96,7 @@ export const authRouter = router({
           .returning({ id: passwordResetTokens.id })
         // 같은 토큰으로 동시에 들어온 두 요청 중 하나만 소비한다.
         if (used.length === 0) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: '이미 사용된 링크입니다' })
+          throw new LinkDeadError({ code: 'BAD_REQUEST', message: '이미 사용된 링크입니다' })
         }
         await tx.delete(sessions).where(eq(sessions.userId, row.userId))
         return { ok: true as const }

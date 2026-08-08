@@ -12,6 +12,25 @@ import { ResetPasswordPage } from './reset-password.js'
 
 const TOKEN = 'erdd_rst_TESTTOKEN'
 
+/**
+ * zod 입력 검증 실패의 실제 응답 모양(실측 2026-08-08: `auth.resetPassword`에 7자 비밀번호를
+ * 보내면 `BAD_REQUEST` + 이 JSON 배열 문자열이 오고, **같은 토큰으로 곧바로 다시 보내면
+ * 200이다** — 토큰은 살아 있었다). `linkDead`는 붙지 않는다.
+ */
+const ZOD_INPUT_FAILURE = [
+  '[',
+  '  {',
+  '    "origin": "string",',
+  '    "code": "too_small",',
+  '    "minimum": 8,',
+  '    "path": [',
+  '      "newPassword"',
+  '    ],',
+  '    "message": "Too small: expected string to have >=8 characters"',
+  '  }',
+  ']',
+].join('\n')
+
 function renderReset(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   const fetchMock = mockTrpcFetch(handlers)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -82,7 +101,9 @@ describe('ResetPasswordPage', () => {
 
   it('shows the reason and hides the form for a dead token', async () => {
     renderReset({
-      'auth.resetPassword': () => ({ error: { code: -32600, message: '이미 사용된 링크입니다' } }),
+      'auth.resetPassword': () => ({
+        error: { code: -32600, message: '이미 사용된 링크입니다', linkDead: true },
+      }),
     })
     await userEvent.type(screen.getByLabelText('새 비밀번호'), 'password-1')
     await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'password-1')
@@ -105,6 +126,30 @@ describe('ResetPasswordPage', () => {
     expect(screen.queryByText(/관리자에게/)).toBeNull()
     expect(screen.getByRole('button', { name: '비밀번호 설정' })).toBeDefined()
     expect((screen.getByLabelText('새 비밀번호') as HTMLInputElement).value).toBe('password-1')
+  })
+
+  /*
+   * **입력 검증 실패는 링크를 죽이지 않는다.** zod 실패도 `BAD_REQUEST`로 오므로 코드로
+   * 종료성을 판정하면 이것이 종료성으로 오분류된다 — 살아 있는 토큰이 죽은 것으로 표시되고,
+   * 폼과 입력이 사라지며, 사유 자리에 zod issue JSON이 그대로 노출된다.
+   *
+   * 여기서 폼의 `minLength`를 뚫지 않고 서버 응답만 zod 실패로 두는 것이 의도다 — 시험 대상은
+   * HTML 검증이 아니라 **서버가 그 오류를 냈을 때 화면이 무엇을 하는가**다. HTML 검증은 방어층
+   * 하나일 뿐이고 자동채움·검증 우회·향후 필드 추가·서버 스키마 강화가 그 층을 뚫는다.
+   */
+  it('keeps the form when the server rejects the input (zod), not the link', async () => {
+    renderReset({
+      'auth.resetPassword': () => ({ error: { code: -32600, message: ZOD_INPUT_FAILURE } }),
+    })
+    await userEvent.type(screen.getByLabelText('새 비밀번호'), 'password-1')
+    await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'password-1')
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 설정' }))
+    await waitFor(() => expect(screen.getByText(TRANSIENT_FAILURE_MESSAGE)).toBeDefined())
+    // 죽은 링크 안내가 아니어야 한다 — 토큰은 아직 살아 있다.
+    expect(screen.queryByText(/관리자에게/)).toBeNull()
+    expect((screen.getByLabelText('새 비밀번호') as HTMLInputElement).value).toBe('password-1')
+    // zod issue JSON이 사용자에게 노출되지 않아야 한다.
+    expect(document.body.textContent).not.toContain('too_small')
   })
 
   // 5xx도 같다. `data`가 없는 네트워크 오류만 통과시키는 판정으로는 이것이 잡히지 않는다.

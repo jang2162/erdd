@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useMutation } from '@tanstack/react-query'
 import { useTRPC } from '@/lib/trpc'
-import { TRANSIENT_FAILURE_MESSAGE, terminalLinkReason } from '@/lib/link-error'
+import { TRANSIENT_FAILURE_MESSAGE, terminalLinkFailure } from '@/lib/link-error'
 import { BrandWordmark } from '@/components/brand-mark'
 import { LinkFailure } from '@/components/link-failure'
 import { Button } from '@/components/ui/button'
@@ -33,10 +33,11 @@ export function ResetPasswordPage() {
     }),
   )
 
-  // 폼을 지우는 판정은 "오류가 있는가"가 아니라 **"다시 제출해도 결과가 같은가"**다.
-  // 네트워크가 끊겼거나 서버가 5xx를 준 것뿐이면 토큰은 아직 살아 있다 — 여기서 폼을 지우면
-  // 살아 있는 링크가 죽은 것으로 보이고, 사용자는 헛되이 새 링크를 요청한다.
-  const deadReason = terminalLinkReason(reset.error)
+  // 폼을 지우는 판정은 "오류가 있는가"가 아니라 **"다시 제출해도 결과가 같은가"**다. 그 판정은
+  // 서버가 명시한 표식으로만 한다 — 네트워크가 끊겼거나 5xx를 받은 것뿐이면, **또는 입력 검증이
+  // 걸린 것뿐이면** 토큰은 아직 살아 있다. 여기서 폼을 지우면 살아 있는 링크가 죽은 것으로
+  // 보이고, 사용자는 헛되이 새 링크를 요청한다.
+  const failure = terminalLinkFailure(reset.error)
 
   return (
     <div className="bg-dotgrid flex min-h-dvh items-center justify-center p-4">
@@ -44,13 +45,13 @@ export function ResetPasswordPage() {
         <CardHeader className="items-center text-center">
           <BrandWordmark className="mx-auto mb-2" />
           <CardTitle>비밀번호 재설정</CardTitle>
-          {deadReason === null && (
+          {failure === null && (
             <CardDescription>새 비밀번호를 정하면 다른 기기의 로그인이 모두 해제됩니다.</CardDescription>
           )}
         </CardHeader>
         <CardContent>
-          {deadReason !== null ? (
-            <LinkFailure reason={deadReason} />
+          {failure !== null ? (
+            <LinkFailure failure={failure} />
           ) : (
             <form
               className="grid gap-4"

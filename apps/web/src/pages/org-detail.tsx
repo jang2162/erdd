@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { DIALECTS, type Dialect } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { DIALECT_LABEL } from '@/lib/labels'
-import { INVITATION_STATUS_LABEL, invitationStatus } from '@/lib/invitation-status'
+import { INVITATION_STATUS_LABEL, canRevokeInvitation, invitationStatus } from '@/lib/invitation-status'
 import { OneTimeLink } from '@/components/one-time-link'
 import { PromotionRequestsSection } from '@/components/promotion-requests-section'
 import { ResourceLibraryManager } from '@/components/resource-library-manager'
@@ -206,14 +206,16 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
   // 지우면 다시 볼 방법이 없다(목록에도 없다). **수신자 이메일도 함께 들고 있는다** — 링크는
   // 그 이메일에 묶여 있고(수락하면 이 주소로 계정이 생긴다) 발급 성공 시 입력은 비워지므로,
   // 여기서 담지 않으면 화면에 "누구에게 줄 링크인지"가 남지 않는다.
-  const [issued, setIssued] = useState<{ token: string; email: string } | null>(null)
+  const [issued, setIssued] = useState<
+    { token: string; email: string; expiresAt: Date | string } | null
+  >(null)
   const listOptions = trpc.invitation.listForOrg.queryOptions({ orgId })
   const list = useQuery({ ...listOptions, enabled: canManage })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: listOptions.queryKey })
   const create = useMutation(
     trpc.invitation.create.mutationOptions({
       onSuccess: async (data, variables) => {
-        setIssued({ token: data.token, email: variables.email })
+        setIssued({ token: data.token, email: variables.email, expiresAt: data.expiresAt })
         setEmail('')
         await invalidate()
       },
@@ -263,6 +265,7 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
       {issued !== null && (
         <OneTimeLink
           kind="invite" token={issued.token} recipient={issued.email}
+          expiresAt={issued.expiresAt}
           onDismiss={() => setIssued(null)}
         />
       )}
@@ -294,8 +297,12 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
                     {new Date(inv.expiresAt).toLocaleString('ko-KR')}
                   </TableCell>
                   <TableCell className="text-right">
-                    {/* 취소는 아직 살아 있는 초대에만 — 서버도 조건부 UPDATE로 나머지를 거절한다. */}
-                    {status === 'pending' && (
+                    {/*
+                      만료로 보여도 취소를 남긴다 — 만료 판정은 클라이언트 시계 기준이고, 시계가
+                      앞서 있으면 살아 있는 초대에서 취소 버튼이 사라져 죽일 방법이 없어진다.
+                      이미 사용된 것에만 내지 않는다. 서버도 조건부 UPDATE로 나머지를 거절한다.
+                    */}
+                    {canRevokeInvitation(inv) && (
                       <Button variant="outline" size="sm" disabled={revoke.isPending}
                         onClick={() => revoke.mutate({ orgId, id: inv.id })}>
                         취소

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useMutation } from '@tanstack/react-query'
 import { useTRPC } from '@/lib/trpc'
-import { TRANSIENT_FAILURE_MESSAGE, terminalLinkReason } from '@/lib/link-error'
+import { TRANSIENT_FAILURE_MESSAGE, terminalLinkFailure } from '@/lib/link-error'
 import { BrandWordmark } from '@/components/brand-mark'
 import { LinkFailure } from '@/components/link-failure'
 import { Button } from '@/components/ui/button'
@@ -65,12 +65,12 @@ export function InviteAcceptPage() {
   }, [peekAsync, token, peekAttempt])
 
   // 폼을 지우는 판정은 "오류가 있는가"가 아니라 **"다시 제출해도 결과가 같은가"**다(설계 §6.1).
-  // 네트워크 단절·5xx로 폼을 지우면 살아 있는 토큰이 죽은 것으로 보이고 입력한 이름까지 사라진다.
-  // 최악은 accept가 서버에서 커밋된 뒤 응답만 유실되는 경우다 — 계정은 만들어졌는데 화면이
-  // "링크가 죽었다"고 말한다.
-  const deadReason = terminalLinkReason(peekError) ?? terminalLinkReason(accept.error)
+  // 그 판정은 서버가 명시한 표식으로만 한다 — 네트워크 단절·5xx·입력 검증 실패로 폼을 지우면
+  // 살아 있는 토큰이 죽은 것으로 보이고 입력한 이름까지 사라진다. 최악은 accept가 서버에서
+  // 커밋된 뒤 응답만 유실되는 경우다 — 계정은 만들어졌는데 화면이 "링크가 죽었다"고 말한다.
+  const failure = terminalLinkFailure(peekError) ?? terminalLinkFailure(accept.error)
   // 죽지 않은 peek 실패. 토큰은 아직 살아 있으므로 안내가 아니라 재시도를 준다.
-  const peekStalled = deadReason === null && peekError !== null
+  const peekStalled = failure === null && peekError !== null
 
   return (
     <div className="bg-dotgrid flex min-h-dvh items-center justify-center p-4">
@@ -78,13 +78,13 @@ export function InviteAcceptPage() {
         <CardHeader className="items-center text-center">
           <BrandWordmark className="mx-auto mb-2" />
           <CardTitle>초대 수락</CardTitle>
-          {invitation && deadReason === null && !peekStalled && (
+          {invitation && failure === null && !peekStalled && (
             <CardDescription>이름과 비밀번호를 정하면 계정이 만들어집니다.</CardDescription>
           )}
         </CardHeader>
         <CardContent>
-          {deadReason !== null ? (
-            <LinkFailure reason={deadReason} />
+          {failure !== null ? (
+            <LinkFailure failure={failure} />
           ) : peekStalled ? (
             <div className="grid gap-3 text-center">
               <p role="alert" className="text-sm text-destructive">{TRANSIENT_FAILURE_MESSAGE}</p>

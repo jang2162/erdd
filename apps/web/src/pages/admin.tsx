@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTRPC } from '@/lib/trpc'
-import { INVITATION_STATUS_LABEL, invitationStatus } from '@/lib/invitation-status'
+import { INVITATION_STATUS_LABEL, canRevokeInvitation, invitationStatus } from '@/lib/invitation-status'
 import { OneTimeLink } from '@/components/one-time-link'
 import { ResourceLibraryManager } from '@/components/resource-library-manager'
 import { Badge } from '@/components/ui/badge'
@@ -216,8 +216,12 @@ function InvitationsSection() {
                     {new Date(inv.expiresAt).toLocaleString('ko-KR')}
                   </TableCell>
                   <TableCell className="text-right">
-                    {/* 취소는 아직 살아 있는 초대에만 — 서버도 조건부 UPDATE로 나머지를 거절한다. */}
-                    {status === 'pending' && (
+                    {/*
+                      만료로 보여도 취소를 남긴다 — 만료 판정은 클라이언트 시계 기준이고, 시계가
+                      앞서 있으면 살아 있는 초대에서 취소 버튼이 사라져 죽일 방법이 없어진다.
+                      이미 사용된 것에만 내지 않는다. 서버도 조건부 UPDATE로 나머지를 거절한다.
+                    */}
+                    {canRevokeInvitation(inv) && (
                       <Button variant="outline" size="sm" disabled={revoke.isPending}
                         onClick={() => revoke.mutate({ id: inv.id })}>
                         취소

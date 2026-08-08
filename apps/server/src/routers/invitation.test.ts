@@ -82,6 +82,25 @@ describe.skipIf(!url)('invitation', () => {
     expect(JSON.stringify(list)).not.toContain(hashToken(created.token))
   })
 
+  /**
+   * 만료 시각이 발급 응답에 실린다 — 발급 상자가 "…까지 유효합니다"를 말할 수 있어야 한다.
+   * 관리자 초대(`admin.users.invite`)와 재설정은 이미 주므로, 없으면 같은 7일 성질을 화면
+   * 두 곳이 다르게 말한다.
+   */
+  it('create가 만료 시각을 함께 준다 — 저장된 값과 같다', async () => {
+    const before = Date.now()
+    const res = await post(app, 'invitation.create', ownerToken, {
+      orgId, email: 'exp@test.dev', orgRole: 'member',
+    })
+    const created = res.json().result.data as { id: string; token: string; expiresAt: string }
+    const returned = new Date(created.expiresAt).getTime()
+    // 초대 TTL은 7일이다(one-time-token.ts). 응답이 만들어 낸 값이 아니라 행에 저장된 값이어야
+    // 한다 — 갈리면 화면이 실제와 다른 기한을 말한다.
+    expect(returned).toBeGreaterThanOrEqual(before + 6.9 * 24 * 60 * 60 * 1000)
+    const row = (await app.db!.select().from(invitations).where(eq(invitations.id, created.id)))[0]!
+    expect(row.expiresAt.getTime()).toBe(returned)
+  })
+
   it('create가 이미 가입한 이메일을 거부한다', async () => {
     await createAccount(app.db!, {
       email: 'dup@test.dev', name: '기존', password: 'password-d', role: 'user',
@@ -90,6 +109,36 @@ describe.skipIf(!url)('invitation', () => {
       orgId, email: 'DUP@test.dev', orgRole: 'member',
     })
     expect(res.statusCode).toBe(409)
+    // 활성 계정에는 멤버 추가가 실제로 되는 경로다 — 그렇게 안내한다.
+    expect(res.json().error.message).toContain('멤버 추가')
+  })
+
+  /**
+   * **비활성 계정에 "멤버 추가를 쓰세요"는 막다른 길이다.** `org.members.add`는 `isActive = true`인
+   * 사용자만 찾으므로 그 이메일에 404("해당 이메일의 사용자가 없습니다")를 낸다(실측 2026-08-08).
+   * 초대가 가리킨 경로가 그 사용자에 대해서만 닫혀 있는 것이고, 조직 매니저에게는 활성화 권한도
+   * 없으며 화면 어디에도 "비활성 계정"이 나오지 않는다. `add`의 필터는 기존 동작이라 그대로 두고,
+   * 갈 수 있는 유일한 다음 행동(서비스 관리자에게 활성화 요청)을 문구로 낸다.
+   */
+  it('create가 비활성 계정 이메일에는 다른 안내를 낸다 — 멤버 추가는 그 계정에 닫혀 있다', async () => {
+    const off = await createAccount(app.db!, {
+      email: 'off@test.dev', name: '비활성', password: 'password-x', role: 'user',
+    })
+    await app.db!.update(users).set({ isActive: false }).where(eq(users.id, off.id))
+
+    const res = await post(app, 'invitation.create', ownerToken, {
+      orgId, email: 'off@test.dev', orgRole: 'member',
+    })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().error.message).toContain('비활성 계정입니다')
+    expect(res.json().error.message).toContain('활성화')
+    // 초대가 "멤버 추가"를 가리키지 않아야 한다 — 그 경로가 이 사용자에게 닫혀 있음을 여기서
+    // 함께 실증한다. 안내만 단언하면 add가 나중에 필터를 풀어도 문구가 낡은 채 남는다.
+    expect(res.json().error.message).not.toContain('멤버 추가')
+    const add = await post(app, 'org.members.add', ownerToken, {
+      orgId, email: 'off@test.dev', role: 'member',
+    })
+    expect(add.statusCode).toBe(404)
   })
 
   it('create가 개인 조직을 거부한다', async () => {
@@ -257,6 +306,56 @@ describe.skipIf(!url)('invitation', () => {
     })).statusCode).toBe(400)
     expect(await app.db!.select().from(users).where(eq(users.email, 'stale@test.dev')))
       .toHaveLength(0)
+  })
+
+  /**
+   * **zod 입력 검증 실패는 링크를 죽이지 않는다.** 그 실패도 `BAD_REQUEST`로 오므로 코드만으로는
+   * "링크가 죽었다"와 갈릴 수 없다 — 화면이 코드로 판정하면 살아 있는 초대가 죽은 것으로
+   * 표시되고 입력한 이름까지 사라지며 zod issue JSON이 사유로 노출된다(설계 §6.1).
+   * 종료성은 응답의 `data.linkDead`로만 말한다.
+   */
+  it('짧은 비밀번호는 입력 검증으로 거절되고 그 초대는 살아 있다', async () => {
+    const created = await invite('short@test.dev')
+    const short = await postPublic(app, 'invitation.accept', {
+      token: created.token, name: '신규', password: '1234567',
+    })
+    expect(short.statusCode).toBe(400)
+    expect(short.json().error.data.code).toBe('BAD_REQUEST')
+    expect(short.json().error.data.linkDead).toBe(false)
+    // 거절이 초대를 소비하지도 않았다.
+    expect((await app.db!.select().from(invitations).where(eq(invitations.id, created.id)))[0]!.usedAt)
+      .toBeNull()
+
+    // 같은 토큰이 곧바로 200이다 — 위 거절은 링크가 아니라 입력에 대한 것이었다.
+    expect((await postPublic(app, 'invitation.accept', {
+      token: created.token, name: '신규', password: 'password-s',
+    })).statusCode).toBe(200)
+  })
+
+  /** 반대 방향 — 죽은 링크와 "이미 가입한 이메일"은 표식을 달고 나가야 한다. */
+  it('죽은 초대와 이미 가입한 이메일은 linkDead 표식을 달고 거절된다', async () => {
+    const stale = await invite('dead@test.dev')
+    await app.db!.update(invitations)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(invitations.id, stale.id))
+    const peeked = await postPublic(app, 'invitation.peek', { token: stale.token })
+    expect(peeked.json().error.data.linkDead).toBe(true)
+
+    const none = await postPublic(app, 'invitation.peek', { token: 'erdd_inv_nope' })
+    expect(none.json().error.data.linkDead).toBe(true)
+
+    // "이미 가입한 이메일"은 CONFLICT다. 화면이 이 갈래에는 로그인을 안내하므로 코드도 함께
+    // 잠근다 — 표식만 맞고 코드가 바뀌면 안내가 "새 링크를 받으세요"로 되돌아간다.
+    const taken = await invite('taken@test.dev')
+    await createAccount(app.db!, {
+      email: 'taken@test.dev', name: '먼저', password: 'password-f', role: 'user',
+    })
+    const conflict = await postPublic(app, 'invitation.accept', {
+      token: taken.token, name: '나중', password: 'password-l',
+    })
+    expect(conflict.statusCode).toBe(409)
+    expect(conflict.json().error.data.code).toBe('CONFLICT')
+    expect(conflict.json().error.data.linkDead).toBe(true)
   })
 
   it('초대 생성 후 그 이메일이 먼저 가입하면 accept가 CONFLICT이고 초대가 소비되지 않는다', async () => {

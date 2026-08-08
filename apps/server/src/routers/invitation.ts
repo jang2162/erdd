@@ -7,7 +7,7 @@ import { isUniqueViolation } from '../db/errors.js'
 import { invitations, members, organizations, users } from '../db/schema.js'
 import { hashToken } from '../auth/token.js'
 import { createAccount, normalizeEmail } from '../services/accounts.js'
-import { assertLive, issueToken, tokenExpiry } from '../services/one-time-token.js'
+import { LinkDeadError, assertLive, issueToken, tokenExpiry } from '../services/one-time-token.js'
 import { requireOrgManager } from '../services/perm.js'
 import { authedProcedure, dbProcedure, router } from '../trpc.js'
 
@@ -19,7 +19,7 @@ async function findLiveInvitation(db: DbOrTx, token: string) {
   const row = (
     await db.select().from(invitations).where(eq(invitations.tokenHash, hashToken(token)))
   )[0]
-  if (!row) throw new TRPCError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
+  if (!row) throw new LinkDeadError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
   assertLive(row)
   return row
 }
@@ -44,15 +44,26 @@ export const invitationRouter = router({
       }
       const email = normalizeEmail(input.email)
       const existing = (
-        await ctx.db.select({ id: users.id }).from(users).where(eq(users.email, email))
+        await ctx.db.select({ id: users.id, isActive: users.isActive })
+          .from(users).where(eq(users.email, email))
       )[0]
       if (existing) {
+        // 안내는 대상의 활성 여부로 갈린다. **비활성 계정에 "멤버 추가를 쓰세요"는 막다른
+        // 길이다** — `org.members.add`는 `isActive = true`인 사용자만 찾으므로 그 이메일에
+        // 404("해당 이메일의 사용자가 없습니다")를 낸다(실측 2026-08-08). 초대가 가리킨 경로가
+        // 그 사용자에 대해서만 닫혀 있는 것이고, 조직 매니저에게는 활성화 권한도 없다.
+        // 그래서 갈 수 있는 유일한 다음 행동(서비스 관리자에게 활성화 요청)을 문구로 낸다.
+        // `add`의 `isActive` 필터는 기존 동작이고 의도가 있어 건드리지 않는다.
         throw new TRPCError({
-          code: 'CONFLICT', message: '이미 가입한 사용자입니다 — 멤버 추가를 쓰세요',
+          code: 'CONFLICT',
+          message: existing.isActive
+            ? '이미 가입한 사용자입니다 — 멤버 추가를 쓰세요'
+            : '비활성 계정입니다 — 서비스 관리자에게 활성화를 요청하세요',
         })
       }
       const { plain, hash } = issueToken('invitation')
       const id = uuidv7()
+      const expiresAt = tokenExpiry('invitation')
       await ctx.db.transaction(async (tx) => {
         // 재발급은 이전 링크를 죽인다. 두 링크가 동시에 살아 있으면 첫 것이 어디로 갔는지
         // 아무도 모른다.
@@ -67,11 +78,14 @@ export const invitationRouter = router({
           id, email, orgId: input.orgId, orgRole: input.orgRole,
           // 서비스 역할은 조직 관리자가 정하지 않는다 — 조직 초대로 admin이 생기면 안 된다.
           userRole: 'user',
-          tokenHash: hash, expiresAt: tokenExpiry('invitation'), createdBy: ctx.user.id,
+          tokenHash: hash, expiresAt, createdBy: ctx.user.id,
         })
       })
       // 평문은 여기서만 나간다. 이후 조회할 방법은 없다 — 잃으면 재발급이다.
-      return { id, token: plain }
+      // 만료 시각도 함께 준다 — 링크를 전달하는 사람이 "언제까지 유효한지"를 말할 수 있어야
+      // 하고, 관리자 초대(`admin.users.invite`)·재설정이 이미 주므로 같은 7일 성질을 화면 두
+      // 곳이 다르게 말하지 않게 한다.
+      return { id, token: plain, expiresAt }
     }),
 
   listForOrg: authedProcedure
@@ -145,7 +159,7 @@ export const invitationRouter = router({
           await tx.select({ id: users.id }).from(users).where(eq(users.email, inv.email))
         )[0]
         if (existing) {
-          throw new TRPCError({ code: 'CONFLICT', message: '이미 가입한 이메일입니다' })
+          throw new LinkDeadError({ code: 'CONFLICT', message: '이미 가입한 이메일입니다' })
         }
         // 서비스 역할은 초대 행이 정한다 — 입력으로 올릴 수 없다.
         // 위 재검사와 users INSERT 사이에 같은 이메일이 가입할 수 있다. 최종 판정은 유니크
@@ -157,7 +171,7 @@ export const invitationRouter = router({
           })
         } catch (err) {
           if (isUniqueViolation(err)) {
-            throw new TRPCError({ code: 'CONFLICT', message: '이미 가입한 이메일입니다' })
+            throw new LinkDeadError({ code: 'CONFLICT', message: '이미 가입한 이메일입니다' })
           }
           throw err
         }
@@ -175,7 +189,7 @@ export const invitationRouter = router({
           .returning({ id: invitations.id })
         // 같은 토큰으로 동시에 들어온 두 요청 중 하나만 소비한다.
         if (used.length === 0) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: '이미 사용된 링크입니다' })
+          throw new LinkDeadError({ code: 'BAD_REQUEST', message: '이미 사용된 링크입니다' })
         }
         return { ok: true as const, email: user.email }
       }),

@@ -133,6 +133,47 @@ describe.skipIf(!url)('auth', () => {
     await loginAs(app, 'u1@test.dev', 'password-x')
   })
 
+  /**
+   * **zod 입력 검증 실패는 링크를 죽이지 않는다.** 그 실패도 `BAD_REQUEST`로 오므로 코드만으로는
+   * "링크가 죽었다"와 갈릴 수 없다 — 화면이 코드로 판정하면 살아 있는 토큰이 죽은 것으로
+   * 표시되고 폼·입력이 사라지며 zod issue JSON이 사유로 노출된다(설계 §6.1).
+   *
+   * 그래서 종료성은 응답의 `data.linkDead`로만 말한다. 이 테스트는 그 표식과 **토큰이 실제로
+   * 살아 있다는 사실**을 함께 잠근다 — 표식만 보면 값이 뒤집혀도 알 수 없다.
+   */
+  it('짧은 비밀번호는 입력 검증으로 거절되고 그 토큰은 살아 있다', async () => {
+    const token = await seedResetToken()
+    const short = await postPublic(app, 'auth.resetPassword', { token, newPassword: '1234567' })
+    expect(short.statusCode).toBe(400)
+    expect(short.json().error.data.code).toBe('BAD_REQUEST')
+    expect(short.json().error.data.linkDead).toBe(false)
+
+    // 같은 토큰이 곧바로 200이다 — 위 거절은 링크가 아니라 입력에 대한 것이었다.
+    const ok = await postPublic(app, 'auth.resetPassword', { token, newPassword: 'password-x' })
+    expect(ok.statusCode).toBe(200)
+    await loginAs(app, 'u1@test.dev', 'password-x')
+  })
+
+  /** 반대 방향 — 죽은 토큰은 표식을 달고 나가야 한다. 아니면 화면이 폼을 영원히 남긴다. */
+  it('죽은 재설정 토큰은 linkDead 표식을 달고 거절된다', async () => {
+    const used = await seedResetToken({ usedAt: new Date() })
+    const usedRes = await postPublic(app, 'auth.resetPassword', {
+      token: used, newPassword: 'password-x',
+    })
+    expect(usedRes.json().error.data.linkDead).toBe(true)
+
+    const stale = await seedResetToken({ expiresAt: new Date(Date.now() - 1000) })
+    const staleRes = await postPublic(app, 'auth.resetPassword', {
+      token: stale, newPassword: 'password-x',
+    })
+    expect(staleRes.json().error.data.linkDead).toBe(true)
+
+    const none = await postPublic(app, 'auth.resetPassword', {
+      token: 'erdd_rst_nope', newPassword: 'password-x',
+    })
+    expect(none.json().error.data.linkDead).toBe(true)
+  })
+
   it('만료된·없는 재설정 토큰은 거부되고 비밀번호가 그대로다', async () => {
     const stale = await seedResetToken({ expiresAt: new Date(Date.now() - 1000) })
     expect((await postPublic(app, 'auth.resetPassword', {
