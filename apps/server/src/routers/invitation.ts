@@ -20,7 +20,7 @@ async function findLiveInvitation(db: DbOrTx, token: string) {
     await db.select().from(invitations).where(eq(invitations.tokenHash, hashToken(token)))
   )[0]
   if (!row) throw new LinkDeadError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
-  assertLive(row)
+  assertLive(row, 'invitation')
   return row
 }
 
@@ -159,7 +159,9 @@ export const invitationRouter = router({
           await tx.select({ id: users.id }).from(users).where(eq(users.email, inv.email))
         )[0]
         if (existing) {
-          throw new LinkDeadError({ code: 'CONFLICT', message: '이미 가입한 이메일입니다' })
+          throw new LinkDeadError({
+            code: 'CONFLICT', message: '이미 가입한 이메일입니다', reissuable: false,
+          })
         }
         // 서비스 역할은 초대 행이 정한다 — 입력으로 올릴 수 없다.
         // 위 재검사와 users INSERT 사이에 같은 이메일이 가입할 수 있다. 최종 판정은 유니크
@@ -171,7 +173,9 @@ export const invitationRouter = router({
           })
         } catch (err) {
           if (isUniqueViolation(err)) {
-            throw new LinkDeadError({ code: 'CONFLICT', message: '이미 가입한 이메일입니다' })
+            throw new LinkDeadError({
+              code: 'CONFLICT', message: '이미 가입한 이메일입니다', reissuable: false,
+            })
           }
           throw err
         }
@@ -189,7 +193,10 @@ export const invitationRouter = router({
           .returning({ id: invitations.id })
         // 같은 토큰으로 동시에 들어온 두 요청 중 하나만 소비한다.
         if (used.length === 0) {
-          throw new LinkDeadError({ code: 'BAD_REQUEST', message: '이미 사용된 링크입니다' })
+          // 이긴 요청이 같은 트랜잭션에서 계정을 만들었다 — 그 이메일로 새 초대는 만들 수 없다.
+          throw new LinkDeadError({
+            code: 'BAD_REQUEST', message: '이미 사용된 링크입니다', reissuable: false,
+          })
         }
         return { ok: true as const, email: user.email }
       }),

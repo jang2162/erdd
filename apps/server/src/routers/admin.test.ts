@@ -193,6 +193,68 @@ describe.skipIf(!url)('admin.users', () => {
     expect(res.statusCode).toBe(409)
   })
 
+  /**
+   * **소비된 초대는 "다시 받을 수 없다"로 표시돼야 한다.** 가입을 마친 사용자가 링크를 다시 열면
+   * (북마크·메일 재방문) 이 경로를 밟는다 — `accept`의 409보다 먼저, 그리고 훨씬 자주.
+   *
+   * 근거는 `accept`의 원자성이다: 계정 생성과 `usedAt` 설정이 한 트랜잭션이므로 `usedAt`이 있으면
+   * 그 이메일의 계정이 **반드시 만들어졌다.** 그러면 새 초대는 존재할 수 없다 — 그 사실을
+   * 표식만이 아니라 **실제 재발급 시도로** 함께 잠근다. 표식만 단언하면 서버가 나중에 재발급을
+   * 허용하도록 바뀌어도 이 테스트가 낡은 채 통과한다.
+   */
+  it('소비된 초대는 재발급 불가로 표시되고, 실제로 그 이메일에 새 초대를 만들 수 없다', async () => {
+    const created = await invite('used@test.dev')
+    expect((await postPublic(app, 'invitation.accept', {
+      token: created.token, name: '사용자', password: 'password-u',
+    })).statusCode).toBe(200)
+
+    for (const path of ['invitation.peek', 'invitation.accept']) {
+      const res = await postPublic(app, path, {
+        token: created.token, name: '사용자', password: 'password-u',
+      })
+      expect(res.statusCode).toBe(400)
+      expect(res.json().error.message).toBe('이미 사용된 링크입니다')
+      expect(res.json().error.data.linkDead).toBe(true)
+      expect(res.json().error.data.linkReissuable).toBe(false)
+    }
+
+    // 안내가 가리키지 말아야 할 것을 실제로 확인한다 — 두 발급 경로가 모두 닫혀 있다.
+    expect((await post(app, 'admin.users.invite', adminToken, { email: 'used@test.dev' }))
+      .statusCode).toBe(409)
+    const orgId = await makeTeamOrg('팀B')
+    expect((await post(app, 'invitation.create', adminToken, {
+      orgId, email: 'used@test.dev', orgRole: 'member',
+    })).statusCode).toBe(409)
+  })
+
+  /**
+   * **반대편 경계 — 소비된 재설정 링크는 "다시 받을 수 있다"로 남아야 한다.** 초대와 달리
+   * 관리자가 같은 사용자에게 새 재설정 링크를 낼 수 있다. 여기까지 재발급 불가로 넓히면
+   * 실제로 가능한 회복 경로를 화면이 부정하게 된다.
+   */
+  it('소비된 재설정 링크는 재발급 가능으로 남고, 실제로 새 링크를 낼 수 있다', async () => {
+    const targetId = await makeTarget()
+    const link = await resetLink(targetId)
+    expect((await postPublic(app, 'auth.resetPassword', {
+      token: link.token, newPassword: 'password-x',
+    })).statusCode).toBe(200)
+
+    const again = await postPublic(app, 'auth.resetPassword', {
+      token: link.token, newPassword: 'password-y',
+    })
+    expect(again.statusCode).toBe(400)
+    expect(again.json().error.message).toBe('이미 사용된 링크입니다')
+    expect(again.json().error.data.linkDead).toBe(true)
+    expect(again.json().error.data.linkReissuable).toBe(true)
+
+    // 안내("관리자에게 문의해 새 링크를 받으세요")가 실제로 가능하다.
+    const reissued = await resetLink(targetId)
+    expect((await postPublic(app, 'auth.resetPassword', {
+      token: reissued.token, newPassword: 'password-z',
+    })).statusCode).toBe(200)
+    await loginAs(app, 'u3@test.dev', 'password-z')
+  })
+
   it('invite 재발급이 이전 초대를 죽인다 — 두 링크가 동시에 살아 있지 않다', async () => {
     const first = await invite('again@test.dev')
     const second = await invite('again@test.dev')

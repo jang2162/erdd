@@ -111,6 +111,10 @@ describe('ResetPasswordPage', () => {
     await waitFor(() => expect(screen.getByText('이미 사용된 링크입니다')).toBeDefined())
     expect(screen.getByText(/관리자에게/)).toBeDefined()
     expect(screen.queryByLabelText('새 비밀번호')).toBeNull()
+    // **초대와 갈리는 경계다.** 소비된 재설정 링크는 다시 받을 수 있다 — 계정이 있으므로
+    // 관리자가 `admin.users.resetLink`로 새 링크를 낸다(실측 2026-08-09: 200). 그래서 여기는
+    // "관리자에게 문의"가 참이고, 로그인을 가리키면 안 된다(비밀번호를 모르는 사람이다).
+    expect(screen.queryByRole('link', { name: '로그인' })).toBeNull()
   })
 
   // 폼을 지우는 판정은 "오류가 있는가"가 아니라 "다시 제출해도 결과가 같은가"다. 네트워크가

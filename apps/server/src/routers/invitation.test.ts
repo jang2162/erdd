@@ -332,7 +332,13 @@ describe.skipIf(!url)('invitation', () => {
     })).statusCode).toBe(200)
   })
 
-  /** 반대 방향 — 죽은 링크와 "이미 가입한 이메일"은 표식을 달고 나가야 한다. */
+  /**
+   * 반대 방향 — 죽은 링크와 "이미 가입한 이메일"은 표식을 달고 나가야 한다.
+   *
+   * `linkReissuable`도 함께 본다. **기한이 지난 초대는 다시 받을 수 있다** — 그 이메일에 계정이
+   * 아직 없을 수 있고, 없으면 관리자가 새 초대를 만든다. 그래서 여기는 "관리자에게 문의"가 참인
+   * 갈래다(취소도 같다 — 서버가 `expiresAt`을 당기므로 만료로 온다). 소비된 초대만 갈린다.
+   */
   it('죽은 초대와 이미 가입한 이메일은 linkDead 표식을 달고 거절된다', async () => {
     const stale = await invite('dead@test.dev')
     await app.db!.update(invitations)
@@ -340,9 +346,17 @@ describe.skipIf(!url)('invitation', () => {
       .where(eq(invitations.id, stale.id))
     const peeked = await postPublic(app, 'invitation.peek', { token: stale.token })
     expect(peeked.json().error.data.linkDead).toBe(true)
+    expect(peeked.json().error.data.linkReissuable).toBe(true)
+    // 기한이 지난 초대의 이메일에는 계정이 없으므로 새 초대를 실제로 만들 수 있다.
+    expect((await post(app, 'invitation.create', ownerToken, {
+      orgId, email: 'dead@test.dev', orgRole: 'member',
+    })).statusCode).toBe(200)
 
     const none = await postPublic(app, 'invitation.peek', { token: 'erdd_inv_nope' })
     expect(none.json().error.data.linkDead).toBe(true)
+    expect(none.json().error.data.linkReissuable).toBe(true)
+    // 없는 토큰과 기한이 지난 토큰은 사유도 갈래도 같아야 한다(존재 오라클).
+    expect(none.json().error.message).toBe(peeked.json().error.message)
 
     // "이미 가입한 이메일"은 CONFLICT다. 화면이 이 갈래에는 로그인을 안내하므로 코드도 함께
     // 잠근다 — 표식만 맞고 코드가 바뀌면 안내가 "새 링크를 받으세요"로 되돌아간다.
@@ -356,6 +370,31 @@ describe.skipIf(!url)('invitation', () => {
     expect(conflict.statusCode).toBe(409)
     expect(conflict.json().error.data.code).toBe('CONFLICT')
     expect(conflict.json().error.data.linkDead).toBe(true)
+    // 계정이 이미 있으므로 새 초대는 만들 수 없다 — 화면은 이 갈래에 로그인을 가리킨다.
+    expect(conflict.json().error.data.linkReissuable).toBe(false)
+  })
+
+  /**
+   * **소비된 초대는 재발급 불가다.** `accept`는 계정 생성과 `usedAt` 설정이 한 트랜잭션이므로
+   * `usedAt`이 있으면 그 이메일의 계정이 반드시 존재한다 — 그러면 새 초대는 409로 막힌다.
+   * 가입을 마친 사용자가 링크를 다시 여는(북마크·메일 재방문) 흔한 경로다.
+   */
+  it('소비된 조직 초대는 재발급 불가로 표시되고 실제로 새 초대가 막힌다', async () => {
+    const created = await invite('reopen@test.dev')
+    expect((await postPublic(app, 'invitation.accept', {
+      token: created.token, name: '수락자', password: 'password-r',
+    })).statusCode).toBe(200)
+
+    const peeked = await postPublic(app, 'invitation.peek', { token: created.token })
+    expect(peeked.statusCode).toBe(400)
+    expect(peeked.json().error.message).toBe('이미 사용된 링크입니다')
+    expect(peeked.json().error.data.linkDead).toBe(true)
+    expect(peeked.json().error.data.linkReissuable).toBe(false)
+
+    // 안내가 가리키지 말아야 할 것을 실제로 확인한다.
+    expect((await post(app, 'invitation.create', ownerToken, {
+      orgId, email: 'reopen@test.dev', orgRole: 'member',
+    })).statusCode).toBe(409)
   })
 
   it('초대 생성 후 그 이메일이 먼저 가입하면 accept가 CONFLICT이고 초대가 소비되지 않는다', async () => {

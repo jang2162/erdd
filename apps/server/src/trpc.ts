@@ -10,13 +10,22 @@ import { LinkDeadError } from './services/one-time-token.js'
  * 200이다 — 링크는 살아 있다) 그것까지 종료성으로 보면 살아 있는 링크가 죽은 것으로 표시된다.
  * 그래서 `LinkDeadError`로 던진 것만 `true`다.
  *
+ * `linkReissuable`은 그 다음 갈래다 — **죽은 링크를 다시 받을 수 있는가.** 소비된 초대와 만료된
+ * 초대는 코드가 같아(`BAD_REQUEST`) 여기서 갈리지 않으면 화면이 message 문자열을 읽어야 한다.
+ * 기본이 `true`인 것이 의도다(`LinkDeadError.reissuable` 주석 참조) — 표식은 "다시 받을 수 없다"는
+ * 더 센 주장 쪽에만 단다.
+ *
  * **필드를 조건부로 넣지 않고 항상 넣는 것이 의도다.** 없을 수도 있는 필드면 화면이 `undefined`를
  * 만나 "모르겠다"를 스스로 해석해야 하고, 클라이언트 타입도 optional로 흐려진다.
  */
 const t = initTRPC.context<Context>().create({
   errorFormatter: ({ shape, error }) => ({
     ...shape,
-    data: { ...shape.data, linkDead: error instanceof LinkDeadError },
+    data: {
+      ...shape.data,
+      linkDead: error instanceof LinkDeadError,
+      linkReissuable: error instanceof LinkDeadError ? error.reissuable : true,
+    },
   }),
 })
 

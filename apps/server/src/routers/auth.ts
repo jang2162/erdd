@@ -85,7 +85,7 @@ export const authRouter = router({
         // 없는 토큰과 기한이 지난 토큰을 같은 문구로 거절한다 — 갈리면 임의 토큰을 던져
         // "그 링크가 존재하는가"를 물을 수 있게 된다(존재 오라클).
         if (!row) throw new LinkDeadError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
-        assertLive(row)
+        assertLive(row, 'reset')
         await tx.update(users).set({ passwordHash }).where(eq(users.id, row.userId))
         const used = await tx.update(passwordResetTokens)
           .set({ usedAt: new Date() })

@@ -12,6 +12,13 @@ type Handler = (input: unknown) => {
      * zod 입력 검증 실패·5xx처럼 링크가 살아 있는 오류가 기본값이다.
      */
     linkDead?: true
+    /**
+     * 죽은 링크를 **다시 받을 수 있는가**(서버의 `data.linkReissuable`). 생략하면 `true`다 —
+     * 서버의 기본값과 같다. `false`면 화면이 "관리자에게 새 링크"가 아니라 로그인을 가리킨다.
+     * 코드로는 갈릴 수 없어(소비된 초대와 만료된 초대가 둘 다 `BAD_REQUEST`다) 목도 이 필드를
+     * 재현해야 화면의 갈래를 시험할 수 있다.
+     */
+    linkReissuable?: false
   }
   /**
    * 응답 대신 **fetch 자체를 거절시킨다** — 네트워크 단절·프록시 끊김처럼 요청이 서버에 닿았는지도
@@ -55,9 +62,9 @@ export function mockTrpcFetch(handlers: Record<string, Handler>) {
       const parsed = JSON.parse(raw) as Record<string, unknown>
       return isBatch ? parsed : { 0: parsed }
     })()
-    const shape = (code: number, message: string, linkDead = false) => {
+    const shape = (code: number, message: string, linkDead = false, linkReissuable = true) => {
       const [key, httpStatus] = ERROR_CODES[code] ?? ['INTERNAL_SERVER_ERROR', 500]
-      return { error: { code, message, data: { code: key, httpStatus, linkDead } } }
+      return { error: { code, message, data: { code: key, httpStatus, linkDead, linkReissuable } } }
     }
     const results = paths.map((path, i) => {
       const handler = handlers[path]
@@ -65,7 +72,12 @@ export function mockTrpcFetch(handlers: Record<string, Handler>) {
       const out = handler(inputs[String(i)])
       // 배치 전체를 거절시킨다 — 실제 네트워크 단절도 응답 하나만 골라 잃지 않는다.
       if (out.offline) throw new TypeError('Failed to fetch')
-      if (out.error) return shape(out.error.code, out.error.message, out.error.linkDead ?? false)
+      if (out.error) {
+        return shape(
+          out.error.code, out.error.message,
+          out.error.linkDead ?? false, out.error.linkReissuable ?? true,
+        )
+      }
       return { result: { data: out.data } }
     })
     const body = isBatch ? results : results[0]

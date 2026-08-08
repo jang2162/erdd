@@ -138,6 +138,35 @@ describe('InviteAcceptPage', () => {
     expect(screen.getByText(/관리자에게/)).toBeDefined()
     expect(screen.queryByLabelText('이름')).toBeNull()
     expect(screen.queryByLabelText('비밀번호')).toBeNull()
+    // 기한이 지난 초대는 **다시 받을 수 있다** — 그 이메일에 계정이 아직 없을 수 있고, 없으면
+    // 관리자가 새 초대를 만든다. 여기서 로그인을 가리키면 계정이 없는 사람을 로그인 화면으로
+    // 보내게 된다.
+    expect(screen.queryByRole('link', { name: '로그인' })).toBeNull()
+  })
+
+  /*
+   * **가입을 마친 사용자가 링크를 다시 열면**(북마크·메일 재방문) `peek`이 "이미 사용된
+   * 링크입니다"로 거절한다. 그 링크는 다시 받을 수 없다 — 수락이 계정 생성과 `usedAt` 설정을
+   * 한 트랜잭션으로 하므로 계정이 확정되고, 그러면 `admin.users.invite`도 `invitation.create`도
+   * 409다(실측 2026-08-09). 여기에 "관리자에게 문의해 새 링크를 받으세요"를 내면 **불가능한
+   * 행동을 지시하는 것**이다. `accept`의 409(아래)보다 먼저·더 자주 밟는 경로다.
+   *
+   * 만료된 초대와 **서버 응답 모양이 같다**(둘 다 `BAD_REQUEST` + `linkDead`) — 갈래는
+   * `linkReissuable`로만 갈린다. 그래서 목도 그 필드로 갈린다.
+   */
+  it('points a used invitation at login, not at a new link', async () => {
+    renderInvite({
+      'invitation.peek': () => ({
+        error: {
+          code: -32600, message: '이미 사용된 링크입니다', linkDead: true, linkReissuable: false,
+        },
+      }),
+    })
+    await waitFor(() => expect(screen.getByText('이미 사용된 링크입니다')).toBeDefined())
+    expect(screen.queryByLabelText('이름')).toBeNull()
+    expect(screen.queryByText(/새 링크를 받으세요/)).toBeNull()
+    const login = screen.getByRole('link', { name: '로그인' })
+    expect(login.getAttribute('href')).toBe('/login')
   })
 
   /*
@@ -154,7 +183,9 @@ describe('InviteAcceptPage', () => {
     renderInvite({
       'invitation.peek': () => ({ data: PEEK_OK }),
       'invitation.accept': () => ({
-        error: { code: -32009, message: '이미 가입한 이메일입니다', linkDead: true },
+        error: {
+          code: -32009, message: '이미 가입한 이메일입니다', linkDead: true, linkReissuable: false,
+        },
       }),
     })
     await waitFor(() => expect(screen.getByText('new@test.dev')).toBeDefined())
