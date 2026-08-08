@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-08-07 / **main HEAD:** `80565b1`(초대·재설정 링크 브랜치 병합 **전** — 병합 후 해시를 갱신할 것) / **마이그레이션:** 0012까지(초대·재설정 링크에서 `invitations`·`password_reset_tokens` 추가)
+**최종 갱신:** 2026-08-09 / **main HEAD:** `eb03d26`(초대·재설정 링크 병합) / **마이그레이션:** 0012까지(초대·재설정 링크에서 `invitations`·`password_reset_tokens` 추가)
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -30,7 +30,7 @@
 | **공용 리소스 승격** | fork의 반대 방향 — 프로젝트 사전 4종을 조직/전역 라이브러리로 올린다. core 순수 함수 `resource-promote.ts`(`planPromote` 3상태 분류 / `applyPromotePlan` write+`origin` 갱신), `runMutation`의 트랜잭션 내 선행 훅 `prepare`로 라이브러리 쓰기와 모델 op를 한 트랜잭션에 묶는 신규 프로시저 `resource.promote`(권한 3중·라이브러리 항목 `FOR UPDATE`·기대치 불일치 skip), `listForProject`의 `canWrite`, 공용 리소스 다이얼로그를 탭 2개로 분리 + "조직으로 승격" 탭. **마이그레이션 없음** ([설계](specs/2026-08-04-resource-promotion-design.md)) |
 | **승격 요청·승인 큐** | 라이브러리 쓰기 권한이 없는 Editor의 요청 경로. `promotion_requests`(op 로그 밖, 마이그 0011)는 **엔티티 포인터만** 담고 승인 시 `planPromote`를 재계산한다. `resource.promote`의 트랜잭션 본문을 `services/promote.ts`(`runPromoteInTx`·`loadLibraryItems`)로 추출해 승인이 같은 엔진을 타고, 요청 행 종결이 같은 `prepare` 훅에 들어가 함께 롤백된다. 프로시저 7개(`create`/`listForProject`/`cancel`/`listForOrg`/`get`/`pendingCount`/`resolve`), 승격 탭의 요청 모드, 조직 화면 승인 목록·검토 다이얼로그, 헤더·홈 배지 ([설계](specs/2026-08-04-promotion-request-queue-design.md)) |
 | **CLI push 멱등성** | 커밋 후 응답이 유실돼도 다음 push가 사본을 만들지 않게 한다. `filesToModel`이 신규 id를 발급하는 자리(`idOf`)에서 그 id를 입력 트리의 복사본에 되써 **`assignedTree`를 함께 내고**, CLI `push`가 `confirmDeletes` 뒤·`model.push` 직전에 **id가 늘어난 파일만 원래 경로에** 기록한다(`commands/reserve-ids.ts`). 다음 push는 `model.get`으로 서버를 다시 읽어 계획을 새로 만들므로 신규 id만 안정되면 세 결말(커밋+응답유실 / 미커밋 / 커밋+`syncDown` 실패)이 전부 수렴한다. **서버 변경·마이그레이션 없음** ([설계](specs/2026-08-05-cli-push-idempotency-design.md)) |
-| **초대 링크·비밀번호 재설정 링크** | 관리자가 초기 비밀번호를 정해 전달하던 두 경로를 **일회용 링크**로 바꿔 평문 비밀번호를 관리자 손에서 없앴다. 일회용 토큰 2종(`invitations`·`password_reset_tokens`, **마이그 0012**)과 발급·만료·1회용 판정을 모은 `services/one-time-token.ts`(`issueToken`/`tokenExpiry`/`assertLive`), 신규 `invitation` 라우터 5개(`create`/`listForOrg`/`revoke`/`peek`/`accept` — 뒤 둘은 공개), `admin.users.create`·`resetPassword` → **`invite`·`resetLink`로 교체** + `admin.invitations.list`/`revoke`, 공개 `auth.resetPassword`, `createAccount`가 호출자의 트랜잭션을 수용, 비보호 라우트 2개(`/invite/:token`·`/reset/:token`)와 페이지 2개, 조직 화면 초대 섹션·관리자 화면 폼 교체, 종료성/비종료성 오류 판정(`lib/link-error.ts`)과 `<meta name="referrer" content="no-referrer">`. **관리자 화면에 비밀번호 입력란이 하나도 남지 않았다.** core·CLI 변경 없음 ([설계](specs/2026-08-06-invite-and-reset-links-design.md)) |
+| **초대 링크·비밀번호 재설정 링크** | 관리자가 초기 비밀번호를 정해 전달하던 두 경로를 **일회용 링크**로 바꿔 평문 비밀번호를 관리자 손에서 없앴다. 일회용 토큰 2종(`invitations`·`password_reset_tokens`, **마이그 0012**)과 발급·만료·1회용 판정을 모은 `services/one-time-token.ts`(`issueToken`/`tokenExpiry`/`assertLive`), 신규 `invitation` 라우터 5개(`create`/`listForOrg`/`revoke`/`peek`/`accept` — 뒤 둘은 공개), `admin.users.create`·`resetPassword` → **`invite`·`resetLink`로 교체** + `admin.invitations.list`/`revoke`, 공개 `auth.resetPassword`, `createAccount`가 호출자의 트랜잭션을 수용, 비보호 라우트 2개(`/invite/:token`·`/reset/:token`)와 페이지 2개, 조직 화면 초대 섹션·관리자 화면 폼 교체, **서버가 표식으로 내리는** 오류 판정(`LinkDeadError` → `data.linkDead`/`data.linkReissuable`, 웹은 `lib/link-error.ts`에서 그 표식만 읽는다)과 `<meta name="referrer" content="no-referrer">`. **관리자 화면에 비밀번호 입력란이 하나도 남지 않았다.** core·CLI 변경 없음 ([설계](specs/2026-08-06-invite-and-reset-links-design.md)) |
 
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
@@ -39,11 +39,18 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 463 · cli 138 · web 420 · server 185 (erdd_test) · typecheck EXIT=0
+core 463 · cli 138 · web 423 · server 194 (erdd_test) · typecheck EXIT=0
+```
+
+`apps/server` 테스트는 **`DATABASE_URL`을 직접 줘야 한다** — 없으면 조용히 174건이 skip되고
+`20 passed | 174 skipped`로 초록색을 낸다(실패로 보이지 않으니 수를 확인해라).
+
+```bash
+DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @erdd/server exec vitest run
 ```
 
 루트 `pnpm verify`는 `packages/core` 뒤·`apps/web` 앞에 `pnpm -C packages/cli test`를 끼워 넣어
-네 스위트를 함께 돈다. 초대·재설정 링크 사이클에서 **server +42 · web +38**이 붙었다(직전
+네 스위트를 함께 돈다. 초대·재설정 링크 사이클에서 **server +51 · web +41**이 붙었다(직전
 기준선은 `server 143 · web 382`였다). **core·cli는 무변경** — 설계가 못 박은 "core 변경 없음,
 CLI 변경 없음"이 그대로 지켜졌고, 그 둘이 움직였다면 범위를 넘은 것이다.
 
@@ -310,11 +317,27 @@ pnpm -s -C packages/cli typecheck
   기존 패턴은 `routes.tsx`가 그 페이지를 `Protected`로 감싸도 그대로 통과한다(계획이 그 패턴을
   지정했다가 구현 중에 드러났다).
 - **링크 화면의 오류 판정 기준은 "오류가 있는가"가 아니라 "다시 제출해도 결과가 같은가"다**
-  (`lib/link-error.ts`의 `terminalLinkReason`). 종료성(`BAD_REQUEST`·`CONFLICT`)만 폼을 지우고 안내로
-  바꾸며, **모르는 오류는 비종료성으로 떨어진다**(허용 목록). 오분류의 대가가 한쪽으로만 크기
-  때문이다 — 일시적 오류를 종료성으로 보면 **살아 있는 토큰이 죽은 것으로 표시되고** 입력한 이름까지
-  사라지며, 최악은 `accept`가 커밋된 뒤 응답만 유실됐을 때 계정은 생겼는데 화면이 "링크가 죽었다"고
-  말하는 것이다. 반대 방향의 오분류는 한 번 더 눌러 같은 사유를 보는 것뿐이다.
+  (`lib/link-error.ts`의 `terminalLinkFailure`). **판정은 서버가 하고 웹은 표식만 본다** — 오류 코드로
+  추론하지 않는다. `services/one-time-token.ts`의 `LinkDeadError`로 **명시해 던진 것만** 종료성이고,
+  `trpc.ts`의 errorFormatter가 그것을 `data.linkDead`로 모든 응답에 싣는다. **모르는 오류는 자동으로
+  비종료성으로 떨어진다.** 오분류의 대가가 한쪽으로만 크기 때문이다 — 일시적 오류를 종료성으로 보면
+  **살아 있는 토큰이 죽은 것으로 표시되고** 입력한 이름까지 사라지며, 최악은 `accept`가 커밋된 뒤
+  응답만 유실됐을 때 계정은 생겼는데 화면이 "링크가 죽었다"고 말하는 것이다. 반대 방향의 오분류는
+  한 번 더 눌러 같은 사유를 보는 것뿐이다.
+  - 처음에는 코드(`BAD_REQUEST`·`CONFLICT`)로 판정했는데, **zod 입력 검증 실패가 `BAD_REQUEST`로
+    오기 때문에** 7자 비밀번호를 보내면 살아 있는 링크가 죽은 것으로 표시됐다. 코드 기반 판정은
+    "종료성 바구니에서 예외를 골라내는" 부정 목록이라 골라내지 못한 것이 종료성으로 남는다.
+    표식을 **종료성 쪽에** 다는 양성 목록으로 뒤집어야 기본값이 안전한 쪽이 된다.
+- **죽은 링크 안내는 "그래서 무엇을 할 수 있는가"까지 갈라야 한다**(`data.linkReissuable`). 같은
+  종료성이라도 **소비된 초대**는 그 이메일에 계정이 이미 있어 관리자가 새 초대를 만들 수 없고(409),
+  **만료·없는 초대**는 계정이 없을 수 있어 만들 수 있다. `linkDead`와 같은 비대칭 논증으로 표식은
+  "재발급 불가"라는 **더 센 주장 쪽에만** 달고 기본값은 "관리자에게 문의"(늘 참인 안내)로 둔다.
+  - **테스트는 표식이 아니라 사실을 잠근다** — `linkReissuable` 값만 단언하면 재발급 정책이 바뀔 때
+    테스트가 낡은 채 통과한다. 각 갈래마다 안내가 가리키는 경로를 **실제로 실행해** 확인한다
+    (소비된 초대 → `invite`·`invitation.create` 둘 다 409 / 소비된 재설정 → `resetLink` 200 + 그
+    링크로 실제 재설정 성공 / 만료된 초대 → 그 이메일로 `invitation.create` 200).
+  - 없는 토큰과 만료 토큰은 **같은 문구·같은 갈래**로 거절한다(존재 오라클 차단). 테스트가 그
+    동일성을 명시적으로 잠그고 있다.
 - **`peek`의 결과는 mutation 객체가 아니라 로컬 상태로 받는다.** `MutationObserver`는
   `onUnsubscribe`에서 실행 중인 mutation에서 자신을 떼어내는데 다시 붙이는 `onSubscribe`가 없다
   (query-core 5.101.4). StrictMode는 마운트 이펙트를 "실행→정리→재실행"으로 돌리므로 그 사이 구독이
@@ -386,7 +409,10 @@ sub-project 하나마다:
        **보낸 뒤 그 파일을 열어 온전한지 확인한다** — 브리프는 워커가 보는 유일한 사양이라 여기서
        빠진 것은 워커가 물어볼 수도 없다.
 5. 전체 스위트 체크포인트 → 최종 whole-branch 리뷰 → 수정 → **스모크**(실 앱+실 DB) → main 머지, 브랜치 삭제
-   - **스모크 주체:** CLI처럼 터미널로 끝나는 것은 **워커에게 시킨다**(격리 포트·격리 DB를 브리프에 준다). **브라우저 스모크만 컨트롤러가 한다** — Claude 확장이 붙은 Chrome 프로필이 하나뿐이라 워커가 조작할 수 없다.
+   - **스모크 주체:** CLI처럼 터미널로 끝나는 것은 **워커에게 시킨다**(격리 포트·격리 DB를 브리프에 준다). 브라우저 스모크는 컨트롤러가 해 왔다 — Claude 확장이 붙은 Chrome 프로필이 하나뿐이라 워커가 조작할 수 없다는 이유였다. **2026-08-09에 그 전제가 깨졌다: Playwright MCP(`mcp__plugin_playwright_playwright__*`)는 독립 브라우저를 띄우므로 프로필 제약이 없고 워커도 쓸 수 있다.** 다음 사이클에서 워커에게 넘겨 보고 되면 이 항목을 정리해라.
+     - ⚠️ **같은 사이클에서 claude-in-chrome 확장이 중간에 먹통이 됐다** — 클릭·타이핑이 페이지에 닿지 않고(입력란이 계속 빈 채였다) 스크린샷은 `Cannot access a chrome-extension:// URL of different extension`을 냈다. 로그인 한 번은 됐다가 그 뒤로 안 됐으니 **되던 것이 계속 된다는 보장이 없다.** `read_page`로 입력란 값이 실제로 들어갔는지 확인하고, 두세 번 실패하면 붙들지 말고 Playwright로 갈아타라.
+     - Playwright MCP는 `.playwright-mcp/`를 **현재 작업 디렉터리에 만든다** — 저장소 안에서 쓰면 스냅샷·콘솔 로그가 쌓인다. 스모크가 끝나면 지워라(`CLAUDE.md`: 임시 파일을 저장소에 흘리지 않는다).
+   - ⚠️ **브라우저 스모크는 "확인 절차"가 아니라 결함을 잡는 게이트다.** 초대·재설정 링크 사이클에서 태스크별 리뷰 5라운드와 최종 whole-branch 리뷰를 **모두 통과한 뒤** 스모크가 Important급 1건을 잡았다 — 소비된 초대 링크를 다시 열면 "관리자에게 문의해 **새 링크**를 받으세요"라고 안내하는데, 관리자는 그 이메일에 새 초대를 만들 수 없다(409). 최종 리뷰가 잡은 같은 결함군(I-2: `accept`의 409)의 **더 흔한 형제**였는데, 리뷰가 코드에서 출발해 그 경로를 밟지 않았다. **가입을 마친 사용자가 링크를 다시 여는 것은 화면을 실제로 써 봐야 떠오르는 동선이다.**
    - **스모크는 "동작한다"가 아니라 "고친 것이 실제로 고쳐졌다"를 봐야 한다. 대조군을 함께 돌려라.** CLI push 멱등성 사이클의 형태가 좋은 예다 — ① 신규 항목을 push해 파일에 id가 박히는지 보고 ② `.erdd/base.json`에서 그 항목을 지워 "서버엔 있는데 base는 모르는" 상태(= 응답 유실)를 만든 뒤 다시 push해 `ops:0`으로 수렴하는지 보고 ③ **대조군으로 파일의 id를 지우고 같은 push를 돌려** 서버에 사본이 실제로 생기는 것(`['MBR','ORD','ORD']`)을 확인했다. ③이 없으면 ②의 통과가 "원래 그랬던 것"인지 "고쳐서 그런 것"인지 구별되지 않는다.
    - ⚠️ **태스크별 리뷰가 전부 clean이어도 최종 리뷰는 반드시 하라.** 실시간 sub-project에서 7태스크가 모두 Critical/Important 0건이었는데 최종 리뷰가 Critical 1건 + Important 2건을 잡았다. 셋 다 **태스크 경계를 가로지르는** 결함이라 스코프가 좁은 게이트로는 구조적으로 볼 수 없다.
    - 최종 리뷰 프롬프트에 이 한 줄을 넣으면 그런 결함이 바로 드러난다: **"이번 브랜치에서 두 번째 호출자가 생긴 기존 함수를 전부 나열하고, 양쪽 호출자 기준으로 그 함수의 불변식을 재유도하라."** 실제로 Critical(`setSeq`가 두 가지 의미를 갖게 된 것)이 이 질문 하나로 잡힌다. **CLI push 멱등성 사이클에서도 또 값을 했다** — 해당 함수 둘(`canonical`·`filesToModel`)에서 각각 실제 불변식 충돌이 나왔고, 그중 하나(`validate`와 `push`의 판정이 갈려 push가 가리키는 명령이 "문제 없음"을 주던 것 — 3.9절)는 **태스크별 리뷰 3라운드가 전부 놓친 것**이다.
@@ -635,7 +661,9 @@ Phase 2 #4·#5를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다
   의도다**(링크 단위 `referrerPolicy`가 아니라) — 토큰을 URL에 담은 것이 그 문서이므로 나중에 tRPC를
   거치지 않는 요청이 붙어도 자동으로 덮인다. **jsdom은 fetch에 `Referer`를 세팅하지 않아 헤더 자체는
   테스트로 재현할 수 없다** — `src/index-html.test.ts`가 태그의 존재만 잠그고 실제 헤더는 브라우저
-  스모크로 확인한다. 히스토리는 이월 — 마운트 직후 `history.replaceState`로 경로에서 토큰을 지우면
+  스모크로 확인한다. **2026-08-09 스모크에서 실측으로 닫혔다** — 토큰이 박힌 `/invite/:token` 화면에서
+  로컬 에코 서버(`nc -l 127.0.0.1 5199`)로 요청을 받아 헤더를 봤더니 `Referer` 헤더 자체가 없고 토큰
+  문자열은 0회 등장했다. 히스토리는 이월 — 마운트 직후 `history.replaceState`로 경로에서 토큰을 지우면
   된다(토큰은 이미 컴포넌트 상태에 들어와 있어 동작에 지장이 없다). 링크가 관리자→본인 직접 전달이라
   위험이 낮다고 보고 남겼다
 - **링크를 잃으면 재발급뿐이다**(평문 재조회 없음 — 액세스 토큰과 같은 성질)
