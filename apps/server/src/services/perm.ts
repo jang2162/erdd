@@ -16,6 +16,17 @@ export async function getOrgMember(
   return rows[0]
 }
 
+/** Org Owner/Admin만 통과시킨다. 조직 멤버 관리·초대가 같은 기준을 쓴다. */
+export async function requireOrgManager(
+  db: Db, orgId: string, userId: string,
+): Promise<{ id: string; role: OrgRole }> {
+  const me = await getOrgMember(db, orgId, userId)
+  if (!me || (me.role !== 'owner' && me.role !== 'admin')) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: '조직 관리 권한이 없습니다' })
+  }
+  return me
+}
+
 export type ProjectAccess = {
   project: typeof projects.$inferSelect
   orgRole: OrgRole | undefined

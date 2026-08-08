@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
-import type { Db } from '../db/client.js'
+import type { Db, DbOrTx } from '../db/client.js'
 import { members, organizations, users } from '../db/schema.js'
 import { hashPassword } from '../auth/password.js'
 
@@ -9,9 +9,16 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-/** 사용자 + 개인 조직 + owner 멤버를 한 트랜잭션으로 생성한다(관리자 페이지·부트스트랩 공용). */
+/**
+ * 사용자 + 개인 조직 + owner 멤버를 한 트랜잭션으로 생성한다(관리자 페이지·부트스트랩·초대 수락 공용).
+ *
+ * `db`에 호출자의 트랜잭션을 넘겨도 된다 — drizzle의 중첩 transaction은 SAVEPOINT로 열려
+ * 바깥 트랜잭션과 함께 커밋·롤백된다(실측). 그래서 "이미 트랜잭션 안"임을 알리는 플래그가 없다.
+ * 세 가지가 갈라지지 않는 것이 이 함수의 존재 이유이고, 이메일 정규화도 여기서만 한다 —
+ * 호출자가 각자 부르면 한 곳이 빠진다.
+ */
 export async function createAccount(
-  db: Db,
+  db: DbOrTx,
   input: { email: string; name: string; password: string; role: 'admin' | 'user' },
 ): Promise<{ id: string; email: string }> {
   const email = normalizeEmail(input.email)

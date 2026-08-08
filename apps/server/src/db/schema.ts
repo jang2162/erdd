@@ -73,6 +73,32 @@ export const accessTokens = pgTable('access_tokens', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 })
 
+export const invitations = pgTable('invitations', {
+  id: uuid('id').primaryKey(),
+  email: text('email').notNull(),
+  // null이면 "조직 합류 없는 초대"다 — 관리자 페이지가 만드는 계정 전용 초대.
+  // 수락하면 개인 조직만 생기고 어느 팀에도 들어가지 않는다.
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  orgRole: text('org_role', { enum: ['admin', 'member'] }),
+  // 서비스 역할은 초대 행이 들고 있다 — 수락자가 스스로 admin이 될 수 있으면 안 된다.
+  userRole: text('user_role', { enum: ['admin', 'user'] }).notNull().default('user'),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 // ─── 프로젝트 모델 상태 테이블 (packages/core ProjectModel과 1:1) ───
 
 export const modelTableGroups = pgTable('model_table_groups', {

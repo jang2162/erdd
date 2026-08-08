@@ -3,6 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      초대·재설정 링크는 토큰을 페이지 경로에 담는다(/invite/<토큰>). 기본 정책
+      strict-origin-when-cross-origin 아래에서는 그 페이지가 보내는 동일 출처 요청에 전체 URL이
+      Referer로 붙어, nginx 표준 combined 로그의 $http_referer에 /trpc 요청 한 줄마다 평문 토큰이
+      함께 남는다 — peek을 mutation으로 둔 조치(설계 §3.5)가 절반 무력화된다.
+
+      링크 단위(httpBatchLink의 referrerPolicy)가 아니라 문서 단위로 끄는 것이 의도다. 토큰을 URL에
+      담은 것은 이 **문서**이므로 이 문서에서 나가는 모든 요청·이동이 대상이고, 나중에 tRPC를 거치지
+      않는 요청이 붙어도 자동으로 덮인다. 앱에 외부 서브리소스가 없고 서버가 Referer를 보지 않아
+      잃는 것도 없다.
+    -->
+    <meta name="referrer" content="no-referrer" />
     <title>ERDD</title>
   </head>
   <body>

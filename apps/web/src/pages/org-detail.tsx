@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { DIALECTS, type Dialect } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { DIALECT_LABEL } from '@/lib/labels'
+import { INVITATION_STATUS_LABEL, canRevokeInvitation, invitationStatus } from '@/lib/invitation-status'
+import { OneTimeLink } from '@/components/one-time-link'
 import { PromotionRequestsSection } from '@/components/promotion-requests-section'
 import { ResourceLibraryManager } from '@/components/resource-library-manager'
 import { Badge } from '@/components/ui/badge'
@@ -188,6 +190,138 @@ function MembersSection({ orgId, myRole }: { orgId: string; myRole: string }) {
   )
 }
 
+/**
+ * 조직 초대 섹션. **Org Owner/Admin에게만 보인다** — 서버도 `requireOrgManager`로 막지만,
+ * 멤버에게 보여 주면 누를 때마다 403이 나는 폼이 된다.
+ *
+ * 여기 목록은 **이 조직의 초대만**이다(`orgId`가 이 조직). 관리자 초대(`orgId`가 null)는
+ * 다른 묶음이고 관리자 화면에서만 보인다(설계 §3.2).
+ */
+function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: boolean }) {
+  const trpc = useTRPC()
+  const queryClient = useQueryClient()
+  const [email, setEmail] = useState('')
+  const [orgRole, setOrgRole] = useState<'admin' | 'member'>('member')
+  // 발급 결과는 관리자가 닫을 때까지 남긴다 — 평문 토큰은 생성 응답에서만 나오므로 마음대로
+  // 지우면 다시 볼 방법이 없다(목록에도 없다). **수신자 이메일도 함께 들고 있는다** — 링크는
+  // 그 이메일에 묶여 있고(수락하면 이 주소로 계정이 생긴다) 발급 성공 시 입력은 비워지므로,
+  // 여기서 담지 않으면 화면에 "누구에게 줄 링크인지"가 남지 않는다.
+  const [issued, setIssued] = useState<
+    { token: string; email: string; expiresAt: Date | string } | null
+  >(null)
+  const listOptions = trpc.invitation.listForOrg.queryOptions({ orgId })
+  const list = useQuery({ ...listOptions, enabled: canManage })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: listOptions.queryKey })
+  const create = useMutation(
+    trpc.invitation.create.mutationOptions({
+      onSuccess: async (data, variables) => {
+        setIssued({ token: data.token, email: variables.email, expiresAt: data.expiresAt })
+        setEmail('')
+        await invalidate()
+      },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
+  const revoke = useMutation(
+    trpc.invitation.revoke.mutationOptions({
+      onSuccess: async () => {
+        toast.success('초대를 취소했습니다')
+        // 취소된 초대의 링크는 이미 죽었다. 상자를 남겨 두면 "지금만 볼 수 있습니다"를 달고
+        // 못 쓰는 링크가 화면에 서 있게 된다 — 취소한 그 초대의 것이면 특히 그렇다.
+        setIssued(null)
+        await invalidate()
+      },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
+
+  if (!canManage) return null
+
+  return (
+    <section className="grid gap-3">
+      <h2 className="text-lg font-semibold">초대</h2>
+      <p className="text-sm text-muted-foreground">
+        아직 계정이 없는 사람을 부릅니다. 이미 가입한 사람은 위 멤버 추가를 쓰세요.
+      </p>
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => { e.preventDefault(); create.mutate({ orgId, email, orgRole }) }}
+      >
+        <div className="grid gap-1">
+          <Label htmlFor="invite-email" className="text-xs">초대할 이메일</Label>
+          <Input id="invite-email" type="email" required placeholder="user@example.com"
+            className="w-64 font-mono" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <Select value={orgRole} onValueChange={(v) => setOrgRole(v as 'admin' | 'member')}>
+          <SelectTrigger className="w-28" aria-label="초대 역할"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="member">Member</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button type="submit" disabled={create.isPending}>초대 링크 만들기</Button>
+      </form>
+      {/* 관리자 화면과 달리 다이얼로그가 아니라 섹션 안이라 닫을 자리가 따로 없다 — 상자가 낸다. */}
+      {issued !== null && (
+        <OneTimeLink
+          kind="invite" token={issued.token} recipient={issued.email}
+          expiresAt={issued.expiresAt}
+          onDismiss={() => setIssued(null)}
+        />
+      )}
+      {list.isError && <p role="alert" className="text-destructive">{list.error.message}</p>}
+      <div className="rounded-lg border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>이메일</TableHead>
+              <TableHead>역할</TableHead>
+              <TableHead>상태</TableHead>
+              <TableHead>만료</TableHead>
+              <TableHead className="text-right">동작</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(list.data ?? []).map((inv) => {
+              const status = invitationStatus(inv)
+              return (
+                <TableRow key={inv.id}>
+                  <TableCell className="font-mono">{inv.email}</TableCell>
+                  <TableCell><Badge variant="secondary">{inv.orgRole}</Badge></TableCell>
+                  <TableCell>
+                    {status === 'pending'
+                      ? <Badge variant="outline">{INVITATION_STATUS_LABEL[status]}</Badge>
+                      : <Badge variant="secondary">{INVITATION_STATUS_LABEL[status]}</Badge>}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(inv.expiresAt).toLocaleString('ko-KR')}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {/*
+                      만료로 보여도 취소를 남긴다 — 만료 판정은 클라이언트 시계 기준이고, 시계가
+                      앞서 있으면 살아 있는 초대에서 취소 버튼이 사라져 죽일 방법이 없어진다.
+                      이미 사용된 것에만 내지 않는다. 서버도 조건부 UPDATE로 나머지를 거절한다.
+                    */}
+                    {canRevokeInvitation(inv) && (
+                      <Button variant="outline" size="sm" disabled={revoke.isPending}
+                        onClick={() => revoke.mutate({ orgId, id: inv.id })}>
+                        취소
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+        {!list.isPending && !list.isError && (list.data ?? []).length === 0 && (
+          <p className="p-8 text-center text-muted-foreground">보낸 초대가 없습니다.</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export function OrgDetailPage() {
   const { orgId = '' } = useParams()
   const trpc = useTRPC()
@@ -251,6 +385,13 @@ export function OrgDetailPage() {
       )}
 
       {org && org.kind === 'team' && <MembersSection orgId={orgId} myRole={org.role} />}
+
+      {org && org.kind === 'team' && (
+        <InvitationsSection
+          orgId={orgId}
+          canManage={org.role === 'owner' || org.role === 'admin'}
+        />
+      )}
 
       {org && (
         <PromotionRequestsSection

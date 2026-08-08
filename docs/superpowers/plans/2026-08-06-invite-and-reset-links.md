@@ -4,6 +4,12 @@
 
 **설계:** [2026-08-06-invite-and-reset-links-design.md](../specs/2026-08-06-invite-and-reset-links-design.md)
 
+> **이 계획은 사이클 종료 후 사후 보정됐다(2026-08-07).** 실행 중에 계획이 틀린 것이 드러난 자리마다
+> `> **사후 보정:**` 블록을 붙였고 **본문은 당시 그대로 두었다** — 참고 자료로 읽을 때 둘을 함께 봐야
+> 한다. 보정 지점: **기준선**(테스트 수 예상) · **Task 2 Step 7**(커밋 파일 목록) ·
+> **Task 3 Step 2~4**(typecheck 기대값) · **Task 4**(라우트 테스트 패턴 · `peek` 호출 형태).
+> 설계 문서는 사이클 중에 세 번 갱신돼 이미 최신이다.
+
 **Goal:** 관리자가 초기 비밀번호를 정해 전달하던 두 경로(계정 생성·비밀번호 재설정)를 일회용 링크로 바꿔, 평문 비밀번호가 관리자 손을 거치지 않게 한다.
 
 **Architecture:** 일회용 토큰 테이블 2개(`invitations`·`password_reset_tokens`, 마이그 0012)를 두고, 만료·1회용 판정은 서비스 함수 하나(`assertLive`)로 모은다. 초대 수락은 계정·개인조직·조직합류·초대소비를 한 트랜잭션으로 처리하므로 `createAccount`가 트랜잭션을 받도록 넓힌다. 토큰을 유일한 자격으로 삼는 공개 프로시저는 정확히 3개다.
@@ -41,6 +47,15 @@ core 463 · cli 138 · web 382 · server 143 · typecheck EXIT=0
 (2026-08-06 실측, main `f6543b2`)
 
 **core·cli는 이 사이클에서 변하지 않아야 한다.** 변하면 범위를 넘은 것이다.
+
+> **사후 보정:** 최종 실측은 **core 463 · cli 138 · web 420 · server 185 · typecheck EXIT=0**
+> (server +42 · web +38, **core·cli 무변경** — 이 제약은 지켜졌다). 계획이 태스크마다 적은
+> 예상치는 **전부 빗나갔다** — Task 2 `server 164`, Task 3 `server 174 내외`, Task 4 `web 392 내외`,
+> Task 5 `web 402 내외`. 계획에 없던 리뷰 수정 커밋 3건이 매번 테스트를 더했기 때문이다
+> (`0ba8104` 관리자 초대 조회·취소 + 라우터 표면 전수 비교, `36eceaf` 종료성/비종료성 오류 판정
+> + Referer, `55c6be4` 링크 수신자·복사·역할 선택). **계획의 절대 수치는 참고용일 뿐이다** —
+> 태스크 게이트로 쓸 수 있는 것은 "기존 N건이 하나도 깨지지 않는다" 쪽이고, 증가분은 워커가
+> 실측해 보고하게 하는 편이 맞다.
 
 ## 파일 구조
 
@@ -399,8 +414,12 @@ Expected: server **164 passed**(148 + 16, 16번을 뺐다면 163) · EXIT=0. **�
 - [ ] **Step 7: 커밋**
 
 ```bash
+# db/client.ts(Tx·DbOrTx의 자리는 accounts.ts가 아니라 여기다) · routers/org.ts ·
+# services/perm.ts(requireOrgManager 이동 — Interfaces가 이미 perm.ts라고 적어 둔 것)까지 포함한다.
 git add apps/server/src/services/accounts.ts apps/server/src/routers/invitation.ts \
-        apps/server/src/routers/invitation.test.ts apps/server/src/router.ts && \
+        apps/server/src/routers/invitation.test.ts apps/server/src/router.ts \
+        apps/server/src/db/client.ts apps/server/src/routers/org.ts \
+        apps/server/src/services/perm.ts && \
 git commit -m "$(cat <<'EOF'
 feat(server): 초대 생성·수락 경로
 
@@ -421,8 +440,18 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01JWohC7dLRgZQ4oFZBJdBsC
 EOF
 )" -- apps/server/src/services/accounts.ts apps/server/src/routers/invitation.ts \
-      apps/server/src/routers/invitation.test.ts apps/server/src/router.ts
+      apps/server/src/routers/invitation.test.ts apps/server/src/router.ts \
+      apps/server/src/db/client.ts apps/server/src/routers/org.ts \
+      apps/server/src/services/perm.ts
 ```
+
+> **사후 보정:** 위 커밋 목록의 뒤 세 경로(`db/client.ts`·`routers/org.ts`·`services/perm.ts`)와 그
+> 위의 주석 두 줄은 **계획에 없었고 실행 중에 덧붙인 것이다.** 원인은 계획의 Interfaces가
+> `requireOrgManager`를 `services/perm.ts`에 있는 것으로 적었는데 **실제로는 `routers/org.ts`의
+> 비공개 함수**였다는 것이다 — `invitation.ts`가 그것을 쓰려면 먼저 `perm.ts`로 옮겨야 했고,
+> `Tx`·`DbOrTx` 타입도 `accounts.ts`가 아니라 `db/client.ts`에 두는 것이 맞았다. **계획이 "이미 있다"고
+> 적은 공용 함수는 위치까지 확인해야 한다** — 없거나 다른 파일의 비공개 함수면 그 태스크의 커밋
+> 범위가 조용히 넓어진다.
 
 ---
 
@@ -463,6 +492,15 @@ pnpm -s -C apps/server typecheck; echo "EXIT=$?"
 ```
 Expected: server **174 내외**(정확한 수는 실측해 보고). EXIT=0.
 
+> **사후 보정: 이 태스크에서 `pnpm -r typecheck`는 EXIT=1이 정상이다.** 위 명령이 `apps/server`에
+> 한정돼 있어 계획은 그것을 못 보고 지나갔다 — 서버에서 `admin.users.create`/`resetPassword`를
+> 없애는 순간 그것을 부르는 `apps/web/src/pages/admin.tsx`가 깨지고, **그 웹 화면을 교체하는 것은
+> Task 5다.** 즉 **Task 3부터 Task 5 완료 전까지 리포 전체 typecheck는 빨간 것이 맞다.** Global
+> Constraints의 "typecheck는 종료코드로 판정한다"를 태스크 게이트로 그대로 쓰면 여기서 멈추게
+> 되므로, **서버 프로시저를 없애고 그 소비처를 나중 태스크로 미루는 계획은 각 태스크의 게이트를
+> 패키지 단위로 좁혀 적어야 한다**(`pnpm -s -C apps/server typecheck`). 리포 전체 EXIT=0은
+> Task 5 이후의 체크포인트다.
+
 - [ ] **Step 5: 구분력 확인**
 
 - `auth.resetPassword`의 세션 삭제를 지운다 → 해당 테스트 FAIL
@@ -487,6 +525,10 @@ Expected: server **174 내외**(정확한 수는 실측해 보고). EXIT=0.
 
 `admin.test.tsx:1-33`의 `renderAdmin` 패턴을 그대로 쓴다(`createRoutesStub` + `mockTrpcFetch`).
 `initialEntries`에 토큰이 든 경로를 준다.
+
+⚠️ **`invitation.peek`은 query가 아니라 mutation이다**(설계 §3.5 — query면 토큰이 GET URL에 실린다).
+`useQuery`로는 부를 수 없으므로 **`useMutation`으로 부르고, 마운트 시 `useEffect`에서 한 번 호출한다.**
+로딩·에러 상태도 `useQuery`가 주는 것이 아니라 mutation의 `isPending`/`error`로 다룬다.
 
 **초대 수락**(각각 `it`): peek 결과(이메일·조직명)가 보인다 · 이름·비밀번호를 넣고 제출하면 `accept`가
 그 값으로 불린다 · 죽은 토큰이면 사유가 보이고 폼이 없다 · 성공하면 `/login`으로 간다 ·
@@ -514,6 +556,24 @@ FAIL해야 한다(로그인 리다이렉트). 확인 후 복구. **FAIL하지 �
 않는 것이므로 보고하라.**
 
 - [ ] **Step 6: 커밋**
+
+> **사후 보정 (둘).**
+>
+> **1. Step 1이 지정한 `createRoutesStub` 패턴으로는 Step 5의 구분력을 확인할 수 없다.** 그 패턴은
+> 페이지 컴포넌트를 스텁 라우트에 직접 꽂으므로 **실제 `routes.tsx`를 소비하지 않는다** — 거기서
+> 두 라우트를 `Protected`로 감싸도 테스트는 그대로 통과한다. 즉 Step 5의 "FAIL하지 않으면 보고하라"에
+> 걸리는 형태였다. 실제 구현은 **`routes.tsx`가 `router`가 아니라 라우트 표(`routes` 배열)를
+> export 하고, 별도 파일 `routes.test.tsx`가 그것을 `createMemoryRouter`로 렌더**해 미로그인
+> 방문자가 `/invite/:token`·`/reset/:token`에 닿는지 본다. **"어느 라우트가 보호 밖인가"는 라우트
+> 표를 소비하는 테스트만 검증할 수 있다.**
+>
+> **2. Step 1에 나중에 덧붙인 `peek` 주의(위 ⚠️)로도 부족했다.** `useMutation`으로 부르는 것까지는
+> 맞지만, **결과를 mutation 객체의 `data`로 받으면 StrictMode에서 화면이 "불러오는 중…"에 멈춘다.**
+> `MutationObserver`는 `onUnsubscribe`에서 실행 중인 mutation에서 자신을 떼어내는데 다시 붙이는
+> `onSubscribe`가 없고(query-core 5.101.4), StrictMode의 "실행→정리→재실행" 사이에 구독이 끊겨
+> 그때 떠 있던 요청의 응답이 관찰자에게 영영 도달하지 않는다. **`mutateAsync`의 프로미스를 받아
+> 로컬 상태에 넣어야** 그 구멍을 타지 않는다(중복 POST를 막는 `useRef` 가드는 별개 방어다).
+> 계획이 "`useQuery` 대신 `useMutation`"까지만 적으면 구현자가 자연스럽게 `data`를 쓴다.
 
 ---
 
