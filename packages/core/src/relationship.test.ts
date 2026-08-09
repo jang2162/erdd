@@ -347,4 +347,103 @@ describe('resolveManyToMany', () => {
     const jCols = Object.values(out.columns).filter((c) => c.tableId === 'J').sort((a, b) => a.order - b.order)
     expect(jCols.map((c) => c.physicalName)).toEqual(['EMP_NO', 'EMP_NO_2'])
   })
+
+  it('부모 PK 컬럼을 자식 PK 컬럼보다 먼저 넣는다', () => {
+    // 교차 테이블 컬럼의 order 는 그대로 DDL 의 PRIMARY KEY (…) 순서가 된다.
+    // 설계 4.2 는 부모(7번) → 자식(8번) 순서를 명시한다.
+    const out = resolveManyToMany(m2mBase(), ARGS)
+    const jCols = Object.values(out.columns)
+      .filter((c) => c.tableId === 'J')
+      .sort((a, b) => a.order - b.order)
+    expect(jCols.map((c) => c.physicalName)).toEqual(['ORDER_ID', 'PRODUCT_ID'])
+  })
+
+  it('교차 테이블의 좌표·그룹을 JunctionSpec 그대로 둔다', () => {
+    const base = m2mBase()
+    // groupId 를 실제 그룹으로 두어야 무결성 검사를 통과한다(integrity.ts:41).
+    const m = {
+      ...base,
+      tableGroups: { g1: { id: 'g1', name: '주문영역', color: '#e0e0e0', comment: null } },
+    }
+    const out = resolveManyToMany(m, {
+      ...ARGS,
+      junction: { ...JUNCTION, groupId: 'g1', groupPosition: { x: 7, y: 9 } },
+    })
+    expect(out.tables['J']?.position).toEqual({ x: 50, y: 25 })
+    expect(out.tables['J']?.groupId).toBe('g1')
+    expect(out.tables['J']?.groupPosition).toEqual({ x: 7, y: 9 })
+    expect(validateModelIntegrity(out)).toEqual([])
+  })
+})
+
+// 부모 주문(복합 PK ORDER_ID·TENANT_ID) → 자식 상품(PK PRODUCT_ID), non-identifying 관계 r1.
+// FK 컬럼이 2개('fk1'·'fk2')라 삭제 루프가 여러 번 도는 유일한 경로다.
+function m2mCompositeBase(): ProjectModel {
+  const m = createEmptyModel()
+  m.tables['P'] = { ...tbl('P', 'ORDERS'), logicalName: '주문' }
+  m.tables['C'] = { ...tbl('C', 'PRODUCTS'), logicalName: '상품' }
+  m.columns['P_PK1'] = col('P_PK1', 'P', 'ORDER_ID', { isPk: true, nullable: false, order: 0 })
+  m.columns['P_PK2'] = col('P_PK2', 'P', 'TENANT_ID', { isPk: true, nullable: false, order: 1 })
+  m.columns['C_PK'] = col('C_PK', 'C', 'PRODUCT_ID', { isPk: true, nullable: false, order: 0 })
+  return createRelationshipFromParentPk(m, {
+    relationshipId: 'r1', parentTableId: 'P', childTableId: 'C', newColumnIds: ['fk1', 'fk2'],
+  })
+}
+
+const ARGS_COMPOSITE = {
+  ...ARGS,
+  a: { relationshipId: 'ra', newColumnIds: ['ja1', 'ja2'] },
+  b: { relationshipId: 'rb', newColumnIds: ['jb1'] },
+}
+
+describe('resolveManyToMany — 복합 PK 부모', () => {
+  it('FK 컬럼을 모두 지우고 교차 테이블의 PK 를 3컬럼으로 만든다', () => {
+    const out = resolveManyToMany(m2mCompositeBase(), ARGS_COMPOSITE)
+
+    expect(out.columns['fk1']).toBeUndefined()
+    expect(out.columns['fk2']).toBeUndefined()
+
+    const jCols = Object.values(out.columns)
+      .filter((c) => c.tableId === 'J')
+      .sort((a, b) => a.order - b.order)
+    expect(jCols.map((c) => c.physicalName)).toEqual(['ORDER_ID', 'TENANT_ID', 'PRODUCT_ID'])
+    expect(jCols.every((c) => c.isPk)).toBe(true)
+    expect(validateModelIntegrity(out)).toEqual([])
+  })
+
+  it('같은 컬럼이 두 번 매핑돼 있어도 부분 상태를 만들지 않는다', () => {
+    // 중복 매핑은 합성이 아니다 — 공개 함수 remapRelationshipChildColumn 으로 만들어진다.
+    // 중복을 세면 droppedPk 가 실제보다 커져 pkCount - droppedPk 가 음수가 되고,
+    // '=== 0' 비교를 빠져나가 교차 테이블과 관계 하나만 생긴다(설계 3.4 가 막으려던 상태).
+    const dup = remapRelationshipChildColumn(m2mCompositeBase(), {
+      relationshipId: 'r1', parentColumnId: 'P_PK2', newChildColumnId: 'fk1',
+    })
+    expect(dup.relationships['r1']?.columnMappings)
+      .toEqual([{ childColumnId: 'fk1', parentColumnId: 'P_PK1' },
+                { childColumnId: 'fk1', parentColumnId: 'P_PK2' }])
+
+    // fk1 을 자식의 유일한 PK 로 만든다 — 지우면 자식 PK 가 0개가 된다.
+    const { C_PK, ...rest } = dup.columns
+    const m = { ...dup, columns: { ...rest, fk1: { ...dup.columns['fk1']!, isPk: true } } }
+
+    expect(resolveManyToMany(m, ARGS_COMPOSITE)).toEqual(m)
+  })
+
+  it('중복 매핑이라도 자식에 PK 가 남으면 정상적으로 푼다', () => {
+    // 위 테스트의 반대편(거짓 음성) — 중복을 세면 droppedPk 가 실제 삭제량보다 커져
+    // 풀 수 있는 모델이 조용히 no-op 이 된다. 위 테스트는 <= 0 이중 방어만으로도
+    // 통과하므로 dedup 자체를 잠그는 것은 이쪽이다.
+    const dup = remapRelationshipChildColumn(m2mCompositeBase(), {
+      relationshipId: 'r1', parentColumnId: 'P_PK2', newChildColumnId: 'fk1',
+    })
+    // C_PK 는 남긴다 — fk1 을 지워도 자식 PK 가 1개 남는다.
+    const m = { ...dup, columns: { ...dup.columns, fk1: { ...dup.columns['fk1']!, isPk: true } } }
+
+    const out = resolveManyToMany(m, ARGS_COMPOSITE)
+    expect(out.tables['J']).toBeDefined()
+    expect(out.relationships['ra']).toBeDefined()
+    expect(out.relationships['rb']).toBeDefined() // 중복을 세면 여기가 undefined 가 된다
+    expect(out.columns['fk1']).toBeUndefined()
+    expect(validateModelIntegrity(out)).toEqual([])
+  })
 })

@@ -211,15 +211,22 @@ export function resolveManyToMany(
 
   const parentTableId = rel.parentTableId
   const childTableId = rel.childTableId // 관계가 사라지기 전에 읽어 둔다
+  // 무테스트 가드다 — validateModelIntegrity가 관계의 부모·자식 테이블 존재를 이미 검사하므로
+  // 여기 걸리는 모델은 그 자체로 무결성 위반이고, 정상 경로로는 도달할 수 없다.
+  // 그래도 남긴다: 동시편집으로 뒤늦게 도착한 mutation이 깨진 모델을 만들지 않게 하는 방어다.
   if (!model.tables[parentTableId] || !model.tables[childTableId]) return model
 
   // PK 개수는 "FK를 지운 뒤"를 기준으로 센다(설계 3.4).
-  const fkColumnIds = rel.columnMappings.map((m) => m.childColumnId)
+  // 매핑은 같은 childColumnId를 두 번 담을 수 있으므로(remapRelationshipChildColumn이
+  // 그렇게 만든다) 중복을 없애고 센다 — 중복을 세면 droppedPk가 실제 삭제량보다 커져
+  // pkCount - droppedPk가 음수가 되고, 그 음수가 '=== 0' 비교를 빠져나간다.
+  const fkColumnIds = [...new Set(rel.columnMappings.map((m) => m.childColumnId))]
   const droppedPk = fkColumnIds.filter((id) => model.columns[id]?.isPk).length
   const pkCount = (tableId: string) =>
     Object.values(model.columns).filter((c) => c.tableId === tableId && c.isPk).length
   if (pkCount(parentTableId) === 0) return model
-  if (pkCount(childTableId) - droppedPk === 0) return model
+  // <= 0 은 위 dedup이 깨져도 부분 상태를 막는 이중 방어다.
+  if (pkCount(childTableId) - droppedPk <= 0) return model
 
   // FK 컬럼을 지우면 매핑이 비면서 원본 관계도 함께 사라진다(설계 3.2).
   // deleteRelationship은 자식 FK 컬럼을 일부러 보존하므로 쓰지 않는다.

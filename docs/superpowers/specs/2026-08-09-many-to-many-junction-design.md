@@ -311,7 +311,7 @@ export type JunctionPlan =
 | 새 관계 2개 | 각각 `parentTableId`가 원본 parent/child, `childTableId`가 교차 테이블, `identifying: true`, `cardinality: '1:N'` |
 | **원본 FK를 쓰던 인덱스 정리** | 그 컬럼만 있던 인덱스는 삭제되고, 다른 컬럼과 함께 있던 인덱스는 그 컬럼만 빠진다 |
 | 식별 관계 no-op | `identifying: true`인 관계에 부르면 반환 모델이 입력과 **깊게 같다** |
-| 부모 PK 없음 no-op | 원본 자식에 PK가 없으면 반환 모델이 입력과 깊게 같다 |
+| 부모 PK 없음 no-op | 원본 부모에 PK가 없으면 반환 모델이 입력과 깊게 같다 |
 | **FK가 자식의 유일한 PK면 no-op** | `identifying: false`인데 FK 컬럼의 `isPk`가 `true`이고 그것이 자식의 유일한 PK일 때 입력과 깊게 같다 — 삭제 **전** 개수로 세면 통과해 버리는 케이스다(3.4) |
 | 없는 관계 no-op | 존재하지 않는 id로 부르면 입력과 깊게 같다 |
 | 자기참조 이름 충돌 | 부모 = 자식일 때 FK 물리명이 서로 다르다(`_2`) |
