@@ -37,7 +37,7 @@
 | Node.js | (이미지가 포함) | 22 | `.nvmrc` |
 | pnpm | (이미지가 포함) | 10.4.1 — `corepack enable` 로 맞춘다 | `package.json` 의 `packageManager` |
 | PostgreSQL | (compose 의 `db`) | 17 | `docker-compose.yml` |
-| 열려야 할 포트 | `3000`(앱, `PORT` 로 변경) · `5432`(DB) | 좌동 | |
+| 열려야 할 포트 | `3000`(앱, 호스트 쪽은 `ERDD_PORT` 로 변경) · `5432`(DB) | `3000`(앱, `PORT` 로 변경) · `5432`(DB) | |
 
 아키텍처는 베이스 이미지 `node:22-slim` 이 지원하는 범위(x86_64 / arm64)다. 빌드에는 npm
 레지스트리 접근이 필요하다 — 폐쇄망이면 다른 곳에서 이미지를 만들어 `docker save`/`load` 로 옮긴다.
@@ -91,12 +91,10 @@ docker compose ps
 (관리자 부트스트랩, 전역 공용 리소스 시드). 연결이 되어도 **테이블이 없으면** 그 시점에 실패하고
 프로세스가 종료된다(9.3). healthcheck 는 연결 가능 여부만 보지 스키마는 보지 않는다.
 
-(`docker compose up -d` 는 앱까지 띄운다. 개발 중에 DB 만 필요하면 위처럼 `db` 를 지정한다.)
-
-> ⚠️ `db` 서비스는 호스트의 `5432` 를 그대로 연다(로컬 개발이 이 포트에 붙어 있어 기본값을
-> 유지했다). **운영 서버에서는 `docker-compose.yml` 의 `db.ports` 줄을 지우거나
-> `"127.0.0.1:5432:5432"` 로 좁힌다** — 같은 compose 네트워크 안의 앱은 포트를 공개하지 않아도
-> 붙는다. 방화벽으로 막는 것도 방법이지만 포트 매핑을 없애는 쪽이 확실하다.
+> ⚠️ `db` 서비스는 기본 설정에서 호스트의 `5432` 를 그대로 연다. **운영 서버에서는
+> `docker-compose.yml` 의 `db.ports` 줄을 지우거나 `"127.0.0.1:5432:5432"` 로 좁힌다** —
+> 같은 compose 네트워크 안의 앱은 포트를 공개하지 않아도 붙는다. 방화벽으로 막는 것도
+> 방법이지만 포트 매핑을 없애는 쪽이 확실하다.
 
 ### 3.3 마이그레이션 적용
 
@@ -243,7 +241,7 @@ journalctl -u erdd -f      # ERDD server listening on :3000 이 보여야 한다
 | 이름 | 필수 | 기본값 | 설명 | 읽는 위치 |
 |---|---|---|---|---|
 | `DATABASE_URL` | **예** | 없음 | PostgreSQL 접속 문자열. 없으면 서버는 뜨지만 모든 API 가 412 다(9.1). | `apps/server/src/main.ts`, `apps/server/drizzle.config.ts` |
-| `PORT` | 아니오 | `3000` | listen 포트. 바인드 주소는 항상 `0.0.0.0` 이다. | `apps/server/src/main.ts` |
+| `PORT` | 아니오 | `3000` | listen 포트. 바인드 주소는 항상 `0.0.0.0` 이다. **compose 는 이 값을 앱 컨테이너에 넘기지 않는다** — 방법 A 에서 포트를 옮기려면 아래 `ERDD_PORT` 를 쓴다. | `apps/server/src/main.ts` |
 | `NODE_ENV` | 아니오 | 없음 | `production` 일 때만 세션 쿠키에 `Secure` 가 붙는다. **서버 코드에서 이 변수가 바꾸는 동작은 이것 하나뿐이고**, 읽는 자리도 `auth.login` 한 곳뿐이다(로그인 요청마다 읽는다). Docker 이미지에 `production` 이 박혀 있고, compose 는 `ERDD_NODE_ENV` 로 이 값을 채운다. | `apps/server/src/routers/auth.ts` |
 | `ADMIN_EMAIL` | 아니오 | 없음 | 최초 관리자 부트스트랩. `ADMIN_PASSWORD` 와 **둘 다** 있어야 동작한다. | `apps/server/src/services/accounts.ts` |
 | `ADMIN_PASSWORD` | 아니오 | 없음 | 위와 같음. 해당 이메일의 계정이 없을 때만 쓰인다. | 〃 |
@@ -256,7 +254,7 @@ journalctl -u erdd -f      # ERDD server listening on :3000 이 보여야 한다
 | 이름 | 기본값 | 무엇을 정하나 |
 |---|---|---|
 | `POSTGRES_PASSWORD` | `erdd` | `db` 의 비밀번호이자 `app` 의 `DATABASE_URL` 에 조립되는 값. **데이터 디렉터리 초기화 시점에만 반영된다**(3.1 의 함정). |
-| `ERDD_PORT` | `3000` | 앱 컨테이너를 호스트 어느 포트에 붙일지. |
+| `ERDD_PORT` | `3000` | 앱 컨테이너를 호스트 어느 포트에 붙일지. 컨테이너 안쪽은 `3000` 으로 고정이다(포트 매핑과 healthcheck 가 그 값을 쓴다). |
 | `ERDD_NODE_ENV` | `production` | 앱 컨테이너의 `NODE_ENV`. **이름이 `NODE_ENV` 가 아닌 것은 의도다** — 그러면 운영자 셸에 우연히 남은 `NODE_ENV` 가 흘러들어 쿠키의 `Secure` 가 조용히 꺼진다. |
 
 그 밖에 운영과 무관한 변수:
@@ -472,12 +470,14 @@ PORT=3100 ... pnpm --filter @erdd/server start   # 방법 B
 
 ### 9.3 마이그레이션을 적용하지 않았다
 
-**증상:** 서버가 기동 도중 종료된다. 로그에 `relation "resource_libraries" does not exist`
-(또는 `"users" does not exist`) 류의 Postgres 오류와 스택 트레이스가 찍히고 프로세스가 끝난다.
-`ERDD server listening on` 은 **찍히지 않는다.** compose 라면 재시작 루프가 된다.
+**증상:** 서버가 기동 도중 종료된다. 로그에 `relation "users" does not exist` 류의 Postgres
+오류와 스택 트레이스가 찍히고 프로세스가 끝난다. `ERDD server listening on` 은 **찍히지
+않는다.** compose 라면 재시작 루프가 된다.
 
 기동 시퀀스가 `관리자 부트스트랩 → 전역 리소스 시드 → listen` 순서라, 스키마가 없으면 listen
-전에 걸린다.
+전에 걸린다. 3.1 대로 `ADMIN_EMAIL`/`ADMIN_PASSWORD` 를 채웠으면 부트스트랩이 `users` 를 먼저
+조회하므로 그 테이블이 먼저 걸리고, 둘을 비워 두면 부트스트랩이 조회 없이 건너뛰어
+`relation "resource_libraries" does not exist` 가 먼저 뜬다. 어느 쪽이든 원인은 같다.
 
 **해결:** 3.3 을 실행한다.
 
