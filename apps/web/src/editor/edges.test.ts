@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildEdges, planConnection } from './edges.js'
-import type { ProjectModel } from '@erdd/core'
+import { buildEdges, planConnection, planJunction } from './edges.js'
+import type { NamingRules, ProjectModel } from '@erdd/core'
 import { createEmptyModel } from '@erdd/core'
+import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { nextTablePhysicalName } from './model-edits.js'
 
 function model(): ProjectModel {
   const m = createEmptyModel()
@@ -79,5 +81,186 @@ describe('planConnection', () => {
     const plan = planConnection(m, { source: 'C', target: 'P' }, gen())
     if (plan.ok) expect(plan.newColumnIds).toHaveLength(2)
     else throw new Error('expected ok')
+  })
+})
+
+describe('nextTablePhysicalName', () => {
+  it('사용 중이지 않은 가장 작은 TABLE_n 을 준다', () => {
+    const m = buildSampleModel()
+    expect(nextTablePhysicalName(m)).toBe('TABLE_1')
+  })
+
+  it('이미 쓰이는 번호를 건너뛴다', () => {
+    const base = buildSampleModel()
+    const m = { ...base, tables: {
+      ...base.tables,
+      x1: { ...base.tables['t1']!, id: 'x1', physicalName: 'TABLE_1' },
+      x2: { ...base.tables['t1']!, id: 'x2', physicalName: 'TABLE_2' },
+    } }
+    expect(nextTablePhysicalName(m)).toBe('TABLE_3')
+  })
+})
+
+const RULES: NamingRules = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
+const CTX = { namingRules: RULES, activeGroupView: null }
+
+describe('planJunction', () => {
+  function ids() {
+    let n = 0
+    return () => `gen${++n}`
+  }
+
+  it('사전이 비어 있으면 물리명이 TABLE_n 으로 떨어진다', () => {
+    const plan = planJunction(buildSampleModel(), 'r1', ids(), CTX)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.junction.logicalName).toBe('회원등급회원')
+    expect(plan.junction.physicalName).toBe('TABLE_1')
+  })
+
+  it('용어 사전에 완전일치가 있으면 그 물리명을 쓴다', () => {
+    const base = buildSampleModel()
+    const m = { ...base, terms: {
+      tm1: { id: 'tm1', logicalName: '회원등급회원', physicalName: 'MBR_GRD_MBR',
+             domainId: null, description: null, origin: null },
+    } }
+    const plan = planJunction(m, 'r1', ids(), CTX)
+    expect(plan.ok && plan.junction.physicalName).toBe('MBR_GRD_MBR')
+  })
+
+  it('단어 사전이 일부만 알면 아는 부분으로 물리명을 만든다', () => {
+    const base = buildSampleModel()
+    const m = { ...base, words: {
+      w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+            englishName: null, description: null, origin: null },
+    } }
+    const plan = planJunction(m, 'r1', ids(), CTX)
+    // '회원등급회원' 을 최장일치로 분해하면 회원(MBR) · 등급(모름) · 회원(MBR) 이라
+    // 아는 것만 이어 붙는다. '등급' 은 기존 미등록 단어 경고가 따로 알린다.
+    expect(plan.ok && plan.junction.physicalName).toBe('MBR_MBR')
+  })
+
+  it('두 부모의 중점에 놓는다', () => {
+    const plan = planJunction(buildSampleModel(), 'r1', ids(), CTX)
+    // t1 (0,0) 과 t2 (300,0) 의 중점
+    expect(plan.ok && plan.junction.position).toEqual({ x: 150, y: 0 })
+  })
+
+  it('부모 PK 개수만큼 FK 컬럼 id 를 발급한다', () => {
+    const plan = planJunction(buildSampleModel(), 'r1', ids(), CTX)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.a.newColumnIds).toHaveLength(1) // t1 의 PK 는 c1 하나
+    expect(plan.b.newColumnIds).toHaveLength(1) // t2 의 PK 는 c2 하나
+    const all = [plan.junction.id, plan.a.relationshipId, plan.b.relationshipId,
+                 ...plan.a.newColumnIds, ...plan.b.newColumnIds]
+    expect(new Set(all).size).toBe(all.length) // 모두 서로 다르다
+  })
+
+  it('자식 PK 가 2개이고 그중 1개가 FK 면 삭제 뒤 남는 수만큼만 발급한다', () => {
+    // FK c4 를 PK 로 → t2 의 PK 는 c2·c4 둘. 그중 c4 는 교차 테이블 변환에서 삭제되므로
+    // 자식이 교차 테이블에 넘길 PK 는 c2 하나뿐이다. 삭제 '전' 개수로 세면 2개가 나오는데,
+    // createRelationshipFromParentPk 는 남는 id 를 조용히 버려 다른 곳에서는 드러나지 않는다.
+    const base = buildSampleModel()
+    const m = { ...base, columns: {
+      ...base.columns, c4: { ...base.columns['c4']!, isPk: true },
+    } }
+    const plan = planJunction(m, 'r1', ids(), CTX)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.b.newColumnIds).toHaveLength(1)
+  })
+
+  it('활성 그룹뷰가 있으면 교차 테이블을 그 그룹에 넣는다', () => {
+    const plan = planJunction(buildSampleModel(), 'r1', ids(),
+      { namingRules: RULES, activeGroupView: 'g1' })
+    expect(plan.ok && plan.junction.groupId).toBe('g1')
+    // t1 groupPosition (10,10), t2 (310,10) 의 중점
+    expect(plan.ok && plan.junction.groupPosition).toEqual({ x: 160, y: 10 })
+  })
+
+  it('없는 관계는 missing 이다', () => {
+    expect(planJunction(buildSampleModel(), 'nope', ids(), CTX))
+      .toEqual({ ok: false, reason: 'missing' })
+  })
+
+  it('식별 관계는 identifying 이다', () => {
+    const base = buildSampleModel()
+    const m = { ...base, relationships: {
+      ...base.relationships, r1: { ...base.relationships['r1']!, identifying: true },
+    } }
+    expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'identifying' })
+  })
+
+  it('FK 가 자식의 유일한 PK면 no-pk 다', () => {
+    const base = buildSampleModel()
+    // t2 의 PK c2 를 비-PK 로, FK c4 를 PK 로 → 지우면 t2 의 PK 가 0개가 된다
+    const m = { ...base, columns: {
+      ...base.columns,
+      c2: { ...base.columns['c2']!, isPk: false },
+      c4: { ...base.columns['c4']!, isPk: true },
+    } }
+    expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'no-pk' })
+  })
+
+  // 매핑은 같은 childColumnId 를 두 번 담을 수 있다 — 공개 함수 remapRelationshipChildColumn 이
+  // 그렇게 만들고, 관계 패널의 매핑 select 도 이미 매핑된 컬럼을 제외하지 않는다.
+  it('매핑이 중복돼도 FK 가 자식의 유일한 PK면 no-pk 다', () => {
+    const base = buildSampleModel()
+    const m = {
+      ...base,
+      columns: {
+        ...base.columns,
+        c2: { ...base.columns['c2']!, isPk: false },
+        c4: { ...base.columns['c4']!, isPk: true },
+      },
+      relationships: {
+        ...base.relationships,
+        r1: { ...base.relationships['r1']!, columnMappings: [
+          { childColumnId: 'c4', parentColumnId: 'c1' },
+          { childColumnId: 'c4', parentColumnId: 'c1' },
+        ] },
+      },
+    }
+    // 중복을 세면 droppedPk 가 2가 되어 1 - 2 = -1 이 되고, '=== 0' 비교를 빠져나가
+    // ok:true 를 준다. 그러면 버튼은 활성인데 core 가 no-op 이라 눌러도 아무 일이 없다.
+    expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'no-pk' })
+  })
+
+  it('중복 매핑을 한 번만 센다 — 남는 PK 가 있으면 계획을 만든다', () => {
+    const base = buildSampleModel()
+    // t2 의 PK 는 c2·c4 둘. 삭제되는 FK 는 c4 하나뿐인데 매핑에 두 번 담겼다.
+    const m = {
+      ...base,
+      columns: { ...base.columns, c4: { ...base.columns['c4']!, isPk: true } },
+      relationships: {
+        ...base.relationships,
+        r1: { ...base.relationships['r1']!, columnMappings: [
+          { childColumnId: 'c4', parentColumnId: 'c1' },
+          { childColumnId: 'c4', parentColumnId: 'c1' },
+        ] },
+      },
+    }
+    // 중복을 세면 2 - 2 = 0 이 되어 있지도 않은 no-pk 로 막는다(dedup 단독 구분력).
+    const plan = planJunction(m, 'r1', ids(), CTX)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.b.newColumnIds).toHaveLength(1)
+  })
+
+  it('삭제량이 자식 PK 수를 넘어도 no-pk 로 막는다', () => {
+    // 매핑이 자식 밖 컬럼(c1 = 부모 t1 의 PK)을 가리키는 무결성 위반 모델이다 —
+    // remapRelationshipChildColumn 이 자식 테이블 밖 컬럼을 거부하므로 공개 함수로는
+    // 도달할 수 없다. dedup 으로는 막지 못하는(중복이 없다) 경우라 '<= 0' 이중 방어를
+    // 단독으로 잠근다: '=== 0' 이면 1 - 2 = -1 이 비교를 빠져나가 ok:true 가 된다.
+    const base = buildSampleModel()
+    const m = { ...base, relationships: {
+      ...base.relationships,
+      r1: { ...base.relationships['r1']!, columnMappings: [
+        { childColumnId: 'c1', parentColumnId: 'c1' },
+        { childColumnId: 'c2', parentColumnId: 'c1' },
+      ] },
+    } }
+    expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'no-pk' })
   })
 })

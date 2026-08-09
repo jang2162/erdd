@@ -1,14 +1,21 @@
 import { deleteTableCascade, type Position, type ProjectModel, type Table } from '@erdd/core'
 
+/** 사용 중이지 않은 가장 작은 TABLE_n. 논리명이 정해지기 전의 임시 물리명이다. */
+export function nextTablePhysicalName(model: ProjectModel): string {
+  const used = new Set(Object.values(model.tables).map((t) => t.physicalName))
+  let n = 1
+  while (used.has(`TABLE_${n}`)) n++
+  return `TABLE_${n}`
+}
+
 /** 새 테이블(컬럼 없음). 물리명은 임시 기본값 — 편집 패널에서 바꾼다. */
 export function addTable(
   model: ProjectModel, { id, position }: { id: string; position: Position },
 ): ProjectModel {
-  const used = new Set(Object.values(model.tables).map((t) => t.physicalName))
-  let n = 1
-  while (used.has(`TABLE_${n}`)) n++
+  const physicalName = nextTablePhysicalName(model)
+  const n = physicalName.slice('TABLE_'.length)
   const table: Table = {
-    id, logicalName: `테이블${n}`, physicalName: `TABLE_${n}`,
+    id, logicalName: `테이블${n}`, physicalName,
     comment: null, groupId: null, position, groupPosition: null, custom: {},
   }
   return { ...model, tables: { ...model.tables, [id]: table } }
