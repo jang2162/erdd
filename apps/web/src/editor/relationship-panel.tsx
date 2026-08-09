@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import { Trash2 } from 'lucide-react'
-import { computeWarnings, setRelationshipIdentifying, deleteRelationship, remapRelationshipChildColumn } from '@erdd/core'
+import { computeWarnings, setRelationshipIdentifying, deleteRelationship, remapRelationshipChildColumn, resolveManyToMany } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
+import { planJunction } from './edges.js'
+import { newId } from './uid.js'
 import { WarningBadge } from './warning-badge.js'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -12,6 +14,11 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
   const canEdit = useEditorStore((s) => s.canEdit)
   const relId = useEditorStore((s) => s.selectedRelationshipId)!
   const selectRelationship = useEditorStore((s) => s.selectRelationship)
+  // ⚠️ hook 은 아래 `if (!rel) return null` 보다 위에서 부른다 — 관계가 사라질 때 hook 개수가
+  //    달라지면 React 가 터진다.
+  const select = useEditorStore((s) => s.select)
+  const namingRules = useEditorStore((s) => s.namingRules)
+  const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const mutate = useModelMutation(projectId)
   const rel = model.relationships[relId]
   const relWarnings = useMemo(
@@ -25,6 +32,8 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
   const childColumns = Object.values(model.columns)
     .filter((c) => c.tableId === rel.childTableId)
     .sort((a, b) => a.order - b.order)
+  // hook 이 아니라 순수 계산이므로 조건문 아래여도 된다.
+  const junctionPlan = planJunction(model, relId, newId, { namingRules, activeGroupView })
 
   return (
     <aside className="w-80 shrink-0 overflow-y-auto border-l bg-card p-4">
@@ -112,6 +121,40 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
             {rel.columnMappings.length === 0 && <li className="text-xs text-muted-foreground">매핑 없음</li>}
           </ul>
         </div>
+
+        {canEdit && (
+          <div className="grid gap-1.5 border-t pt-3">
+            <Button size="sm" variant="outline" disabled={!junctionPlan.ok}
+              onClick={() => {
+                if (!junctionPlan.ok) return
+                const { junction, a, b } = junctionPlan
+                // ⚠️ 선택은 이 핸들러 안에서 교차 테이블로 옮긴다 — 이 mutation 으로 원본 관계가
+                //    사라지므로, 선택이 관계에 남아 있으면 패널이 없는 관계를 그리려다 통째로
+                //    사라진다. (mutate 는 마이크로태스크로 지연 실행되므로 mutate 앞뒤 어느 쪽에
+                //    두어도 결과는 같다. 의도가 드러나게 앞에 둔다.)
+                //    그리고 select 와 selectRelationship 은 둘 다 CLEARED_SELECTION 을 펼치므로
+                //    (store.ts) 뒤에 부른 것만 남는다 — 교차 테이블을 선택하려면 select 가 나중이다.
+                selectRelationship(null)
+                select(junction.id)
+                void mutate(
+                  (m) => resolveManyToMany(m, { relationshipId: relId, junction, a, b }),
+                  { summary: '교차 테이블로 풀기' },
+                )
+              }}>
+              교차 테이블로 풀기
+            </Button>
+            {!junctionPlan.ok && junctionPlan.reason === 'identifying' && (
+              <p className="text-xs text-muted-foreground">
+                식별 관계는 풀 수 없습니다 — 위 &quot;식별 관계&quot; 체크를 먼저 해제하세요
+              </p>
+            )}
+            {!junctionPlan.ok && junctionPlan.reason === 'no-pk' && (
+              <p className="text-xs text-muted-foreground">
+                양쪽 테이블에 모두 기본 키가 있어야 합니다
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </aside>
   )

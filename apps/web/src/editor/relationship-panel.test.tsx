@@ -61,4 +61,68 @@ describe('RelationshipPanel', () => {
     // 카디널리티 select는 <Label>이 htmlFor 없이 렌더돼 getByLabelText로 못 찾는다 — 첫 번째 combobox로 짚는다.
     expect(screen.getAllByRole('combobox')[0]).toBeDisabled()
   })
+
+  it('교차 테이블로 풀면 원본 관계가 사라지고 교차 테이블이 생긴다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectRelationship('r1')
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: '교차 테이블로 풀기' }))
+
+    await waitFor(() => expect(useEditorStore.getState().model.relationships['r1']).toBeUndefined())
+    const m = useEditorStore.getState().model
+    // 원본 FK 컬럼이 사라진다
+    expect(m.columns['c4']).toBeUndefined()
+    // 교차 테이블 1개 + 새 관계 2개
+    const junction = Object.values(m.tables).find((t) => t.logicalName === '회원등급회원')
+    expect(junction).toBeDefined()
+    const jRels = Object.values(m.relationships).filter((r) => r.childTableId === junction!.id)
+    expect(jRels).toHaveLength(2)
+    expect(jRels.every((r) => r.identifying)).toBe(true)
+    // 교차 테이블이 선택된다
+    expect(useEditorStore.getState().selectedTableId).toBe(junction!.id)
+    expect(useEditorStore.getState().selectedRelationshipId).toBeNull()
+  })
+
+  it('식별 관계면 버튼이 잠기고 이유가 보인다', () => {
+    const base = buildSampleModel()
+    const m = { ...base, relationships: {
+      ...base.relationships, r1: { ...base.relationships['r1']!, identifying: true },
+    } }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectRelationship('r1')
+    renderPanel()
+
+    expect(screen.getByRole('button', { name: '교차 테이블로 풀기' })).toBeDisabled()
+    expect(screen.getByText(/식별 관계는 풀 수 없습니다/)).toBeInTheDocument()
+  })
+
+  it('PK가 모자라면 버튼이 잠기고 이유가 보인다', () => {
+    const base = buildSampleModel()
+    // t2의 PK c2를 비-PK로, FK c4를 PK로 → FK를 지우면 t2의 PK가 0개가 된다(no-pk).
+    const m = { ...base, columns: {
+      ...base.columns,
+      c2: { ...base.columns['c2']!, isPk: false },
+      c4: { ...base.columns['c4']!, isPk: true },
+    } }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectRelationship('r1')
+    renderPanel()
+
+    expect(screen.getByRole('button', { name: '교차 테이블로 풀기' })).toBeDisabled()
+    expect(screen.getByText(/양쪽 테이블에 모두 기본 키가 있어야 합니다/)).toBeInTheDocument()
+  })
+
+  it('편집 권한이 없으면 교차 테이블 버튼이 없다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    useEditorStore.getState().selectRelationship('r1')
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderPanel()
+
+    expect(screen.queryByRole('button', { name: '교차 테이블로 풀기' })).toBeNull()
+  })
 })
