@@ -3,6 +3,7 @@ import { validateModelIntegrity } from './integrity.js'
 import {
   createRelationshipFromParentPk, remapRelationshipChildColumn,
   setRelationshipIdentifying, deleteRelationship, deleteTableCascade, deleteColumnCascade,
+  junctionTableName, resolveManyToMany,
 } from './relationship.js'
 import type { Column, ProjectModel, Table } from './model.js'
 import { createEmptyModel } from './model.js'
@@ -216,5 +217,134 @@ describe('deleteColumnCascade', () => {
     expect(next.relationships['R']).toBeDefined()
     expect(next.relationships['R']!.columnMappings).toHaveLength(1)
     expect(validateModelIntegrity(next)).toEqual([])
+  })
+})
+
+describe('junctionTableName', () => {
+  it('두 논리명을 구분자 없이 이어붙인다', () => {
+    const p = { ...tbl('P', 'ORDERS'), logicalName: '주문' }
+    const c = { ...tbl('C', 'PRODUCTS'), logicalName: '상품' }
+    expect(junctionTableName(p, c)).toBe('주문상품')
+  })
+})
+
+// 부모 주문(PK ORDER_ID) → 자식 상품(PK PRODUCT_ID), non-identifying 관계 r1.
+// createRelationshipFromParentPk가 자식에 FK 컬럼 'fk1'(physicalName 'ORDER_ID')을 만든다.
+function m2mBase(): ProjectModel {
+  const m = createEmptyModel()
+  m.tables['P'] = { ...tbl('P', 'ORDERS'), logicalName: '주문', position: { x: 0, y: 0 } }
+  m.tables['C'] = { ...tbl('C', 'PRODUCTS'), logicalName: '상품', position: { x: 100, y: 50 } }
+  m.columns['P_PK'] = col('P_PK', 'P', 'ORDER_ID', { isPk: true, nullable: false, order: 0 })
+  m.columns['C_PK'] = col('C_PK', 'C', 'PRODUCT_ID', { isPk: true, nullable: false, order: 0 })
+  return createRelationshipFromParentPk(m, {
+    relationshipId: 'r1', parentTableId: 'P', childTableId: 'C', newColumnIds: ['fk1'],
+  })
+}
+
+const JUNCTION = {
+  id: 'J', logicalName: '주문상품', physicalName: 'ORD_PRD',
+  position: { x: 50, y: 25 }, groupId: null, groupPosition: null,
+}
+const ARGS = {
+  relationshipId: 'r1',
+  junction: JUNCTION,
+  a: { relationshipId: 'ra', newColumnIds: ['ja1'] },
+  b: { relationshipId: 'rb', newColumnIds: ['jb1'] },
+}
+
+describe('resolveManyToMany', () => {
+  it('교차 테이블을 만들고 두 FK를 복합 PK로 둔다', () => {
+    const out = resolveManyToMany(m2mBase(), ARGS)
+
+    expect(out.tables['J']?.logicalName).toBe('주문상품')
+    expect(out.tables['J']?.physicalName).toBe('ORD_PRD')
+
+    const jCols = Object.values(out.columns).filter((c) => c.tableId === 'J')
+    expect(jCols.map((c) => c.id).sort()).toEqual(['ja1', 'jb1'])
+    expect(jCols.every((c) => c.isPk)).toBe(true)
+    // 부모 PK의 물리명을 그대로 가져온다
+    expect(jCols.map((c) => c.physicalName).sort()).toEqual(['ORDER_ID', 'PRODUCT_ID'])
+  })
+
+  it('원본 관계와 그 FK 컬럼을 없앤다', () => {
+    const out = resolveManyToMany(m2mBase(), ARGS)
+    expect(out.relationships['r1']).toBeUndefined()
+    expect(out.columns['fk1']).toBeUndefined()
+  })
+
+  it('새 관계 둘은 각 부모에서 교차 테이블로 가는 식별 1:N 이다', () => {
+    const out = resolveManyToMany(m2mBase(), ARGS)
+
+    expect(out.relationships['ra']).toMatchObject({
+      parentTableId: 'P', childTableId: 'J', cardinality: '1:N', identifying: true,
+    })
+    expect(out.relationships['rb']).toMatchObject({
+      parentTableId: 'C', childTableId: 'J', cardinality: '1:N', identifying: true,
+    })
+    expect(out.relationships['ra']?.columnMappings).toEqual([{ childColumnId: 'ja1', parentColumnId: 'P_PK' }])
+    expect(out.relationships['rb']?.columnMappings).toEqual([{ childColumnId: 'jb1', parentColumnId: 'C_PK' }])
+  })
+
+  it('결과 모델의 참조 무결성이 유지된다', () => {
+    expect(validateModelIntegrity(resolveManyToMany(m2mBase(), ARGS))).toEqual([])
+  })
+
+  it('존재하지 않는 관계면 아무것도 하지 않는다', () => {
+    const m = m2mBase()
+    expect(resolveManyToMany(m, { ...ARGS, relationshipId: 'nope' })).toEqual(m)
+  })
+
+  it('식별 관계면 아무것도 하지 않는다', () => {
+    const m = setRelationshipIdentifying(m2mBase(), 'r1', true)
+    expect(resolveManyToMany(m, ARGS)).toEqual(m)
+  })
+
+  it('부모에 PK가 없으면 아무것도 하지 않는다', () => {
+    const base = m2mBase()
+    // 부모 P의 PK를 비-PK로 바꾼다(컬럼을 지우면 관계까지 사라져 다른 가드에 걸린다)
+    const m = {
+      ...base,
+      columns: { ...base.columns, P_PK: { ...base.columns['P_PK']!, isPk: false } },
+    }
+    expect(resolveManyToMany(m, ARGS)).toEqual(m)
+  })
+
+  it('FK 컬럼이 자식의 유일한 PK면 아무것도 하지 않는다', () => {
+    // identifying:false 인데 FK 의 isPk 가 true 인 불일치 상태 — 모델이 둘을 묶지 않는다.
+    // 삭제 '전' 개수로 세면 통과해 버리고, FK 를 지운 뒤 두 번째 관계 생성이 조용히
+    // no-op 이 되어 교차 테이블과 관계 하나만 남는다(설계 3.4).
+    const base = m2mBase()
+    const { C_PK, ...rest } = base.columns
+    const m = { ...base, columns: { ...rest, fk1: { ...base.columns['fk1']!, isPk: true } } }
+    expect(resolveManyToMany(m, ARGS)).toEqual(m)
+  })
+
+  it('원본 FK 컬럼을 쓰던 인덱스를 정리한다', () => {
+    const base = m2mBase()
+    const m = {
+      ...base,
+      indexes: {
+        ix_only: { id: 'ix_only', tableId: 'C', name: 'IX_ONLY', unique: false,
+          columns: [{ columnId: 'fk1', direction: 'asc' as const }] },
+        ix_mixed: { id: 'ix_mixed', tableId: 'C', name: 'IX_MIXED', unique: false,
+          columns: [{ columnId: 'fk1', direction: 'asc' as const },
+                    { columnId: 'C_PK', direction: 'asc' as const }] },
+      },
+    }
+    const out = resolveManyToMany(m, ARGS)
+    expect(out.indexes['ix_only']).toBeUndefined() // 컬럼이 0개가 되면 인덱스도 사라진다
+    expect(out.indexes['ix_mixed']?.columns).toEqual([{ columnId: 'C_PK', direction: 'asc' }])
+  })
+
+  it('자기참조 관계에서도 FK 물리명이 충돌하지 않는다', () => {
+    const m = createEmptyModel()
+    m.tables['S'] = { ...tbl('S', 'EMP'), logicalName: '사원' }
+    m.columns['S_PK'] = col('S_PK', 'S', 'EMP_NO', { isPk: true, nullable: false, order: 0 })
+    const withRel = createRelationshipFromParentPk(m, {
+      relationshipId: 'r1', parentTableId: 'S', childTableId: 'S', newColumnIds: ['fk1'],
+    })
+    const out = resolveManyToMany(withRel, ARGS)
+    const jCols = Object.values(out.columns).filter((c) => c.tableId === 'J').sort((a, b) => a.order - b.order)
+    expect(jCols.map((c) => c.physicalName)).toEqual(['EMP_NO', 'EMP_NO_2'])
   })
 })

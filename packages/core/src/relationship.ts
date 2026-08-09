@@ -1,4 +1,4 @@
-import type { Column, ProjectModel, Relationship } from './model.js'
+import type { Column, Position, ProjectModel, Relationship, Table } from './model.js'
 
 function childColumns(model: ProjectModel, tableId: string): Column[] {
   return Object.values(model.columns).filter((c) => c.tableId === tableId)
@@ -175,4 +175,79 @@ export function deleteColumnCascade(model: ProjectModel, columnId: string): Proj
   }
 
   return { ...model, columns, relationships, indexes }
+}
+
+/** 교차 테이블의 기본 논리명 — 두 부모 논리명을 구분자 없이 잇는다(설계 D4). */
+export function junctionTableName(parent: Table, child: Table): string {
+  return `${parent.logicalName}${child.logicalName}`
+}
+
+export type JunctionSpec = {
+  id: string
+  logicalName: string
+  physicalName: string
+  position: Position
+  groupId: string | null
+  groupPosition: Position | null
+}
+
+/**
+ * 1:N 관계를 교차 테이블 + 식별 1:N 관계 2개로 바꾼다(설계 3절).
+ * id·이름·좌표는 호출측이 계산해 넘긴다 — core는 id를 만들지 않는다.
+ * 아래 어느 가드에 걸려도 model을 그대로 돌려준다(부분 상태를 남기지 않는다).
+ */
+export function resolveManyToMany(
+  model: ProjectModel,
+  args: {
+    relationshipId: string
+    junction: JunctionSpec
+    a: { relationshipId: string; newColumnIds: string[] }
+    b: { relationshipId: string; newColumnIds: string[] }
+  },
+): ProjectModel {
+  const rel = model.relationships[args.relationshipId]
+  if (!rel) return model
+  if (rel.identifying) return model // 자식 PK 구성이 바뀌어 하위 관계가 깨진다(설계 3.3)
+
+  const parentTableId = rel.parentTableId
+  const childTableId = rel.childTableId // 관계가 사라지기 전에 읽어 둔다
+  if (!model.tables[parentTableId] || !model.tables[childTableId]) return model
+
+  // PK 개수는 "FK를 지운 뒤"를 기준으로 센다(설계 3.4).
+  const fkColumnIds = rel.columnMappings.map((m) => m.childColumnId)
+  const droppedPk = fkColumnIds.filter((id) => model.columns[id]?.isPk).length
+  const pkCount = (tableId: string) =>
+    Object.values(model.columns).filter((c) => c.tableId === tableId && c.isPk).length
+  if (pkCount(parentTableId) === 0) return model
+  if (pkCount(childTableId) - droppedPk === 0) return model
+
+  // FK 컬럼을 지우면 매핑이 비면서 원본 관계도 함께 사라진다(설계 3.2).
+  // deleteRelationship은 자식 FK 컬럼을 일부러 보존하므로 쓰지 않는다.
+  let next = model
+  for (const id of fkColumnIds) next = deleteColumnCascade(next, id)
+
+  const junction: Table = {
+    id: args.junction.id,
+    logicalName: args.junction.logicalName,
+    physicalName: args.junction.physicalName,
+    comment: null,
+    groupId: args.junction.groupId,
+    position: args.junction.position,
+    groupPosition: args.junction.groupPosition,
+    custom: {},
+  }
+  next = { ...next, tables: { ...next.tables, [junction.id]: junction } }
+
+  next = createRelationshipFromParentPk(next, {
+    relationshipId: args.a.relationshipId,
+    parentTableId, childTableId: junction.id,
+    newColumnIds: args.a.newColumnIds,
+    cardinality: '1:N', identifying: true,
+  })
+  return createRelationshipFromParentPk(next, {
+    relationshipId: args.b.relationshipId,
+    parentTableId: childTableId, childTableId: junction.id,
+    newColumnIds: args.b.newColumnIds,
+    cardinality: '1:N', identifying: true,
+  })
 }

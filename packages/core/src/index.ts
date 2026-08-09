@@ -45,7 +45,9 @@ export type {
 export {
   createRelationshipFromParentPk, remapRelationshipChildColumn, setRelationshipIdentifying,
   deleteRelationship, deleteTableCascade, deleteColumnCascade,
+  junctionTableName, resolveManyToMany,
 } from './relationship.js'
+export type { JunctionSpec } from './relationship.js'
 export { parseDdl, detectDialect, splitStatements, unquoteIdentifier } from './ddl-parse.js'
 export type {
   ParsedColumn, ParsedTable, ParsedConstraint, ParsedIndex, ParsedComment,
