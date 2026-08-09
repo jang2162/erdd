@@ -95,6 +95,9 @@ export function planJunction(
   if (!rel) return { ok: false, reason: 'missing' }
   const parent = model.tables[rel.parentTableId]
   const child = model.tables[rel.childTableId]
+  // 무테스트 가드다 — validateModelIntegrity 가 관계의 부모·자식 테이블 존재를 이미 검사하므로
+  // 여기 걸리는 모델은 그 자체로 무결성 위반이고, 정상 경로로는 도달할 수 없다(core 와 같은 취지).
+  // 그래도 남긴다: 동시편집으로 뒤늦게 도착한 mutation 이 깨진 모델을 만들지 않게 하는 방어다.
   if (!parent || !child) return { ok: false, reason: 'missing' }
   if (rel.identifying) return { ok: false, reason: 'identifying' }
 
@@ -115,7 +118,11 @@ export function planJunction(
   // 빈 물리명은 DDL 생성을 깨뜨리므로 임시 이름으로 채운다(설계 5.2).
   const physicalName = gen.physicalName || nextTablePhysicalName(model)
 
-  const groupId = ctx.activeGroupView
+  // 활성 그룹뷰가 이미 삭제된 그룹을 가리킬 수 있다 — 원격 resync 는 activeGroupView 를 일부러
+  // 유지하므로(store.ts) 협업자가 그룹을 지우면 죽은 id 가 남는다. 없는 그룹을 참조하는 테이블은
+  // 무결성 위반이라 mutation 이 통째로 거부되므로, core 의 setTableGroup 과 같이 미배정으로 떨군다.
+  const groupId = ctx.activeGroupView && model.tableGroups[ctx.activeGroupView]
+    ? ctx.activeGroupView : null
   return {
     ok: true,
     junction: {

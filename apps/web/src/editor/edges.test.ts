@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildEdges, planConnection, planJunction } from './edges.js'
 import type { NamingRules, ProjectModel } from '@erdd/core'
-import { createEmptyModel } from '@erdd/core'
+import { createEmptyModel, deleteGroup } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { nextTablePhysicalName } from './model-edits.js'
 
@@ -177,6 +177,42 @@ describe('planJunction', () => {
     expect(plan.ok && plan.junction.groupId).toBe('g1')
     // t1 groupPosition (10,10), t2 (310,10) 의 중점
     expect(plan.ok && plan.junction.groupPosition).toEqual({ x: 160, y: 10 })
+  })
+
+  it('활성 그룹뷰가 이미 삭제된 그룹이면 그룹에 넣지 않는다', () => {
+    // 원격 resync 는 activeGroupView 를 유지하므로 협업자가 그룹을 지우면 죽은 id 가 남는다.
+    // 그 id 를 그대로 쓰면 '존재하지 않는 그룹 참조' 무결성 위반이 되어 mutation 이 거부된다 —
+    // 버튼은 활성인데 누르면 에러가 되므로 core 의 setTableGroup 처럼 미배정으로 떨군다.
+    const m = deleteGroup(buildSampleModel(), 'g1')
+    const plan = planJunction(m, 'r1', ids(), { namingRules: RULES, activeGroupView: 'g1' })
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.junction.groupId).toBeNull()
+    expect(plan.junction.groupPosition).toBeNull()
+  })
+
+  it('부모 PK 가 2개면 a 쪽 FK 컬럼 id 를 2개 발급한다', () => {
+    // b 와 대칭인 단언이다. a 를 과소 발급하면 createRelationshipFromParentPk 가
+    // 'FK 컬럼 id가 부족합니다' 로 throw 한다 — b 의 과다 발급(조용히 무시)보다 나쁘다.
+    const base = buildSampleModel()
+    const m = { ...base, columns: {
+      ...base.columns,
+      c5: { ...base.columns['c1']!, id: 'c5', logicalName: '등급명', physicalName: 'GRD_NM', order: 1 },
+    } }
+    const plan = planJunction(m, 'r1', ids(), CTX)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.a.newColumnIds).toHaveLength(2) // t1 의 PK 는 c1·c5 둘
+  })
+
+  it('부모에 PK 가 없으면 no-pk 다', () => {
+    const base = buildSampleModel()
+    // t1 의 PK c1 을 비-PK 로 → 교차 테이블에 넘겨줄 PK 가 없다.
+    // 가드가 없으면 core 가 모델을 그대로 돌려줘 diff 0건 → 토스트조차 없이 아무 일도 없다.
+    const m = { ...base, columns: {
+      ...base.columns, c1: { ...base.columns['c1']!, isPk: false },
+    } }
+    expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'no-pk' })
   })
 
   it('없는 관계는 missing 이다', () => {
