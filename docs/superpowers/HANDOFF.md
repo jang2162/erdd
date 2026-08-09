@@ -742,6 +742,69 @@ Phase 2 #4·#5를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다
   `createAccount`가 `passwordHash`를 받아야 하는데, 그것은 "정규화·개인 조직이 갈라지지 않는다"는
   그 함수의 존재 이유와 상충한다
 
+**웹 UI 전수 대조에서 나온 것** (2026-08-10 `docs/manual/user-guide.md` 작성 + 교차 리뷰. 매뉴얼을
+쓰려면 모든 화면 문구를 코드에서 확인해야 해서, 기능 검토와는 다른 각도로 걸러졌다)
+
+- **`deleteKeyCode='Backspace'` 가 켜져 있는데 모델 삭제로 이어지지 않는다 — 제품 결함이다.**
+  `canvas.tsx:133` 이 키를 활성화하지만 `onNodesDelete`/`onBeforeDelete`/`onEdgesDelete` 가
+  `apps/web/src` 전체에 **0건**이고, `onNodesChange`(`canvas.tsx:78,134`)는 `useNodesState` 기본
+  setter 라 React Flow 로컬 배열만 바꾼다. **지금 드러난다** — 사용자에게는 노드가 사라진 것으로
+  보이는데 저장되지 않아, 새로 고치거나 `canvas.tsx:81` 의 `setNodes(derived)` 가 다시 도는 순간
+  되살아난다. 모델 삭제 경로는 툴바 「삭제」(`toolbar.tsx:56` `removeTable`)뿐이다.
+  ⚠️ **테스트가 이 구멍을 덮지 못한다** — `canvas.test.tsx:172~178` 은 Backspace 뒤
+  `queryByTestId('rf__node-t1')` 가 null 인 것만 보고 모델(`useEditorStore` 의 `model.tables`)은
+  검증하지 않는다. 고칠 때 그 단정을 함께 넣어야 회귀가 잡힌다. 선택지는 둘 — `onNodesDelete` 를
+  붙여 `removeTable` 로 연결하거나, `deleteKeyCode` 를 `null` 로 내려 키를 아예 없앤다
+  (후자는 한 글자 수정이고 지금 문서도 "툴바 「삭제」뿐"으로 안내한다)
+- **편집 패널에 `comment`·`defaultValue`·`autoIncrement` 입력이 없어 산출물 열이 영구히 빈다 —
+  실사용 마찰이다.** `edit-panel.tsx` 에 `comment` grep 0건이고 `ColumnRow`(215~299행)에 기본값·
+  자동증가 입력이 없다. 새 컬럼은 `column-edits.ts:17~18` 에서 `defaultValue: null,
+  autoIncrement: false` 로 고정 생성되고 그 뒤 바꿀 UI 가 없다. **지금 드러난다** — Excel
+  「테이블정의서」의 「설명」·「기본값」 열(`excel-sheets.ts:29~32`)과 「테이블 목록」의 「설명」 열이
+  웹만 쓰는 프로젝트에서 **전부 빈 칸으로 제출된다.** 감리 제출이 목적인 산출물이라 눈에 띈다.
+  반대로 DDL 역설계로 들어온 값(`ddl-import.ts` 가 `COMMENT ON`·`DEFAULT`·자동증가를 반영한다)은
+  웹에서 보이지도 지우지도 못한다 — 컬럼을 삭제하는 것 말고는 손댈 방법이 없다. 입력란 3개 추가로
+  끝나는 작업이다
+- **`project.update` 는 서버에만 있고 호출부가 0건이다 — 실사용 마찰이다.**
+  `routers/project.ts:79~91` 이 이름·설명·`dialects`·`namingRules` 를 받는데
+  `grep -rn "project.update" apps/web/src apps/cli/src` → **0건**. `pages/project-settings.tsx` 는
+  이름·설명·방언·내 역할을 읽기 전용 배지로만 보여주고 편집 폼은 프로젝트 멤버뿐이다.
+  **지금 드러난다** — 프로젝트를 만들 때 고른 방언을 되돌릴 수 없어(오타로 MSSQL 을 빼면 프로젝트를
+  다시 만들어야 한다) 명명 규칙은 손댈 수 없다. `docs/13-naming.md:24~29` 가 약속한 설정 화면이
+  통째로 없는 것이다. 서버·스키마·기본값이 다 준비돼 있어 **화면만 붙이면 되는 상태**다
+- **`dict-panel.tsx:37` 이 프로젝트 명명 규칙 대신 `DEFAULT_NAMING_RULES` 를 쓴다.** 같은 store 값을
+  쓰는 다른 소비자들(`naming-check.tsx:36`, `edit-panel.tsx:54`, `ddl-import-dialog.tsx:26`,
+  `dict-import-section.tsx:20`)과 이 한 곳만 다르고, 코드 주석도 "Task 6에서 … 교체한다"로 남아 있다.
+  **지금은 드러나지 않는다** — 규칙을 바꿀 UI 가 없어(위 항목) 모든 프로젝트가 기본값과 같다.
+  위 `project.update` 화면을 붙이는 순간 「미등록 단어」 탭만 옛 규칙으로 계산해 모델 검사 건수와
+  어긋난다 — **그 작업의 필수 동반 수정**이다(한 줄)
+- **`relationship.identifying` 과 FK 컬럼의 `isPk` 가 모델에서 묶이지 않아 사용자가 볼 수 없는 상태가
+  생긴다.** 컬럼 「PK」 체크박스(`edit-panel.tsx:271~272`)는 `isPk` 만 바꾸고 역방향 동기화가 없다.
+  **좁게 드러난다** — 교차 테이블 가드(`relationship.ts:231~238`, `edges.ts:116~123`)가 막아 주므로
+  데이터는 깨지지 않지만, 버튼이 왜 잠겼는지를 문구로만 알 수 있고 그 상태를 **눈으로 확인할 방법이
+  없다.** `warnings.ts` 에도 이 불일치를 잡는 종류가 없다 → 경고 한 종을 추가하는 것이 값이 크다
+- **비밀번호 재설정 링크에 목록·명시적 회수가 없다**(초대에는 둘 다 있다 —
+  `admin.invitations.list`/`revoke`). 실효 회수 경로는 있다: 재발급이 그 사용자의 미사용 토큰을
+  죽인다(`routers/admin.ts:89~96`). **`docs/manual/install.md` 9.5 가 이미 그것을 문서화**했으므로
+  운영자 쪽은 닫혔고, 남은 틈은 관리자 화면 문구(`pages/admin.tsx:142~145`)에 같은 안내가 없다는 것
+- **같은 이름의 「가져오기」가 서로 다른 두 기능이다** — 헤더 버튼(`ddl-import-dialog.tsx:56`)은 DDL
+  역설계, 「사전」 안의 탭(`dict-panel.tsx:74~79`)은 Excel 사전 업로드다. 헤더 도구가 8개 나란히
+  있어(`pages/project.tsx:49~56`) 사전을 올리려는 사용자가 헤더를 먼저 누른다. 다이얼로그 제목은 이미
+  「DDL 가져오기」(`:59`)이므로 **버튼 라벨을 제목에 맞추면 끝난다**
+- **기획 문서(`docs/10~18`)에 있으나 구현되지 않은 것 15건** — 매뉴얼 작성 중 전수 확인했고, 확인되지
+  않은 것은 문서에서 뺐다(그래서 매뉴얼은 구현된 것만 설명한다). 값이 큰 것은 넷이다 —
+  ① 프로젝트 명명 규칙·방언·이름 편집 화면(`13-naming.md:24~29`, `01-concepts.md:126` / 위
+  `project.update` 항목과 같은 뿌리), ② 내보내기 범위의 "선택 테이블"(`17-import-export.md:20` —
+  core 의 `DdlScope` 에 `{kind:'tables'}` 가 있고 `export-scope-select.tsx:8` 주석이 "이 UI 에서
+  만들지 않는다"고 적어 둔, **엔진은 되고 UI 만 없는** 상태), ③ DDL 가져오기의 파일 업로드
+  (`17-import-export.md:44` — 지금은 텍스트 영역뿐), ④ 다중 선택 후 그룹 일괄 배정
+  (`12-grouping.md:18` — `setTableGroup` 호출부 둘 다 단일 대상). 나머지 11건은 노드 접기·복사
+  붙여넣기·컬럼 순서 드래그·컬럼 단위 관계 드래그·인덱스 "탭"·도메인의 별도 일괄 반영 액션·
+  테이블·컬럼 설명 입력·컬럼 기본값·자동증가 입력·스냅샷 설명 입력·자동 정렬의 "선택 테이블" 범위·
+  인덱스 정렬 방향 역설계다(뒤 셋은 위 `comment`·`defaultValue` 항목과 겹친다).
+  ⚠️ **주의**: `17-import-export.md:40` 의 이미지 내보내기는 "전체 뷰 또는 그룹 뷰 단위"만 약속했고
+  코드가 그대로 동작하므로 **갭이 아니다** — 한때 갭으로 셌던 것을 정정했다
+
 ---
 
 ## 7. 새 세션 시작 프롬프트 (복사해서 사용)
