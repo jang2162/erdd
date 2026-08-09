@@ -52,18 +52,26 @@ cd erdd
 cp .env.example .env
 ```
 
-`.env` 를 열어 최소 다음 둘을 채운다. **이 파일은 저장소에 커밋되지 않는다.**
+`.env` 를 열어 최소 다음 셋을 채운다. **이 파일은 저장소에 커밋되지 않는다.**
 
 ```dotenv
+POSTGRES_PASSWORD=<DB 비밀번호>
 ADMIN_EMAIL=admin@사내도메인
 ADMIN_PASSWORD=<충분히 긴 임시 비밀번호>
 ```
 
+- **`POSTGRES_PASSWORD` 는 지금, 첫 기동 전에 정한다.** 이 값은 Postgres 가 **데이터 디렉터리를
+  처음 초기화할 때만** 반영된다. `pgdata` 볼륨이 이미 있는 설치에서 값을 바꾸면 compose 는
+  새 값으로 접속하려 하고 DB 는 옛 비밀번호를 그대로 들고 있어 **인증 실패로 앱이 뜨지 않는다**
+  (실측 확인). 나중에 바꾸려면 `ALTER USER postgres PASSWORD …` 를 DB 안에서 직접 실행하고
+  `.env` 를 함께 고쳐야 한다. 생략하면 기본값 `erdd` 가 쓰인다 — 운영에서는 반드시 바꾼다.
+- 비밀번호에 `@ : / # ?` 가 들어가면 접속 URL 이 깨진다. 퍼센트 인코딩하거나 그런 문자를 피한다.
 - `docker compose` 는 **같은 디렉터리의 `.env` 를 자동으로 읽어** compose 파일의 `${...}` 를
-  치환한다. 앱 컨테이너에 넘어가는 것은 `ADMIN_EMAIL`/`ADMIN_PASSWORD` 뿐이다.
+  치환한다. 앱 컨테이너에 넘어가는 것은 `ADMIN_EMAIL`·`ADMIN_PASSWORD`·`NODE_ENV`(→ 5절의
+  `ERDD_NODE_ENV`)와 `POSTGRES_PASSWORD` 가 조립된 `DATABASE_URL` 이다.
 - `.env` 의 `DATABASE_URL` 은 **컨테이너가 쓰지 않는다.** 앱의 DB 주소는 `docker-compose.yml` 의
-  `app` 서비스에 `postgres://postgres:erdd@db:5432/erdd` 로 박혀 있다(compose 네트워크에서
-  호스트명이 `db` 다). `.env` 쪽 값은 호스트에서 `psql`·마이그레이션을 돌릴 때 쓴다.
+  `app` 서비스에서 `postgres://postgres:${POSTGRES_PASSWORD}@db:5432/erdd` 로 조립된다(compose
+  네트워크에서 호스트명이 `db` 다). `.env` 쪽 값은 호스트에서 `psql`·마이그레이션을 돌릴 때 쓴다.
 - compose 프로젝트 이름은 **디렉터리 이름**에서 오고 볼륨 이름(`<프로젝트>_pgdata`)이 거기 딸려
   있다. 디렉터리를 옮기거나 이름을 바꾸면 DB 를 잃어버린 것처럼 보인다 — 옮길 거면
   `COMPOSE_PROJECT_NAME` 을 `.env` 에 고정한다.
@@ -72,19 +80,23 @@ ADMIN_PASSWORD=<충분히 긴 임시 비밀번호>
 
 ```bash
 docker compose up -d db
-docker compose logs db | tail -3
+docker compose ps
 ```
 
-기대: `database system is ready to accept connections`.
+기대: `STATUS` 가 `Up (healthy)` 가 된다(초기화 포함 대략 10초 안쪽). `db` 에는
+`pg_isready` healthcheck 가 붙어 있고, `app` 은 `depends_on: {db: {condition: service_healthy}}`
+라 **DB 가 healthy 가 된 뒤에만 뜬다.** 즉 "앱이 DB 보다 먼저 떠서 죽는" 첫 기동은 일어나지 않는다.
 
-**앱보다 DB 를 먼저 띄우는 데는 이유가 있다.** 서버는 기동할 때 DB 를 조회한다(관리자 부트스트랩,
-전역 공용 리소스 시드). 스키마가 아직 없으면 그 시점에 실패하고 프로세스가 종료된다. 그래서
-순서가 **DB → 마이그레이션 → 앱**이다. (`docker compose up -d` 는 앱까지 띄운다. 개발 중에
-DB 만 필요하면 위처럼 `db` 를 지정한다.)
+**그래도 순서가 DB → 마이그레이션 → 앱인 이유는 스키마다.** 서버는 기동할 때 DB 를 조회한다
+(관리자 부트스트랩, 전역 공용 리소스 시드). 연결이 되어도 **테이블이 없으면** 그 시점에 실패하고
+프로세스가 종료된다(9.3). healthcheck 는 연결 가능 여부만 보지 스키마는 보지 않는다.
 
-> ⚠️ `db` 서비스는 호스트의 `5432` 를 그대로 연다. 운영 서버에서는 방화벽으로 막거나
-> `docker-compose.yml` 의 `db.ports` 줄을 지운다(같은 compose 네트워크 안의 앱은 포트를
-> 공개하지 않아도 붙는다).
+(`docker compose up -d` 는 앱까지 띄운다. 개발 중에 DB 만 필요하면 위처럼 `db` 를 지정한다.)
+
+> ⚠️ `db` 서비스는 호스트의 `5432` 를 그대로 연다(로컬 개발이 이 포트에 붙어 있어 기본값을
+> 유지했다). **운영 서버에서는 `docker-compose.yml` 의 `db.ports` 줄을 지우거나
+> `"127.0.0.1:5432:5432"` 로 좁힌다** — 같은 compose 네트워크 안의 앱은 포트를 공개하지 않아도
+> 붙는다. 방화벽으로 막는 것도 방법이지만 포트 매핑을 없애는 쪽이 확실하다.
 
 ### 3.3 마이그레이션 적용
 
@@ -95,12 +107,15 @@ docker compose build app
 docker compose run --rm app pnpm --filter @erdd/server db:migrate
 ```
 
+`run` 도 `app` 의 `depends_on` 을 따르므로 DB 가 healthy 가 될 때까지 알아서 기다린다.
+
 기대: `Reading config file '/app/apps/server/drizzle.config.ts'` 에 이어 오류 없이 끝난다(적용할
 것이 없으면 조용히 끝난다). 마이그레이션 파일은 `apps/server/drizzle/` 에 `0000`~`0012` 가 있고
 이미지 안에도 그대로 들어 있다.
 
-실패 신호 — `ECONNREFUSED`/`getaddrinfo` 는 DB 가 아직 안 떴거나 주소가 틀린 것(3.2 를 먼저),
-`password authentication failed` 는 외부 DB 를 쓰면서 `app` 서비스의 `DATABASE_URL` 을 안 고친 것.
+실패 신호 — `password authentication failed` 는 `POSTGRES_PASSWORD` 를 **기존 `pgdata` 볼륨이
+있는 상태에서 바꿨을 때** 나온다(3.1 의 함정). `ECONNREFUSED`/`getaddrinfo` 는 외부 DB 를 쓰면서
+주소를 안 고친 것이다.
 
 ### 3.4 앱 기동 · 관리자 부트스트랩
 
@@ -229,20 +244,27 @@ journalctl -u erdd -f      # ERDD server listening on :3000 이 보여야 한다
 |---|---|---|---|---|
 | `DATABASE_URL` | **예** | 없음 | PostgreSQL 접속 문자열. 없으면 서버는 뜨지만 모든 API 가 412 다(9.1). | `apps/server/src/main.ts`, `apps/server/drizzle.config.ts` |
 | `PORT` | 아니오 | `3000` | listen 포트. 바인드 주소는 항상 `0.0.0.0` 이다. | `apps/server/src/main.ts` |
-| `NODE_ENV` | 아니오 | 없음 | `production` 일 때만 세션 쿠키에 `Secure` 가 붙는다. **서버 코드에서 이 변수가 바꾸는 동작은 이것 하나뿐이다.** Docker 이미지에는 `production` 이 박혀 있다. | `apps/server/src/routers/auth.ts` |
+| `NODE_ENV` | 아니오 | 없음 | `production` 일 때만 세션 쿠키에 `Secure` 가 붙는다. **서버 코드에서 이 변수가 바꾸는 동작은 이것 하나뿐이고**, 읽는 자리도 `auth.login` 한 곳뿐이다(로그인 요청마다 읽는다). Docker 이미지에 `production` 이 박혀 있고, compose 는 `ERDD_NODE_ENV` 로 이 값을 채운다. | `apps/server/src/routers/auth.ts` |
 | `ADMIN_EMAIL` | 아니오 | 없음 | 최초 관리자 부트스트랩. `ADMIN_PASSWORD` 와 **둘 다** 있어야 동작한다. | `apps/server/src/services/accounts.ts` |
 | `ADMIN_PASSWORD` | 아니오 | 없음 | 위와 같음. 해당 이메일의 계정이 없을 때만 쓰인다. | 〃 |
 
 **서버는 `.env` 파일을 스스로 읽지 않는다.** dotenv 류를 쓰지 않으므로 값은 셸 환경·systemd
 `EnvironmentFile`·compose 를 통해 들어와야 한다.
 
-운영과 무관한 변수:
+앱이 아니라 **compose 가 읽는** 변수 — `.env` 에 두면 compose 가 치환한다:
+
+| 이름 | 기본값 | 무엇을 정하나 |
+|---|---|---|
+| `POSTGRES_PASSWORD` | `erdd` | `db` 의 비밀번호이자 `app` 의 `DATABASE_URL` 에 조립되는 값. **데이터 디렉터리 초기화 시점에만 반영된다**(3.1 의 함정). |
+| `ERDD_PORT` | `3000` | 앱 컨테이너를 호스트 어느 포트에 붙일지. |
+| `ERDD_NODE_ENV` | `production` | 앱 컨테이너의 `NODE_ENV`. **이름이 `NODE_ENV` 가 아닌 것은 의도다** — 그러면 운영자 셸에 우연히 남은 `NODE_ENV` 가 흘러들어 쿠키의 `Secure` 가 조용히 꺼진다. |
+
+그 밖에 운영과 무관한 변수:
 
 | 이름 | 어디에 쓰이나 |
 |---|---|
 | `ERDD_SERVER_PORT` | **개발 전용.** vite dev 서버의 프록시 대상 포트(`apps/web/vite.config.ts`). 운영 빌드에는 관여하지 않는다. |
 | `ERDD_TOKEN` | `erdd` CLI 가 쓰는 액세스 토큰(`packages/cli`). 서버 동작에 영향 없다(→ [16-cli](../16-cli.md)). |
-| `ERDD_PORT` | 이 저장소의 `docker-compose.yml` 이 앱 컨테이너를 호스트 어느 포트에 붙일지 정할 때만 쓴다. 앱은 이 이름을 모른다. |
 
 ## 6. 최초 기동 후 할 일
 
@@ -364,6 +386,9 @@ docker compose exec -T db psql -U postgres -d erdd < erdd-2026-08-10.sql
 docker compose up -d app
 ```
 
+- 위 명령에 비밀번호가 없는 것이 맞다. `docker compose exec` 는 컨테이너 **안에서** 부르는
+  것이고, Postgres 기본 `pg_hba.conf` 는 로컬·루프백 접속을 `trust` 로 둔다(실측 확인).
+  `POSTGRES_PASSWORD` 를 바꿔도 이 명령은 그대로 동작한다.
 - 복구 대상 DB 는 비어 있어야 한다. 기존 DB 위에 덮으려면 DB 를 지우고 다시 만들거나
   `pg_dump -Fc` + `pg_restore --clean --if-exists` 를 쓴다.
 - compose 볼륨(`<프로젝트>_pgdata`)을 통째로 스냅샷해도 되지만, 그때는 컨테이너를 **정지한
@@ -379,8 +404,15 @@ docker compose up -d app
 `health.ping` 은 인증이 필요 없는 공개 프로시저이고 **DB 가 없어도 200 을 준다.** 로드밸런서에
 DB 상태까지 반영하고 싶으면 두 번째 줄을 쓴다.
 
-`docker-compose.yml` 의 `app` 에는 첫 번째와 같은 검사를 하는 healthcheck 가 이미 붙어 있다
-(이미지에 curl·wget 이 없어 Node 의 `fetch` 로 호출한다). 상태는 `docker compose ps` 에 보인다.
+`docker compose ps` 로 두 서비스의 상태를 한 번에 본다 — 둘 다 healthcheck 가 붙어 있다.
+
+| 서비스 | 검사 | 비고 |
+|---|---|---|
+| `db` | `pg_isready -U postgres -d erdd -h 127.0.0.1` | `-h 127.0.0.1` 이 필수다. 초기화 중에는 임시 서버가 `listen_addresses=''` 로 떠 TCP 를 열지 않으므로, 유닉스 소켓으로 검사하면 DB 가 만들어지기 전에 "준비됨" 으로 보고한다. |
+| `app` | 위 표 첫 줄과 같은 `health.ping` 호출 | 이미지에 curl·wget 이 없어 Node 의 `fetch` 로 호출한다. |
+
+`app` 의 healthcheck 는 `health.ping` 을 보므로 **DB 상태를 반영하지 않는다.** DB 까지 묶어
+판정하려면 위 표 두 번째 줄을 외부 모니터링에서 쓴다.
 
 ### 8.4 로그
 
@@ -494,11 +526,25 @@ docker compose up -d app
 **원인:** 세션 쿠키에 `Secure` 가 붙어 있는데 접속이 평문 HTTP 다. 브라우저가 쿠키를 저장하지
 않으니 다음 요청에서 다시 미인증이 된다.
 
-`Secure` 는 `NODE_ENV=production` 일 때만 붙는다. **Docker 이미지에는 `production` 이 박혀
-있다.** 쿠키의 나머지 속성은 `httpOnly`, `SameSite=Lax`, `Path=/` 이고 이름은 `erdd_session` 이다.
+`Secure` 를 결정하는 자리는 **코드 전체에서 한 곳뿐이다** — `apps/server/src/routers/auth.ts` 의
+`auth.login` 이 쿠키를 심을 때 `secure: process.env.NODE_ENV === 'production'` 을 평가한다.
+로그인 요청마다 읽으므로 프로세스의 현재 환경 변수가 그대로 반영된다. 쿠키 미들웨어
+(`@fastify/cookie`)는 옵션 없이 등록돼 있어 전역 기본값이 따로 없고, 프록시 헤더
+(`X-Forwarded-Proto`)나 요청 스킴은 판정에 **관여하지 않는다.** Docker 이미지에는
+`NODE_ENV=production` 이 박혀 있다. 쿠키의 나머지 속성은 `httpOnly`, `SameSite=Lax`, `Path=/`,
+만료 14일이고 이름은 `erdd_session` 이다.
 
-**해결:** 7절대로 HTTPS 를 붙인다. TLS 없이 잠깐 시험만 할 목적이라면 compose 의 `app` 서비스
-`environment` 에 `NODE_ENV: development` 를 추가해 내린다 — **운영에서는 쓰지 않는다.**
+**해결:** 7절대로 HTTPS 를 붙인다. TLS 없이 잠깐 시험만 할 목적이라면 `.env` 에 한 줄 넣고
+앱을 다시 만든다 — **운영에서는 쓰지 않는다.**
+
+```bash
+echo 'ERDD_NODE_ENV=development' >> .env
+docker compose up -d --force-recreate app
+docker compose exec app printenv NODE_ENV     # development 가 나와야 한다
+```
+
+방법 B 는 `NODE_ENV` 를 직접 내린다(systemd 라면 `EnvironmentFile` 의 값을 고치고
+`systemctl restart erdd`).
 
 ### 9.7 브라우저로 열면 404 만 나온다
 
@@ -509,13 +555,45 @@ docker compose up -d app
   다시 본다.
 - 방법 B: `pnpm --filter @erdd/web build` 를 빠뜨렸다(4.1).
 
+### 9.8 `POSTGRES_PASSWORD` 를 바꿨더니 앱이 인증 실패한다
+
+**증상:** `docker compose logs app` 또는 마이그레이션에
+`password authentication failed for user "postgres"`.
+
+**원인:** `POSTGRES_PASSWORD` 는 Postgres 가 **데이터 디렉터리를 처음 초기화할 때만** 반영된다
+(실측 확인). `pgdata` 볼륨이 이미 있는 설치에서 값을 바꾸면 `app` 의 `DATABASE_URL` 만 새 값이
+되고 DB 는 옛 비밀번호를 그대로 들고 있다.
+
+**해결 — 둘 중 하나.**
+
+```bash
+# (A) DB 안에서 실제 비밀번호를 바꾼다(데이터 보존). exec 는 로컬 접속이라 비밀번호를 묻지 않는다.
+docker compose exec db psql -U postgres -c "ALTER USER postgres PASSWORD '<새 비밀번호>';"
+docker compose up -d --force-recreate app
+
+# (B) .env 를 옛 비밀번호로 되돌린다
+```
+
+데이터를 버려도 되는 설치 직후라면 `docker compose down -v` 로 볼륨까지 지우고 다시 시작해도
+된다 — **`-v` 는 DB 를 통째로 삭제한다.** 운영 데이터가 있으면 쓰지 마라.
+
 ---
 
 ## 부록: 검증 상태 (2026-08-10)
 
-이미지 빌드, 이미지 안의 Node 22 · pnpm 10.4.1 · `apps/web/dist` · `apps/server/drizzle/`,
-`db:migrate` 실행 경로, `health.ping` 응답, `DATABASE_URL` 없을 때의 412, 정적 서빙과 SPA
-fallback, compose 문법과 healthcheck 명령은 **실제 명령으로 확인**했다.
+**실제 명령으로 확인한 것.** 이미지 빌드와 이미지 안의 Node 22 · pnpm 10.4.1 · `apps/web/dist` ·
+`apps/server/drizzle/`, `db:migrate` 실행 경로, `health.ping` 응답, `DATABASE_URL` 없을 때의 412,
+정적 서빙과 SPA fallback, `app` healthcheck 명령, compose 문법과 변수 치환 결과. 여기에:
+
+- **`db` healthcheck** — `docker compose up -d db` 로 격리 프로젝트를 띄워 약 6초 만에
+  `Up (healthy)` 로 전이하는 것을 확인했다(정리 완료).
+- **`POSTGRES_PASSWORD` 는 초기화 시점에만 반영된다** — 같은 볼륨에 비밀번호를 바꿔 재기동한 뒤
+  네트워크 경유로 접속해, 새 비밀번호는 `password authentication failed`, 옛 비밀번호는 성공하는
+  것을 확인했다.
+- **`pg_hba.conf` 의 로컬·루프백은 `trust`** — 그래서 `docker compose exec db psql` 이 비밀번호
+  없이 동작한다(8.2).
+- **초기화 중 임시 서버는 `listen_addresses=''`** — 이미지의 `docker-entrypoint.sh` 에서 확인했다.
+  healthcheck 에 `-h 127.0.0.1` 을 준 근거다.
 
 **설치 절차를 처음부터 끝까지 돌려 본 것은 아니다.** 실제 PostgreSQL 을 붙인 마이그레이션 적용,
 관리자 부트스트랩, 로그인, 백업·복구, nginx, systemd 는 코드와 설정을 읽고 쓴 것이며 실환경
