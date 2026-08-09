@@ -1,4 +1,4 @@
-import type { Column, ProjectModel, Relationship } from './model.js'
+import type { Column, Position, ProjectModel, Relationship, Table } from './model.js'
 
 function childColumns(model: ProjectModel, tableId: string): Column[] {
   return Object.values(model.columns).filter((c) => c.tableId === tableId)
@@ -175,4 +175,95 @@ export function deleteColumnCascade(model: ProjectModel, columnId: string): Proj
   }
 
   return { ...model, columns, relationships, indexes }
+}
+
+/** 교차 테이블의 기본 논리명 — 두 부모 논리명을 구분자 없이 잇는다(설계 D4). */
+export function junctionTableName(parent: Table, child: Table): string {
+  return `${parent.logicalName}${child.logicalName}`
+}
+
+export type JunctionSpec = {
+  id: string
+  logicalName: string
+  physicalName: string
+  position: Position
+  groupId: string | null
+  groupPosition: Position | null
+}
+
+/**
+ * 1:N 관계를 교차 테이블 + 식별 1:N 관계 2개로 바꾼다(설계 3절).
+ * id·이름·좌표는 호출측이 계산해 넘긴다 — core는 id를 만들지 않는다.
+ * 아래 어느 가드에 걸려도 model을 그대로 돌려준다(부분 상태를 남기지 않는다).
+ */
+export function resolveManyToMany(
+  model: ProjectModel,
+  args: {
+    relationshipId: string
+    junction: JunctionSpec
+    a: { relationshipId: string; newColumnIds: string[] }
+    b: { relationshipId: string; newColumnIds: string[] }
+  },
+): ProjectModel {
+  const rel = model.relationships[args.relationshipId]
+  if (!rel) return model
+  if (rel.identifying) return model // 자식 PK 구성이 바뀌어 하위 관계가 깨진다(설계 3.3)
+
+  const parentTableId = rel.parentTableId
+  const childTableId = rel.childTableId // 관계가 사라지기 전에 읽어 둔다
+  // 무테스트 가드다 — validateModelIntegrity가 관계의 부모·자식 테이블 존재를 이미 검사하므로
+  // 여기 걸리는 모델은 그 자체로 무결성 위반이고, 정상 경로로는 도달할 수 없다.
+  // 그래도 남긴다: 동시편집으로 뒤늦게 도착한 mutation이 깨진 모델을 만들지 않게 하는 방어다.
+  if (!model.tables[parentTableId] || !model.tables[childTableId]) return model
+
+  // PK 개수는 "FK를 지운 뒤"를 기준으로 센다(설계 3.4).
+  // 매핑은 같은 childColumnId를 두 번 담을 수 있으므로(remapRelationshipChildColumn이
+  // 그렇게 만든다) 중복을 없애고 센다 — 중복을 세면 droppedPk가 실제 삭제량보다 커져
+  // pkCount - droppedPk가 음수가 되고, 그 음수가 '=== 0' 비교를 빠져나간다.
+  const fkColumnIds = [...new Set(rel.columnMappings.map((m) => m.childColumnId))]
+  const droppedPk = fkColumnIds.filter((id) => model.columns[id]?.isPk).length
+  const pkCount = (tableId: string) =>
+    Object.values(model.columns).filter((c) => c.tableId === tableId && c.isPk).length
+  if (pkCount(parentTableId) === 0) return model
+  // <= 0 은 위 dedup이 깨져도 부분 상태를 막는 이중 방어다.
+  if (pkCount(childTableId) - droppedPk <= 0) return model
+
+  // 지울 FK 컬럼을 부모로 삼는 다른 관계가 있으면 그 관계의 매핑이 조용히 사라지고, 손자
+  // 테이블에는 아무도 참조하지 않는 고아 FK 컬럼이 남는다(설계 3.3이 막으려던 연쇄).
+  // rel.identifying 이 아니라 FK 컬럼의 isPk 가 실제 조건인데 모델은 둘을 묶지 않으므로,
+  // identifying 가드만으로는 이 상태를 잡지 못한다 — 풀지 않는다.
+  const referencedAsParent = Object.values(model.relationships).some(
+    (r) => r.id !== rel.id && r.columnMappings.some((m) => fkColumnIds.includes(m.parentColumnId)),
+  )
+  if (referencedAsParent) return model
+
+  // FK 컬럼을 지우면 매핑이 비면서 원본 관계도 함께 사라진다(설계 3.2).
+  // deleteRelationship은 자식 FK 컬럼을 일부러 보존하므로 쓰지 않는다.
+  let next = model
+  for (const id of fkColumnIds) next = deleteColumnCascade(next, id)
+
+  const junction: Table = {
+    id: args.junction.id,
+    logicalName: args.junction.logicalName,
+    physicalName: args.junction.physicalName,
+    comment: null,
+    groupId: args.junction.groupId,
+    position: args.junction.position,
+    groupPosition: args.junction.groupPosition,
+    custom: {},
+  }
+  next = { ...next, tables: { ...next.tables, [junction.id]: junction } }
+
+  next = createRelationshipFromParentPk(next, {
+    relationshipId: args.a.relationshipId,
+    parentTableId, childTableId: junction.id,
+    newColumnIds: args.a.newColumnIds,
+    cardinality: '1:N', identifying: true,
+  })
+  return createRelationshipFromParentPk(next, {
+    relationshipId: args.b.relationshipId,
+    parentTableId: childTableId, childTableId: junction.id,
+    newColumnIds: args.b.newColumnIds,
+    cardinality: '1:N', identifying: true,
+  })
 }

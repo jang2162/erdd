@@ -14,6 +14,15 @@ describe('model-edits', () => {
     expect(ops[0]!.action).toBe('create')
   })
 
+  it('addTable 의 논리명 번호와 물리명 번호가 같다', () => {
+    // 물리명은 nextTablePhysicalName 이 만들고 논리명은 그 반환 문자열에서 번호를 떼어 쓴다 —
+    // planJunction 이 두 번째 호출자가 되면서 'TABLE_n' 형식이 공유 계약이 됐다. 접두사가
+    // 바뀌면 planJunction 은 멀쩡하고 addTable 만 조용히 어긋나므로 쌍으로 잠근다.
+    const used = addTable(createEmptyModel(), { id: 'x1', position: { x: 0, y: 0 } })
+    const next = addTable(used, { id: 'x2', position: { x: 0, y: 0 } })
+    expect(next.tables['x2']).toMatchObject({ logicalName: '테이블2', physicalName: 'TABLE_2' })
+  })
+
   it('moveTable changes only the position (one update op)', () => {
     const base = buildSampleModel()
     const id = Object.keys(base.tables)[0]!
