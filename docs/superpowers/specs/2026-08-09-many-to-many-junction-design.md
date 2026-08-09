@@ -114,15 +114,30 @@ FK 컬럼을 넣고, 두 관계를 식별 관계로 잇는 것 — 을 버튼 �
 연쇄를 따라가며 고치는 것은 이 기능의 목적을 넘어선다. **버튼을 비활성화하고 이유를 보여준다** —
 사용자가 패널의 "식별 관계" 체크를 먼저 해제하면(이미 있는 기능) 풀 수 있다.
 
-### 3.4 부모 PK가 없으면 만들 수 없다
+### 3.4 PK 개수는 "FK를 지운 뒤"를 기준으로 센다
 
 `createRelationshipFromParentPk`는 부모 PK가 0개면 **아무 일도 하지 않고 모델을 그대로 돌려준다**
-(`relationship.ts:37`). 두 부모 중 한쪽이라도 PK가 없으면 교차 테이블에 FK를 만들 수 없으므로,
-그 경우도 **버튼을 비활성화한다.** 부분적으로 만들어진 상태(테이블만 생기고 관계는 없는)를 남기지
-않기 위해서다.
+(`relationship.ts:37`). 두 부모 중 한쪽이라도 PK가 없으면 교차 테이블에 FK를 만들 수 없으므로 그
+경우 **버튼을 비활성화한다.** 부분적으로 만들어진 상태(테이블과 관계 하나만 생긴)를 남기지 않기
+위해서다.
 
-원본 관계가 존재한다는 것은 원본 부모의 PK는 있었다는 뜻이지만, 그 뒤 PK가 삭제됐을 수 있고
-**원본 자식(= 새 교차 관계의 두 번째 부모)의 PK는 애초에 보장되지 않는다.** 그래서 양쪽을 모두 본다.
+**세는 시점이 함정이다.** 원본 FK 컬럼은 3.2에서 삭제되므로, 그 컬럼이 자식의 PK였다면 삭제 후
+자식의 PK가 줄어든다. 삭제 **전** 개수를 보면 통과시켜 놓고 두 번째 관계 생성이 조용히 no-op이
+된다 — 정확히 막으려던 부분 상태다. 그래서 이렇게 센다:
+
+```
+원본 parent 의 PK 개수                                        > 0
+원본 child  의 PK 개수 − (삭제될 FK 컬럼 중 isPk 인 것의 개수) > 0
+```
+
+parent 쪽은 컬럼이 삭제되지 않으므로 그대로 센다.
+
+**언제 발생하나:** `identifying: true`면 3.3에서 이미 막히므로, 이 경우는 **`identifying: false`인데
+FK 컬럼의 `isPk`가 `true`인 불일치 상태**에서만 나온다. 모델은 그 둘을 강제로 묶지 않는다 —
+`setRelationshipIdentifying`을 거치면 동기화되지만 DDL 역설계나 컬럼 편집으로 어긋날 수 있고,
+실제로 `testing/fixtures.ts`의 `fullModel()`이 그런 상태를 담고 있다(`r2.identifying === false`인데
+`c5.isPk === true`이고 `c5`는 `tb3`의 유일한 PK다). 무결성 검사(`validateModelIntegrity`)는 참조
+무결성만 보므로 이 상태도, 그 결과인 부분 상태도 잡지 못한다.
 
 ### 3.5 컬럼 이름 충돌
 
@@ -179,7 +194,7 @@ export function resolveManyToMany(
 1. `model.relationships[args.relationshipId]`가 없으면 `model`을 그대로 반환(no-op)
 2. **`rel.identifying === true`면 `model`을 그대로 반환**(no-op) — 3.3
 3. `parentTableId` · `childTableId`를 읽어 둔다(5번에서 관계가 사라지므로 **먼저** 읽는다)
-4. 양쪽 테이블의 PK가 하나라도 0개면 `model`을 그대로 반환(no-op) — 3.4
+4. **FK를 지운 뒤 기준으로** 양쪽 PK 개수를 세어 하나라도 0이면 `model`을 그대로 반환(no-op) — 3.4
 5. `rel.columnMappings`의 `childColumnId`들을 순서대로 `deleteColumnCascade` — 원본 관계가 함께 사라진다
 6. 교차 테이블을 `tables`에 추가
 7. `createRelationshipFromParentPk(parentTableId → junction, identifying: true, cardinality: '1:N')`
@@ -238,7 +253,7 @@ export type JunctionPlan =
 
 1. 관계·양쪽 테이블 존재 확인 → 없으면 `missing`
 2. `rel.identifying` → `identifying`
-3. 양쪽 테이블의 PK 개수를 센다. 하나라도 0이면 `no-pk`
+3. 양쪽 PK 개수를 **3.4의 식으로**(원본 FK 중 `isPk`인 것을 자식 쪽에서 뺀다) 센다. 하나라도 0이면 `no-pk`
 4. 논리명 = `junctionTableName(parent, child)`
 5. 물리명 = `generatePhysicalName(논리명, model.words, model.terms, namingRules).physicalName`
    - **빈 문자열이면**(두 논리명 모두 사전에 없음) `addTable`과 같은 관례로 `TABLE_n`을 쓴다
@@ -297,6 +312,7 @@ export type JunctionPlan =
 | **원본 FK를 쓰던 인덱스 정리** | 그 컬럼만 있던 인덱스는 삭제되고, 다른 컬럼과 함께 있던 인덱스는 그 컬럼만 빠진다 |
 | 식별 관계 no-op | `identifying: true`인 관계에 부르면 반환 모델이 입력과 **깊게 같다** |
 | 부모 PK 없음 no-op | 원본 자식에 PK가 없으면 반환 모델이 입력과 깊게 같다 |
+| **FK가 자식의 유일한 PK면 no-op** | `identifying: false`인데 FK 컬럼의 `isPk`가 `true`이고 그것이 자식의 유일한 PK일 때 입력과 깊게 같다 — 삭제 **전** 개수로 세면 통과해 버리는 케이스다(3.4) |
 | 없는 관계 no-op | 존재하지 않는 id로 부르면 입력과 깊게 같다 |
 | 자기참조 이름 충돌 | 부모 = 자식일 때 FK 물리명이 서로 다르다(`_2`) |
 | `junctionTableName` | 두 논리명을 구분자 없이 이어붙인다 |
