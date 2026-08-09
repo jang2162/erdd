@@ -104,6 +104,28 @@ describe('nextTablePhysicalName', () => {
 const RULES: NamingRules = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
 const CTX = { namingRules: RULES, activeGroupView: null }
 
+/**
+ * buildSampleModel 에 배송 t3 를 더한 3단 모델 — r1 의 FK c4 가 자식 PK 이면서
+ * 하위 관계 r2 의 부모 컬럼이다(회원등급 →(1:N) 회원 →(1:N) 배송).
+ */
+function buildSampleModelWithDownstream(): ProjectModel {
+  const base = buildSampleModel()
+  return {
+    ...base,
+    tables: { ...base.tables,
+      t3: { ...base.tables['t2']!, id: 't3', logicalName: '배송', physicalName: 'DLV' } },
+    columns: { ...base.columns,
+      c4: { ...base.columns['c4']!, isPk: true },
+      c5: { ...base.columns['c2']!, id: 'c5', tableId: 't3', isPk: false, autoIncrement: false },
+      c6: { ...base.columns['c4']!, id: 'c6', tableId: 't3', isPk: false, order: 1 } },
+    relationships: { ...base.relationships,
+      r2: { id: 'r2', parentTableId: 't2', childTableId: 't3', cardinality: '1:N',
+            identifying: false, name: null,
+            columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c2' },
+                             { childColumnId: 'c6', parentColumnId: 'c4' }] } },
+  }
+}
+
 describe('planJunction', () => {
   function ids() {
     let n = 0
@@ -298,5 +320,29 @@ describe('planJunction', () => {
       ] },
     } }
     expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'no-pk' })
+  })
+
+  it('지울 FK 컬럼을 부모로 삼는 다른 관계가 있으면 downstream 이다', () => {
+    // r1 은 identifying:false 인데 FK c4 의 isPk 만 true 인 불일치 상태다 — 편집 패널의 PK
+    // 체크박스나 DDL 역설계로 도달한다. c4 를 지우면 그것을 부모로 삼는 r2 의 매핑이 조용히
+    // 사라지고 t3 에 고아 FK 컬럼이 남는데, 무결성 검사도 경고도 그것을 잡지 못한다.
+    const m = buildSampleModelWithDownstream()
+    expect(m.relationships['r1']?.identifying).toBe(false) // identifying 가드에 먼저 걸리지 않는다
+    expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'downstream' })
+  })
+
+  it('그룹뷰 소속인데 groupPosition 이 없는 부모는 position 으로 대신 센다', () => {
+    // toolbar.tsx 의 addTable + setTableGroup 조합이 만드는 상태다 — setTableGroup 은
+    // groupPosition 을 건드리지 않으므로 그룹에 든 테이블의 groupPosition 이 null 로 남는다.
+    // 폴백이 없으면 중점이 NaN 이 되어 교차 테이블이 그룹뷰에서 사라진다.
+    const base = buildSampleModel()
+    const m = { ...base, tables: {
+      ...base.tables, t1: { ...base.tables['t1']!, groupPosition: null },
+    } }
+    const plan = planJunction(m, 'r1', ids(), { namingRules: RULES, activeGroupView: 'g1' })
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    // t1 은 position (0,0) 으로 대신 세고, t2 는 groupPosition (310,10) 을 그대로 쓴다.
+    expect(plan.junction.groupPosition).toEqual({ x: 155, y: 5 })
   })
 })

@@ -228,6 +228,15 @@ export function resolveManyToMany(
   // <= 0 은 위 dedup이 깨져도 부분 상태를 막는 이중 방어다.
   if (pkCount(childTableId) - droppedPk <= 0) return model
 
+  // 지울 FK 컬럼을 부모로 삼는 다른 관계가 있으면 그 관계의 매핑이 조용히 사라지고, 손자
+  // 테이블에는 아무도 참조하지 않는 고아 FK 컬럼이 남는다(설계 3.3이 막으려던 연쇄).
+  // rel.identifying 이 아니라 FK 컬럼의 isPk 가 실제 조건인데 모델은 둘을 묶지 않으므로,
+  // identifying 가드만으로는 이 상태를 잡지 못한다 — 풀지 않는다.
+  const referencedAsParent = Object.values(model.relationships).some(
+    (r) => r.id !== rel.id && r.columnMappings.some((m) => fkColumnIds.includes(m.parentColumnId)),
+  )
+  if (referencedAsParent) return model
+
   // FK 컬럼을 지우면 매핑이 비면서 원본 관계도 함께 사라진다(설계 3.2).
   // deleteRelationship은 자식 FK 컬럼을 일부러 보존하므로 쓰지 않는다.
   let next = model

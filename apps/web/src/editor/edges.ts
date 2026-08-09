@@ -68,7 +68,7 @@ export function planConnection(
 }
 
 export type JunctionPlan =
-  | { ok: false; reason: 'missing' | 'identifying' | 'no-pk' }
+  | { ok: false; reason: 'missing' | 'identifying' | 'no-pk' | 'downstream' }
   | {
       ok: true
       junction: JunctionSpec
@@ -112,6 +112,15 @@ export function planJunction(
   const childPkCount = pks(child.id).length - droppedPk
   // <= 0 은 위 dedup 이 깨져도 음수가 '=== 0' 을 빠져나가지 못하게 하는 이중 방어다(core 와 동일).
   if (parentPkCount === 0 || childPkCount <= 0) return { ok: false, reason: 'no-pk' }
+
+  // 지울 FK 컬럼을 부모로 삼는 다른 관계가 있으면 그 관계의 매핑이 조용히 사라지고, 손자
+  // 테이블에는 아무도 참조하지 않는 고아 FK 컬럼이 남는다(설계 3.3 이 막으려던 연쇄).
+  // rel.identifying 이 아니라 FK 컬럼의 isPk 가 실제 조건인데 모델은 둘을 묶지 않으므로,
+  // identifying 가드만으로는 이 상태를 잡지 못한다(core 와 동일한 규칙).
+  const referencedAsParent = Object.values(model.relationships).some(
+    (r) => r.id !== rel.id && r.columnMappings.some((m) => fkColumnIds.includes(m.parentColumnId)),
+  )
+  if (referencedAsParent) return { ok: false, reason: 'downstream' }
 
   const logicalName = junctionTableName(parent, child)
   const gen = generatePhysicalName(logicalName, model.words, model.terms, ctx.namingRules)

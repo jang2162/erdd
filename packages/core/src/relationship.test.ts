@@ -319,6 +319,28 @@ describe('resolveManyToMany', () => {
     expect(resolveManyToMany(m, ARGS)).toEqual(m)
   })
 
+  it('삭제량이 자식 PK 수를 넘어도 no-op 이다', () => {
+    // 매핑이 자식 밖 컬럼(P_PK = 부모의 PK)을 가리키는 무결성 위반 모델이다 —
+    // remapRelationshipChildColumn 이 자식 테이블 밖 컬럼을 거부하므로 공개 함수로는 도달할
+    // 수 없지만, 설계 4.2 의 no-op 규약이 막으려는 것은 경합으로 뒤늦게 도착한 mutation 이고
+    // 그 mutation 은 web 의 planJunction 을 거치지 않는다. dedup 으로는 막지 못하는(중복이
+    // 없다) 경우라 '<= 0' 이중 방어를 단독으로 잠근다 — '=== 0' 이면 1 - 2 = -1 이 비교를
+    // 빠져나가 교차 테이블과 관계 하나만 남는 부분 상태가 된다.
+    // (web edges.test.ts 의 '삭제량이 자식 PK 수를 넘어도 no-pk 로 막는다' 와 대칭이다.)
+    const base = m2mBase()
+    const m = {
+      ...base,
+      relationships: {
+        ...base.relationships,
+        r1: { ...base.relationships['r1']!, columnMappings: [
+          { childColumnId: 'P_PK', parentColumnId: 'P_PK' },
+          { childColumnId: 'C_PK', parentColumnId: 'P_PK' },
+        ] },
+      },
+    }
+    expect(resolveManyToMany(m, ARGS)).toEqual(m)
+  })
+
   it('원본 FK 컬럼을 쓰던 인덱스를 정리한다', () => {
     const base = m2mBase()
     const m = {
@@ -373,6 +395,45 @@ describe('resolveManyToMany', () => {
     expect(out.tables['J']?.groupId).toBe('g1')
     expect(out.tables['J']?.groupPosition).toEqual({ x: 7, y: 9 })
     expect(validateModelIntegrity(out)).toEqual([])
+  })
+})
+
+// 주문(PK ORD_NO) →(1:N) 주문상세(PK DTL_SEQ + FK ORD_NO) →(1:N) 배송.
+// r1 은 identifying:false 인데 자동 생성 FK 'fk1' 의 isPk 만 true 인 불일치 상태다 —
+// 편집 패널의 PK 체크박스나 DDL 역설계로 실제로 도달한다.
+function m2mDownstreamBase(): ProjectModel {
+  const m = createEmptyModel()
+  m.tables['P'] = { ...tbl('P', 'ORD'), logicalName: '주문' }
+  m.tables['C'] = { ...tbl('C', 'ORD_DTL'), logicalName: '주문상세' }
+  m.tables['G'] = { ...tbl('G', 'DLV'), logicalName: '배송' }
+  m.columns['P_PK'] = col('P_PK', 'P', 'ORD_NO', { isPk: true, nullable: false, order: 0 })
+  m.columns['C_PK'] = col('C_PK', 'C', 'DTL_SEQ', { isPk: true, nullable: false, order: 0 })
+  const withR1 = createRelationshipFromParentPk(m, {
+    relationshipId: 'r1', parentTableId: 'P', childTableId: 'C', newColumnIds: ['fk1'],
+  })
+  const pkFk = {
+    ...withR1,
+    columns: { ...withR1.columns, fk1: { ...withR1.columns['fk1']!, isPk: true } },
+  }
+  // 손자 관계는 자식의 PK 2개(DTL_SEQ · ORD_NO)를 모두 부모 컬럼으로 가져간다.
+  return createRelationshipFromParentPk(pkFk, {
+    relationshipId: 'r2', parentTableId: 'C', childTableId: 'G', newColumnIds: ['gfk1', 'gfk2'],
+  })
+}
+
+describe('resolveManyToMany — 하위 관계가 FK 컬럼을 참조', () => {
+  it('지울 FK 컬럼을 부모로 삼는 다른 관계가 있으면 아무것도 하지 않는다', () => {
+    const m = m2mDownstreamBase()
+    // identifying 가드에 먼저 걸리면 이 케이스를 검증하지 못한다 — false 인 것을 못 박는다.
+    expect(m.relationships['r1']?.identifying).toBe(false)
+    expect(m.columns['fk1']?.isPk).toBe(true)
+    expect(m.relationships['r2']?.columnMappings)
+      .toEqual([{ childColumnId: 'gfk1', parentColumnId: 'C_PK' },
+                { childColumnId: 'gfk2', parentColumnId: 'fk1' }])
+
+    // 가드가 없으면 fk1 이 사라지면서 r2 의 매핑이 조용히 1개로 줄고, 배송.ORD_NO 가
+    // 아무도 참조하지 않는 고아 컬럼으로 남는다 — 무결성 검사도 경고도 잡지 못한다(설계 3.3).
+    expect(resolveManyToMany(m, ARGS)).toEqual(m)
   })
 })
 

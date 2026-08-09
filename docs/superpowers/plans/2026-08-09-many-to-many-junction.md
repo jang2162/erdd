@@ -821,6 +821,18 @@ import { newId } from './uid.js'
 
 ⚠️ **`selectRelationship(null)`과 `select(...)`를 `mutate` 앞에 둔다.** 이 mutation으로 원본 관계가 사라지므로, 선택이 남아 있으면 패널이 없는 관계를 그리려다 통째로 사라진다. `store.ts:102-103`을 보면 `select`와 `selectRelationship`은 둘 다 `CLEARED_SELECTION`을 펼치므로 **뒤에 부른 것만 남는다** — `select`가 나중이어야 교차 테이블이 선택된다.
 
+> **정정 (최종 리뷰 수정, 2026-08-09).** 위 ⚠️ 의 **`mutate` 앞에 둔다는 근거는 틀렸다.**
+> `serializeMutation`이 producer를 `.then`으로 미루므로, 같은 동기 블록 안에서는 선택 호출이
+> `mutate` 앞이든 뒤든 결과가 동일하다 — Task 3 구현자와 최종 리뷰어가 **각각 독립적으로 실측
+> 확인**했다. 실제로 잠겨 있던 것은 **두 선택 호출의 상대 순서**뿐이다(순서를 바꾸면 테스트 1건이
+> 실패한다).
+>
+> 그마저도 지금은 남아 있지 않다. `selectRelationship(null)`은 뒤따르는 `select(...)`가
+> `CLEARED_SELECTION`을 다시 펼쳐 효과를 **전부 덮으므로 죽은 코드**였고(그 줄만 지워도 web
+> 스위트가 전부 통과한다), 최종 리뷰 수정에서 삭제했다. 위 코드 블록은 삭제 이전 상태다 —
+> 현재 구현과 그 근거는 **설계 5.3**을 보라. 이 mutation으로 원본 관계가 사라진다는 사실 자체는
+> 그대로이며, 그 결과(선택이 남으면 패널이 통째로 사라진다)는 이제 패널 테스트가 DOM으로 잠근다.
+
 - [ ] **Step 4: 테스트가 통과하는 것을 확인한다**
 
 Run: `pnpm --filter @erdd/web exec vitest run src/editor/relationship-panel.test.tsx`

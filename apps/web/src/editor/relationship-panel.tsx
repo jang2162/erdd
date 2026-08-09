@@ -128,13 +128,9 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
               onClick={() => {
                 if (!junctionPlan.ok) return
                 const { junction, a, b } = junctionPlan
-                // ⚠️ 선택은 이 핸들러 안에서 교차 테이블로 옮긴다 — 이 mutation 으로 원본 관계가
-                //    사라지므로, 선택이 관계에 남아 있으면 패널이 없는 관계를 그리려다 통째로
-                //    사라진다. (mutate 는 마이크로태스크로 지연 실행되므로 mutate 앞뒤 어느 쪽에
-                //    두어도 결과는 같다. 의도가 드러나게 앞에 둔다.)
-                //    그리고 select 와 selectRelationship 은 둘 다 CLEARED_SELECTION 을 펼치므로
-                //    (store.ts) 뒤에 부른 것만 남는다 — 교차 테이블을 선택하려면 select 가 나중이다.
-                selectRelationship(null)
+                // 선택을 교차 테이블로 옮긴다 — 이 mutation 으로 원본 관계가 사라지므로,
+                // 선택이 관계에 남아 있으면 패널이 없는 관계를 그리려다 통째로 사라진다.
+                // select 는 CLEARED_SELECTION 을 펼치므로(store.ts) 관계 선택도 함께 지운다.
                 select(junction.id)
                 void mutate(
                   (m) => resolveManyToMany(m, { relationshipId: relId, junction, a, b }),
@@ -150,7 +146,14 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
             )}
             {!junctionPlan.ok && junctionPlan.reason === 'no-pk' && (
               <p className="text-xs text-muted-foreground">
-                양쪽 테이블에 모두 기본 키가 있어야 합니다
+                교차 테이블에 넘길 기본 키가 없습니다 — 부모에 기본 키가 있어야 하고,
+                자식에는 이 관계의 FK 를 뺀 기본 키가 남아야 합니다
+              </p>
+            )}
+            {!junctionPlan.ok && junctionPlan.reason === 'downstream' && (
+              <p className="text-xs text-muted-foreground">
+                이 관계의 FK 컬럼을 다른 관계가 참조하고 있어 풀 수 없습니다 — 먼저 그 관계를
+                정리하세요
               </p>
             )}
           </div>

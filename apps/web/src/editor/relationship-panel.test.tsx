@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -8,6 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { deleteRelationship } from '@erdd/core'
 import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { RelationshipPanel } from './relationship-panel.js'
@@ -114,7 +115,55 @@ describe('RelationshipPanel', () => {
     renderPanel()
 
     expect(screen.getByRole('button', { name: '교차 테이블로 풀기' })).toBeDisabled()
-    expect(screen.getByText(/양쪽 테이블에 모두 기본 키가 있어야 합니다/)).toBeInTheDocument()
+    expect(screen.getByText(/교차 테이블에 넘길 기본 키가 없습니다/)).toBeInTheDocument()
+  })
+
+  it('FK 컬럼을 참조하는 하위 관계가 있으면 버튼이 잠기고 이유가 보인다', () => {
+    // r1 은 identifying:false 인데 FK c4 의 isPk 만 true 다 — 편집 패널의 PK 체크박스로
+    // 도달하는 상태다. c4 를 지우면 그것을 부모로 삼는 r2 의 매핑이 조용히 사라지고
+    // 배송 t3 에 고아 FK 컬럼이 남는다(설계 3.3 이 막으려던 연쇄).
+    const base = buildSampleModel()
+    const m = {
+      ...base,
+      tables: { ...base.tables,
+        t3: { ...base.tables['t2']!, id: 't3', logicalName: '배송', physicalName: 'DLV' } },
+      columns: { ...base.columns,
+        c4: { ...base.columns['c4']!, isPk: true },
+        c5: { ...base.columns['c2']!, id: 'c5', tableId: 't3', isPk: false, autoIncrement: false },
+        c6: { ...base.columns['c4']!, id: 'c6', tableId: 't3', isPk: false, order: 1 } },
+      relationships: { ...base.relationships,
+        r2: { id: 'r2', parentTableId: 't2', childTableId: 't3', cardinality: '1:N' as const,
+              identifying: false, name: null,
+              columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c2' },
+                               { childColumnId: 'c6', parentColumnId: 'c4' }] } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectRelationship('r1')
+    renderPanel()
+
+    expect(screen.getByRole('button', { name: '교차 테이블로 풀기' })).toBeDisabled()
+    expect(screen.getByText(/다른 관계가 참조하고 있어 풀 수 없습니다/)).toBeInTheDocument()
+  })
+
+  it('선택이 사라진 관계에 남아 있으면 패널이 통째로 사라진다', () => {
+    // 교차 테이블 버튼이 선택을 옮기는 이유다 — 옮기지 않으면 사용자에게 빈 사이드바만 남는다.
+    // store 값이 아니라 DOM 으로 잠근다.
+    const base = buildSampleModel()
+    useEditorStore.getState().setLoaded(base, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectRelationship('r1')
+    renderPanel()
+    expect(screen.getByRole('button', { name: '교차 테이블로 풀기' })).toBeInTheDocument()
+
+    // 선택은 r1 에 그대로 둔 채 모델에서 관계만 없앤다.
+    act(() => { useEditorStore.getState().setModel(deleteRelationship(base, 'r1')) })
+
+    expect(useEditorStore.getState().selectedRelationshipId).toBe('r1')
+    expect(screen.queryByRole('heading', { name: '관계' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '교차 테이블로 풀기' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '관계 삭제' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /식별 관계/ })).toBeNull()
   })
 
   it('편집 권한이 없으면 교차 테이블 버튼이 없다', () => {
