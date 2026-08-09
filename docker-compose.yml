@@ -8,5 +8,34 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  # ERDD 서버 한 프로세스가 tRPC API · 웹 정적 파일 · /ws 를 전부 서빙한다.
+  # 이 서비스가 생겼으므로 `docker compose up -d` 는 앱까지 띄운다.
+  # 개발 중에 DB만 필요하면 `docker compose up -d db` 로 서비스를 지정한다.
+  app:
+    build: .
+    depends_on:
+      - db
+    environment:
+      # compose 네트워크 안에서 Postgres 의 호스트명은 `db` 다.
+      # .env 의 DATABASE_URL(localhost)은 호스트에서 마이그레이션을 돌릴 때 쓰는 값이라
+      # 여기에 끌어다 쓰면 안 된다 — 컨테이너 안에서 localhost 는 자기 자신이다.
+      DATABASE_URL: postgres://postgres:erdd@db:5432/erdd
+      # 최초 관리자 부트스트랩. 값은 같은 디렉터리의 .env 에서 온다(저장소에 커밋되지 않는다).
+      # 둘 중 하나라도 비어 있으면 부트스트랩은 통째로 건너뛴다.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    ports:
+      # 리버스 프록시 뒤에 둘 때는 "127.0.0.1:3000:3000" 으로 바꿔 외부 노출을 막는다.
+      - "${ERDD_PORT:-3000}:3000"
+    restart: unless-stopped
+    healthcheck:
+      # 이미지에 curl·wget 이 없다. Node 22 의 전역 fetch 를 쓴다.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/trpc/health.ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 volumes:
   pgdata:
