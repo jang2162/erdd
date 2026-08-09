@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-08-09 / **main HEAD:** `9c35e1d`(N:M 교차 테이블 병합) / **마이그레이션:** 0012까지(초대·재설정 링크에서 `invitations`·`password_reset_tokens` 추가)
+**최종 갱신:** 2026-08-10 / **main HEAD:** `2e79b68`(설치·사용 매뉴얼 병합) / **마이그레이션:** 0012까지(초대·재설정 링크에서 `invitations`·`password_reset_tokens` 추가)
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -142,6 +142,7 @@ pnpm -s -C packages/cli typecheck
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
 4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-28-phase3-snapshot-diff-design.md`와 `plans/2026-07-28-phase3-snapshot-diff.md`
 5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 1~4 전 항목 확정 완료. 다음 Phase 착수 시 이 문서에 새 항목을 추가한다)
+6. **사용자용 매뉴얼** — `docs/manual/install.md`(사내 서버 설치·운영), `docs/manual/user-guide.md`(웹 UI 기능별 레퍼런스 19절). 개발자용이 아니라 **제품 사용자용**이다. 기능을 바꾸면 여기도 함께 고쳐야 한다 — 특히 화면 문구를 바꾸면 user-guide 의 「」 인용이 어긋나고, 환경변수·compose·마이그레이션을 건드리면 install 의 표와 절차가 어긋난다.
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
 
