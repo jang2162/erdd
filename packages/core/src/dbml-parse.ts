@@ -541,6 +541,14 @@ export function parseDbml(text: string): ParsedDbml {
       header = s.slice(afterKw, brace)
       body = s.slice(brace + 1, close < 0 ? s.length : close)
       bodyLine = startLine + (s.slice(i, brace + 1).match(/\n/g) ?? []).length
+      // 닫는 중괄호가 없으면 파일 끝까지를 본문으로 삼아 읽어낸 것은 살리되, 조용히 넘어가지
+      // 않는다 — 깨진 붙여넣기가 절반만 들어온 것을 사용자가 알아야 한다.
+      if (close < 0) {
+        out.skipped.push({
+          keyword: `${keyword}(닫히지 않음)`, line: startLine,
+          excerpt: s.slice(i, brace + 1).replace(/\s+/g, ' ').trim().slice(0, 80),
+        })
+      }
     } else {
       end = lineEnd < 0 ? s.length : lineEnd
       header = s.slice(afterKw, end)

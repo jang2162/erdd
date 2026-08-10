@@ -72,6 +72,17 @@ Table "MBR" {
   it('닫히지 않은 블록에서 죽지 않는다', () => {
     expect(() => parseDbml('Table "T" {\n  "C" int')).not.toThrow()
   })
+
+  it('닫히지 않은 블록을 경고한다', () => {
+    // 깨진 붙여넣기가 조용히 절반만 들어오면 안 된다 — 읽어낸 것은 그대로 쓰되 경고를 남긴다.
+    const p = parseDbml('Table "T" {\n  "C" int')
+    expect(p.tables).toHaveLength(1)
+    expect(p.skipped.map((s) => s.keyword)).toContain('Table(닫히지 않음)')
+  })
+
+  it('정상적으로 닫힌 블록에는 경고를 남기지 않는다(대조군)', () => {
+    expect(parseDbml('Table "T" {\n  "C" int\n}').skipped).toEqual([])
+  })
 })
 
 describe('dbmlDefaultToRaw', () => {
