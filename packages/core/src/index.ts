@@ -54,6 +54,8 @@ export type {
   ParsedColumn, ParsedTable, ParsedConstraint, ParsedIndex, ParsedComment,
   SkippedStatement, ParsedDdl, RawStatement,
 } from './ddl-parse.js'
+export { parseDbml, dbmlDefaultToRaw } from './dbml-parse.js'
+export type { ParsedDbml, ParsedGroup, ParsedCustomValue } from './dbml-parse.js'
 export { planDdlImport } from './ddl-import.js'
 export type {
   DdlImportWarning, DdlImportColumn, DdlImportTable, DdlImportRelationship, DdlImportPlan,
