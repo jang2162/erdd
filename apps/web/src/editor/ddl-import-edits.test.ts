@@ -346,10 +346,14 @@ describe('DBML 왕복 — 모델까지', () => {
       }]),
     )
     expect(byName(next)).toEqual(byName(model))
-    expect(Object.values(next.relationships).map((r) => ({
-      cardinality: r.cardinality, name: r.name, identifying: r.identifying,
-    })).sort()).toEqual(Object.values(model.relationships).map((r) => ({
-      cardinality: r.cardinality, name: r.name, identifying: r.identifying,
-    })).sort())
+    // 객체 배열의 기본 정렬은 전부 "[object Object]" 로 비교해 순서를 바꾸지 않는다(no-op).
+    // 자식 테이블 이름을 키로 안정 정렬해 순서에 기대지 않고 비교한다.
+    const rels = (m: ProjectModel) => Object.values(m.relationships)
+      .map((r) => ({
+        child: m.tables[r.childTableId]!.physicalName,
+        cardinality: r.cardinality, name: r.name, identifying: r.identifying,
+      }))
+      .sort((a, b) => a.child.localeCompare(b.child))
+    expect(rels(next)).toEqual(rels(model))
   })
 })
