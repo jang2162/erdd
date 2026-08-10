@@ -104,6 +104,13 @@ function fireBoxSelection(nodes: Node[]) {
   act(() => { end({}) })
 }
 
+/** 선택 상자를 시작만 하고 끝내지 않는다(pointercancel로 잘린 제스처). */
+function fireBoxSelectionStart() {
+  const start = lastProps().onSelectionStart as ((e: unknown) => void) | undefined
+  if (!start) throw new Error('Canvas가 ReactFlow에 onSelectionStart를 넘기지 않았다')
+  act(() => { start({}) })
+}
+
 /** onSelectionChange가 실어 보내는 모양의 최소 노드. 캔버스에는 테이블 말고도 여러 종류가 있다. */
 function rfNode(id: string, type: string): Node {
   return { id, type, position: { x: 0, y: 0 }, data: {} }
@@ -364,6 +371,35 @@ describe('Canvas — 테이블 다중 선택 (사용자 조작 경로)', () => {
 
     // 상자 제스처 안에서는 받는다 — 게이트가 열리지 않으면 박스 선택이 통째로 먹통이 된다.
     fireBoxSelection([rfNode('t1', 'table'), rfNode('t2', 'table')])
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
+  })
+
+  it('선택 상자가 끝나지 않고 잘려도 다음 클릭이 게이트를 닫는다', () => {
+    /*
+     * 게이트를 닫는 신호(onSelectionEnd)는 **보장되지 않는다.** React Flow의 Pane은
+     * onPointerCancel에서 포인터 캡처 해제와 auto-pan 정리만 하고 onSelectionEnd를 부르지 않는다.
+     * pointercancel은 터치·펜 제스처가 가로채일 때, 그리고 **캡처 대상 DOM 노드가 제거될 때** 난다 —
+     * Shift+드래그를 테이블 위에서 시작했는데 그 사이 남의 실시간 op가 그 테이블을 지우면 그렇다.
+     * 그러면 게이트가 열린 채 래치되고, 그 뒤 노드를 클릭하면 되먹임 루프가 되살아나
+     * **캔버스 전체가 죽는다**("Maximum update depth exceeded").
+     * DOM 노드가 제거된 경우엔 pointercancel조차 우리에게 배달되지 않으므로(분리된 노드의 이벤트는
+     * 위로 전파되지 않는다) 방어는 포인터 이벤트가 아니라 **소비 지점**에 있어야 한다.
+     */
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    // 상자를 시작해 t1을 잡은 뒤, 끝내지 않는다(잘린 제스처).
+    fireBoxSelectionStart()
+    fireSelectionChange([rfNode('t1', 'table')])
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
+
+    // 게이트가 열린 채로 남아 있어도 클릭은 정상 동작해야 한다(루프가 나면 여기서 죽는다).
+    fireEvent.click(screen.getByTestId('rf__node-t2'), { metaKey: true })
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
+
+    // 그리고 게이트는 닫혀 있어야 한다 — 상자 밖 통지를 다시 받으면 안 된다.
+    fireSelectionChange([rfNode('t1', 'table')])
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
   })
 })

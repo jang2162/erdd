@@ -94,6 +94,13 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
    * 해법: React Flow가 스스로 알려주는 **박스 선택 제스처 구간에서만** 통지를 받는다.
    * onSelectionStart/End는 사용자 선택 상자에만 대응하는 신호라 추측이 필요 없다. 노드 클릭이
    * 만든 변경은 이 구간 밖이므로 무시되고, 곧바로 미러링이 React Flow를 store에 맞춰 되돌린다.
+   *
+   * ⚠️ 다만 **닫는 신호는 보장되지 않는다.** React Flow의 Pane은 onPointerCancel에서 포인터 캡처
+   * 해제와 auto-pan 정리만 하고 onSelectionEnd를 부르지 않는다. pointercancel은 터치·펜 제스처가
+   * 가로채일 때, 그리고 **캡처 대상 DOM 노드가 제거될 때** 난다 — 테이블 위에서 Shift+드래그를
+   * 시작했는데 그 사이 남의 실시간 op가 그 테이블을 지우면 그렇다. 게이트가 열린 채 래치되면
+   * 다음 선택 변경이 되먹임 루프를 되살려 캔버스 전체가 죽는다.
+   * 그래서 아래 래퍼의 onClickCapture에서 한 번 더 닫는다(자리 선정 근거는 그쪽 주석).
    */
   const boxSelecting = useRef(false)
 
@@ -169,7 +176,23 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   }
 
   return (
-    <div className="relative flex-1 min-w-0">
+    <div
+      className="relative flex-1 min-w-0"
+      /*
+       * 선택 상자 게이트의 안전장치: 클릭이 들어오면 무조건 닫는다(위 boxSelecting 주석의 ⚠️).
+       * 클릭 시점에는 상자 제스처가 이미 끝나 있다 — 브라우저는 pointerup 뒤에 click을 내고,
+       * React Flow도 그 pointerup에서 onSelectionEnd를 부른다. 그러니 여기서 닫는 것은 정상
+       * 흐름을 건드리지 않고, 잘린 제스처가 남긴 래치만 푼다.
+       *
+       * **왜 pointercancel 리스너가 아니라 여기인가:** 래치의 가장 현실적인 원인이 "캡처 대상
+       * DOM 노드 제거"인데, 분리된 노드에서 난 이벤트는 위로 전파되지 않아 pointercancel을
+       * 우리가 받지 못한다. 방어는 신호가 오는 곳이 아니라 **소비 지점 앞**에 있어야 한다.
+       * **왜 onNodeClick/onPaneClick이 아니라 래퍼의 캡처인가:** 한 자리로 노드·pane·엣지·
+       * 컬럼 행·미니맵 클릭을 전부 덮고, 캡처 단계라 stopPropagation(컬럼 행이 부른다)에도
+       * 건너뛰이지 않으며, React Flow가 자기 선택을 만지기 전에 먼저 돈다.
+       */
+      onClickCapture={() => { boxSelecting.current = false }}
+    >
       <RelationshipMarkers />
       <ReactFlow
         nodes={nodes}
