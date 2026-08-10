@@ -334,4 +334,83 @@ describe('EditPanel', () => {
     expect(screen.getByRole('checkbox', { name: 'PK' })).toBeDisabled()
     expect(screen.getByRole('checkbox', { name: 'NN' })).toBeDisabled()
   })
+
+  it('컬럼 행은 물리명 입력이 논리명 입력보다 앞에 온다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')   // t1은 컬럼 c1 하나뿐
+    renderPanel()
+    // selector: 'input' — 「논리명 복원」·「컬럼 논리명 복원」 버튼의 aria-label도 정규식에 매치해
+    // 인덱스가 밀리므로 input만 취한다(기존 두 테스트와 같은 이유).
+    const physicals = screen.getAllByLabelText(/물리명/, { selector: 'input' })
+    const logicals = screen.getAllByLabelText(/논리명/, { selector: 'input' })
+    // [0]은 테이블 폼, [1]이 컬럼 행
+    const colPhysical = physicals[1]!
+    const colLogical = logicals[1]!
+    expect(colPhysical.compareDocumentPosition(colLogical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('빈 논리명 컬럼은 물리명 입력 시 논리명이 복원된다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: '' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    const colPhysical = screen.getAllByLabelText(/물리명/, { selector: 'input' })[1]!
+    await userEvent.type(colPhysical, 'MBR')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('회원')
+    })
+  })
+
+  it('컬럼의 논리명이 이미 있으면 물리명 입력이 덮지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '유지', physicalName: '' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    await userEvent.type(screen.getAllByLabelText(/물리명/, { selector: 'input' })[1]!, 'MBR')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.physicalName).toBe('MBR')
+    })
+    expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('유지')
+  })
+
+  it('컬럼의 「논리명 복원」 버튼은 값이 있어도 덮어쓴다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '옛이름', physicalName: 'MBR' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: '컬럼 논리명 복원' }))
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('회원')
+    })
+  })
 })

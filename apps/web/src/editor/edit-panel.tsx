@@ -21,7 +21,6 @@ import { WarningBadge } from './warning-badge.js'
 import { CustomFieldsSection } from './custom-fields-section.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { FieldLabel } from '@/components/field-label'
 
 /** blur 시 값이 바뀌었으면 producer로 커밋하는 제어 인풋. */
@@ -183,6 +182,25 @@ export function EditPanel({ projectId }: { projectId: string }) {
             onPatch={(patch) => void mutate((m) => updateColumn(m, c.id, patch))}
             onRemove={() => void mutate((m) => removeColumn(m, c.id), { summary: '컬럼 삭제' })}
             onMove={(dir) => void mutate((m) => reorderColumn(m, c.id, dir))}
+            onPhysicalName={(v) => {
+              const physical = v
+              void mutate((m) => {
+                let next = updateColumn(m, c.id, { physicalName: physical })
+                const cur = next.columns[c.id]
+                if (cur && cur.logicalName.trim() === '' && physical.trim() !== '') {
+                  const r = restoreLogicalName(physical, next.words, next.terms, namingRules)
+                  if (r.ok) next = updateColumn(next, c.id, { logicalName: r.logicalName })
+                }
+                return next
+              }, { summary: '물리명 변경' })
+            }}
+            onRestoreLogical={() => {
+              const physical = c.physicalName
+              void mutate((m) => {
+                const r = restoreLogicalName(physical, m.words, m.terms, namingRules)
+                return r.ok ? updateColumn(m, c.id, { logicalName: r.logicalName }) : m
+              }, { summary: '논리명 복원' })
+            }}
             onLogicalName={(v) => {
               const logical = v
               void mutate((m) => {
@@ -243,8 +261,10 @@ function ColumnRow(props: {
   onPatch: (patch: Partial<Omit<Column, 'id' | 'tableId'>>) => void
   onRemove: () => void; onMove: (dir: -1 | 1) => void
   onDomainChange: (domainId: string) => void
+  onPhysicalName: (value: string) => void
   onLogicalName: (value: string) => void
   onRegenerate: () => void
+  onRestoreLogical: () => void
   onRegisterTerm: () => void
   customFields: CustomField[]
   onCustomChange: (fieldId: string, value: string) => void
@@ -256,9 +276,10 @@ function ColumnRow(props: {
     <li className="grid gap-2 rounded-md border p-2">
       <div className="flex items-center justify-between gap-2">
         <div className="grid flex-1 grid-cols-2 gap-2">
-          <CommitInput label="논리명" value={c.logicalName} readOnly={!canEdit} onCommit={props.onLogicalName} />
           <CommitInput label="물리명" value={c.physicalName} mono readOnly={!canEdit}
-            onCommit={(v) => props.onPatch({ physicalName: v })} />
+            onCommit={props.onPhysicalName} />
+          <CommitInput label="논리명" value={c.logicalName} readOnly={!canEdit}
+            onCommit={props.onLogicalName} />
         </div>
         <WarningBadge warnings={props.warnings} className="shrink-0" />
       </div>
@@ -267,11 +288,13 @@ function ColumnRow(props: {
           <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
             aria-label="물리명 재생성" onClick={props.onRegenerate}>재생성</Button>
           <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+            aria-label="컬럼 논리명 복원" onClick={props.onRestoreLogical}>복원</Button>
+          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
             aria-label="용어로 등록" onClick={props.onRegisterTerm}>용어 등록</Button>
         </div>
       )}
       <div className="grid gap-1.5">
-        <Label htmlFor={`col-domain-${c.id}`}>도메인</Label>
+        <FieldLabel htmlFor={`col-domain-${c.id}`}>도메인</FieldLabel>
         <select id={`col-domain-${c.id}`}
           className="h-9 rounded-md border bg-background px-2 text-sm"
           value={c.domainId ?? ''} disabled={!canEdit}
