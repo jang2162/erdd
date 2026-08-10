@@ -159,6 +159,27 @@ describe('useEditorShortcuts', () => {
     expect(useEditorStore.getState().model.tables['t2']).toBeDefined()
   })
 
+  // ⚠️ 컬럼을 지운 뒤 선택 잔재가 남으면 모델에 없는 컬럼 id가 selectedColumnIds에 남고,
+  // 이어지는 Cmd+C가 `{"kind":"columns","columns":[]}` 빈 페이로드로 **시스템 클립보드를 덮는다**.
+  // 사용자는 테이블을 복사한 줄 안다. 컬럼 선택만 비우고 보던 테이블 선택은 유지해야 한다.
+  it('컬럼을 Delete하면 컬럼 선택만 비우고 테이블 선택은 유지한다', async () => {
+    mockModelMutate()
+    useEditorStore.getState().selectColumn('t2', 'c3', 'replace')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(useEditorStore.getState().model.columns['c3']).toBeUndefined())
+
+    expect(useEditorStore.getState().selectedColumnIds).toEqual([])
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
+
+    // 잔재가 남았는지를 사용자가 실제로 겪는 결과로 확인한다 — 다음 Cmd+C가 무엇을 쓰는가.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    const payload = JSON.parse(writeText.mock.calls[0]![0] as string)
+    expect(payload.kind).toBe('tables')
+    expect(payload.tables).toHaveLength(1)
+  })
+
   it('paste 이벤트로 컬럼을 붙여넣는다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     const payload = serializeColumns(buildSampleModel(), ['c2'])
@@ -269,13 +290,33 @@ describe('useEditorShortcuts', () => {
     expect(pasted!.id).not.toBe('t2')
   })
 
+  // ⚠️ 네 갈래를 **전부** 눌러 본다. Cmd+X는 mutate보다 **먼저** writeText를 부르므로
+  // useSubmit의 canEdit 가드(두 번째 방어선)로는 막히지 않는 유일한 부작용이다 —
+  // 훅 자신의 가드가 빠지면 읽기 전용 사용자의 시스템 클립보드가 덮인다.
   it('읽기 전용이면 X·V·Delete가 무시되고 C만 동작한다', async () => {
+    mockModelMutate()
     useEditorStore.setState({ canEdit: false })
     useEditorStore.getState().select('t2')
     renderHarness()
+    const columnsBefore = Object.keys(useEditorStore.getState().model.columns).length
+
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
     await new Promise((r) => setTimeout(r, 0))
     expect(useEditorStore.getState().model.tables['t2']).toBeDefined()
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true, bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(writeText).not.toHaveBeenCalled()          // ← X의 유일한 방어선
+    expect(useEditorStore.getState().model.tables['t2']).toBeDefined()
+
+    const pasted = serializeColumns(buildSampleModel(), ['c2'])
+    const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(e, 'clipboardData', { value: { getData: () => JSON.stringify(pasted) } })
+    document.dispatchEvent(e)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(Object.keys(useEditorStore.getState().model.columns)).toHaveLength(columnsBefore)
+
+    // C만 동작한다.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))
     await waitFor(() => expect(writeText).toHaveBeenCalled())
   })

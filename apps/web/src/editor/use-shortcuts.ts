@@ -95,7 +95,13 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
             : tableIds.reduce((acc, id) => removeTable(acc, id), m)),
           { summary: columnIds.length > 0 ? '컬럼 삭제' : '테이블 삭제' },
         )
-        if (columnIds.length === 0) s.select(null)
+        // 지운 대상은 선택에서 빼야 한다. 컬럼을 지웠을 때 잔재를 남기면 모델에 없는 컬럼 id가
+        // selectedColumnIds에 남고, 이어지는 Cmd+C가 `{"kind":"columns","columns":[]}` 빈
+        // 페이로드로 **시스템 클립보드를 덮는다**(사용자는 테이블을 복사한 줄 안다).
+        // 그렇다고 select(null)로 통째 비우면 보던 테이블에서 벗어난다 — 테이블 선택은 남긴다.
+        // `select(tableId)`가 CLEARED_SELECTION을 거쳐 그 테이블만 남기고 컬럼을 비운다.
+        // 컬럼 선택은 테이블이 하나일 때만 성립하므로(store 불변식) tableIds[0]가 그 테이블이다.
+        s.select(columnIds.length > 0 ? tableIds[0]! : null)
       }
     }
 
