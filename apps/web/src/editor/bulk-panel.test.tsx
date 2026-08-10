@@ -87,6 +87,17 @@ describe('BulkPanel', () => {
     expect(screen.getByText('MBR_GRD')).toBeInTheDocument()
   })
 
+  it('선택 개수 헤더가 라이브 리전이다 — 개수가 바뀌면 낭독된다', () => {
+    // 사이드바 항목의 aria-pressed는 "이것이 선택됐다"만 말한다. **몇 개인지**를 읽어 주는 자리는
+    // 여기뿐이라, 라이브 리전이 아니면 선택이 3개로 늘어도 스크린리더에는 아무 일도 없다.
+    // (h2의 heading 역할은 그대로 둔다 — role="status"로 덮으면 제목 탐색에서 사라진다.)
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+    expect(screen.getByText('2개 테이블 선택됨')).toHaveAttribute('aria-live', 'polite')
+  })
+
   it('그룹 드롭다운으로 옮기면 op 배치 한 건으로 나간다(undo 1회)', async () => {
     // 픽스처는 **앵커가 있는** g2여야 한다. 빈 g2면 planGroupMove가 []를 반환해 좌표 이동 op가
     // 0건이고, 그러면 producer를 둘로 쪼개도 두 번째 뮤테이션이 'noop'으로 빠져 calls·undoStack이

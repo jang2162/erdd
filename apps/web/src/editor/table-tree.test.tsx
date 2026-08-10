@@ -15,6 +15,7 @@ import { settle } from '@/testing/settle'
 import { useEditorStore } from './store.js'
 import { useDragStore } from './drag-store.js'
 import { BulkPanel } from './bulk-panel.js'
+import { DragGhost } from './drag-ghost.js'
 import { TableTree } from './table-tree.js'
 
 // 권한 회수 레이스에서 "엉뚱한 에러 토스트를 띄우지 않는다"를 단언하려면 토스트가 스파이여야 한다.
@@ -144,6 +145,21 @@ function tbl(id: string, physicalName: string, logicalName: string, groupId: str
  * 눌러 둔 수식키가 다음 클릭에 실려 오지 않는다(user-event 14 `setupDirect`).
  */
 describe('TableTree 다중 선택 제스처', () => {
+  it('선택 상태가 보조기술에 노출된다 — 클래스 말고 aria로도 읽힌다', () => {
+    // `bg-accent` 클래스는 눈에만 보인다. 단일 선택 시절엔 편집 패널이 대상을 열어 주는 것이
+    // 사실상 피드백이었지만, 다중 선택이 1급 조작이 된 지금은 대체 채널이 없다 —
+    // 스크린리더 사용자는 무엇이 선택됐는지 알 방법이 없어진다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    useEditorStore.getState().selectTables(['t2'])
+    renderTree()
+    expect(screen.getByText('MBR').closest('button')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('MBR_GRD').closest('button')).toHaveAttribute('aria-pressed', 'false')
+
+    // 선택이 바뀌면 따라 바뀐다(고정값을 박아 넣은 회귀를 막는다).
+    act(() => { useEditorStore.getState().selectTables(['t1', 't2']) })
+    expect(screen.getByText('MBR_GRD').closest('button')).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('Cmd+클릭은 선택을 토글한다', async () => {
     const user = userEvent.setup()
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
@@ -671,6 +687,30 @@ describe('TableTree 드래그 그룹 이동', () => {
     expect(calls).toHaveLength(0)
     expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')
     expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('사이드바 드래그에는 커서 고스트가 뜬다 — 트리가 심는 source가 고스트를 가른다', async () => {
+    // 계약 세 조각 중 이것만 잠기지 않아 있었다: 고스트가 `source==='sidebar'`일 때만 뜬다(✅),
+    // 캔버스가 `'canvas'`를 심는다(✅), **사이드바가 `'sidebar'`를 심는다(❌)**.
+    // 원인은 `DragGhost`와 `TableTree`를 **함께 렌더하는 테스트가 하나도 없었던 것**이다 —
+    // `drag-ghost.test.tsx`는 store를 직접 몰고, 이 파일은 고스트를 보지 않았다. 그래서
+    // `dragStart(ids, 'sidebar')`를 `'canvas'`로 바꾸면 사이드바 드래그에서 고스트가 통째로
+    // 사라지는데도 585건이 전부 초록이었다. 두 컴포넌트를 같이 세워 그 구멍을 막는다.
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    withProviders(<><TableTree projectId={PROJECT_ID} /><DragGhost /></>)
+
+    expect(screen.queryByTestId('drag-ghost')).toBeNull()
+
+    const item = grab('MBR')
+    // 개수까지 본다 — 고스트가 "무엇을 몇 개" 끄는지 말하는 유일한 표시다.
+    expect(screen.getByTestId('drag-ghost')).toHaveTextContent('2개 테이블')
+
+    dropOn(item, 'g2')
+    expect(screen.queryByTestId('drag-ghost')).toBeNull()
+    await expectSent(calls, 1)
   })
 
   it('드래그 중 커서가 올라간 그룹에만 링이 붙는다', () => {

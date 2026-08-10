@@ -158,7 +158,14 @@ export function BulkPanel({ projectId }: { projectId: string }) {
 
   return (
     <aside className="w-80 shrink-0 overflow-y-auto border-l bg-card p-4">
-      <h2 className="mb-3 text-sm font-semibold">{ids.length}개 테이블 선택됨</h2>
+      {/*
+        선택 **개수**를 읽어 주는 유일한 자리다. 사이드바 항목의 `aria-pressed`는 "이것이
+        선택됐다"만 말하고 총합은 말하지 못한다. `role`을 덮어쓰지 않으려고 `aria-live`만 건다 —
+        h2의 heading 역할을 status로 바꾸면 제목 탐색에서 사라진다.
+        ⚠️ 한계: 이 패널은 2개 이상일 때 새로 마운트되므로 1→2 전환은 "리전 안의 내용 변경"이
+        아니라 리전 자체의 삽입이라 낭독이 보장되지 않는다. 2→3처럼 이미 떠 있는 동안의 변경은 읽힌다.
+      */}
+      <h2 aria-live="polite" className="mb-3 text-sm font-semibold">{ids.length}개 테이블 선택됨</h2>
 
       <ul className="mb-4 max-h-48 overflow-y-auto rounded border">
         {tables.map((t) => (

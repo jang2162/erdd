@@ -18,6 +18,11 @@ vi.mock('sonner', () => ({ toast: { info: toastInfo, error: toastError, success:
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 const NOTE_A = '018f6b0e-0000-7000-8000-0000000000b1'
 const NOTE_B = '018f6b0e-0000-7000-8000-0000000000b2'
+const [TABLE_A, TABLE_B, TABLE_C] = [
+  '018f6b0e-0000-7000-8000-0000000000d1',
+  '018f6b0e-0000-7000-8000-0000000000d2',
+  '018f6b0e-0000-7000-8000-0000000000d3',
+]
 
 function noteOp(id: string, content: string): Op {
   return {
@@ -387,6 +392,53 @@ describe('useRealtime selection 발신', () => {
     await waitFor(() => expect(s.sent).toHaveLength(1))
     expect(JSON.parse(s.sent[0]!)).toEqual({
       type: 'selection', selections: [{ kind: 'note', id: NOTE_A }],
+    })
+  })
+
+  it('다중 선택은 고른 것 **전부**가 프레임에 실린다 — 대표 1건으로 접히지 않는다', async () => {
+    // 설계 2절 D4에서 사용자가 명시적으로 고른 결정이다("선택한 것 전부"). 대표 1건만 보내면
+    // D4가 배격한 상태로 돌아간다 — 남이 5개를 잡고 있어도 4개는 자유로워 보인다.
+    // core(프로토콜)·server(허브)·web 수신(peer-marks)은 잠겨 있는데 **발신만 비어 있었다**:
+    // `selectionsOf`를 `[{ kind:'table', id: s.selectedTableIds.at(-1)! }]`로 되돌려도 585건이
+    // 전부 초록이었다. 기존 발신 테스트는 메모 1건과 빈 선택뿐이라 배열이 N건 나가는지를
+    // 한 번도 보지 않는다.
+    renderHook()
+    const s = await socket()
+    useEditorStore.getState().selectTables([TABLE_A, TABLE_B, TABLE_C])
+    await waitFor(() => expect(s.sent).toHaveLength(1))
+    expect(JSON.parse(s.sent[0]!)).toEqual({
+      type: 'selection',
+      selections: [
+        { kind: 'table', id: TABLE_A },
+        { kind: 'table', id: TABLE_B },
+        { kind: 'table', id: TABLE_C },
+      ],
+    })
+  })
+
+  it('재접속 재발신도 다중 선택을 그대로 싣는다', async () => {
+    // 발신 지점은 셋이다(onopen 재발신 · throttle flush · subscribe 변경 감지). 재접속 경로는
+    // 서버 Entry가 빈 selections로 새로 시작하므로 여기서 접히면 재접속한 사람의 다중 선택이
+    // 남들에게 1개로만 보인 채 굳는다.
+    renderHook()
+    useEditorStore.getState().selectTables([TABLE_A, TABLE_B, TABLE_C])
+    const first = await socket()
+    await waitFor(() => expect(first.sent.length).toBeGreaterThan(0))
+
+    first.closeWith(1006)
+    await new Promise((r) => setTimeout(r, 1100))
+    const second = await socket()
+    expect(second).not.toBe(first)
+    second.onopen?.()
+
+    await waitFor(() => expect(second.sent.length).toBeGreaterThan(0))
+    expect(JSON.parse(second.sent[0]!)).toEqual({
+      type: 'selection',
+      selections: [
+        { kind: 'table', id: TABLE_A },
+        { kind: 'table', id: TABLE_B },
+        { kind: 'table', id: TABLE_C },
+      ],
     })
   })
 

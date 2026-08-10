@@ -231,6 +231,15 @@ function TableItem({ t, selected, draggable, onClick, onDragStart, onDrop }: {
   return (
     <li>
       <button type="button"
+        /*
+         * 선택 상태를 보조기술에 노출하는 **유일한 채널**이다. 표시가 `bg-accent` 클래스뿐이면
+         * 스크린리더 사용자는 무엇이 선택됐는지 알 방법이 없다 — 단일 선택 시절엔 편집 패널이
+         * 대상을 열어 주는 것이 사실상 피드백이었지만, 다중 선택이 1급 조작이 된 지금은 대체
+         * 채널이 없다. role은 건드리지 않는다: 항목은 실제 `<button>`이고 Cmd+클릭이 그것을
+         * 켜고 끄므로 토글 버튼(`aria-pressed`)이 그대로 맞다. listbox/option으로 바꾸면 로빙
+         * tabindex·aria-activedescendant까지 함께 가야 하는데, 그건 이 결함이 요구하는 것보다 훨씬 크다.
+         */
+        aria-pressed={selected}
         // 드래그로 끝난 pointerup 뒤에는 click이 한 번 더 온다 — 선택이 튀지 않게 억제한다.
         onClick={(e) => { if (!dragging.current) onClick(e) }}
         onPointerDown={(e) => {
