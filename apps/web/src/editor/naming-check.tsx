@@ -17,6 +17,7 @@ const KIND_LABEL: Record<Warning['kind'], string> = {
   'type-mismatch': '타입 불일치',
   'incomplete-mapping': '매핑 불완전',
   'custom-required': '필수 항목 미입력',
+  'required-empty': '필수 값 누락',
 }
 
 /** 경고가 가리키는 엔티티의 사람용 라벨(테이블/컬럼 물리명). */

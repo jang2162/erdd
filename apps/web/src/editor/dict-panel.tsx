@@ -1,18 +1,19 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { BookOpen, Pencil, Plus, Trash2 } from 'lucide-react'
 import { DEFAULT_NAMING_RULES, type ProjectModel, type Term, type Word } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import {
-  createTerm, createWord, removeTerm, removeWord, termUsage, unregisteredWords, updateTerm, updateWord,
+  createTerm, createWord, removeTerm, removeWord, termUsage, unregisteredAbbreviations, unregisteredWords,
+  updateTerm, updateWord,
   planTermPropagation, applyTermPropagation, type TermPropagationPlan,
   wordUsage,
 } from './dict-edits.js'
 import { DictImportSection } from './dict-import-section.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { FieldLabel } from '@/components/field-label'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
@@ -23,6 +24,7 @@ type Section = 'words' | 'terms' | 'unregistered' | 'import'
 export function DictPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
+  const namingRules = useEditorStore((s) => s.namingRules)
   const mutate = useModelMutation(projectId)
   const [open, setOpen] = useState(false)
   const [section, setSection] = useState<Section>('words')
@@ -35,6 +37,9 @@ export function DictPanel({ projectId }: { projectId: string }) {
   const terms = Object.values(model.terms).sort((a, b) => a.logicalName.localeCompare(b.logicalName))
   // Task 6에서 store에 실제 프로젝트 명명 규칙이 로드되면 그 규칙으로 교체한다.
   const candidates = unregisteredWords(model, DEFAULT_NAMING_RULES)
+  // 물리명 분해에서 나온 미등록 약어(위 candidates의 대칭 — 논리명 분해 vs 물리명 분해).
+  const abbrCandidates = useMemo(
+    () => unregisteredAbbreviations(model, namingRules), [model, namingRules])
 
   const onAddWord = () => { setEditingWord(null); setWordEditorOpen(true) }
   const onEditWord = (w: Word) => { setEditingWord(w); setWordEditorOpen(true) }
@@ -69,7 +74,10 @@ export function DictPanel({ projectId }: { projectId: string }) {
               type="button" size="sm" variant={section === 'unregistered' ? 'default' : 'outline'}
               onClick={() => setSection('unregistered')}
             >
-              미등록 단어{candidates.length > 0 ? ` (${candidates.length})` : ''}
+              미등록 항목{
+                (candidates.length + abbrCandidates.length) > 0
+                  ? ` (${candidates.length + abbrCandidates.length})` : ''
+              }
             </Button>
             <Button
               type="button" size="sm" variant={section === 'import' ? 'default' : 'outline'}
@@ -174,7 +182,18 @@ export function DictPanel({ projectId }: { projectId: string }) {
           )}
 
           {section === 'unregistered' && (
-            <UnregisteredWordsSection projectId={projectId} candidates={candidates} canEdit={canEdit} />
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <h3 className="text-sm font-semibold">논리명 → 약어</h3>
+                <UnregisteredWordsSection projectId={projectId} candidates={candidates} canEdit={canEdit} />
+              </div>
+              <div className="grid gap-2">
+                <h3 className="text-sm font-semibold">물리명 → 논리명</h3>
+                <UnregisteredAbbreviationsSection
+                  projectId={projectId} candidates={abbrCandidates} canEdit={canEdit}
+                />
+              </div>
+            </div>
           )}
           {section === 'import' && <DictImportSection projectId={projectId} />}
         </DialogContent>
@@ -268,6 +287,74 @@ function UnregisteredWordsSection(
 }
 
 /**
+ * 물리명 분해에서 나온 미등록 약어에 논리명을 붙여 일괄 등록한다.
+ * UnregisteredWordsSection의 대칭 — 빈 칸이 약어냐 논리명이냐만 다르고 등록은 같은 createWord다.
+ */
+function UnregisteredAbbreviationsSection(
+  { projectId, candidates, canEdit }: { projectId: string; candidates: string[]; canEdit: boolean },
+) {
+  const mutate = useModelMutation(projectId)
+  const [logicalByCandidate, setLogicalByCandidate] = useState<Record<string, string>>({})
+
+  const onBulkRegister = () => {
+    // producer 진입 전에 등록 대상(후보 + 논리명 + 신규 id)을 모두 확정한 상수 배열로 캡처한다.
+    const registrations = candidates
+      .map((candidate) => ({
+        id: newId(), abbreviation: candidate, logicalName: (logicalByCandidate[candidate] ?? '').trim(),
+      }))
+      .filter((r) => r.logicalName !== '')
+    if (registrations.length === 0) return
+    void mutate(
+      (m: ProjectModel) => registrations.reduce(
+        (acc, r) => createWord(acc, {
+          id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
+          englishName: null, description: null, origin: null,
+        }),
+        m,
+      ),
+      { summary: '미등록 약어 일괄 등록' },
+    )
+    setLogicalByCandidate({})
+  }
+
+  return (
+    <div className="grid gap-2">
+      <p className="text-sm text-muted-foreground">
+        테이블·컬럼 물리명 분해 중 사전에 없는 약어입니다. 논리명을 입력한 항목만 일괄 등록됩니다
+      </p>
+      {candidates.length === 0
+        ? <p className="text-sm text-muted-foreground">미등록 약어가 없습니다</p>
+        : (
+            <>
+              <ul className="grid max-h-72 gap-2 overflow-y-auto">
+                {candidates.map((candidate) => (
+                  <li key={candidate} className="flex items-center gap-2 rounded-md border p-2">
+                    <span className="flex-1 font-mono font-medium">{candidate}</span>
+                    {canEdit && (
+                      <Input
+                        aria-label={`${candidate} 논리명`} placeholder="논리명" className="w-32"
+                        value={logicalByCandidate[candidate] ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setLogicalByCandidate((prev) => ({ ...prev, [candidate]: value }))
+                        }}
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {canEdit && (
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={onBulkRegister}>미등록 약어 일괄 등록</Button>
+                </div>
+              )}
+            </>
+          )}
+    </div>
+  )
+}
+
+/**
  * "단어" 추가/수정 폼. 신규는 확인 없이 단일 createWord mutation, 수정은 단일 updateWord mutation.
  * 모든 입력값은 컨트롤드 state로 즉시 캡처되고, 저장 시 그 state에서 뽑은 const만 producer에 넘긴다
  * (producer 안에서 이벤트 값을 lazy read하지 않는다).
@@ -328,25 +415,25 @@ function WordEditDialog({
         <DialogHeader><DialogTitle>{word === null ? '단어 추가' : '단어 수정'}</DialogTitle></DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1.5">
-            <Label htmlFor="word-logical">논리명</Label>
-            <Input id="word-logical" value={logicalName} onChange={(e) => setLogicalName(e.target.value)} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="word-abbr">약어</Label>
+            <FieldLabel htmlFor="word-abbr" required>약어</FieldLabel>
             <Input
               id="word-abbr" className="font-mono" value={abbreviation}
               onChange={(e) => setAbbreviation(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="word-english">영문명</Label>
+            <FieldLabel htmlFor="word-logical" required>논리명</FieldLabel>
+            <Input id="word-logical" value={logicalName} onChange={(e) => setLogicalName(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <FieldLabel htmlFor="word-english">영문명</FieldLabel>
             <Input
               id="word-english" className="font-mono" value={englishName}
               onChange={(e) => setEnglishName(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="word-desc">설명</Label>
+            <FieldLabel htmlFor="word-desc">설명</FieldLabel>
             <textarea
               id="word-desc" className="min-h-16 rounded-md border bg-background p-2 text-sm"
               value={description} onChange={(e) => setDescription(e.target.value)}
@@ -455,18 +542,18 @@ function TermEditDialog({
         <DialogHeader><DialogTitle>{term === null ? '용어 추가' : '용어 수정'}</DialogTitle></DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1.5">
-            <Label htmlFor="term-logical">논리명</Label>
-            <Input id="term-logical" value={logicalName} onChange={(e) => setLogicalName(e.target.value)} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="term-physical">물리명</Label>
+            <FieldLabel htmlFor="term-physical" required>물리명</FieldLabel>
             <Input
               id="term-physical" className="font-mono" value={physicalName}
               onChange={(e) => setPhysicalName(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="term-domain">도메인 (선택)</Label>
+            <FieldLabel htmlFor="term-logical" required>논리명</FieldLabel>
+            <Input id="term-logical" value={logicalName} onChange={(e) => setLogicalName(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <FieldLabel htmlFor="term-domain">도메인</FieldLabel>
             <select
               id="term-domain" className="h-9 rounded-md border bg-background px-2 text-sm"
               value={domainId} onChange={(e) => setDomainId(e.target.value)}
@@ -476,7 +563,7 @@ function TermEditDialog({
             </select>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="term-desc">설명</Label>
+            <FieldLabel htmlFor="term-desc">설명</FieldLabel>
             <textarea
               id="term-desc" className="min-h-16 rounded-md border bg-background p-2 text-sm"
               value={description} onChange={(e) => setDescription(e.target.value)}

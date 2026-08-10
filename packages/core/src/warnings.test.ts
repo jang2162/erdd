@@ -3,6 +3,7 @@ import { computeWarnings } from './warnings.js'
 import type { Column, CustomField, ProjectModel, Relationship, Table, Term, Word } from './model.js'
 import { createEmptyModel } from './model.js'
 import type { NamingRules } from './naming.js'
+import { buildSampleModel } from './testing/fixtures.js'
 
 function tbl(id: string, over: Partial<Table> = {}): Table {
   return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
@@ -193,5 +194,61 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     expect(w).toHaveLength(1)
     expect(w[0]!.scope).toBe('table')
     expect(w[0]!.entityId).toBe('T')
+  })
+})
+
+describe('required-empty', () => {
+  it('테이블의 빈 논리명·물리명을 각각 경고한다', () => {
+    const m = buildSampleModel()
+    m.tables['t1']!.logicalName = ''
+    m.tables['t2']!.physicalName = ''
+    const ws = computeWarnings(m)
+    const t1 = ws.filter((w) => w.kind === 'required-empty' && w.entityId === 't1')
+    const t2 = ws.filter((w) => w.kind === 'required-empty' && w.entityId === 't2')
+    expect(t1).toHaveLength(1)
+    expect(t1[0]!.message).toContain('논리명')
+    expect(t1[0]!.scope).toBe('table')
+    expect(t2).toHaveLength(1)
+    expect(t2[0]!.message).toContain('물리명')
+  })
+
+  it('컬럼의 빈 논리명·물리명·타입을 각각 경고하고 tableId를 싣는다', () => {
+    const m = buildSampleModel()
+    m.columns['c1']!.type = ''
+    const ws = computeWarnings(m).filter((w) => w.kind === 'required-empty' && w.entityId === 'c1')
+    expect(ws).toHaveLength(1)
+    expect(ws[0]!.scope).toBe('column')
+    expect(ws[0]!.tableId).toBe('t1')
+    expect(ws[0]!.message).toContain('타입')
+  })
+
+  it('한 엔티티에서 여러 필드가 비면 각각 한 건씩 낸다', () => {
+    const m = buildSampleModel()
+    m.columns['c1']!.logicalName = ''
+    m.columns['c1']!.physicalName = ''
+    m.columns['c1']!.type = ''
+    const ws = computeWarnings(m).filter((w) => w.kind === 'required-empty' && w.entityId === 'c1')
+    expect(ws).toHaveLength(3)
+  })
+
+  it('공백만 있는 값도 비어 있는 것으로 본다', () => {
+    const m = buildSampleModel()
+    m.tables['t1']!.logicalName = '   '
+    const ws = computeWarnings(m).filter((w) => w.kind === 'required-empty' && w.entityId === 't1')
+    expect(ws).toHaveLength(1)
+  })
+
+  // ⚠️ 이 테스트가 없으면 "항상 경고를 낸다"는 구현도 위 넷을 전부 통과한다.
+  it('필수값이 모두 차 있으면 한 건도 내지 않는다', () => {
+    const ws = computeWarnings(buildSampleModel()).filter((w) => w.kind === 'required-empty')
+    expect(ws).toEqual([])
+  })
+
+  // rules 게이트 밖에 있어야 한다 — 명명 규칙을 주지 않아도 나온다.
+  it('rules 없이 호출해도 계산된다', () => {
+    const m = buildSampleModel()
+    m.tables['t1']!.physicalName = ''
+    const ws = computeWarnings(m).filter((w) => w.kind === 'required-empty')
+    expect(ws.length).toBeGreaterThan(0)
   })
 })

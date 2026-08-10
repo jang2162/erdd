@@ -104,6 +104,23 @@ function createTableBlock(model: ProjectModel, table: Table, dialect: Dialect): 
   return `${block};`
 }
 
+/**
+ * DDL로 낼 수 있는 테이블인가. 물리명이 비면 식별자를 만들 수 없다.
+ * generateDdl의 제외와 ddlWarnings의 경고가 같은 판정을 써야 하므로 여기 하나만 둔다.
+ */
+function hasEmptyPhysicalName(model: ProjectModel, table: Table): boolean {
+  if (table.physicalName.trim() === '') return true
+  return tableColumns(model, table.id).some((c) => c.physicalName.trim() === '')
+}
+
+/**
+ * 경고 문구에 쓸 테이블 라벨. 물리명이 비어 있으면 논리명(없으면 id)으로 폴백한다 —
+ * 그렇지 않으면 신규 테이블(물리명 '')의 경고가 ": ..." 형태로 이름 없이 뜬다.
+ */
+function warningLabel(t: Table): string {
+  return t.physicalName.trim() === '' ? (t.logicalName || t.id) : t.physicalName
+}
+
 function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): Relationship[] {
   return Object.values(model.relationships).filter(
     (r) => selectedIds.has(r.parentTableId) && selectedIds.has(r.childTableId),
@@ -191,7 +208,9 @@ function columnCommentStatement(dialect: Dialect, tableName: string, columnName:
 }
 
 export function generateDdl(model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }): string {
-  const tables = selectTables(model, scope).filter((t) => tableColumns(model, t.id).length > 0)
+  const tables = selectTables(model, scope).filter(
+    (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t),
+  )
   const selectedIds = new Set(tables.map((t) => t.id))
 
   const createBlocks = tables.map((table) => createTableBlock(model, table, dialect))
@@ -207,7 +226,11 @@ export function ddlWarnings(model: ProjectModel, dialect: Dialect, scope: DdlSco
   const inScope = selectTables(model, scope)
   const out: string[] = []
   for (const t of inScope) {
-    if (tableColumns(model, t.id).length === 0) out.push(`${t.physicalName}: 컬럼이 없어 DDL에서 제외됨`)
+    if (tableColumns(model, t.id).length === 0) out.push(`${warningLabel(t)}: 컬럼이 없어 DDL에서 제외됨`)
+  }
+  for (const t of inScope) {
+    if (!hasEmptyPhysicalName(model, t)) continue
+    out.push(`${warningLabel(t)}: 물리명이 비어 있어 DDL에서 제외됨`)
   }
   for (const t of inScope) {
     for (const c of tableColumns(model, t.id)) {

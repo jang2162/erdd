@@ -3,7 +3,7 @@ import { DIALECTS, type Dialect, type ResourceKind } from '@erdd/core'
 import { DIALECT_LABEL } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { FieldLabel } from '@/components/field-label'
 
 export type DomainOption = { id: string; name: string }
 
@@ -133,54 +133,55 @@ export function ResourceItemForm({
 
   return (
     <div className="grid gap-3">
-      <div className="grid gap-1.5">
-        <Label htmlFor="ri-name">{nameLabel}</Label>
-        <Input id="ri-name" value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
-
       {kind === 'word' && (
         <div className="grid gap-1.5">
-          <Label htmlFor="ri-abbr">물리 약어</Label>
+          <FieldLabel htmlFor="ri-abbr" required>물리 약어</FieldLabel>
           <Input id="ri-abbr" className="font-mono" value={abbreviation}
             onChange={(e) => setAbbreviation(e.target.value)} />
         </div>
       )}
 
       {kind === 'term' && (
-        <>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ri-physical">물리명</Label>
-            <Input id="ri-physical" className="font-mono" value={physicalName}
-              onChange={(e) => setPhysicalName(e.target.value)} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ri-domain">기본 도메인</Label>
-            <select id="ri-domain" className={selectClass()} value={domainId}
-              onChange={(e) => setDomainId(e.target.value)}>
-              <option value="">선택 안 함</option>
-              {domainOptions.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-          </div>
-        </>
+        <div className="grid gap-1.5">
+          <FieldLabel htmlFor="ri-physical" required>물리명</FieldLabel>
+          <Input id="ri-physical" className="font-mono" value={physicalName}
+            onChange={(e) => setPhysicalName(e.target.value)} />
+        </div>
+      )}
+
+      <div className="grid gap-1.5">
+        <FieldLabel htmlFor="ri-name" required>{nameLabel}</FieldLabel>
+        <Input id="ri-name" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+
+      {kind === 'term' && (
+        <div className="grid gap-1.5">
+          <FieldLabel htmlFor="ri-domain">기본 도메인</FieldLabel>
+          <select id="ri-domain" className={selectClass()} value={domainId}
+            onChange={(e) => setDomainId(e.target.value)}>
+            <option value="">선택 안 함</option>
+            {domainOptions.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </div>
       )}
 
       {kind === 'domain' && (
         <>
           <div className="grid gap-1.5">
-            <Label htmlFor="ri-category">분류 (선택)</Label>
+            <FieldLabel htmlFor="ri-category">분류</FieldLabel>
             <Input id="ri-category" value={category} onChange={(e) => setCategory(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="ri-logical-type">논리 타입</Label>
+            <FieldLabel htmlFor="ri-logical-type" required>논리 타입</FieldLabel>
             <Input id="ri-logical-type" className="font-mono" value={logicalType}
               placeholder="예: VARCHAR(100)" onChange={(e) => setLogicalType(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             {DIALECTS.map((d) => (
               <div key={d} className="grid gap-1.5">
-                <Label htmlFor={`ri-dialect-${d}`}>{DIALECT_LABEL[d]} 물리 타입 (선택)</Label>
+                <FieldLabel htmlFor={`ri-dialect-${d}`}>{DIALECT_LABEL[d]} 물리 타입</FieldLabel>
                 <Input id={`ri-dialect-${d}`} className="font-mono" value={dialectTypes[d]}
                   onChange={(e) => {
                     const value = e.target.value
@@ -190,7 +191,7 @@ export function ResourceItemForm({
             ))}
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="ri-allowed">허용값 (쉼표로 구분, 선택)</Label>
+            <FieldLabel htmlFor="ri-allowed">허용값 (쉼표로 구분)</FieldLabel>
             <Input id="ri-allowed" value={allowedValuesText}
               onChange={(e) => setAllowedValuesText(e.target.value)} />
           </div>
@@ -201,7 +202,7 @@ export function ResourceItemForm({
         <>
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="ri-target">적용 대상</Label>
+              <FieldLabel htmlFor="ri-target" required>적용 대상</FieldLabel>
               <select id="ri-target" className={selectClass()} value={target}
                 onChange={(e) => setTarget(e.target.value as 'table' | 'column')}>
                 {(['table', 'column'] as const).map((t) => (
@@ -210,7 +211,7 @@ export function ResourceItemForm({
               </select>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="ri-type">타입</Label>
+              <FieldLabel htmlFor="ri-type" required>타입</FieldLabel>
               <select id="ri-type" className={selectClass()} value={type}
                 onChange={(e) => setType(e.target.value as 'text' | 'boolean' | 'select')}>
                 {(['text', 'boolean', 'select'] as const).map((t) => (
@@ -221,7 +222,7 @@ export function ResourceItemForm({
           </div>
           {type === 'select' && (
             <div className="grid gap-1.5">
-              <Label htmlFor="ri-options">선택지 (쉼표로 구분)</Label>
+              <FieldLabel htmlFor="ri-options" required>선택지 (쉼표로 구분)</FieldLabel>
               <Input id="ri-options" value={optionsText}
                 onChange={(e) => setOptionsText(e.target.value)} />
               {selectOptionsEmpty && (
@@ -239,7 +240,7 @@ export function ResourceItemForm({
 
       {kind !== 'word' && kind !== 'term' && (
         <div className="grid gap-1.5">
-          <Label htmlFor="ri-default">기본값 (선택)</Label>
+          <FieldLabel htmlFor="ri-default">기본값</FieldLabel>
           <Input id="ri-default" value={defaultValue}
             onChange={(e) => setDefaultValue(e.target.value)} />
           {selectDefaultInvalid && (
@@ -253,7 +254,7 @@ export function ResourceItemForm({
 
       {kind !== 'customField' && (
         <div className="grid gap-1.5">
-          <Label htmlFor="ri-description">설명 (선택)</Label>
+          <FieldLabel htmlFor="ri-description">설명</FieldLabel>
           <Input id="ri-description" value={description}
             onChange={(e) => setDescription(e.target.value)} />
         </div>

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, DEFAULT_NAMING_RULES } from '@erdd/core'
+import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import {
   createWord, updateWord, removeWord,
   createTerm, updateTerm, removeTerm,
-  wordUsage, termUsage, unregisteredWords,
+  wordUsage, termUsage, unregisteredWords, unregisteredAbbreviations,
   planTermPropagation, applyTermPropagation,
 } from './dict-edits.js'
 
@@ -123,6 +124,43 @@ describe('dict-edits', () => {
     m.tables['t'] = table('t', '주문')
 
     expect(unregisteredWords(m, DEFAULT_NAMING_RULES)).toEqual([])
+  })
+})
+
+describe('unregisteredAbbreviations', () => {
+  const rules = DEFAULT_NAMING_RULES
+
+  it('사전에 없는 약어만 모은다', () => {
+    let m = buildSampleModel()
+    m = { ...m, words: { w1: {
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+      englishName: null, description: null, origin: null,
+    } } }
+    // 픽스처: t1=MBR_GRD, t2=MBR, c1=GRD_CD, c2=MBR_NO, c3=MBR_NM, c4=GRD_CD
+    const out = unregisteredAbbreviations(m, rules)
+    expect(out).not.toContain('MBR')          // 사전에 있다
+    expect(out).toContain('GRD')
+    expect(out).toContain('CD')
+    expect(out).toContain('NO')
+    expect(out).toContain('NM')
+  })
+
+  it('중복을 제거한다', () => {
+    const out = unregisteredAbbreviations(buildSampleModel(), rules)
+    expect(out.length).toBe(new Set(out).size)
+  })
+
+  // ⚠️ 없으면 "전부 모은다"는 구현도 위를 통과한다.
+  it('모든 약어가 사전에 있으면 빈 배열이다', () => {
+    let m = buildSampleModel()
+    m = { ...m, words: {
+      w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null, origin: null },
+      w2: { id: 'w2', logicalName: '등급', abbreviation: 'GRD', englishName: null, description: null, origin: null },
+      w3: { id: 'w3', logicalName: '코드', abbreviation: 'CD', englishName: null, description: null, origin: null },
+      w4: { id: 'w4', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null },
+      w5: { id: 'w5', logicalName: '명', abbreviation: 'NM', englishName: null, description: null, origin: null },
+    } }
+    expect(unregisteredAbbreviations(m, rules)).toEqual([])
   })
 })
 

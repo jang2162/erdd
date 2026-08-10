@@ -1,6 +1,6 @@
 import {
   type Word, type Term, type Table, type Column, type ProjectModel, type NamingRules,
-  generatePhysicalName, decomposeByWords,
+  generatePhysicalName, decomposeByWords, restoreLogicalName,
 } from '@erdd/core'
 
 export function createWord(model: ProjectModel, word: Word): ProjectModel {
@@ -215,5 +215,25 @@ export function unregisteredWords(model: ProjectModel, rules: NamingRules): stri
     const gen = generatePhysicalName(c.logicalName, model.words, model.terms, rules)
     gen.unknownWords.forEach((w) => set.add(w))
   }
+  return [...set]
+}
+
+/**
+ * 전 테이블·컬럼 물리명을 restoreLogicalName으로 훑었을 때 나오는 unknownTokens의 dedupe된 합집합.
+ * unregisteredWords의 대칭 — 그쪽은 논리명에서 미등록 "단어"를, 이쪽은 물리명에서 미등록 "약어"를 낸다.
+ */
+export function unregisteredAbbreviations(model: ProjectModel, rules: NamingRules): string[] {
+  const set = new Set<string>()
+  const collect = (physicalName: string) => {
+    // restoreLogicalName 은 빈 이름에 {ok:false, unknownTokens:[]} 를 즉시 낸다(naming.ts:76-77).
+    // 그래서 이 가드는 동작상 관찰되지 않는다 — 지워도 결과가 같다(빈 배열을 forEach해도 아무것도
+    // 추가되지 않는다).
+    // 정방향 unregisteredWords 의 빈 논리명 가드와 대칭을 이루려고 둔다.
+    if (physicalName.trim() === '') return
+    const r = restoreLogicalName(physicalName, model.words, model.terms, rules)
+    if (!r.ok) r.unknownTokens.forEach((t) => set.add(t))
+  }
+  for (const t of Object.values(model.tables)) collect(t.physicalName)
+  for (const c of Object.values(model.columns)) collect(c.physicalName)
   return [...set]
 }
