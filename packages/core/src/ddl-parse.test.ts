@@ -578,6 +578,39 @@ describe('parseDdl — 컬럼 인라인 제약', () => {
     expect(b.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['A'] })
   })
 
+  // CONSTRAINT 이름은 **바로 뒤 제약 하나**에만 걸린다(사이에 공백만 있을 때).
+  // 이 규칙이 없으면 앞쪽의 무관한 이름이 뒤 제약에 잘못 붙는다.
+  it('CONSTRAINT 이름은 바로 뒤 제약 하나에만 걸린다', () => {
+    // 사이에 CHECK 가 끼면 CK1 은 REFERENCES 에 붙지 않는다.
+    const ck = parseDdl('CREATE TABLE C (A int CONSTRAINT CK1 CHECK (A > 0) REFERENCES P);')
+    expect(ck.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: null, columns: ['A'], refTable: 'P', refColumns: [],
+    })
+
+    // 이름이 연달아 오면 가장 가까운 것이 이긴다.
+    const two = parseDdl('CREATE TABLE C (A int CONSTRAINT X CONSTRAINT Y UNIQUE);')
+    expect(two.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'Y', columns: ['A'] })
+    expect(two.constraints).not.toContainEqual({ kind: 'unique', table: 'C', name: 'X', columns: ['A'] })
+
+    // 사이에 NOT NULL 이 끼면 이름이 붙지 않는다.
+    const nn = parseDdl('CREATE TABLE C (A int CONSTRAINT NN1 NOT NULL UNIQUE);')
+    expect(nn.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['A'] })
+  })
+
+  // REFERENCES 해석은 세 경로가 공유하므로 개선도 셋 다에 걸린다. 인라인 경로만
+  // 잠그면 테이블 수준·ALTER 쪽 개선을 지워도 아무 테스트가 안 깨진다.
+  it('테이블 수준·ALTER FK 도 REFERENCES 뒤 CHECK 괄호를 참조 컬럼으로 읽지 않는다', () => {
+    const alt = parseDdl('ALTER TABLE C ADD CONSTRAINT FK1 FOREIGN KEY (A) REFERENCES MBR CHECK (QTY > 0);')
+    expect(alt.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: 'FK1', columns: ['A'], refTable: 'MBR', refColumns: [],
+    })
+
+    const tbl = parseDdl('CREATE TABLE C (A int, CONSTRAINT FK1 FOREIGN KEY (A) REFERENCES MBR CHECK (QTY > 0));')
+    expect(tbl.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: 'FK1', columns: ['A'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
   it('참조 컬럼 목록이 있는 인라인 REFERENCES는 그대로다(대조군)', () => {
     const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint NOT NULL REFERENCES "public"."MBR" (MBR_NO) ON DELETE CASCADE);')
     expect(r.constraints).toContainEqual({

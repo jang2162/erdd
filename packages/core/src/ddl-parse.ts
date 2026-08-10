@@ -281,9 +281,9 @@ function maskQuoted(text: string): string {
 }
 
 /**
- * 괄호 **안**(깊이 1 이상)의 내용을 같은 길이의 자리표시로 덮는다. 괄호 문자 자체는 남긴다 —
- * "UNIQUE 바로 뒤에 여는 괄호가 오는가"(= 테이블 수준 제약) 판정이 마스킹본에서도 성립해야 한다.
- * 컬럼 수준 CHECK 식(`CHECK (T.UNIQUE = 1)`) 안의 단어가 제약 키워드로 새지 않게 한다.
+ * 괄호 **안**(깊이 1 이상)의 내용을 같은 길이의 자리표시로 덮는다. 컬럼 수준 CHECK
+ * 식(`CHECK (T.UNIQUE = 1)`) 안의 단어가 제약 키워드로 새지 않게 한다.
+ * 괄호 문자 자체는 남긴다 — 덮어야 하는 것은 내용이고, 구분자까지 지워도 얻는 것이 없다.
  */
 function maskParenContents(text: string): string {
   const FILL = '#'
@@ -443,12 +443,12 @@ function parseInlineColumnConstraints(
     names.find((n) => n.end <= pos && scan.slice(n.end, pos).trim() === '')?.name ?? null
 
   const out: ParsedConstraint[] = []
-  // 컬럼 수준 UNIQUE. 뒤에 여는 괄호가 오면 그것은 테이블 수준 UNIQUE 제약이므로 세지 않는다
-  // (항목 첫머리 판정이 이미 처리한 형태라 여기서 또 세면 중복이 된다).
+  // 컬럼 수준 UNIQUE. 테이블 수준 `UNIQUE (…)`가 여기로 새어 이중 계수되는 일은 구조적으로
+  // 없다 — 항목 첫머리 판정(`/^UNIQUE\b/i.test(body)`)이 먼저 걸러 `continue` 하므로 그 형태는
+  // 컬럼 경로에 애초에 오지 않는다. 그 불변식은 테스트가 라우팅 수준에서 잠근다.
   const uniqueRe = /\bUNIQUE\b/gi
   let um: RegExpExecArray | null
   while ((um = uniqueRe.exec(scan)) !== null) {
-    if (/^\s*\(/.test(scan.slice(um.index + um[0].length))) continue
     out.push({ kind: 'unique', table, name: nameAt(um.index), columns: [column] })
   }
 
