@@ -31,21 +31,26 @@ export function countCascade(model: ProjectModel, ids: readonly string[]): {
   }
 }
 
-/** 연쇄 삭제가 만들어 낼 op 총수. 엔티티 하나당 delete op 하나다. */
-function deleteOpCount(model: ProjectModel, ids: readonly string[]): number {
-  const c = countCascade(model, ids)
+/**
+ * 연쇄 삭제가 만들어 낼 op 총수. 엔티티 하나당 delete op 하나다.
+ *
+ * 모델이 아니라 **이미 센 결과**를 받는다 — 모델을 받으면 호출부가 안내 문구용으로 이미 돌린
+ * `countCascade`를 한 번 더 돌게 된다.
+ */
+function deleteOpCount(c: ReturnType<typeof countCascade>): number {
   return c.tables + c.columns + c.indexes + c.relationships
 }
 
 /**
  * 그룹 배정과 좌표 재배치를 **한 producer**에 담는다 — Revision 1건, undo 1회.
  *
- * ⚠️ `planGroupMove`에는 **그룹 변경 전** 모델(`m`)을 넘긴다. 변경 후 모델(`next`)을 넘기면 이동
- * 대상이 이미 대상 그룹 멤버라 자기 자신이 기준 bbox에 섞인다.
+ * `planGroupMove`에 **그룹 변경 전** 모델(`m`)을 넘기는 것은 읽기 좋음의 관례다 — 정확성 요건이
+ * 아니다. `planGroupMove`가 이동 집합을 기준 bbox에서 스스로 제외하므로 `next`를 넘겨도 결과가 같다.
  *
- * ⚠️ `groupPosition`을 null로 되돌린다. 테이블은 좌표를 둘 갖는데(전체 뷰 `position`, 그룹 뷰 전용
- * `groupPosition`), 그룹이 바뀌면 이전 그룹 뷰에서 잡아 둔 좌표는 의미가 없다. null이면 `buildNodes`가
- * 전체 뷰 좌표로 폴백해 새 그룹의 그룹 뷰에서 자연스럽게 자리를 잡는다.
+ * ⚠️ `groupPosition`은 **이동 대상 전원** 것을 null로 되돌린다 — 이미 대상 그룹에 있던 것도 포함이다.
+ * 테이블은 좌표를 둘 갖는데(전체 뷰 `position`, 그룹 뷰 전용 `groupPosition`), 남겨 두면 함께 옮긴
+ * 것들이 그룹 뷰에서 갈라진다(하나는 옛 좌표, 나머지는 폴백 좌표). 전원 비워야 `buildNodes`가 모두
+ * 전체 뷰 좌표로 폴백해 새 그룹의 그룹 뷰에서 나란히 선다.
  *
  * 사이드바 드래그·캔버스 드래그가 같은 진입점을 쓰도록 export한다 — 경로가 갈리면 한쪽만 고쳐진다.
  */
@@ -79,7 +84,7 @@ export function BulkDeleteDialog({ projectId, ids, open, onOpenChange }: {
   const mutate = useModelMutation(projectId)
   const tables = ids.map((id) => model.tables[id]).filter((t) => t !== undefined)
   const cascade = countCascade(model, ids)
-  const opCount = deleteOpCount(model, ids)
+  const opCount = deleteOpCount(cascade)
   const tooBig = opCount > MAX_OPS_PER_MUTATION
 
   // 선택에서 걷어내는 것은 여기서 하지 않는다 — useSubmit의 낙관적 setModel 직후 pruneSelection이

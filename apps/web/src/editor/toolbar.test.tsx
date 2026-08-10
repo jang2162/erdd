@@ -10,6 +10,7 @@ import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
+import { modelOverOpCap } from '@/testing/fixtures'
 import { useEditorStore } from './store.js'
 import { Toolbar } from './toolbar.js'
 
@@ -116,6 +117,25 @@ describe('Toolbar', () => {
     await waitFor(() => {
       expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(0)
     })
+  })
+
+  it('툴바 경로도 op 상한 가드를 지난다 — 상한을 넘으면 삭제를 막는다', async () => {
+    // 툴바는 일괄 패널과 **같은 다이얼로그**를 쓰므로 가드가 함께 걸린다. 이 케이스가 없으면
+    // 누군가 툴바에 다이얼로그를 복제하거나 가드를 트리거 쪽으로 옮겨도 아무 테스트도 실패하지
+    // 않는다 — 가드를 공유 다이얼로그에 둔 판단 자체가 회귀로부터 보호되지 않는다.
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().setLoaded(modelOverOpCap(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderToolbar()
+
+    await userEvent.click(screen.getByRole('button', { name: '삭제' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText(/한 번에 지우기에 너무 많습니다/)).toBeInTheDocument()
+    expect(dialog.getByRole('button', { name: '삭제' })).toBeDisabled()
+    expect(calls).toHaveLength(0)
+    expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(2)
   })
 
   it('단일 선택 삭제는 다이얼로그 없이 즉시 지우고 선택이 비워진다', async () => {

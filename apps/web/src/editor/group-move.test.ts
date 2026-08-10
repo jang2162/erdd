@@ -69,8 +69,10 @@ describe('planGroupMove', () => {
   })
 
   it('이동 대상은 대상 그룹의 기준 bbox에서 제외한다', () => {
-    // a1이 이미 gB 소속인 채로 들어와도(그룹 변경 후 모델을 잘못 넘긴 경우)
-    // 자기 자신을 기준으로 삼지 않아야 한다.
+    // 잘못된 호출을 흉내 낸 것이 아니라 **정상 시나리오**다 — 이미 대상 그룹(gB)에 속한 테이블이
+    // 선택에 섞여 있는 경우다(여러 그룹에 걸친 선택을 그중 하나로 옮기면 UI에서 그대로 도달한다).
+    // 이 필터가 planGroupMove의 실제 방어다. 빼면 a1이 자기 자신의 기준이 되어 이동 집합 전체가
+    // 자기 오른쪽으로 밀린다 — 호출 순서를 지켜도 막지 못한다.
     const model = modelWith([tbl('b1', 'gB', 0, 0), tbl('a1', 'gB', 500, 100)], ['gB'])
     const moves = planGroupMove(model, ['a1'], 'gB')
     expect(moves).toEqual([{ id: 'a1', position: { x: 320, y: 0 } }])

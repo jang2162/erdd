@@ -4,12 +4,13 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import { MAX_OPS_PER_MUTATION, type ProjectModel } from '@erdd/core'
+import type { ProjectModel } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
+import { modelOverOpCap } from '@/testing/fixtures'
 import { useEditorStore } from './store.js'
 import { BulkPanel, countCascade } from './bulk-panel.js'
 
@@ -46,17 +47,10 @@ function modelWithAnchoredG2(): ProjectModel {
   return m
 }
 
-/** 삭제 op 총수가 상한을 넘는 모델. 테이블 수는 그대로 두고 컬럼만 붙인다. */
-function modelOverOpCap(): ProjectModel {
-  const m = buildSampleModel()
-  for (let i = 0; i < MAX_OPS_PER_MUTATION; i++) {
-    const id = `bulk-c${i}`
-    m.columns[id] = {
-      id, tableId: 't1', logicalName: `컬럼${i}`, physicalName: `COL_${i}`,
-      type: 'VARCHAR(10)', isPk: false, autoIncrement: false, nullable: true,
-      defaultValue: null, order: i + 1, comment: null, domainId: null, custom: {},
-    }
-  }
+/** t1은 g1에 둔 채 t2만 g2로 옮긴다 — 선택이 두 그룹에 걸친 상태. */
+function modelWithMixedGroups(): ProjectModel {
+  const m = modelWithAnchoredG2()
+  m.tables['t2'] = { ...m.tables['t2']!, groupId: 'g2' }
   return m
 }
 
@@ -93,9 +87,12 @@ describe('BulkPanel', () => {
   })
 
   it('그룹 드롭다운으로 옮기면 op 배치 한 건으로 나간다(undo 1회)', async () => {
+    // 픽스처는 **앵커가 있는** g2여야 한다. 빈 g2면 planGroupMove가 []를 반환해 좌표 이동 op가
+    // 0건이고, 그러면 producer를 둘로 쪼개도 두 번째 뮤테이션이 'noop'으로 빠져 calls·undoStack이
+    // 1로 남는다 — 계약이 깨졌는데 지표가 안 움직인다. 좌표가 실제로 움직여야 잠긴다.
     const calls: unknown[] = []
     mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
-    useEditorStore.getState().setLoaded(modelWithEmptyG2(), 1, PROJECT_ID)
+    useEditorStore.getState().setLoaded(modelWithAnchoredG2(), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
     renderPanel()
@@ -149,6 +146,29 @@ describe('BulkPanel', () => {
       expect(tables['t1']?.groupPosition).toBeNull()
       expect(tables['t2']?.groupPosition).toBeNull()
     })
+  })
+
+  it('이미 대상 그룹에 있던 테이블의 그룹 뷰 좌표도 비운다', async () => {
+    // 섞인 선택(t1∈g1, t2∈g2)을 g2로 옮기면 t2는 groupId가 바뀌지 않는다. 그래도 groupPosition을
+    // 비워야 한다 — 남기면 g2 그룹 뷰에서 t1만 폴백 좌표로 가고 t2는 옛 좌표에 남아 **함께 옮긴
+    // 둘이 갈라진다**. 전원 비우면 둘 다 폴백해 나란히 선다(설계 6.1).
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    const model = modelWithMixedGroups()
+    expect(model.tables['t2']?.groupPosition).not.toBeNull()   // 픽스처 사실: {x:310,y:10}
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    // 섞인 선택이라 드롭다운은 "여러 그룹에 걸쳐 있음"에서 시작한다.
+    expect(screen.getByLabelText('선택 테이블의 그룹')).toHaveValue('')
+    await userEvent.selectOptions(screen.getByLabelText('선택 테이블의 그룹'), 'g2')
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']?.groupPosition).toBeNull()
+    })
+    const t2 = useEditorStore.getState().model.tables['t2']
+    expect(t2?.groupId).toBe('g2')          // 원래부터 g2였다
+    expect(t2?.groupPosition).toBeNull()    // 그래도 비운다
   })
 
   it('일괄 삭제는 확인 다이얼로그를 거친다 — 취소하면 아무 op도 나가지 않는다', async () => {

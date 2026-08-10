@@ -1,13 +1,13 @@
 import type { Position, ProjectModel, Table } from '@erdd/core'
 
-/** 테이블 노드 폭 추정치. 실측 bbox가 없어 렌더 상수를 쓴다(group-nodes와 공유). */
-export const EST_W = 260
+/** 테이블 노드 폭 추정치. 실측 bbox가 없어 렌더 상수를 쓴다(`tableBounds`가 쓴다). */
+const EST_W = 260
 /** 그룹 영역이 멤버 bbox 바깥으로 두는 여백. */
 export const GROUP_PAD = 28
 /** 대상 그룹과 새로 들어오는 테이블 사이 간격. */
 const GAP = 60
 
-export function estHeight(colCount: number): number {
+function estHeight(colCount: number): number {
   return 44 + Math.max(1, colCount) * 28
 }
 
@@ -33,8 +33,12 @@ export function tableBounds(model: ProjectModel, tables: readonly Table[]): Boun
  * 좌표를 건드리지 않는 두 경우는 **빈 배열**을 반환한다 — 대상이 미분류이거나, 대상 그룹에 기존
  * 멤버가 없을 때다. 기준으로 삼을 영역이 없는데 억지로 옮기면 결과가 예측 불가능해진다.
  *
- * ⚠️ `model`은 **그룹 변경 전** 모델이어야 한다. 변경 후 모델을 넘기면 이동 대상이 이미 대상 그룹의
- * 멤버라 자기 자신이 기준 bbox에 섞인다(그 경우에도 방어하지만, 호출자가 순서를 지켜야 한다).
+ * ⚠️ 정확성을 지탱하는 것은 아래 `movingIds` 필터다 — 이동 집합을 기준 bbox에서 **스스로 제외**한다.
+ * 그래서 **호출 순서에 무관하다**(그룹 변경 전 모델을 넘기든 후를 넘기든 반환값이 같다). 필터가 막는
+ * 것은 잘못된 호출이 아니라 **정상 시나리오**다 — 여러 그룹에 걸친 선택을 그중 일부가 이미 속한
+ * 그룹으로 옮길 때, 그 테이블이 자기 자신의 기준이 되는 것을 막는다. 변경 전 모델을 넘기는 것은
+ * 읽기 좋음의 관례일 뿐 정확성 요건이 아니다.
+ *
  * 계산하는 것은 언제나 **전체 뷰 좌표(`position`)**다. 그룹 뷰에서 드롭해도 마찬가지다 — 그 테이블은
  * 다른 그룹 소속이 되어 현재 뷰에서 사라지므로, 재배치 결과는 전체 뷰로 나가야 보인다.
  */
