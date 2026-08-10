@@ -27,13 +27,20 @@ export function dialectFromDatabaseType(s: string): Dialect | null {
   return null
 }
 
-/** DBML 설정 값 → 모델의 defaultValue 원문. rawDefaultToDbml 의 역(설계 §4.2). */
+/**
+ * DBML 설정 값 → 모델의 defaultValue 원문. **rawDefaultToDbml 의 정확한 역**이어야 한다(설계 §4.2).
+ *
+ * 이스케이프를 한 겹이라도 덜 풀면 왕복마다 백슬래시가 **두 배로 누적된다**(리뷰 m-5) — 한 번만
+ * 돌려 보면 "한 번 늘어난 값"이 그럴듯해 보여 눈에 띄지 않는다. 그래서 되돌리기는 전부
+ * `unescapeDbml` 하나를 거치고, 문자열 리터럴은 **DBML 이스케이프를 푼 뒤 SQL 이스케이프로 다시
+ * 감싼다**(내보내기가 정확히 그 반대 순서로 한다).
+ */
 export function dbmlDefaultToRaw(token: string): string {
   const t = token.trim()
-  if (t.startsWith('`') && t.endsWith('`') && t.length >= 2) return t.slice(1, -1)
-  if (/^'''/.test(t)) return `'${t.slice(3, -3)}'`
-  if (t.startsWith("'") && t.endsWith("'") && t.length >= 2) {
-    return `'${t.slice(1, -1).replace(/\\'/g, "''")}'`
+  if (t.startsWith('`') && t.endsWith('`') && t.length >= 2) return unescapeDbml(t.slice(1, -1))
+  if ((t.startsWith("'''") && t.endsWith("'''") && t.length >= 6)
+      || (t.startsWith("'") && t.endsWith("'") && t.length >= 2)) {
+    return `'${unquote(t).replace(/'/g, "''")}'`
   }
   if (/^true$/i.test(t)) return 'TRUE'
   if (/^false$/i.test(t)) return 'FALSE'
@@ -91,8 +98,9 @@ function stripComments(src: string): string {
   return out
 }
 
+/** 이스케이프 해석은 이 함수 하나가 한다 — 인용 4종이 같은 규칙을 쓰게 하기 위해서다. */
 function unescapeDbml(s: string): string {
-  return s.replace(/\\(['"\\ntr])/g, (_, c: string) =>
+  return s.replace(/\\(['"`\\ntr])/g, (_, c: string) =>
     c === 'n' ? '\n' : c === 't' ? '\t' : c === 'r' ? '\r' : c)
 }
 
@@ -103,7 +111,7 @@ function unquote(raw: string): string {
   if (t.length >= 2 && (
     (t.startsWith("'") && t.endsWith("'")) || (t.startsWith('"') && t.endsWith('"'))
   )) return unescapeDbml(t.slice(1, -1))
-  if (t.length >= 2 && t.startsWith('`') && t.endsWith('`')) return t.slice(1, -1)
+  if (t.length >= 2 && t.startsWith('`') && t.endsWith('`')) return unescapeDbml(t.slice(1, -1))
   return t
 }
 

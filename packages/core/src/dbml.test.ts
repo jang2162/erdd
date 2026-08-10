@@ -117,6 +117,49 @@ describe('generateDbml', () => {
     })
   })
 
+  // rawDefaultToDbml 과 dbmlDefaultToRaw 가 정확히 역이 아니면 백슬래시가 **왕복마다 두 배로**
+  // 늘어난다. 한 번만 돌리면 "한 번 늘어난 값"이 그럴듯해 보이므로 두 번 연속 돌려 잠근다.
+  describe('기본값의 이스케이프 왕복', () => {
+    /** 모델 원문 → DBML → 모델 원문. */
+    const roundTrip = (raw: string): string => {
+      const m = baseModel()
+      m.columns['c2']!.defaultValue = raw
+      return parseDbml(generateDbml(m, 'postgresql')).tables[0]!.columns[1]!.defaultValue!
+    }
+
+    it('백슬래시가 든 문자열 기본값이 두 번 왕복해도 늘어나지 않는다', () => {
+      const raw = "'C:\\temp\\n_not_newline'"
+      const once = roundTrip(raw)
+      expect(once).toBe(raw)
+      expect(roundTrip(once)).toBe(raw)
+    })
+
+    it('백슬래시가 든 표현식 기본값이 두 번 왕복해도 늘어나지 않는다', () => {
+      const raw = "regexp_replace(X, '\\\\', '')"
+      const once = roundTrip(raw)
+      expect(once).toBe(raw)
+      expect(roundTrip(once)).toBe(raw)
+    })
+
+    it('백슬래시로 끝나는 표현식 기본값이 테이블을 삼키지 않는다', () => {
+      // M-2 와 같은 렉서 위험이 표현식(백틱) 경로에도 있다 — 닫는 백틱이 이스케이프로 먹힌다.
+      const m = baseModel()
+      m.columns['c2']!.defaultValue = 'X\\'
+      const p = parseDbml(generateDbml(m, 'postgresql'))
+      expect(p.tables).toHaveLength(1)
+      // 테이블 수만 보면 약하다 — 블록이 "닫히지 않음"으로 떨어져도 본문을 끝까지 먹어 1개가 된다.
+      expect(p.skipped).toEqual([])
+      expect(p.tables[0]!.columns[1]!.defaultValue).toBe('X\\')
+    })
+
+    it('SQL 이스케이프 따옴표가 든 리터럴도 두 번 왕복해도 그대로다(대조군)', () => {
+      const raw = "'it''s'"
+      const once = roundTrip(raw)
+      expect(once).toBe(raw)
+      expect(roundTrip(once)).toBe(raw)
+    })
+  })
+
   it('autoIncrement 는 PK 이고 정수일 때만 increment 로 낸다', () => {
     const m = baseModel()
     m.columns['c2']!.autoIncrement = true            // PK 가 아니다

@@ -58,7 +58,10 @@ export function rawDefaultToDbml(raw: string): string {
   if (/^true$/i.test(v)) return 'true'
   if (/^false$/i.test(v)) return 'false'
   if (/^null$/i.test(v)) return 'null'
-  return `\`${v.replace(/`/g, '\\`')}\``
+  // 표현식도 백슬래시를 먼저 늘린다 — quoteDbmlString 과 같은 이유다(리뷰 m-5). 빼면 가져오기의
+  // 되돌리기와 비대칭이 되어 왕복마다 백슬래시가 두 배가 되고, 표현식이 백슬래시로 끝나면
+  // 닫는 백틱을 렉서가 이스케이프로 먹어 테이블이 통째로 사라진다.
+  return `\`${v.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\``
 }
 
 function customOf(
