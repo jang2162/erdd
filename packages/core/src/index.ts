@@ -58,7 +58,8 @@ export { parseDbml, dbmlDefaultToRaw } from './dbml-parse.js'
 export type { ParsedDbml, ParsedGroup, ParsedCustomValue } from './dbml-parse.js'
 export { planDdlImport } from './ddl-import.js'
 export type {
-  DdlImportWarning, DdlImportColumn, DdlImportTable, DdlImportRelationship, DdlImportPlan,
+  DdlImportWarning, DdlImportColumn, DdlImportTable, DdlImportRelationship, DdlImportGroup,
+  DdlImportPlan,
 } from './ddl-import.js'
 export { createGroup, updateGroup, deleteGroup, setTableGroup } from './group.js'
 export { createIndex, updateIndex, removeIndex } from './table-index.js'

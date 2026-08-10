@@ -6,6 +6,8 @@ import { planDdlImport } from './ddl-import.js'
 import { generateDdl } from './ddl.js'
 import { DIALECTS, type Dialect } from './dialect.js'
 import type { ProjectModel, Word } from './model.js'
+import type { ParsedDdl } from './ddl-parse.js'
+import type { ParsedDbml } from './dbml-parse.js'
 
 const plan = (ddl: string, model: ProjectModel = createEmptyModel(), dialect: Dialect = 'postgresql') =>
   planDdlImport(model, parseDdl(ddl), dialect, DEFAULT_NAMING_RULES)
@@ -29,6 +31,7 @@ describe('planDdlImport', () => {
     expect(p.relationships).toEqual([{
       childPhysicalName: 'ORD', parentPhysicalName: 'MBR',
       columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }], identifying: false,
+      cardinality: '1:N', name: null,
     }])
   })
 
@@ -97,6 +100,7 @@ describe('planDdlImport', () => {
     expect(p.relationships).toEqual([{
       childPhysicalName: 'ORD', parentPhysicalName: 'MBR',
       columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }], identifying: false,
+      cardinality: '1:N', name: null,
     }])
     expect(p.warnings.some((w) => w.kind === 'unresolved-fk')).toBe(false)
   })
@@ -173,6 +177,7 @@ describe('planDdlImport', () => {
     expect(p.relationships).toEqual([{
       childPhysicalName: 'ord', parentPhysicalName: 'mbr',
       columnPairs: [{ child: 'mbr_no', parent: 'mbr_no' }], identifying: false,
+      cardinality: '1:N', name: null,
     }])
   })
 
@@ -341,6 +346,7 @@ function assertRoundTrip(dialect: Dialect): void {
   expect(p.relationships).toEqual([{
     childPhysicalName: 'ORD', parentPhysicalName: 'MBR',
     columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }], identifying: false,
+    cardinality: '1:N', name: null,
   }])
 }
 
@@ -383,6 +389,7 @@ describe('planDdlImport — 컬럼 인라인 제약', () => {
     expect(p.relationships).toEqual([{
       childPhysicalName: 'members', parentPhysicalName: 'organizations',
       columnPairs: [{ child: 'org_id', parent: 'id' }], identifying: false,
+      cardinality: '1:N', name: null,
     }])
     expect(p.warnings.filter((w) => w.kind === 'unresolved-fk')).toEqual([])
   })
@@ -407,5 +414,113 @@ describe('planDdlImport — 컬럼 인라인 제약', () => {
     expect(p.tables[0]!.indexes).toEqual([
       { name: 'UX_users_1', columnPhysicalNames: ['email'], unique: true },
     ])
+  })
+})
+
+describe('planDdlImport — DBML 확장 필드', () => {
+  const parsedOf = (over: Partial<ParsedDbml>): ParsedDbml => ({
+    tables: [{ name: 'MBR', columns: [{
+      name: 'MBR_NO', rawType: 'bigint', notNull: true, defaultValue: null,
+      autoIncrement: false, inlinePk: true, comment: null,
+    }] }],
+    constraints: [], indexes: [], comments: [], skipped: [],
+    groups: [], customValues: [], databaseType: null,
+    ...over,
+  })
+
+  it('그룹을 계획에 싣는다', () => {
+    const p = planDdlImport(
+      createEmptyModel(),
+      parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', tables: ['MBR'] }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.groups).toEqual([{
+      name: '회원 관리', color: '#0E7A6C', tablePhysicalNames: ['MBR'], existingId: null,
+    }])
+  })
+
+  it('같은 이름의 그룹이 있으면 existingId 를 채운다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null }
+    const p = planDdlImport(
+      m, parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', tables: ['MBR'] }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.groups[0]!.existingId).toBe('g1')
+  })
+
+  it('건너뛴 테이블은 그룹 목록에서도 빠진다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = {
+      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const p = planDdlImport(
+      m, parsedOf({ groups: [{ name: '회원 관리', color: null, tables: ['MBR'] }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.groups).toEqual([])
+  })
+
+  it('그룹 수가 opCountEstimate 에 더해진다', () => {
+    const withGroup = planDdlImport(
+      createEmptyModel(),
+      parsedOf({ groups: [{ name: 'G', color: null, tables: ['MBR'] }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    const without = planDdlImport(createEmptyModel(), parsedOf({}), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(withGroup.opCountEstimate).toBe(without.opCountEstimate + 1)
+  })
+
+  it('커스텀 값을 정의 id 키로 옮긴다', () => {
+    const m = createEmptyModel()
+    m.customFields['f1'] = {
+      id: 'f1', name: '보안등급', target: 'table', type: 'text', options: [],
+      required: false, defaultValue: null, order: 0, origin: null,
+    }
+    const p = planDdlImport(
+      m, parsedOf({ customValues: [{ table: 'MBR', column: null, values: { 보안등급: '2' } }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.tables[0]!.custom).toEqual({ f1: '2' })
+  })
+
+  it('정의를 못 찾은 키는 버리고 경고한다', () => {
+    const p = planDdlImport(
+      createEmptyModel(),
+      parsedOf({ customValues: [{ table: 'MBR', column: null, values: { 없는항목: 'x' } }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.tables[0]!.custom).toEqual({})
+    expect(p.warnings).toContainEqual({
+      kind: 'unknown-custom-field', target: 'MBR',
+      message: '커스텀 항목 정의가 없어 "없는항목" 값을 버렸습니다',
+    })
+  })
+
+  it('oneToOne 인 FK 는 cardinality 1:1 이 된다', () => {
+    const parsed = parsedOf({
+      tables: [
+        { name: 'MBR', columns: [{ name: 'MBR_NO', rawType: 'bigint', notNull: true,
+          defaultValue: null, autoIncrement: false, inlinePk: true, comment: null }] },
+        { name: 'ORD', columns: [{ name: 'MBR_NO', rawType: 'bigint', notNull: true,
+          defaultValue: null, autoIncrement: false, inlinePk: false, comment: null }] },
+      ],
+      constraints: [{
+        kind: 'fk', table: 'ORD', name: 'FK_ORD_MBR', columns: ['MBR_NO'],
+        refTable: 'MBR', refColumns: ['MBR_NO'], oneToOne: true,
+      }],
+    })
+    const p = planDdlImport(createEmptyModel(), parsed, 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.relationships[0]).toMatchObject({ cardinality: '1:1', name: 'FK_ORD_MBR' })
+  })
+
+  it('DDL 경로(확장 필드 없음)는 1:N·이름 null 이다', () => {
+    const parsed: ParsedDdl = {
+      tables: parsedOf({}).tables, constraints: [], indexes: [], comments: [], skipped: [],
+    }
+    const p = planDdlImport(createEmptyModel(), parsed, 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toEqual([])
+    expect(p.tables[0]!.custom).toEqual({})
   })
 })
