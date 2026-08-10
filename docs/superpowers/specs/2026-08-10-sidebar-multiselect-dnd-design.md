@@ -159,16 +159,32 @@ ReactFlow는 자체적으로 `node.selected`를 관리한다. 두 상태가 각�
 
 - **store → ReactFlow**: `derived` 노드를 만들 때 `selected: selectedIds.has(id)`를 노드 속성으로 넣는다
   (지금은 `data.selected`만 있고 노드 속성 `selected`는 안 쓴다 — 박스 선택을 쓰려면 필요하다).
-- **ReactFlow → store**: 사용자 입력 경로 둘만 store로 흘린다.
-  - `onNodeClick(event, node)` — `event.metaKey || event.ctrlKey`면 `toggleTable`, 아니면 `select`.
-  - `onSelectionChange({ nodes })` — 박스 선택 결과를 `selectTables`로 반영.
+- **ReactFlow → store**: **`onSelectionChange({ nodes })` 하나만이 창구다.** 단일 클릭·Cmd+클릭
+  토글·박스 선택이 전부 ReactFlow 내부 선택을 거쳐 이 콜백 하나로 도착한다. `onNodeClick`에서는
+  테이블 선택 로직을 **제거**하고 메모·그룹·고스트 분기만 남긴다.
 
-⚠️ **루프 방지:** `onSelectionChange`는 우리가 노드의 `selected`를 바꿀 때도 발화한다. **현재
-`selectedTableIds`와 집합이 같으면 store를 갱신하지 않는다**(순서 무시 비교). 이 가드가 없으면
-`derived` 재생성 → `onSelectionChange` → `setState` → `derived` 재생성의 무한 루프가 된다.
+⚠️ **창구를 둘로 두면 이중 토글로 상쇄된다.** `onNodeClick`에서도 `toggleTable`을 부르면, Cmd+클릭
+한 번에 ReactFlow 내부 토글(→ `onSelectionChange` → `selectTables`)과 우리 토글이 **연달아** 적용되어
+서로를 되돌린다. 두 상태가 각자 선택을 주장하는 구조 자체를 없애는 것이 유일한 해법이다.
+
+⚠️ **루프 방지:** `onSelectionChange`는 우리가 노드의 `selected`를 바꿀 때도 발화한다(사이드바에서
+선택했을 때). **현재 `selectedTableIds`와 집합이 같으면 store를 갱신하지 않는다**(순서 무시 비교).
+이 가드가 없으면 `derived` 재생성 → `onSelectionChange` → `setState` → `derived` 재생성의 무한
+루프가 된다.
 
 ⚠️ **`onSelectionChange`는 테이블 노드만 본다.** 노드 배열에는 그룹·메모·고스트가 섞여 있고, 그룹
 노드는 `selectable: false`라 오지 않지만 메모는 온다. `n.type === 'table'`로 걸러야 한다.
+
+### 4.1 `selectTables`의 비대칭 — 빈 배열은 다른 선택을 지우지 않는다
+
+`selectTables(ids)`는 **`ids`가 비어 있지 않을 때만** 관계·메모·그룹 선택을 함께 해제하고, 빈
+배열이면 테이블 선택만 비운다.
+
+이 비대칭이 없으면 **메모를 클릭할 때 그 선택이 사라진다.** 테이블이 선택된 상태에서 메모를 클릭하면
+ReactFlow가 테이블을 해제하면서 `onSelectionChange`(테이블 0개)를 쏘는데, 그것이
+`CLEARED_SELECTION`을 적용하면 같은 클릭에서 `onNodeClick`이 세운 `selectedNoteId`를 지운다. 두
+콜백의 발화 순서는 ReactFlow 내부 사정이라 순서에 기대면 안 된다 — 빈 배열이 다른 선택을 건드리지
+않게 하면 순서와 무관하게 옳다.
 
 ---
 
@@ -438,6 +454,7 @@ export type ClientMessage = { type: 'selection'; selections: PeerSelection[] }
 - `resync`가 남이 지운 테이블을 선택 배열에서 걷어내고, **아무것도 안 지워졌으면 배열 참조를 유지**한다
   (3.2 ⚠️ — 새 배열을 만들면 실패해야 한다)
 - `onSelectionChange` 루프 가드: 같은 집합이 오면 `setState`가 호출되지 않는다
+- `selectTables([])`가 메모·관계·그룹 선택을 지우지 않는다(4.1) — 지우게 바꾸면 실패해야 한다
 
 ### 10.5 구분력 실증
 
