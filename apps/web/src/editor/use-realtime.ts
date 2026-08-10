@@ -137,10 +137,18 @@ export function useRealtime(projectId: string): void {
         // 선택 전체를 비우지 않고 **사라진 것만** 걷어낸다. 다중 선택 중 하나만 삭제됐는데
         // 나머지까지 잃으면 안 되고, 무엇보다 같은 사건을 seq 간극·재접속으로 받았을 때
         // (resync) 와 결과가 달라지면 안 된다 — 그래서 store의 같은 규칙을 부른다.
+        // before/after는 pruneSelection이 실제로 읽는 **살아 있는** 상태에서 잰다.
+        const before = useEditorStore.getState().selectedTableIds.length
         useEditorStore.getState().pruneSelection(next)
-        toast.info(useEditorStore.getState().selectedTableIds.length > 0
+        const after = useEditorStore.getState().selectedTableIds.length
+        // 「이 항목」은 **하나**가 사라졌다는 뜻으로 읽힌다. 일괄 삭제로 고른 N건이 통째로
+        // 날아간 화면에서는 사실과 다르므로, 사라진 것이 2건 이상이면 개수를 말한다.
+        // 관계·메모처럼 단건뿐인 선택은 before가 0이라 기존 문구 그대로다.
+        toast.info(after > 0
           ? '다른 사용자가 선택 항목 중 일부를 삭제했습니다'
-          : '다른 사용자가 이 항목을 삭제했습니다')
+          : before > 1
+            ? `다른 사용자가 선택한 ${before}개 항목을 삭제했습니다`
+            : '다른 사용자가 이 항목을 삭제했습니다')
       } else if (impact === 'changed') {
         toast.info('다른 사용자가 이 항목을 수정했습니다')
       }

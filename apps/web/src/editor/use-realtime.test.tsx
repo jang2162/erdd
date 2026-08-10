@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import type { Op, ProjectModel, ServerMessage } from '@erdd/core'
-import { createEmptyModel } from '@erdd/core'
+import { applyOps, createEmptyModel } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
@@ -281,18 +281,29 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     '018f6b0e-0000-7000-8000-0000000000c3',
   ]
   const THREE = [TA, TB, TC]
+  /**
+   * 이 describe의 "사건" — TB 삭제 1건. op 경로와 resync 경로가 **같은 사건**을 말한다는 것을
+   * 주석이 아니라 코드로 강제한다: 서버 픽스처를 이 배치에서 유도하므로 대상을 TA로 바꾸면
+   * 두 테스트가 함께 실패한다. 손으로 `tablesModel(TA, TC)`를 적어 두면 op 경로만 실패하고
+   * resync는 그대로 통과해, 짝이 조용히 다른 사건을 말하게 된다.
+   */
+  const DELETE_BATCH: Op[] = [deleteTableOp(TB)]
 
   beforeEach(() => {
     useEditorStore.getState().setLoaded(tablesModel(...THREE), 5, PROJECT_ID)
-    // seq 간극으로 리로드가 걸리면 TB가 빠진 서버 상태를 준다 — op 배치와 **같은 사건**이다.
-    mockTrpcFetch({ 'model.get': () => ({ data: { model: tablesModel(TA, TC), seq: 42 } }) })
+    // seq 간극으로 리로드가 걸리면 그 사건이 적용된 서버 상태를 준다.
+    mockTrpcFetch({
+      'model.get': () => ({
+        data: { model: applyOps(tablesModel(...THREE), DELETE_BATCH), seq: 42 },
+      }),
+    })
   })
 
   it('op 배치로 선택 중 하나만 삭제되면 나머지 선택은 유지된다', async () => {
     useEditorStore.getState().selectTables(THREE)
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6, ops: [deleteTableOp(TB)], actorUserId: 'u2', actorName: '동료',
+      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
     })
     await waitFor(() => expect(useEditorStore.getState().seq).toBe(6))
     expect(useEditorStore.getState().selectedTableIds).toEqual([TA, TC])
@@ -304,7 +315,7 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectTables(THREE)
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 9, ops: [deleteTableOp(TB)], actorUserId: 'u2', actorName: '동료',
+      type: 'ops', seq: 9, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
     })
     await waitFor(() => expect(useEditorStore.getState().seq).toBe(42))
     expect(useEditorStore.getState().selectedTableIds).toEqual([TA, TC])
@@ -314,7 +325,7 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectTables([TB])
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6, ops: [deleteTableOp(TB)], actorUserId: 'u2', actorName: '동료',
+      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
     })
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
     expect(useEditorStore.getState().selectedTableIds).toEqual([])
@@ -327,10 +338,25 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectTables(THREE)
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6, ops: [deleteTableOp(TB)], actorUserId: 'u2', actorName: '동료',
+      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
     })
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
     expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 선택 항목 중 일부를 삭제했습니다')
+  })
+
+  it('선택 전체가 2건 이상이었으면 개수를 말한다', async () => {
+    // 「이 항목을 삭제했습니다」는 하나가 사라졌다는 뜻으로 읽힌다. 일괄 삭제로 고른 3건이
+    // 통째로 날아간 화면에서는 사실과 다르다.
+    useEditorStore.getState().selectTables(THREE)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6,
+      ops: THREE.map(deleteTableOp),
+      actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
+    expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 선택한 3개 항목을 삭제했습니다')
   })
 
   it('메모처럼 단건인 선택은 삭제되면 그대로 해제된다', async () => {
