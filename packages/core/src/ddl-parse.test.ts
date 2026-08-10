@@ -522,6 +522,23 @@ describe('parseDdl — 컬럼 인라인 제약', () => {
     })
   })
 
+  // 같은 계약의 다른 경로 — 인용 안의 이스케이프(닫는 문자 두 번)는 2개를 소비하고 2개를
+  // 내야 한다. 하나만 내면 마스킹본이 짧아져 뒤의 제약명이 한 글자씩 잘린다(UX_A → UX_).
+  it('인용 이스케이프에서도 마스킹이 길이를 보존한다', () => {
+    const sq = parseDdl("CREATE TABLE C (A varchar(10) DEFAULT 'a''b' CONSTRAINT UX_A UNIQUE);")
+    expect(sq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX_A', columns: ['A'] })
+    expect(sq.tables[0]!.columns[0]!.defaultValue).toBe("'a''b'")
+
+    const dq = parseDdl('CREATE TABLE C (A text COLLATE "a""b" CONSTRAINT UX_A UNIQUE);')
+    expect(dq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX_A', columns: ['A'] })
+
+    const brk = parseDdl('CREATE TABLE C (A text COLLATE [a]]b] CONSTRAINT UX_A UNIQUE);')
+    expect(brk.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX_A', columns: ['A'] })
+
+    const btk = parseDdl('CREATE TABLE C (A text COLLATE `a``b` CONSTRAINT UX_A UNIQUE);')
+    expect(btk.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX_A', columns: ['A'] })
+  })
+
   it('DEFAULT 값이 뒤따르는 CONSTRAINT 이름을 삼키지 않는다', () => {
     const uq = parseDdl("CREATE TABLE C (A varchar(10) DEFAULT 'x' CONSTRAINT UX1 UNIQUE);")
     expect(uq.tables[0]!.columns[0]!.defaultValue).toBe("'x'")
