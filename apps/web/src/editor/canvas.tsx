@@ -28,6 +28,9 @@ const edgeTypes = { relationship: RelationshipEdge }
 
 const groupIdOf = (nodeId: string) => nodeId.slice('group:'.length)
 
+/** 순서를 무시한 id 집합 비교. 선택은 집합이지 목록이 아니다. */
+const sameIdSet = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id))
+
 export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserId: string }) {
   const model = useEditorStore((s) => s.model)
   const viewMode = useEditorStore((s) => s.viewMode)
@@ -39,6 +42,8 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const select = useEditorStore((s) => s.select)
+  const selectTables = useEditorStore((s) => s.selectTables)
+  const toggleTable = useEditorStore((s) => s.toggleTable)
   const selectRelationship = useEditorStore((s) => s.selectRelationship)
   const selectNote = useEditorStore((s) => s.selectNote)
   const focusTableId = useEditorStore((s) => s.focusTableId)
@@ -70,6 +75,38 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     },
     [model.columns, selectColumn],
   )
+
+  /*
+   * 선택의 소유권을 나눈다 — **노드 클릭은 store, 박스 선택은 React Flow**.
+   *
+   * store가 단일 진실 원본이고 buildNodes가 그것을 React Flow 노드의 최상위 `selected`로 되비춘다
+   * (아래 setNodes(derived) effect). 그런데 React Flow도 선택 상태를 자기 nodeLookup에 따로 들고
+   * 있고, 노드를 클릭하면 우리 onNodeClick보다 **먼저** 그것을 **직접 변형한다**
+   * (NodeWrapper.onSelectNodeHandler → handleNodeClick → getSelectionChanges(..., mutateItem=true).
+   * 스토어 기본값 nodeDragThreshold=1이라 이 분기가 click에서 돈다). 변형이 먼저라 onNodesChange로
+   * 오는 통지를 걸러도 소용이 없다 — 실측으로 확인했다.
+   *
+   * 그래서 onSelectionChange를 **무조건** 받으면 안 된다. 받으면 미러링(store→React Flow)과
+   * 통지(React Flow→store)가 한 커밋씩 어긋난 값을 서로에게 되먹여 **무한 루프**가 된다
+   * ("Maximum update depth exceeded" — 실측했다. toggleTable이 store에 대한 *상대* 연산이라
+   * 덮어쓸 때마다 값이 뒤집혀 수렴하지 않는다).
+   *
+   * 해법: React Flow가 스스로 알려주는 **박스 선택 제스처 구간에서만** 통지를 받는다.
+   * onSelectionStart/End는 사용자 선택 상자에만 대응하는 신호라 추측이 필요 없다. 노드 클릭이
+   * 만든 변경은 이 구간 밖이므로 무시되고, 곧바로 미러링이 React Flow를 store에 맞춰 되돌린다.
+   */
+  const boxSelecting = useRef(false)
+
+  const onSelectionChange = useCallback(({ nodes: selected }: { nodes: Node[] }) => {
+    if (!boxSelecting.current) return
+    // 캔버스에는 테이블 말고 group·note·ghost 노드도 있다. store 선택에 들어갈 수 있는 것은
+    // 테이블뿐이고, 고스트는 **원본 테이블 id를 그대로** 쓰므로 id로는 구별되지 않는다 — type으로 건다.
+    const ids = selected.filter((n) => n.type === 'table').map((n) => n.id)
+    // 집합이 실제로 달라졌을 때만 쓴다. 같은 선택에 다시 쓰면 selectTables가 CLEARED_SELECTION을
+    // 거치므로 딸린 컬럼 선택이 조용히 지워진다.
+    if (sameIdSet(ids, useEditorStore.getState().selectedTableIds)) return
+    selectTables(ids)
+  }, [selectTables])
 
   const derived = useMemo(() => {
     const tableNodes = buildNodes(
@@ -149,10 +186,17 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
         deleteKeyCode={null}
         onNodesChange={onNodesChange as (c: NodeChange[]) => void}
         onConnect={onConnect}
-        onNodeClick={(_, node) => {
+        // 선택 상자(Shift+빈 곳 드래그) 구간에서만 React Flow의 선택 통지를 받는다(위 주석).
+        onSelectionStart={() => { boxSelecting.current = true }}
+        onSelectionEnd={() => { boxSelecting.current = false }}
+        onSelectionChange={onSelectionChange}
+        onNodeClick={(event, node) => {
           if (node.type === 'ghost') return
           if (node.type === 'group') { select(null); return } // 빈 영역 클릭 = 선택 해제(라벨은 stopPropagation으로 별도 처리)
-          if (node.type === 'note') selectNote(node.id)
+          if (node.type === 'note') { selectNote(node.id); return }
+          // Cmd/Ctrl+클릭 = 다중 선택 토글. 이 분기가 없으면 selectedTableIds가 2개 이상이 되는
+          // 사용자 경로가 캔버스에 없다(붙여넣기 말고는 도달할 수 없었다).
+          if (event.metaKey || event.ctrlKey) toggleTable(node.id)
           else select(node.id)
         }}
         onEdgeClick={(_, edge) => selectRelationship(edge.id)}
