@@ -169,8 +169,11 @@ describe('빈 물리명', () => {
     // t1의 유일한 컬럼은 GRD_CD인데, t2의 FK 컬럼(c4)도 물리명이 같은 GRD_CD라서
     // 'GRD_CD' 부분 문자열 검사로는 t1이 빠졌는지 구분할 수 없다(정정: 원래 브리프는
     // not.toContain('GRD_CD')였으나 buildSampleModel 픽스처와 충돌해 t2가 정상 포함돼도
-    // 항상 실패한다). t1의 CREATE TABLE 블록 자체가 없는지로 대체 검증한다.
-    expect(sql).not.toContain('CREATE TABLE MBR_GRD (')
+    // 항상 실패한다). GRD_CD는 t1에서만 PK이고 t2에서는 PK가 아니므로
+    // 'PRIMARY KEY (GRD_CD)'는 t1의 블록이 실제로 남아 있을 때만 나타나는 문자열이다
+    // (리뷰 라운드 2에서 실측: 이전 정정안 'CREATE TABLE MBR_GRD ('는 이 테스트가 t1.physicalName을
+    // 이미 ''로 바꾼 뒤라서 구현이 맞든 틀리든 절대 나타나지 않는 무의미한 단언이었다).
+    expect(sql).not.toContain('PRIMARY KEY (GRD_CD)')
     expect(sql).toContain('MBR')                  // t2는 그대로 나온다
     const warns = ddlWarnings(m, 'postgresql')
     expect(warns.some((w) => w.includes('물리명'))).toBe(true)
