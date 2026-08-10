@@ -248,6 +248,154 @@ function takeNote(out: Out, table: string, column: string | null, raw: string): 
   if (Object.keys(custom).length > 0) out.customValues.push({ table, column, values: custom })
 }
 
+type RefSide = { table: string; columns: string[] }
+
+/** `테이블.컬럼` 또는 `테이블.(컬럼, 컬럼)`. */
+function parseRefSide(text: string): RefSide | null {
+  const id = readIdent(text, 0)
+  if (id === null) return null
+  let i = id.end
+  while (i < text.length && /\s/.test(text[i]!)) i++
+  if (text[i] !== '.') return null
+  i++
+  while (i < text.length && /\s/.test(text[i]!)) i++
+  if (text[i] === '(') {
+    const close = text.lastIndexOf(')')
+    if (close < 0) return null
+    const cols: string[] = []
+    for (const part of splitTop(text.slice(i + 1, close), ',')) {
+      const c = readIdent(part, 0)
+      if (c === null) return null
+      cols.push(c.name)
+    }
+    return { table: id.name, columns: cols }
+  }
+  const col = readIdent(text, i)
+  if (col === null) return null
+  return { table: id.name, columns: [col.name] }
+}
+
+/** 최상위(문자열·괄호 밖)에서 관계 연산자를 찾는다. 앞이 공백이어야 이름 속 `-` 와 갈리지 않는다. */
+function findRefOperator(expr: string): { op: string; index: number } | null {
+  let depth = 0
+  let i = 0
+  while (i < expr.length) {
+    const c = expr[i]!
+    if (c === "'" || c === '"' || c === '`') { i = skipQuoted(expr, i); continue }
+    if (c === '(') depth++
+    else if (c === ')') depth--
+    else if (depth === 0 && (c === '<' || c === '>' || c === '-')
+             && (i === 0 || /\s/.test(expr[i - 1]!))) {
+      if (c === '<' && expr[i + 1] === '>') return { op: '<>', index: i }
+      return { op: c, index: i }
+    }
+    i++
+  }
+  return null
+}
+
+/**
+ * `좌 <연산자> 우` 를 **항상 자식→부모 방향의 fk 제약**으로 정규화한다.
+ * `>` 와 `-` 는 왼쪽이 자식, `<` 는 오른쪽이 자식이다(뒤집는다).
+ * `-` 는 oneToOne 으로 표시만 하고 UNIQUE 를 만들지 않는다(설계 §4.3).
+ */
+function parseRefExpr(out: Out, expr: string, name: string | null, line: number): void {
+  const found = findRefOperator(expr)
+  if (found === null) return
+  if (found.op === '<>') {
+    out.skipped.push({
+      keyword: 'Ref(<>)', line, excerpt: expr.replace(/\s+/g, ' ').trim().slice(0, 80),
+    })
+    return
+  }
+  const left = parseRefSide(expr.slice(0, found.index).trim())
+  const right = parseRefSide(expr.slice(found.index + found.op.length).trim())
+  if (left === null || right === null) return
+  const [child, parent] = found.op === '<' ? [right, left] : [left, right]
+  if (child.columns.length !== parent.columns.length) return
+  out.constraints.push({
+    kind: 'fk', table: child.table, name, columns: child.columns,
+    refTable: parent.table, refColumns: parent.columns, oneToOne: found.op === '-',
+  })
+}
+
+/** 컬럼 설정의 인라인 `ref: > 대상`. 왼쪽은 그 컬럼이므로 오른쪽만 파싱한다. */
+function parseInlineRef(
+  out: Out, table: string, column: string, value: string, line: number,
+): void {
+  parseRefExpr(out, `${quoteName(table)}.${quoteName(column)} ${value.trim()}`, null, line)
+}
+
+function quoteName(s: string): string {
+  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+/** `indexes { … }` 블록. `[pk]` 는 PK 제약으로, 나머지는 인덱스로 낸다. */
+function parseIndexesBlock(out: Out, table: string, item: Item): void {
+  const open = item.text.indexOf('{')
+  if (open < 0) return
+  const close = matchBrace(item.text, open)
+  const body = item.text.slice(open + 1, close < 0 ? item.text.length : close)
+  let auto = 0
+  for (const line of splitItems(body, item.line)) {
+    const br = topLevelIndexOf(line.text, '[')
+    const head = (br < 0 ? line.text : line.text.slice(0, br)).trim()
+    const settings = br < 0
+      ? new Map<string, string | true>()
+      : parseSettings(line.text.slice(br + 1, Math.max(br + 1, line.text.lastIndexOf(']'))))
+
+    // 백틱 표현식 인덱스는 컬럼으로 해소되지 않는다 — 인덱스를 만들지 않고 건너뛴다.
+    if (head.includes('`')) {
+      out.skipped.push({
+        keyword: 'indexes(expression)', line: line.line,
+        excerpt: line.text.replace(/\s+/g, ' ').trim().slice(0, 80),
+      })
+      continue
+    }
+    const columns: string[] = []
+    if (head.startsWith('(')) {
+      const end = head.lastIndexOf(')')
+      for (const part of splitTop(head.slice(1, end < 0 ? head.length : end), ',')) {
+        const c = readIdent(part, 0)
+        if (c !== null) columns.push(c.name)
+      }
+    } else {
+      const c = readIdent(head, 0)
+      if (c !== null) columns.push(c.name)
+    }
+    if (columns.length === 0) continue
+
+    if (settings.has('pk')) {
+      out.constraints.push({ kind: 'pk', table, columns })
+      continue
+    }
+    const nameSetting = settings.get('name')
+    const name = typeof nameSetting === 'string' ? unquote(nameSetting) : `IX_${table}_${++auto}`
+    out.indexes.push({ table, name, columns, unique: settings.has('unique') })
+  }
+}
+
+/** `TableGroup 이름 [color: …] { 테이블… }`. 색은 뒤에서 headercolor 로 떨어질 수 있다. */
+function parseTableGroupBlock(out: Out, header: string, body: string, bodyLine: number): void {
+  const id = readIdent(header, 0)
+  if (id === null) return
+  const rest = header.slice(id.end)
+  const br = topLevelIndexOf(rest, '[')
+  let color: string | null = null
+  if (br >= 0) {
+    const settings = parseSettings(rest.slice(br + 1, Math.max(br + 1, rest.lastIndexOf(']'))))
+    const c = settings.get('color')
+    if (typeof c === 'string') color = c.trim()
+  }
+  const tables: string[] = []
+  for (const item of splitItems(body, bodyLine)) {
+    if (/^note\s*:/i.test(item.text)) continue
+    const t = readIdent(item.text, 0)
+    if (t !== null) tables.push(t.name)
+  }
+  out.groups.push({ name: id.name, color, tables })
+}
+
 function parseColumnItem(out: Out, table: string, item: Item): ParsedColumn | null {
   const id = readIdent(item.text, 0)
   if (id === null) return null
@@ -274,6 +422,8 @@ function parseColumnItem(out: Out, table: string, item: Item): ParsedColumn | nu
       col.defaultValue = dbmlDefaultToRaw(value)
     } else if (key === 'note' && typeof value === 'string') {
       takeNote(out, table, col.name, value)
+    } else if (key === 'ref' && typeof value === 'string') {
+      parseInlineRef(out, table, col.name, value, item.line)
     }
   }
   return col
@@ -290,12 +440,12 @@ function parseTableBlock(out: Out, header: string, body: string, bodyLine: numbe
     const note = settings.get('note')
     if (typeof note === 'string') takeNote(out, name, null, note)
     const color = settings.get('headercolor')
-    if (typeof color === 'string') out.headerColors.set(name, color.trim())
+    if (typeof color === 'string') out.headerColors.set(name.toUpperCase(), color.trim())
   }
 
   const columns: ParsedColumn[] = []
   for (const item of splitItems(body, bodyLine)) {
-    if (/^indexes\b/i.test(item.text)) continue
+    if (/^indexes\b/i.test(item.text)) { parseIndexesBlock(out, name, item); continue }
     if (/^note\s*:/i.test(item.text)) {
       takeNote(out, name, null, item.text.slice(item.text.indexOf(':') + 1))
       continue
@@ -376,12 +526,33 @@ export function parseDbml(text: string): ParsedDbml {
     const lower = keyword.toLowerCase()
     if (lower === 'table' && brace >= 0) parseTableBlock(out, header, body, bodyLine)
     else if (lower === 'project' && brace >= 0) parseProjectBlock(out, body, bodyLine)
-    else {
+    else if (lower === 'tablegroup' && brace >= 0) parseTableGroupBlock(out, header, body, bodyLine)
+    else if (lower === 'ref') {
+      if (brace >= 0) {
+        // 블록형 `Ref { 좌 > 우 }`. 줄마다 같은 줄 파서를 태운다.
+        for (const item of splitItems(body, bodyLine)) parseRefExpr(out, item.text, null, item.line)
+      } else {
+        const colon = topLevelIndexOf(header, ':')
+        const named = colon < 0 ? null : readIdent(header.slice(0, colon), 0)
+        const expr = colon < 0 ? header : header.slice(colon + 1)
+        parseRefExpr(out, expr.trim(), named?.name ?? null, startLine)
+      }
+    } else {
       out.skipped.push({
         keyword, line: startLine, excerpt: construct.replace(/\s+/g, ' ').trim().slice(0, 80),
       })
     }
     advance(end)
+  }
+
+  // 그룹 색: TableGroup [color:] → 먼저 나온 소속 테이블의 headercolor → null.
+  // Table 블록이 TableGroup 뒤에 올 수 있으므로 전체 스캔이 끝난 뒤에 해소한다.
+  for (const g of out.groups) {
+    if (g.color !== null) continue
+    for (const t of g.tables) {
+      const c = out.headerColors.get(t.toUpperCase())
+      if (c !== undefined) { g.color = c; break }
+    }
   }
 
   return {
