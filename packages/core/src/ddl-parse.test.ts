@@ -389,3 +389,135 @@ describe('parseDdl — 나머지 문장의 문자열 리터럴 오탐 점검', (
     expect(r.constraints[0]).toMatchObject({ refTable: 'MBR', refColumns: ['MBR_NO'] })
   })
 })
+
+describe('parseDdl — 컬럼 인라인 제약', () => {
+  it('참조 컬럼 목록을 생략한 인라인 REFERENCES를 FK로 잡는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES MBR);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('인라인 REFERENCES의 꼬리 절(ON DELETE 등)이 부모 이름에 섞이지 않는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES MBR ON DELETE CASCADE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('인라인 CONSTRAINT 이름을 FK 제약명으로 쓴다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint CONSTRAINT FK_ORD_MBR REFERENCES MBR);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK_ORD_MBR',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('이름 없는 컬럼 수준 UNIQUE를 UNIQUE 제약으로 잡는다', () => {
+    const r = parseDdl('CREATE TABLE MBR (EMAIL text NOT NULL UNIQUE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'MBR', name: null, columns: ['EMAIL'],
+    })
+  })
+
+  it('인라인 CONSTRAINT 이름을 UNIQUE 제약명으로 쓴다', () => {
+    const r = parseDdl('CREATE TABLE MBR (EMAIL text NOT NULL CONSTRAINT UX_MBR_EMAIL UNIQUE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'MBR', name: 'UX_MBR_EMAIL', columns: ['EMAIL'],
+    })
+  })
+
+  it('사용자 DDL 형태(여러 줄 constraint … references … on delete cascade)를 그대로 읽는다', () => {
+    const r = parseDdl(`
+      create table members
+      (
+          id         uuid                                   not null
+              primary key,
+          org_id     uuid                                   not null
+              constraint members_org_id_organizations_id_fk
+                  references organizations
+                  on delete cascade,
+          user_id    uuid                                   not null
+              constraint members_user_id_users_id_fk
+                  references users
+                  on delete cascade,
+          created_at timestamp with time zone default now() not null
+      );`)
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'org_id', 'user_id', 'created_at'])
+    expect(r.constraints).toContainEqual({ kind: 'pk', table: 'members', columns: ['id'] })
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'members', name: 'members_org_id_organizations_id_fk',
+      columns: ['org_id'], refTable: 'organizations', refColumns: [],
+    })
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'members', name: 'members_user_id_users_id_fk',
+      columns: ['user_id'], refTable: 'users', refColumns: [],
+    })
+  })
+
+  it('여러 줄 인라인 UNIQUE도 제약명을 살려 잡는다', () => {
+    const r = parseDdl(`
+      create table users
+      (
+          id    uuid not null
+              primary key,
+          email text not null
+              constraint users_email_unique
+                  unique
+      );`)
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'users', name: 'users_email_unique', columns: ['email'],
+    })
+  })
+
+  it('REFERENCES 뒤의 다른 괄호를 참조 컬럼 목록으로 오인하지 않는다', () => {
+    const check = parseDdl('CREATE TABLE ORD (QTY int REFERENCES MBR CHECK (QTY > 0));')
+    expect(check.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['QTY'], refTable: 'MBR', refColumns: [],
+    })
+
+    const def = parseDdl('CREATE TABLE ORD (REG_DT timestamp REFERENCES MBR DEFAULT now());')
+    expect(def.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['REG_DT'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('문자열 리터럴 안의 UNIQUE·REFERENCES가 가짜 제약을 만들지 않는다', () => {
+    const r = parseDdl("CREATE TABLE A (NOTE varchar(50) DEFAULT 'unique key 재발급 references MBR');")
+    expect(r.constraints).toEqual([])
+    expect(r.tables[0]!.columns[0]!.defaultValue).toBe("'unique key 재발급 references MBR'")
+  })
+
+  it('컬럼 이름이 "unique"여도 유니크 제약으로 오인하지 않는다', () => {
+    const r = parseDdl('CREATE TABLE model_indexes (id uuid not null primary key, "unique" boolean not null);')
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'unique'])
+    expect(r.constraints).toEqual([{ kind: 'pk', table: 'model_indexes', columns: ['id'] }])
+  })
+
+  it('따옴표 식별자 안의 UNIQUE도 제약으로 오인하지 않는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES "unique" (ID));')
+    expect(r.constraints).toEqual([{
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'unique', refColumns: ['ID'],
+    }])
+  })
+
+  it('테이블 수준 UNIQUE (…)를 컬럼 인라인으로 두 번 세지 않는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (A int, B int, CONSTRAINT UX_ORD UNIQUE (A, B));')
+    expect(r.constraints.filter((c) => c.kind === 'unique')).toEqual([
+      { kind: 'unique', table: 'ORD', name: 'UX_ORD', columns: ['A', 'B'] },
+    ])
+  })
+
+  it('참조 컬럼 목록이 있는 인라인 REFERENCES는 그대로다(대조군)', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint NOT NULL REFERENCES "public"."MBR" (MBR_NO) ON DELETE CASCADE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+})
