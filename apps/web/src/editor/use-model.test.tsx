@@ -4,10 +4,12 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { createEmptyModel, DEFAULT_NAMING_RULES } from '@erdd/core'
+import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
+import { removeTable } from './model-edits.js'
 import { useEditorStore } from './store.js'
 import { useModelLoader, useModelMutation } from './use-model.js'
 
@@ -104,6 +106,23 @@ describe('useModelMutation', () => {
       await result.current((m) => ({ ...m, notes: { ...m.notes, [NOTE.id]: NOTE } }))
     })
     await waitFor(() => expect(useEditorStore.getState().model.notes[NOTE.id]).toBeUndefined())
+  })
+
+  it('모델에서 사라진 테이블은 선택에서도 빠진다 — 살아남은 선택은 그대로 둔다', async () => {
+    // 로컬 편집이 모델을 바꾸는 지점은 useSubmit의 낙관적 setModel 한 곳뿐이다(grep 확인).
+    // 거기서 걷어내지 않으면 툴바 삭제·undo·DDL 임포트가 저마다 선택을 정리해야 하고,
+    // 실제로 툴바는 select(null)로 **통째 비우는** 방식이라 3개 중 1개만 지워도 셋 다 풀린다.
+    // 선택을 비우는 것이 아니라 **사라진 것만** 걷어내는지를 겨눈다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
+      wrapper: wrapper(),
+    })
+    await act(async () => { await result.current((m) => removeTable(m, 't1')) })
+    expect(useEditorStore.getState().model.tables.t1).toBeUndefined()
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
   })
 
   it('편집 권한이 없으면 서버로 보내지도, 모델을 바꾸지도 않는다', async () => {

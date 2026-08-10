@@ -269,9 +269,22 @@ describe('Canvas — store ↔ ReactFlow 선택 동기화', () => {
     fireEvent.keyUp(document, { key: 'Control', code: 'ControlLeft' })
   })
 
+  /**
+   * 메모 클릭에서 실제 발화 순서는 **델타가 먼저, `onNodeClick`이 나중**이다
+   * (`onSelectNodeHandler`가 `handleNodeClick`을 부른 뒤 `onClick(event, node)`을 부른다).
+   * 그래서 이 테스트가 잡는 것은 `onNodeClick`의 메모 분기 하나다 — 그것을 빼면 이 1건이 실패한다.
+   *
+   * ⚠️ **`selectTables([])`의 비대칭(빈 배열은 메모·관계·그룹 선택을 지우지 않는다)은 여기서
+   * 잡히지 않는다.** 비대칭을 지워도 이 테스트는 통과한다(실증). 그 규약을 잠그는 것은
+   * `store.test.ts`의 「selectTables([])는 테이블만 비우고 메모·관계·그룹 선택은 건드리지 않는다」
+   * 한 건이다.
+   *
+   * 캔버스 쪽에서 "순서가 뒤집혀도 옳다"를 따로 잠그려던 테스트가 있었으나 **아무것도 붙잡지
+   * 못해 지웠다.** `selectNote`가 이미 `selectedTableIds`를 비우므로, 뒤늦게 도착한 해제 델타는
+   * 바꿀 것이 없어 루프 가드에 걸리고 `selectTables`를 **한 번도 부르지 않는다**(호출 횟수 0으로
+   * 계측). 두 단언이 `selectNote` 하나만으로 이미 참이라 어떤 회귀에도 반응하지 않았다.
+   */
   it('메모를 클릭하면 테이블 선택만 풀리고 메모 선택은 남는다', async () => {
-    // ReactFlow는 메모를 고르면서 테이블을 해제하는 select 변경을 함께 보낸다. 그 결과인
-    // selectTables([])가 같은 클릭의 selectNote를 지우면 안 된다(store의 selectTables 비대칭).
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderCanvas()
@@ -284,18 +297,5 @@ describe('Canvas — store ↔ ReactFlow 선택 동기화', () => {
       expect(useEditorStore.getState().selectedNoteId).toBe('n1')
       expect(useEditorStore.getState().selectedTableIds).toEqual([])
     })
-  })
-
-  it('두 콜백의 발화 순서에 기대지 않는다 — 테이블 해제가 나중에 와도 메모 선택이 남는다', () => {
-    // 위 클릭 테스트는 실제 발화 순서 하나만 지나간다. 순서가 뒤집혀도 옳은지는 직접 만든다.
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
-    grantEditPermission()
-    renderCanvas()
-    useEditorStore.getState().selectTables(['t1'])
-
-    useEditorStore.getState().selectNote('n1')                      // onNodeClick 쪽이 먼저 도착
-    notifySelect({ type: 'select', id: 't1', selected: false })     // 테이블 해제가 그 다음에 도착
-    expect(useEditorStore.getState().selectedNoteId).toBe('n1')
-    expect(useEditorStore.getState().selectedTableIds).toEqual([])
   })
 })

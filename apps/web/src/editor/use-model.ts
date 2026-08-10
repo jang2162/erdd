@@ -94,6 +94,13 @@ function useSubmit(projectId: string) {
 
       const seqBefore = store.seq
       store.setModel(next) // 낙관적
+      // 모델에서 사라진 대상은 선택에서도 걷어낸다. **로컬 편집이 모델을 바꾸는 유일한 지점**이라
+      // 여기 한 곳이면 툴바 삭제·undo(추가의 되돌리기)·DDL 임포트가 전부 같은 규칙을 탄다.
+      // 남의 삭제 수신(use-realtime)·resync도 같은 keptSelection을 부르므로 규칙은 한 벌이다 —
+      // 같은 삭제가 도착 경로에 따라 다른 결과를 내면 안 된다.
+      // ⚠️ 위 `store`는 producer 실행 전에 뜬 스냅샷이다. pruneSelection이 읽어야 하는 것은
+      // **지금 살아 있는** 선택이므로 반드시 getState()로 다시 집는다.
+      useEditorStore.getState().pruneSelection(next)
       try {
         const { seq } = await mutation.mutateAsync({ projectId, ops, summary: opts.summary })
         // await 사이 프로젝트가 바뀌었으면 새 프로젝트의 seq/히스토리를 오염시키지 않는다.
