@@ -3,8 +3,8 @@ import { Copy, Download, FileOutput } from 'lucide-react'
 import { useReactFlow } from '@xyflow/react'
 import { toast } from 'sonner'
 import {
-  DIALECTS, EXCEL_SHEET_KEYS, EXCEL_SHEET_NAME, buildExcelSheets, generateDdl, ddlWarnings,
-  type Dialect, type ExcelSheetKey, type ExportScope,
+  DIALECTS, EXCEL_SHEET_KEYS, EXCEL_SHEET_NAME, buildExcelSheets, generateDdl, generateDbml,
+  ddlWarnings, type Dialect, type ExcelSheetKey, type ExportScope,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { downloadCanvasImage, type ImageFormat } from './image-export.js'
@@ -16,16 +16,23 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
 
-type Section = 'ddl' | 'image' | 'excel'
+type Section = 'ddl' | 'dbml' | 'image' | 'excel'
 
 /** 파일명에 못 쓰는 문자를 밑줄로 바꾼다. */
 function safeFileNamePart(s: string): string {
   return s.replace(/[\\/:*?"<>|]/g, '_')
 }
 
-/** 헤더의 "내보내기": DDL·이미지·Excel 세 섹션을 토글로 오간다. 모델을 변경하지 않는 읽기 전용 다이얼로그. */
+/**
+ * 헤더의 "내보내기": DDL·DBML·이미지·Excel 네 섹션을 토글로 오간다. 모델을 변경하지 않는
+ * 읽기 전용 다이얼로그.
+ *
+ * DDL 과 DBML 은 방언·범위 state 를 **공유한다** — 형식을 바꿔도 고른 방언·범위가 유지되는
+ * 것이 자연스럽고, 경고(`ddlWarnings`)도 두 형식이 같은 것을 쓴다(테이블 선정 판정이 같다).
+ */
 export function ExportDialog() {
   const model = useEditorStore((s) => s.model)
+  const projectName = useEditorStore((s) => s.projectName)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const rf = useReactFlow()
   const [open, setOpen] = useState(false)
@@ -36,6 +43,10 @@ export function ExportDialog() {
   const [sheets, setSheets] = useState<ExcelSheetKey[]>([...EXCEL_SHEET_KEYS])
 
   const ddl = useMemo(() => generateDdl(model, dialect, scope), [model, dialect, scope])
+  const dbml = useMemo(
+    () => generateDbml(model, dialect, scope, { projectName: projectName ?? undefined }),
+    [model, dialect, scope, projectName],
+  )
   const warnings = useMemo(() => ddlWarnings(model, dialect, scope), [model, dialect, scope])
 
   const onCopy = () => { void navigator.clipboard?.writeText(ddl) }
@@ -45,6 +56,17 @@ export function ExportDialog() {
     const a = document.createElement('a')
     a.href = url
     a.download = `erdd_${dialect}.sql`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const onCopyDbml = () => { void navigator.clipboard?.writeText(dbml) }
+  const onDownloadDbml = () => {
+    const blob = new Blob([dbml], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `erdd_${dialect}.dbml`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -93,6 +115,12 @@ export function ExportDialog() {
             DDL
           </Button>
           <Button
+            type="button" size="sm" variant={section === 'dbml' ? 'default' : 'outline'}
+            onClick={() => setSection('dbml')}
+          >
+            DBML
+          </Button>
+          <Button
             type="button" size="sm" variant={section === 'image' ? 'default' : 'outline'}
             onClick={() => setSection('image')}
           >
@@ -138,6 +166,42 @@ export function ExportDialog() {
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onCopy}><Copy /> 복사</Button>
               <Button type="button" onClick={onDownload}><Download /> 다운로드</Button>
+            </DialogFooter>
+          </>
+        )}
+        {section === 'dbml' && (
+          <>
+            <div className="grid gap-2">
+              <span className="text-sm font-medium">방언</span>
+              <div className="flex flex-wrap gap-2">
+                {DIALECTS.map((d) => (
+                  <Button
+                    key={d} type="button" size="sm"
+                    variant={dialect === d ? 'default' : 'outline'}
+                    onClick={() => setDialect(d)}
+                  >
+                    {DIALECT_LABEL[d]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <ExportScopeSelect value={scope} onChange={setScope} />
+            <pre
+              aria-label="DBML 미리보기"
+              className="max-h-80 overflow-auto rounded-md border bg-muted p-3 font-mono text-xs whitespace-pre"
+            >
+              {dbml}
+            </pre>
+            {warnings.length > 0 && (
+              <ul aria-label="DBML 경고" className="grid gap-0.5 text-xs text-key">
+                {warnings.map((w, i) => (
+                  <li key={i}>⚠ {w}</li>
+                ))}
+              </ul>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onCopyDbml}><Copy /> 복사</Button>
+              <Button type="button" onClick={onDownloadDbml}><Download /> 다운로드</Button>
             </DialogFooter>
           </>
         )}

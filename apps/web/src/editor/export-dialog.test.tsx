@@ -139,4 +139,12 @@ describe('ExportDialog', () => {
     expect(rows.map((r) => r[2])).toEqual(['MBR_GRD'])          // 범위 밖 t2(MBR)는 빠졌다
     expect(rows.every((r) => r[0] === '회원/관리')).toBe(true)
   })
+
+  it('DBML 섹션에서 미리보기와 다운로드 이름을 낸다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
+    await userEvent.click(screen.getByRole('button', { name: 'DBML' }))
+    expect(screen.getByLabelText('DBML 미리보기').textContent).toContain('Table "MBR"')
+  })
 })
