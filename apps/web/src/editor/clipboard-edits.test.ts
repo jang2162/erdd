@@ -129,13 +129,30 @@ describe('pasteColumns', () => {
     expect(added[0]!.logicalName).toBe('회원번호_사본')
   })
 
-  it('개명 범위는 대상 테이블 안이다 — 다른 테이블의 동명 컬럼은 무관하다', () => {
+  it('같은 테이블에 다시 붙여넣어도 동명 컬럼과 충돌하면 개명한다', () => {
+    // ⚠️ 리뷰 finding: 이 케이스(c1/GRD_CD를 원본 테이블 t1 자신에게 붙여넣기)는 대상 테이블
+    // 안에 이미 동명 컬럼이 있어, 개명 판정 범위를 테이블 단위로 좁히든 모델 전체로 넓히든
+    // 결과가 똑같다 — "개명 범위는 대상 테이블 안"이라는 이름이 주장하는 것을 시험하지 못한다
+    // (vacuous). 이름을 실제로 시험하는 것에 맞게 고쳤다. 스코프를 실제로 격리하는 테스트는
+    // 바로 아래 별도 케이스로 추가했다.
     const m = buildSampleModel()
     const payload = serializeColumns(m, ['c1'])          // GRD_CD, t1 소속. t2에도 GRD_CD(c4)가 있다
     const next = pasteColumns(m, payload, { tableId: 't1', ids: planPasteColumnIds(payload, idGen()) })
     const added = Object.values(next.columns).filter((c) => c.tableId === 't1' && !Object.hasOwn(m.columns, c.id))
     // t1 안에 GRD_CD(c1)가 이미 있으므로 개명된다
     expect(added[0]!.physicalName).toBe('GRD_CD_COPY')
+  })
+
+  it('개명 범위는 대상 테이블 안이다 — 다른 테이블의 동명 컬럼은 무관하다', () => {
+    // c2(MBR_NO)는 t2 소속이고 t1에는 MBR_NO가 없다.
+    // 개명 범위가 대상 테이블(t1) 안이면 그대로, 모델 전체로 넓혀지면 MBR_NO_COPY가 된다.
+    const m = buildSampleModel()
+    const payload = serializeColumns(m, ['c2'])
+    const next = pasteColumns(m, payload, { tableId: 't1', ids: planPasteColumnIds(payload, idGen()) })
+    const added = Object.values(next.columns).filter((c) => c.tableId === 't1' && !Object.hasOwn(m.columns, c.id))
+    expect(added).toHaveLength(1)
+    expect(added[0]!.physicalName).toBe('MBR_NO')      // 개명되지 않는다
+    expect(added[0]!.logicalName).toBe('회원번호')      // 논리명도 마찬가지
   })
 
   it('붙여넣은 컬럼은 PK가 아니다', () => {
