@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   Background, Controls, MiniMap, ReactFlow, ConnectionMode,
   useNodesState, useReactFlow, type Connection, type Edge, type Node, type NodeChange,
@@ -31,6 +31,8 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const model = useEditorStore((s) => s.model)
   const viewMode = useEditorStore((s) => s.viewMode)
   const selectedIds = useEditorStore((s) => s.selectedTableIds)
+  const selectedColumnIds = useEditorStore((s) => s.selectedColumnIds)
+  const selectColumn = useEditorStore((s) => s.selectColumn)
   const selectedRelId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
@@ -58,8 +60,17 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     ? { kind: 'group' as const, groupId: activeGroupView }
     : { kind: 'full' as const }
 
+  const onColumnClick = useCallback(
+    (columnId: string, mode: 'replace' | 'toggle' | 'range') => {
+      const col = model.columns[columnId]
+      if (col) selectColumn(col.tableId, columnId, mode)
+    },
+    [model.columns, selectColumn],
+  )
+
   const derived = useMemo(() => {
-    const tableNodes = buildNodes(model, viewMode, selectedIds, warnings, view, peerMarks)
+    const tableNodes = buildNodes(
+      model, viewMode, selectedIds, warnings, view, peerMarks, { selectedColumnIds, onColumnClick })
     if (view.kind === 'group') {
       // 그룹 뷰: 색상 영역·메모 노드는 숨긴다. 관계로 이어진 외부 테이블은 고스트로 보여준다.
       const ghostNodes = buildGhostNodes(model, view.groupId)
@@ -74,7 +85,7 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     }))
     return [...groupNodes, ...tableNodes, ...noteNodes]
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, viewMode, selectedIds, selectedNoteId, selectedGroupId, canEdit, warnings, peerMarks, view.kind, view.kind === 'group' ? view.groupId : null])
+  }, [model, viewMode, selectedIds, selectedColumnIds, onColumnClick, selectedNoteId, selectedGroupId, canEdit, warnings, peerMarks, view.kind, view.kind === 'group' ? view.groupId : null])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.

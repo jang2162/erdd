@@ -9,6 +9,10 @@ export type NodeView = { kind: 'full' } | { kind: 'group'; groupId: string }
 export function buildNodes(
   model: ProjectModel, viewMode: ViewMode, selectedIds: string[], warnings: Warning[],
   view: NodeView = { kind: 'full' }, peerMarks: PeerMarks = new Map(),
+  columnSelection: {
+    selectedColumnIds?: string[]
+    onColumnClick?: (columnId: string, mode: 'replace' | 'toggle' | 'range') => void
+  } = {},
 ): Node<TableNodeData>[] {
   const tables = Object.values(model.tables).filter(
     (t) => view.kind === 'full' || t.groupId === view.groupId,
@@ -41,6 +45,11 @@ export function buildNodes(
         tableWarnings,
         columnWarnings,
         peers: peerMarks.get(table.id),
+        // 불변식: 컬럼 선택은 한 테이블에만 존재한다 — 선택된 테이블이 정확히 이 노드일 때만 싣는다.
+        selectedColumnIds: selectedIds.length === 1 && selectedIds[0] === table.id
+          ? columnSelection.selectedColumnIds
+          : [],
+        onColumnClick: columnSelection.onColumnClick,
       },
     }
   })
