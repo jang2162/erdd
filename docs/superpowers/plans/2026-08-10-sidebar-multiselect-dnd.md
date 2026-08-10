@@ -1311,15 +1311,29 @@ Claude-Session: <세션 URL>"
 - Modify: `apps/web/src/editor/nodes.ts`
 - Modify: `apps/web/src/editor/canvas.tsx`
 - Modify: `apps/web/src/editor/canvas.test.tsx`
+- Modify: `apps/web/src/editor/use-model.ts` · `use-model.test.tsx`(삭제 시 선택 정리 — Step 4 ⚠️)
 - Modify: `apps/web/src/editor/nodes.test.ts`(있다면 — 없으면 만들지 않는다)
 
 **Interfaces:**
-- Consumes: `selectTables`(Task 2)
+- Consumes: `selectTables`(Task 2) · `pruneSelection`(Task 4)
 - Produces: `buildNodes(model, viewMode, selectedIds: ReadonlySet<string>, warnings, view?, peerMarks?)`
+
+> ⚠️ **이 Task의 창구는 계획을 쓸 때의 `onSelectionChange`가 아니라 `onNodesChange`의 `select`
+> 델타다.** 설계대로 `onSelectionChange`를 붙이면 **무한 루프가 난다**(구현자·리뷰어가 각각 독립
+> 실측). 아래 Step 1·4·7은 실제 구현(`f9841ed` + 후속 수정)에 맞춰 고쳐 둔 것이다. 이유는 설계 4절
+> 참조 — 통제 모드에서 `nodeLookup`은 우리 push로만 갱신되므로 `onSelectionChange`가 돌려주는 값은
+> 한 세대 늦은 메아리이고, "집합이 같으면 무시" 가드로는 막을 수 없다.
 
 - [ ] **Step 1: 실패 테스트를 쓴다**
 
-`apps/web/src/editor/canvas.test.tsx`에 추가(파일의 `renderCanvas`·`lastProps` 헬퍼를 쓴다):
+`apps/web/src/editor/canvas.test.tsx`에 추가(파일의 `renderCanvas`·`lastProps` 헬퍼를 쓴다).
+알림은 ReactFlow가 실제로 쓰는 경로 그대로 `onNodesChange`에 `select` 델타를 넣어 만든다:
+
+```tsx
+type SelectChange = { type: 'select'; id: string; selected: boolean }
+const notifySelect = (...changes: SelectChange[]) =>
+  (lastProps().onNodesChange as (c: SelectChange[]) => void)(changes)
+```
 
 ```ts
   it('store에 여러 테이블이 선택되면 해당 노드가 모두 selected로 넘어간다', async () => {
@@ -1335,35 +1349,68 @@ Claude-Session: <세션 URL>"
     })
   })
 
-  it('onSelectionChange가 같은 집합을 다시 알리면 store를 갱신하지 않는다', async () => {
-    // 가드가 없으면 derived 재생성 → onSelectionChange → setState 무한 루프가 된다.
+  it('선택을 바꾸지 않는 알림은 store를 갱신하지 않는다 — 참조도 주 선택도 그대로다', async () => {
+    // 가드가 없으면 같은 값을 다시 써서 배열 참조가 매번 새로 생기고(구독 화면이 헛리렌더),
+    // selectTables가 CLEARED_SELECTION을 적용해 같은 클릭의 메모·관계 선택까지 지운다.
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderCanvas()
-    useEditorStore.getState().selectTables(['t1', 't2'])
+    useEditorStore.getState().selectTables(['t2', 't1'])
     await waitFor(() => expect(lastProps().nodes).toBeDefined())
     const before = useEditorStore.getState().selectedTableIds
 
-    const onSelectionChange = lastProps().onSelectionChange as (p: { nodes: { id: string; type: string }[] }) => void
-    // 순서만 다른 같은 집합.
-    onSelectionChange({ nodes: [{ id: 't2', type: 'table' }, { id: 't1', type: 'table' }] })
+    notifySelect(
+      { type: 'select', id: 't1', selected: true },
+      { type: 'select', id: 't2', selected: true },
+    )
     expect(useEditorStore.getState().selectedTableIds).toBe(before)   // 참조까지 그대로
+    expect(primaryTableId(useEditorStore.getState())).toBe('t1')      // 주 선택도 그대로
   })
 
-  it('onSelectionChange는 테이블 노드만 본다(메모는 무시)', () => {
+  it('선택 알림은 테이블 노드만 본다(메모는 무시)', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderCanvas()
-    const onSelectionChange = lastProps().onSelectionChange as (p: { nodes: { id: string; type: string }[] }) => void
-    onSelectionChange({ nodes: [{ id: 't1', type: 'table' }, { id: 'n1', type: 'note' }] })
+    notifySelect(
+      { type: 'select', id: 't1', selected: true },
+      { type: 'select', id: 'n1', selected: true },
+    )
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
   })
+
+  it('새로 고른 테이블은 뒤에 붙는다 — 마지막 원소가 주 선택이다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t2'])
+    notifySelect({ type: 'select', id: 't1', selected: true })
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2', 't1'])
+  })
 ```
+
+`use-model.test.tsx`에는 삭제 시 선택 정리를 겨눈다(Step 4 ⚠️):
+
+```ts
+  it('모델에서 사라진 테이블은 선택에서도 빠진다 — 살아남은 선택은 그대로 둔다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT)
+    grantEditPermission()
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    const { result } = renderHook(() => useModelMutation(PROJECT), { wrapper: wrapper() })
+    await act(async () => { await result.current((m) => removeTable(m, 't1')) })
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])   // 통째로 비우면 실패
+  })
+```
+
+⚠️ **ReactFlow 수식키 테스트는 `fireEvent`의 keyDown/keyUp으로 쓴다.** 수식키는 클릭 이벤트의
+`ctrlKey` 플래그가 아니라 **문서 레벨 키 트래커**(`useKeyPress`)가 읽는다. `userEvent.setup()`의
+포인터 이벤트는 jsdom에서 d3-drag의 nodrag 핸들러를 때려 uncaught 예외를 만든다. **jsdom은 Mac이
+아니므로 `multiSelectionKeyCode` 기본값은 Meta가 아니라 `Control`이다.**
 
 - [ ] **Step 2: 실패를 확인한다**
 
 Run: `pnpm --filter @erdd/web exec vitest run src/editor/canvas.test.tsx`
-Expected: FAIL — `onSelectionChange`가 ReactFlow에 넘어가지 않고, 노드에 `selected` 속성이 없다.
+Expected: FAIL — 델타 창구가 없어 `onNodesChange`가 store를 갱신하지 않고, 노드에 `selected` 속성이 없다.
 
 - [ ] **Step 3: `nodes.ts`를 집합 기반으로 바꾼다**
 
@@ -1419,31 +1466,53 @@ import도 이 파일에서는 쓰이지 않게 되므로 함께 지운다.** `se
           if (node.type === 'ghost') return
           if (node.type === 'group') { select(null); return } // 빈 영역 클릭 = 선택 해제
           if (node.type === 'note') selectNote(node.id)
-          // 테이블 선택은 onSelectionChange 한 곳에서만 처리한다 — 창구가 둘이면
+          // 테이블 선택은 델타 창구 한 곳에서만 처리한다 — 창구가 둘이면
           // Cmd+클릭 한 번에 ReactFlow 내부 토글과 우리 토글이 겹쳐 서로를 되돌린다.
         }}
 ```
 
-`onSelectionChange`를 더한다(`useCallback`으로 감싸 참조를 고정한다):
+창구는 `onNodesChange`를 감싼다(`useCallback`으로 참조를 고정한다). `useNodesState`가 준 원래
+핸들러를 **먼저 그대로 호출**해 ReactFlow의 로컬 노드 상태를 유지한 뒤, `select` 델타만 읽어
+store에 반영한다:
 
 ```tsx
-  const onSelectionChange = useCallback(({ nodes: sel }: { nodes: Node[] }) => {
-    const ids = sel.filter((n) => n.type === 'table').map((n) => n.id)
-    const cur = useEditorStore.getState().selectedTableIds
-    // 같은 집합이면 아무것도 하지 않는다 — 이 가드가 없으면
-    // derived 재생성 → onSelectionChange → setState 의 무한 루프가 된다.
-    if (ids.length === cur.length && ids.every((id) => cur.includes(id))) return
-    useEditorStore.getState().selectTables(ids)
-  }, [])
+  const onNodesChangeWithSelection = useCallback((changes: NodeChange[]) => {
+    onNodesChange(changes)
+    const s = useEditorStore.getState()
+    let next = s.selectedTableIds
+    for (const c of changes) {
+      if (c.type !== 'select' || !Object.hasOwn(s.model.tables, c.id)) continue
+      const has = next.includes(c.id)
+      // 새로 고른 것은 **뒤에 붙인다** — "마지막 원소 = 주 선택" 규약을 캔버스도 지킨다.
+      if (c.selected && !has) next = [...next, c.id]
+      else if (!c.selected && has) next = next.filter((id) => id !== c.id)
+    }
+    // 델타가 선택을 바꾸지 않았으면 아무것도 하지 않는다 — 같은 값을 다시 쓰면 새 배열이 되어
+    // 이 값을 구독하는 화면이 남의 편집마다 리렌더되고, 같은 클릭의 메모·관계 선택도 지워진다.
+    if (next !== s.selectedTableIds) s.selectTables(next)
+  }, [onNodesChange])
 ```
 
 ReactFlow에 넘긴다:
 
 ```tsx
-        onSelectionChange={onSelectionChange}
+        onNodesChange={onNodesChangeWithSelection}
 ```
 
-import에 `useCallback`을 추가한다.
+import에 `useCallback`과 `type NodeChange`를 추가한다.
+
+⚠️ **델타 창구는 삭제를 보지 못한다** — 삭제는 `select`가 아니라 `remove` 변경으로 온다. 선택 정리는
+창구가 아니라 **모델이 바뀌는 지점**에서 한다. `use-model.ts`의 낙관적 `setModel(next)` 바로 뒤에
+한 줄을 더해, 로컬 편집(툴바 삭제·undo·DDL 임포트)이 전부 `resync`·실시간 수신과 **같은 규칙**
+(`keptSelection`)을 타게 한다:
+
+```ts
+      store.setModel(next) // 낙관적
+      // ⚠️ 위 `store`는 producer 실행 전 스냅샷이다. 살아 있는 선택을 읽어야 하므로 다시 집는다.
+      useEditorStore.getState().pruneSelection(next)
+```
+
+`select(null)`로 통째 비우지 마라 — 3개 중 1개만 지웠는데 셋 다 풀린다(Task 4가 고친 과잉 초기화).
 
 - [ ] **Step 5: 통과를 확인하고, 기존 캔버스 테스트를 살핀다**
 
@@ -1451,8 +1520,8 @@ Run: `pnpm --filter @erdd/web exec vitest run src/editor/canvas.test.tsx`
 Expected: PASS.
 
 ⚠️ 기존 "onNodeClick이 store 선택을 바꾼다" 계열 테스트가 깨질 수 있다. 그 테스트들은 ReactFlow
-내장 키보드 선택(Enter)을 쓰므로 `onSelectionChange` 경로로도 같은 결과가 나야 한다. **깨지면
-프로덕션을 기대값에 맞추지 말고, 무엇이 어떤 값으로 관찰됐는지와 원인 진단을 보고하라.**
+내장 키보드 선택(Enter)을 쓰므로 델타 창구로도 같은 결과가 나야 한다. **깨지면 프로덕션을 기대값에
+맞추지 말고, 무엇이 어떤 값으로 관찰됐는지와 원인 진단을 보고하라.**
 
 - [ ] **Step 6: 전체 웹 스위트를 돌린다**
 
@@ -1461,18 +1530,35 @@ Expected: PASS
 
 - [ ] **Step 7: 구분력을 확인한다**
 
-`onSelectionChange`의 루프 가드(`if (ids.length === cur.length && ...) return`)를 지우고 해당 테스트가
-실패하는지 보고 복구한다. **무한 루프로 테스트가 멈추면 그 사실 자체가 관찰 결과다 — 그렇게 보고하라.**
+되돌릴 때마다 **대상 파일을 스크래치에 백업**하고 복구는 **복사로** 한다 — 커밋 전 변경에
+`git checkout --`를 쓰면 작업이 통째로 날아간다.
+
+| 되돌리는 것 | 실패해야 하는 것 |
+|---|---|
+| 루프 가드(`if (next !== s.selectedTableIds)`) | 「선택을 바꾸지 않는 알림…」 + **기존 Backspace 삭제 테스트**(가드가 없으면 매 알림마다 store를 다시 써 `derived` push가 지워진 노드를 되살린다) |
+| 테이블 필터(`Object.hasOwn(s.model.tables, c.id)`) | 「선택 알림은 테이블 노드만 본다」 |
+| 노드 top-level `selected`(`nodes.ts`) | 「store에 여러 테이블이…」 + 「수식키+클릭…」 |
+| `onNodeClick`의 테이블 분기 복원(창구 둘) | 「수식키+클릭…」 |
+| 뒤 붙이기 → 앞 붙이기 | 「새로 고른 테이블은 뒤에 붙는다」 + 「수식키+클릭…」 |
+| `use-model.ts`의 `pruneSelection` | 「모델에서 사라진 테이블은 선택에서도 빠진다」 |
+
+⚠️ **`selectTables`의 비대칭(4.1)은 캔버스 테스트로 잡을 수 없다.** 되돌려도 canvas는 0건 실패하고
+`store.test.ts`에서 1건 실패한다 — 그것이 그 규약의 유일한 방어다. 캔버스에 같은 것을 겨눈 테스트를
+만들지 마라(만들었다가 아무것도 붙잡지 못해 지웠다: `selectNote`가 이미 테이블 선택을 비우므로
+뒤늦은 해제 델타는 루프 가드에 걸려 `selectTables`를 한 번도 부르지 않는다).
 
 - [ ] **Step 8: 커밋**
 
 ```bash
 git add apps/web/src/editor/nodes.ts apps/web/src/editor/canvas.tsx apps/web/src/editor/canvas.test.tsx \
+  apps/web/src/editor/use-model.ts apps/web/src/editor/use-model.test.tsx \
 && git commit -m "feat: 캔버스 선택을 store 다중 선택과 동기화한다
 
 buildNodes 가 선택 집합을 받아 노드의 selected 속성을 세우고, ReactFlow →
-store 는 onSelectionChange 한 창구로만 흐른다(onNodeClick 의 테이블 분기 제거).
-같은 집합이면 갱신하지 않는 가드가 재생성 루프를 막는다.
+store 는 onNodesChange 의 select 델타 한 창구로만 흐른다(onNodeClick 의
+테이블 분기 제거). 델타가 선택을 바꾸지 않으면 store 를 건드리지 않는 가드가
+재생성 루프를 막는다. 삭제는 델타로 오지 않으므로 모델이 바뀌는 지점에서
+pruneSelection 으로 정리한다.
 
 Co-Authored-By: Claude <노출용 이름> <noreply@anthropic.com>
 Claude-Session: <세션 URL>"

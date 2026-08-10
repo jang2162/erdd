@@ -92,11 +92,17 @@ presence 프로토콜**에 갇힌다.
 |---|---|---|
 | 클릭 | 단일 선택(기존 동작) | 단일 선택(기존 동작) |
 | Cmd/Ctrl + 클릭 | 토글 추가·제거 | 토글 추가·제거 |
-| Shift + 클릭 | **화면에 보이는 트리 순서** 기준 범위 선택 | 토글 추가·제거(범위 아님) |
+| Shift + 클릭 | **화면에 보이는 트리 순서** 기준 범위 선택 | 단일 선택(수식키 없는 클릭과 같다) |
 | Shift + 드래그 | — | 박스 선택 |
 
-캔버스에서 Shift가 "범위"가 아닌 이유: 2D 배치에는 선형 순서가 없다. 캔버스에서 Shift는 박스 선택
-제스처(ReactFlow 기본 `selectionKeyCode`)에 이미 쓰이고, Shift+클릭은 추가 토글로 흡수한다.
+캔버스에서 Shift가 "범위"가 아닌 이유: 2D 배치에는 선형 순서가 없다.
+
+캔버스 Shift+클릭이 **토글도 아닌** 이유: ReactFlow에서 다중 선택 수식키는 `multiSelectionKeyCode`
+(기본 Meta/Control)이고 **Shift는 `selectionKeyCode`(박스 선택)**다. Shift는 노드 클릭이 아니라
+빈 곳 드래그를 박스 선택으로 바꾸는 키라, Shift를 누른 채 노드를 클릭하면 그냥 단일 선택이 된다
+(실측: t1 클릭 후 Shift+t2 클릭 → `['t2']`). 두 키를 같은 제스처에 겹쳐 쓰려면 ReactFlow의 키 배정을
+바꿔야 하는데, 그러면 박스 선택을 잃는다. **Cmd/Ctrl+클릭이 이미 토글 역할을 하므로 기능 손실은
+없다** — 그래서 이 행은 설계에서 뺀다(원래 "토글 추가·제거"로 적혀 있었고 구현되지 않았다).
 
 체크박스를 두지 않는 이유: 트리 항목마다 상시 노출되는 시각 노이즈가 크고, 위 관례로 충분하다.
 
@@ -159,32 +165,80 @@ ReactFlow는 자체적으로 `node.selected`를 관리한다. 두 상태가 각�
 
 - **store → ReactFlow**: `derived` 노드를 만들 때 `selected: selectedIds.has(id)`를 노드 속성으로 넣는다
   (지금은 `data.selected`만 있고 노드 속성 `selected`는 안 쓴다 — 박스 선택을 쓰려면 필요하다).
-- **ReactFlow → store**: **`onSelectionChange({ nodes })` 하나만이 창구다.** 단일 클릭·Cmd+클릭
-  토글·박스 선택이 전부 ReactFlow 내부 선택을 거쳐 이 콜백 하나로 도착한다. `onNodeClick`에서는
-  테이블 선택 로직을 **제거**하고 메모·그룹·고스트 분기만 남긴다.
+- **ReactFlow → store**: **`onNodesChange`의 `select` 델타 하나만이 창구다.** 단일 클릭·Cmd/Ctrl+클릭
+  토글·박스 선택·팬 클릭 해제·키보드(Enter/Escape) 선택이 전부 ReactFlow 내부 선택을 거쳐
+  `select` 변경으로 여기 도착한다. `onNodeClick`에서는 테이블 선택 로직을 **제거**하고 메모·그룹·
+  고스트 분기만 남긴다.
+
+⚠️ **`onSelectionChange`는 쓸 수 없다.** (Task 5 구현·리뷰가 각각 독립 실측했다. 설계는 원래
+`onSelectionChange`를 창구로 정했으나 **실제로 무한 루프가 나서** 창구를 옮겼다.)
+노드를 `nodes` prop으로 통제하면 ReactFlow는 사용자의 선택 조작으로 자기 `nodeLookup`을 갱신하지
+않는다 — `triggerNodeChanges`는 `hasDefaultNodes`일 때만 `setNodes`를 부르고, 통제 모드에서는
+`onNodesChange`만 부른다. `nodeLookup`을 갱신하는 것은 **`StoreUpdater`가 우리 `nodes` prop을 밀어
+넣는 effect뿐**이다. `onSelectionChange`는 그 `nodeLookup`을 읽는 `useStore` 셀렉터가 먹이므로,
+돌려주는 값은 사용자의 조작이 아니라 **우리가 직전에 push한 것의 메아리**이고 한 커밋 늦다(메모를
+클릭한 직후 첫 알림이 아직 해제 전 테이블을 "선택됨"으로 말하는 것을 실측했다). 그 늦은 스냅샷을
+store에 되쓰면 그 쓰기가 다음 push를, 그 push가 또 한 세대 늦은 알림을 낳아 두 쓰기가 서로를 영원히
+되돌린다.
+
+⚠️ **"집합이 같으면 무시" 가드로는 막을 수 없다.** 알림은 정의상 항상 한 세대 전 값이라 현재 store와
+결코 같아지지 않기 때문이다(실측: 메모 클릭 한 번에 선택이 `[] ↔ ['t1']` 무한 반복, React가
+`Maximum update depth exceeded`로 중단). 지연선 발진기가 된다.
+
+**델타 창구에는 그 되먹임 고리가 없다.** `select` 변경은 사용자가 조작한 그 틱에 도착하므로 늦지도
+어긋나지도 않고, 우리 push는 **아무 알림도 만들지 않는다**(통제 모드에서 `StoreUpdater`의 `setNodes`는
+`onNodesChange`를 부르지 않는다).
 
 ⚠️ **창구를 둘로 두면 이중 토글로 상쇄된다.** `onNodeClick`에서도 `toggleTable`을 부르면, Cmd+클릭
-한 번에 ReactFlow 내부 토글(→ `onSelectionChange` → `selectTables`)과 우리 토글이 **연달아** 적용되어
-서로를 되돌린다. 두 상태가 각자 선택을 주장하는 구조 자체를 없애는 것이 유일한 해법이다.
+한 번에 ReactFlow 내부 토글(→ 델타 → `selectTables`)과 우리 토글이 **연달아** 적용되어 서로를
+되돌린다. 두 상태가 각자 선택을 주장하는 구조 자체를 없애는 것이 유일한 해법이다.
 
-⚠️ **루프 방지:** `onSelectionChange`는 우리가 노드의 `selected`를 바꿀 때도 발화한다(사이드바에서
-선택했을 때). **현재 `selectedTableIds`와 집합이 같으면 store를 갱신하지 않는다**(순서 무시 비교).
-이 가드가 없으면 `derived` 재생성 → `onSelectionChange` → `setState` → `derived` 재생성의 무한
-루프가 된다.
+⚠️ **루프 가드는 이 창구에서도 필요하다.** 델타가 선택을 바꾸지 않았으면 store를 쓰지 않는다
+(`next !== 현재 배열`). 없으면 선택을 바꾸지 않는 알림마다 store를 다시 써서 배열 참조가 갈리고
+구독 화면이 헛리렌더되며, 그 push가 **방금 캔버스에서 지워진 노드까지 되살린다**(실측: 가드를 빼면
+2건 실패 — 직접 겨눈 가드 테스트와 기존 Backspace 삭제 테스트).
 
-⚠️ **`onSelectionChange`는 테이블 노드만 본다.** 노드 배열에는 그룹·메모·고스트가 섞여 있고, 그룹
-노드는 `selectable: false`라 오지 않지만 메모는 온다. `n.type === 'table'`로 걸러야 한다.
+⚠️ **델타 창구는 테이블 노드만 본다.** 노드 배열에는 그룹·메모·고스트가 섞여 있고, 그룹·고스트는
+`selectable: false`라 오지 않지만 메모는 온다. `Object.hasOwn(model.tables, c.id)`로 걸러야 한다.
+
+⚠️ **대신 델타 창구는 노드 삭제를 보지 못한다.** 삭제는 `select`가 아니라 `remove` 변경으로 온다
+(`deleteElements` → `elementToRemoveChange`). 그래서 **선택 정리를 창구 밖에서 따로** 한다 — 모델에서
+대상이 사라지는 모든 경로가 `pruneSelection`(= `resync`와 같은 `keptSelection`)을 타게 한다. 로컬
+편집은 `use-model.ts`의 낙관적 `setModel` 바로 뒤 **한 지점**에서, 남의 삭제 수신은 `use-realtime.ts`
+에서 부른다. 규칙이 한 벌이라 같은 삭제가 도착 경로(op 배치 / seq 간극 리로드 / 로컬 편집)에 따라
+다른 결과를 내지 않는다.
+
+> **이 저장소에서 캔버스 Backspace 삭제는 오늘 이 경로에 도달하지 않는다.** `onNodesDelete`가
+> 배선돼 있지 않아 Backspace는 ReactFlow 내부 노드만 지우고 **모델은 건드리지 않는다**(선재 결함,
+> 11절 이월). 그래서 삭제된 것처럼 보이던 테이블은 다음 store 쓰기에 되살아나고, 선택에 남은 id도
+> "죽은 id"가 아니라 살아 있는 테이블이다. 이 상태에서 `remove` 델타로 선택을 정리하려 하면 그
+> 정리 자체가 store 쓰기라 `derived` push가 즉시 노드를 되살려 **삭제가 화면에서조차 일어나지
+> 않는다**(Task 5 수정 워커 실측: 기존 삭제 테스트가 깨진다). 캔버스 Backspace를 진짜 삭제로 만드는
+> 것은 7절의 일괄 삭제 확인 다이얼로그 결정과 함께 다뤄야 한다 — 확인 없는 다중 삭제 경로가
+> 생기기 때문이다.
 
 ### 4.1 `selectTables`의 비대칭 — 빈 배열은 다른 선택을 지우지 않는다
 
 `selectTables(ids)`는 **`ids`가 비어 있지 않을 때만** 관계·메모·그룹 선택을 함께 해제하고, 빈
 배열이면 테이블 선택만 비운다.
 
-이 비대칭이 없으면 **메모를 클릭할 때 그 선택이 사라진다.** 테이블이 선택된 상태에서 메모를 클릭하면
-ReactFlow가 테이블을 해제하면서 `onSelectionChange`(테이블 0개)를 쏘는데, 그것이
-`CLEARED_SELECTION`을 적용하면 같은 클릭에서 `onNodeClick`이 세운 `selectedNoteId`를 지운다. 두
-콜백의 발화 순서는 ReactFlow 내부 사정이라 순서에 기대면 안 된다 — 빈 배열이 다른 선택을 건드리지
-않게 하면 순서와 무관하게 옳다.
+**근거는 "순서에 기대지 않는다"이지, 오늘 실제로 깨지는 시나리오가 있어서가 아니다.**
+
+원래 이 절은 "메모를 클릭하면 ReactFlow가 테이블 해제로 빈 배열을 쏘는데 그것이 같은 클릭의
+`selectNote`를 지운다"를 근거로 들었다. **현재 창구에서 그 시나리오는 발동하지 않는다** — 실측한
+발화 순서는 `handleNodeClick`(→ `select` 델타 → `selectTables([])`)이 **먼저**, `onNodeClick`
+(→ `selectNote`)이 **나중**이라(`onSelectNodeHandler`가 `handleNodeClick`을 부른 뒤 `onClick`을
+부른다) `selectNote`가 마지막에 모든 것을 다시 세운다. 순서를 뒤집어 봐도 발동하지 않는다:
+`selectNote`가 이미 `selectedTableIds`를 비우므로 뒤늦은 해제 델타는 바꿀 것이 없어 루프 가드에
+걸리고 `selectTables`를 **한 번도 부르지 않는다**(호출 횟수 0으로 계측).
+
+그래도 비대칭은 **방어로 남긴다.** 두 콜백의 발화 순서는 ReactFlow 내부 사정이고 루프 가드도
+창구 구현의 사정이라, 둘 중 하나만 바뀌어도 `selectedNoteId`가 살아 있는 채로 `selectTables([])`가
+도착할 수 있다. 빈 배열이 다른 선택을 건드리지 않게 해 두면 그때도 옳다.
+
+⚠️ **이 규약을 잠그는 것은 `store.test.ts`의 「`selectTables([])`는 테이블만 비우고 메모·관계·그룹
+선택은 건드리지 않는다」 한 건뿐이다.** 캔버스 쪽에서 같은 것을 겨누는 테스트는 위 이유로 아무것도
+붙잡지 못해 지웠다(`canvas.test.tsx`). 캔버스 테스트가 이 비대칭을 방어한다고 착각하지 마라.
 
 ---
 
@@ -453,8 +507,14 @@ export type ClientMessage = { type: 'selection'; selections: PeerSelection[] }
 - 드래그 중 검색으로 숨은 그룹·그룹 뷰 밖 그룹이 다시 보인다
 - `resync`가 남이 지운 테이블을 선택 배열에서 걷어내고, **아무것도 안 지워졌으면 배열 참조를 유지**한다
   (3.2 ⚠️ — 새 배열을 만들면 실패해야 한다)
-- `onSelectionChange` 루프 가드: 같은 집합이 오면 `setState`가 호출되지 않는다
-- `selectTables([])`가 메모·관계·그룹 선택을 지우지 않는다(4.1) — 지우게 바꾸면 실패해야 한다
+- 델타 창구(`onNodesChange`의 `select`) 루프 가드: 선택을 바꾸지 않는 델타가 오면 `selectTables`가
+  호출되지 않는다 — **배열 참조까지 그대로**여야 한다(4절 ⚠️)
+- 델타 창구가 테이블 노드만 본다: 메모 id의 `select` 델타는 무시된다
+- 새로 고른 테이블은 **뒤에** 붙는다(마지막 원소 = 주 선택) — 앞에 붙이면 실패해야 한다
+- 모델에서 사라진 테이블이 **선택에서 빠진다**(4절 ⚠️ 삭제): 로컬 편집으로 테이블을 지우면
+  나머지 선택은 **유지된 채** 그것만 빠진다 — 통째로 비우거나 남겨 두면 실패해야 한다
+- `selectTables([])`가 메모·관계·그룹 선택을 지우지 않는다(4.1) — 지우게 바꾸면 실패해야 한다.
+  **이것은 `store.test.ts`에서만 잡힌다**(4.1 ⚠️ — 캔버스 테스트로는 도달할 수 없다)
 
 ### 10.5 구분력 실증
 
@@ -463,7 +523,7 @@ export type ClientMessage = { type: 'selection'; selections: PeerSelection[] }
 
 1. `MAX_PEER_SELECTIONS` 절단
 2. `resync`의 배열 참조 유지
-3. `onSelectionChange` 루프 가드
+3. 델타 창구의 루프 가드(4절)
 4. `planGroupMove`에 넘기는 모델이 변경 **전** 모델인 것
 
 ### 10.6 브라우저 스모크
@@ -492,3 +552,9 @@ export type ClientMessage = { type: 'selection'; selections: PeerSelection[] }
 - **presence 절단이 조용하다** — 51개 이상 선택하면 남에게 50개만 보이고 아무 안내도 없다.
 - **드래그 중 자동 스크롤 없음** — 사이드바 트리가 길어 타깃이 화면 밖이면 사용자가 먼저 스크롤해야
   한다.
+- **캔버스 Backspace가 모델을 지우지 않는다(선재 결함)** — `deleteKeyCode`는 켜져 있고 `onNodesDelete`
+  는 배선돼 있지 않아, Backspace는 ReactFlow 내부 노드만 지우고 모델·서버에는 아무것도 보내지
+  않는다. 노드는 다음 store 쓰기에 되살아난다. 이 사이클 이전부터 그랬고 다중 선택이 얹히면서
+  **보이지 않는 테이블이 남에게 계속 "선택 중"으로 보이는** 문제가 더해졌다. 고치려면 7절의 일괄
+  삭제 확인 다이얼로그와 함께 결정해야 한다 — 그냥 배선하면 다중 선택 상태에서 **확인 없는 일괄
+  삭제 경로**가 생긴다(4절 인용 참조).
