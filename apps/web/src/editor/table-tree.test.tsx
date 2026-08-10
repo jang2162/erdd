@@ -679,7 +679,7 @@ describe('TableTree 드래그 그룹 이동', () => {
     grantEditPermission()
     renderTree()
 
-    act(() => { useDragStore.getState().start(['t2']) })
+    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
     act(() => { useDragStore.getState().moveOver({ groupId: 'g2' }) })
 
     expect(document.querySelector('[data-drop-group="g2"]')).toHaveClass('ring-2', 'ring-primary')
@@ -693,7 +693,7 @@ describe('TableTree 드래그 그룹 이동', () => {
     grantEditPermission()
     renderTree()
 
-    act(() => { useDragStore.getState().start(['t2']) })
+    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
     expect(document.querySelector('[data-drop-group="unassigned"]')).not.toHaveClass('ring-2')
 
     act(() => { useDragStore.getState().moveOver({ groupId: null }) })
@@ -781,7 +781,7 @@ describe('TableTree 드래그 그룹 이동', () => {
     await user.type(screen.getByPlaceholderText('테이블 검색'), '회원')
     expect(screen.queryByText('주문영역')).toBeNull()   // 멤버가 안 걸려 숨었다는 전제를 잠근다
 
-    act(() => { useDragStore.getState().start(['t2']) })
+    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
     expect(screen.getByText('주문영역')).toBeInTheDocument()
   })
 
@@ -794,8 +794,25 @@ describe('TableTree 드래그 그룹 이동', () => {
 
     expect(screen.queryByText('주문관리')).toBeNull()   // 스코핑으로 숨었다는 전제를 잠근다
 
-    act(() => { useDragStore.getState().start(['t2']) })
+    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
     expect(screen.getByText('주문관리')).toBeInTheDocument()
+  })
+
+  it('캔버스에서 시작한 드래그에서도 숨은 그룹이 드롭 타깃으로 보인다', () => {
+    // 그룹 뷰에서 캔버스 테이블을 다른 그룹으로 보내는 동선(브라우저 스모크 8번의 대조군)은
+    // 트리가 스코핑을 풀어 줘야만 성립한다. 스코핑 해제가 소스별로 갈리면 캔버스 드롭만 막힌다.
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문관리'), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().enterGroupView('g1')
+    renderTree()
+
+    expect(screen.queryByText('주문관리')).toBeNull()
+
+    act(() => { useDragStore.getState().start(['t2'], 'canvas') })
+    expect(screen.getByText('주문관리')).toBeInTheDocument()
+    // 커서 고스트만 소스로 갈린다 — 드롭 타깃 하이라이트는 두 소스가 공유한다.
+    act(() => { useDragStore.getState().moveOver({ groupId: 'g2' }) })
+    expect(document.querySelector('[data-drop-group="g2"]')).toHaveClass('ring-2', 'ring-primary')
   })
 
   /**
@@ -858,7 +875,7 @@ describe('TableTree 드래그 그룹 이동', () => {
 
     expect(screen.queryByText('미분류')).toBeNull()
 
-    act(() => { useDragStore.getState().start(['t2']) })
+    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
     expect(screen.getByText('미분류')).toBeInTheDocument()
     expect(document.querySelector('[data-drop-group="unassigned"]')).not.toBeNull()
   })

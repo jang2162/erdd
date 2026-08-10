@@ -119,7 +119,7 @@ export function TableTree({ projectId }: { projectId: string }) {
   const onDragStartItem = (id: string) => {
     const ids = selectedIds.has(id) ? selectedTableIds : [id]
     if (!selectedIds.has(id)) selectTables([id])
-    dragStart(ids)
+    dragStart(ids, 'sidebar')
   }
 
   const onDropItem = () => {

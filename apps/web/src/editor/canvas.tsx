@@ -19,6 +19,9 @@ import { RelationshipEdge, RelationshipMarkers } from './relationship-edge.js'
 import { useModelMutation } from './use-model.js'
 import { moveTable, moveTableGroupPosition } from './model-edits.js'
 import { moveNote } from './note-edits.js'
+import { useDragStore } from './drag-store.js'
+import { dropTargetAt } from './drop-target.js'
+import { applyGroupMove } from './bulk-panel.js'
 import { newId } from './uid.js'
 import { computeWarnings, createRelationshipFromParentPk } from '@erdd/core'
 
@@ -26,6 +29,20 @@ const nodeTypes = { table: TableNode, note: NoteNode, group: GroupNode, ghost: G
 const edgeTypes = { relationship: RelationshipEdge }
 
 const groupIdOf = (nodeId: string) => nodeId.slice('group:'.length)
+
+/**
+ * 노드 드래그 이벤트의 화면 좌표. ReactFlow는 이 콜백에 **`MouseEvent | TouchEvent`**를 넘기는데
+ * 터치 이벤트에는 `clientX/Y`가 없고 좌표가 `touches`에 들어 있다. 손을 떼는 순간의 `touchend`는
+ * `touches`가 비고 `changedTouches`에만 남으므로 둘 다 본다.
+ *
+ * 좌표를 못 구하면 **null**이다 — 조준 지점을 모르는 채로 마지막 타깃을 남겨 두면 엉뚱한 그룹으로
+ * 드롭된다. 모르면 "어떤 타깃 위도 아님"이 안전한 쪽이다.
+ */
+function dragPoint(e: MouseEvent | TouchEvent): { x: number; y: number } | null {
+  if ('clientX' in e) return { x: e.clientX, y: e.clientY }
+  const t = e.touches[0] ?? e.changedTouches[0]
+  return t ? { x: t.clientX, y: t.clientY } : null
+}
 
 export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserId: string }) {
   const model = useEditorStore((s) => s.model)
@@ -42,6 +59,16 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const focusTableId = useEditorStore((s) => s.focusTableId)
   const consumeFocus = useEditorStore((s) => s.consumeFocus)
   const canEdit = useEditorStore((s) => s.canEdit)
+  /**
+   * 드래그 store에서 캔버스가 읽는 **유일한 값**. `autoPanOnNodeDrag`를 내리려면 렌더에 필요하다.
+   *
+   * 커서 움직임마다 리렌더되지는 않는다 — `moveOver`가 같은 타깃이면 **같은 참조**를 유지하므로
+   * (drag-store의 `sameTarget`) 이 구독은 드롭 타깃이 **바뀔 때만** 깨어난다. 그때도 `derived`·
+   * `edges`·`warnings`·`peerMarks`의 메모 의존이 그대로라 노드·엣지는 다시 만들어지지 않는다
+   * (canvas.test.tsx의 「드롭 타깃이 그대로면 캔버스를 다시 그리지 않는다」가 이것을 잠근다).
+   * `tableIds`는 여기서 읽지 않는다 — 읽으면 드래그 시작·종료마다 같은 대가를 또 치른다.
+   */
+  const dragOver = useDragStore((s) => s.over)
   const mutate = useModelMutation(projectId)
   const rf = useReactFlow()
   // 그룹 드래그 시작 시점의 그룹 노드 위치 + 소속 테이블 위치 스냅샷(전체 뷰에서만 사용).
@@ -173,14 +200,30 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
         }}
         onEdgeClick={(_, edge) => selectRelationship(edge.id)}
         onPaneClick={() => select(null)}
+        // 드롭 타깃 위에 있는 동안에는 자동 팬을 끈다. 기본값이 true라 사이드바 쪽 가장자리에
+        // 커서를 대고 있으면 캔버스가 계속 팬되어 다른 노드들이 화면 밖으로 밀려난다(설계 5.4).
+        autoPanOnNodeDrag={dragOver === null}
         onNodeDragStart={(_, node) => {
+          if (node.type === 'table') {
+            // 잡은 노드가 선택 안에 있으면 선택 전체를, 아니면 그것 하나를 끈다(사이드바와 같은
+            // 규칙). ReactFlow가 drag start에서 그 노드를 이미 선택하지만 순서에 기대지 않는다.
+            const ids = useEditorStore.getState().selectedTableIds
+            useDragStore.getState().start(ids.includes(node.id) ? ids : [node.id], 'canvas')
+            return
+          }
           if (node.type !== 'group') return
           const gid = groupIdOf(node.id)
           const members = new Map<string, XYPosition>()
           for (const t of Object.values(model.tables)) if (t.groupId === gid) members.set(t.id, { ...t.position })
           dragOrigin.current = { groupNodeStart: { ...node.position }, members }
         }}
-        onNodeDrag={(_, node) => {
+        onNodeDrag={(event, node) => {
+          if (node.type === 'table') {
+            const p = dragPoint(event)
+            useDragStore.getState().moveOver(p === null ? null : dropTargetAt(p.x, p.y))
+            return
+          }
+          // 그룹 노드 드래그는 "그룹 통째 이동"이라는 다른 조작이라 드롭 타깃을 세우지 않는다.
           if (node.type !== 'group' || !dragOrigin.current) return
           const o = dragOrigin.current
           const dx = node.position.x - o.groupNodeStart.x
@@ -189,6 +232,23 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
             o.members.has(n.id) ? { ...n, position: { x: o.members.get(n.id)!.x + dx, y: o.members.get(n.id)!.y + dy } } : n))
         }}
         onNodeDragStop={(_, node, dragged) => {
+          const drop = useDragStore.getState().over
+          // 그룹 노드 드래그는 드래그 store를 쓰지 않으므로 여기서 비워도 안전하다.
+          useDragStore.getState().end()
+          if (node.type === 'table' && drop !== null) {
+            // 드롭 지점의 캔버스 좌표는 버린다 — 최종 자리는 planGroupMove가 정한다. 되돌리지
+            // 않으면 op가 안 나가는 드롭(같은 그룹·권한 없음)에서 노드가 드롭 지점에 영영 남아
+            // 화면과 모델이 갈린다.
+            setNodes(derived)
+            // 무엇을 옮길지·옮겨도 되는지(권한·빈 선택·"전원이 이미 그 그룹")는 전부
+            // applyGroupMove가 정한다 — 사이드바 드래그·일괄 패널과 같은 진입점이라 같은 의도가
+            // 진입점에 따라 다른 좌표로 끝나지 않는다. 여기서 거르는 것은 **테이블이 아닌 노드**뿐
+            // 이다: 메모는 그룹 멤버가 아니고, 고스트는 노드 id가 원본 테이블 id 그대로라
+            // (ghost-nodes.ts) 거르지 않으면 다른 그룹의 테이블이 함께 끌려온다.
+            applyGroupMove(
+              mutate, dragged.filter((n) => n.type === 'table').map((n) => n.id), drop.groupId)
+            return
+          }
           if (node.type === 'group') {
             const o = dragOrigin.current
             dragOrigin.current = null

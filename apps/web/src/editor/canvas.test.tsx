@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -8,7 +8,10 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
+import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { settle } from '@/testing/settle'
 import { primaryTableId, useEditorStore } from './store.js'
+import { useDragStore } from './drag-store.js'
 import { Canvas } from './canvas.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000bb'
@@ -82,7 +85,9 @@ function pressBackspace() {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   useEditorStore.getState().reset()
+  useDragStore.getState().end()
   capturedProps.length = 0
 })
 
@@ -297,5 +302,335 @@ describe('Canvas — store ↔ ReactFlow 선택 동기화', () => {
       expect(useEditorStore.getState().selectedNoteId).toBe('n1')
       expect(useEditorStore.getState().selectedTableIds).toEqual([])
     })
+  })
+})
+
+/**
+ * 캔버스 → 사이드바 드롭(설계 5.4). 드래그 소스만 다르고 "좌표 → 드롭 타깃" 판정과 그룹 이동
+ * 규칙은 사이드바와 같은 함수(`dropTargetAt`·`applyGroupMove`)로 수렴한다.
+ *
+ * ⚠️ **이 스위트는 `onNodeDrag*` 콜백을 직접 부른다.** jsdom에는 레이아웃이 없어 실제 포인터
+ * 드래그를 재현할 수 없기 때문이다(userEvent의 포인터 이벤트는 d3-drag를 때려 uncaught 예외를
+ * 낸다). 그래서 **ReactFlow가 그 콜백에 무엇을 넘기는지**(특히 `dragged` 배열의 실제 구성)는
+ * 검증되지 않는다 — 자동 팬·노드 원위치 복귀의 시각적 결과와 함께 브라우저 스모크가 덮는다.
+ */
+describe('Canvas — 사이드바 그룹으로 드롭', () => {
+  /** 샘플 모델 + 멤버가 있는 두 번째 그룹 g2. 멤버가 있어야 `planGroupMove`가 좌표를 계산한다. */
+  function withGroupB() {
+    const model = buildSampleModel()
+    model.tableGroups = {
+      ...model.tableGroups,
+      g2: { id: 'g2', name: '주문영역', color: '#000', comment: null },
+    }
+    model.tables = {
+      ...model.tables,
+      t3: {
+        id: 't3', logicalName: '주문', physicalName: 'ORD', comment: null,
+        groupId: 'g2', position: { x: 1000, y: 500 }, groupPosition: null, custom: {},
+      },
+    }
+    return model
+  }
+
+  type FakeNode = { id: string; type: string; position: { x: number; y: number } }
+  const tbl = (id: string, x: number, y: number): FakeNode =>
+    ({ id, type: 'table', position: { x, y } })
+
+  function captureMutations(): { summary?: string }[] {
+    const calls: { summary?: string }[] = []
+    mockTrpcFetch({
+      'model.mutate': (input) => { calls.push(input as { summary?: string }); return { data: { seq: 2 } } },
+    })
+    return calls
+  }
+
+  function dragStart(node: FakeNode | { id: string; type: string; position: { x: number; y: number } }) {
+    act(() => {
+      (lastProps().onNodeDragStart as (e: unknown, n: unknown) => void)({}, node)
+    })
+  }
+
+  function dragMove(node: FakeNode | { id: string; type: string; position: { x: number; y: number } },
+    clientX: number, clientY: number) {
+    act(() => {
+      (lastProps().onNodeDrag as (e: unknown, n: unknown) => void)({ clientX, clientY }, node)
+    })
+  }
+
+  function dragStop(node: { id: string; type: string; position: { x: number; y: number } },
+    dragged: { id: string; type: string; position: { x: number; y: number } }[]) {
+    act(() => {
+      (lastProps().onNodeDragStop as (e: unknown, n: unknown, d: unknown[]) => void)({}, node, dragged)
+    })
+  }
+
+  /** 커서가 사이드바의 어느 그룹 블록 위에 있는 상태를 만든다(jsdom엔 레이아웃이 없다). */
+  function hoverTarget(groupId: string | null) {
+    act(() => { useDragStore.getState().moveOver({ groupId }) })
+  }
+
+  /** ReactFlow 내부 노드만 옮긴다 — 드래그로 노드가 화면에서 움직인 상태를 재현한다. */
+  function moveNodeInternally(id: string, position: { x: number; y: number }) {
+    act(() => {
+      (lastProps().onNodesChange as (c: unknown[]) => void)(
+        [{ type: 'position', id, position, dragging: false }])
+    })
+  }
+
+  function nodePosition(id: string) {
+    const nodes = lastProps().nodes as { id: string; position: { x: number; y: number } }[]
+    return nodes.find((n) => n.id === id)?.position
+  }
+
+  it('드롭 타깃 위에서 놓으면 위치 이동 대신 그룹 이동이 나간다', async () => {
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g2')
+    dragStop(tbl('t2', 999, 999), [tbl('t2', 999, 999)])
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2'))
+    // 드롭 지점의 캔버스 좌표(999,999)는 버린다 — 최종 자리는 planGroupMove가 정한다.
+    // g2의 기준 bbox = t3(1000,500) + (EST_W 260, estHeight(0) 72) → maxX 1260 · minY 500.
+    // dx = 1260 + GAP 60 - 300 = 1020 · dy = 500 - 0 = 500.
+    expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 1320, y: 500 })
+    // 그룹 뷰 전용 좌표는 새 그룹에서 의미가 없다(설계 6.1).
+    expect(useEditorStore.getState().model.tables['t2']?.groupPosition).toBeNull()
+
+    // 그룹 배정·groupPosition 초기화·좌표 재배치가 한 producer라 Revision도 undo도 한 건이다.
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
+  it('드롭 타깃이 없으면 기존 위치 이동 경로 그대로다', async () => {
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    dragStart(tbl('t2', 300, 0))
+    dragStop(tbl('t2', 50, 60), [tbl('t2', 50, 60)])
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 50, y: 60 })
+    })
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')   // 그대로
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.summary).toBe('이동')
+  })
+
+  it('드롭 타깃 위에 있는 동안에는 autoPanOnNodeDrag를 끈다', async () => {
+    // 기본값이 true라, 사이드바 쪽 가장자리에 커서를 대고 있으면 캔버스가 계속 팬되어
+    // 다른 노드들이 화면 밖으로 밀려난다(설계 5.4).
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    expect(lastProps().autoPanOnNodeDrag).toBe(true)
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g1')
+    await waitFor(() => expect(lastProps().autoPanOnNodeDrag).toBe(false))
+
+    // 타깃 밖으로 나오면 다시 켜진다 — 끈 채로 남으면 이후 드래그에서 팬이 영영 죽는다.
+    act(() => { useDragStore.getState().moveOver(null) })
+    await waitFor(() => expect(lastProps().autoPanOnNodeDrag).toBe(true))
+  })
+
+  it('노드를 잡으면 선택 전체를 캔버스 드래그로 시작한다 — 선택 밖이면 그것 하나다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    dragStart(tbl('t1', 0, 0))
+    expect(useDragStore.getState().tableIds).toEqual(['t1', 't2'])
+    // 커서 고스트는 사이드바 전용이다 — 캔버스는 ReactFlow가 노드를 실제로 끌고 다닌다.
+    expect(useDragStore.getState().source).toBe('canvas')
+
+    act(() => { useDragStore.getState().end() })
+    useEditorStore.getState().selectTables(['t1'])
+    dragStart(tbl('t2', 300, 0))
+    expect(useDragStore.getState().tableIds).toEqual(['t2'])
+  })
+
+  it('노드를 끄는 동안 커서 좌표로 드롭 타깃을 세운다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    const block = document.createElement('div')
+    block.setAttribute('data-drop-group', 'g1')
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(block)
+
+    dragStart(tbl('t2', 300, 0))
+    dragMove(tbl('t2', 310, 10), 7, 9)
+    expect(useDragStore.getState().over).toEqual({ groupId: 'g1' })
+
+    // 대조군: 그룹 노드 드래그는 같은 좌표에서도 드롭 타깃을 세우지 않는다 —
+    // 그것은 "그룹 통째 이동"이라는 다른 조작이다(설계 5.4).
+    act(() => { useDragStore.getState().end() })
+    const groupNode = { id: 'group:g1', type: 'group', position: { x: 0, y: 0 } }
+    dragStart(groupNode)
+    dragMove({ ...groupNode, position: { x: 10, y: 10 } }, 7, 9)
+    expect(useDragStore.getState().over).toBeNull()
+  })
+
+  it('터치 드래그도 좌표를 찾는다 — ReactFlow는 TouchEvent도 넘긴다', () => {
+    // 이 콜백의 이벤트 타입은 `MouseEvent | TouchEvent`다. 터치에는 clientX/Y가 없고, 손을 떼는
+    // 순간(touchend)에는 `touches`가 비고 `changedTouches`에만 남는다. 마우스 좌표만 읽으면
+    // 태블릿에서 드롭 타깃이 영영 잡히지 않는다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    const block = document.createElement('div')
+    block.setAttribute('data-drop-group', 'g1')
+    const spy = vi.spyOn(document, 'elementFromPoint').mockReturnValue(block)
+    const onNodeDrag = () => lastProps().onNodeDrag as (e: unknown, n: unknown) => void
+
+    dragStart(tbl('t2', 300, 0))
+    act(() => {
+      onNodeDrag()({ touches: [{ clientX: 11, clientY: 22 }], changedTouches: [] }, tbl('t2', 1, 1))
+    })
+    expect(spy).toHaveBeenLastCalledWith(11, 22)
+    expect(useDragStore.getState().over).toEqual({ groupId: 'g1' })
+
+    act(() => {
+      onNodeDrag()({ touches: [], changedTouches: [{ clientX: 33, clientY: 44 }] }, tbl('t2', 1, 1))
+    })
+    expect(spy).toHaveBeenLastCalledWith(33, 44)
+
+    // 좌표를 아예 못 구하면 "어떤 타깃 위도 아님"으로 떨어진다 — 마지막 타깃을 남겨 두면
+    // 조준 지점을 모르는 채로 엉뚱한 그룹에 떨어진다.
+    act(() => { onNodeDrag()({ touches: [], changedTouches: [] }, tbl('t2', 1, 1)) })
+    expect(useDragStore.getState().over).toBeNull()
+  })
+
+  it('그룹 노드 드래그는 드롭 분기에 들어가지 않는다 — 그룹 통째 이동 그대로다', async () => {
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    const groupNode = { id: 'group:g1', type: 'group', position: { x: 0, y: 0 } }
+    dragStart(groupNode)
+    // 커서가 사이드바의 다른 그룹 위에 있는 상태를 만든다 — 가드가 없으면 여기서 새어 나간다.
+    act(() => { useDragStore.getState().start(['t1', 't2'], 'canvas') })
+    hoverTarget('g2')
+    dragStop({ ...groupNode, position: { x: 40, y: 20 } }, [{ ...groupNode, position: { x: 40, y: 20 } }])
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']?.position).toEqual({ x: 40, y: 20 })
+    })
+    expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 340, y: 20 })
+    expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g1')   // 그룹은 안 바뀐다
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.summary).toBe('그룹 이동')   // 일괄 그룹 배정('그룹 이동 (N개)')이 아니다
+  })
+
+  it('테이블이 아닌 노드는 그룹 이동에 섞이지 않는다', async () => {
+    // 고스트 노드는 **노드 id가 원본 테이블 id 그대로**다(ghost-nodes.ts의 주석) — 거르지 않으면
+    // 다른 그룹에 있는 테이블이 함께 끌려온다. 메모는 애초에 그룹 멤버가 아니다.
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g2')
+    dragStop(tbl('t2', 999, 999), [
+      tbl('t2', 999, 999),
+      { id: 't1', type: 'ghost', position: { x: 5, y: 5 } },
+      { id: 'n1', type: 'note', position: { x: 5, y: 5 } },
+    ])
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2'))
+    expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g1')
+    expect(useEditorStore.getState().model.notes['n1']?.position).toEqual({ x: 600, y: 0 })
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.summary).toBe('그룹 이동 (1개)')
+  })
+
+  it('다중 선택 드래그는 선택 전체가 함께 옮겨지고 상대 배치가 보존된다', async () => {
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderCanvas()
+
+    dragStart(tbl('t1', 0, 0))
+    hoverTarget('g2')
+    dragStop(tbl('t1', 900, 900), [tbl('t1', 900, 900), tbl('t2', 1200, 900)])
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g2'))
+    const tables = useEditorStore.getState().model.tables
+    expect(tables['t2']?.groupId).toBe('g2')
+    // 이동 전 (300, 0) 차이가 그대로다.
+    expect(tables['t2']!.position.x - tables['t1']!.position.x).toBe(300)
+    expect(tables['t2']!.position.y - tables['t1']!.position.y).toBe(0)
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)   // undo 1회로 전부 원복된다
+  })
+
+  it('드롭이 아무것도 바꾸지 않아도 노드는 원위치로 돌아온다', async () => {
+    // 같은 그룹에 놓으면 applyGroupMove가 op를 내지 않는다 → 모델이 그대로라 `derived`도 그대로고,
+    // "모델이 바뀌면 노드를 다시 만든다"는 effect가 돌지 않는다. setNodes(derived)가 없으면 노드가
+    // 드롭 지점에 **영영** 남아 화면과 모델이 갈린다.
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    moveNodeInternally('t2', { x: 999, y: 999 })
+    expect(nodePosition('t2')).toEqual({ x: 999, y: 999 })
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g1')                                   // t2는 이미 g1이다
+    dragStop(tbl('t2', 999, 999), [tbl('t2', 999, 999)])
+
+    expect(nodePosition('t2')).toEqual({ x: 300, y: 0 })
+    await settle()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('드롭 타깃이 그대로면 캔버스를 다시 그리지 않는다', () => {
+    // 캔버스는 autoPanOnNodeDrag 때문에 드래그 store의 `over`를 구독한다. 타깃이 **바뀔 때만**
+    // 리렌더돼야 커서 움직임마다 캔버스 전체가 다시 그려지는 것(설계 5.2)을 피한다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    dragStart(tbl('t2', 300, 0))
+    const nodesBefore = lastProps().nodes
+
+    const beforeEnter = capturedProps.length
+    hoverTarget('g1')
+    expect(capturedProps.length).toBeGreaterThan(beforeEnter)   // 진입은 리렌더한다(팬을 꺼야 한다)
+
+    const afterEnter = capturedProps.length
+    hoverTarget('g1')                                           // 같은 블록 위에서 계속 움직인다
+    expect(capturedProps.length).toBe(afterEnter)               // 더는 안 그린다
+    expect(lastProps().nodes).toBe(nodesBefore)                 // 노드 배열도 다시 만들지 않는다
+  })
+
+  it('읽기 전용이면 드롭해도 op가 나가지 않는다', async () => {
+    // 권한 판정은 applyGroupMove 한 곳이다(bulk-panel.tsx) — 여기서 또 막으면 가드가 두 벌이 된다.
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer(canEdit=false).
+    renderCanvas()
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g2')
+    dragStop(tbl('t2', 999, 999), [tbl('t2', 999, 999)])
+
+    await settle()
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')
   })
 })

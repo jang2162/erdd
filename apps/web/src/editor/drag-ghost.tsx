@@ -9,6 +9,9 @@ const OFFSET = 12
  *
  * **에디터 셸 루트에 하나만 마운트한다.** 항목마다 만들면 드래그 소스 수만큼 겹쳐 그려진다.
  *
+ * ⚠️ **사이드바 드래그에만 뜬다.** 캔버스 드래그는 ReactFlow가 노드 자체를 끌고 다니므로 끌고 있는
+ * 것이 이미 화면에 보인다 — 거기에 고스트까지 겹치면 무엇을 조준하는지 오히려 가려진다(설계 5.4).
+ *
  * ⚠️ **`pointer-events: none`이 이 구현의 유일한 치명적 함정이다.** 드롭 타깃 판정은
  * `document.elementFromPoint(x, y)`인데, 커서 자리에 `position: fixed` 고스트가 있으면
  * **항상 고스트**가 반환되고 `closest('[data-drop-group]')`가 null이 되어 **드롭이 통째로 죽는다.**
@@ -21,7 +24,7 @@ const OFFSET = 12
  * 자기 DOM의 `style.transform`만 직접 쓴다.
  */
 export function DragGhost() {
-  const count = useDragStore((s) => s.tableIds.length)
+  const count = useDragStore((s) => (s.source === 'sidebar' ? s.tableIds.length : 0))
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
