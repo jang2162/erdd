@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-08-10 / **main HEAD:** `2e79b68`(설치·사용 매뉴얼 병합) / **마이그레이션:** 0012까지(초대·재설정 링크에서 `invitations`·`password_reset_tokens` 추가)
+**최종 갱신:** 2026-08-10 / **main HEAD:** `6adc9be`(DDL 역설계 인라인 제약 유실 수정 병합) / **마이그레이션:** 0012까지(초대·재설정 링크에서 `invitations`·`password_reset_tokens` 추가)
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -34,6 +34,8 @@
 
 | **N:M 교차 테이블 자동 생성** | 관계 패널에서 버튼 하나로 1:N 을 **교차 테이블 + 식별 1:N 관계 2개**로 푼다. **모델에 N:M 을 넣지 않고 동작만 뒀다** — 결과물이 보통 테이블 1개와 관계 2개뿐이라 DDL·diff·병합·파일 포맷·CLI 가 새로 알 것이 없다(`cardinality` enum 은 `'1:1' \| '1:N'` 그대로). core 순수 함수 2개(`resolveManyToMany`·`junctionTableName`), 웹의 계획 함수 `planJunction`(id·이름·좌표를 미리 계산해 넘긴다), 관계 패널 버튼. 원본 FK 제거에 **`deleteRelationship` 이 아니라 `deleteColumnCascade`** 를 쓴다(전자는 자식 FK 컬럼을 일부러 보존해 고아를 남기고, 후자는 매핑이 비면서 원본 관계까지 함께 정리한다). 풀지 않는 조건 3가지 — 식별 관계 / FK 를 지운 뒤 양쪽 PK 가 0 이하 / **지울 FK 컬럼을 다른 관계가 부모로 참조**(하위 연쇄 방지). **서버 변경·마이그레이션 없음** ([설계](specs/2026-08-09-many-to-many-junction-design.md)) |
 
+| **DDL 역설계 인라인 제약** | DataGrip·pg_dump 가 내는 표준 형태 — 컬럼 정의 안의 `constraint <이름> references <부모>`(참조 컬럼 목록 생략)와 컬럼 수준 `[constraint <이름>] unique` — 가 **파서에서 통째로 유실**되던 것을 고쳤다. 사용자 실물 DDL(24 테이블)에서 FK 37건·유니크 4건이 **경고 한 줄 없이** 사라지던 상태였다. 원인은 셋 — 인라인 REFERENCES 만 참조 컬럼 괄호를 필수로 요구했고(`if (m)` 밖으로 조용히 빠졌다), 컬럼 수준 UNIQUE 를 아예 읽지 않았고, 컬럼 정의 안의 `CONSTRAINT <이름>` 을 버렸다. REFERENCES 절 해석을 **`parseReferencesClause` 하나로 모아** 세 호출처(테이블 수준 FK·`ALTER TABLE` FK·인라인)가 공유하게 하고, 참조 컬럼 목록은 **부모 이름이 끝난 자리에서 곧장 괄호가 열릴 때만** 인정한다(`REFERENCES T CHECK (X > 0)` 의 괄호를 참조 컬럼으로 읽던 결함이 테이블 수준·`ALTER` 경로에도 있었고 함께 없어졌다). 부모 이름은 종결 키워드 열거 대신 **식별자 문법**으로 끊는다. 컬럼 인라인 제약은 `parseColumnDef` 가 함께 내주는 **속성 구간에서만** 읽어, 컬럼 이름이 구조 키워드와 같아도(`model_indexes."unique" boolean`) 정규식 가드가 아니라 **구조로** 막힌다. `ddl-import.ts` 는 한 줄도 안 고쳤다 — `refColumns: []` 를 "부모 PK 암묵 참조"로 해석하는 코드가 이미 있었다. 부수로 마스킹 통합(3.11)과 식별자 정규식 통일(3.12)이 따라왔고 `main` 의 선재 결함 6종이 함께 사라졌다. **서버·웹·CLI 변경 없음, 마이그레이션 없음** |
+
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
 > **Phase 4 완료.** DDL 역설계 → CLI 트랙 A(읽기) → CLI 트랙 B(`push`·3-way 병합·`diff`·에이전트 스킬) 순으로 마쳤다.
@@ -41,7 +43,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 481 · cli 138 · web 450 · server 194 (erdd_test) · typecheck EXIT=0
+core 510 · cli 138 · web 450 · server 194 (erdd_test) · typecheck EXIT=0
 ```
 
 `apps/server` 테스트는 **`DATABASE_URL`을 직접 줘야 한다** — 없으면 조용히 174건이 skip되고
@@ -55,6 +57,12 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @
 네 스위트를 함께 돈다. 초대·재설정 링크 사이클에서 **server +51 · web +41**이 붙었다(직전
 기준선은 `server 143 · web 382`였다). **core·cli는 무변경** — 설계가 못 박은 "core 변경 없음,
 CLI 변경 없음"이 그대로 지켜졌고, 그 둘이 움직였다면 범위를 넘은 것이다.
+
+DDL 역설계 인라인 제약 사이클에서 **core +29**(481 → 510)가 붙었다. **cli·web·server는 무변경** —
+변경 파일이 `packages/core/src/ddl-parse.ts`와 그 테스트 2개뿐이라 그 셋이 움직였다면 범위를 넘은
+것이다. 29건 중 상당수가 **오탐 방지 대조군**(리터럴·따옴표 식별자·괄호 안의 단어를 제약으로 읽지
+않는지)이라 그린으로 들어왔는데, 공허하지 않다는 것을 구현자·리뷰어가 각각 **다른 변형**으로
+실증했다(구현을 되돌리면 빨개진다). 대조군을 그린 상태로 추가할 때는 그 실증을 함께 남긴다.
 
 서버 증가분의 성격이 이전 사이클들과 다르다 — **표면을 전수로 잠그는 테스트**가 들어왔다
 (`admin.test.ts`의 `ADMIN_PATHS`·`PUBLIC_PATHS`). 문자열 상수를 손으로 적어 "없어야 할 경로"를
@@ -362,6 +370,48 @@ pnpm -s -C packages/cli typecheck
   `mutateAsync`가 돌려주는 프로미스는 구독과 무관하게 실행에 매여 있어 그 구멍을 타지 않는다.
   중복 POST를 막는 `useRef` 가드는 **별개 방어**다(시도 번호를 담아 재시도만 통과시킨다).
 
+### 3.11 DDL 파서의 마스킹 길이 보존 계약 (`packages/core/src/ddl-parse.ts`)
+
+- **구조 키워드의 *위치* 는 마스킹본에서 찾고, *값* 은 언제나 원본에서 잘라낸다.** 이 파일의
+  기존 관례이고(`parseColumnDef`·MySQL 꼬리 `COMMENT`), 그래서 마스킹 함수는 **길이를 반드시
+  보존해야 한다** — 마스킹본에서 얻은 인덱스를 원본에 그대로 쓰기 때문이다.
+- **⚠️ 이 계약은 한 브랜치 안에서 두 번 깨졌다. 둘 다 "한 글자 짧아져 뒤쪽 제약명이 밀리는" 같은
+  증상이었고, 테스트 500여 개가 전부 그린인 채로 통과했다.**
+  1. `for…of` 순회 — 서로게이트 페어를 문자 하나로 묶어 자리표시 1글자로 덮었다. **코드 유닛 단위
+     (`for (let i = 0; i < text.length; i++)`)로 순회한다.**
+  2. 인용 이스케이프 분기 — `''` `""` `` `` `` `]]` 는 **2개를 소비하고 2개를 내야 한다.**
+     하나만 내면 `UX_A`가 `UX_`로 잘린다.
+  두 경로 모두 회귀 테스트가 있다(`'괄호 안 마스킹이 서로게이트 페어에서도…'`,
+  `'인용 이스케이프에서도 마스킹이 길이를 보존한다'`). 마스킹 함수를 고칠 때 이 둘을 먼저 본다.
+- **인용 4종(`'` `"` `` ` `` `[`)은 `maskQuoted` 한 번의 좌→우 스캔에서 함께 처리한다.**
+  리터럴과 따옴표 식별자를 각각 독립된 스캔으로 돌리면 **어느 쪽을 먼저 돌려도 반대편에 구멍이
+  생긴다** — 리터럴이 먼저면 `"o'brien"`의 아포스트로피를 문자열 시작으로 오인해 뒤를 통째로 덮고,
+  식별자가 먼저면 `DEFAULT '{"a": 1}'`(PostgreSQL jsonb, 매우 흔하다)이 깨진다. **순서 조정으로는
+  못 푼다.** `splitStatements`·`splitTopLevel`·`unquoteIdentifier`가 모두 같은 관례를 따른다.
+- 남는 순서 제약은 **하나뿐이다**: `maskParenContents`는 인용 마스킹 **뒤**에 온다(인용 안의 괄호가
+  먼저 덮여야 깊이 계산이 맞는다 — `COLLATE "a(b"`가 실증한다). 이 순서를 바꾸지 마라.
+- **컬럼 정의의 인라인 제약은 `parseColumnDef`가 함께 내주는 속성 구간(`attrs`)에서만 읽는다.**
+  항목 전체를 훑으면 컬럼 **이름**이 구조 키워드와 같을 때(`"unique" boolean not null` — 사용자
+  실물 DDL에 있다) 그것을 제약으로 오인한다. 정규식 가드로 막지 말고 이 구조를 유지해라.
+
+### 3.12 DDL 파서의 식별자 정규식은 전부 `IDENT_PART`를 쓴다
+
+- **같은 이름이 경로에 따라 살거나 죽으면 안 된다.** 한때 인라인 경로만 비ASCII 이름을 살리고
+  테이블 수준·`ALTER TABLE`·컬럼명 경로는 `[A-Za-z_][\w$]*`(JS의 `\w`는 ASCII 전용)라 죽였다 —
+  **비ASCII 컬럼명 하나로 컬럼이 통째로 사라졌다.** 한글 물리명을 쓰는 조직에서 체감이 크다.
+  새 식별자 정규식을 만들 때는 `IDENT_PART`(따옴표 4종 + 인용 없는 이름의 **부정 문자 클래스**)를
+  조립해 쓴다. 현재 사용처: `COLUMN_NAME_RE`·`NAMED_CONSTRAINT_RE`·`ALTER_ADD_RE`·
+  `REFERENCES_TARGET_RE`·`CONSTRAINT_NAME_SRC`.
+- **⚠️ 컬럼명 정규식(`COLUMN_NAME_RE`)은 파서의 진입점이다.** 넓히면 컬럼이 아닌 항목까지 컬럼으로
+  먹을 수 있다. 그것을 막는 것은 `parseCreateTable`의 **항목 첫머리 라우팅**(`^PRIMARY KEY` /
+  `^UNIQUE` / `^FOREIGN KEY` / `^CHECK`, `CONSTRAINT <이름>` 접두사를 뗀 `body` 기준)이고, 이 전제는
+  테스트가 잠근다(`'테이블 수준 제약을 컬럼으로 먹지 않는다'` — `toEqual`로 유령 컬럼까지 잡는다).
+  진입점을 다시 건드릴 때는 이 테스트부터 확인해라.
+- **타입 정규식만 ASCII 전용으로 남아 있다**(`[A-Za-z_][\w$]*`). 의도적이다 — 유령 컬럼이 생기는
+  조건이 "타입 자리에 ASCII 단어가 온다"라서, 타입까지 넓히면 테이블 수준 절 9종(6절)이 유령
+  컬럼이 되는 문턱이 함께 낮아진다. 그래서 비ASCII **타입**(`회원번호 숫자`)은 아직 컬럼을 버린다.
+  넓히려면 라우팅을 먼저 촘촘히 해야 한다.
+
 ## 4. 개발 환경
 
 ```bash
@@ -562,6 +612,41 @@ Phase 2 #4·#5를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다
 **DDL/기타**
 - 방언별 예약어 목록은 큐레이션 세트(전수 아님)
 - 0컬럼 테이블은 DDL에서 제외 + 경고(정책 확정됨)
+
+**DDL 역설계 파서 (인라인 제약 사이클 — 구현 완료, 잔여 한계)**
+- **인용 없는 비식별자 문자로 된 컬럼명이 경고 없이 통과한다.** `IDENT_PART`의 부정 문자 클래스가
+  제외하는 것은 SQL 구분자·인용 문자(`공백 ( ) , ; . " ` [ ]`)뿐이라, 그 밖의 문자로만 이뤄진 첫
+  토큰은 무엇이든 컬럼 이름이 된다 — `@x`·`a-b`·`a+b`·`a*b`·`#t`·`1A`가 전부 통과한다. 의도한
+  대상(`회원번호`·`🙂`)과 같은 문턱을 공유한다. **실질 영향은 경고 신호의 상실**이다(전에는
+  `skipped-statement` 경고가 떠서 "이 줄을 못 읽었다"를 알 수 있었다). 정규식을 되돌리면 비ASCII
+  이름이 다시 죽으므로, 고친다면 "컬럼은 만들되 이름이 비식별자 문자를 포함하면 경고를 남긴다"
+  쪽이다. 사용자 실물 DDL 영향 0건.
+- **테이블 수준 절 9종이 유령 컬럼이 된다**(선재 결함, 이 사이클과 무관하며 악화도 없다).
+  MySQL `KEY`/`INDEX`/`FULLTEXT KEY`/`SPATIAL INDEX`, PostgreSQL `EXCLUDE USING`/`LIKE … INCLUDING`,
+  Oracle `SUPPLEMENTAL LOG DATA`, MSSQL `INDEX … NONCLUSTERED`/`PERIOD FOR SYSTEM_TIME`이
+  `parseCreateTable`의 항목 라우팅에 걸리지 않아 `parseColumnDef`로 떨어지고, 첫 토큰이 컬럼명·
+  둘째 토큰이 타입으로 읽힌다(`KEY:IX1 (A)` 같은 컬럼이 생긴다). 라우팅에 이 접두사들을 추가해
+  `skipped`로 보내는 것이 정답이다.
+- **DDL에 적힌 이름이 기존 인덱스 이름과 겹치면 동명 인덱스가 2개 만들어진다**(`ddl-import.ts`
+  231–239, 선재 결함). 무명 UNIQUE의 자동 이름(`UX_<table>_<n>`)은 충돌을 정확히 피하는데 DDL에
+  적힌 이름은 `used` 확인 없이 그대로 쓴다. `alter table t add constraint ux1 unique (a)` +
+  `create unique index ux1 on t (a)`로 재현된다. 사용자 실물 DDL은 이름이 전부 달라 무영향.
+- **`detectDialect`가 사용자 실물 DDL에서 `null`을 낸다.** 컬럼 **이름** `model_columns.auto_increment`
+  가 mysql 시그니처 `/\bAUTO_INCREMENT\b/i`(weight 3)에 걸려 postgresql과 3:3 동점이 되고, 동점이면
+  `null`이다. 화면에서 방언을 직접 고르면 되므로 동작은 한다. 고치려면 시그니처 스캔을 컬럼 이름
+  구간 밖에서만 돌리거나, 동점 시 `jsonb`·`uuid` 같은 2차 신호로 가르는 방향이다.
+- **`alter table … owner to postgres`가 테이블마다 `skipped-statement` 경고를 낸다**(실물 DDL에서
+  23건). 정상 동작이지만 사용자 눈에는 경고 23건으로 보인다. `OWNER TO`·`GRANT`처럼 모델과 무관한
+  것이 확실한 문장은 조용히 버리는 화이트리스트를 두면 노이즈가 준다.
+- **MySQL 테이블 수준 `UNIQUE KEY <이름> (컬럼들)`의 제약명이 유실된다**(`uq(-)`가 된다).
+  `CONSTRAINT` 접두사가 없는 MySQL 고유 형태라 `NAMED_CONSTRAINT_RE`를 안 타고, 항목 첫머리
+  `^UNIQUE` 라우팅이 이름을 읽지 않는다.
+- **인용 없는 무효 제약명이 따옴표째 이름이 된다** — `CONSTRAINT 'x' UNIQUE (A)` → `uq('x')`.
+  `unquoteIdentifier`가 작은따옴표를 벗기지 않는다. 4개 방언 어디서도 무효인 SQL이라 조치 불필요.
+- **인라인 제약 스캔이 같은 문자열을 두 번 마스킹한다**(`parseInlineColumnConstraints`가
+  `maskForKeywordScan(attrs)`를 만든 뒤 `parseReferencesClause`가 자기 입력을 또 마스킹).
+  성능 문제는 없고(700KB DDL 25ms), `parseReferencesClause`가 **자기 입력을 스스로 마스킹해야
+  세 호출처가 같은 계약으로 묶이므로** 현재 형태가 낫다고 판정했다. 기록만 남긴다.
 
 **커스텀 항목**
 - 조직 표준 템플릿(→ 프로젝트로 가져오기)은 범위 밖(다음 fork sub-project에서 사전·도메인과 통합 설계)
