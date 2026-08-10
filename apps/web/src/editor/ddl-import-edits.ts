@@ -2,6 +2,7 @@ import type {
   Column, DdlImportPlan, IndexDef, ProjectModel, Relationship, Table,
 } from '@erdd/core'
 import { computeAutoLayout } from './auto-layout.js'
+import { nextGroupColor } from './group-palette.js'
 
 const NODE_WIDTH = 260
 const rowHeight = (columnCount: number) => 40 + columnCount * 28
@@ -21,9 +22,12 @@ const rowHeight = (columnCount: number) => 40 + columnCount * 28
  *
  * 인덱스 컬럼의 정렬 방향도 계획에 없는 정보다(파서가 ASC/DESC를 버림) — 항상 `'asc'`로 둔다.
  *
- * 관계의 `cardinality`·`name`도 `DdlImportRelationship`에 없는 필드다 — DDL의 FK는 카디널리티를
- * 명시하지 않으므로(1:1 UNIQUE 여부까지 추적하지 않음) 기존 관례(`createRelationshipFromParentPk`의
- * 기본값)를 따라 `cardinality: '1:N'`, `name: null`로 둔다.
+ * 관계의 `cardinality`·`name`은 계획이 정한다 — DDL 경로에서는 계획이 `'1:N'`·`null`을 주고,
+ * DBML 경로에서는 `-` 연산자와 `Ref` 이름이 그대로 실려 온다.
+ *
+ * 그룹도 계획이 정한다(DBML의 `TableGroup`). `existingId`가 있으면 그 그룹에 넣고 **색을
+ * 덮어쓰지 않는다** — 가져오는 파일이 프로젝트의 기존 색 결정을 바꿔선 안 된다.
+ * `groupPosition`은 `null`로 둔다 — 그룹 뷰 좌표는 그 뷰를 처음 열 때 계산된다.
  */
 export function applyDdlImport(
   model: ProjectModel, plan: DdlImportPlan, newId: () => string,
@@ -32,6 +36,21 @@ export function applyDdlImport(
   const columns = { ...model.columns }
   const indexes = { ...model.indexes }
   const relationships = { ...model.relationships }
+  const tableGroups = { ...model.tableGroups }
+
+  // 그룹을 먼저 만든다(또는 기존 것을 쓴다) — 테이블 생성부가 groupId를 꽂아야 한다.
+  const groupIdByTable = new Map<string, string>()
+  const usedColors = Object.values(model.tableGroups).map((g) => g.color)
+  for (const g of plan.groups) {
+    let groupId = g.existingId
+    if (groupId === null) {
+      groupId = newId()
+      const color = g.color ?? nextGroupColor(usedColors)
+      usedColors.push(color)
+      tableGroups[groupId] = { id: groupId, name: g.name, color, comment: null }
+    }
+    for (const name of g.tablePhysicalNames) groupIdByTable.set(name, groupId)
+  }
 
   // 자동 배치 — 렌더 전이라 실측 크기가 없으므로 컬럼 수 기반 높이 추정을 쓴다.
   const layoutNodes = plan.tables.map((t) => ({
@@ -56,9 +75,9 @@ export function applyDdlImport(
     const pos = layout.get(t.physicalName)
     const table: Table = {
       id, logicalName: t.logicalName, physicalName: t.physicalName, comment: t.comment,
-      groupId: null,
+      groupId: groupIdByTable.get(t.physicalName) ?? null,
       position: pos ? { x: pos.x, y: pos.y + offsetY } : { x: 0, y: offsetY },
-      groupPosition: null, custom: {},
+      groupPosition: null, custom: t.custom,
     }
     tables[id] = table
   }
@@ -71,7 +90,7 @@ export function applyDdlImport(
       const column: Column = {
         id, tableId, logicalName: c.logicalName, physicalName: c.physicalName,
         type: c.type, isPk: c.isPk, autoIncrement: c.autoIncrement, nullable: c.nullable,
-        defaultValue: c.defaultValue, order, comment: c.comment, domainId: null, custom: {},
+        defaultValue: c.defaultValue, order, comment: c.comment, domainId: null, custom: c.custom,
       }
       columns[id] = column
     })
@@ -102,12 +121,12 @@ export function applyDdlImport(
         childColumnId: columnIdByKey.get(`${r.childPhysicalName}.${p.child}`)!,
         parentColumnId: columnIdByKey.get(`${r.parentPhysicalName}.${p.parent}`)!,
       })),
-      cardinality: '1:N',
+      cardinality: r.cardinality,
       identifying: r.identifying,
-      name: null,
+      name: r.name,
     }
     relationships[id] = relationship
   }
 
-  return { ...model, tables, columns, indexes, relationships }
+  return { ...model, tables, columns, indexes, relationships, tableGroups }
 }
