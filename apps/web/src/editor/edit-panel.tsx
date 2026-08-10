@@ -4,7 +4,7 @@ import {
   computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
   type Column, type CustomField, type Domain, type Warning,
 } from '@erdd/core'
-import { useEditorStore } from './store.js'
+import { primaryTableId, useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { updateTable } from './model-edits.js'
@@ -46,7 +46,7 @@ function CommitInput(props: {
 export function EditPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
-  const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const selectedTableId = useEditorStore(primaryTableId)
   const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)

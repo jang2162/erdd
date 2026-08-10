@@ -27,15 +27,17 @@ export function wsUrl(projectId: string, href: string): string {
 export type SelectionImpact = 'deleted' | 'changed' | null
 
 type SelectionSource = {
-  selectedTableId: string | null
+  selectedTableIds: readonly string[]
   selectedRelationshipId: string | null
   selectedNoteId: string | null
   selectedGroupId: string | null
 }
 
-/** 스토어 선택 상태를 프로토콜의 selections 배열로 좁힌다. */
+/** 스토어 선택 상태를 프로토콜의 selections 배열로 좁힌다. 테이블은 여러 건일 수 있다. */
 function selectionsOf(s: SelectionSource): PeerSelection[] {
-  if (s.selectedTableId !== null) return [{ kind: 'table', id: s.selectedTableId }]
+  if (s.selectedTableIds.length > 0) {
+    return s.selectedTableIds.map((id) => ({ kind: 'table' as const, id }))
+  }
   if (s.selectedRelationshipId !== null) return [{ kind: 'relationship', id: s.selectedRelationshipId }]
   if (s.selectedNoteId !== null) return [{ kind: 'note', id: s.selectedNoteId }]
   if (s.selectedGroupId !== null) return [{ kind: 'group', id: s.selectedGroupId }]
@@ -50,24 +52,27 @@ function selectionsOf(s: SelectionSource): PeerSelection[] {
 export function selectionImpact(
   model: ProjectModel,
   ops: readonly Op[],
-  selected: { tableId: string | null; relationshipId: string | null; noteId: string | null },
+  selected: { tableIds: readonly string[]; relationshipId: string | null; noteId: string | null },
 ): SelectionImpact {
-  const target = selected.tableId ?? selected.relationshipId ?? selected.noteId
-  if (target === null) return null
+  const tableIds = new Set(selected.tableIds)
+  const targets = new Set<string>(tableIds)
+  if (selected.relationshipId !== null) targets.add(selected.relationshipId)
+  if (selected.noteId !== null) targets.add(selected.noteId)
+  if (targets.size === 0) return null
   let impact: SelectionImpact = null
   for (const op of ops) {
-    if (op.entityId === target) {
+    if (targets.has(op.entityId)) {
       if (op.action === 'delete') return 'deleted'
       impact = 'changed'
       continue
     }
-    if (selected.tableId !== null && (op.entity === 'column' || op.entity === 'index')) {
+    if (tableIds.size > 0 && (op.entity === 'column' || op.entity === 'index')) {
       const owner = op.action === 'create'
         ? (op.data as { tableId?: unknown }).tableId
         : op.entity === 'column'
           ? model.columns[op.entityId]?.tableId
           : model.indexes[op.entityId]?.tableId
-      if (owner === selected.tableId) impact = 'changed'
+      if (typeof owner === 'string' && tableIds.has(owner)) impact = 'changed'
     }
   }
   return impact
@@ -121,7 +126,7 @@ export function useRealtime(projectId: string): void {
         return
       }
       const impact = selectionImpact(s.model, msg.ops, {
-        tableId: s.selectedTableId,
+        tableIds: s.selectedTableIds,
         relationshipId: s.selectedRelationshipId,
         noteId: s.selectedNoteId,
       })

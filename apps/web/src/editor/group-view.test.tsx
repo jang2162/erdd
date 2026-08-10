@@ -17,7 +17,7 @@ describe('store activeGroupView', () => {
     act(() => { useEditorStore.getState().select('T'); useEditorStore.getState().enterGroupView('G1') })
     const s = useEditorStore.getState()
     expect(s.activeGroupView).toBe('G1')
-    expect(s.selectedTableId).toBeNull()
+    expect(s.selectedTableIds).toEqual([])
   })
   it('exitGroupView는 전체 뷰로 되돌린다', () => {
     act(() => { useEditorStore.getState().enterGroupView('G1'); useEditorStore.getState().exitGroupView() })

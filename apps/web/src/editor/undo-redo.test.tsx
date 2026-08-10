@@ -29,7 +29,7 @@ describe('store 선택·히스토리', () => {
     const s = useEditorStore.getState()
     act(() => { s.selectRelationship('R'); s.select('T') })
     const st = useEditorStore.getState()
-    expect(st.selectedTableId).toBe('T')
+    expect(st.selectedTableIds).toEqual(['T'])
     expect(st.selectedRelationshipId).toBeNull()
   })
 
@@ -41,7 +41,7 @@ describe('store 선택·히스토리', () => {
     })
     const st = useEditorStore.getState()
     expect(st.selectedRelationshipId).toBe('R')
-    expect(st.selectedTableId).toBeNull()
+    expect(st.selectedTableIds).toEqual([])
     expect(st.selectedNoteId).toBeNull()
   })
 
@@ -53,7 +53,7 @@ describe('store 선택·히스토리', () => {
     })
     const st = useEditorStore.getState()
     expect(st.selectedNoteId).toBe('N')
-    expect(st.selectedTableId).toBeNull()
+    expect(st.selectedTableIds).toEqual([])
     expect(st.selectedRelationshipId).toBeNull()
   })
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { createGroup } from '@erdd/core'
-import { useEditorStore } from './store.js'
+import { primaryTableId, useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { nextGroupColor } from './group-palette.js'
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 export function TableTree({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
-  const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const selectedTableId = useEditorStore(primaryTableId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const focus = useEditorStore((s) => s.focus)

@@ -74,7 +74,7 @@ describe('SnapshotDiff', () => {
     const onNavigate = vi.fn()
     renderDiff(onNavigate)
     await userEvent.click(await screen.findByText('MBR.MBR_NM'))
-    await waitFor(() => expect(useEditorStore.getState().selectedTableId).toBe('t2'))
+    await waitFor(() => expect(useEditorStore.getState().selectedTableIds).toEqual(['t2']))
     expect(onNavigate).toHaveBeenCalled()
   })
 
@@ -91,7 +91,7 @@ describe('SnapshotDiff', () => {
     const item = await screen.findByText('MBR.MBR_NM')
     expect(item.closest('button')).not.toBeNull()
     await userEvent.click(item)
-    await waitFor(() => expect(useEditorStore.getState().selectedTableId).toBe('t2'))
+    await waitFor(() => expect(useEditorStore.getState().selectedTableIds).toEqual(['t2']))
     expect(onNavigate).toHaveBeenCalled()
   })
 

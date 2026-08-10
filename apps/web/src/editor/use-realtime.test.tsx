@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import type { Op, ProjectModel, ServerMessage } from '@erdd/core'
 import { createEmptyModel } from '@erdd/core'
+import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
@@ -86,7 +87,7 @@ describe('wsUrl', () => {
 
 describe('selectionImpact', () => {
   const model = modelWith(NOTE_A)
-  const none = { tableId: null, relationshipId: null, noteId: null }
+  const none = { tableIds: [] as string[], relationshipId: null, noteId: null }
 
   it('선택이 없으면 null', () => {
     expect(selectionImpact(model, [noteOp(NOTE_B, 'x')], none)).toBeNull()
@@ -118,7 +119,7 @@ describe('selectionImpact', () => {
       action: 'update', entity: 'column', entityId: NOTE_B,
       changes: { logicalName: { from: '이름', to: '성명' } },
     }
-    expect(selectionImpact(m, [op], { ...none, tableId: NOTE_A })).toBe('changed')
+    expect(selectionImpact(m, [op], { ...none, tableIds: [NOTE_A] })).toBe('changed')
   })
 
   it('다른 테이블의 컬럼이 바뀌면 null(오탐 방지)', () => {
@@ -133,7 +134,26 @@ describe('selectionImpact', () => {
       action: 'update', entity: 'column', entityId: NOTE_B,
       changes: { logicalName: { from: '이름', to: '성명' } },
     }
-    expect(selectionImpact(m, [op], { ...none, tableId: NOTE_A })).toBeNull()
+    expect(selectionImpact(m, [op], { ...none, tableIds: [NOTE_A] })).toBeNull()
+  })
+
+  it('선택이 여러 건이면 그중 하나만 걸려도 changed다', () => {
+    const m = buildSampleModel()
+    const op: Op = {
+      action: 'update', entity: 'table', entityId: 't2',
+      changes: { logicalName: { from: '회원', to: 'X' } },
+    }
+    expect(selectionImpact(m, [op], { ...none, tableIds: ['t1', 't2'] })).toBe('changed')
+  })
+
+  it('선택이 여러 건이어도 삭제가 수정을 이긴다', () => {
+    const m = buildSampleModel()
+    const upd: Op = {
+      action: 'update', entity: 'table', entityId: 't1',
+      changes: { logicalName: { from: '회원등급', to: 'X' } },
+    }
+    const del: Op = { action: 'delete', entity: 'table', entityId: 't2', before: null }
+    expect(selectionImpact(m, [upd, del], { ...none, tableIds: ['t1', 't2'] })).toBe('deleted')
   })
 })
 

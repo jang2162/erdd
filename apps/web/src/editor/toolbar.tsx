@@ -2,7 +2,7 @@ import { FileText, LayoutGrid, Plus, Redo2, Trash2, Undo2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { setTableGroup } from '@erdd/core'
-import { useEditorStore } from './store.js'
+import { primaryTableId, useEditorStore } from './store.js'
 import { useModelMutation, useUndoRedo } from './use-model.js'
 import { newId } from './uid.js'
 import { addTable, moveTable, moveTableGroupPosition, removeTable } from './model-edits.js'
@@ -16,7 +16,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
   const mutate = useModelMutation(projectId)
   const { undo, redo, canUndo, canRedo } = useUndoRedo(projectId)
   const model = useEditorStore((s) => s.model)
-  const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const selectedTableId = useEditorStore(primaryTableId)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const select = useEditorStore((s) => s.select)
   const selectNote = useEditorStore((s) => s.selectNote)

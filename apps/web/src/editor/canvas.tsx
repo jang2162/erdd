@@ -5,7 +5,7 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import { toast } from 'sonner'
-import { useEditorStore } from './store.js'
+import { primaryTableId, useEditorStore } from './store.js'
 import { buildNodes } from './nodes.js'
 import { buildPeerMarks } from './peer-marks.js'
 import { buildEdges, planConnection } from './edges.js'
@@ -30,7 +30,7 @@ const groupIdOf = (nodeId: string) => nodeId.slice('group:'.length)
 export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserId: string }) {
   const model = useEditorStore((s) => s.model)
   const viewMode = useEditorStore((s) => s.viewMode)
-  const selectedId = useEditorStore((s) => s.selectedTableId)
+  const selectedId = useEditorStore(primaryTableId)
   const selectedRelId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)

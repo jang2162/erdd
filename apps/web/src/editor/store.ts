@@ -19,7 +19,8 @@ type EditorState = {
   /** 프로젝트를 관리할 수 있는가(스냅샷 복원·삭제). 로드 전 기본값 false. */
   canManage: boolean
   viewMode: ViewMode
-  selectedTableId: string | null
+  /** 선택된 테이블들. **마지막 원소가 주 선택**(상세 패널·포커스 대상)이다. */
+  selectedTableIds: string[]
   selectedRelationshipId: string | null
   selectedNoteId: string | null
   selectedGroupId: string | null
@@ -38,6 +39,8 @@ type EditorState = {
   resync: (model: ProjectModel, seq: number) => void
   setViewMode: (viewMode: ViewMode) => void
   select: (tableId: string | null) => void
+  toggleTable: (tableId: string) => void
+  selectTables: (tableIds: readonly string[]) => void
   selectRelationship: (id: string | null) => void
   selectNote: (id: string | null) => void
   selectGroup: (id: string | null) => void
@@ -51,8 +54,14 @@ type EditorState = {
   reset: () => void
 }
 
+/** 주 선택 = 마지막으로 고른 테이블. 이 규칙이 흩어지지 않게 셀렉터를 여기서만 정의한다. */
+export const primaryTableId = (s: EditorState): string | null => s.selectedTableIds.at(-1) ?? null
+
+/** 모든 "비운 상태"가 같은 배열 인스턴스를 공유한다 — 불필요한 리렌더를 막는다. 절대 변형하지 마라. */
+const NO_TABLES: string[] = []
+
 const CLEARED_SELECTION = {
-  selectedTableId: null, selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
+  selectedTableIds: NO_TABLES, selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -65,7 +74,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   canEdit: false,
   canManage: false,
   viewMode: 'physical',
-  selectedTableId: null,
+  selectedTableIds: NO_TABLES,
   selectedRelationshipId: null,
   selectedNoteId: null,
   selectedGroupId: null,
@@ -90,20 +99,34 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   resync: (model, seq) => set((s) => {
     const keep = (id: string | null, rec: Record<string, unknown>) =>
       (id !== null && Object.hasOwn(rec, id) ? id : null)
+    // 전부 살아남았으면 **원래 배열 참조를 그대로 반환**한다(리렌더 억제).
+    const keptTables = s.selectedTableIds.filter((id) => Object.hasOwn(model.tables, id))
     return {
       model, seq, loaded: true, undoStack: [], redoStack: [],
-      selectedTableId: keep(s.selectedTableId, model.tables),
+      selectedTableIds: keptTables.length === s.selectedTableIds.length ? s.selectedTableIds : keptTables,
       selectedRelationshipId: keep(s.selectedRelationshipId, model.relationships),
       selectedNoteId: keep(s.selectedNoteId, model.notes),
       selectedGroupId: keep(s.selectedGroupId, model.tableGroups),
     }
   }),
   setViewMode: (viewMode) => set({ viewMode }),
-  select: (selectedTableId) => set({ ...CLEARED_SELECTION, selectedTableId }),
+  select: (tableId) => set({ ...CLEARED_SELECTION, selectedTableIds: tableId === null ? NO_TABLES : [tableId] }),
+  toggleTable: (tableId) => set((s) => {
+    const next = s.selectedTableIds.includes(tableId)
+      ? s.selectedTableIds.filter((id) => id !== tableId)
+      : [...s.selectedTableIds, tableId]
+    return { ...CLEARED_SELECTION, selectedTableIds: next.length === 0 ? NO_TABLES : next }
+  }),
+  // 빈 배열은 다른 종류 선택을 지우지 않는다 — 캔버스에서 메모를 클릭하면
+  // ReactFlow가 테이블 해제로 빈 배열을 쏘는데, 그것이 같은 클릭의 selectNote를 지우면 안 된다.
+  selectTables: (tableIds) => set((s) =>
+    tableIds.length === 0
+      ? (s.selectedTableIds.length === 0 ? {} : { selectedTableIds: NO_TABLES })
+      : { ...CLEARED_SELECTION, selectedTableIds: [...tableIds] }),
   selectRelationship: (selectedRelationshipId) => set({ ...CLEARED_SELECTION, selectedRelationshipId }),
   selectNote: (selectedNoteId) => set({ ...CLEARED_SELECTION, selectedNoteId }),
   selectGroup: (selectedGroupId) => set({ ...CLEARED_SELECTION, selectedGroupId }),
-  focus: (id) => set({ ...CLEARED_SELECTION, focusTableId: id, selectedTableId: id }),
+  focus: (id) => set({ ...CLEARED_SELECTION, focusTableId: id, selectedTableIds: [id] }),
   consumeFocus: () => set({ focusTableId: null }),
   enterGroupView: (activeGroupView) => set({ ...CLEARED_SELECTION, activeGroupView }),
   exitGroupView: () => set({ ...CLEARED_SELECTION, activeGroupView: null }),
