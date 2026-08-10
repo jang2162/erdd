@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -87,5 +87,59 @@ describe('Toolbar', () => {
 
     expect(screen.queryByText('읽기 전용')).toBeNull()
     expect(screen.getByRole('button', { name: /테이블 추가/ })).toBeInTheDocument()
+  })
+
+  it('다중 선택에서 삭제를 누르면 확인 다이얼로그가 뜬다 — 바로 지우지 않는다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderToolbar()
+
+    await userEvent.click(screen.getByRole('button', { name: '삭제' }))
+    expect(screen.getByText(/테이블 2개와 관계 1개가 삭제됩니다/)).toBeInTheDocument()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('다중 선택에서 확인하면 주 선택 하나가 아니라 선택 전체가 지워진다', async () => {
+    // 화면에 2개가 하이라이트된 상태에서 툴바 버튼만 주 선택 하나를 지우면
+    // 사용자가 무엇이 지워질지 예측할 수 없다(설계 7절).
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderToolbar()
+
+    await userEvent.click(screen.getByRole('button', { name: '삭제' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제' }))
+    await waitFor(() => {
+      expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(0)
+    })
+  })
+
+  it('단일 선택 삭제는 다이얼로그 없이 즉시 지우고 선택이 비워진다', async () => {
+    // 선택 정리는 툴바가 아니라 useSubmit의 pruneSelection이 한다 — 모든 로컬 쓰기 경로가
+    // 같은 규칙을 타야 하기 때문이다(툴바만 통째로 비우면 다중 선택에서 남은 것까지 풀린다).
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t2'])
+    renderToolbar()
+
+    await userEvent.click(screen.getByRole('button', { name: '삭제' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t2']).toBeUndefined()
+    })
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
+  })
+
+  it('선택이 없으면 삭제 버튼이 비활성이다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderToolbar()
+
+    expect(screen.getByRole('button', { name: '삭제' })).toBeDisabled()
   })
 })

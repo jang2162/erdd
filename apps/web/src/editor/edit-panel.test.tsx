@@ -209,4 +209,26 @@ describe('EditPanel', () => {
     expect(screen.getByRole('checkbox', { name: 'PK' })).toBeDisabled()
     expect(screen.getByRole('checkbox', { name: 'NN' })).toBeDisabled()
   })
+
+  it('2개 이상 선택하면 일괄 작업 패널로 전환된다', () => {
+    // 상세 편집은 다중 선택에서 의미가 모호하다. 주 선택 하나를 계속 편집하게 두면
+    // 화면에 2개가 하이라이트된 채 한 개만 바뀌어 무엇이 편집되는지 알 수 없다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    expect(screen.getByText('2개 테이블 선택됨')).toBeInTheDocument()
+    expect(screen.queryByLabelText('테이블 물리명')).toBeNull()
+  })
+
+  it('1개만 선택하면 기존 상세 편집 패널 그대로다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t2'])
+    renderPanel()
+
+    expect(screen.getByLabelText('테이블 물리명')).toBeInTheDocument()
+    expect(screen.queryByText(/테이블 선택됨/)).toBeNull()
+  })
 })

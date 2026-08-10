@@ -1,0 +1,211 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createTRPCClient, httpBatchLink } from '@trpc/client'
+import { MAX_OPS_PER_MUTATION, type ProjectModel } from '@erdd/core'
+import { TRPCProvider } from '@/lib/trpc'
+import type { AppRouter } from '@erdd/server/src/router.js'
+import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { grantEditPermission } from '@/testing/editor-store'
+import { useEditorStore } from './store.js'
+import { BulkPanel, countCascade } from './bulk-panel.js'
+
+const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000dd'
+
+function renderPanel() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
+  const w = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+    </QueryClientProvider>
+  )
+  render(<BulkPanel projectId={PROJECT_ID} />, { wrapper: w })
+}
+
+/** 픽스처(t1·t2가 g1 소속)에 빈 그룹 g2를 더한다. */
+function modelWithEmptyG2(): ProjectModel {
+  const m = buildSampleModel()
+  m.tableGroups['g2'] = { id: 'g2', name: '주문영역', color: '#000000', comment: null }
+  return m
+}
+
+/**
+ * g2에 **기존 멤버 t3**(컬럼 0개, 위치 (1000,500))를 둔다. planGroupMove가 기준으로 삼을
+ * bbox가 생기므로 좌표 재배치가 실제로 일어난다 — 빈 그룹으로 옮기면 좌표를 건드리지 않는다.
+ */
+function modelWithAnchoredG2(): ProjectModel {
+  const m = modelWithEmptyG2()
+  m.tables['t3'] = {
+    id: 't3', logicalName: '주문', physicalName: 'ORD', comment: null,
+    groupId: 'g2', position: { x: 1000, y: 500 }, groupPosition: null, custom: {},
+  }
+  return m
+}
+
+/** 삭제 op 총수가 상한을 넘는 모델. 테이블 수는 그대로 두고 컬럼만 붙인다. */
+function modelOverOpCap(): ProjectModel {
+  const m = buildSampleModel()
+  for (let i = 0; i < MAX_OPS_PER_MUTATION; i++) {
+    const id = `bulk-c${i}`
+    m.columns[id] = {
+      id, tableId: 't1', logicalName: `컬럼${i}`, physicalName: `COL_${i}`,
+      type: 'VARCHAR(10)', isPk: false, autoIncrement: false, nullable: true,
+      defaultValue: null, order: i + 1, comment: null, domainId: null, custom: {},
+    }
+  }
+  return m
+}
+
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+
+describe('countCascade', () => {
+  it('테이블과 함께 사라지는 컬럼·인덱스·관계를 센다', () => {
+    // buildSampleModel: t2(MBR)는 컬럼 3개(c2·c3·c4) · 인덱스 1개(i1) · 관계 1개(r1, t1↔t2)
+    const m = buildSampleModel()
+    expect(countCascade(m, ['t2'])).toEqual({ tables: 1, columns: 3, indexes: 1, relationships: 1 })
+  })
+
+  it('두 테이블이 같은 관계의 양끝이어도 관계는 한 번만 센다', () => {
+    const m = buildSampleModel()
+    expect(countCascade(m, ['t1', 't2']).relationships).toBe(1)
+  })
+
+  it('모델에 없는 id는 세지 않는다', () => {
+    // 선택은 실시간 삭제 수신과 경합할 수 있다. 사라진 id가 섞여도 안내 문구가 부풀지 않아야 한다.
+    const m = buildSampleModel()
+    expect(countCascade(m, ['t2', '없는id']).tables).toBe(1)
+  })
+})
+
+describe('BulkPanel', () => {
+  it('선택 개수와 목록을 보여준다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+    expect(screen.getByText('2개 테이블 선택됨')).toBeInTheDocument()
+    expect(screen.getByText('MBR')).toBeInTheDocument()
+    expect(screen.getByText('MBR_GRD')).toBeInTheDocument()
+  })
+
+  it('그룹 드롭다운으로 옮기면 op 배치 한 건으로 나간다(undo 1회)', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().setLoaded(modelWithEmptyG2(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    await userEvent.selectOptions(screen.getByLabelText('선택 테이블의 그룹'), 'g2')
+    await waitFor(() => {
+      const tables = useEditorStore.getState().model.tables
+      expect(tables['t1']?.groupId).toBe('g2')
+      expect(tables['t2']?.groupId).toBe('g2')
+    })
+    expect(calls).toHaveLength(1)   // 단일 뮤테이션 = Revision 1건
+    // 그룹 배정과 좌표 재배치가 한 producer 라 cmd+Z 한 번으로 전부 원복된다.
+    await waitFor(() => expect(useEditorStore.getState().undoStack).toHaveLength(1))
+  })
+
+  it('그룹을 옮기면 대상 그룹 오른쪽으로 상대 배치를 유지한 채 좌표를 옮긴다', async () => {
+    // 기준은 **그룹 변경 전** 모델이다. 변경 후 모델을 넘기면 이동 대상 t1·t2가 이미 g2 멤버라
+    // 자기 자신이 기준 bbox에 섞여 dy가 0이 된다(앵커 t3의 y=500이 반영되지 않는다).
+    //   앵커 t3(1000,500, 컬럼 0개) bbox: maxX = 1000+260 = 1260 · minY = 500
+    //   이동 집합 t1(0,0)·t2(300,0) bbox: minX = 0 · minY = 0
+    //   dx = 1260 + GAP(60) - 0 = 1320 · dy = 500 - 0 = 500
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(modelWithAnchoredG2(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    await userEvent.selectOptions(screen.getByLabelText('선택 테이블의 그룹'), 'g2')
+    await waitFor(() => {
+      const tables = useEditorStore.getState().model.tables
+      expect(tables['t1']?.position).toEqual({ x: 1320, y: 500 })
+      expect(tables['t2']?.position).toEqual({ x: 1620, y: 500 })
+    })
+    // 앵커는 그대로다 — 옮긴 것만 움직인다.
+    expect(useEditorStore.getState().model.tables['t3']?.position).toEqual({ x: 1000, y: 500 })
+  })
+
+  it('그룹을 옮기면 그룹 뷰 좌표를 비운다 — 이전 그룹의 좌표는 새 그룹에서 의미가 없다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    const model = modelWithEmptyG2()
+    // 픽스처 사실: t1.groupPosition = {x:10,y:10}, t2.groupPosition = {x:310,y:10}
+    expect(model.tables['t1']?.groupPosition).not.toBeNull()
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    await userEvent.selectOptions(screen.getByLabelText('선택 테이블의 그룹'), 'g2')
+    await waitFor(() => {
+      const tables = useEditorStore.getState().model.tables
+      expect(tables['t1']?.groupPosition).toBeNull()
+      expect(tables['t2']?.groupPosition).toBeNull()
+    })
+  })
+
+  it('일괄 삭제는 확인 다이얼로그를 거친다 — 취소하면 아무 op도 나가지 않는다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: '선택 테이블 삭제' }))
+    expect(screen.getByText(/테이블 2개와 관계 1개가 삭제됩니다/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '취소' }))
+    expect(calls).toHaveLength(0)
+    expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(2)
+  })
+
+  it('확인하면 선택한 테이블이 한 번에 지워지고 선택에서도 빠진다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: '선택 테이블 삭제' }))
+    await userEvent.click(screen.getByRole('button', { name: '삭제' }))
+    await waitFor(() => {
+      expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(0)
+    })
+    expect(calls).toHaveLength(1)   // 선택 수만큼 나눠 보내지 않는다
+    // 선택 정리는 이 컴포넌트가 아니라 useSubmit의 pruneSelection이 한다(경로가 한 벌이다).
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
+  })
+
+  it('읽기 전용이면 이동·삭제 컨트롤이 비활성이다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer.
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+    expect(screen.getByLabelText('선택 테이블의 그룹')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '선택 테이블 삭제' })).toBeDisabled()
+  })
+
+  it('삭제 op가 상한을 넘으면 확인 다이얼로그가 삭제를 막고 이유를 알린다', async () => {
+    // 낙관 반영 후 서버가 거절해 되돌려지는 것을 사용자가 겪지 않도록 제출 전에 막는다.
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().setLoaded(modelOverOpCap(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: '선택 테이블 삭제' }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText(/한 번에 지우기에 너무 많습니다/)).toBeInTheDocument()
+    expect(dialog.getByRole('button', { name: '삭제' })).toBeDisabled()
+    expect(calls).toHaveLength(0)
+  })
+})

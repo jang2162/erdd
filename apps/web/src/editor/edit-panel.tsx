@@ -13,6 +13,7 @@ import {
 } from './column-edits.js'
 import { createTerm } from './dict-edits.js'
 import { setCustomValue } from './custom-field-edits.js'
+import { BulkPanel } from './bulk-panel.js'
 import { RelationshipPanel } from './relationship-panel.js'
 import { NotePanel } from './note-panel.js'
 import { GroupPanel } from './group-panel.js'
@@ -47,6 +48,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
   const selectedTableId = useEditorStore(primaryTableId)
+  const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
   const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
@@ -64,6 +66,9 @@ export function EditPanel({ projectId }: { projectId: string }) {
   if (selectedNoteId) return <NotePanel projectId={projectId} />
 
   if (selectedGroupId) return <GroupPanel projectId={projectId} />
+
+  // 상세 편집(컬럼 목록·논리명·커스텀 항목)은 다중 선택에서 의미가 모호하다 — 일괄 작업으로 바꾼다.
+  if (selectedTableIds.length >= 2) return <BulkPanel projectId={projectId} />
 
   if (!table) {
     return (
