@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { generateDdl, ddlWarnings } from './ddl.js'
 import { createEmptyModel, type ProjectModel, type Table, type Column } from './model.js'
+import { buildSampleModel } from './testing/fixtures.js'
 
 function tbl(id: string, physicalName: string, over: Partial<Table> = {}): Table {
   return { id, logicalName: physicalName, physicalName, comment: null, groupId: null,
@@ -156,5 +157,54 @@ describe('generateDdl — FK·인덱스·코멘트', () => {
     const ddl = generateDdl(m, 'postgresql')
     expect(ddl).toContain('ADD CONSTRAINT FK_ORDERS_USERS FOREIGN KEY (USER_ID)')
     expect(ddl).toContain('ADD CONSTRAINT FK_ORDERS_USERS_2 FOREIGN KEY (USER_ID2)')
+  })
+})
+
+describe('빈 물리명', () => {
+  it('물리명이 빈 테이블은 DDL에서 빠지고 경고가 나온다', () => {
+    const m = buildSampleModel()
+    m.tables['t1']!.physicalName = ''
+    const sql = generateDdl(m, 'postgresql')
+    expect(sql).not.toContain('CREATE TABLE ""')
+    // t1의 유일한 컬럼은 GRD_CD인데, t2의 FK 컬럼(c4)도 물리명이 같은 GRD_CD라서
+    // 'GRD_CD' 부분 문자열 검사로는 t1이 빠졌는지 구분할 수 없다(정정: 원래 브리프는
+    // not.toContain('GRD_CD')였으나 buildSampleModel 픽스처와 충돌해 t2가 정상 포함돼도
+    // 항상 실패한다). t1의 CREATE TABLE 블록 자체가 없는지로 대체 검증한다.
+    expect(sql).not.toContain('CREATE TABLE MBR_GRD (')
+    expect(sql).toContain('MBR')                  // t2는 그대로 나온다
+    const warns = ddlWarnings(m, 'postgresql')
+    expect(warns.some((w) => w.includes('물리명'))).toBe(true)
+  })
+
+  it('물리명이 빈 컬럼이 있으면 그 테이블이 통째로 빠진다', () => {
+    const m = buildSampleModel()
+    m.columns['c3']!.physicalName = ''            // c3는 t2의 컬럼
+    const sql = generateDdl(m, 'postgresql')
+    // 정정: MBR은 예약어도 아니고 SAFE 패턴(영문자/숫자/밑줄)이라 quoteIdentifier가
+    // 인용하지 않는다(identifier.ts:34) — 원래 브리프의 'CREATE TABLE "MBR"'(따옴표 포함)는
+    // postgresql 출력에 결코 나타나지 않아 구현 여부와 무관하게 항상 통과하는 무의미한 단언이었다
+    // (되돌리기 실증으로 확인: 구현 삭제 상태에서도 이 단언은 통과했다). 실제 출력 형식(따옴표 없음)에
+    // 맞춰 구분력 있는 단언으로 정정한다.
+    expect(sql).not.toContain('CREATE TABLE MBR (')
+    expect(sql).toContain('MBR_GRD')              // t1은 그대로
+    const warns = ddlWarnings(m, 'postgresql')
+    expect(warns.some((w) => w.includes('물리명'))).toBe(true)
+  })
+
+  it('빠진 테이블을 참조하는 FK도 함께 빠진다', () => {
+    const m = buildSampleModel()
+    m.tables['t1']!.physicalName = ''             // r1의 부모
+    const sql = generateDdl(m, 'postgresql')
+    expect(sql).not.toContain('FOREIGN KEY')
+  })
+
+  // ⚠️ 없으면 "항상 제외한다"는 구현도 위 셋을 통과한다.
+  it('물리명이 모두 차 있으면 아무것도 빠지지 않는다', () => {
+    const m = buildSampleModel()
+    const sql = generateDdl(m, 'postgresql')
+    expect(sql).toContain('MBR_GRD')
+    expect(sql).toContain('FOREIGN KEY')
+    const warns = ddlWarnings(m, 'postgresql')
+    expect(warns.some((w) => w.includes('물리명'))).toBe(false)
   })
 })
