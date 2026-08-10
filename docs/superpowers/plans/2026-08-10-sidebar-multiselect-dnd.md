@@ -657,11 +657,15 @@ const CLEARED_SELECTION = {
   resync: (model, seq) => set((s) => {
     const keep = (id: string | null, rec: Record<string, unknown>) =>
       (id !== null && Object.hasOwn(rec, id) ? id : null)
-    // 전부 살아남았으면 **원래 배열 참조를 그대로 반환**한다(리렌더 억제).
+    // 전부 살아남았으면 **원래 배열 참조를 그대로** 반환한다(리렌더 억제).
+    // 전부 사라졌으면 새 빈 배열이 아니라 **빈 선택의 공유 참조**(NO_TABLES)를 쓴다 —
+    // "모든 빈 선택은 같은 인스턴스"라는 불변식이 이 경로에서만 깨지면 안 된다.
     const keptTables = s.selectedTableIds.filter((id) => Object.hasOwn(model.tables, id))
     return {
       model, seq, loaded: true, undoStack: [], redoStack: [],
-      selectedTableIds: keptTables.length === s.selectedTableIds.length ? s.selectedTableIds : keptTables,
+      selectedTableIds: keptTables.length === s.selectedTableIds.length
+        ? s.selectedTableIds
+        : keptTables.length === 0 ? NO_TABLES : keptTables,
       selectedRelationshipId: keep(s.selectedRelationshipId, model.relationships),
       selectedNoteId: keep(s.selectedNoteId, model.notes),
       selectedGroupId: keep(s.selectedGroupId, model.tableGroups),
@@ -821,8 +825,27 @@ Expected: PASS · EXIT=0. 동작이 안 바뀌었으므로 **기존 테스트는
 
 - [ ] **Step 8: 구분력을 확인한다**
 
-`resync`의 참조 유지 분기를 `selectedTableIds: keptTables`로 되돌려(항상 새 배열) 그 테스트가 실제로
-실패하는지 보고 복구한다.
+두 가지를 실증한다. **되돌리기는 스크래치에 백업해 둔 사본을 복사해서 하라** — 커밋 전 변경에
+`git checkout -- <경로>`를 쓰면 작업이 통째로 날아간다. 복구 후 `diff`로 동일함을 확인한다.
+
+(a) `resync`의 테이블 갈래를 `selectedTableIds: keptTables` 한 줄로 되돌린다(항상 새 배열이 되고,
+빈 선택도 공유 참조가 아니게 된다). resync의 참조 테스트 **두 건이 함께 실패**해야 한다 — 전부
+살아남는 경우(`toBe(before)`)와 전부 사라지는 경우(`toBe(빈 선택의 공유 참조)`)다. 한쪽만 실패하면
+멈추고 보고하라.
+
+전부 사라지는 쪽은 이렇게 나온다(값이 아니라 **참조**가 다르다는 실패라 메시지가 헷갈린다):
+
+```
+AssertionError: expected [] to be [] // Object.is equality
+```
+
+(b) `primaryTableId`에 변형 호출을 임시로 끼워 넣어(`s.selectedTableIds.sort().at(-1)`) **web
+typecheck가 실제로 막는지** 본다. `readonly string[]`가 아니면 이것이 EXIT=0으로 통과한다.
+
+```bash
+pnpm --filter @erdd/web exec tsc --noEmit; echo "EXIT=$?"
+```
+Expected: `EXIT=1` 과 `error TS2339: Property 'sort' does not exist on type 'readonly string[]'`.
 
 - [ ] **Step 9: 커밋**
 
