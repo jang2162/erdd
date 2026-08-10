@@ -51,7 +51,9 @@ export function normalizeHexColor(c: string): string {
 /** 모델의 defaultValue 원문 → DBML 설정 값 (§4.2). 역은 dbml-parse 의 dbmlDefaultToRaw. */
 export function rawDefaultToDbml(raw: string): string {
   const v = raw.trim()
-  if (/^'.*'$/s.test(v)) return quoteDbmlString(v.slice(1, -1).replace(/''/g, "'"))
+  // 양끝이 따옴표라는 것만으로는 문자열 리터럴이 아니다 — `'a' || 'b'` 같은 표현식도 양끝이
+  // 따옴표다. 안쪽에 홀따옴표가 없을 때만(SQL 이스케이프 `''` 는 허용) 리터럴로 본다.
+  if (/^'(?:[^']|'')*'$/.test(v)) return quoteDbmlString(v.slice(1, -1).replace(/''/g, "'"))
   if (/^-?\d+(\.\d+)?$/.test(v)) return v
   if (/^true$/i.test(v)) return 'true'
   if (/^false$/i.test(v)) return 'false'

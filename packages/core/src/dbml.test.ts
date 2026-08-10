@@ -107,6 +107,14 @@ describe('generateDbml', () => {
     it('불리언', () => expect(withDefault('TRUE')).toContain('default: true'))
     it('NULL', () => expect(withDefault('NULL')).toContain('default: null'))
     it('표현식은 백틱', () => expect(withDefault('now()')).toContain('default: `now()`'))
+    // 양끝이 작은따옴표라는 이유로 표현식을 문자열 리터럴로 오탐하면 의미가 바뀐다 —
+    // 'a' || 'b'(문자열 연결)가 "a' || 'b"라는 글자 하나로 왕복했다(리뷰 m-2).
+    it('양끝이 따옴표인 표현식을 리터럴로 오탐하지 않는다', () => {
+      expect(withDefault("'a' || 'b'")).toContain("default: `'a' || 'b'`")
+    })
+    it('내부 이스케이프 따옴표가 든 리터럴은 그대로 문자열이다', () => {
+      expect(withDefault("'it''s'")).toContain("default: 'it\\'s'")
+    })
   })
 
   it('autoIncrement 는 PK 이고 정수일 때만 increment 로 낸다', () => {
