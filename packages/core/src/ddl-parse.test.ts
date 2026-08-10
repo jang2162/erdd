@@ -522,6 +522,26 @@ describe('parseDdl — 컬럼 인라인 제약', () => {
     })
   })
 
+  it('DEFAULT 값이 뒤따르는 CONSTRAINT 이름을 삼키지 않는다', () => {
+    const uq = parseDdl("CREATE TABLE C (A varchar(10) DEFAULT 'x' CONSTRAINT UX1 UNIQUE);")
+    expect(uq.tables[0]!.columns[0]!.defaultValue).toBe("'x'")
+    expect(uq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX1', columns: ['A'] })
+
+    const fk = parseDdl('CREATE TABLE C (A int DEFAULT 0 CONSTRAINT FK1 REFERENCES P);')
+    expect(fk.tables[0]!.columns[0]!.defaultValue).toBe('0')
+    expect(fk.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: 'FK1', columns: ['A'], refTable: 'P', refColumns: [],
+    })
+
+    // CHECK 는 건너뛰지만 기본값은 그대로여야 한다.
+    const ck = parseDdl('CREATE TABLE C (A int DEFAULT 0 CONSTRAINT CK1 CHECK (A > 0) NOT NULL);')
+    expect(ck.tables[0]!.columns[0]!.defaultValue).toBe('0')
+
+    // NOT NULL 이 사이에 끼면 원래부터 정상이었다(대조군).
+    const nn = parseDdl("CREATE TABLE C (A varchar(10) DEFAULT 'x' NOT NULL CONSTRAINT UX1 UNIQUE);")
+    expect(nn.tables[0]!.columns[0]!.defaultValue).toBe("'x'")
+  })
+
   it('참조 컬럼 목록이 있는 인라인 REFERENCES는 그대로다(대조군)', () => {
     const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint NOT NULL REFERENCES "public"."MBR" (MBR_NO) ON DELETE CASCADE);')
     expect(r.constraints).toContainEqual({
