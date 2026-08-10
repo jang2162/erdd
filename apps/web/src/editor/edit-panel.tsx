@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, type Ref } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import {
   computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
@@ -22,6 +22,7 @@ import { CustomFieldsSection } from './custom-fields-section.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
 
 /** blur 시 값이 바뀌었으면 producer로 커밋하는 제어 인풋. */
 function CommitInput(props: {
@@ -47,24 +48,41 @@ export function EditPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
   const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
+  const selectedColumnIds = useEditorStore((s) => s.selectedColumnIds)
   const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const mutate = useModelMutation(projectId)
   const namingRules = useEditorStore((s) => s.namingRules)
   const dialects = useEditorStore((s) => s.dialects)
-  const selectedTableId = selectedTableIds[0]
-  const table = selectedTableId ? model.tables[selectedTableId] : undefined
+  const table = selectedTableIds.length === 1 ? model.tables[selectedTableIds[0]!] : undefined
   const warnings = useMemo(
     () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
   const tableFields = useMemo(() => customFieldsFor(model, 'table'), [model])
   const columnFields = useMemo(() => customFieldsFor(model, 'column'), [model])
+  const selectedRowRef = useRef<HTMLLIElement | null>(null)
+  const firstSelectedColumnId = selectedColumnIds[0]
+  useEffect(() => {
+    // block: 'nearest' — 이미 보이는 컬럼을 클릭했을 때 패널이 튀지 않아야 한다.
+    selectedRowRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [firstSelectedColumnId])
 
   if (selectedRelationshipId) return <RelationshipPanel projectId={projectId} />
 
   if (selectedNoteId) return <NotePanel projectId={projectId} />
 
   if (selectedGroupId) return <GroupPanel projectId={projectId} />
+
+  if (selectedTableIds.length > 1) {
+    return (
+      <aside className="w-80 shrink-0 border-l bg-card p-4">
+        <p className="text-sm">테이블 {selectedTableIds.length}개 선택됨</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          복사·잘라내기·삭제는 단축키로 선택 전체에 적용됩니다.
+        </p>
+      </aside>
+    )
+  }
 
   if (!table) {
     return (
@@ -155,6 +173,8 @@ export function EditPanel({ projectId }: { projectId: string }) {
           <ColumnRow
             key={c.id} column={c} isFirst={i === 0} isLast={i === columns.length - 1} canEdit={canEdit}
             domains={Object.values(model.domains)}
+            selected={selectedColumnIds.includes(c.id)}
+            rowRef={c.id === firstSelectedColumnId ? selectedRowRef : undefined}
             warnings={warnings.filter((w) => w.scope === 'column' && w.entityId === c.id)}
             onPatch={(patch) => void mutate((m) => updateColumn(m, c.id, patch))}
             onRemove={() => void mutate((m) => removeColumn(m, c.id), { summary: '컬럼 삭제' })}
@@ -216,6 +236,8 @@ export function EditPanel({ projectId }: { projectId: string }) {
 function ColumnRow(props: {
   column: Column; isFirst: boolean; isLast: boolean; warnings: Warning[]; domains: Domain[]
   canEdit: boolean
+  selected: boolean
+  rowRef?: Ref<HTMLLIElement>
   onPatch: (patch: Partial<Omit<Column, 'id' | 'tableId'>>) => void
   onRemove: () => void; onMove: (dir: -1 | 1) => void
   onDomainChange: (domainId: string) => void
@@ -229,7 +251,11 @@ function ColumnRow(props: {
   const locked = c.domainId !== null
   const domain = locked ? props.domains.find((d) => d.id === c.domainId) : undefined
   return (
-    <li className="grid gap-2 rounded-md border p-2">
+    <li
+      className={cn('grid gap-2 rounded-md border p-2', props.selected && 'ring-2 ring-primary')}
+      aria-selected={props.selected}
+      ref={props.rowRef}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="grid flex-1 grid-cols-2 gap-2">
           <CommitInput label="논리명" value={c.logicalName} readOnly={!canEdit} onCommit={props.onLogicalName} />

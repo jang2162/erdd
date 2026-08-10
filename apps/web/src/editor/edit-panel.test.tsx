@@ -209,4 +209,31 @@ describe('EditPanel', () => {
     expect(screen.getByRole('checkbox', { name: 'PK' })).toBeDisabled()
     expect(screen.getByRole('checkbox', { name: 'NN' })).toBeDisabled()
   })
+
+  it('선택된 컬럼 행에 aria-selected가 붙는다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().selectColumn('t2', 'c3', 'replace')
+    renderPanel()
+    const rows = screen.getAllByRole('listitem')
+    const selected = rows.filter((r) => r.getAttribute('aria-selected') === 'true')
+    expect(selected).toHaveLength(1)
+  })
+
+  it('테이블이 여러 개 선택되면 폼 대신 개수를 보여준다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+    expect(screen.getByText(/2개 선택됨/)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/테이블 물리명/)).toBeNull()
+  })
+
+  it('선택이 하나면 기존처럼 폼이 나온다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t2')
+    renderPanel()
+    expect(screen.getByLabelText(/테이블 물리명/)).toBeInTheDocument()
+  })
 })
