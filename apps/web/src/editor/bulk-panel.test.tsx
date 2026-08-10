@@ -11,6 +11,7 @@ import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
 import { modelOverOpCap } from '@/testing/fixtures'
+import { settle } from '@/testing/settle'
 import { useEditorStore } from './store.js'
 import { BulkPanel, countCascade } from './bulk-panel.js'
 
@@ -103,9 +104,12 @@ describe('BulkPanel', () => {
       expect(tables['t1']?.groupId).toBe('g2')
       expect(tables['t2']?.groupId).toBe('g2')
     })
+    // ⚠️ waitFor로는 **"최소 1건"** 밖에 못 본다 — 0→1→2로 가는 도중 1인 순간을 잡고 통과한다.
+    // 나갈 것을 다 내보낸 뒤 **정확히 1건**으로 못 박아야 producer를 쪼갠 변경이 잡힌다.
+    await settle()
     expect(calls).toHaveLength(1)   // 단일 뮤테이션 = Revision 1건
     // 그룹 배정과 좌표 재배치가 한 producer 라 cmd+Z 한 번으로 전부 원복된다.
-    await waitFor(() => expect(useEditorStore.getState().undoStack).toHaveLength(1))
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
   })
 
   it('그룹을 옮기면 대상 그룹 오른쪽으로 상대 배치를 유지한 채 좌표를 옮긴다', async () => {

@@ -4,19 +4,25 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
+import { toast } from 'sonner'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
-import type { Table } from '@erdd/core'
+import type { ProjectModel, Table } from '@erdd/core'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
+import { settle } from '@/testing/settle'
 import { useEditorStore } from './store.js'
 import { useDragStore } from './drag-store.js'
+import { BulkPanel } from './bulk-panel.js'
 import { TableTree } from './table-tree.js'
+
+// 권한 회수 레이스에서 "엉뚱한 에러 토스트를 띄우지 않는다"를 단언하려면 토스트가 스파이여야 한다.
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }))
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 
-function renderTree() {
+function withProviders(node: ReactNode) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
@@ -24,11 +30,16 @@ function renderTree() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<TableTree projectId={PROJECT_ID} />, { wrapper: w })
+  render(node, { wrapper: w })
+}
+
+function renderTree() {
+  withProviders(<TableTree projectId={PROJECT_ID} />)
 }
 
 afterEach(() => {
-  cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset(); useDragStore.getState().end()
+  cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks()
+  useEditorStore.getState().reset(); useDragStore.getState().end()
 })
 
 describe('TableTree', () => {
@@ -459,21 +470,16 @@ describe('TableTree 드래그 그룹 이동', () => {
   }
 
   /**
-   * "op가 하나도 안 나갔다"를 단언하기 전에 나갈 것을 다 내보낸다.
+   * mutate가 서버까지 **정확히 n건** 나간 것을 확인한다. 낙관적 적용보다 늦으므로 모델 단언과 따로 본다.
    *
-   * mutate는 직렬화 체인 → 낙관적 적용 → 배치 링크의 자체 스케줄러 → fetch 순으로 흐른다.
-   * 태스크 한 틱만 밀면 fetch가 아직 안 나가서 **op가 실제로 나갔는데도 통과한다**
-   * (실측: 한 틱 버전으로 같은 describe를 3회 돌려 1회 누수). 여러 틱 밀어 확정시킨다.
+   * ⚠️ `waitFor`만으로는 **"최소 n건"** 밖에 못 본다 — 0→1→2로 가는 도중 1인 순간을 잡고 통과한다.
+   * 그래서 `applyGroupMove`를 항목마다 쪼개 undo 2회로 갈라 놓아도 스위트가 전부 초록이었다.
+   * "op 1건 = undo 1회"가 이 커밋의 핵심 계약이므로 뒤에 settle을 붙여 **정확히 n**으로 못 박는다.
    */
-  async function settle(): Promise<void> {
-    for (let i = 0; i < 5; i++) {
-      await act(async () => { await new Promise((r) => { setTimeout(r, 0) }) })
-    }
-  }
-
-  /** mutate가 서버까지 나간 것을 기다린다 — 낙관적 적용보다 늦으므로 모델 단언과 따로 본다. */
   async function expectSent(calls: unknown[], n: number): Promise<void> {
     await waitFor(() => { expect(calls).toHaveLength(n) })
+    await settle()
+    expect(calls).toHaveLength(n)
   }
 
   it('트리 항목을 끌어 다른 그룹에 놓으면 그룹이 바뀌고 op 한 건이 나간다', async () => {
@@ -546,19 +552,153 @@ describe('TableTree 드래그 그룹 이동', () => {
     expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 300, y: 0 })
   })
 
-  it('드롭 타깃 밖에서 손을 떼면 아무 op도 내지 않는다', async () => {
+  it('드롭 타깃 밖에서 손을 떼면 아무 op 없이 정상 종료된다', async () => {
+    // `over === null` 가드를 지워도 op는 안 나간다 — `over.groupId`가 TypeError로 터져 **핸들러가
+    // 중간에 죽기 때문**이다. 즉 "op 0건"만 보면 크래시를 통과로 읽는다(실제로 그랬다).
+    // 예외가 없었다는 것을 직접 단언해야 이 가드가 잠긴다. preventDefault로 vitest의 unhandled
+    // 집계에서 빼, 되돌렸을 때 잡음이 아니라 **이 단언**이 실패하게 만든다.
+    const errors: string[] = []
+    const onError = (e: ErrorEvent) => { e.preventDefault(); errors.push(e.message) }
+    window.addEventListener('error', onError)
+    try {
+      const calls = countMutations()
+      useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+      grantEditPermission()
+      renderTree()
+
+      const item = grab('MBR')   // elementFromPoint가 없으므로 over는 null인 채다
+      expect(useDragStore.getState().over).toBeNull()
+      fireEvent.pointerUp(item, { clientX: 40, clientY: 0, pointerId: 1 })
+
+      await settle()
+      expect(calls).toHaveLength(0)
+      expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')
+      expect(errors).toEqual([])
+    } finally {
+      window.removeEventListener('error', onError)
+    }
+  })
+
+  it('우클릭으로 끌면 그룹 이동이 나가지 않는다', async () => {
+    // 주 버튼 가드가 없으면 컨텍스트 메뉴를 부르려던 우클릭 드래그가 그대로 그룹 이동이 된다.
     const calls = countMutations()
     useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
     grantEditPermission()
     renderTree()
 
-    const item = grab('MBR')   // elementFromPoint가 없으므로 over는 null인 채다
-    expect(useDragStore.getState().over).toBeNull()
-    fireEvent.pointerUp(item, { clientX: 40, clientY: 0, pointerId: 1 })
+    const item = screen.getByText('MBR').closest('button')!
+    fireEvent.pointerDown(item, { button: 2, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(item, { clientX: 40, clientY: 0, pointerId: 1 })
+    dropOn(item, 'g2')
 
     await settle()
     expect(calls).toHaveLength(0)
     expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')
+  })
+
+  it('드래그가 취소되면(pointercancel) 드래그 상태에 갇히지 않는다', () => {
+    // 터치 세로 팬·컨텍스트 메뉴에서는 pointerup이 오지 않는다. dragEnd가 pointerup에만
+    // 걸려 있으면 dragging이 참으로 남아 **그룹 뷰 스코핑이 영구히 풀린다** — 숨어야 할
+    // 그룹이 계속 보이고, 복구 수단은 드래그를 한 번 완주하는 것뿐이다.
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문관리'), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().enterGroupView('g1')
+    renderTree()
+
+    const item = grab('MBR')
+    expect(useDragStore.getState().tableIds).toEqual(['t2'])
+    expect(screen.getByText('주문관리')).toBeInTheDocument()   // 드래그 중이라 스코핑이 풀렸다
+
+    fireEvent.pointerCancel(item, { clientX: 40, clientY: 0, pointerId: 1 })
+
+    expect(useDragStore.getState().tableIds).toEqual([])
+    expect(screen.queryByText('주문관리')).toBeNull()          // 스코핑이 되돌아왔다
+  })
+
+  it('드래그 뒤 억제는 풀린다 — 키보드로 항목을 활성화할 수 있다', async () => {
+    // click 억제를 풀지 않으면 그 항목은 다음 pointerdown이 올 때까지 click을 전부 흘린다.
+    // 키보드(Enter/Space) 활성화는 pointerdown 없이 click만 오므로 **영영 무시된다.**
+    //
+    // 원래 그룹에 도로 놓는다 — 다른 그룹에 놓으면 항목이 그 그룹 블록으로 옮겨 가며 DOM 노드가
+    // 통째로 새로 마운트돼(새 ref = 억제 없음) 억제 해제를 지웠는지 알 수 없다.
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    const item = grab('MBR')
+    dropOn(item, 'g1')                                      // t2는 이미 g1이라 op는 나가지 않는다
+    fireEvent.click(item)                                   // 드래그에 뒤따라오는 click — 억제된다
+    expect(useEditorStore.getState().focusTableId).toBeNull()
+
+    await settle()                                          // setTimeout(0)이 흘러간다
+    expect(calls).toHaveLength(0)
+    fireEvent.click(item)                                   // 키보드 Enter로 온 click
+    expect(useEditorStore.getState().focusTableId).toBe('t2')
+  })
+
+  it('Viewer가 항목을 끌어도 뒤따르는 클릭은 살아 있다', async () => {
+    // 드래그 시작만 막으면 부족하다 — 임계를 넘긴 순간 click 억제가 켜져 **선택이 먹지 않는다**.
+    // 선택은 뷰 상태라 canEdit과 무관해야 한다(이 파일의 다른 테스트가 클릭 축을 잠근다).
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderTree()
+
+    const item = grab('MBR')
+    fireEvent.pointerUp(item, { clientX: 40, clientY: 0, pointerId: 1 })
+    fireEvent.click(item)
+
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
+    expect(useEditorStore.getState().focusTableId).toBe('t2')
+    await settle()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('드래그 도중 권한이 회수되면 조용히 취소된다 — 엉뚱한 에러 토스트를 띄우지 않는다', async () => {
+    // 권한 가드가 applyGroupMove 한 곳에 있어야 하는 이유. 없으면 useSubmit이 대신 막긴 하지만
+    // **"편집 권한이 없습니다" 토스트가 뜬다** — 사용자는 하지도 않은 편집으로 에러를 본다.
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    const item = grab('MBR')
+    act(() => { useEditorStore.getState().setPermissions({ canEdit: false, canManage: false }) })
+    dropOn(item, 'g2')
+
+    await settle()
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('드래그 중 커서가 올라간 그룹에만 링이 붙는다', () => {
+    // 커서 고스트는 "무엇을 몇 개" 끄는지만 보여준다 — "어디에 놓이는지"를 알려주는 것은 이 링뿐이다.
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    act(() => { useDragStore.getState().start(['t2']) })
+    act(() => { useDragStore.getState().moveOver({ groupId: 'g2' }) })
+
+    expect(document.querySelector('[data-drop-group="g2"]')).toHaveClass('ring-2', 'ring-primary')
+    expect(document.querySelector('[data-drop-group="g1"]')).not.toHaveClass('ring-2')
+  })
+
+  it('미분류 블록도 커서가 올라가면 링이 붙는다', () => {
+    const model = buildSampleModel()
+    model.tables = { ...model.tables, t3: tbl('t3', 'ORD', '주문', null) }
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    act(() => { useDragStore.getState().start(['t2']) })
+    expect(document.querySelector('[data-drop-group="unassigned"]')).not.toHaveClass('ring-2')
+
+    act(() => { useDragStore.getState().moveOver({ groupId: null }) })
+    expect(document.querySelector('[data-drop-group="unassigned"]')).toHaveClass('ring-2', 'ring-primary')
+    expect(document.querySelector('[data-drop-group="g1"]')).not.toHaveClass('ring-2')
   })
 
   it('임계보다 적게 움직이면 드래그가 아니라 클릭이다', async () => {
@@ -656,6 +796,55 @@ describe('TableTree 드래그 그룹 이동', () => {
 
     act(() => { useDragStore.getState().start(['t2']) })
     expect(screen.getByText('주문관리')).toBeInTheDocument()
+  })
+
+  /**
+   * g2에 **앵커 t3**(1000,500)를 두고 t1을 미리 g2로 옮긴 모델. 선택 [t1, t2]를 g2로 보내면
+   * t1은 이미 대상 그룹이고 t2만 그룹이 바뀐다 — "이미 그 그룹인 것"을 어떻게 다루는지가
+   * 최종 좌표를 가르는 유일한 상태다.
+   */
+  function mixedWithAnchoredG2(): ProjectModel {
+    const model = withEmptyGroup('g2', '주문영역')
+    model.tables = {
+      ...model.tables,
+      t1: { ...model.tables['t1']!, groupId: 'g2' },
+      t3: { ...tbl('t3', 'ORD', '주문', 'g2'), position: { x: 1000, y: 500 } },
+    }
+    return model
+  }
+
+  it('드래그와 일괄 패널이 같은 선택·같은 타깃에서 같은 결과를 낸다', async () => {
+    // "이미 그 그룹인 것은 뺀다"를 호출자마다 따로 걸면 같은 사용자 의도가 진입점에 따라
+    // **최종 좌표까지 갈린다**(실제로 갈라져 있었다). 규칙은 applyGroupMove 한 곳에만 있어야 한다.
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+
+    // 경로 ① 드래그
+    useEditorStore.getState().setLoaded(mixedWithAnchoredG2(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderTree()
+    dropOn(grab('MBR'), 'g2')
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2'))
+    await settle()
+    const viaDrag = useEditorStore.getState().model.tables
+
+    cleanup()
+    useEditorStore.getState().reset()
+
+    // 경로 ② 일괄 패널 드롭다운
+    useEditorStore.getState().setLoaded(mixedWithAnchoredG2(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    withProviders(<BulkPanel projectId={PROJECT_ID} />)
+    await userEvent.selectOptions(screen.getByLabelText('선택 테이블의 그룹'), 'g2')
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2'))
+    await settle()
+    const viaPanel = useEditorStore.getState().model.tables
+
+    expect(viaDrag).toEqual(viaPanel)
+    // 두 경로가 **둘 다 아무것도 안 한** 것을 같다고 읽지 않게, 실제로 옮겼다는 것도 잠근다.
+    expect(viaDrag['t1']?.groupPosition).toBeNull()
+    expect(viaDrag['t2']?.position).not.toEqual({ x: 300, y: 0 })
   })
 
   it('드래그 중에는 그룹 뷰에서도 미분류가 드롭 타깃으로 보인다', () => {

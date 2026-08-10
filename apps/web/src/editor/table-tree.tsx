@@ -71,8 +71,9 @@ export function TableTree({ projectId }: { projectId: string }) {
   const scopedGroupId = !dragging && activeGroupView && model.tableGroups[activeGroupView]
     ? activeGroupView : null
   const visibleGroups = scopedGroupId ? groups.filter((g) => g.id === scopedGroupId) : groups
-  // 드래그 중에는 미분류가 언제나 드롭 타깃이다 — "그룹에서 빼기"의 유일한 동선이다.
-  const showUnassigned = dragging || (!scopedGroupId && (unassigned.length > 0 || groups.length > 0))
+  // 드래그 중 미분류를 여는 것은 `scopedGroupId`의 `!dragging`이 이미 한다 — 드래그 중에는
+  // 스코핑이 풀리고, 그룹이 하나라도 있으면 아래 둘째 절이 참이 된다.
+  const showUnassigned = !scopedGroupId && (unassigned.length > 0 || groups.length > 0)
 
   // Shift 범위 선택의 기준 = **화면에 보이는 순서**. 검색으로 걸러졌거나 그룹 뷰 밖인 항목은 여기 없다.
   const orderedIds = [
@@ -114,12 +115,8 @@ export function TableTree({ projectId }: { projectId: string }) {
   /**
    * 잡은 항목이 현재 선택에 있으면 **선택 전체**를, 아니면 그 항목 하나를 끈다(파일 탐색기 관례).
    * 후자에서는 선택도 그 항목으로 바꾼다 — 끌고 있는 것과 강조된 것이 갈리면 안 된다.
-   *
-   * Viewer는 여기서 끊는다. 드래그를 시작시키면 드롭 타깃 하이라이트가 켜졌다가 아무 일도
-   * 일어나지 않아, 못 하는 조작을 할 수 있는 것처럼 보인다.
    */
   const onDragStartItem = (id: string) => {
-    if (!canEdit) return
     const ids = selectedIds.has(id) ? selectedTableIds : [id]
     if (!selectedIds.has(id)) selectTables([id])
     dragStart(ids)
@@ -128,13 +125,11 @@ export function TableTree({ projectId }: { projectId: string }) {
   const onDropItem = () => {
     const { tableIds, over } = useDragStore.getState()
     dragEnd()
-    if (!canEdit || tableIds.length === 0 || over === null) return
-    // 이미 그 그룹인 것은 뺀다 — 전부 그렇다면 빈 Revision이 생기지 않게 아예 내지 않는다.
-    const changed = tableIds.filter((id) => model.tables[id]?.groupId !== over.groupId)
-    if (changed.length === 0) return
-    // 그룹 배정·groupPosition 초기화·좌표 재배치가 한 producer로 묶인 공용 진입점이다.
-    // 여기서 다시 짜면 일괄 패널과 undo 1회 계약이 갈라진다.
-    applyGroupMove(mutate, changed, over.groupId)
+    // `over === null`(어떤 드롭 타깃 위도 아님)과 `{groupId: null}`(미분류 위)은 다른 상태다.
+    if (over === null) return
+    // 무엇을 옮길지·옮겨도 되는지는 전부 applyGroupMove가 정한다. 여기서 한 번 더 거르면
+    // 일괄 패널과 규칙이 갈려 같은 의도가 진입점에 따라 다른 좌표로 끝난다.
+    applyGroupMove(mutate, tableIds, over.groupId)
   }
 
   const onAddGroup = () => {
@@ -179,7 +174,7 @@ export function TableTree({ projectId }: { projectId: string }) {
               </button>
               <ul className="ml-3 border-l pl-1">
                 {members.map((t) => (
-                  <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)}
+                  <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)} draggable={canEdit}
                     onClick={(e) => onItemClick(e, t.id)}
                     onDragStart={onDragStartItem} onDrop={onDropItem} />
                 ))}
@@ -196,7 +191,7 @@ export function TableTree({ projectId }: { projectId: string }) {
             )}
             <ul className={groups.length > 0 ? 'ml-3 border-l pl-1' : undefined}>
               {unassigned.map((t) => (
-                <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)}
+                <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)} draggable={canEdit}
                   onClick={(e) => onItemClick(e, t.id)}
                   onDragStart={onDragStartItem} onDrop={onDropItem} />
               ))}
@@ -217,9 +212,15 @@ export function TableTree({ projectId }: { projectId: string }) {
 /** 클릭과 드래그를 가르는 이동 거리(px). 이보다 작으면 손떨림으로 보고 클릭으로 남긴다. */
 const DRAG_THRESHOLD = 4
 
-function TableItem({ t, selected, onClick, onDragStart, onDrop }: {
+function TableItem({ t, selected, draggable, onClick, onDragStart, onDrop }: {
   t: { id: string; physicalName: string; logicalName: string }
   selected: boolean
+  /**
+   * false면 포인터 로직을 **아예 타지 않는다.** Viewer에게 드래그는 존재하지 않는 기능이므로
+   * 시작만 막으면 부족하다 — 임계를 넘겨 끌린 순간 click 억제가 켜져 **선택이 먹지 않는다**.
+   * 선택은 뷰 상태라 canEdit과 무관해야 한다(위 onItemClick).
+   */
+  draggable: boolean
   onClick: (e: ReactMouseEvent) => void
   onDragStart: (id: string) => void
   onDrop: () => void
@@ -233,14 +234,11 @@ function TableItem({ t, selected, onClick, onDragStart, onDrop }: {
         // 드래그로 끝난 pointerup 뒤에는 click이 한 번 더 온다 — 선택이 튀지 않게 억제한다.
         onClick={(e) => { if (!dragging.current) onClick(e) }}
         onPointerDown={(e) => {
-          if (e.button !== 0) return
+          if (!draggable || e.button !== 0) return
           origin.current = { x: e.clientX, y: e.clientY }
           dragging.current = false
           // 캡처가 없으면 커서가 항목 밖으로 나가는 순간 pointermove가 끊긴다.
-          // jsdom에는 이 API가 없어 존재를 확인하고 부른다.
-          if (typeof e.currentTarget.setPointerCapture === 'function') {
-            e.currentTarget.setPointerCapture(e.pointerId)
-          }
+          e.currentTarget.setPointerCapture(e.pointerId)
         }}
         onPointerMove={(e) => {
           const o = origin.current
@@ -254,14 +252,23 @@ function TableItem({ t, selected, onClick, onDragStart, onDrop }: {
         }}
         onPointerUp={(e) => {
           origin.current = null
-          if (typeof e.currentTarget.hasPointerCapture === 'function'
-            && e.currentTarget.hasPointerCapture(e.pointerId)) {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
             e.currentTarget.releasePointerCapture(e.pointerId)
           }
           if (!dragging.current) return
           onDrop()
-          // 뒤따라오는 click을 흘려보낸 뒤 억제를 푼다.
+          // 뒤따라오는 click을 흘려보낸 뒤 억제를 푼다. 지우면 키보드(Enter/Space)로 그 버튼을
+          // 활성화해도 무시된다 — click은 pointerdown 없이 온다.
           setTimeout(() => { dragging.current = false }, 0)
+        }}
+        onPointerCancel={() => {
+          // 브라우저가 드래그를 취소하면(터치 세로 팬·컨텍스트 메뉴) pointerup이 오지 않는다.
+          // 여기서 풀지 않으면 dragging이 참으로 남아 그룹 뷰 스코핑이 영구히 풀린 채 갇힌다.
+          // 취소 뒤에는 click이 오지 않으므로 억제를 미룰 이유도 없다.
+          origin.current = null
+          if (!dragging.current) return
+          dragging.current = false
+          useDragStore.getState().end()
         }}
         className={cn('flex w-full flex-col items-start rounded px-2 py-1.5 text-left hover:bg-accent', selected && 'bg-accent')}>
         <span className="font-mono text-xs font-medium">{t.physicalName}</span>

@@ -53,11 +53,22 @@ function deleteOpCount(c: ReturnType<typeof countCascade>): number {
  * 전체 뷰 좌표로 폴백해 새 그룹의 그룹 뷰에서 나란히 선다.
  *
  * 사이드바 드래그·캔버스 드래그가 같은 진입점을 쓰도록 export한다 — 경로가 갈리면 한쪽만 고쳐진다.
+ * **무엇을 넣을지 정하는 규칙도 전부 여기 있다**(권한·빈 선택·"전원이 이미 그 그룹"). 호출자가
+ * 각자 거르면 같은 사용자 의도가 진입점에 따라 다른 좌표로 끝난다 — 실제로 갈라졌던 자리다.
  */
 export function applyGroupMove(
   mutate: Mutate, ids: readonly string[], targetGroupId: string | null,
 ): void {
   if (ids.length === 0) return
+  // 권한 판정도 여기 한 곳이다. 드래그·드롭다운·(예정된) 캔버스 드롭이 전부 이 함수를 지나므로
+  // 호출자마다 붙이면 같은 가드가 세 벌이 된다. useSubmit도 canEdit을 막지만 그쪽은 **토스트를
+  // 띄운다** — 드래그 도중 권한이 회수된 경우 사용자가 하지도 않은 편집으로 에러를 보게 된다.
+  if (!useEditorStore.getState().canEdit) return
+  // 전원이 이미 대상 그룹이면 아무 뜻도 없는 Revision이 하나 생긴다 — 아예 내지 않는다.
+  // ⚠️ "항목마다 거른다"가 **아니다.** 섞인 선택에서 이미 대상 그룹에 있던 것도 함께 옮겨야
+  // groupPosition이 전원 비워져 그룹 뷰에서 갈라지지 않는다(위 ⚠️).
+  const model = useEditorStore.getState().model
+  if (ids.every((id) => model.tables[id]?.groupId === targetGroupId)) return
   void mutate((m) => {
     let next = m
     for (const id of ids) {
