@@ -303,7 +303,10 @@ function maskParenContents(text: string): string {
   const FILL = '#'
   let out = ''
   let depth = 0
-  for (const c of text) {
+  // 코드 유닛 단위로 순회한다. for…of는 서로게이트 페어를 문자 하나로 묶어 주는데,
+  // 그것을 FILL 한 글자로 덮으면 길이가 줄어 뒤쪽 인덱스가 통째로 어긋난다.
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!
     if (c === '(') { out += c; depth++; continue }
     if (c === ')') { depth = Math.max(0, depth - 1); out += c; continue }
     out += depth > 0 ? FILL : c
@@ -386,8 +389,8 @@ const QUALIFIED_NAME = `${IDENT_PART}(?:\\s*\\.\\s*${IDENT_PART})*`
  */
 const REFERENCES_TARGET_RE = new RegExp(String.raw`REFERENCES\s+(${QUALIFIED_NAME})`, 'i')
 
-/** 인라인 제약 앞에 옵션으로 붙는 `CONSTRAINT <이름>`. */
-const CONSTRAINT_NAME_RE = new RegExp(String.raw`\bCONSTRAINT\s+(${IDENT_PART})`, 'gi')
+/** 인라인 제약 앞에 옵션으로 붙는 `CONSTRAINT <이름>`. 훑을 때마다 새 정규식을 만든다(lastIndex 공유 금지). */
+const CONSTRAINT_NAME_SRC = String.raw`\bCONSTRAINT\s+(${IDENT_PART})`
 
 /**
  * REFERENCES 절 하나를 해석한다. **세 호출처가 공유한다** — 테이블 수준 FK(parseCreateTable),
@@ -428,7 +431,7 @@ function parseInlineColumnConstraints(
   const scan = maskForKeywordScan(attrs)
 
   const names: Array<{ end: number; name: string }> = []
-  const nameRe = new RegExp(CONSTRAINT_NAME_RE.source, CONSTRAINT_NAME_RE.flags)
+  const nameRe = new RegExp(CONSTRAINT_NAME_SRC, 'gi')
   let nm: RegExpExecArray | null
   while ((nm = nameRe.exec(scan)) !== null) {
     const end = nm.index + nm[0].length
