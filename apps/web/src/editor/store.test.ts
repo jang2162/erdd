@@ -82,4 +82,16 @@ describe('editor store 다중 선택', () => {
     useEditorStore.getState().resync(buildSampleModel(), 6)
     expect(useEditorStore.getState().selectedTableIds).toBe(before)
   })
+
+  it('resync로 선택이 전부 사라지면 빈 선택의 공유 참조를 쓴다', () => {
+    // 빈 선택은 어느 경로로 도달하든 같은 배열 인스턴스여야 한다. resync만 새 빈 배열을
+    // 만들면, 남이 내가 보던 테이블을 지울 때마다 "비었다"가 매번 다른 값이 된다.
+    useEditorStore.getState().select(null)
+    const empty = useEditorStore.getState().selectedTableIds
+    useEditorStore.getState().selectTables(['t1'])
+    const model = buildSampleModel()
+    delete model.tables['t1']
+    useEditorStore.getState().resync(model, 7)
+    expect(useEditorStore.getState().selectedTableIds).toBe(empty)
+  })
 })

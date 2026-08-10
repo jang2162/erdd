@@ -19,8 +19,12 @@ type EditorState = {
   /** 프로젝트를 관리할 수 있는가(스냅샷 복원·삭제). 로드 전 기본값 false. */
   canManage: boolean
   viewMode: ViewMode
-  /** 선택된 테이블들. **마지막 원소가 주 선택**(상세 패널·포커스 대상)이다. */
-  selectedTableIds: string[]
+  /**
+   * 선택된 테이블들. **마지막 원소가 주 선택**(상세 패널·포커스 대상)이다.
+   * `readonly` 인 이유: 빈 선택은 모두 같은 배열 인스턴스(`NO_TABLES`)를 공유하므로
+   * 제자리 변형은 전역 상수를 오염시킨다. 타입으로 막는다.
+   */
+  selectedTableIds: readonly string[]
   selectedRelationshipId: string | null
   selectedNoteId: string | null
   selectedGroupId: string | null
@@ -58,7 +62,7 @@ type EditorState = {
 export const primaryTableId = (s: EditorState): string | null => s.selectedTableIds.at(-1) ?? null
 
 /** 모든 "비운 상태"가 같은 배열 인스턴스를 공유한다 — 불필요한 리렌더를 막는다. 절대 변형하지 마라. */
-const NO_TABLES: string[] = []
+const NO_TABLES: readonly string[] = []
 
 const CLEARED_SELECTION = {
   selectedTableIds: NO_TABLES, selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
@@ -99,11 +103,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   resync: (model, seq) => set((s) => {
     const keep = (id: string | null, rec: Record<string, unknown>) =>
       (id !== null && Object.hasOwn(rec, id) ? id : null)
-    // 전부 살아남았으면 **원래 배열 참조를 그대로 반환**한다(리렌더 억제).
+    // 전부 살아남았으면 **원래 배열 참조를 그대로** 반환한다(리렌더 억제).
+    // 전부 사라졌으면 새 빈 배열이 아니라 **빈 선택의 공유 참조**(NO_TABLES)를 쓴다 —
+    // "모든 빈 선택은 같은 인스턴스"라는 불변식이 이 경로에서만 깨지면 안 된다.
     const keptTables = s.selectedTableIds.filter((id) => Object.hasOwn(model.tables, id))
     return {
       model, seq, loaded: true, undoStack: [], redoStack: [],
-      selectedTableIds: keptTables.length === s.selectedTableIds.length ? s.selectedTableIds : keptTables,
+      selectedTableIds: keptTables.length === s.selectedTableIds.length
+        ? s.selectedTableIds
+        : keptTables.length === 0 ? NO_TABLES : keptTables,
       selectedRelationshipId: keep(s.selectedRelationshipId, model.relationships),
       selectedNoteId: keep(s.selectedNoteId, model.notes),
       selectedGroupId: keep(s.selectedGroupId, model.tableGroups),
@@ -119,9 +127,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   }),
   // 빈 배열은 다른 종류 선택을 지우지 않는다 — 캔버스에서 메모를 클릭하면
   // ReactFlow가 테이블 해제로 빈 배열을 쏘는데, 그것이 같은 클릭의 selectNote를 지우면 안 된다.
-  selectTables: (tableIds) => set((s) =>
+  // 이미 비어 있는지 따로 보지 않는다 — zustand는 어떤 partial을 받든 새 루트 상태를 만들어
+  // 리스너를 전부 호출하므로 `{}` 를 돌려줘도 리렌더가 줄지 않는다. 억제는 **같은 참조**가 한다.
+  selectTables: (tableIds) => set(
     tableIds.length === 0
-      ? (s.selectedTableIds.length === 0 ? {} : { selectedTableIds: NO_TABLES })
+      ? { selectedTableIds: NO_TABLES }
       : { ...CLEARED_SELECTION, selectedTableIds: [...tableIds] }),
   selectRelationship: (selectedRelationshipId) => set({ ...CLEARED_SELECTION, selectedRelationshipId }),
   selectNote: (selectedNoteId) => set({ ...CLEARED_SELECTION, selectedNoteId }),

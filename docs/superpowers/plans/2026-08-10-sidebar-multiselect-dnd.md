@@ -7,7 +7,7 @@
 **Goal:** 좌측 사이드바를 읽기 전용 탐색기에서 조작 표면으로 바꾼다 — 여러 테이블을 골라 드래그로
 그룹을 옮기고, 캔버스에서 끌어와 사이드바 그룹에 떨어뜨리고, 선택한 것을 한 번에 지운다.
 
-**Architecture:** 선택 상태는 `store.selectedTableIds: string[]` 하나이고 사이드바·캔버스가 공유한다
+**Architecture:** 선택 상태는 `store.selectedTableIds: readonly string[]` 하나이고 사이드바·캔버스가 공유한다
 (마지막 원소 = 주 선택). 드래그는 소스가 둘(사이드바 pointer / ReactFlow 노드 드래그)이지만 "화면 좌표
 → 드롭 타깃" 판정은 `dropTargetOf` 한 함수로 수렴한다. 그룹을 옮기면 `planGroupMove`가 좌표를 다시
 계산해 `groupId` 변경과 같은 producer 안에서 적용한다(Revision 1건). 실시간 presence 프로토콜은
@@ -504,7 +504,7 @@ Claude-Session: <세션 URL>"
 **Interfaces:**
 - Consumes: Task 1의 `selectionsOf`
 - Produces:
-  - `EditorState.selectedTableIds: string[]` (마지막 원소 = 주 선택)
+  - `EditorState.selectedTableIds: readonly string[]` (마지막 원소 = 주 선택)
   - `select(tableId: string | null): void` — 시그니처 **불변**
   - `toggleTable(tableId: string): void`
   - `selectTables(tableIds: readonly string[]): void`
@@ -599,8 +599,12 @@ Expected: FAIL — `primaryTableId`·`toggleTable`·`selectTables`가 없다.
 ```ts
 type EditorState = {
   // ... 다른 필드 그대로 ...
-  /** 선택된 테이블들. **마지막 원소가 주 선택**(상세 패널·포커스 대상)이다. */
-  selectedTableIds: string[]
+  /**
+   * 선택된 테이블들. **마지막 원소가 주 선택**(상세 패널·포커스 대상)이다.
+   * `readonly` 인 이유: 빈 선택은 모두 같은 배열 인스턴스(`NO_TABLES`)를 공유하므로
+   * 제자리 변형은 전역 상수를 오염시킨다. 타입으로 막는다.
+   */
+  selectedTableIds: readonly string[]
   // ...
   select: (tableId: string | null) => void
   toggleTable: (tableId: string) => void
@@ -612,7 +616,7 @@ type EditorState = {
 export const primaryTableId = (s: EditorState): string | null => s.selectedTableIds.at(-1) ?? null
 
 /** 모든 "비운 상태"가 같은 배열 인스턴스를 공유한다 — 불필요한 리렌더를 막는다. 절대 변형하지 마라. */
-const NO_TABLES: string[] = []
+const NO_TABLES: readonly string[] = []
 
 const CLEARED_SELECTION = {
   selectedTableIds: NO_TABLES, selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
@@ -635,9 +639,11 @@ const CLEARED_SELECTION = {
   }),
   // 빈 배열은 다른 종류 선택을 지우지 않는다 — 캔버스에서 메모를 클릭하면
   // ReactFlow가 테이블 해제로 빈 배열을 쏘는데, 그것이 같은 클릭의 selectNote를 지우면 안 된다.
-  selectTables: (tableIds) => set((s) =>
+  // 이미 비어 있는지 따로 보지 않는다 — zustand는 어떤 partial을 받든 새 루트 상태를 만들어
+  // 리스너를 전부 호출하므로 `{}` 를 돌려줘도 리렌더가 줄지 않는다. 억제는 **같은 참조**가 한다.
+  selectTables: (tableIds) => set(
     tableIds.length === 0
-      ? (s.selectedTableIds.length === 0 ? {} : { selectedTableIds: NO_TABLES })
+      ? { selectedTableIds: NO_TABLES }
       : { ...CLEARED_SELECTION, selectedTableIds: [...tableIds] }),
 ```
 
