@@ -45,15 +45,26 @@ describe('serializeTables', () => {
   })
 
   it('커스텀 항목 값은 필드 이름을 키로 실린다', () => {
-    // ⚠️ 브리프 정정(컨트롤러 확인 필요): fullModel의 c2.custom은 실제로는
-    // { '개인정보여부': 'true' }(필드의 *이름*을 키로 씀)다. 하지만 model.custom은
-    // packages/core/src/custom-field.ts의 resolveCustomValue·customFieldUsageCount·
-    // customOptionUsageCount가 한결같이 `entity.custom[field.id]`로 읽는 데서 보듯
-    // **customField의 id**를 키로 쓰는 것이 실제 규약이다(cf1.id === 'cf1',
-    // cf1.name === '개인정보여부'). 즉 fullModel 픽스처 쪽이 이름을 키로 써서
-    // 규약과 어긋나 있다(패키지 자체는 손대지 않는다). 우리 구현은 규약대로
-    // fieldId → name 매핑을 조회하므로, 이 픽스처에서는 '개인정보여부' 키가 cf1의
-    // id와 일치하지 않는 dangling 키로 취급되어 버려진다 — 관찰된 결과는 {}.
+    // ⚠️ 브리프 정정: fullModel()의 c2.custom은 실제로는 { '개인정보여부': 'true' }로
+    // 필드의 *이름*을 키로 쓴다. 하지만 packages/core/src/custom-field.ts의
+    // resolveCustomValue·customFieldUsageCount·customOptionUsageCount가 한결같이
+    // `entity.custom[field.id]`로 읽는 데서 보듯, model.custom은 **customField의 id**를
+    // 키로 쓰는 것이 실제 규약이다(cf1.id === 'cf1', cf1.name === '개인정보여부') —
+    // fullModel 픽스처가 규약과 어긋나 있다(패키지 자체는 손대지 않는다). fullModel()은
+    // 호출마다 새 객체를 반환하므로, id→이름 치환이 실제로 동작함을 양성 경로로
+    // 검증하기 위해 로컬로 규약에 맞는 custom 값을 얹어 쓴다.
+    const model = fullModel()
+    model.columns['c2'] = { ...model.columns['c2']!, custom: { cf1: 'true' } }
+    const p = serializeTables(model, ['tb1'])
+    if (p.kind !== 'tables') throw new Error('kind')
+    const c2 = p.tables[0]!.columns.find((c) => c.physicalName === 'MBR_NM')!
+    expect(c2.custom).toEqual({ '개인정보여부': 'true' })
+  })
+
+  it('정의에 없는 dangling 커스텀 키는 버려진다', () => {
+    // fullModel()의 c2.custom은 픽스처 규약(필드 이름을 키로 씀)이 실제 모델 규약(필드
+    // id를 키로 씀)과 어긋나 있어, cf1의 id('cf1')와 일치하지 않는 '개인정보여부' 키는
+    // dangling으로 취급되어 버려진다.
     const p = serializeTables(fullModel(), ['tb1'])
     if (p.kind !== 'tables') throw new Error('kind')
     const c2 = p.tables[0]!.columns.find((c) => c.physicalName === 'MBR_NM')!
@@ -77,7 +88,9 @@ describe('parseClipboard', () => {
   })
 
   it('__erdd 표식이 없으면 null', () => {
-    expect(parseClipboard(JSON.stringify({ kind: 'tables', tables: [] }))).toBeNull()
+    // v는 맞고 __erdd만 빠진 입력이어야 __erdd 가드 자체를 고립해서 검증한다.
+    // { kind, tables }만 있으면 v도 함께 없어서 다음 줄의 v 검사가 먼저 잡아버린다.
+    expect(parseClipboard(JSON.stringify({ v: 1, kind: 'tables', tables: [] }))).toBeNull()
   })
 
   it('버전이 다르면 null', () => {
