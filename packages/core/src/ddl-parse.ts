@@ -354,7 +354,9 @@ function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | 
   const dIdx = maskedForDefault.search(/\bDEFAULT\s/i)
   let defaultValue: string | null = null
   if (dIdx >= 0) {
-    const end = /^DEFAULT\s+.+?(?=\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|REFERENCES|COMMENT|COLLATE|CHECK)\b|$)/is
+    // 종결 키워드에 CONSTRAINT 가 들어 있어야 한다 — 컬럼 제약은 `[CONSTRAINT 이름] 제약`
+    // 시퀀스라 DEFAULT 바로 뒤에 올 수 있고, 없으면 기본값이 제약명까지 삼킨다.
+    const end = /^DEFAULT\s+.+?(?=\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|REFERENCES|CONSTRAINT|COMMENT|COLLATE|CHECK)\b|$)/is
       .exec(maskedForDefault.slice(dIdx))
     if (end) defaultValue = attrsForDefault.slice(dIdx, dIdx + end[0].length).replace(/^DEFAULT\s+/i, '').trim()
   }
