@@ -1,10 +1,13 @@
-import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { createGroup, type Table } from '@erdd/core'
 import { primaryTableId, useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { nextGroupColor } from './group-palette.js'
+import { applyGroupMove } from './bulk-panel.js'
+import { useDragStore } from './drag-store.js'
+import { dropAttrValue, dropTargetAt } from './drop-target.js'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -20,6 +23,10 @@ export function TableTree({ projectId }: { projectId: string }) {
   const toggleTable = useEditorStore((s) => s.toggleTable)
   const selectTables = useEditorStore((s) => s.selectTables)
   const selectGroup = useEditorStore((s) => s.selectGroup)
+  const dragTableIds = useDragStore((s) => s.tableIds)
+  const dragOver = useDragStore((s) => s.over)
+  const dragStart = useDragStore((s) => s.start)
+  const dragEnd = useDragStore((s) => s.end)
   const mutate = useModelMutation(projectId)
   const [q, setQ] = useState('')
   /**
@@ -31,6 +38,8 @@ export function TableTree({ projectId }: { projectId: string }) {
   const [anchorId, setAnchorId] = useState<string | null>(null)
 
   const query = q.trim().toLowerCase()
+  const dragging = dragTableIds.length > 0
+  const dragOverGroupId = dragging ? dragOver?.groupId : undefined
 
   const allTables = useMemo(() => {
     const match = (t: { physicalName: string; logicalName: string }) =>
@@ -58,9 +67,12 @@ export function TableTree({ projectId }: { projectId: string }) {
   const membersOf = (groupId: string): Table[] => membersByGroup.get(groupId) ?? []
 
   // 유효 활성 그룹: 설정됐고 실제로 존재할 때만 스코핑한다(삭제된 경우 전체 뷰로 폴백 — canvas와 일치).
-  const scopedGroupId = activeGroupView && model.tableGroups[activeGroupView] ? activeGroupView : null
+  // 드래그 중에는 스코핑을 푼다 — 그룹 뷰에서 "이건 다른 그룹으로 보내야겠다"가 막히면 안 된다(설계 5.5).
+  const scopedGroupId = !dragging && activeGroupView && model.tableGroups[activeGroupView]
+    ? activeGroupView : null
   const visibleGroups = scopedGroupId ? groups.filter((g) => g.id === scopedGroupId) : groups
-  const showUnassigned = !scopedGroupId && (unassigned.length > 0 || groups.length > 0)
+  // 드래그 중에는 미분류가 언제나 드롭 타깃이다 — "그룹에서 빼기"의 유일한 동선이다.
+  const showUnassigned = dragging || (!scopedGroupId && (unassigned.length > 0 || groups.length > 0))
 
   // Shift 범위 선택의 기준 = **화면에 보이는 순서**. 검색으로 걸러졌거나 그룹 뷰 밖인 항목은 여기 없다.
   const orderedIds = [
@@ -99,6 +111,32 @@ export function TableTree({ projectId }: { projectId: string }) {
     focus(id)
   }
 
+  /**
+   * 잡은 항목이 현재 선택에 있으면 **선택 전체**를, 아니면 그 항목 하나를 끈다(파일 탐색기 관례).
+   * 후자에서는 선택도 그 항목으로 바꾼다 — 끌고 있는 것과 강조된 것이 갈리면 안 된다.
+   *
+   * Viewer는 여기서 끊는다. 드래그를 시작시키면 드롭 타깃 하이라이트가 켜졌다가 아무 일도
+   * 일어나지 않아, 못 하는 조작을 할 수 있는 것처럼 보인다.
+   */
+  const onDragStartItem = (id: string) => {
+    if (!canEdit) return
+    const ids = selectedIds.has(id) ? selectedTableIds : [id]
+    if (!selectedIds.has(id)) selectTables([id])
+    dragStart(ids)
+  }
+
+  const onDropItem = () => {
+    const { tableIds, over } = useDragStore.getState()
+    dragEnd()
+    if (!canEdit || tableIds.length === 0 || over === null) return
+    // 이미 그 그룹인 것은 뺀다 — 전부 그렇다면 빈 Revision이 생기지 않게 아예 내지 않는다.
+    const changed = tableIds.filter((id) => model.tables[id]?.groupId !== over.groupId)
+    if (changed.length === 0) return
+    // 그룹 배정·groupPosition 초기화·좌표 재배치가 한 producer로 묶인 공용 진입점이다.
+    // 여기서 다시 짜면 일괄 패널과 undo 1회 계약이 갈라진다.
+    applyGroupMove(mutate, changed, over.groupId)
+  }
+
   const onAddGroup = () => {
     const id = newId()
     // 개수 기반이 아니라 미사용 최소 번호를 찾는다(삭제 후 재추가 시 이름 충돌 방지).
@@ -125,9 +163,12 @@ export function TableTree({ projectId }: { projectId: string }) {
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {visibleGroups.map((g) => {
           const members = membersOf(g.id)
-          if (query !== '' && members.length === 0) return null
+          // 드래그 중이면 멤버가 검색에 걸리지 않는 그룹도 남긴다 — 그러지 않으면 검색으로 찾은
+          // 테이블을 원하는 그룹에 놓을 수 없다(설계 5.5).
+          if (query !== '' && members.length === 0 && !dragging) return null
           return (
-            <div key={g.id} className="mb-1">
+            <div key={g.id} data-drop-group={dropAttrValue(g.id)}
+              className={cn('mb-1 rounded', dragOverGroupId === g.id && 'ring-2 ring-primary')}>
               <button type="button" onClick={() => selectGroup(g.id)}
                 className={cn('flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-accent',
                   g.id === selectedGroupId && 'bg-accent',
@@ -138,7 +179,9 @@ export function TableTree({ projectId }: { projectId: string }) {
               </button>
               <ul className="ml-3 border-l pl-1">
                 {members.map((t) => (
-                  <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)} onClick={(e) => onItemClick(e, t.id)} />
+                  <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)}
+                    onClick={(e) => onItemClick(e, t.id)}
+                    onDragStart={onDragStartItem} onDrop={onDropItem} />
                 ))}
               </ul>
             </div>
@@ -146,13 +189,16 @@ export function TableTree({ projectId }: { projectId: string }) {
         })}
 
         {showUnassigned && (
-          <div className="mb-1">
+          <div data-drop-group={dropAttrValue(null)}
+            className={cn('mb-1 rounded', dragging && dragOver?.groupId === null && 'ring-2 ring-primary')}>
             {groups.length > 0 && (
               <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">미분류</div>
             )}
             <ul className={groups.length > 0 ? 'ml-3 border-l pl-1' : undefined}>
               {unassigned.map((t) => (
-                <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)} onClick={(e) => onItemClick(e, t.id)} />
+                <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)}
+                  onClick={(e) => onItemClick(e, t.id)}
+                  onDragStart={onDragStartItem} onDrop={onDropItem} />
               ))}
             </ul>
           </div>
@@ -168,14 +214,55 @@ export function TableTree({ projectId }: { projectId: string }) {
   )
 }
 
-function TableItem({ t, selected, onClick }: {
+/** 클릭과 드래그를 가르는 이동 거리(px). 이보다 작으면 손떨림으로 보고 클릭으로 남긴다. */
+const DRAG_THRESHOLD = 4
+
+function TableItem({ t, selected, onClick, onDragStart, onDrop }: {
   t: { id: string; physicalName: string; logicalName: string }
   selected: boolean
   onClick: (e: ReactMouseEvent) => void
+  onDragStart: (id: string) => void
+  onDrop: () => void
 }) {
+  const origin = useRef<{ x: number; y: number } | null>(null)
+  const dragging = useRef(false)
+
   return (
     <li>
-      <button type="button" onClick={onClick}
+      <button type="button"
+        // 드래그로 끝난 pointerup 뒤에는 click이 한 번 더 온다 — 선택이 튀지 않게 억제한다.
+        onClick={(e) => { if (!dragging.current) onClick(e) }}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return
+          origin.current = { x: e.clientX, y: e.clientY }
+          dragging.current = false
+          // 캡처가 없으면 커서가 항목 밖으로 나가는 순간 pointermove가 끊긴다.
+          // jsdom에는 이 API가 없어 존재를 확인하고 부른다.
+          if (typeof e.currentTarget.setPointerCapture === 'function') {
+            e.currentTarget.setPointerCapture(e.pointerId)
+          }
+        }}
+        onPointerMove={(e) => {
+          const o = origin.current
+          if (!o) return
+          if (!dragging.current) {
+            if (Math.abs(e.clientX - o.x) < DRAG_THRESHOLD && Math.abs(e.clientY - o.y) < DRAG_THRESHOLD) return
+            dragging.current = true
+            onDragStart(t.id)
+          }
+          useDragStore.getState().moveOver(dropTargetAt(e.clientX, e.clientY))
+        }}
+        onPointerUp={(e) => {
+          origin.current = null
+          if (typeof e.currentTarget.hasPointerCapture === 'function'
+            && e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId)
+          }
+          if (!dragging.current) return
+          onDrop()
+          // 뒤따라오는 click을 흘려보낸 뒤 억제를 푼다.
+          setTimeout(() => { dragging.current = false }, 0)
+        }}
         className={cn('flex w-full flex-col items-start rounded px-2 py-1.5 text-left hover:bg-accent', selected && 'bg-accent')}>
         <span className="font-mono text-xs font-medium">{t.physicalName}</span>
         <span className="text-xs text-muted-foreground">{t.logicalName}</span>

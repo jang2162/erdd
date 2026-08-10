@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -11,6 +11,7 @@ import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
+import { useDragStore } from './drag-store.js'
 import { TableTree } from './table-tree.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
@@ -26,7 +27,9 @@ function renderTree() {
   render(<TableTree projectId={PROJECT_ID} />, { wrapper: w })
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset(); useDragStore.getState().end()
+})
 
 describe('TableTree', () => {
   it('lists tables and filters by search (logical or physical)', async () => {
@@ -419,5 +422,255 @@ describe('TableTree Shift 앵커', () => {
     await user.keyboard('{/Shift}')
     // 앵커가 MBR(t2)에 남아 있었다면 ['t2', 't3', 't1']이 된다.
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t3', 't1'])
+  })
+})
+
+/**
+ * 사이드바 내부 드래그. jsdom에는 레이아웃 엔진이 없어 `document.elementFromPoint`가 **아예 없다**
+ * (test-setup이 null을 주는 스텁으로 채운다). 그래서 좌표로는 드롭 타깃을 찾을 수 없고,
+ * 판정 규칙은 `drop-target.test.ts`가 잡고 여기서는 `useDragStore.moveOver`로 타깃을 직접 세운다.
+ */
+describe('TableTree 드래그 그룹 이동', () => {
+  /** g1(회원관리)에 t1·t2, 그리고 멤버 없는 빈 그룹 하나를 더한 모델. */
+  function withEmptyGroup(id: string, name: string) {
+    const model = buildSampleModel()
+    model.tableGroups = { ...model.tableGroups, [id]: { id, name, color: '#000', comment: null } }
+    return model
+  }
+
+  /** 항목을 잡고 임계를 넘겨 끌기 시작한다. */
+  function grab(name: string): HTMLElement {
+    const item = screen.getByText(name).closest('button')!
+    fireEvent.pointerDown(item, { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(item, { clientX: 40, clientY: 0, pointerId: 1 })
+    return item
+  }
+
+  /** 커서 아래 타깃을 세우고 손을 뗀다. */
+  function dropOn(item: HTMLElement, groupId: string | null): void {
+    act(() => { useDragStore.getState().moveOver({ groupId }) })
+    fireEvent.pointerUp(item, { clientX: 40, clientY: 0, pointerId: 1 })
+  }
+
+  function countMutations(): unknown[] {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    return calls
+  }
+
+  /**
+   * "op가 하나도 안 나갔다"를 단언하기 전에 나갈 것을 다 내보낸다.
+   *
+   * mutate는 직렬화 체인 → 낙관적 적용 → 배치 링크의 자체 스케줄러 → fetch 순으로 흐른다.
+   * 태스크 한 틱만 밀면 fetch가 아직 안 나가서 **op가 실제로 나갔는데도 통과한다**
+   * (실측: 한 틱 버전으로 같은 describe를 3회 돌려 1회 누수). 여러 틱 밀어 확정시킨다.
+   */
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 5; i++) {
+      await act(async () => { await new Promise((r) => { setTimeout(r, 0) }) })
+    }
+  }
+
+  /** mutate가 서버까지 나간 것을 기다린다 — 낙관적 적용보다 늦으므로 모델 단언과 따로 본다. */
+  async function expectSent(calls: unknown[], n: number): Promise<void> {
+    await waitFor(() => { expect(calls).toHaveLength(n) })
+  }
+
+  it('트리 항목을 끌어 다른 그룹에 놓으면 그룹이 바뀌고 op 한 건이 나간다', async () => {
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    dropOn(grab('MBR'), 'g2')
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2'))
+    // 그룹 배정·좌표 재배치가 한 producer라 Revision도 한 건이다.
+    await expectSent(calls, 1)
+  })
+
+  it('잡은 항목이 선택에 있으면 선택 전체가 함께 옮겨진다', async () => {
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderTree()
+
+    dropOn(grab('MBR'), 'g2')
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g2'))
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2')
+    await expectSent(calls, 1)
+  })
+
+  it('잡은 항목이 선택 밖이면 그것 하나만 끌리고 선택도 그것으로 바뀐다', async () => {
+    // 파일 탐색기 관례. 끌고 있는 것과 강조된 것이 갈리면 무엇이 옮겨질지 알 수 없다.
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1'])
+    renderTree()
+
+    const item = grab('MBR')
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
+    dropOn(item, 'g2')
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2'))
+    expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g1')
+    await expectSent(calls, 1)
+  })
+
+  it('미분류에 놓으면 그룹에서 빠진다', async () => {
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    dropOn(grab('MBR'), null)
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBeNull())
+    await expectSent(calls, 1)
+  })
+
+  it('같은 그룹에 놓으면 아무 op도 내지 않는다', async () => {
+    // changed 필터가 없으면 좌표 재배치·groupPosition 초기화만으로 빈 뜻의 Revision이 하나 생긴다.
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    dropOn(grab('MBR'), 'g1')   // t2는 이미 g1이다
+
+    await settle()
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 300, y: 0 })
+  })
+
+  it('드롭 타깃 밖에서 손을 떼면 아무 op도 내지 않는다', async () => {
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    const item = grab('MBR')   // elementFromPoint가 없으므로 over는 null인 채다
+    expect(useDragStore.getState().over).toBeNull()
+    fireEvent.pointerUp(item, { clientX: 40, clientY: 0, pointerId: 1 })
+
+    await settle()
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')
+  })
+
+  it('임계보다 적게 움직이면 드래그가 아니라 클릭이다', async () => {
+    // 손떨림으로 그룹이 바뀌면 안 된다 — 임계 아래 이동은 클릭으로 남아 포커스를 요청한다.
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    const item = screen.getByText('MBR').closest('button')!
+    fireEvent.pointerDown(item, { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
+    fireEvent.pointerMove(item, { clientX: 3, clientY: 3, pointerId: 1 })
+    act(() => { useDragStore.getState().moveOver({ groupId: 'g2' }) })
+    fireEvent.pointerUp(item, { clientX: 3, clientY: 3, pointerId: 1 })
+    fireEvent.click(item)
+
+    await settle()
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().focusTableId).toBe('t2')
+  })
+
+  it('드래그로 끝난 뒤 따라오는 click은 선택을 갈아치우지 않는다', async () => {
+    // pointerup 뒤에 click이 한 번 더 온다. 그것이 흘러가면 방금 여러 개를 끌어 놓고도
+    // 선택이 잡았던 항목 하나로 접힌다.
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderTree()
+
+    const item = grab('MBR')
+    dropOn(item, 'g2')
+    fireEvent.click(item)
+
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
+    expect(useEditorStore.getState().focusTableId).toBeNull()
+    // 이 드롭이 낸 mutate를 이 테스트 안에서 끝낸다 — 남기면 다음 테스트의 fetch 스텁에 실려
+    // "op가 없어야 한다"를 거짓으로 깨뜨린다(실제로 겪었다).
+    await expectSent(calls, 1)
+  })
+
+  it('읽기 전용이면 드래그가 시작되지도, op가 나가지도 않는다', async () => {
+    const calls = countMutations()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer 상태.
+    renderTree()
+
+    const item = grab('MBR')
+    // 드래그를 시작시키면 드롭 타깃 하이라이트가 켜졌다 아무 일도 없어, 못 하는 조작처럼 보인다.
+    expect(useDragStore.getState().tableIds).toEqual([])
+    dropOn(item, 'g2')
+
+    await settle()
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')
+  })
+
+  it('그룹 블록과 미분류 블록이 드롭 타깃 속성을 단다 — 멤버 목록까지 감싼다', () => {
+    // Task 8의 캔버스 드래그가 좌표로 찾는 DOM 계약이다. 헤더만 타깃이면 조준이 너무 어렵다.
+    const model = buildSampleModel()
+    model.tables = { ...model.tables, t3: tbl('t3', 'ORD', '주문', null) }
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    renderTree()
+
+    const group = document.querySelector('[data-drop-group="g1"]')
+    expect(group).not.toBeNull()
+    expect(group!.contains(screen.getByText('MBR_GRD'))).toBe(true)
+    const none = document.querySelector('[data-drop-group="unassigned"]')
+    expect(none).not.toBeNull()
+    expect(none!.contains(screen.getByText('ORD'))).toBe(true)
+  })
+
+  it('드래그 중에는 검색으로 숨은 그룹도 드롭 타깃으로 보인다', async () => {
+    // 검색으로 찾은 테이블을 원하는 그룹에 놓을 수 없으면 드래그가 반쪽이다(설계 5.5).
+    const user = userEvent.setup()
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
+    grantEditPermission()
+    renderTree()
+
+    await user.type(screen.getByPlaceholderText('테이블 검색'), '회원')
+    expect(screen.queryByText('주문영역')).toBeNull()   // 멤버가 안 걸려 숨었다는 전제를 잠근다
+
+    act(() => { useDragStore.getState().start(['t2']) })
+    expect(screen.getByText('주문영역')).toBeInTheDocument()
+  })
+
+  it('드래그 중에는 그룹 뷰로 숨은 그룹도 드롭 타깃으로 보인다', () => {
+    // 그룹 뷰에서 "이건 다른 그룹으로 보내야겠다"가 가장 자연스러운 동선인데 막혀 있으면 안 된다.
+    useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문관리'), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().enterGroupView('g1')
+    renderTree()
+
+    expect(screen.queryByText('주문관리')).toBeNull()   // 스코핑으로 숨었다는 전제를 잠근다
+
+    act(() => { useDragStore.getState().start(['t2']) })
+    expect(screen.getByText('주문관리')).toBeInTheDocument()
+  })
+
+  it('드래그 중에는 그룹 뷰에서도 미분류가 드롭 타깃으로 보인다', () => {
+    // 그룹 뷰 안에서 그룹 밖으로 빼내는 유일한 드래그 동선이다.
+    const model = buildSampleModel()
+    model.tables = { ...model.tables, t3: tbl('t3', 'ORD', '주문', null) }
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().enterGroupView('g1')
+    renderTree()
+
+    expect(screen.queryByText('미분류')).toBeNull()
+
+    act(() => { useDragStore.getState().start(['t2']) })
+    expect(screen.getByText('미분류')).toBeInTheDocument()
+    expect(document.querySelector('[data-drop-group="unassigned"]')).not.toBeNull()
   })
 })

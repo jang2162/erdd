@@ -17,3 +17,9 @@ Element.prototype.hasPointerCapture ??= () => false
 Element.prototype.setPointerCapture ??= () => {}
 Element.prototype.releasePointerCapture ??= () => {}
 Element.prototype.scrollIntoView ??= () => {}
+
+// 드래그의 "좌표 → 드롭 타깃" 조회가 쓰는 API. jsdom에는 레이아웃 엔진이 없어 **아예 없다**
+// (null을 주는 것이 아니라 undefined라, 그냥 부르면 TypeError로 핸들러가 터진다).
+// 레이아웃이 없으니 의미 있는 답을 줄 수도 없다 — 드롭 타깃 판정은 dropTargetOf로 직접 테스트하고,
+// 컴포넌트 테스트는 useDragStore.moveOver로 타깃을 세운다.
+Document.prototype.elementFromPoint ??= () => null
