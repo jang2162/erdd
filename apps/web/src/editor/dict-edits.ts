@@ -225,6 +225,10 @@ export function unregisteredWords(model: ProjectModel, rules: NamingRules): stri
 export function unregisteredAbbreviations(model: ProjectModel, rules: NamingRules): string[] {
   const set = new Set<string>()
   const collect = (physicalName: string) => {
+    // restoreLogicalName 은 빈 이름에 {ok:false, unknownTokens:[]} 를 즉시 낸다(naming.ts:76-77).
+    // 그래서 이 가드는 동작상 관찰되지 않는다 — 지워도 결과가 같다(빈 배열을 forEach해도 아무것도
+    // 추가되지 않는다).
+    // 정방향 unregisteredWords 의 빈 논리명 가드와 대칭을 이루려고 둔다.
     if (physicalName.trim() === '') return
     const r = restoreLogicalName(physicalName, model.words, model.terms, rules)
     if (!r.ok) r.unknownTokens.forEach((t) => set.add(t))

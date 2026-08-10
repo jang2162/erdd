@@ -150,14 +150,6 @@ describe('unregisteredAbbreviations', () => {
     expect(out.length).toBe(new Set(out).size)
   })
 
-  it('빈 물리명은 건너뛴다', () => {
-    const m = buildSampleModel()
-    m.tables['t1']!.physicalName = ''
-    m.columns['c1']!.physicalName = ''
-    expect(() => unregisteredAbbreviations(m, rules)).not.toThrow()
-    expect(unregisteredAbbreviations(m, rules)).not.toContain('')
-  })
-
   // ⚠️ 없으면 "전부 모은다"는 구현도 위를 통과한다.
   it('모든 약어가 사전에 있으면 빈 배열이다', () => {
     let m = buildSampleModel()
