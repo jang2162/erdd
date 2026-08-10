@@ -134,6 +134,16 @@ describe('DBML 왕복 — 내보낸 것을 다시 읽으면 같은 계획이 나
     expect(named).toMatchObject({ cardinality: '1:1', name: 'FK_MBR_DTL_MBR' })
   })
 
+  // identifying 은 DBML 에 표현이 없어 "FK 컬럼 ⊆ 자식 PK" 로 재추론한다(설계 §7). 자식 PK 가
+  // 복합이든(indexes 블록) 단일이든(컬럼 설정 [pk]) 같은 결론이 나와야 한다 — 단일 PK 쪽이
+  // 파서에서 pk 제약으로 정규화되지 않아 전부 비식별로 뒤집히던 것이 리뷰 M-1 이다.
+  it('identifying 이 왕복한다 — 복합 PK 자식과 단일 PK 자식 둘 다', () => {
+    const composite = plan.relationships.find((r) => r.childPhysicalName === 'ORD')!
+    expect(composite.identifying).toBe(true)
+    const single = plan.relationships.find((r) => r.childPhysicalName === 'MBR_DTL')!
+    expect(single.identifying).toBe(true)
+  })
+
   it('1:1 이 유니크 인덱스를 만들지 않는다', () => {
     const dtl = plan.tables.find((t) => t.physicalName === 'MBR_DTL')!
     expect(dtl.indexes).toEqual([])

@@ -335,9 +335,9 @@ describe('DBML 왕복 — 모델까지', () => {
     )
     expect(byName(next)).toEqual(byName(model))
     expect(Object.values(next.relationships).map((r) => ({
-      cardinality: r.cardinality, name: r.name,
+      cardinality: r.cardinality, name: r.name, identifying: r.identifying,
     })).sort()).toEqual(Object.values(model.relationships).map((r) => ({
-      cardinality: r.cardinality, name: r.name,
+      cardinality: r.cardinality, name: r.name, identifying: r.identifying,
     })).sort())
   })
 })

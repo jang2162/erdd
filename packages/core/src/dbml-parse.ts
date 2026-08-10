@@ -437,6 +437,14 @@ function parseColumnItem(out: Out, table: string, item: Item): ParsedColumn | nu
       parseInlineRef(out, table, col.name, value, item.line)
     }
   }
+  // 컬럼 설정 `[pk]` 는 **테이블 수준 pk 제약으로도** 낸다. DDL 파서가 인라인 PRIMARY KEY 를
+  // 같은 방식으로 정규화하고(`ddl-parse.ts` 의 `if (col.inlinePk) out.constraints.push(...)`),
+  // 그 뒤 파이프라인의 여러 판정이 `inlinePk` 가 아니라 **pk 제약**(`pkOf`)만 본다 —
+  // 관계의 identifying 재추론, PK 와 컬럼이 같은 유니크 인덱스 제외, 참조 컬럼을 생략한 FK 의
+  // 부모 PK 해소가 전부 그렇다. 여기서 정규화하지 않으면 단일 PK 테이블에서 그 판정이 전부
+  // 어긋난다(리뷰 M-1: 식별 관계가 통째로 비식별로 뒤집혔다).
+  // `inlinePk` 는 그대로 둔다 — 컬럼의 `isPk` 판정이 그것도 함께 본다.
+  if (col.inlinePk) out.constraints.push({ kind: 'pk', table, columns: [col.name] })
   return col
 }
 

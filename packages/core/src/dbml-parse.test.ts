@@ -192,3 +192,21 @@ Table "MBR" [note: '회원 - 설명 {"보안등급":"2"}'] {
     expect(p.comments).toContainEqual({ table: 'MBR', column: null, text: '회원 - 설명' })
   })
 })
+
+describe('parseDbml — PK 정규화', () => {
+  it('컬럼 설정 [pk] 를 테이블 수준 pk 제약으로도 낸다', () => {
+    const p = parseDbml('Table "T" {\n  "A" int [pk]\n}')
+    expect(p.constraints).toContainEqual({ kind: 'pk', table: 'T', columns: ['A'] })
+    expect(p.tables[0]!.columns[0]!.inlinePk).toBe(true)   // inlinePk 도 그대로 둔다
+  })
+
+  it('인라인 [pk] 와 indexes 의 [pk] 가 둘 다 있으면 문서 순서대로 낸다(먼저 나온 것이 이긴다)', () => {
+    const p = parseDbml(
+      'Table "T" {\n  "A" int [pk]\n  "B" int\n\n  indexes {\n    ("A", "B") [pk]\n  }\n}',
+    )
+    expect(p.constraints.filter((c) => c.kind === 'pk')).toEqual([
+      { kind: 'pk', table: 'T', columns: ['A'] },          // 인라인이 먼저
+      { kind: 'pk', table: 'T', columns: ['A', 'B'] },      // indexes 블록이 뒤
+    ])
+  })
+})
