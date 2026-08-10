@@ -542,6 +542,42 @@ describe('parseDdl — 컬럼 인라인 제약', () => {
     expect(nn.tables[0]!.columns[0]!.defaultValue).toBe("'x'")
   })
 
+  // 문자열 리터럴과 따옴표 식별자를 각각 따로 훑으면 어느 쪽을 먼저 돌려도 반대편에 구멍이
+  // 생긴다. 아래 둘이 그 양쪽이다 — 한 번의 좌→우 스캔으로만 둘 다 통과한다.
+  it("따옴표 식별자 안의 아포스트로피가 뒤따르는 제약을 삼키지 않는다", () => {
+    const uq = parseDdl(`CREATE TABLE C (A int CONSTRAINT "o'brien" UNIQUE);`)
+    expect(uq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: "o'brien", columns: ['A'] })
+
+    const fk = parseDdl(`CREATE TABLE C (A int CONSTRAINT "o'brien" REFERENCES P);`)
+    expect(fk.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: "o'brien", columns: ['A'], refTable: 'P', refColumns: [],
+    })
+
+    const brk = parseDdl(`CREATE TABLE C (A int CONSTRAINT [o'brien] UNIQUE);`)
+    expect(brk.constraints).toContainEqual({ kind: 'unique', table: 'C', name: "o'brien", columns: ['A'] })
+  })
+
+  it("따옴표 식별자 안의 아포스트로피가 컬럼 플래그를 뒤집지 않는다", () => {
+    const c = parseDdl(`CREATE TABLE C (A int DEFAULT 1 COLLATE "o'brien" NOT NULL);`).tables[0]!.columns[0]!
+    expect(c.notNull).toBe(true)
+    expect(c.defaultValue).toBe('1')
+
+    const pk = parseDdl(`CREATE TABLE C (A int COLLATE "o'brien" PRIMARY KEY);`)
+    expect(pk.tables[0]!.columns[0]!.inlinePk).toBe(true)
+    expect(pk.constraints).toContainEqual({ kind: 'pk', table: 'C', columns: ['A'] })
+  })
+
+  it('문자열 리터럴 안의 따옴표 문자는 여전히 값의 일부다(대조군)', () => {
+    // 반대 방향 구멍 — 식별자를 먼저 훑으면 이 흔한 jsonb 기본값이 깨진다.
+    const j = parseDdl(`CREATE TABLE C (A jsonb DEFAULT '{"a": 1}' NOT NULL UNIQUE);`)
+    expect(j.tables[0]!.columns[0]!.defaultValue).toBe('\'{"a": 1}\'')
+    expect(j.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['A'] })
+
+    const b = parseDdl(`CREATE TABLE C (A varchar(10) DEFAULT 'a[b' NOT NULL UNIQUE);`)
+    expect(b.tables[0]!.columns[0]!.defaultValue).toBe("'a[b'")
+    expect(b.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['A'] })
+  })
+
   it('참조 컬럼 목록이 있는 인라인 REFERENCES는 그대로다(대조군)', () => {
     const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint NOT NULL REFERENCES "public"."MBR" (MBR_NO) ON DELETE CASCADE);')
     expect(r.constraints).toContainEqual({
