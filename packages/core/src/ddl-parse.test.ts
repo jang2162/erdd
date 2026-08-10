@@ -389,3 +389,306 @@ describe('parseDdl — 나머지 문장의 문자열 리터럴 오탐 점검', (
     expect(r.constraints[0]).toMatchObject({ refTable: 'MBR', refColumns: ['MBR_NO'] })
   })
 })
+
+describe('parseDdl — 컬럼 인라인 제약', () => {
+  it('참조 컬럼 목록을 생략한 인라인 REFERENCES를 FK로 잡는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES MBR);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('인라인 REFERENCES의 꼬리 절(ON DELETE 등)이 부모 이름에 섞이지 않는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES MBR ON DELETE CASCADE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('인라인 CONSTRAINT 이름을 FK 제약명으로 쓴다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint CONSTRAINT FK_ORD_MBR REFERENCES MBR);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: 'FK_ORD_MBR',
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('이름 없는 컬럼 수준 UNIQUE를 UNIQUE 제약으로 잡는다', () => {
+    const r = parseDdl('CREATE TABLE MBR (EMAIL text NOT NULL UNIQUE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'MBR', name: null, columns: ['EMAIL'],
+    })
+  })
+
+  it('인라인 CONSTRAINT 이름을 UNIQUE 제약명으로 쓴다', () => {
+    const r = parseDdl('CREATE TABLE MBR (EMAIL text NOT NULL CONSTRAINT UX_MBR_EMAIL UNIQUE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'MBR', name: 'UX_MBR_EMAIL', columns: ['EMAIL'],
+    })
+  })
+
+  it('사용자 DDL 형태(여러 줄 constraint … references … on delete cascade)를 그대로 읽는다', () => {
+    const r = parseDdl(`
+      create table members
+      (
+          id         uuid                                   not null
+              primary key,
+          org_id     uuid                                   not null
+              constraint members_org_id_organizations_id_fk
+                  references organizations
+                  on delete cascade,
+          user_id    uuid                                   not null
+              constraint members_user_id_users_id_fk
+                  references users
+                  on delete cascade,
+          created_at timestamp with time zone default now() not null
+      );`)
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'org_id', 'user_id', 'created_at'])
+    expect(r.constraints).toContainEqual({ kind: 'pk', table: 'members', columns: ['id'] })
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'members', name: 'members_org_id_organizations_id_fk',
+      columns: ['org_id'], refTable: 'organizations', refColumns: [],
+    })
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'members', name: 'members_user_id_users_id_fk',
+      columns: ['user_id'], refTable: 'users', refColumns: [],
+    })
+  })
+
+  it('여러 줄 인라인 UNIQUE도 제약명을 살려 잡는다', () => {
+    const r = parseDdl(`
+      create table users
+      (
+          id    uuid not null
+              primary key,
+          email text not null
+              constraint users_email_unique
+                  unique
+      );`)
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'users', name: 'users_email_unique', columns: ['email'],
+    })
+  })
+
+  it('REFERENCES 뒤의 다른 괄호를 참조 컬럼 목록으로 오인하지 않는다', () => {
+    const check = parseDdl('CREATE TABLE ORD (QTY int REFERENCES MBR CHECK (QTY > 0));')
+    expect(check.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['QTY'], refTable: 'MBR', refColumns: [],
+    })
+
+    const def = parseDdl('CREATE TABLE ORD (REG_DT timestamp REFERENCES MBR DEFAULT now());')
+    expect(def.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['REG_DT'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('문자열 리터럴 안의 UNIQUE·REFERENCES가 가짜 제약을 만들지 않는다', () => {
+    const r = parseDdl("CREATE TABLE A (NOTE varchar(50) DEFAULT 'unique key 재발급 references MBR');")
+    expect(r.constraints).toEqual([])
+    expect(r.tables[0]!.columns[0]!.defaultValue).toBe("'unique key 재발급 references MBR'")
+  })
+
+  it('컬럼 이름이 "unique"여도 유니크 제약으로 오인하지 않는다', () => {
+    const r = parseDdl('CREATE TABLE model_indexes (id uuid not null primary key, "unique" boolean not null);')
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'unique'])
+    expect(r.constraints).toEqual([{ kind: 'pk', table: 'model_indexes', columns: ['id'] }])
+  })
+
+  it('따옴표 식별자 안의 UNIQUE도 제약으로 오인하지 않는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint REFERENCES "unique" (ID));')
+    expect(r.constraints).toEqual([{
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'unique', refColumns: ['ID'],
+    }])
+  })
+
+  it('테이블 수준 UNIQUE (…)를 컬럼 인라인으로 두 번 세지 않는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (A int, B int, CONSTRAINT UX_ORD UNIQUE (A, B));')
+    expect(r.constraints.filter((c) => c.kind === 'unique')).toEqual([
+      { kind: 'unique', table: 'ORD', name: 'UX_ORD', columns: ['A', 'B'] },
+    ])
+  })
+
+  // 마스킹본과 원본은 인덱스를 공유한다 — 마스킹이 길이를 바꾸면 그 뒤의 제약명이 통째로
+  // 어긋난다. 서로게이트 페어(코드 유닛 2개)를 문자 단위로 순회하면 실제로 그렇게 된다.
+  it('괄호 안 마스킹이 서로게이트 페어에서도 길이를 보존한다', () => {
+    const r = parseDdl('CREATE TABLE A (COL int CHECK (\u{2000B} > 0) CONSTRAINT UX_A UNIQUE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'A', name: 'UX_A', columns: ['COL'],
+    })
+  })
+
+  // 같은 계약의 다른 경로 — 인용 안의 이스케이프(닫는 문자 두 번)는 2개를 소비하고 2개를
+  // 내야 한다. 하나만 내면 마스킹본이 짧아져 뒤의 제약명이 한 글자씩 잘린다(UX_A → UX_).
+  it('인용 이스케이프에서도 마스킹이 길이를 보존한다', () => {
+    const sq = parseDdl("CREATE TABLE C (A varchar(10) DEFAULT 'a''b' CONSTRAINT UX_A UNIQUE);")
+    expect(sq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX_A', columns: ['A'] })
+    expect(sq.tables[0]!.columns[0]!.defaultValue).toBe("'a''b'")
+
+    const dq = parseDdl('CREATE TABLE C (A text COLLATE "a""b" CONSTRAINT UX_A UNIQUE);')
+    expect(dq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX_A', columns: ['A'] })
+
+    const brk = parseDdl('CREATE TABLE C (A text COLLATE [a]]b] CONSTRAINT UX_A UNIQUE);')
+    expect(brk.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX_A', columns: ['A'] })
+
+    const btk = parseDdl('CREATE TABLE C (A text COLLATE `a``b` CONSTRAINT UX_A UNIQUE);')
+    expect(btk.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX_A', columns: ['A'] })
+  })
+
+  it('DEFAULT 값이 뒤따르는 CONSTRAINT 이름을 삼키지 않는다', () => {
+    const uq = parseDdl("CREATE TABLE C (A varchar(10) DEFAULT 'x' CONSTRAINT UX1 UNIQUE);")
+    expect(uq.tables[0]!.columns[0]!.defaultValue).toBe("'x'")
+    expect(uq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'UX1', columns: ['A'] })
+
+    const fk = parseDdl('CREATE TABLE C (A int DEFAULT 0 CONSTRAINT FK1 REFERENCES P);')
+    expect(fk.tables[0]!.columns[0]!.defaultValue).toBe('0')
+    expect(fk.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: 'FK1', columns: ['A'], refTable: 'P', refColumns: [],
+    })
+
+    // CHECK 는 건너뛰지만 기본값은 그대로여야 한다.
+    const ck = parseDdl('CREATE TABLE C (A int DEFAULT 0 CONSTRAINT CK1 CHECK (A > 0) NOT NULL);')
+    expect(ck.tables[0]!.columns[0]!.defaultValue).toBe('0')
+
+    // NOT NULL 이 사이에 끼면 원래부터 정상이었다(대조군).
+    const nn = parseDdl("CREATE TABLE C (A varchar(10) DEFAULT 'x' NOT NULL CONSTRAINT UX1 UNIQUE);")
+    expect(nn.tables[0]!.columns[0]!.defaultValue).toBe("'x'")
+  })
+
+  // 문자열 리터럴과 따옴표 식별자를 각각 따로 훑으면 어느 쪽을 먼저 돌려도 반대편에 구멍이
+  // 생긴다. 아래 둘이 그 양쪽이다 — 한 번의 좌→우 스캔으로만 둘 다 통과한다.
+  it("따옴표 식별자 안의 아포스트로피가 뒤따르는 제약을 삼키지 않는다", () => {
+    const uq = parseDdl(`CREATE TABLE C (A int CONSTRAINT "o'brien" UNIQUE);`)
+    expect(uq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: "o'brien", columns: ['A'] })
+
+    const fk = parseDdl(`CREATE TABLE C (A int CONSTRAINT "o'brien" REFERENCES P);`)
+    expect(fk.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: "o'brien", columns: ['A'], refTable: 'P', refColumns: [],
+    })
+
+    const brk = parseDdl(`CREATE TABLE C (A int CONSTRAINT [o'brien] UNIQUE);`)
+    expect(brk.constraints).toContainEqual({ kind: 'unique', table: 'C', name: "o'brien", columns: ['A'] })
+  })
+
+  it("따옴표 식별자 안의 아포스트로피가 컬럼 플래그를 뒤집지 않는다", () => {
+    const c = parseDdl(`CREATE TABLE C (A int DEFAULT 1 COLLATE "o'brien" NOT NULL);`).tables[0]!.columns[0]!
+    expect(c.notNull).toBe(true)
+    expect(c.defaultValue).toBe('1')
+
+    const pk = parseDdl(`CREATE TABLE C (A int COLLATE "o'brien" PRIMARY KEY);`)
+    expect(pk.tables[0]!.columns[0]!.inlinePk).toBe(true)
+    expect(pk.constraints).toContainEqual({ kind: 'pk', table: 'C', columns: ['A'] })
+  })
+
+  it('문자열 리터럴 안의 따옴표 문자는 여전히 값의 일부다(대조군)', () => {
+    // 반대 방향 구멍 — 식별자를 먼저 훑으면 이 흔한 jsonb 기본값이 깨진다.
+    const j = parseDdl(`CREATE TABLE C (A jsonb DEFAULT '{"a": 1}' NOT NULL UNIQUE);`)
+    expect(j.tables[0]!.columns[0]!.defaultValue).toBe('\'{"a": 1}\'')
+    expect(j.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['A'] })
+
+    const b = parseDdl(`CREATE TABLE C (A varchar(10) DEFAULT 'a[b' NOT NULL UNIQUE);`)
+    expect(b.tables[0]!.columns[0]!.defaultValue).toBe("'a[b'")
+    expect(b.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['A'] })
+  })
+
+  // CONSTRAINT 이름은 **바로 뒤 제약 하나**에만 걸린다(사이에 공백만 있을 때).
+  // 이 규칙이 없으면 앞쪽의 무관한 이름이 뒤 제약에 잘못 붙는다.
+  it('CONSTRAINT 이름은 바로 뒤 제약 하나에만 걸린다', () => {
+    // 사이에 CHECK 가 끼면 CK1 은 REFERENCES 에 붙지 않는다.
+    const ck = parseDdl('CREATE TABLE C (A int CONSTRAINT CK1 CHECK (A > 0) REFERENCES P);')
+    expect(ck.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: null, columns: ['A'], refTable: 'P', refColumns: [],
+    })
+
+    // 이름이 연달아 오면 가장 가까운 것이 이긴다.
+    const two = parseDdl('CREATE TABLE C (A int CONSTRAINT X CONSTRAINT Y UNIQUE);')
+    expect(two.constraints).toContainEqual({ kind: 'unique', table: 'C', name: 'Y', columns: ['A'] })
+    expect(two.constraints).not.toContainEqual({ kind: 'unique', table: 'C', name: 'X', columns: ['A'] })
+
+    // 사이에 NOT NULL 이 끼면 이름이 붙지 않는다.
+    const nn = parseDdl('CREATE TABLE C (A int CONSTRAINT NN1 NOT NULL UNIQUE);')
+    expect(nn.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['A'] })
+  })
+
+  // REFERENCES 해석은 세 경로가 공유하므로 개선도 셋 다에 걸린다. 인라인 경로만
+  // 잠그면 테이블 수준·ALTER 쪽 개선을 지워도 아무 테스트가 안 깨진다.
+  it('테이블 수준·ALTER FK 도 REFERENCES 뒤 CHECK 괄호를 참조 컬럼으로 읽지 않는다', () => {
+    const alt = parseDdl('ALTER TABLE C ADD CONSTRAINT FK1 FOREIGN KEY (A) REFERENCES MBR CHECK (QTY > 0);')
+    expect(alt.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: 'FK1', columns: ['A'], refTable: 'MBR', refColumns: [],
+    })
+
+    const tbl = parseDdl('CREATE TABLE C (A int, CONSTRAINT FK1 FOREIGN KEY (A) REFERENCES MBR CHECK (QTY > 0));')
+    expect(tbl.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: 'FK1', columns: ['A'], refTable: 'MBR', refColumns: [],
+    })
+  })
+
+  it('참조 컬럼 목록이 있는 인라인 REFERENCES는 그대로다(대조군)', () => {
+    const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint NOT NULL REFERENCES "public"."MBR" (MBR_NO) ON DELETE CASCADE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'ORD', name: null,
+      columns: ['MBR_NO'], refTable: 'MBR', refColumns: ['MBR_NO'],
+    })
+  })
+})
+
+describe('parseDdl — 비ASCII 식별자', () => {
+  it('테이블 수준 제약의 비ASCII 이름을 살린다', () => {
+    const uq = parseDdl('CREATE TABLE C (A int, CONSTRAINT 유니크 UNIQUE (A));')
+    expect(uq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: '유니크', columns: ['A'] })
+
+    const fk = parseDdl('CREATE TABLE C (A int, CONSTRAINT 외래키 FOREIGN KEY (A) REFERENCES P (I));')
+    expect(fk.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: '외래키', columns: ['A'], refTable: 'P', refColumns: ['I'],
+    })
+  })
+
+  it('ALTER TABLE ADD CONSTRAINT의 비ASCII 이름을 살린다', () => {
+    const r = parseDdl('ALTER TABLE C ADD CONSTRAINT 외래키 FOREIGN KEY (A) REFERENCES P (I);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: '외래키', columns: ['A'], refTable: 'P', refColumns: ['I'],
+    })
+  })
+
+  it('비ASCII 컬럼명을 통째로 버리지 않는다', () => {
+    const r = parseDdl('CREATE TABLE C (회원번호 int NOT NULL UNIQUE, 이름 varchar(10));')
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['회원번호', '이름'])
+    expect(r.tables[0]!.columns[0]!.notNull).toBe(true)
+    expect(r.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['회원번호'] })
+    expect(r.skipped).toEqual([])
+  })
+
+  // 식별자 정규식을 넓히면 컬럼 이름 정규식이 파서의 진입점이라 위험하다 — 테이블 수준
+  // 제약이 컬럼으로 먹히면 안 된다. 항목 첫머리 라우팅이 먼저 걸러 준다는 전제를 잠근다.
+  it('테이블 수준 제약을 컬럼으로 먹지 않는다', () => {
+    const pk = parseDdl('CREATE TABLE C (A int, PRIMARY KEY (A));')
+    expect(pk.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(pk.constraints).toEqual([{ kind: 'pk', table: 'C', columns: ['A'] }])
+
+    const uq = parseDdl('CREATE TABLE C (A int, UNIQUE (A));')
+    expect(uq.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(uq.constraints).toEqual([{ kind: 'unique', table: 'C', name: null, columns: ['A'] }])
+
+    const fk = parseDdl('CREATE TABLE C (A int, FOREIGN KEY (A) REFERENCES P (I));')
+    expect(fk.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(fk.constraints).toEqual([{
+      kind: 'fk', table: 'C', name: null, columns: ['A'], refTable: 'P', refColumns: ['I'],
+    }])
+
+    const ck = parseDdl('CREATE TABLE C (A int, CHECK (A > 0));')
+    expect(ck.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(ck.skipped.map((s) => s.keyword)).toEqual(['CHECK'])
+  })
+
+  it('비ASCII 이름이 붙은 테이블 수준 CHECK도 컬럼으로 먹지 않는다', () => {
+    const r = parseDdl('CREATE TABLE C (A int, CONSTRAINT 체크 CHECK (A > 0));')
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(r.constraints).toEqual([])
+    expect(r.skipped.map((s) => s.keyword)).toEqual(['CHECK'])
+  })
+})

@@ -366,3 +366,46 @@ describe('왕복 — 내보낸 DDL을 다시 읽으면 같은 계획이 나온�
     expect(p.warnings.some((w) => w.kind === 'unknown-word')).toBe(true)
   })
 })
+
+describe('planDdlImport — 컬럼 인라인 제약', () => {
+  it('참조 컬럼을 생략한 인라인 FK를 부모 PK로 해소해 관계를 만든다', () => {
+    const p = plan(`
+      create table organizations (id uuid not null primary key, name text not null);
+      create table members
+      (
+          id     uuid not null
+              primary key,
+          org_id uuid not null
+              constraint members_org_id_organizations_id_fk
+                  references organizations
+                  on delete cascade
+      );`)
+    expect(p.relationships).toEqual([{
+      childPhysicalName: 'members', parentPhysicalName: 'organizations',
+      columnPairs: [{ child: 'org_id', parent: 'id' }], identifying: false,
+    }])
+    expect(p.warnings.filter((w) => w.kind === 'unresolved-fk')).toEqual([])
+  })
+
+  it('컬럼 인라인 UNIQUE를 유니크 인덱스로 만들고 DDL에 적힌 제약명을 쓴다', () => {
+    const p = plan(`
+      create table users
+      (
+          id    uuid not null
+              primary key,
+          email text not null
+              constraint users_email_unique
+                  unique
+      );`)
+    expect(p.tables[0]!.indexes).toEqual([
+      { name: 'users_email_unique', columnPhysicalNames: ['email'], unique: true },
+    ])
+  })
+
+  it('이름 없는 컬럼 인라인 UNIQUE는 자동 이름을 받는다', () => {
+    const p = plan('create table users (id uuid not null primary key, email text not null unique);')
+    expect(p.tables[0]!.indexes).toEqual([
+      { name: 'UX_users_1', columnPhysicalNames: ['email'], unique: true },
+    ])
+  })
+})
