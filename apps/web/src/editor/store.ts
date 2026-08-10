@@ -41,6 +41,8 @@ type EditorState = {
   setPeers: (peers: Peer[]) => void
   /** 서버 상태로 통째 되맞춘다(실시간 seq 간극·재접속). setLoaded와 달리 그룹 뷰를 유지한다. */
   resync: (model: ProjectModel, seq: number) => void
+  /** 모델에서 사라진 대상만 선택에서 걷어낸다(살아남은 선택은 유지). */
+  pruneSelection: (model: ProjectModel) => void
   setViewMode: (viewMode: ViewMode) => void
   select: (tableId: string | null) => void
   toggleTable: (tableId: string) => void
@@ -66,6 +68,28 @@ const NO_TABLES: readonly string[] = []
 
 const CLEARED_SELECTION = {
   selectedTableIds: NO_TABLES, selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
+}
+
+/**
+ * 모델에 아직 존재하는 선택만 남긴다. **resync와 실시간 삭제 수신이 이 한 규칙을 공유한다** —
+ * 같은 삭제 사건이 도착 경로(op 배치 / seq 간극 리로드)에 따라 다른 결과를 내면 안 되기 때문이다.
+ * 규칙이 두 벌이면 언젠가 갈린다.
+ *
+ * 참조 규약: 전부 살아남았으면 **원래 배열 참조를 그대로** 돌려준다(리렌더 억제 — 실시간 op는 초당
+ * 여러 번 온다). 전부 사라졌으면 새 빈 배열이 아니라 **빈 선택의 공유 참조**(`NO_TABLES`)를 쓴다.
+ */
+function keptSelection(s: EditorState, model: ProjectModel) {
+  const keep = (id: string | null, rec: Record<string, unknown>) =>
+    (id !== null && Object.hasOwn(rec, id) ? id : null)
+  const keptTables = s.selectedTableIds.filter((id) => Object.hasOwn(model.tables, id))
+  return {
+    selectedTableIds: keptTables.length === s.selectedTableIds.length
+      ? s.selectedTableIds
+      : keptTables.length === 0 ? NO_TABLES : keptTables,
+    selectedRelationshipId: keep(s.selectedRelationshipId, model.relationships),
+    selectedNoteId: keep(s.selectedNoteId, model.notes),
+    selectedGroupId: keep(s.selectedGroupId, model.tableGroups),
+  }
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -100,23 +124,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // undo 스택은 버린다(되돌리려는 op가 이미 사라진 대상을 가리킬 수 있다).
   // activeGroupView는 유지한다 — 남이 편집할 때마다 그룹 뷰에서 튕기면 못 쓴다.
   // 선택은 대상이 아직 존재할 때만 남긴다.
-  resync: (model, seq) => set((s) => {
-    const keep = (id: string | null, rec: Record<string, unknown>) =>
-      (id !== null && Object.hasOwn(rec, id) ? id : null)
-    // 전부 살아남았으면 **원래 배열 참조를 그대로** 반환한다(리렌더 억제).
-    // 전부 사라졌으면 새 빈 배열이 아니라 **빈 선택의 공유 참조**(NO_TABLES)를 쓴다 —
-    // "모든 빈 선택은 같은 인스턴스"라는 불변식이 이 경로에서만 깨지면 안 된다.
-    const keptTables = s.selectedTableIds.filter((id) => Object.hasOwn(model.tables, id))
-    return {
-      model, seq, loaded: true, undoStack: [], redoStack: [],
-      selectedTableIds: keptTables.length === s.selectedTableIds.length
-        ? s.selectedTableIds
-        : keptTables.length === 0 ? NO_TABLES : keptTables,
-      selectedRelationshipId: keep(s.selectedRelationshipId, model.relationships),
-      selectedNoteId: keep(s.selectedNoteId, model.notes),
-      selectedGroupId: keep(s.selectedGroupId, model.tableGroups),
-    }
-  }),
+  resync: (model, seq) => set((s) => ({
+    model, seq, loaded: true, undoStack: [], redoStack: [],
+    ...keptSelection(s, model),
+  })),
+  pruneSelection: (model) => set((s) => keptSelection(s, model)),
   setViewMode: (viewMode) => set({ viewMode }),
   select: (tableId) => set({ ...CLEARED_SELECTION, selectedTableIds: tableId === null ? NO_TABLES : [tableId] }),
   toggleTable: (tableId) => set((s) => {

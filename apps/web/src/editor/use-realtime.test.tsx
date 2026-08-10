@@ -12,6 +12,9 @@ import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { useEditorStore } from './store.js'
 import { selectionImpact, useRealtime, wsUrl } from './use-realtime.js'
 
+const { toastInfo, toastError } = vi.hoisted(() => ({ toastInfo: vi.fn(), toastError: vi.fn() }))
+vi.mock('sonner', () => ({ toast: { info: toastInfo, error: toastError, success: vi.fn() } }))
+
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 const NOTE_A = '018f6b0e-0000-7000-8000-0000000000b1'
 const NOTE_B = '018f6b0e-0000-7000-8000-0000000000b2'
@@ -68,8 +71,24 @@ const modelWith = (...ids: string[]): ProjectModel => {
   return m
 }
 
+/** 컬럼·그룹이 없는 테이블만 담은 모델. 테이블 delete op가 무결성 검사에 걸리지 않는다. */
+const tablesModel = (...ids: string[]): ProjectModel => {
+  const m = createEmptyModel()
+  ids.forEach((id, i) => {
+    m.tables[id] = {
+      id, logicalName: id, physicalName: id.toUpperCase(), comment: null,
+      groupId: null, position: { x: i * 300, y: 0 }, groupPosition: null, custom: {},
+    }
+  })
+  return m
+}
+
+const deleteTableOp = (id: string): Op => ({ action: 'delete', entity: 'table', entityId: id, before: null })
+
 beforeEach(() => {
   FakeSocket.instances = []
+  toastInfo.mockClear()
+  toastError.mockClear()
   vi.stubGlobal('WebSocket', FakeSocket)
 })
 afterEach(() => {
@@ -250,6 +269,82 @@ describe('useRealtime 권한 무관 수신', () => {
     await waitFor(() => {
       expect(useEditorStore.getState().model.notes[NOTE_A]?.content).toBe('남의 메모')
     })
+  })
+})
+
+describe('useRealtime 삭제 수신과 선택 정리', () => {
+  // ⚠️ op의 entityId는 UUID여야 한다(core `op-guard`의 UUID_RE). 't1' 같은 짧은 id를 쓰면
+  // parseServerMessage가 프레임을 통째로 버려 아무 일도 일어나지 않는다(조용히 통과하는 함정).
+  const [TA, TB, TC] = [
+    '018f6b0e-0000-7000-8000-0000000000c1',
+    '018f6b0e-0000-7000-8000-0000000000c2',
+    '018f6b0e-0000-7000-8000-0000000000c3',
+  ]
+  const THREE = [TA, TB, TC]
+
+  beforeEach(() => {
+    useEditorStore.getState().setLoaded(tablesModel(...THREE), 5, PROJECT_ID)
+    // seq 간극으로 리로드가 걸리면 TB가 빠진 서버 상태를 준다 — op 배치와 **같은 사건**이다.
+    mockTrpcFetch({ 'model.get': () => ({ data: { model: tablesModel(TA, TC), seq: 42 } }) })
+  })
+
+  it('op 배치로 선택 중 하나만 삭제되면 나머지 선택은 유지된다', async () => {
+    useEditorStore.getState().selectTables(THREE)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6, ops: [deleteTableOp(TB)], actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(useEditorStore.getState().seq).toBe(6))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([TA, TC])
+  })
+
+  it('같은 삭제를 seq 간극(resync)으로 받아도 결과가 같다', async () => {
+    // 도착 경로가 달라도 선택 상태는 같아야 한다. 이 둘이 갈리면 사용자에게는
+    // "같은 일을 했는데 결과가 다르다"로 보인다.
+    useEditorStore.getState().selectTables(THREE)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 9, ops: [deleteTableOp(TB)], actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(useEditorStore.getState().seq).toBe(42))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([TA, TC])
+  })
+
+  it('선택이 전부 삭제되면 비워지고 기존 문구를 쓴다', async () => {
+    useEditorStore.getState().selectTables([TB])
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6, ops: [deleteTableOp(TB)], actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
+    expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 이 항목을 삭제했습니다')
+  })
+
+  it('일부만 삭제되면 남은 선택이 있다는 것을 문구로 알린다', async () => {
+    // "이 항목을 삭제했습니다"는 선택이 통째로 사라졌다는 뜻으로 읽힌다 —
+    // 3개 중 1개만 사라진 화면에서는 사실과 다르다.
+    useEditorStore.getState().selectTables(THREE)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6, ops: [deleteTableOp(TB)], actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
+    expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 선택 항목 중 일부를 삭제했습니다')
+  })
+
+  it('메모처럼 단건인 선택은 삭제되면 그대로 해제된다', async () => {
+    useEditorStore.getState().setLoaded(modelWith(NOTE_A), 5, PROJECT_ID)
+    useEditorStore.getState().selectNote(NOTE_A)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6,
+      ops: [{ action: 'delete', entity: 'note', entityId: NOTE_A, before: null }],
+      actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(useEditorStore.getState().seq).toBe(6))
+    expect(useEditorStore.getState().selectedNoteId).toBeNull()
+    expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 이 항목을 삭제했습니다')
   })
 })
 

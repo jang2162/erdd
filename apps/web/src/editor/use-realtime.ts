@@ -134,8 +134,13 @@ export function useRealtime(projectId: string): void {
       useEditorStore.getState().setSeq(msg.seq)
       // 배치당 최대 1건 — 대량 op에서 토스트가 쏟아지지 않게.
       if (impact === 'deleted') {
-        useEditorStore.getState().select(null)
-        toast.info('다른 사용자가 이 항목을 삭제했습니다')
+        // 선택 전체를 비우지 않고 **사라진 것만** 걷어낸다. 다중 선택 중 하나만 삭제됐는데
+        // 나머지까지 잃으면 안 되고, 무엇보다 같은 사건을 seq 간극·재접속으로 받았을 때
+        // (resync) 와 결과가 달라지면 안 된다 — 그래서 store의 같은 규칙을 부른다.
+        useEditorStore.getState().pruneSelection(next)
+        toast.info(useEditorStore.getState().selectedTableIds.length > 0
+          ? '다른 사용자가 선택 항목 중 일부를 삭제했습니다'
+          : '다른 사용자가 이 항목을 삭제했습니다')
       } else if (impact === 'changed') {
         toast.info('다른 사용자가 이 항목을 수정했습니다')
       }
