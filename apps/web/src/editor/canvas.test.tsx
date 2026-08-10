@@ -8,7 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
-import { useEditorStore } from './store.js'
+import { primaryTableId, useEditorStore } from './store.js'
 import { Canvas } from './canvas.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000bb'
@@ -57,11 +57,14 @@ function lastProps() {
 }
 
 /**
- * React Flow 내장 키보드 선택(Enter)으로 노드를 선택한다. 마우스 클릭 대신 쓰는 이유: 클릭은
- * Canvas의 onNodeClick이 store 선택 상태(selectedTableId)를 바꾸고, 그 결과 `derived`가
- * 재계산되어 useEffect가 노드 배열을 다시 덮어써 React Flow 내부 선택 플래그(top-level
- * `node.selected`, 삭제 대상 판정에 쓰인다)를 지우는 별개의 렌더 경쟁이 있다 — 키보드 선택
- * 경로(NodeWrapper 자체의 onKeyDown)는 onNodeClick을 거치지 않아 그 경쟁을 피한다.
+ * React Flow 내장 키보드 선택(Enter)으로 노드를 선택한다. 원래 마우스 클릭을 피한 이유는
+ * 클릭이 Canvas의 onNodeClick으로 store 선택 상태(`selectedTableIds`, 당시 `selectedTableId`)를
+ * 바꾸면 `derived`가 재계산되고 useEffect가 노드 배열을 다시 덮어써 React Flow 내부 선택
+ * 플래그(top-level `node.selected`, 삭제 대상 판정에 쓰인다)를 지우는 렌더 경쟁이 있었기
+ * 때문이다. **그 경쟁은 이제 없다** — `buildNodes`가 노드에 `selected`를 실어 보내므로 덮어써도
+ * 플래그가 그대로 살아남는다(클릭으로 바꿔 돌려도 아래 삭제 단언이 통과하는 것을 확인했다).
+ * 그래도 키보드 경로를 유지한다: onNodeClick을 거치지 않는 독립 경로라 선택 배선이 무엇에
+ * 기대는지와 무관하게 "React Flow 내장 선택 → Backspace 삭제"만 겨눈다.
  * keyup을 반드시 같이 보내야 한다: keydown만 보내면 문서 레벨 useKeyPress 트래커들의
  * pressedKeys에 'Enter'가 눌린 채로 남아, 크기 비교(isMatchingKey)가 어긋나 이후 Backspace
  * 단일 키 조합을 더는 인식하지 못한다.
@@ -176,5 +179,123 @@ describe('Canvas — 읽기 전용 잠금', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('rf__node-t1')).toBeNull()
     })
+  })
+})
+
+/**
+ * ReactFlow가 선택을 알리는 유일한 경로는 `onNodesChange`의 `select` 변경이다(노드를 prop으로
+ * 통제하면 `onSelectionChange`는 우리가 넘긴 nodes prop의 메아리라 한 틱 늦다 — canvas.tsx 주석 참조).
+ * 테스트도 같은 경로로 알린다.
+ */
+type SelectChange = { type: 'select'; id: string; selected: boolean }
+const notifySelect = (...changes: SelectChange[]) =>
+  (lastProps().onNodesChange as (c: SelectChange[]) => void)(changes)
+
+describe('Canvas — store ↔ ReactFlow 선택 동기화', () => {
+  it('store에 여러 테이블이 선택되면 해당 노드가 모두 selected로 넘어간다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    await waitFor(() => {
+      const nodes = lastProps().nodes as { id: string; type?: string; selected?: boolean }[]
+      const tables = nodes.filter((n) => n.type === 'table')
+      expect(tables.every((n) => n.selected)).toBe(true)
+      expect(tables).toHaveLength(2)
+    })
+  })
+
+  it('선택을 바꾸지 않는 알림은 store를 갱신하지 않는다 — 참조도 주 선택도 그대로다', async () => {
+    // 가드가 없으면 같은 값을 다시 써서 배열 참조가 매번 새로 생기고(구독 화면이 헛리렌더),
+    // selectTables가 CLEARED_SELECTION을 적용해 같은 클릭의 메모·관계 선택까지 지운다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t2', 't1'])
+    await waitFor(() => expect(lastProps().nodes).toBeDefined())
+    const before = useEditorStore.getState().selectedTableIds
+
+    // 이미 선택된 것을 다시 "선택됨"으로, 선택 안 된 것을 다시 "해제됨"으로 알린다.
+    notifySelect(
+      { type: 'select', id: 't1', selected: true },
+      { type: 'select', id: 't2', selected: true },
+    )
+    expect(useEditorStore.getState().selectedTableIds).toBe(before)   // 참조까지 그대로
+    expect(primaryTableId(useEditorStore.getState())).toBe('t1')      // 주 선택도 그대로
+  })
+
+  it('선택 알림은 테이블 노드만 본다(메모는 무시)', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    notifySelect(
+      { type: 'select', id: 't1', selected: true },
+      { type: 'select', id: 'n1', selected: true },
+    )
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
+  })
+
+  it('새로 고른 테이블은 뒤에 붙는다 — 마지막 원소가 주 선택이다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t2'])
+    notifySelect({ type: 'select', id: 't1', selected: true })
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2', 't1'])
+    expect(primaryTableId(useEditorStore.getState())).toBe('t1')
+  })
+
+  it('수식키+클릭은 선택을 토글한다 — 창구가 하나라 한 번 누르면 한 번만 뒤집힌다', () => {
+    // 창구가 둘이면(onNodeClick 에도 토글이 남아 있으면) ReactFlow 내부 토글과 우리 토글이
+    // 겹쳐 서로를 되돌려 아무 일도 안 일어난 것처럼 보인다.
+    //
+    // 수식키는 클릭 이벤트의 ctrlKey 플래그가 아니라 **문서 레벨 키 트래커**(useKeyPress)가
+    // 읽으므로 keyDown/keyUp 을 따로 보낸다. userEvent 로 클릭하면 안 된다 — 그 포인터 이벤트가
+    // jsdom 에서 d3-drag 의 nodrag 핸들러를 때려 "Cannot read properties of null (reading
+    // 'document')" 로 죽는다(테스트는 통과하지만 uncaught exception 3건이 남는다).
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    // jsdom 은 Mac 이 아니므로 ReactFlow 의 multiSelectionKeyCode 기본값은 'Control' 이다.
+    fireEvent.click(screen.getByTestId('rf__node-t1'))
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
+
+    fireEvent.keyDown(document, { key: 'Control', code: 'ControlLeft' })
+    fireEvent.click(screen.getByTestId('rf__node-t2'))
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
+    expect(primaryTableId(useEditorStore.getState())).toBe('t2')   // 마지막에 고른 것이 주 선택
+    fireEvent.click(screen.getByTestId('rf__node-t2'))             // 같은 것을 다시 → 빠진다
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
+    fireEvent.keyUp(document, { key: 'Control', code: 'ControlLeft' })
+  })
+
+  it('메모를 클릭하면 테이블 선택만 풀리고 메모 선택은 남는다', async () => {
+    // ReactFlow는 메모를 고르면서 테이블을 해제하는 select 변경을 함께 보낸다. 그 결과인
+    // selectTables([])가 같은 클릭의 selectNote를 지우면 안 된다(store의 selectTables 비대칭).
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t1'])
+    await waitFor(() => expect(lastProps().nodes).toBeDefined())
+
+    fireEvent.click(screen.getByTestId('rf__node-n1'))
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().selectedNoteId).toBe('n1')
+      expect(useEditorStore.getState().selectedTableIds).toEqual([])
+    })
+  })
+
+  it('두 콜백의 발화 순서에 기대지 않는다 — 테이블 해제가 나중에 와도 메모 선택이 남는다', () => {
+    // 위 클릭 테스트는 실제 발화 순서 하나만 지나간다. 순서가 뒤집혀도 옳은지는 직접 만든다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t1'])
+
+    useEditorStore.getState().selectNote('n1')                      // onNodeClick 쪽이 먼저 도착
+    notifySelect({ type: 'select', id: 't1', selected: false })     // 테이블 해제가 그 다음에 도착
+    expect(useEditorStore.getState().selectedNoteId).toBe('n1')
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
   })
 })

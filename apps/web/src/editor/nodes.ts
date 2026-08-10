@@ -7,7 +7,7 @@ import type { PeerMarks } from './peer-marks.js'
 export type NodeView = { kind: 'full' } | { kind: 'group'; groupId: string }
 
 export function buildNodes(
-  model: ProjectModel, viewMode: ViewMode, selectedId: string | null, warnings: Warning[],
+  model: ProjectModel, viewMode: ViewMode, selectedIds: ReadonlySet<string>, warnings: Warning[],
   view: NodeView = { kind: 'full' }, peerMarks: PeerMarks = new Map(),
 ): Node<TableNodeData>[] {
   const tables = Object.values(model.tables).filter(
@@ -29,15 +29,18 @@ export function buildNodes(
       }
     }
     const position = view.kind === 'group' ? (table.groupPosition ?? table.position) : table.position
+    const isSelected = selectedIds.has(table.id)
     return {
       id: table.id,
       type: 'table',
       position,
+      // ReactFlow 내부 선택과 store를 맞춘다 — 박스 선택이 이 값을 읽고 쓴다.
+      selected: isSelected,
       data: {
         table,
         columns: tableCols,
         viewMode,
-        selected: table.id === selectedId,
+        selected: isSelected,
         tableWarnings,
         columnWarnings,
         peers: peerMarks.get(table.id),
