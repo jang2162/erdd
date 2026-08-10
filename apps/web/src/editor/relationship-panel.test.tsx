@@ -83,7 +83,7 @@ describe('RelationshipPanel', () => {
     expect(jRels).toHaveLength(2)
     expect(jRels.every((r) => r.identifying)).toBe(true)
     // 교차 테이블이 선택된다
-    expect(useEditorStore.getState().selectedTableId).toBe(junction!.id)
+    expect(useEditorStore.getState().selectedTableIds).toEqual([junction!.id])
     expect(useEditorStore.getState().selectedRelationshipId).toBeNull()
   })
 

@@ -9,7 +9,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { useEditorStore } from './store.js'
-import { selectionImpact, useRealtime, wsUrl } from './use-realtime.js'
+import { selectionImpact, selectionOf, useRealtime, wsUrl } from './use-realtime.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 const NOTE_A = '018f6b0e-0000-7000-8000-0000000000b1'
@@ -134,6 +134,25 @@ describe('selectionImpact', () => {
       changes: { logicalName: { from: '이름', to: '성명' } },
     }
     expect(selectionImpact(m, [op], { ...none, tableId: NOTE_A })).toBeNull()
+  })
+})
+
+describe('selectionOf', () => {
+  it('테이블이 여러 개 선택돼도 presence는 첫 번째만 발신한다', () => {
+    const sel = selectionOf({
+      selectedTableIds: ['t1', 't2'],
+      selectedColumnIds: [],
+      selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
+    })
+    expect(sel).toEqual({ kind: 'table', id: 't1' })
+  })
+
+  it('선택이 비면 null이다', () => {
+    const sel = selectionOf({
+      selectedTableIds: [], selectedColumnIds: [],
+      selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
+    })
+    expect(sel).toBeNull()
   })
 })
 

@@ -52,7 +52,7 @@ describe('TableTree', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     renderTree()
     await userEvent.click(screen.getByText('MBR'))
-    expect(useEditorStore.getState().selectedTableId).toBe('t2')
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
     expect(useEditorStore.getState().focusTableId).toBe('t2')
   })
 

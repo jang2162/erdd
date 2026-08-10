@@ -16,7 +16,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
   const mutate = useModelMutation(projectId)
   const { undo, redo, canUndo, canRedo } = useUndoRedo(projectId)
   const model = useEditorStore((s) => s.model)
-  const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const select = useEditorStore((s) => s.select)
   const selectNote = useEditorStore((s) => s.selectNote)
@@ -50,10 +50,13 @@ export function Toolbar({ projectId }: { projectId: string }) {
     select(id)
   }
   const onDelete = () => {
-    if (!selectedTableId) return
-    const id = selectedTableId
+    // 선택 전체를 **한 producer**로 지운다 — Revision 1건 · undo 1회(설계 §3.6).
+    // 단축키 Delete(use-shortcuts.ts)와 같은 형태여야 한다. 루프로 mutate를 여러 번 부르면
+    // 같은 "삭제"가 실행 취소 여러 번이 되어 두 경로의 의미가 갈린다.
+    const ids = [...selectedTableIds]
+    if (ids.length === 0) return
     select(null)
-    void mutate((m) => removeTable(m, id), { summary: '테이블 삭제' })
+    void mutate((m) => ids.reduce((acc, id) => removeTable(acc, id), m), { summary: '테이블 삭제' })
   }
   const onAddNote = () => {
     const id = newId()
@@ -95,7 +98,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
       <Button size="sm" variant="outline" disabled={visibleTables.length < 2} onClick={onAutoLayout}>
         <LayoutGrid /> 자동 정렬
       </Button>
-      <Button size="sm" variant="outline" disabled={!selectedTableId} onClick={onDelete}>
+      <Button size="sm" variant="outline" disabled={selectedTableIds.length === 0} onClick={onDelete}>
         <Trash2 /> 삭제
       </Button>
       <div className="mx-1 h-5 w-px bg-border" />

@@ -19,7 +19,10 @@ type EditorState = {
   /** 프로젝트를 관리할 수 있는가(스냅샷 복원·삭제). 로드 전 기본값 false. */
   canManage: boolean
   viewMode: ViewMode
-  selectedTableId: string | null
+  /** 선택된 테이블. 순서 = 선택한 순서. [0]이 presence·사이드바의 기준이다. */
+  selectedTableIds: string[]
+  /** 선택된 컬럼. selectedTableIds.length === 1 일 때만 비어 있지 않을 수 있다(불변식). */
+  selectedColumnIds: string[]
   selectedRelationshipId: string | null
   selectedNoteId: string | null
   selectedGroupId: string | null
@@ -38,6 +41,9 @@ type EditorState = {
   resync: (model: ProjectModel, seq: number) => void
   setViewMode: (viewMode: ViewMode) => void
   select: (tableId: string | null) => void
+  selectTables: (ids: string[]) => void
+  toggleTable: (id: string) => void
+  selectColumn: (tableId: string, columnId: string, mode: 'replace' | 'toggle' | 'range') => void
   selectRelationship: (id: string | null) => void
   selectNote: (id: string | null) => void
   selectGroup: (id: string | null) => void
@@ -52,7 +58,8 @@ type EditorState = {
 }
 
 const CLEARED_SELECTION = {
-  selectedTableId: null, selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
+  selectedTableIds: [] as string[], selectedColumnIds: [] as string[],
+  selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -65,10 +72,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   canEdit: false,
   canManage: false,
   viewMode: 'physical',
-  selectedTableId: null,
-  selectedRelationshipId: null,
-  selectedNoteId: null,
-  selectedGroupId: null,
+  ...CLEARED_SELECTION,
   focusTableId: null,
   activeGroupView: null,
   undoStack: [],
@@ -90,20 +94,64 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   resync: (model, seq) => set((s) => {
     const keep = (id: string | null, rec: Record<string, unknown>) =>
       (id !== null && Object.hasOwn(rec, id) ? id : null)
+    const tableIds = s.selectedTableIds.filter((id) => Object.hasOwn(model.tables, id))
+    // 컬럼은 테이블이 남아 있고 컬럼 자신도 남아 있을 때만 유지한다.
+    const columnIds = tableIds.length === 1
+      ? s.selectedColumnIds.filter((id) => {
+          const c = model.columns[id]
+          return c !== undefined && c.tableId === tableIds[0]
+        })
+      : []
     return {
       model, seq, loaded: true, undoStack: [], redoStack: [],
-      selectedTableId: keep(s.selectedTableId, model.tables),
+      selectedTableIds: tableIds,
+      selectedColumnIds: columnIds,
       selectedRelationshipId: keep(s.selectedRelationshipId, model.relationships),
       selectedNoteId: keep(s.selectedNoteId, model.notes),
       selectedGroupId: keep(s.selectedGroupId, model.tableGroups),
     }
   }),
   setViewMode: (viewMode) => set({ viewMode }),
-  select: (selectedTableId) => set({ ...CLEARED_SELECTION, selectedTableId }),
+  select: (tableId) => set({
+    ...CLEARED_SELECTION, selectedTableIds: tableId === null ? [] : [tableId],
+  }),
+  selectTables: (ids) => set({ ...CLEARED_SELECTION, selectedTableIds: [...ids] }),
+  // 컬럼 선택은 테이블이 하나일 때만 성립한다(불변식) — 토글로 2개가 되면 비운다.
+  toggleTable: (id) => set((s) => {
+    const has = s.selectedTableIds.includes(id)
+    const next = has ? s.selectedTableIds.filter((x) => x !== id) : [...s.selectedTableIds, id]
+    return {
+      ...CLEARED_SELECTION,
+      selectedTableIds: next,
+      selectedColumnIds: next.length === 1 && s.selectedTableIds.length === 1 && next[0] === s.selectedTableIds[0]
+        ? s.selectedColumnIds
+        : [],
+    }
+  }),
+  selectColumn: (tableId, columnId, mode) => set((s) => {
+    const sameTable = s.selectedTableIds.length === 1 && s.selectedTableIds[0] === tableId
+    const base = sameTable ? s.selectedColumnIds : []
+    let next: string[]
+    if (mode === 'toggle') {
+      next = base.includes(columnId) ? base.filter((x) => x !== columnId) : [...base, columnId]
+    } else if (mode === 'range' && base.length > 0) {
+      const anchor = base[base.length - 1]!
+      const ordered = Object.values(s.model.columns)
+        .filter((c) => c.tableId === tableId)
+        .sort((a, b) => a.order - b.order)
+        .map((c) => c.id)
+      const i = ordered.indexOf(anchor)
+      const j = ordered.indexOf(columnId)
+      next = i === -1 || j === -1 ? [columnId] : ordered.slice(Math.min(i, j), Math.max(i, j) + 1)
+    } else {
+      next = [columnId]
+    }
+    return { ...CLEARED_SELECTION, selectedTableIds: [tableId], selectedColumnIds: next }
+  }),
   selectRelationship: (selectedRelationshipId) => set({ ...CLEARED_SELECTION, selectedRelationshipId }),
   selectNote: (selectedNoteId) => set({ ...CLEARED_SELECTION, selectedNoteId }),
   selectGroup: (selectedGroupId) => set({ ...CLEARED_SELECTION, selectedGroupId }),
-  focus: (id) => set({ ...CLEARED_SELECTION, focusTableId: id, selectedTableId: id }),
+  focus: (id) => set({ ...CLEARED_SELECTION, focusTableId: id, selectedTableIds: [id] }),
   consumeFocus: () => set({ focusTableId: null }),
   enterGroupView: (activeGroupView) => set({ ...CLEARED_SELECTION, activeGroupView }),
   exitGroupView: () => set({ ...CLEARED_SELECTION, activeGroupView: null }),
