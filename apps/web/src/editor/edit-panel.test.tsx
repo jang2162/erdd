@@ -236,4 +236,17 @@ describe('EditPanel', () => {
     renderPanel()
     expect(screen.getByLabelText(/테이블 물리명/)).toBeInTheDocument()
   })
+
+  it('선택된 컬럼 행으로 스크롤한다', () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {})
+    try {
+      useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+      grantEditPermission()
+      useEditorStore.getState().selectColumn('t2', 'c3', 'replace')
+      renderPanel()
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+    } finally {
+      scrollIntoView.mockRestore()
+    }
+  })
 })
