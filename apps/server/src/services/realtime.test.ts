@@ -48,20 +48,20 @@ describe('RealtimeHub', () => {
     expect(opsMessages(a.received)).toEqual([])
   })
 
-  it('같은 사용자의 소켓 2개는 peers에서 1건으로 합쳐지고 가장 최근 selection을 쓴다', () => {
+  it('같은 사용자의 소켓 2개는 peers에서 1건으로 합쳐지고 가장 최근 selections를 쓴다', () => {
     const hub = new RealtimeHub()
     const a1 = conn('u1', '갑')
     const a2 = conn('u1', '갑')
     const h1 = hub.subscribe('p1', a1.hub)
     const h2 = hub.subscribe('p1', a2.hub)
 
-    h1.setSelection({ kind: 'table', id: 't1' })
-    h2.setSelection({ kind: 'note', id: 'n1' })
+    h1.setSelections([{ kind: 'table', id: 't1' }])
+    h2.setSelections([{ kind: 'note', id: 'n1' }])
 
-    expect(hub.peers('p1')).toEqual([{ userId: 'u1', name: '갑', selection: { kind: 'note', id: 'n1' } }])
+    expect(hub.peers('p1')).toEqual([{ userId: 'u1', name: '갑', selections: [{ kind: 'note', id: 'n1' }] }])
 
-    h1.setSelection({ kind: 'table', id: 't2' })
-    expect(hub.peers('p1')).toEqual([{ userId: 'u1', name: '갑', selection: { kind: 'table', id: 't2' } }])
+    h1.setSelections([{ kind: 'table', id: 't2' }])
+    expect(hub.peers('p1')).toEqual([{ userId: 'u1', name: '갑', selections: [{ kind: 'table', id: 't2' }] }])
   })
 
   it('peers 순서는 참가 순서를 따른다', () => {
@@ -70,7 +70,7 @@ describe('RealtimeHub', () => {
     const b = conn('u2', '을')
     hub.subscribe('p1', a.hub)
     const hb = hub.subscribe('p1', b.hub)
-    hb.setSelection({ kind: 'table', id: 't1' })   // 최근 활동은 을이지만 순서는 갑이 먼저
+    hb.setSelections([{ kind: 'table', id: 't1' }])   // 최근 활동은 을이지만 순서는 갑이 먼저
     expect(hub.peers('p1').map((p) => p.userId)).toEqual(['u1', 'u2'])
   })
 
@@ -78,14 +78,14 @@ describe('RealtimeHub', () => {
     const hub = new RealtimeHub()
     const a = conn('u1', '갑')
     const ha = hub.subscribe('p1', a.hub)
-    expect(lastPresence(a.received)?.peers).toEqual([{ userId: 'u1', name: '갑', selection: null }])
+    expect(lastPresence(a.received)?.peers).toEqual([{ userId: 'u1', name: '갑', selections: [] }])
 
     const b = conn('u2', '을')
     const hb = hub.subscribe('p1', b.hub)
     expect(lastPresence(a.received)?.peers.map((p) => p.userId)).toEqual(['u1', 'u2'])
 
-    hb.setSelection({ kind: 'table', id: 't1' })
-    expect(lastPresence(a.received)?.peers[1]?.selection).toEqual({ kind: 'table', id: 't1' })
+    hb.setSelections([{ kind: 'table', id: 't1' }])
+    expect(lastPresence(a.received)?.peers[1]?.selections).toEqual([{ kind: 'table', id: 't1' }])
 
     hb.close()
     expect(lastPresence(a.received)?.peers.map((p) => p.userId)).toEqual(['u1'])
@@ -110,5 +110,18 @@ describe('RealtimeHub', () => {
       seq: 1, ops: [NOTE_OP], actorUserId: 'u9', actorName: '작성자',
     })).not.toThrow()
     expect(hub.peers('none')).toEqual([])
+  })
+
+  it('여러 건을 고르면 그대로 N건이 전파된다', () => {
+    const hub = new RealtimeHub()
+    const a = conn('u1', '갑')
+    hub.subscribe('p1', a.hub)
+    const b = conn('u2', '을')
+    const hb = hub.subscribe('p1', b.hub)
+
+    hb.setSelections([{ kind: 'table', id: 't1' }, { kind: 'table', id: 't2' }, { kind: 'table', id: 't3' }])
+
+    const peers = lastPresence(a.received)?.peers ?? []
+    expect(peers.find((p) => p.userId === b.hub.userId)?.selections).toHaveLength(3)
   })
 })

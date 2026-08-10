@@ -68,7 +68,7 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_c' pnpm --filter
 pnpm -r typecheck; echo "EXIT=$?"
 ```
 
-**현재 기준선(이 상태에서 전부 그린이어야 정상):** core 481 · cli 138 · web 450 · server 194 · typecheck EXIT=0
+**현재 기준선(이 상태에서 전부 그린이어야 정상):** core 510 · cli 138 · web 450 · server 194 · typecheck EXIT=0
 
 ## 파일 구조
 

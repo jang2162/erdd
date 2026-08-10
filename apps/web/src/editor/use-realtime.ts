@@ -33,13 +33,13 @@ type SelectionSource = {
   selectedGroupId: string | null
 }
 
-/** 스토어 선택 상태를 프로토콜의 단일 selection으로 좁힌다(스토어가 이미 배타적으로 관리한다). */
-function selectionOf(s: SelectionSource): PeerSelection | null {
-  if (s.selectedTableId !== null) return { kind: 'table', id: s.selectedTableId }
-  if (s.selectedRelationshipId !== null) return { kind: 'relationship', id: s.selectedRelationshipId }
-  if (s.selectedNoteId !== null) return { kind: 'note', id: s.selectedNoteId }
-  if (s.selectedGroupId !== null) return { kind: 'group', id: s.selectedGroupId }
-  return null
+/** 스토어 선택 상태를 프로토콜의 selections 배열로 좁힌다. */
+function selectionsOf(s: SelectionSource): PeerSelection[] {
+  if (s.selectedTableId !== null) return [{ kind: 'table', id: s.selectedTableId }]
+  if (s.selectedRelationshipId !== null) return [{ kind: 'relationship', id: s.selectedRelationshipId }]
+  if (s.selectedNoteId !== null) return [{ kind: 'note', id: s.selectedNoteId }]
+  if (s.selectedGroupId !== null) return [{ kind: 'group', id: s.selectedGroupId }]
+  return []
 }
 
 /**
@@ -142,10 +142,10 @@ export function useRealtime(projectId: string): void {
       socketRef.current = socket
       socket.onopen = () => {
         attempt = 0
-        // 재접속 시 서버 쪽 Entry는 selection:null로 새로 시작한다. 로컬 선택이 그대로여도
+        // 재접속 시 서버 쪽 Entry는 빈 selections로 새로 시작한다. 로컬 선택이 그대로여도
         // 다시 알리지 않으면(발신 effect는 "값이 바뀔 때만" 보낸다) 다른 참여자에게는
         // 이 사용자의 하이라이트가 재접속 전까지 사라진 채로 남는다.
-        const msg: ClientMessage = { type: 'selection', selection: selectionOf(useEditorStore.getState()) }
+        const msg: ClientMessage = { type: 'selection', selections: selectionsOf(useEditorStore.getState()) }
         socket.send(JSON.stringify(msg))
       }
       socket.onmessage = (ev) => {
@@ -175,18 +175,18 @@ export function useRealtime(projectId: string): void {
   // 로컬 선택 → 서버. 소켓 수명주기와 독립이므로 별도 effect다(재접속 중이면 조용히 버린다).
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    let last = JSON.stringify(selectionOf(useEditorStore.getState()))
+    let last = JSON.stringify(selectionsOf(useEditorStore.getState()))
 
     const flush = () => {
       timer = undefined
       const socket = socketRef.current
       if (!socket || socket.readyState !== 1) return // 1 = OPEN
-      const msg: ClientMessage = { type: 'selection', selection: selectionOf(useEditorStore.getState()) }
+      const msg: ClientMessage = { type: 'selection', selections: selectionsOf(useEditorStore.getState()) }
       socket.send(JSON.stringify(msg))
     }
 
     const unsubscribe = useEditorStore.subscribe((s) => {
-      const current = JSON.stringify(selectionOf(s))
+      const current = JSON.stringify(selectionsOf(s))
       if (current === last) return
       last = current
       if (timer === undefined) timer = setTimeout(flush, SELECTION_THROTTLE_MS)

@@ -8,16 +8,16 @@ export type HubConnection = {
 }
 
 export type HubHandle = {
-  setSelection: (selection: PeerSelection | null) => void
+  setSelections: (selections: PeerSelection[]) => void
   close: () => void
 }
 
 type Entry = {
   conn: HubConnection
-  selection: PeerSelection | null
+  selections: PeerSelection[]
   /** 참가 순번 — peers 표시 순서(사용자별 최솟값). */
   joinRank: number
-  /** 마지막 selection 갱신 순번 — 같은 사용자의 소켓 중 어느 selection을 쓸지 결정. */
+  /** 마지막 selection 갱신 순번 — 같은 사용자의 소켓 중 어느 selections를 쓸지 결정. */
   selRank: number
 }
 
@@ -31,7 +31,7 @@ export class RealtimeHub {
 
   subscribe(projectId: string, conn: HubConnection): HubHandle {
     this.#rank += 1
-    const entry: Entry = { conn, selection: null, joinRank: this.#rank, selRank: this.#rank }
+    const entry: Entry = { conn, selections: [], joinRank: this.#rank, selRank: this.#rank }
     let set = this.#channels.get(projectId)
     if (!set) {
       set = new Set<Entry>()
@@ -42,10 +42,10 @@ export class RealtimeHub {
 
     let closed = false
     return {
-      setSelection: (selection) => {
+      setSelections: (selections) => {
         if (closed) return
         this.#rank += 1
-        entry.selection = selection
+        entry.selections = selections
         entry.selRank = this.#rank
         this.#broadcastPresence(projectId)
       },
@@ -68,7 +68,7 @@ export class RealtimeHub {
     this.#send(projectId, { type: 'ops', ...payload })
   }
 
-  /** 사용자 단위로 합친 참여자 목록. 표시 순서는 참가 순, selection은 가장 최근 갱신본. */
+  /** 사용자 단위로 합친 참여자 목록. 표시 순서는 참가 순, selections는 가장 최근 갱신본. */
   peers(projectId: string): Peer[] {
     const set = this.#channels.get(projectId)
     if (!set) return []
@@ -77,14 +77,14 @@ export class RealtimeHub {
       const prev = byUser.get(entry.conn.userId)
       if (!prev) {
         byUser.set(entry.conn.userId, {
-          peer: { userId: entry.conn.userId, name: entry.conn.name, selection: entry.selection },
+          peer: { userId: entry.conn.userId, name: entry.conn.name, selections: entry.selections },
           joinRank: entry.joinRank,
           selRank: entry.selRank,
         })
         continue
       }
       if (entry.selRank > prev.selRank) {
-        prev.peer.selection = entry.selection
+        prev.peer.selections = entry.selections
         prev.selRank = entry.selRank
       }
       if (entry.joinRank < prev.joinRank) prev.joinRank = entry.joinRank

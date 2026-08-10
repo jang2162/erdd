@@ -137,7 +137,7 @@ describe.skipIf(!url)('ws', () => {
       const ready = await c.next((m) => m.type === 'ready')
       expect(ready).toEqual({
         type: 'ready', seq: 0,
-        peers: [{ userId, name: '오너', selection: null }],
+        peers: [{ userId, name: '오너', selections: [] }],
       })
 
       const op = noteCreateOp()

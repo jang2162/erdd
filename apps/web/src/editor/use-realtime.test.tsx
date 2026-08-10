@@ -187,7 +187,7 @@ describe('useRealtime 수신 적용', () => {
     renderHook()
     ;(await socket()).emit({
       type: 'ready', seq: 5,
-      peers: [{ userId: 'u2', name: '동료', selection: null }],
+      peers: [{ userId: 'u2', name: '동료', selections: [] }],
     })
     await waitFor(() => expect(useEditorStore.getState().peers).toHaveLength(1))
     expect(useEditorStore.getState().seq).toBe(5)
@@ -197,10 +197,10 @@ describe('useRealtime 수신 적용', () => {
     renderHook()
     ;(await socket()).emit({
       type: 'presence',
-      peers: [{ userId: 'u2', name: '동료', selection: { kind: 'note', id: NOTE_A } }],
+      peers: [{ userId: 'u2', name: '동료', selections: [{ kind: 'note', id: NOTE_A }] }],
     })
     await waitFor(() => {
-      expect(useEditorStore.getState().peers[0]?.selection).toEqual({ kind: 'note', id: NOTE_A })
+      expect(useEditorStore.getState().peers[0]?.selections).toEqual([{ kind: 'note', id: NOTE_A }])
     })
     expect(useEditorStore.getState().seq).toBe(5)
   })
@@ -245,7 +245,7 @@ describe('useRealtime selection 발신', () => {
     useEditorStore.getState().selectNote(NOTE_A)
     await waitFor(() => expect(s.sent).toHaveLength(1))
     expect(JSON.parse(s.sent[0]!)).toEqual({
-      type: 'selection', selection: { kind: 'note', id: NOTE_A },
+      type: 'selection', selections: [{ kind: 'note', id: NOTE_A }],
     })
   })
 
@@ -256,7 +256,7 @@ describe('useRealtime selection 발신', () => {
     useEditorStore.getState().selectNote(NOTE_A)
     useEditorStore.getState().select(null)
     await waitFor(() => expect(s.sent).toHaveLength(1))
-    expect(JSON.parse(s.sent[0]!)).toEqual({ type: 'selection', selection: null })
+    expect(JSON.parse(s.sent[0]!)).toEqual({ type: 'selection', selections: [] })
   })
 
   it('재접속하면 현재 선택 상태를 다시 보낸다', async () => {
@@ -275,7 +275,7 @@ describe('useRealtime selection 발신', () => {
     second.onopen?.()
     await waitFor(() => expect(second.sent.length).toBeGreaterThan(0))
     expect(JSON.parse(second.sent[0]!)).toEqual({
-      type: 'selection', selection: { kind: 'note', id: NOTE_A },
+      type: 'selection', selections: [{ kind: 'note', id: NOTE_A }],
     })
   })
 })

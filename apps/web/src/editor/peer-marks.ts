@@ -8,11 +8,13 @@ export type PeerMarks = Map<string, PeerMark[]>
 export function buildPeerMarks(peers: readonly Peer[], selfUserId: string): PeerMarks {
   const marks: PeerMarks = new Map()
   for (const p of peers) {
-    if (p.userId === selfUserId || p.selection === null) continue
-    const list = marks.get(p.selection.id)
+    if (p.userId === selfUserId) continue
     const mark: PeerMark = { userId: p.userId, name: p.name, color: peerColor(p.userId) }
-    if (list) list.push(mark)
-    else marks.set(p.selection.id, [mark])
+    for (const sel of p.selections) {
+      const list = marks.get(sel.id)
+      if (list) list.push(mark)
+      else marks.set(sel.id, [mark])
+    }
   }
   return marks
 }

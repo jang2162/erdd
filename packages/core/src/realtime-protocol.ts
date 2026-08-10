@@ -5,14 +5,18 @@ export type PeerSelectionKind = 'table' | 'relationship' | 'note' | 'group'
 export const PEER_SELECTION_KINDS = ['table', 'relationship', 'note', 'group'] as const
 
 export type PeerSelection = { kind: PeerSelectionKind; id: string }
-export type Peer = { userId: string; name: string; selection: PeerSelection | null }
+
+/** 한 참여자가 브로드캐스트할 수 있는 선택 개수 상한. 초과분은 서버가 잘라낸다(payload 방어). */
+export const MAX_PEER_SELECTIONS = 50
+
+export type Peer = { userId: string; name: string; selections: PeerSelection[] }
 
 export type ServerMessage =
   | { type: 'ready'; seq: number; peers: Peer[] }
   | { type: 'ops'; seq: number; ops: Op[]; actorUserId: string; actorName: string }
   | { type: 'presence'; peers: Peer[] }
 
-export type ClientMessage = { type: 'selection'; selection: PeerSelection | null }
+export type ClientMessage = { type: 'selection'; selections: PeerSelection[] }
 
 /** 소켓 인증 실패 close code. 4401=미인증, 4403=권한 없음. 4000~4999는 애플리케이션 예약 범위. */
 export const WS_CLOSE_UNAUTHORIZED = 4401
@@ -38,14 +42,29 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-/** 반환 undefined = 형식 오류(null과 구분해야 하므로 sentinel을 쓴다). */
-function parseSelection(v: unknown): PeerSelection | null | undefined {
-  if (v === null || v === undefined) return null
+/** 반환 undefined = 형식 오류. */
+function parseOneSelection(v: unknown): PeerSelection | undefined {
   if (!isRecord(v)) return undefined
   const { kind, id } = v
   if (typeof kind !== 'string' || !(PEER_SELECTION_KINDS as readonly string[]).includes(kind)) return undefined
   if (typeof id !== 'string' || id === '') return undefined
   return { kind: kind as PeerSelectionKind, id }
+}
+
+/**
+ * 반환 undefined = 형식 오류. 빈 배열은 "선택 없음"이라 유효하다.
+ * 상한 초과는 **거절이 아니라 절단**이다 — 신뢰할 수 없는 입력의 payload를 막되,
+ * 정상 사용자가 많이 골랐다는 이유로 선택 전체를 잃지는 않게 한다.
+ */
+function parseSelections(v: unknown): PeerSelection[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: PeerSelection[] = []
+  for (const raw of v) {
+    const one = parseOneSelection(raw)
+    if (one === undefined) return undefined
+    out.push(one)
+  }
+  return out.length > MAX_PEER_SELECTIONS ? out.slice(0, MAX_PEER_SELECTIONS) : out
 }
 
 function parsePeers(v: unknown): Peer[] | null {
@@ -54,9 +73,9 @@ function parsePeers(v: unknown): Peer[] | null {
   for (const raw of v) {
     if (!isRecord(raw)) return null
     if (typeof raw.userId !== 'string' || typeof raw.name !== 'string') return null
-    const selection = parseSelection(raw.selection)
-    if (selection === undefined) return null
-    out.push({ userId: raw.userId, name: raw.name, selection })
+    const selections = parseSelections(raw.selections)
+    if (selections === undefined) return null
+    out.push({ userId: raw.userId, name: raw.name, selections })
   }
   return out
 }
@@ -98,7 +117,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   let value: unknown
   try { value = JSON.parse(raw) } catch { return null }
   if (!isRecord(value) || value.type !== 'selection') return null
-  const selection = parseSelection(value.selection)
-  if (selection === undefined) return null
-  return { type: 'selection', selection }
+  const selections = parseSelections(value.selections)
+  if (selections === undefined) return null
+  return { type: 'selection', selections }
 }
