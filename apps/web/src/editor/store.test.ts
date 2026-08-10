@@ -94,6 +94,22 @@ describe('editor store 다중 선택', () => {
     expect(useEditorStore.getState().selectedTableIds).toBe(before)
   })
 
+  it('setLoaded는 선택을 비운다 — resync와 달리 살아남은 것도 남기지 않는다', () => {
+    // setLoaded는 **모델을 통째로 갈아 끼우는** 경로다(최초 로드·프로젝트 전환·스냅샷 복원).
+    // 프로덕션에 store.reset() 호출부가 한 군데도 없어 프로젝트 전환은 이것 하나로만 이뤄지므로,
+    // 여기서 비우지 않으면 이전 프로젝트의 선택이 새 프로젝트로 그대로 넘어온다.
+    // 대상이 새 모델에도 **존재하는** 상황으로 세워, keptSelection(살아남은 것 유지)으로
+    // 바꿔치기하면 실제로 갈리게 만든다 — 같은 모델을 다시 실으면 그쪽은 선택을 그대로 둔다.
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    useEditorStore.getState().setLoaded(buildSampleModel(), 5, 'p1')
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
+
+    // 테이블 아닌 선택도 같은 규칙이다(선택 4종은 서로 배타적이라 따로 세운다).
+    useEditorStore.getState().selectGroup('g1')
+    useEditorStore.getState().setLoaded(buildSampleModel(), 6, 'p1')
+    expect(useEditorStore.getState().selectedGroupId).toBeNull()
+  })
+
   it('resync로 선택이 전부 사라지면 빈 선택의 공유 참조를 쓴다', () => {
     // 빈 선택은 어느 경로로 도달하든 같은 배열 인스턴스여야 한다. resync만 새 빈 배열을
     // 만들면, 남이 내가 보던 테이블을 지울 때마다 "비었다"가 매번 다른 값이 된다.

@@ -33,13 +33,21 @@ type EditorState = {
   undoStack: Op[][]
   redoStack: Op[][]
   peers: Peer[]
+  /**
+   * 모델을 **통째로 갈아 끼운다**(최초 로드·프로젝트 전환·스냅샷 복원). 화면 상태를 전부 처음으로
+   * 되돌린다 — 히스토리·그룹 뷰·참여자에 이어 **선택도 비운다**. 같은 프로젝트를 서버 상태로
+   * 되맞추는 것은 이것이 아니라 resync다.
+   */
   setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
   setProjectConfig: (namingRules: NamingRules, dialects: Dialect[]) => void
   setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
   setModel: (model: ProjectModel) => void
   setSeq: (seq: number) => void
   setPeers: (peers: Peer[]) => void
-  /** 서버 상태로 통째 되맞춘다(실시간 seq 간극·재접속). setLoaded와 달리 그룹 뷰를 유지한다. */
+  /**
+   * **같은 프로젝트**를 서버 상태로 되맞춘다(실시간 seq 간극·재접속·mutation 거절 복구).
+   * setLoaded와 달리 그룹 뷰·참여자를 유지하고, 선택은 비우지 않고 **살아남은 것만** 남긴다.
+   */
   resync: (model: ProjectModel, seq: number) => void
   /** 모델에서 사라진 대상만 선택에서 걷어낸다(살아남은 선택은 유지). */
   pruneSelection: (model: ProjectModel) => void
@@ -111,10 +119,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   undoStack: [],
   redoStack: [],
   peers: [],
+  // 선택도 함께 비운다. 프로덕션에 store.reset() 호출부가 한 군데도 없어, 프로젝트 전환은
+  // setLoaded 하나로만 이뤄진다 — 비우지 않으면 **이전 프로젝트의 선택 배열이 새 프로젝트로
+  // 그대로 넘어와** BulkPanel이 "N개 테이블 선택됨 + 빈 목록"으로 뜨고 죽은 id의 선택이
+  // presence로 계속 나간다. keptSelection(살아남은 것만 남기기)을 쓰지 않는 이유: 모델이 통째로
+  // 바뀌었으므로 "살아남았다"의 기준이 다른 모델이고, 걸러 남는 것이 있다면 id가 우연히 겹친
+  // 것뿐이다. 같은 프로젝트를 서버 상태로 되맞추는 경로는 resync가 맡는다(설계 §4 — 규칙 한 벌).
   setLoaded: (model, seq, projectId) =>
     set({
       model, seq, loaded: true, loadedProjectId: projectId,
       undoStack: [], redoStack: [], activeGroupView: null, peers: [],
+      ...CLEARED_SELECTION,
     }),
   setProjectConfig: (namingRules, dialects) => set({ namingRules, dialects }),
   setPermissions: ({ canEdit, canManage }) => set({ canEdit, canManage }),

@@ -125,6 +125,35 @@ describe('useModelMutation', () => {
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
   })
 
+  it('서버가 거절하면 죽은 선택을 걷어내고 되맞춘다 — 그룹 뷰·참여자는 살려 둔다', async () => {
+    // 실시간 협업의 실제 경로: A가 t1·t2를 고르고 t1을 편집 → 그 사이 B가 t1을 삭제 →
+    // 서버가 `op[0] update table t1: 존재하지 않음`으로 거절 → A는 서버 상태로 되감는다.
+    // 되감기를 setLoaded로 하면 **모델에 없는 t1이 선택에 남아** BulkPanel 헤더가 "2개 선택됨"인데
+    // 목록은 1개가 되고, 존재하지 않는 테이블의 선택이 presence로 계속 나간다(설계 §4의 구멍).
+    // 되감기는 "같은 프로젝트를 서버 상태로 되맞추는 것"이므로 seq 간극 경로와 같은 resync여야 한다 —
+    // 편집이 거절됐다고 그룹 뷰에서 튕기거나 남들의 하이라이트가 사라지면 안 된다(HANDOFF 3.6).
+    const PID = '018f6b0e-0000-7000-8000-0000000000aa'
+    useEditorStore.getState().setLoaded(buildSampleModel(), 5, PID)
+    grantEditPermission()
+    useEditorStore.getState().enterGroupView('g1')       // 선택보다 먼저 — 그룹 뷰 진입은 선택을 비운다
+    useEditorStore.getState().setPeers([{ userId: 'u2', name: '동료', selections: [] }])
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    mockTrpcFetch({
+      'model.mutate': () => ({ error: { code: -32600, message: 'op[0] update table t1: 존재하지 않음' } }),
+      // 서버에는 이미 t1이 없다(B가 지웠다).
+      'model.get': () => ({ data: { model: removeTable(buildSampleModel(), 't1'), seq: 6 } }),
+    })
+    const { result } = renderHook(() => useModelMutation(PID), { wrapper: wrapper() })
+    await act(async () => {
+      await result.current((m) => ({ ...m, notes: { ...m.notes, [NOTE.id]: NOTE } }))
+    })
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t1']).toBeUndefined())
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])   // 죽은 t1만 빠진다
+    expect(useEditorStore.getState().activeGroupView).toBe('g1')         // setLoaded면 null로 튕긴다
+    expect(useEditorStore.getState().peers).toHaveLength(1)              // setLoaded면 통째로 비워진다
+  })
+
   it('편집 권한이 없으면 서버로 보내지도, 모델을 바꾸지도 않는다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
     // grantEditPermission을 부르지 않는다 — store 기본값 canEdit=false 그대로 검증한다.
@@ -162,6 +191,23 @@ describe('useModelLoader', () => {
       expect(useEditorStore.getState().loadedProjectId).toBe(newProjectId)
       expect(useEditorStore.getState().model.notes[NOTE.id]).toBeDefined()
     })
+  })
+
+  it('프로젝트를 바꾸면 이전 프로젝트의 선택이 넘어오지 않는다', async () => {
+    // 프로덕션에 store.reset() 호출부가 한 군데도 없다(테스트에만 있다) — 프로젝트 전환은
+    // useModelLoader의 setLoaded 하나로만 이뤄진다. 거기서 비우지 않으면 이전 프로젝트의 선택
+    // 배열이 그대로 넘어와, 새 프로젝트를 열자마자 BulkPanel이 "2개 테이블 선택됨 + 빈 목록"으로
+    // 뜨고 존재하지 않는 테이블의 선택이 presence로 나간다.
+    const oldProjectId = 'aaaaaaaa-0000-7000-8000-000000000003'
+    const newProjectId = 'bbbbbbbb-0000-7000-8000-000000000004'
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, oldProjectId)
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    mockTrpcFetch({ 'model.get': () => ({ data: { model: createEmptyModel(), seq: 7 } }) })
+
+    renderHook(() => useModelLoader(newProjectId), { wrapper: wrapper() })
+
+    await waitFor(() => expect(useEditorStore.getState().loadedProjectId).toBe(newProjectId))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
   })
 
   it('project.get의 판정 결과를 store에 싣는다', async () => {
