@@ -269,7 +269,58 @@ function maskStringLiterals(text: string): string {
   return out
 }
 
-function parseColumnDef(def: string): ParsedColumn | null {
+/**
+ * 따옴표 식별자("…", `…`, […])를 여는·닫는 따옴표까지 통째로 같은 길이의 자리표시로 덮는다.
+ * maskStringLiterals와 같은 계약(길이 보존)이라 마스킹본에서 찾은 인덱스를 원본에 그대로 쓴다.
+ * `"unique"`처럼 **식별자가 구조 키워드와 같은 이름**일 때 그것을 제약으로 오인하지 않게 한다
+ * (사용자 DDL의 `model_indexes."unique" boolean not null`이 실제 사례다).
+ */
+function maskQuotedIdentifiers(text: string): string {
+  const FILL = '#'
+  let out = ''
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!
+    if (c !== '"' && c !== '`' && c !== '[') { out += c; continue }
+    const close = c === '[' ? ']' : c
+    out += FILL
+    i++
+    while (i < text.length) {
+      if (text[i] === close && text[i + 1] === close) { out += FILL + FILL; i += 2; continue }
+      if (text[i] === close) { out += FILL; break }
+      out += FILL
+      i++
+    }
+  }
+  return out
+}
+
+/**
+ * 괄호 **안**(깊이 1 이상)의 내용을 같은 길이의 자리표시로 덮는다. 괄호 문자 자체는 남긴다 —
+ * "UNIQUE 바로 뒤에 여는 괄호가 오는가"(= 테이블 수준 제약) 판정이 마스킹본에서도 성립해야 한다.
+ * 컬럼 수준 CHECK 식(`CHECK (T.UNIQUE = 1)`) 안의 단어가 제약 키워드로 새지 않게 한다.
+ */
+function maskParenContents(text: string): string {
+  const FILL = '#'
+  let out = ''
+  let depth = 0
+  for (const c of text) {
+    if (c === '(') { out += c; depth++; continue }
+    if (c === ')') { depth = Math.max(0, depth - 1); out += c; continue }
+    out += depth > 0 ? FILL : c
+  }
+  return out
+}
+
+/**
+ * 구조 키워드의 **위치**를 찾기 위한 사본을 만든다. 문자열 리터럴 내용·따옴표 식별자·괄호 안
+ * 내용을 자리표시로 덮는다. 값은 언제나 원본에서 잘라낸다(이 파일의 관례 — parseColumnDef와
+ * MySQL 꼬리 COMMENT가 이미 같은 방식이다). 길이가 보존되므로 인덱스를 그대로 공유한다.
+ */
+function maskForKeywordScan(text: string): string {
+  return maskParenContents(maskQuotedIdentifiers(maskStringLiterals(text)))
+}
+
+function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | null {
   const nameMatch = /^\s*("(?:[^"]|"")*"|`(?:[^`]|``)*`|\[(?:[^\]]|\]\])*\]|[A-Za-z_][\w$]*)\s*(.*)$/s
     .exec(def)
   if (!nameMatch) return null
@@ -307,25 +358,103 @@ function parseColumnDef(def: string): ParsedColumn | null {
   const commentMatch = /\bCOMMENT\s+'((?:[^']|'')*)'/is.exec(attrs)
 
   return {
-    name,
-    rawType,
-    notNull: /\bNOT\s+NULL\b/i.test(attrsScan) || /\bPRIMARY\s+KEY\b/i.test(attrsScan),
-    defaultValue,
-    autoIncrement: AUTO_INCREMENT_PATTERNS.some((p) => p.test(attrsScan)) || SERIAL_TYPES.test(rawType),
-    inlinePk: /\bPRIMARY\s+KEY\b/i.test(attrsScan),
-    comment: commentMatch ? commentMatch[1]!.replace(/''/g, "'") : null,
+    column: {
+      name,
+      rawType,
+      notNull: /\bNOT\s+NULL\b/i.test(attrsScan) || /\bPRIMARY\s+KEY\b/i.test(attrsScan),
+      defaultValue,
+      autoIncrement: AUTO_INCREMENT_PATTERNS.some((p) => p.test(attrsScan)) || SERIAL_TYPES.test(rawType),
+      inlinePk: /\bPRIMARY\s+KEY\b/i.test(attrsScan),
+      comment: commentMatch ? commentMatch[1]!.replace(/''/g, "'") : null,
+    },
+    // 인라인 제약(UNIQUE·REFERENCES)은 전부 타입 뒤의 이 구간에만 온다. 컬럼 이름이
+    // 구조 키워드와 같아도(`"unique" boolean`) 여기 들어오지 않으므로 구조적으로 안전하다.
+    attrs,
   }
 }
 
+/** 식별자 한 조각 — 방언 4종의 따옴표 형태 또는 인용하지 않은 이름. */
+const IDENT_PART = String.raw`(?:"(?:[^"]|"")*"|\`(?:[^\`]|\`\`)*\`|\[(?:[^\]]|\]\])*\]|[^\s(),;."\`\[\]]+)`
+/** `schema.name`처럼 점으로 이어진 이름 전체. */
+const QUALIFIED_NAME = `${IDENT_PART}(?:\\s*\\.\\s*${IDENT_PART})*`
+
 /**
  * REFERENCES 뒤의 부모 테이블 이름을 잡는다.
- * 컬럼 목록이 없어도(부모 PK 암묵 참조) ON DELETE/UPDATE 같은 꼬리 절이
- * 테이블 이름에 섞이지 않도록 종결 경계를 명시한다.
- * 테이블 수준 FK(parseCreateTable)와 ALTER TABLE ADD CONSTRAINT FK(parseAlterTable)가
- * 함께 쓴다 — 한 곳만 고치면 되게 상수로 뺐다.
+ * 이름을 **식별자 문법으로** 끊으므로 꼬리 절(ON DELETE/RELY/NOT DEFERRABLE…)이나
+ * 뒤따르는 다른 절(CHECK·DEFAULT)이 이름에 섞이지 않는다. 종결 키워드를 열거하던 옛 방식은
+ * 목록에 없는 키워드(CHECK 등)를 만나면 그것을 이름의 일부로 삼켰다.
  */
-const REFERENCES_TARGET_RE =
-  /REFERENCES\s+(.+?)\s*(?=\(|\b(?:ON|MATCH|NOT|DEFERRABLE|INITIALLY|ENABLE|DISABLE|USING|VALIDATE|NOVALIDATE|RELY)\b|$)/is
+const REFERENCES_TARGET_RE = new RegExp(String.raw`REFERENCES\s+(${QUALIFIED_NAME})`, 'i')
+
+/** 인라인 제약 앞에 옵션으로 붙는 `CONSTRAINT <이름>`. */
+const CONSTRAINT_NAME_RE = new RegExp(String.raw`\bCONSTRAINT\s+(${IDENT_PART})`, 'gi')
+
+/**
+ * REFERENCES 절 하나를 해석한다. **세 호출처가 공유한다** — 테이블 수준 FK(parseCreateTable),
+ * ALTER TABLE ADD CONSTRAINT FK(parseAlterTable), 컬럼 인라인 REFERENCES.
+ *
+ * 참조 컬럼 목록은 **부모 이름이 끝난 자리에서 곧장(공백만 사이에 두고) 괄호가 열릴 때만**
+ * 인정한다. 그냥 첫 괄호를 집으면 `REFERENCES T CHECK (X > 0)`이나
+ * `REFERENCES T DEFAULT now()`의 괄호를 참조 컬럼으로 잘못 읽는다.
+ * 목록이 없으면 `refColumns: []` — "부모 PK 암묵 참조"라는 뜻이고 하류(planDdlImport)가
+ * 부모 PK를 아는 자리에서 해석한다.
+ */
+function parseReferencesClause(text: string): { refTable: string; refColumns: string[] } | null {
+  // 키워드 위치는 마스킹본에서 찾고 값은 원본에서 잘라낸다(이 파일의 관례).
+  const kw = maskForKeywordScan(text).search(/\bREFERENCES\s/i)
+  if (kw < 0) return null
+  const from = text.slice(kw)
+  const m = REFERENCES_TARGET_RE.exec(from)
+  if (!m) return null
+  const rest = from.slice(m.index + m[0].length)
+  let refColumns: string[] = []
+  if (/^\s*\(/.test(rest)) {
+    const g = firstParenGroup(rest)
+    if (g) refColumns = identifierList(g.inner)
+  }
+  return { refTable: unquoteIdentifier(m[1]!.trim()), refColumns }
+}
+
+/**
+ * 컬럼 정의의 속성 구간에서 인라인 제약(UNIQUE·REFERENCES)을 읽는다.
+ *
+ * 컬럼 수준 제약은 `[CONSTRAINT 이름] 제약`이 이어지는 시퀀스이고, 이름은 **바로 뒤에 오는
+ * 제약 하나**에만 걸린다(사이에 공백만 있을 때). PRIMARY KEY는 parseColumnDef의 inlinePk가
+ * 이미 다루고 ParsedConstraint의 pk 변형에는 이름 자리가 없어 여기서 취급하지 않는다.
+ */
+function parseInlineColumnConstraints(
+  table: string, column: string, attrs: string,
+): ParsedConstraint[] {
+  const scan = maskForKeywordScan(attrs)
+
+  const names: Array<{ end: number; name: string }> = []
+  const nameRe = new RegExp(CONSTRAINT_NAME_RE.source, CONSTRAINT_NAME_RE.flags)
+  let nm: RegExpExecArray | null
+  while ((nm = nameRe.exec(scan)) !== null) {
+    const end = nm.index + nm[0].length
+    names.push({ end, name: unquoteIdentifier(attrs.slice(end - nm[1]!.length, end)) })
+  }
+  const nameAt = (pos: number): string | null =>
+    names.find((n) => n.end <= pos && scan.slice(n.end, pos).trim() === '')?.name ?? null
+
+  const out: ParsedConstraint[] = []
+  // 컬럼 수준 UNIQUE. 뒤에 여는 괄호가 오면 그것은 테이블 수준 UNIQUE 제약이므로 세지 않는다
+  // (항목 첫머리 판정이 이미 처리한 형태라 여기서 또 세면 중복이 된다).
+  const uniqueRe = /\bUNIQUE\b/gi
+  let um: RegExpExecArray | null
+  while ((um = uniqueRe.exec(scan)) !== null) {
+    if (/^\s*\(/.test(scan.slice(um.index + um[0].length))) continue
+    out.push({ kind: 'unique', table, name: nameAt(um.index), columns: [column] })
+  }
+
+  // 컬럼 정의 하나에 REFERENCES는 많아야 하나다.
+  const refIdx = scan.search(/\bREFERENCES\s/i)
+  if (refIdx >= 0) {
+    const ref = parseReferencesClause(attrs.slice(refIdx))
+    if (ref) out.push({ kind: 'fk', table, name: nameAt(refIdx), columns: [column], ...ref })
+  }
+  return out
+}
 
 const CREATE_TABLE_RE = /^CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|TEMP\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s*(?=\()/is
 
@@ -358,14 +487,12 @@ function parseCreateTable(
     if (/^FOREIGN\s+KEY\b/i.test(body)) {
       const cols = firstParenGroup(body)
       if (!cols) continue
-      const ref = REFERENCES_TARGET_RE.exec(cols.tail)
-      const refCols = firstParenGroup(cols.tail)
+      const ref = parseReferencesClause(cols.tail)
       if (!ref) continue
       out.constraints.push({
         kind: 'fk', table, name: constraintName,
         columns: identifierList(cols.inner),
-        refTable: unquoteIdentifier(ref[1]!.trim()),
-        refColumns: refCols ? identifierList(refCols.inner) : [],
+        ...ref,
       })
       continue
     }
@@ -374,31 +501,15 @@ function parseCreateTable(
       continue
     }
 
-    const col = parseColumnDef(item)
-    if (!col) {
+    const parsed = parseColumnDef(item)
+    if (!parsed) {
       out.skipped.push({ keyword: '?', line: stmt.line, excerpt: item.replace(/\s+/g, ' ').slice(0, 80) })
       continue
     }
+    const col = parsed.column
     columns.push(col)
     if (col.inlinePk) out.constraints.push({ kind: 'pk', table, columns: [col.name] })
-
-    // 인라인 REFERENCES
-    // 컬럼 정의 한 줄에 REFERENCES는 많아야 하나다. 따옴표 식별자 때문에
-    // 물리명 길이로 자르면 어긋나므로 줄 전체에서 찾는다. 위치는 문자열 리터럴을
-    // 마스킹한 사본에서 찾아 리터럴 안의 'REFERENCES ...' 텍스트를 진짜 절로 오인하지
-    // 않게 하고, 실제 값은 원본 item에서 그 위치부터 잘라낸다.
-    const itemScan = maskStringLiterals(item)
-    const refIdx = itemScan.search(/\bREFERENCES\s/i)
-    if (refIdx >= 0) {
-      const m = /^REFERENCES\s+(.+?)\s*\(([^)]*)\)/is.exec(item.slice(refIdx))
-      if (m) {
-        out.constraints.push({
-          kind: 'fk', table, name: null, columns: [col.name],
-          refTable: unquoteIdentifier(m[1]!.trim()),
-          refColumns: identifierList(m[2]!),
-        })
-      }
-    }
+    out.constraints.push(...parseInlineColumnConstraints(table, col.name, parsed.attrs))
   }
 
   // MySQL은 테이블 코멘트를 닫는 괄호 뒤 꼬리 절로 낸다: ) ENGINE=InnoDB COMMENT='회원'
@@ -443,14 +554,12 @@ function parseAlterTable(stmt: RawStatement, out: ParsedDdl): boolean {
   if (/^FOREIGN\s+KEY\b/i.test(body)) {
     const cols = firstParenGroup(body)
     if (!cols) return false
-    const ref = REFERENCES_TARGET_RE.exec(cols.tail)
-    const refCols = firstParenGroup(cols.tail)
+    const ref = parseReferencesClause(cols.tail)
     if (!ref) return false
     out.constraints.push({
       kind: 'fk', table, name,
       columns: identifierList(cols.inner),
-      refTable: unquoteIdentifier(ref[1]!.trim()),
-      refColumns: refCols ? identifierList(refCols.inner) : [],
+      ...ref,
     })
     return true
   }
