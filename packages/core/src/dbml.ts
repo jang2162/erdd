@@ -25,10 +25,19 @@ export function quoteDbmlIdent(s: string): string {
   return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
-/** 문자열. 개행이 있으면 트리플 쿼트를 쓴다(설명은 여러 줄일 수 있다). */
+/**
+ * 문자열. 개행이 있으면 트리플 쿼트를 쓴다(설명은 여러 줄일 수 있다).
+ *
+ * **두 경로 모두 백슬래시를 먼저 이스케이프한다.** 가져오기의 `unquote` 는 트리플 쿼트
+ * 내용에도 `unescapeDbml` 을 적용하므로 여기서 빼면 비대칭이 된다 — 리터럴 `\t`·`\n` 이
+ * 제어문자로 변조되고, 설명이 백슬래시로 끝나면 렉서가 닫는 `'''` 를 이스케이프로 먹어
+ * **테이블이 통째로 사라진다**(리뷰 M-2). 백슬래시를 먼저 늘려야 뒤이어 만드는 `\'` 가
+ * 다시 이스케이프되지 않는다.
+ */
 export function quoteDbmlString(s: string): string {
-  if (s.includes('\n')) return `'''${s.replace(/'''/g, "\\'\\'\\'")}'''`
-  return `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+  const escaped = s.replace(/\\/g, '\\\\')
+  if (s.includes('\n')) return `'''${escaped.replace(/'''/g, "\\'\\'\\'")}'''`
+  return `'${escaped.replace(/'/g, "\\'")}'`
 }
 
 /** #RGB 를 #RRGGBB 로 편다. 그 외 형태는 그대로 둔다. */

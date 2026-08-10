@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type ProjectModel } from './model.js'
 import { generateDbml } from './dbml.js'
+import { parseDbml } from './dbml-parse.js'
 
 function baseModel(): ProjectModel {
   const m = createEmptyModel()
@@ -63,6 +64,36 @@ describe('generateDbml', () => {
     m.tables['t1']!.comment = "it's\n두 줄"
     const out = generateDbml(m, 'postgresql')
     expect(out).toContain("note: '''회원 - it's\n두 줄'''")
+  })
+
+  // 트리플 쿼트 경로가 백슬래시를 이스케이프하지 않아 (a) 설명이 백슬래시로 끝나면 닫는
+  // 따옴표를 렉서가 못 보고 테이블이 통째로 사라지고, (b) 리터럴 백슬래시+글자가 제어문자로
+  // 변조됐다(리뷰 M-2). 한 줄 경로는 처음부터 이스케이프하고 있었다 — 비대칭이었다.
+  describe('여러 줄 설명의 백슬래시', () => {
+    const withComment = (comment: string) => {
+      const m = baseModel()
+      m.tables['t1']!.comment = comment
+      return generateDbml(m, 'postgresql')
+    }
+
+    it('백슬래시로 끝나는 여러 줄 설명이 테이블을 삼키지 않는다', () => {
+      const out = withComment('첫 줄\n둘째 줄\\')
+      expect(parseDbml(out).tables).toHaveLength(1)
+      expect(parseDbml(out).comments).toContainEqual({
+        table: 'MBR', column: null, text: '회원 - 첫 줄\n둘째 줄\\',
+      })
+    })
+
+    it('리터럴 백슬래시+글자를 제어문자로 바꾸지 않는다', () => {
+      const out = withComment('첫 줄\n경로: C:\\temp\\n_not_newline')
+      expect(parseDbml(out).comments[0]!.text)
+        .toBe('회원 - 첫 줄\n경로: C:\\temp\\n_not_newline')
+    })
+
+    it('트리플 쿼트가 든 여러 줄 설명은 그대로 왕복한다(대조군)', () => {
+      const out = withComment("따옴표 '''셋''' 이 든\n두 줄")
+      expect(parseDbml(out).comments[0]!.text).toBe("회원 - 따옴표 '''셋''' 이 든\n두 줄")
+    })
   })
 
   describe('default 표현', () => {
