@@ -113,6 +113,14 @@ function hasEmptyPhysicalName(model: ProjectModel, table: Table): boolean {
   return tableColumns(model, table.id).some((c) => c.physicalName.trim() === '')
 }
 
+/**
+ * 경고 문구에 쓸 테이블 라벨. 물리명이 비어 있으면 논리명(없으면 id)으로 폴백한다 —
+ * 그렇지 않으면 신규 테이블(물리명 '')의 경고가 ": ..." 형태로 이름 없이 뜬다.
+ */
+function warningLabel(t: Table): string {
+  return t.physicalName.trim() === '' ? (t.logicalName || t.id) : t.physicalName
+}
+
 function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): Relationship[] {
   return Object.values(model.relationships).filter(
     (r) => selectedIds.has(r.parentTableId) && selectedIds.has(r.childTableId),
@@ -218,12 +226,11 @@ export function ddlWarnings(model: ProjectModel, dialect: Dialect, scope: DdlSco
   const inScope = selectTables(model, scope)
   const out: string[] = []
   for (const t of inScope) {
-    if (tableColumns(model, t.id).length === 0) out.push(`${t.physicalName}: 컬럼이 없어 DDL에서 제외됨`)
+    if (tableColumns(model, t.id).length === 0) out.push(`${warningLabel(t)}: 컬럼이 없어 DDL에서 제외됨`)
   }
   for (const t of inScope) {
     if (!hasEmptyPhysicalName(model, t)) continue
-    const label = t.physicalName.trim() === '' ? (t.logicalName || t.id) : t.physicalName
-    out.push(`${label}: 물리명이 비어 있어 DDL에서 제외됨`)
+    out.push(`${warningLabel(t)}: 물리명이 비어 있어 DDL에서 제외됨`)
   }
   for (const t of inScope) {
     for (const c of tableColumns(model, t.id)) {

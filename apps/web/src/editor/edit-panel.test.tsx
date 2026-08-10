@@ -194,7 +194,7 @@ describe('EditPanel', () => {
     useEditorStore.getState().select('t1')
     renderPanel()
     const physical = screen.getByLabelText(/테이블 물리명/)
-    const logical = screen.getAllByLabelText(/논리명/)[0]!   // [0] 테이블
+    const logical = screen.getAllByLabelText(/논리명/, { selector: 'input' })[0]!   // [0] 테이블
     // compareDocumentPosition: 4 === FOLLOWING (physical 뒤에 logical이 온다)
     expect(physical.compareDocumentPosition(logical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
@@ -297,7 +297,7 @@ describe('EditPanel', () => {
     grantEditPermission()
     useEditorStore.getState().select('newt')
     renderPanel()
-    const logical = screen.getAllByLabelText(/논리명/)[0]!
+    const logical = screen.getAllByLabelText(/논리명/, { selector: 'input' })[0]!
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원')
     await userEvent.tab()

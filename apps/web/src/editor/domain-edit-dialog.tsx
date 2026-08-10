@@ -130,7 +130,7 @@ export function DomainEditDialog({
             />
           </div>
           <div className="grid gap-1.5">
-            <span className="text-sm font-medium">방언별 물리 타입 (선택)</span>
+            <span className="text-sm font-medium">방언별 물리 타입</span>
             <div className="grid grid-cols-2 gap-2">
               {DIALECTS.map((d) => (
                 <div key={d} className="grid gap-1">

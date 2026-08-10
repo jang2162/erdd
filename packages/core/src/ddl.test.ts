@@ -210,4 +210,22 @@ describe('빈 물리명', () => {
     const warns = ddlWarnings(m, 'postgresql')
     expect(warns.some((w) => w.includes('물리명'))).toBe(false)
   })
+
+  it('물리명이 비고 컬럼도 없는 테이블은 0컬럼 경고에 논리명으로 라벨이 붙는다(콜론으로 시작하지 않는다)', () => {
+    const m = createEmptyModel()
+    m.tables['empty'] = tbl('empty', '', { logicalName: '신규테이블' })
+    const warns = ddlWarnings(m, 'postgresql')
+    const zeroColWarn = warns.find((w) => w.includes('컬럼이 없어'))
+    expect(zeroColWarn).toBeDefined()
+    expect(zeroColWarn!.startsWith(':')).toBe(false)
+    expect(zeroColWarn).toBe('신규테이블: 컬럼이 없어 DDL에서 제외됨')
+  })
+
+  it('논리명도 없으면 0컬럼 경고는 id로 라벨이 붙는다', () => {
+    const m = createEmptyModel()
+    m.tables['empty'] = tbl('empty', '', { logicalName: '' })
+    const warns = ddlWarnings(m, 'postgresql')
+    const zeroColWarn = warns.find((w) => w.includes('컬럼이 없어'))
+    expect(zeroColWarn).toBe('empty: 컬럼이 없어 DDL에서 제외됨')
+  })
 })
