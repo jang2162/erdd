@@ -66,6 +66,17 @@ describe('editor store 다중 선택', () => {
     expect(useEditorStore.getState().selectedTableIds).toEqual([])
   })
 
+  it('selectTables는 호출자의 배열을 복사한다 — 나중에 변형해도 store가 오염되지 않는다', () => {
+    // 사이드바 Shift 범위 선택이 `orderedIds.slice(...)`를 넘긴다. 지금 호출부는 매번 새 배열을
+    // 만들지만, 재사용 버퍼를 넘기는 호출부가 하나만 생겨도 store의 상태가 통째로 바뀐다.
+    // store는 받은 배열의 소유권을 가정하지 않는다 — 진입점에서 복사해 봉인한다.
+    const ids = ['a', 'b']
+    useEditorStore.getState().selectTables(ids)
+    ids.push('c')
+    ids[0] = 'z'
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['a', 'b'])
+  })
+
   it('resync는 사라진 테이블만 선택에서 걷어낸다', () => {
     useEditorStore.getState().selectTables(['t1', 't2'])
     const model = buildSampleModel()
