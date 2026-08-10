@@ -94,3 +94,96 @@ describe('generateDbml', () => {
     expect(generateDbml(m, 'postgresql')).toContain('{"보안등급":"2"}')
   })
 })
+
+function relModel(): ProjectModel {
+  const m = baseModel()
+  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: null }
+  m.tables['t1']!.groupId = 'g1'
+  m.tables['t2'] = {
+    id: 't2', logicalName: '주문', physicalName: 'ORD', comment: null,
+    groupId: 'g1', position: { x: 300, y: 0 }, groupPosition: null, custom: {},
+  }
+  m.columns['c3'] = {
+    id: 'c3', tableId: 't2', logicalName: '주문번호', physicalName: 'ORD_NO',
+    type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
+    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+  }
+  m.columns['c4'] = {
+    id: 'c4', tableId: 't2', logicalName: '회원번호', physicalName: 'MBR_NO',
+    type: 'BIGINT', isPk: false, autoIncrement: false, nullable: false,
+    defaultValue: null, order: 1, comment: null, domainId: null, custom: {},
+  }
+  m.relationships['r1'] = {
+    id: 'r1', parentTableId: 't1', childTableId: 't2',
+    columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
+    cardinality: '1:N', identifying: false, name: null,
+  }
+  m.indexes['ix1'] = {
+    id: 'ix1', tableId: 't1', name: 'IX_MBR_NM', unique: false,
+    columns: [{ columnId: 'c2', direction: 'asc' }],
+  }
+  return m
+}
+
+describe('generateDbml — 인덱스·그룹·관계', () => {
+  it('인덱스를 indexes 블록으로 내고 이름을 보존한다', () => {
+    expect(generateDbml(relModel(), 'postgresql'))
+      .toContain('  indexes {\n    ("MBR_NM") [name: \'IX_MBR_NM\']\n  }')
+  })
+
+  it('유니크 인덱스에 unique 설정을 붙인다', () => {
+    const m = relModel()
+    m.indexes['ix1']!.unique = true
+    expect(generateDbml(m, 'postgresql')).toContain("[unique, name: 'IX_MBR_NM']")
+  })
+
+  it('복합 PK 는 indexes 블록의 pk 로 낸다', () => {
+    const m = relModel()
+    m.columns['c4']!.isPk = true
+    const out = generateDbml(m, 'postgresql')
+    expect(out).toContain('("ORD_NO", "MBR_NO") [pk]')
+    expect(out).not.toContain('"ORD_NO" bigint [pk')
+  })
+
+  it('그룹을 TableGroup 으로 내고 색을 6자리로 편다', () => {
+    const m = relModel()
+    m.tableGroups['g1']!.color = '#abc'
+    const out = generateDbml(m, 'postgresql')
+    expect(out).toContain('TableGroup "회원 관리" [color: #aabbcc] {\n  "MBR"\n  "ORD"\n}')
+  })
+
+  it('이름 없는 관계는 익명 Ref 로 낸다', () => {
+    expect(generateDbml(relModel(), 'postgresql'))
+      .toContain('Ref: "ORD"."MBR_NO" > "MBR"."MBR_NO"')
+  })
+
+  it('이름 있는 관계만 이름을 붙인다', () => {
+    const m = relModel()
+    m.relationships['r1']!.name = 'FK_ORD_MBR'
+    expect(generateDbml(m, 'postgresql'))
+      .toContain('Ref "FK_ORD_MBR": "ORD"."MBR_NO" > "MBR"."MBR_NO"')
+  })
+
+  it('1:1 은 - 로 낸다', () => {
+    const m = relModel()
+    m.relationships['r1']!.cardinality = '1:1'
+    expect(generateDbml(m, 'postgresql')).toContain('Ref: "ORD"."MBR_NO" - "MBR"."MBR_NO"')
+  })
+
+  it('합성 FK 는 괄호로 묶는다', () => {
+    const m = relModel()
+    m.relationships['r1']!.columnMappings = [
+      { childColumnId: 'c4', parentColumnId: 'c1' },
+      { childColumnId: 'c3', parentColumnId: 'c2' },
+    ]
+    expect(generateDbml(m, 'postgresql'))
+      .toContain('Ref: "ORD".("MBR_NO", "ORD_NO") > "MBR".("MBR_NO", "MBR_NM")')
+  })
+
+  it('범위가 좁혀지면 TableGroup·Ref 도 함께 좁혀진다', () => {
+    const m = relModel()
+    const out = generateDbml(m, 'postgresql', { kind: 'tables', tableIds: ['t1'] })
+    expect(out).not.toContain('Ref:')
+    expect(out).toContain('TableGroup "회원 관리" [color: #0E7A6C] {\n  "MBR"\n}')
+  })
+})
