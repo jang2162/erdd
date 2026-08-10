@@ -178,3 +178,25 @@ describe('Canvas — 읽기 전용 잠금', () => {
     })
   })
 })
+
+describe('Canvas — 컬럼 클릭 선택', () => {
+  // stopPropagation 회귀 검증: 컬럼 <li>의 onClick이 stopPropagation을 부르지 않으면 React
+  // Flow가 클릭을 상위 노드로도 전파해 Canvas의 onNodeClick(select(tableId))이 같은 이벤트
+  // 틱에서 뒤이어 실행되고, select는 CLEARED_SELECTION을 거쳐 selectedColumnIds를 비운다.
+  // 즉 stopPropagation이 빠지면 클릭 직후 selectedColumnIds가 []로 관찰된다.
+  it('컬럼을 클릭하면 컬럼만 선택되고 테이블 전체 선택으로 덮이지 않는다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    // React Flow의 NodeWrapper는 첫 렌더에서 치수를 측정하기 전까지 visibility:hidden을
+    // 준다(jsdom엔 실제 레이아웃이 없어 계속 hidden으로 남는다). getByRole은 접근성 트리에서
+    // hidden 요소를 제외하므로 테이블 노드 안에서는 쓸 수 없다 — 기존 테스트들처럼 getByText로
+    // 찾은 뒤 li로 거슬러 올라간다(fireEvent.click은 visibility와 무관하게 동작한다).
+    const columnRow = screen.getByText('MBR_NO').closest('li')!
+    fireEvent.click(columnRow)
+
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
+    expect(useEditorStore.getState().selectedColumnIds).toEqual(['c2'])
+  })
+})
