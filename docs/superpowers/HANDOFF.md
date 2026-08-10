@@ -37,6 +37,7 @@
 | **DDL 역설계 인라인 제약** | DataGrip·pg_dump 가 내는 표준 형태 — 컬럼 정의 안의 `constraint <이름> references <부모>`(참조 컬럼 목록 생략)와 컬럼 수준 `[constraint <이름>] unique` — 가 **파서에서 통째로 유실**되던 것을 고쳤다. 사용자 실물 DDL(24 테이블)에서 FK 37건·유니크 4건이 **경고 한 줄 없이** 사라지던 상태였다. 원인은 셋 — 인라인 REFERENCES 만 참조 컬럼 괄호를 필수로 요구했고(`if (m)` 밖으로 조용히 빠졌다), 컬럼 수준 UNIQUE 를 아예 읽지 않았고, 컬럼 정의 안의 `CONSTRAINT <이름>` 을 버렸다. REFERENCES 절 해석을 **`parseReferencesClause` 하나로 모아** 세 호출처(테이블 수준 FK·`ALTER TABLE` FK·인라인)가 공유하게 하고, 참조 컬럼 목록은 **부모 이름이 끝난 자리에서 곧장 괄호가 열릴 때만** 인정한다(`REFERENCES T CHECK (X > 0)` 의 괄호를 참조 컬럼으로 읽던 결함이 테이블 수준·`ALTER` 경로에도 있었고 함께 없어졌다). 부모 이름은 종결 키워드 열거 대신 **식별자 문법**으로 끊는다. 컬럼 인라인 제약은 `parseColumnDef` 가 함께 내주는 **속성 구간에서만** 읽어, 컬럼 이름이 구조 키워드와 같아도(`model_indexes."unique" boolean`) 정규식 가드가 아니라 **구조로** 막힌다. `ddl-import.ts` 는 한 줄도 안 고쳤다 — `refColumns: []` 를 "부모 PK 암묵 참조"로 해석하는 코드가 이미 있었다. 부수로 마스킹 통합(3.11)과 식별자 정규식 통일(3.12)이 따라왔고 `main` 의 선재 결함 6종이 함께 사라졌다. **서버·웹·CLI 변경 없음, 마이그레이션 없음** |
 
 | **물리명 우선 명명 + 필수값 표시** | 논리명 → 물리명 한 방향이던 명명을 **양방향 대칭**으로 만들었다. 역생성 함수는 **새로 만들지 않았다** — `restoreLogicalName`(`naming.ts:70`)이 DDL 역설계용으로 이미 있었고 UI 에 노출만 했다. 규칙은 정생성과 완전 대칭이다(반대쪽이 **비어 있을 때만** 자동, 「복원」 버튼은 덮어쓴다) — 둘 다 "빈 칸일 때만"이라 두 자동 규칙이 서로를 덮어쓸 수 없다. 논리·물리가 함께 나오는 **모든 폼**을 물리 우선 순서로 뒤집었고(편집 패널 테이블·컬럼, 단어·용어 다이얼로그, 공용 리소스), 사전에 **미등록 약어 → 논리명** 역방향 등록을 **같은 `createWord` 경로**로 더했다. `addTable` 이 물리명을 비워 이월 항목(「새 테이블 물리명이 `TABLE_1` 로 남는다」)을 해소했고, 빈 물리명 테이블은 **DDL 에서 제외 + 경고**한다(0컬럼 테이블과 같은 정책). 필수 표시는 `FieldLabel` 하나로 통일하고 `required-empty` 경고를 더했다. **서버·CLI 변경, 마이그레이션 없음** ([설계](specs/2026-08-10-physical-first-naming-design.md)) |
+| **DBML 가져오기·내보내기** | dbdocs 문서 발행이 주 용도. **DBML 전용 경로를 만들지 않았다** — 파서(`dbml-parse.ts`)만 새로 쓰고 결과를 `ParsedDdl`(+`groups`·`customValues`) 형태로 내어 `planDdlImport`·`applyDdlImport`를 그대로 탄다. 내보내기(`dbml.ts`)는 `generateDdl`과 테이블 선정 판정·타입 해석을 공유한다(`ddl.ts`가 `selectTables`·`tableColumns`·`hasEmptyPhysicalName`·`commentText`를 export). 커스텀 항목은 note 의 JSON 꼬리로 싣고 **키는 정의 이름**이다(모델 키는 UUID). 왕복을 지키려고 **관계 이름에 `FK_자식_부모` 폴백을 쓰지 않고**(원본에 없던 이름이 생긴다) **1:1 에 UNIQUE 를 동반시키지 않으며**(없던 유니크 인덱스가 생긴다) **`pk` 를 낸 컬럼에 `not null` 을 덧붙이지 않는다**(DBML 에서 pk 가 not null 을 함의하고 가져오기도 `nullable: !notNull && !isPk` 로 판정한다). 관계 이름은 **`oneToOne` 이 `undefined` 인 fk(=DDL 파서 산출물)에서는 버린다** — 안 그러면 DDL 내보내기의 자동 생성 제약명이 되읽혀 들어온다. **서버·CLI 변경 없음, 마이그레이션 없음** ([설계](specs/2026-08-10-dbml-import-export-design.md)) |
 | **캔버스 다중 선택 + 클립보드 + 단축키** | 테이블·컬럼을 여러 개 골라 복사·잘라내기·붙여넣기 하고, 캔버스에서 컬럼을 클릭하면 사이드바가 그 컬럼으로 스크롤·하이라이트한다. store 의 단일 선택을 **배열로 교체**했고(병기하지 않는다 — 3.13), 컬럼 선택은 테이블 선택에 종속된다. 클립보드는 **시스템 클립보드 JSON**(`__erdd`·`v` 표식)이라 다른 프로젝트·탭까지 건너가고, **id 를 싣지 않으며** 도메인·커스텀 항목은 **이름으로 재연결**(없으면 「없음」), 이름 충돌은 `_사본`/`_COPY` 로 자동 개명한다. 붙여넣기는 `paste` 이벤트로 받는다(`readText` 는 권한 프롬프트를 띄운다). 관계는 복사하지 않고 인덱스만 따라간다. **presence 프로토콜 무변경** — 다중 선택이어도 첫 번째만 발신한다. **core·서버·CLI 변경, 마이그레이션 없음** ([설계](specs/2026-08-10-canvas-selection-clipboard-design.md)) |
 
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
@@ -46,7 +47,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 522 · cli 138 · web 561 · server 194 (erdd_test) · typecheck EXIT=0
+core 595 · cli 138 · web 571 · server 194 (erdd_test) · typecheck EXIT=0
 ```
 
 `apps/server` 테스트는 **`DATABASE_URL`을 직접 줘야 한다** — 없으면 조용히 174건이 skip되고
@@ -60,6 +61,12 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @
 네 스위트를 함께 돈다. 초대·재설정 링크 사이클에서 **server +51 · web +41**이 붙었다(직전
 기준선은 `server 143 · web 382`였다). **core·cli는 무변경** — 설계가 못 박은 "core 변경 없음,
 CLI 변경 없음"이 그대로 지켜졌고, 그 둘이 움직였다면 범위를 넘은 것이다.
+
+DBML 가져오기·내보내기 사이클에서 **core +73 · web +10**이 붙었다(직전 기준선은 `core 522 ·
+web 561`이었다). **cli·server는 무변경** — 설계가 "CLI 지원 없음 / 서버 변경 없음"을 못 박았고,
+그 둘이 움직였다면 범위를 넘은 것이다. core 73건 중 8건은 **왕복 테스트**(`dbml-roundtrip.test.ts`)
+이고, web 10건 중 1건은 같은 픽스처를 `applyDdlImport`까지 돌려 계획 수준에서 안 보이는
+`groupId`·`custom` 배선을 잠근다(그 1건은 배선을 되돌리면 실제로 빨개지는 것을 확인했다).
 
 DDL 역설계 인라인 제약 사이클에서 **core +29**(481 → 510)가 붙었다. **cli·web·server는 무변경** —
 변경 파일이 `packages/core/src/ddl-parse.ts`와 그 테스트 2개뿐이라 그 셋이 움직였다면 범위를 넘은
