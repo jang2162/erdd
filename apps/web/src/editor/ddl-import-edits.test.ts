@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { createEmptyModel, generateDdl, parseDdl, planDdlImport, DEFAULT_NAMING_RULES } from '@erdd/core'
+import {
+  createEmptyModel, generateDdl, generateDbml, parseDdl, parseDbml, planDdlImport,
+  DEFAULT_NAMING_RULES,
+} from '@erdd/core'
+import type { DdlImportPlan, ProjectModel } from '@erdd/core'
 import { applyDdlImport } from './ddl-import-edits.js'
 
 let seq = 0
 const newId = () => `id-${++seq}`
+
+/** 테스트마다 독립된 id 발급기. 계획을 직접 만들어 넣는 케이스에서 쓴다. */
+function mkNewId(): () => string {
+  let n = 0
+  return () => `id${++n}`
+}
 
 const build = (ddl: string) => {
   seq = 0
@@ -172,5 +182,178 @@ describe('applyDdlImport', () => {
     })
 
     expect(shape(restored)).toEqual(shape(original))
+  })
+})
+
+describe('applyDdlImport — DBML 확장', () => {
+  const planWith = (over: Partial<DdlImportPlan>): DdlImportPlan => ({
+    tables: [{
+      physicalName: 'MBR', logicalName: '회원', comment: null, custom: {},
+      columns: [{
+        physicalName: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', isPk: true,
+        nullable: false, autoIncrement: false, defaultValue: null, comment: null, custom: {},
+      }],
+      indexes: [],
+    }],
+    relationships: [], skippedTables: [], warnings: [], groups: [], opCountEstimate: 2,
+    ...over,
+  })
+
+  it('새 그룹을 만들고 테이블을 넣는다', () => {
+    const next = applyDdlImport(createEmptyModel(), planWith({
+      groups: [{
+        name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인',
+        tablePhysicalNames: ['MBR'], existingId: null,
+      }],
+    }), mkNewId())
+    const group = Object.values(next.tableGroups)[0]!
+    expect(group).toMatchObject({ name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인' })
+    expect(Object.values(next.tables)[0]!.groupId).toBe(group.id)
+  })
+
+  it('색이 null 이면 팔레트에서 고른다', () => {
+    const next = applyDdlImport(createEmptyModel(), planWith({
+      groups: [{
+        name: 'G', color: null, comment: null, tablePhysicalNames: ['MBR'], existingId: null,
+      }],
+    }), mkNewId())
+    expect(Object.values(next.tableGroups)[0]!.color).toMatch(/^#[0-9a-fA-F]{6}$/)
+  })
+
+  it('existingId 가 있으면 새로 만들지 않고 색·설명도 덮어쓰지 않는다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: '원래 설명' }
+    const next = applyDdlImport(m, planWith({
+      groups: [{
+        name: '회원 관리', color: '#0E7A6C', comment: '가져온 설명',
+        tablePhysicalNames: ['MBR'], existingId: 'g1',
+      }],
+    }), mkNewId())
+    expect(Object.keys(next.tableGroups)).toEqual(['g1'])
+    expect(next.tableGroups['g1']).toMatchObject({ color: '#111', comment: '원래 설명' })
+    expect(Object.values(next.tables)[0]!.groupId).toBe('g1')
+  })
+
+  it('커스텀 값을 테이블·컬럼에 옮긴다', () => {
+    const plan = planWith({})
+    plan.tables[0]!.custom = { f1: '2' }
+    plan.tables[0]!.columns[0]!.custom = { f2: 'Y' }
+    const next = applyDdlImport(createEmptyModel(), plan, mkNewId())
+    expect(Object.values(next.tables)[0]!.custom).toEqual({ f1: '2' })
+    expect(Object.values(next.columns)[0]!.custom).toEqual({ f2: 'Y' })
+  })
+
+  it('카디널리티와 관계 이름을 계획대로 만든다', () => {
+    const plan = planWith({
+      relationships: [{
+        childPhysicalName: 'MBR', parentPhysicalName: 'MBR',
+        columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }],
+        identifying: false, cardinality: '1:1', name: 'FK_X',
+      }],
+    })
+    const next = applyDdlImport(createEmptyModel(), plan, mkNewId())
+    expect(Object.values(next.relationships)[0]).toMatchObject({ cardinality: '1:1', name: 'FK_X' })
+  })
+})
+
+/**
+ * core 의 `dbml-roundtrip.test.ts` 와 같은 픽스처다(계획이 복제를 지정했다). 그쪽은 계획
+ * 수준까지만 보고, 이 파일은 `applyDdlImport` 까지 돌려 groupId·custom 배선을 잠근다.
+ */
+function roundTripModel(): ProjectModel {
+  const m = createEmptyModel()
+  m.customFields['f1'] = {
+    id: 'f1', name: '보안등급', target: 'table', type: 'text', options: [],
+    required: false, defaultValue: null, order: 0, origin: null,
+  }
+  m.customFields['f2'] = {
+    id: 'f2', name: '개인정보', target: 'column', type: 'text', options: [],
+    required: false, defaultValue: null, order: 0, origin: null,
+  }
+  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인' }
+  m.tables['t1'] = {
+    id: 't1', logicalName: '회원', physicalName: 'MBR', comment: "it's 회원\n두 줄 설명",
+    groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: { f1: '2' },
+  }
+  m.tables['t2'] = {
+    id: 't2', logicalName: '주문', physicalName: 'ORD', comment: null,
+    groupId: 'g1', position: { x: 300, y: 0 }, groupPosition: null, custom: {},
+  }
+  m.tables['t3'] = {
+    id: 't3', logicalName: '회원상세', physicalName: 'MBR_DTL', comment: null,
+    groupId: null, position: { x: 600, y: 0 }, groupPosition: null, custom: {},
+  }
+  m.columns['c1'] = {
+    id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO',
+    type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
+    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+  }
+  m.columns['c2'] = {
+    id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM',
+    type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: false,
+    defaultValue: "'익명'", order: 1, comment: '표시용 이름', domainId: null,
+    custom: { f2: 'Y' },
+  }
+  m.columns['c3'] = {
+    id: 'c3', tableId: 't2', logicalName: '주문번호', physicalName: 'ORD_NO',
+    type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
+    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+  }
+  m.columns['c4'] = {
+    id: 'c4', tableId: 't2', logicalName: '회원번호', physicalName: 'MBR_NO',
+    type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
+    defaultValue: null, order: 1, comment: null, domainId: null, custom: {},
+  }
+  m.columns['c5'] = {
+    id: 'c5', tableId: 't3', logicalName: '회원번호', physicalName: 'MBR_NO',
+    type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
+    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+  }
+  m.indexes['ix1'] = {
+    id: 'ix1', tableId: 't1', name: 'IX_MBR_NM', unique: false,
+    columns: [{ columnId: 'c2', direction: 'asc' }],
+  }
+  m.relationships['r1'] = {
+    id: 'r1', parentTableId: 't1', childTableId: 't2',
+    columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
+    cardinality: '1:N', identifying: true, name: null,
+  }
+  m.relationships['r2'] = {
+    id: 'r2', parentTableId: 't1', childTableId: 't3',
+    columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c1' }],
+    cardinality: '1:1', identifying: true, name: 'FK_MBR_DTL_MBR',
+  }
+  return m
+}
+
+describe('DBML 왕복 — 모델까지', () => {
+  it('내보낸 DBML 을 되읽으면 같은 모델이 나온다', () => {
+    const model = roundTripModel()
+    const dbml = generateDbml(model, 'postgresql')
+    const target = createEmptyModel()
+    target.customFields = model.customFields
+    const plan = planDdlImport(target, parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    const next = applyDdlImport(target, plan, mkNewId())
+
+    const byName = (m: ProjectModel) => Object.fromEntries(
+      Object.values(m.tables).map((t) => [t.physicalName, {
+        logicalName: t.logicalName, comment: t.comment, custom: t.custom,
+        group: t.groupId === null ? null : {
+          name: m.tableGroups[t.groupId]!.name,
+          color: m.tableGroups[t.groupId]!.color,
+          comment: m.tableGroups[t.groupId]!.comment,
+        },
+      }]),
+    )
+    expect(byName(next)).toEqual(byName(model))
+    // 객체 배열의 기본 정렬은 전부 "[object Object]" 로 비교해 순서를 바꾸지 않는다(no-op).
+    // 자식 테이블 이름을 키로 안정 정렬해 순서에 기대지 않고 비교한다.
+    const rels = (m: ProjectModel) => Object.values(m.relationships)
+      .map((r) => ({
+        child: m.tables[r.childTableId]!.physicalName,
+        cardinality: r.cardinality, name: r.name, identifying: r.identifying,
+      }))
+      .sort((a, b) => a.child.localeCompare(b.child))
+    expect(rels(next)).toEqual(rels(model))
   })
 })

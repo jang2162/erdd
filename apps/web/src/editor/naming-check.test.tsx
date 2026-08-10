@@ -21,7 +21,7 @@ function loadWith(physicalName: string) {
   }
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
   useEditorStore.getState().setProjectConfig(
-    { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'])
+    { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'], null)
 }
 
 afterEach(() => { cleanup(); useEditorStore.getState().reset() })
@@ -58,7 +58,7 @@ describe('NamingCheck', () => {
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     useEditorStore.getState().setProjectConfig(
-      { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'])
+      { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'], null)
     render(<NamingCheck projectId={PROJECT_ID} />)
 
     await userEvent.click(screen.getByRole('button', { name: /모델 검사/ }))

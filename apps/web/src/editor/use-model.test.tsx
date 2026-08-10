@@ -150,6 +150,7 @@ describe('useModelLoader', () => {
       'model.get': () => ({ data: { model: createEmptyModel(), seq: 1 } }),
       'project.get': () => ({
         data: {
+          name: '회원 시스템',
           namingRules: DEFAULT_NAMING_RULES,
           dialects: ['postgresql'],
           canEdit: true,
@@ -165,5 +166,6 @@ describe('useModelLoader', () => {
     })
     expect(useEditorStore.getState().canManage).toBe(false)
     expect(useEditorStore.getState().dialects).toEqual(['postgresql'])
+    expect(useEditorStore.getState().projectName).toBe('회원 시스템')
   })
 })

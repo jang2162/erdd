@@ -14,6 +14,8 @@ type EditorState = {
   loadedProjectId: string | null
   namingRules: NamingRules
   dialects: Dialect[]
+  /** 프로젝트 이름(버전 모델 밖, project.get). DBML 의 Project 블록에 쓴다. */
+  projectName: string | null
   /** 모델을 편집할 수 있는가(서버 판정). 로드 전 기본값 false — fail-closed. */
   canEdit: boolean
   /** 프로젝트를 관리할 수 있는가(스냅샷 복원·삭제). 로드 전 기본값 false. */
@@ -32,7 +34,9 @@ type EditorState = {
   redoStack: Op[][]
   peers: Peer[]
   setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
-  setProjectConfig: (namingRules: NamingRules, dialects: Dialect[]) => void
+  setProjectConfig: (
+    namingRules: NamingRules, dialects: Dialect[], projectName: string | null,
+  ) => void
   setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
   setModel: (model: ProjectModel) => void
   setSeq: (seq: number) => void
@@ -69,6 +73,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   loadedProjectId: null,
   namingRules: DEFAULT_NAMING_RULES,
   dialects: [],
+  projectName: null,
   canEdit: false,
   canManage: false,
   viewMode: 'physical',
@@ -83,7 +88,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       model, seq, loaded: true, loadedProjectId: projectId,
       undoStack: [], redoStack: [], activeGroupView: null, peers: [],
     }),
-  setProjectConfig: (namingRules, dialects) => set({ namingRules, dialects }),
+  setProjectConfig: (namingRules, dialects, projectName) =>
+    set({ namingRules, dialects, projectName }),
   setPermissions: ({ canEdit, canManage }) => set({ canEdit, canManage }),
   setModel: (model) => set({ model }),
   setSeq: (seq) => set((s) => ({ seq: Math.max(s.seq, seq) })),
@@ -173,7 +179,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   reset: () => set({
     model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
-    namingRules: DEFAULT_NAMING_RULES, dialects: [], peers: [], canEdit: false, canManage: false,
+    namingRules: DEFAULT_NAMING_RULES, dialects: [], projectName: null, peers: [],
+    canEdit: false, canManage: false,
     ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],
   }),
 }))
