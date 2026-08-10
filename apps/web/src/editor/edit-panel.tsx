@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import {
-  computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
+  computeWarnings, customFieldsFor, generatePhysicalName, restoreLogicalName, setTableGroup,
   type Column, type CustomField, type Domain, type Warning,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
@@ -22,6 +22,7 @@ import { CustomFieldsSection } from './custom-fields-section.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FieldLabel } from '@/components/field-label'
 
 /** blur 시 값이 바뀌었으면 producer로 커밋하는 제어 인풋. */
 function CommitInput(props: {
@@ -82,7 +83,48 @@ export function EditPanel({ projectId }: { projectId: string }) {
     <aside className="w-80 shrink-0 overflow-y-auto border-l bg-card p-4">
       <div className="grid gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="tbl-logical">논리명</Label>
+          <div className="flex items-center justify-between">
+            <FieldLabel htmlFor="tbl-physical" required>테이블 물리명</FieldLabel>
+            {canEdit && (
+              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+                onClick={() => {
+                  const logical = table.logicalName
+                  void mutate((m) => {
+                    const gen = generatePhysicalName(logical, m.words, m.terms, namingRules)
+                    return gen.physicalName ? updateTable(m, tid, { physicalName: gen.physicalName }) : m
+                  }, { summary: '물리명 재생성' })
+                }}>재생성</Button>
+            )}
+          </div>
+          <CommitInput id="tbl-physical" value={table.physicalName} mono readOnly={!canEdit}
+            onCommit={(v) => {
+              const physical = v
+              void mutate((m) => {
+                let next = updateTable(m, tid, { physicalName: physical })
+                const cur = next.tables[tid]
+                if (cur && cur.logicalName.trim() === '' && physical.trim() !== '') {
+                  const r = restoreLogicalName(physical, next.words, next.terms, namingRules)
+                  if (r.ok) next = updateTable(next, tid, { logicalName: r.logicalName })
+                }
+                return next
+              }, { summary: '물리명 변경' })
+            }} />
+        </div>
+        <div className="grid gap-1.5">
+          <div className="flex items-center justify-between">
+            <FieldLabel htmlFor="tbl-logical" required>논리명</FieldLabel>
+            {canEdit && (
+              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+                aria-label="논리명 복원"
+                onClick={() => {
+                  const physical = table.physicalName
+                  void mutate((m) => {
+                    const r = restoreLogicalName(physical, m.words, m.terms, namingRules)
+                    return r.ok ? updateTable(m, tid, { logicalName: r.logicalName }) : m
+                  }, { summary: '논리명 복원' })
+                }}>복원</Button>
+            )}
+          </div>
           <CommitInput id="tbl-logical" value={table.logicalName} readOnly={!canEdit}
             onCommit={(v) => {
               const logical = v
@@ -98,24 +140,7 @@ export function EditPanel({ projectId }: { projectId: string }) {
             }} />
         </div>
         <div className="grid gap-1.5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="tbl-physical">테이블 물리명</Label>
-            {canEdit && (
-              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-                onClick={() => {
-                  const logical = table.logicalName
-                  void mutate((m) => {
-                    const gen = generatePhysicalName(logical, m.words, m.terms, namingRules)
-                    return gen.physicalName ? updateTable(m, tid, { physicalName: gen.physicalName }) : m
-                  }, { summary: '물리명 재생성' })
-                }}>재생성</Button>
-            )}
-          </div>
-          <CommitInput id="tbl-physical" value={table.physicalName} mono readOnly={!canEdit}
-            onCommit={(v) => void mutate((m) => updateTable(m, tid, { physicalName: v }))} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="tbl-group">소속 그룹</Label>
+          <FieldLabel htmlFor="tbl-group">소속 그룹</FieldLabel>
           <select id="tbl-group" className="h-9 rounded-md border bg-background px-2 text-sm"
             value={table.groupId ?? ''} disabled={!canEdit}
             onChange={(e) => {
