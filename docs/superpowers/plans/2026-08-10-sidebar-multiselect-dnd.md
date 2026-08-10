@@ -41,26 +41,30 @@ tRPC 11 · Fastify(ws)
 
 ## 실행 환경
 
-워크트리에서 작업한다. 포트·DB를 최상위와 분리한다.
+워크트리 `.worktrees/feat-sidebar-multiselect`(브랜치 `feat/sidebar-multiselect`)에서 작업한다.
+**컨트롤러가 워크트리 생성·`pnpm install`·격리 DB 마이그레이션까지 마쳐 둔다** — 워커는 바로 태스크를
+시작한다.
 
-```bash
-git worktree add -b feat/sidebar-multiselect .worktrees/feat-sidebar-multiselect main
-cd .worktrees/feat-sidebar-multiselect && pnpm install
-```
+⚠️ **이 저장소에 병렬 트랙이 둘 더 돌고 있다**(`feat-canvas-clipboard`, `feat-physical-first-naming`).
+포트나 DB가 겹치면 먼저 뜬 쪽만 살고 나머지는 조용히 죽거나 **남의 서버에 붙는다.** 아래 C 슬롯을
+그대로 쓴다.
 
 | 항목 | 값 |
 |---|---|
-| server | `PORT=3001` |
-| web | `ERDD_SERVER_PORT=3001` · `vite --port 5174` |
-| dev DB | `erdd_dev_a` |
-| test DB | `erdd_test_a` |
+| server | `PORT=3003` |
+| web | `ERDD_SERVER_PORT=3003` · `vite --port 5176` |
+| dev DB | `erdd_dev_c` |
+| test DB | `erdd_test_c` |
+
+⚠️ **`main`을 체크아웃하거나 머지하지 마라.** 같은 저장소의 다른 워크트리가 물고 있으면 git이 거부한다.
+병합은 컨트롤러가 한다.
 
 테스트 명령:
 
 ```bash
 pnpm --filter @erdd/core exec vitest run
 pnpm --filter @erdd/web exec vitest run
-DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_a' pnpm --filter @erdd/server exec vitest run
+DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_c' pnpm --filter @erdd/server exec vitest run
 pnpm -r typecheck; echo "EXIT=$?"
 ```
 
@@ -360,7 +364,7 @@ type Entry = {
 
 - [ ] **Step 7: 서버 테스트 통과를 확인한다**
 
-Run: `DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_a' pnpm --filter @erdd/server exec vitest run`
+Run: `DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_c' pnpm --filter @erdd/server exec vitest run`
 Expected: PASS. **`20 passed | 174 skipped`가 나오면 DB env가 안 들어간 것이다** — 194건이 도는지
 수를 확인하라(새 1건 포함 195).
 
@@ -2487,7 +2491,7 @@ Run:
 ```bash
 pnpm --filter @erdd/core exec vitest run
 pnpm --filter @erdd/web exec vitest run
-DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_a' pnpm --filter @erdd/server exec vitest run
+DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_c' pnpm --filter @erdd/server exec vitest run
 pnpm -C packages/cli test
 pnpm -r typecheck; echo "EXIT=$?"
 ```
@@ -2522,8 +2526,12 @@ Claude-Session: <세션 URL>"
 - [ ] **전체 스위트 체크포인트**
 
 ```bash
-set -a && . ./.env && set +a && pnpm verify
+DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_c' pnpm verify
 ```
+
+⚠️ **`. ./.env`로 환경을 읽어 오지 마라.** 최상위 `.env`의 `DATABASE_URL`은 공유 dev DB `erdd`를
+가리키는데, **테스트가 그 DB를 TRUNCATE한다**(`testing/db.ts`의 `resetDb`). 그러면 최상위와 다른 두
+워크트리에서 작업 중인 사람의 데이터가 함께 날아간다. 격리 DB를 명시적으로 준다.
 
 기대 수(이 계획이 더하는 것): **core +6 · web +25 안팎 · server +1 · cli ±0**. 실제 수를 세어
 `docs/superpowers/HANDOFF.md`의 기준선을 갱신할 수 있게 보고하라.
