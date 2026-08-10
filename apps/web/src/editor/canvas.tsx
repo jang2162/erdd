@@ -17,6 +17,7 @@ import { GhostNode } from './ghost-node.js'
 import { buildGhostNodes } from './ghost-nodes.js'
 import { RelationshipEdge, RelationshipMarkers } from './relationship-edge.js'
 import { useModelMutation } from './use-model.js'
+import { useEditorShortcuts } from './use-shortcuts.js'
 import { moveTable, moveTableGroupPosition } from './model-edits.js'
 import { moveNote } from './note-edits.js'
 import { newId } from './uid.js'
@@ -44,6 +45,8 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const consumeFocus = useEditorStore((s) => s.consumeFocus)
   const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
+  // 복사·잘라내기·붙여넣기·삭제 단축키. 삭제 경로는 React Flow가 아니라 이 훅이 소유한다.
+  useEditorShortcuts({ projectId })
   const rf = useReactFlow()
   // 그룹 드래그 시작 시점의 그룹 노드 위치 + 소속 테이블 위치 스냅샷(전체 뷰에서만 사용).
   const dragOrigin = useRef<{ groupNodeStart: XYPosition; members: Map<string, XYPosition> } | null>(null)
@@ -141,7 +144,9 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
         // 팬·줌·선택은 뷰 상태라 그대로 둔다.
         nodesDraggable={canEdit}
         nodesConnectable={canEdit}
-        deleteKeyCode={canEdit ? 'Backspace' : null}
+        // 삭제는 useEditorShortcuts가 전담한다. 두 삭제 경로가 공존하면 컬럼 선택 상태에서
+        // 어느 쪽이 이기는지가 렌더 순서에 달린다 — React Flow 자체 삭제는 끈다.
+        deleteKeyCode={null}
         onNodesChange={onNodesChange as (c: NodeChange[]) => void}
         onConnect={onConnect}
         onNodeClick={(_, node) => {
