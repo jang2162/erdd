@@ -27,15 +27,22 @@ export function wsUrl(projectId: string, href: string): string {
 export type SelectionImpact = 'deleted' | 'changed' | null
 
 type SelectionSource = {
-  selectedTableId: string | null
+  selectedTableIds: string[]
+  selectedColumnIds: string[]
   selectedRelationshipId: string | null
   selectedNoteId: string | null
   selectedGroupId: string | null
 }
 
-/** 스토어 선택 상태를 프로토콜의 단일 selection으로 좁힌다(스토어가 이미 배타적으로 관리한다). */
-function selectionOf(s: SelectionSource): PeerSelection | null {
-  if (s.selectedTableId !== null) return { kind: 'table', id: s.selectedTableId }
+/**
+ * 스토어 선택 상태를 프로토콜의 단일 selection으로 좁힌다.
+ * 다중 선택이어도 첫 번째 테이블만 보낸다 — PeerSelection은 단일 값이고
+ * 프로토콜 확장은 서버까지 움직여야 해서 이 사이클 범위 밖이다(설계 D-C5).
+ * 컬럼 선택은 발신하지 않는다(로컬 전용).
+ */
+export function selectionOf(s: SelectionSource): PeerSelection | null {
+  const tableId = s.selectedTableIds[0]
+  if (tableId !== undefined) return { kind: 'table', id: tableId }
   if (s.selectedRelationshipId !== null) return { kind: 'relationship', id: s.selectedRelationshipId }
   if (s.selectedNoteId !== null) return { kind: 'note', id: s.selectedNoteId }
   if (s.selectedGroupId !== null) return { kind: 'group', id: s.selectedGroupId }
@@ -121,7 +128,7 @@ export function useRealtime(projectId: string): void {
         return
       }
       const impact = selectionImpact(s.model, msg.ops, {
-        tableId: s.selectedTableId,
+        tableId: s.selectedTableIds[0] ?? null,
         relationshipId: s.selectedRelationshipId,
         noteId: s.selectedNoteId,
       })

@@ -58,7 +58,7 @@ function lastProps() {
 
 /**
  * React Flow 내장 키보드 선택(Enter)으로 노드를 선택한다. 마우스 클릭 대신 쓰는 이유: 클릭은
- * Canvas의 onNodeClick이 store 선택 상태(selectedTableId)를 바꾸고, 그 결과 `derived`가
+ * Canvas의 onNodeClick이 store 선택 상태(selectedTableIds)를 바꾸고, 그 결과 `derived`가
  * 재계산되어 useEffect가 노드 배열을 다시 덮어써 React Flow 내부 선택 플래그(top-level
  * `node.selected`, 삭제 대상 판정에 쓰인다)를 지우는 별개의 렌더 경쟁이 있다 — 키보드 선택
  * 경로(NodeWrapper 자체의 onKeyDown)는 onNodeClick을 거치지 않아 그 경쟁을 피한다.

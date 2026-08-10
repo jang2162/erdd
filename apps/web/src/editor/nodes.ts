@@ -7,7 +7,7 @@ import type { PeerMarks } from './peer-marks.js'
 export type NodeView = { kind: 'full' } | { kind: 'group'; groupId: string }
 
 export function buildNodes(
-  model: ProjectModel, viewMode: ViewMode, selectedId: string | null, warnings: Warning[],
+  model: ProjectModel, viewMode: ViewMode, selectedIds: string[], warnings: Warning[],
   view: NodeView = { kind: 'full' }, peerMarks: PeerMarks = new Map(),
 ): Node<TableNodeData>[] {
   const tables = Object.values(model.tables).filter(
@@ -37,7 +37,7 @@ export function buildNodes(
         table,
         columns: tableCols,
         viewMode,
-        selected: table.id === selectedId,
+        selected: selectedIds.includes(table.id),
         tableWarnings,
         columnWarnings,
         peers: peerMarks.get(table.id),

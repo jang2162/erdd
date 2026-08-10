@@ -28,7 +28,7 @@ describe('NamingCheck', () => {
     await userEvent.click(screen.getByRole('button', { name: /모델 검사/ }))
     expect(screen.getByText('예약어 (1)')).toBeInTheDocument()
     await userEvent.click(screen.getByText('ORDER'))
-    await waitFor(() => expect(useEditorStore.getState().selectedTableId).toBe('t1'))
+    await waitFor(() => expect(useEditorStore.getState().selectedTableIds).toEqual(['t1']))
   })
 
   it('규칙에 부합하면 경고 없음을 표시한다', async () => {
@@ -56,6 +56,6 @@ describe('NamingCheck', () => {
     await userEvent.click(screen.getByRole('button', { name: /모델 검사/ }))
     expect(screen.getByText('필수 항목 미입력 (1)')).toBeInTheDocument()
     await userEvent.click(screen.getByText('ORD'))
-    await waitFor(() => expect(useEditorStore.getState().selectedTableId).toBe('t1'))
+    await waitFor(() => expect(useEditorStore.getState().selectedTableIds).toEqual(['t1']))
   })
 })

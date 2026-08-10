@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 export function TableTree({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
-  const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const focus = useEditorStore((s) => s.focus)
@@ -72,7 +72,7 @@ export function TableTree({ projectId }: { projectId: string }) {
                 <span className="text-[10px] text-muted-foreground">{members.length}</span>
               </button>
               <ul className="ml-3 border-l pl-1">
-                {members.map((t) => <TableItem key={t.id} t={t} selected={t.id === selectedTableId} onClick={() => focus(t.id)} />)}
+                {members.map((t) => <TableItem key={t.id} t={t} selected={selectedTableIds.includes(t.id)} onClick={() => focus(t.id)} />)}
               </ul>
             </div>
           )
@@ -84,7 +84,7 @@ export function TableTree({ projectId }: { projectId: string }) {
               <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">미분류</div>
             )}
             <ul className={groups.length > 0 ? 'ml-3 border-l pl-1' : undefined}>
-              {unassigned.map((t) => <TableItem key={t.id} t={t} selected={t.id === selectedTableId} onClick={() => focus(t.id)} />)}
+              {unassigned.map((t) => <TableItem key={t.id} t={t} selected={selectedTableIds.includes(t.id)} onClick={() => focus(t.id)} />)}
             </ul>
           </div>
         )}

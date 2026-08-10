@@ -46,13 +46,14 @@ function CommitInput(props: {
 export function EditPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
-  const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
   const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
   const mutate = useModelMutation(projectId)
   const namingRules = useEditorStore((s) => s.namingRules)
   const dialects = useEditorStore((s) => s.dialects)
+  const selectedTableId = selectedTableIds[0]
   const table = selectedTableId ? model.tables[selectedTableId] : undefined
   const warnings = useMemo(
     () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])

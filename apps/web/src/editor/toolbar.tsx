@@ -16,7 +16,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
   const mutate = useModelMutation(projectId)
   const { undo, redo, canUndo, canRedo } = useUndoRedo(projectId)
   const model = useEditorStore((s) => s.model)
-  const selectedTableId = useEditorStore((s) => s.selectedTableId)
+  const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const select = useEditorStore((s) => s.select)
   const selectNote = useEditorStore((s) => s.selectNote)
@@ -50,8 +50,8 @@ export function Toolbar({ projectId }: { projectId: string }) {
     select(id)
   }
   const onDelete = () => {
-    if (!selectedTableId) return
-    const id = selectedTableId
+    const id = selectedTableIds[0]
+    if (!id) return
     select(null)
     void mutate((m) => removeTable(m, id), { summary: '테이블 삭제' })
   }
@@ -95,7 +95,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
       <Button size="sm" variant="outline" disabled={visibleTables.length < 2} onClick={onAutoLayout}>
         <LayoutGrid /> 자동 정렬
       </Button>
-      <Button size="sm" variant="outline" disabled={!selectedTableId} onClick={onDelete}>
+      <Button size="sm" variant="outline" disabled={selectedTableIds.length === 0} onClick={onDelete}>
         <Trash2 /> 삭제
       </Button>
       <div className="mx-1 h-5 w-px bg-border" />
