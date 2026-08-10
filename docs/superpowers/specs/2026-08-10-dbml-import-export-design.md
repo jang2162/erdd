@@ -56,7 +56,9 @@ DBML 텍스트 ──parseDbml─┘   (+groups, +customValues)
 
 ```ts
 // dbml-parse.ts
-export type ParsedGroup = { name: string; color: string | null; tables: string[] }
+export type ParsedGroup = {
+  name: string; color: string | null; comment: string | null; tables: string[]
+}
 export type ParsedCustomValue = {
   table: string; column: string | null; values: Record<string, string>
 }
@@ -73,7 +75,10 @@ export type ParsedDbml = ParsedDdl & {
 ```ts
 export type DdlImportPlan = {
   …기존…
-  groups: Array<{ name: string; color: string | null; tablePhysicalNames: string[]; existingId: string | null }>
+  groups: Array<{
+    name: string; color: string | null; comment: string | null
+    tablePhysicalNames: string[]; existingId: string | null
+  }>
 }
 export type DdlImportTable  = { …기존…; custom: Record<string, string> }   // 키 = customField.id
 export type DdlImportColumn = { …기존…; custom: Record<string, string> }
@@ -116,10 +121,17 @@ Table "MBR" [headercolor: #3498DB, note: '회원 - 회원 기본정보 {"보안�
 - 값이 하나도 없으면 JSON 꼬리를 생략한다. 논리명==물리명이고 설명·커스텀이 모두 없으면 note
   자체를 생략한다.
 
-**파싱 규칙:** note 문자열의 **마지막 `{`부터 끝까지**를 `JSON.parse` 해 본다. 성공하고 결과가
-평범한 객체이며 **모든 값이 문자열**이면 떼어내고, 그 외에는 통째로 설명으로 둔다. 사람이 손으로
-쓴 `{}`가 섞인 note를 깨뜨리지 않는다. 떼어낸 뒤 남은 앞부분에 `splitComment`를 적용한다(앞부분이
-비면 논리명 없음으로 보고 사전→물리명 복원 경로를 탄다).
+**파싱 규칙:** note 문자열의 `{` 위치를 **앞에서부터 훑어, 그 위치부터 끝까지가 `JSON.parse` 되는
+첫 지점**을 꼬리로 떼어낸다. 성공 조건은 결과가 평범한 객체이고 **모든 값이 문자열**인 것이다.
+어느 위치도 성공하지 않으면 통째로 설명으로 둔다 — 사람이 손으로 쓴 `{}`가 섞인 note를 깨뜨리지
+않는다. 떼어낸 뒤 남은 앞부분에 `splitComment`를 적용한다(앞부분이 비면 논리명 없음으로 보고
+사전→물리명 복원 경로를 탄다).
+
+> ⚠️ **처음에는 "마지막 `{`부터"였는데 그 규칙이 틀렸다**(리뷰 M-3, 2026-08-11 수정). 설명 안의
+> 손글씨 `{}`는 지키지만 **커스텀 항목 *값* 안의 `{`**를 못 지킨다 — 값의 `{`가 마지막이 되어
+> 파싱이 실패하고 **꼬리 전체가 설명이나 논리명으로 조용히 샌다**(경고도 뜨지 않는다). 값은
+> 사용자 자유 입력이라 `{`가 들어올 자리가 설명보다 좁지 않다. 앞에서부터 훑으면 설명 속
+> `{중괄호}`에서는 파싱이 실패해 그대로 넘어가므로 두 요구가 함께 성립한다.
 
 ## 4. 내보내기 (`generateDbml`)
 
@@ -176,14 +188,17 @@ Ref: "MBR_DTL".("MBR_NO", "SEQ") - "MBR".("MBR_NO", "SEQ")
 | `defaultValue` | §4.2 |
 | 논리명·설명·커스텀 | `note` (§3) |
 | 인덱스 | `indexes` 블록. 이름은 `[name: '…']`로 보존, `unique`는 설정으로 |
-| 그룹 | `TableGroup`(+`color`), 소속 테이블은 `headercolor` |
+| 그룹 | `TableGroup`(+`color`, 설명이 있으면 `note`), 소속 테이블은 `headercolor` |
 | 관계 | `Ref`. `1:N`은 `>`, `1:1`은 `-`, `rel.name`이 있을 때만 `Ref "이름":` (§4.3) |
 
 **식별자는 항상 큰따옴표로 감싼다.** 한글 물리명·예약어·숫자 시작 이름이 전부 안전해지고,
 dbml-cli 자신의 `sql2dbml` 출력도 같은 관례다. 내부 `"`는 `\"`로 이스케이프한다.
 
 **문자열(note·`default`·`name`)은 작은따옴표**, 내부 `'`는 `\'`. **개행이 있으면 `'''…'''`**
-(트리플 쿼트)로 낸다 — 설명은 여러 줄일 수 있다.
+(트리플 쿼트)로 낸다 — 설명은 여러 줄일 수 있다. **두 형태 모두 백슬래시를 먼저 `\\`로 늘린다**
+— 가져오기가 트리플 쿼트 내용에도 이스케이프를 해석하므로 여기서 빼면 비대칭이 되어, 리터럴
+`\t`·`\n`이 제어문자로 변조되고 **설명이 백슬래시로 끝나면 닫는 `'''`를 렉서가 먹어 테이블이
+통째로 사라진다**(리뷰 M-2, 2026-08-11 수정).
 
 **`database_type`** 은 방언별 고정 문자열로 매핑한다: `postgresql → 'PostgreSQL'`,
 `mysql → 'MySQL'`, `oracle → 'Oracle'`, `mssql → 'SQL Server'`. `DIALECT_LABEL`(한국어 표시명)을
@@ -202,13 +217,17 @@ dbml-cli 자신의 `sql2dbml` 출력도 같은 관례다. 내부 `"`는 `\"`로 
 
 | 원문 | DBML | 되읽으면 |
 |---|---|---|
-| `'ACTIVE'` (작은따옴표로 감싸임) | `default: 'ACTIVE'` | `'ACTIVE'` |
+| `'ACTIVE'` (작은따옴표로 감싸이고 **안쪽에 홀따옴표가 없다** — SQL 이스케이프 `''`는 허용) | `default: 'ACTIVE'` | `'ACTIVE'` |
 | `0`, `-1.5` (숫자 리터럴) | `default: 0` | `0` |
 | `TRUE` / `FALSE` (대소문자 무시) | `default: true` | `TRUE` |
 | `NULL` | `default: null` | `NULL` |
 | 그 외 (`SYSDATE`, `now()`, `CURRENT_TIMESTAMP`) | ``default: `SYSDATE` `` (백틱 = 표현식) | `SYSDATE` |
 
 불리언·`NULL`은 대문자로 되돌린다(DDL 관례). 이 표를 테스트에 그대로 박아 양방향으로 고정한다.
+
+> ⚠️ **첫 줄의 조건을 "양끝이 작은따옴표"로만 두면 안 된다**(리뷰 m-2, 2026-08-11 수정).
+> `'a' || 'b'` 같은 **표현식도 양끝이 작은따옴표**라서 문자열 리터럴로 오탐되고, 되읽으면
+> `'a'' || ''b'`(한 덩어리 글자)가 되어 **의미가 바뀐다.**
 
 ### 4.3 관계 이름은 `fkBaseName` 폴백을 쓰지 않는다
 
@@ -242,13 +261,22 @@ DBML의 `Ref`는 이름이 선택이라 **`rel.name`이 비어 있으면 익명 
 낸다 — 우리 내보내기는 유니크 인덱스를 `indexes` 블록으로만 내지만, 남이 쓴 파일에는 컬럼 설정으로
 있을 수 있고 `planDdlImport`의 UNIQUE→인덱스 경로가 이미 그것을 처리한다.
 
-**PK:** 컬럼 설정 `[pk]`는 `inlinePk`로, `indexes` 블록의 `[pk]`는 `ParsedConstraint(kind:'pk')`로 낸다.
+**PK:** 컬럼 설정 `[pk]`는 `inlinePk`로 **그리고 `ParsedConstraint(kind:'pk')`로도** 낸다.
+`indexes` 블록의 `[pk]`도 같은 제약으로 낸다. 둘 다 있으면 문서 순서에서 먼저 나온 것이 이긴다
+(`planDdlImport`의 `pkOf`가 먼저 나온 것을 쓴다).
+
+> ⚠️ **인라인 `[pk]`를 제약으로도 내는 것은 필수다**(리뷰 M-1, 2026-08-11 수정). DDL 파서가 인라인
+> `PRIMARY KEY`를 같은 방식으로 정규화하고, 그 뒤 파이프라인의 여러 판정이 `inlinePk`가 아니라
+> **pk 제약(`pkOf`)만** 본다 — 관계의 `identifying` 재추론, PK와 컬럼이 같은 유니크 인덱스 제외,
+> 참조 컬럼을 생략한 FK의 부모 PK 해소가 전부 그렇다. 정규화하지 않으면 **단일 PK 테이블에서
+> 그 판정이 전부 어긋난다.**
 
 **note:** 테이블·컬럼 note는 §3의 규칙으로 쪼개, 설명 부분을 `ParsedComment`로(DDL의 `COMMENT ON`과
 같은 자리) JSON 부분을 `customValues`로 낸다. **파서가 커스텀 항목 정의를 모른다**(모델을 안 받는다)
 — 이름→id 변환과 `unknown-custom-field` 경고는 모델을 손에 쥔 `planDdlImport`가 한다.
 
-**그룹:** `TableGroup`은 `ParsedGroup`으로 낸다. 이름이 같은 그룹이 모델에 이미 있으면
+**그룹:** `TableGroup`은 `ParsedGroup`으로 낸다(`note`는 그룹 설명으로 읽어 `comment`에 담는다 —
+내보내기가 그것을 내므로 자리가 없으면 왕복이 깨진다). 이름이 같은 그룹이 모델에 이미 있으면
 `planDdlImport`가 `existingId`를 채워 재사용한다(대소문자 무시 비교 — 테이블 이름 충돌 판정과 같은
 `upper()` 관례). 건너뛴 테이블(이름 충돌)은 그룹 목록에서도 빠진다. 그룹 색은 `TableGroup [color:]`
 → 소속 테이블의 `headercolor`(먼저 나온 것) → 없으면 `null` 순으로 정한다. `null`이면
@@ -300,10 +328,20 @@ id·좌표는 비교에서 제외한다. **PostgreSQL로 돌린다** — 타입 
 |---|---|---|
 | 인덱스 컬럼의 정렬 방향(`asc`/`desc`) | DBML `indexes` 블록에 컬럼별 방향 표기가 없다 | 전부 `asc`. DDL 가져오기도 같은 손실이다 |
 | `relationship.identifying` | DBML에 표현이 없다 | "FK 컬럼 ⊆ 자식 PK" 규칙으로 **재추론**한다. 어긋나는 것은 "FK가 자식 PK에 들어 있는데 비식별로 표시해 둔 관계" 하나뿐이며 그것은 식별로 뒤집힌다 |
+
+> ⚠️ **위 "어긋나는 것은 하나뿐"이 한동안 사실이 아니었다**(리뷰 M-1, 2026-08-11 수정). 설계가
+> **단일 PK를 인라인 `[pk]`로 내겠다는 §4.1의 결정**과 **`planDdlImport`가 PK를 pk 제약으로만
+> 본다는 사실**이 맞물리는 것을 놓쳤다 — 자식이 단일 PK이면 식별 관계가 **전부 비식별로**
+> 뒤집혔다(설계가 예측한 것과 반대 방향의 손실이고, 단일 PK는 드문 경우가 아니다). §5의 PK
+> 정규화로 고쳤고, **왕복 테스트가 `identifying`을 비교하도록** core·web 양쪽을 고쳤다 — 두
+> 왕복 테스트가 픽스처에 식별 관계를 둘이나 두고 그 필드만 비교에서 빼놓아 결함을 숨기고 있었다.
+> 재추론에 기대는 필드는 **왕복 비교에 반드시 포함시켜야 한다.**
 | `column.domainId` | 도메인이 방언 타입으로 풀려 나간다(enum 제외) | 타입 원문 + `domainId: null`. DDL 역설계와 같은 경계 |
 | 메모·색상 영역·좌표 | DBML은 캔버스를 담지 않는다 | 좌표는 자동 배치로 새로 계산 |
 
-그룹·그룹 색상·커스텀 항목 값·관계 이름·1:1 여부·자동증가·기본값·논리명·설명은 **왕복한다.**
+그룹·그룹 색상·**그룹 설명**·커스텀 항목 값·관계 이름·1:1 여부·자동증가·기본값·논리명·설명은
+**왕복한다.** (그룹 설명은 §2.1의 `ParsedGroup`에 자리가 없어 한동안 "내보내되 못 읽는" 상태였다 —
+리뷰 m-1, 2026-08-11 수정.)
 
 ## 8. 테스트
 
