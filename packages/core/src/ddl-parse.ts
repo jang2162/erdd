@@ -313,9 +313,23 @@ function maskForKeywordScan(text: string): string {
   return maskParenContents(maskQuoted(text))
 }
 
+/**
+ * 식별자 한 조각 — 방언 4종의 따옴표 형태 또는 인용하지 않은 이름.
+ * 인용 없는 이름을 **부정 문자 클래스**로 둔다. `[A-Za-z_][\w$]*`(JS의 `\w`는 ASCII 전용)로
+ * 하면 인용 없는 비ASCII 이름(`REFERENCES 회원`, `회원번호 int`)이 통째로 버려진다 —
+ * 한글 물리명을 쓰는 조직에서 실제로 겪는다. 여기서 제외하는 문자는 전부 SQL 구분자이거나
+ * 인용 문자라 인용 없는 식별자에는 어떤 방언에서도 들어갈 수 없다.
+ * 이 파일의 식별자 정규식은 전부 이것을 쓴다 — 같은 이름이 경로에 따라 살거나 죽으면 안 된다.
+ */
+const IDENT_PART = String.raw`(?:"(?:[^"]|"")*"|\`(?:[^\`]|\`\`)*\`|\[(?:[^\]]|\]\])*\]|[^\s(),;."\`\[\]]+)`
+/** `schema.name`처럼 점으로 이어진 이름 전체. */
+const QUALIFIED_NAME = `${IDENT_PART}(?:\\s*\\.\\s*${IDENT_PART})*`
+
+/** 컬럼 정의 첫머리의 컬럼 이름. */
+const COLUMN_NAME_RE = new RegExp(String.raw`^\s*(${IDENT_PART})\s*(.*)$`, 's')
+
 function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | null {
-  const nameMatch = /^\s*("(?:[^"]|"")*"|`(?:[^`]|``)*`|\[(?:[^\]]|\]\])*\]|[A-Za-z_][\w$]*)\s*(.*)$/s
-    .exec(def)
+  const nameMatch = COLUMN_NAME_RE.exec(def)
   if (!nameMatch) return null
   const name = unquoteIdentifier(nameMatch[1]!)
   const rest = nameMatch[2]!.trim()
@@ -368,10 +382,6 @@ function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | 
   }
 }
 
-/** 식별자 한 조각 — 방언 4종의 따옴표 형태 또는 인용하지 않은 이름. */
-const IDENT_PART = String.raw`(?:"(?:[^"]|"")*"|\`(?:[^\`]|\`\`)*\`|\[(?:[^\]]|\]\])*\]|[^\s(),;."\`\[\]]+)`
-/** `schema.name`처럼 점으로 이어진 이름 전체. */
-const QUALIFIED_NAME = `${IDENT_PART}(?:\\s*\\.\\s*${IDENT_PART})*`
 
 /**
  * REFERENCES 뒤의 부모 테이블 이름을 잡는다.
@@ -451,6 +461,9 @@ function parseInlineColumnConstraints(
   return out
 }
 
+/** 테이블 본문 항목 앞머리의 `CONSTRAINT <이름>`. */
+const NAMED_CONSTRAINT_RE = new RegExp(String.raw`^CONSTRAINT\s+(${IDENT_PART})\s+(.*)$`, 'is')
+
 const CREATE_TABLE_RE = /^CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|TEMP\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s*(?=\()/is
 
 function parseCreateTable(
@@ -464,8 +477,7 @@ function parseCreateTable(
   const columns: ParsedColumn[] = []
 
   for (const item of splitTopLevel(group.inner)) {
-    const named = /^CONSTRAINT\s+("(?:[^"]|"")*"|`(?:[^`]|``)*`|\[(?:[^\]]|\]\])*\]|[A-Za-z_][\w$]*)\s+(.*)$/is
-      .exec(item)
+    const named = NAMED_CONSTRAINT_RE.exec(item)
     const constraintName = named ? unquoteIdentifier(named[1]!) : null
     const body = named ? named[2]!.trim() : item
 
@@ -525,7 +537,8 @@ function parseCreateTable(
   return true
 }
 
-const ALTER_ADD_RE = /^ALTER\s+TABLE\s+(?:ONLY\s+)?(.+?)\s+ADD\s+(?:CONSTRAINT\s+("(?:[^"]|"")*"|`(?:[^`]|``)*`|\[(?:[^\]]|\]\])*\]|[A-Za-z_][\w$]*)\s+)?(.*)$/is
+const ALTER_ADD_RE = new RegExp(
+  String.raw`^ALTER\s+TABLE\s+(?:ONLY\s+)?(.+?)\s+ADD\s+(?:CONSTRAINT\s+(${IDENT_PART})\s+)?(.*)$`, 'is')
 
 function parseAlterTable(stmt: RawStatement, out: ParsedDdl): boolean {
   const m = ALTER_ADD_RE.exec(stmt.text)
