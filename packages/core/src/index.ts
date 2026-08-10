@@ -23,6 +23,7 @@ export type { Dialect, FromDialectResult } from './dialect.js'
 export { quoteIdentifier, isReservedWord } from './identifier.js'
 export { generateDdl, ddlWarnings } from './ddl.js'
 export type { DdlScope, ExportScope } from './ddl.js'
+export { generateDbml, DBML_DATABASE_TYPE } from './dbml.js'
 export {
   EXCEL_SHEET_KEYS, EXCEL_SHEET_NAME, WORD_HEADERS, TERM_HEADERS, DOMAIN_HEADERS,
   TABLE_LIST_HEADERS, TABLE_SPEC_HEADERS, CHANGE_HEADERS, buildExcelSheets, buildDictTemplateSheets,
