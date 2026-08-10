@@ -106,3 +106,49 @@ describe('editor store 다중 선택', () => {
     expect(useEditorStore.getState().selectedTableIds).toBe(empty)
   })
 })
+
+/**
+ * 실시간 삭제 수신이 부르는 쪽. 오늘은 resync와 **같은 함수**를 부르므로 위 3건과 갈릴 수 없지만,
+ * 누군가 규칙을 pruneSelection 안에 다시 인라인하면 위 테스트는 전부 통과한 채로 갈린다 —
+ * 두 진입점에 각각 규약을 걸어 둔다.
+ */
+describe('editor store pruneSelection', () => {
+  it('모델에서 사라진 것만 걷어내고 살아남은 선택은 유지한다', () => {
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    const model = buildSampleModel()
+    delete model.tables['t1']
+    useEditorStore.getState().pruneSelection(model)
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
+  })
+
+  it('아무것도 안 사라지면 배열 참조를 유지한다', () => {
+    // 실시간 op는 초당 여러 번 온다. 매번 새 배열을 만들면 이 값을 구독하는
+    // 컴포넌트가 남의 모든 편집마다 리렌더된다.
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    const before = useEditorStore.getState().selectedTableIds
+    useEditorStore.getState().pruneSelection(buildSampleModel())
+    expect(useEditorStore.getState().selectedTableIds).toBe(before)
+  })
+
+  it('전부 사라지면 빈 선택의 공유 참조를 쓴다', () => {
+    useEditorStore.getState().select(null)
+    const empty = useEditorStore.getState().selectedTableIds
+    useEditorStore.getState().selectTables(['t1'])
+    const model = buildSampleModel()
+    delete model.tables['t1']
+    useEditorStore.getState().pruneSelection(model)
+    expect(useEditorStore.getState().selectedTableIds).toBe(empty)
+  })
+
+  it('메모·관계·그룹 선택도 같은 규칙으로 걷어낸다', () => {
+    // 테이블만 보고 나머지를 남기면, 남이 지운 관계의 상세 패널이 빈 채로 열려 있게 된다.
+    const model = buildSampleModel()
+    const [relationshipId] = Object.keys(model.relationships)
+    useEditorStore.getState().selectRelationship(relationshipId!)
+    useEditorStore.getState().pruneSelection(model)
+    expect(useEditorStore.getState().selectedRelationshipId).toBe(relationshipId)
+    delete model.relationships[relationshipId!]
+    useEditorStore.getState().pruneSelection(model)
+    expect(useEditorStore.getState().selectedRelationshipId).toBeNull()
+  })
+})
