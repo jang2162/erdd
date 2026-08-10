@@ -7,6 +7,7 @@ import { createDomain, updateDomain, usageOf } from './domain-edits.js'
 import { DIALECT_LABEL } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { FieldLabel } from '@/components/field-label'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -133,9 +134,9 @@ export function DomainEditDialog({
             <div className="grid grid-cols-2 gap-2">
               {DIALECTS.map((d) => (
                 <div key={d} className="grid gap-1">
-                  <FieldLabel htmlFor={`dom-dialect-${d}`} className="text-xs text-muted-foreground">
+                  <Label htmlFor={`dom-dialect-${d}`} className="text-xs text-muted-foreground">
                     {DIALECT_LABEL[d]}
-                  </FieldLabel>
+                  </Label>
                   <Input
                     id={`dom-dialect-${d}`} className="font-mono" value={dialectTypes[d]}
                     onChange={(e) => {

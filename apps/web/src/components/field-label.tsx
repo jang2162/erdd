@@ -7,11 +7,10 @@ import { Label } from '@/components/ui/label'
  * 별표는 시각 표시라 aria-hidden이고, 스크린리더에는 sr-only 텍스트로 전달한다.
  */
 export function FieldLabel(
-  { htmlFor, required, className, children }:
-    { htmlFor?: string; required?: boolean; className?: string; children: ReactNode },
+  { htmlFor, required, children }: { htmlFor?: string; required?: boolean; children: ReactNode },
 ) {
   return (
-    <Label htmlFor={htmlFor} className={className}>
+    <Label htmlFor={htmlFor}>
       <span>{children}</span>
       {required && (
         <>
