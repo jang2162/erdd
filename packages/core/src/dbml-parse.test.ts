@@ -184,6 +184,18 @@ TableGroup "회원" {
     expect(p.groups[0]!.color).toBe('#123456')
   })
 
+  // 다른 문자열 설정(note·name)은 전부 unquote 를 타는데 색만 빠져, 따옴표로 감싼 색을
+  // 쓴 남의 파일에서 `"#abcdef"` 가 그대로 모델에 들어가 캔버스 색이 깨졌다(리뷰 m-3).
+  it('따옴표로 감싼 color·headercolor 의 따옴표를 벗긴다', () => {
+    const p = parseDbml(
+      'Table "MBR" [headercolor: "#123456"] {\n  "A" int\n}\n'
+      + 'TableGroup "G1" [color: "#abcdef"] {\n  "MBR"\n}\n'
+      + 'TableGroup "G2" {\n  "MBR"\n}',
+    )
+    expect(p.groups[0]!.color).toBe('#abcdef')
+    expect(p.groups[1]!.color).toBe('#123456')      // headercolor 폴백도 같다
+  })
+
   it('color 도 headercolor 도 없으면 null 이다', () => {
     const p = parseDbml('Table "MBR" {\n  "A" int\n}\nTableGroup "회원" {\n  "MBR"\n}')
     expect(p.groups[0]!.color).toBeNull()

@@ -399,7 +399,7 @@ function parseTableGroupBlock(out: Out, header: string, body: string, bodyLine: 
   if (br >= 0) {
     const settings = parseSettings(rest.slice(br + 1, Math.max(br + 1, rest.lastIndexOf(']'))))
     const c = settings.get('color')
-    if (typeof c === 'string') color = c.trim()
+    if (typeof c === 'string') color = unquote(c)
     const note = settings.get('note')
     if (typeof note === 'string') comment = unquote(note) || null
   }
@@ -464,7 +464,7 @@ function parseTableBlock(out: Out, header: string, body: string, bodyLine: numbe
     const note = settings.get('note')
     if (typeof note === 'string') takeNote(out, name, null, note)
     const color = settings.get('headercolor')
-    if (typeof color === 'string') out.headerColors.set(name.toUpperCase(), color.trim())
+    if (typeof color === 'string') out.headerColors.set(name.toUpperCase(), unquote(color))
   }
 
   const columns: ParsedColumn[] = []
