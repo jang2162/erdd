@@ -586,3 +586,59 @@ describe('parseDdl — 컬럼 인라인 제약', () => {
     })
   })
 })
+
+describe('parseDdl — 비ASCII 식별자', () => {
+  it('테이블 수준 제약의 비ASCII 이름을 살린다', () => {
+    const uq = parseDdl('CREATE TABLE C (A int, CONSTRAINT 유니크 UNIQUE (A));')
+    expect(uq.constraints).toContainEqual({ kind: 'unique', table: 'C', name: '유니크', columns: ['A'] })
+
+    const fk = parseDdl('CREATE TABLE C (A int, CONSTRAINT 외래키 FOREIGN KEY (A) REFERENCES P (I));')
+    expect(fk.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: '외래키', columns: ['A'], refTable: 'P', refColumns: ['I'],
+    })
+  })
+
+  it('ALTER TABLE ADD CONSTRAINT의 비ASCII 이름을 살린다', () => {
+    const r = parseDdl('ALTER TABLE C ADD CONSTRAINT 외래키 FOREIGN KEY (A) REFERENCES P (I);')
+    expect(r.constraints).toContainEqual({
+      kind: 'fk', table: 'C', name: '외래키', columns: ['A'], refTable: 'P', refColumns: ['I'],
+    })
+  })
+
+  it('비ASCII 컬럼명을 통째로 버리지 않는다', () => {
+    const r = parseDdl('CREATE TABLE C (회원번호 int NOT NULL UNIQUE, 이름 varchar(10));')
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['회원번호', '이름'])
+    expect(r.tables[0]!.columns[0]!.notNull).toBe(true)
+    expect(r.constraints).toContainEqual({ kind: 'unique', table: 'C', name: null, columns: ['회원번호'] })
+    expect(r.skipped).toEqual([])
+  })
+
+  // 식별자 정규식을 넓히면 컬럼 이름 정규식이 파서의 진입점이라 위험하다 — 테이블 수준
+  // 제약이 컬럼으로 먹히면 안 된다. 항목 첫머리 라우팅이 먼저 걸러 준다는 전제를 잠근다.
+  it('테이블 수준 제약을 컬럼으로 먹지 않는다', () => {
+    const pk = parseDdl('CREATE TABLE C (A int, PRIMARY KEY (A));')
+    expect(pk.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(pk.constraints).toEqual([{ kind: 'pk', table: 'C', columns: ['A'] }])
+
+    const uq = parseDdl('CREATE TABLE C (A int, UNIQUE (A));')
+    expect(uq.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(uq.constraints).toEqual([{ kind: 'unique', table: 'C', name: null, columns: ['A'] }])
+
+    const fk = parseDdl('CREATE TABLE C (A int, FOREIGN KEY (A) REFERENCES P (I));')
+    expect(fk.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(fk.constraints).toEqual([{
+      kind: 'fk', table: 'C', name: null, columns: ['A'], refTable: 'P', refColumns: ['I'],
+    }])
+
+    const ck = parseDdl('CREATE TABLE C (A int, CHECK (A > 0));')
+    expect(ck.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(ck.skipped.map((s) => s.keyword)).toEqual(['CHECK'])
+  })
+
+  it('비ASCII 이름이 붙은 테이블 수준 CHECK도 컬럼으로 먹지 않는다', () => {
+    const r = parseDdl('CREATE TABLE C (A int, CONSTRAINT 체크 CHECK (A > 0));')
+    expect(r.tables[0]!.columns.map((c) => c.name)).toEqual(['A'])
+    expect(r.constraints).toEqual([])
+    expect(r.skipped.map((s) => s.keyword)).toEqual(['CHECK'])
+  })
+})
