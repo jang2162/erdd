@@ -20,7 +20,7 @@ function roundTripModel(): ProjectModel {
     id: 'f2', name: '개인정보', target: 'column', type: 'text', options: [],
     required: false, defaultValue: null, order: 0, origin: null,
   }
-  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: null }
+  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인' }
   m.tables['t1'] = {
     id: 't1', logicalName: '회원', physicalName: 'MBR', comment: "it's 회원\n두 줄 설명",
     groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: { f1: '2' },
@@ -120,9 +120,9 @@ describe('DBML 왕복 — 내보낸 것을 다시 읽으면 같은 계획이 나
     expect(mbr.indexes).toEqual([{ name: 'IX_MBR_NM', columnPhysicalNames: ['MBR_NM'], unique: false }])
   })
 
-  it('그룹이 색째 왕복한다', () => {
+  it('그룹이 색·설명째 왕복한다', () => {
     expect(plan.groups).toEqual([{
-      name: '회원 관리', color: '#0E7A6C',
+      name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인',
       tablePhysicalNames: ['MBR', 'ORD'], existingId: null,
     }])
   })

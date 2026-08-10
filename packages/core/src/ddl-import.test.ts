@@ -431,11 +431,12 @@ describe('planDdlImport — DBML 확장 필드', () => {
   it('그룹을 계획에 싣는다', () => {
     const p = planDdlImport(
       createEmptyModel(),
-      parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', tables: ['MBR'] }] }),
+      parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR'] }] }),
       'postgresql', DEFAULT_NAMING_RULES,
     )
     expect(p.groups).toEqual([{
-      name: '회원 관리', color: '#0E7A6C', tablePhysicalNames: ['MBR'], existingId: null,
+      name: '회원 관리', color: '#0E7A6C', comment: null,
+      tablePhysicalNames: ['MBR'], existingId: null,
     }])
   })
 
@@ -443,7 +444,7 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const m = createEmptyModel()
     m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null }
     const p = planDdlImport(
-      m, parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', tables: ['MBR'] }] }),
+      m, parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR'] }] }),
       'postgresql', DEFAULT_NAMING_RULES,
     )
     expect(p.groups[0]!.existingId).toBe('g1')
@@ -456,7 +457,7 @@ describe('planDdlImport — DBML 확장 필드', () => {
       groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
     }
     const p = planDdlImport(
-      m, parsedOf({ groups: [{ name: '회원 관리', color: null, tables: ['MBR'] }] }),
+      m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
       'postgresql', DEFAULT_NAMING_RULES,
     )
     expect(p.groups).toEqual([])
@@ -465,7 +466,7 @@ describe('planDdlImport — DBML 확장 필드', () => {
   it('그룹 수가 opCountEstimate 에 더해진다', () => {
     const withGroup = planDdlImport(
       createEmptyModel(),
-      parsedOf({ groups: [{ name: 'G', color: null, tables: ['MBR'] }] }),
+      parsedOf({ groups: [{ name: 'G', color: null, comment: null, tables: ['MBR'] }] }),
       'postgresql', DEFAULT_NAMING_RULES,
     )
     const without = planDdlImport(createEmptyModel(), parsedOf({}), 'postgresql', DEFAULT_NAMING_RULES)

@@ -163,7 +163,14 @@ Table "MBR" {
 
   it('TableGroup 을 읽는다', () => {
     const p = parseDbml('TableGroup "회원 관리" [color: #0E7A6C] {\n  "MBR"\n  "ORD"\n}')
-    expect(p.groups).toEqual([{ name: '회원 관리', color: '#0E7A6C', tables: ['MBR', 'ORD'] }])
+    expect(p.groups).toEqual([{
+      name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR', 'ORD'],
+    }])
+  })
+
+  it('TableGroup 의 note 를 그룹 설명으로 읽는다', () => {
+    const p = parseDbml('TableGroup "G" [color: #111111, note: \'그룹 설명\'] {\n  "A"\n}')
+    expect(p.groups[0]!.comment).toBe('그룹 설명')
   })
 
   it('color 가 없으면 소속 테이블의 headercolor 로 떨어진다', () => {

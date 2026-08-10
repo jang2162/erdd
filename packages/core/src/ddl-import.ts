@@ -34,7 +34,8 @@ export type DdlImportRelationship = {
   name: string | null
 }
 export type DdlImportGroup = {
-  name: string; color: string | null; tablePhysicalNames: string[]; existingId: string | null
+  name: string; color: string | null; comment: string | null
+  tablePhysicalNames: string[]; existingId: string | null
 }
 export type DdlImportPlan = {
   tables: DdlImportTable[]
@@ -363,7 +364,7 @@ export function planDdlImport(
       .map((n) => tableByUpper.get(upper(n))!.physicalName)
     if (members.length === 0) continue
     groups.push({
-      name: g.name, color: g.color, tablePhysicalNames: members,
+      name: g.name, color: g.color, comment: g.comment ?? null, tablePhysicalNames: members,
       existingId: groupIdByName.get(upper(g.name)) ?? null,
     })
   }

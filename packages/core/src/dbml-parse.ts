@@ -5,7 +5,9 @@ import type {
 import type { Dialect } from './dialect.js'
 import { splitDbmlNote } from './dbml-note.js'
 
-export type ParsedGroup = { name: string; color: string | null; tables: string[] }
+export type ParsedGroup = {
+  name: string; color: string | null; comment: string | null; tables: string[]
+}
 export type ParsedCustomValue = {
   table: string; column: string | null; values: Record<string, string>
 }
@@ -393,10 +395,13 @@ function parseTableGroupBlock(out: Out, header: string, body: string, bodyLine: 
   const rest = header.slice(id.end)
   const br = topLevelIndexOf(rest, '[')
   let color: string | null = null
+  let comment: string | null = null
   if (br >= 0) {
     const settings = parseSettings(rest.slice(br + 1, Math.max(br + 1, rest.lastIndexOf(']'))))
     const c = settings.get('color')
     if (typeof c === 'string') color = c.trim()
+    const note = settings.get('note')
+    if (typeof note === 'string') comment = unquote(note) || null
   }
   const tables: string[] = []
   for (const item of splitItems(body, bodyLine)) {
@@ -404,7 +409,7 @@ function parseTableGroupBlock(out: Out, header: string, body: string, bodyLine: 
     const t = readIdent(item.text, 0)
     if (t !== null) tables.push(t.name)
   }
-  out.groups.push({ name: id.name, color, tables })
+  out.groups.push({ name: id.name, color, comment, tables })
 }
 
 function parseColumnItem(out: Out, table: string, item: Item): ParsedColumn | null {

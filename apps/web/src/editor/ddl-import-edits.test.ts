@@ -201,28 +201,36 @@ describe('applyDdlImport — DBML 확장', () => {
 
   it('새 그룹을 만들고 테이블을 넣는다', () => {
     const next = applyDdlImport(createEmptyModel(), planWith({
-      groups: [{ name: '회원 관리', color: '#0E7A6C', tablePhysicalNames: ['MBR'], existingId: null }],
+      groups: [{
+        name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인',
+        tablePhysicalNames: ['MBR'], existingId: null,
+      }],
     }), mkNewId())
     const group = Object.values(next.tableGroups)[0]!
-    expect(group).toMatchObject({ name: '회원 관리', color: '#0E7A6C' })
+    expect(group).toMatchObject({ name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인' })
     expect(Object.values(next.tables)[0]!.groupId).toBe(group.id)
   })
 
   it('색이 null 이면 팔레트에서 고른다', () => {
     const next = applyDdlImport(createEmptyModel(), planWith({
-      groups: [{ name: 'G', color: null, tablePhysicalNames: ['MBR'], existingId: null }],
+      groups: [{
+        name: 'G', color: null, comment: null, tablePhysicalNames: ['MBR'], existingId: null,
+      }],
     }), mkNewId())
     expect(Object.values(next.tableGroups)[0]!.color).toMatch(/^#[0-9a-fA-F]{6}$/)
   })
 
-  it('existingId 가 있으면 새로 만들지 않는다', () => {
+  it('existingId 가 있으면 새로 만들지 않고 색·설명도 덮어쓰지 않는다', () => {
     const m = createEmptyModel()
-    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null }
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: '원래 설명' }
     const next = applyDdlImport(m, planWith({
-      groups: [{ name: '회원 관리', color: '#0E7A6C', tablePhysicalNames: ['MBR'], existingId: 'g1' }],
+      groups: [{
+        name: '회원 관리', color: '#0E7A6C', comment: '가져온 설명',
+        tablePhysicalNames: ['MBR'], existingId: 'g1',
+      }],
     }), mkNewId())
     expect(Object.keys(next.tableGroups)).toEqual(['g1'])
-    expect(next.tableGroups['g1']!.color).toBe('#111')       // 기존 색을 덮어쓰지 않는다
+    expect(next.tableGroups['g1']).toMatchObject({ color: '#111', comment: '원래 설명' })
     expect(Object.values(next.tables)[0]!.groupId).toBe('g1')
   })
 
@@ -262,7 +270,7 @@ function roundTripModel(): ProjectModel {
     id: 'f2', name: '개인정보', target: 'column', type: 'text', options: [],
     required: false, defaultValue: null, order: 0, origin: null,
   }
-  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: null }
+  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인' }
   m.tables['t1'] = {
     id: 't1', logicalName: '회원', physicalName: 'MBR', comment: "it's 회원\n두 줄 설명",
     groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: { f1: '2' },
@@ -330,7 +338,11 @@ describe('DBML 왕복 — 모델까지', () => {
     const byName = (m: ProjectModel) => Object.fromEntries(
       Object.values(m.tables).map((t) => [t.physicalName, {
         logicalName: t.logicalName, comment: t.comment, custom: t.custom,
-        group: t.groupId === null ? null : m.tableGroups[t.groupId]!.name,
+        group: t.groupId === null ? null : {
+          name: m.tableGroups[t.groupId]!.name,
+          color: m.tableGroups[t.groupId]!.color,
+          comment: m.tableGroups[t.groupId]!.comment,
+        },
       }]),
     )
     expect(byName(next)).toEqual(byName(model))
