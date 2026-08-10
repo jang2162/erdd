@@ -110,8 +110,8 @@ describe('ResourceLibraryManager', () => {
     await screen.findByText('회원')
     const wordSection = screen.getByText('단어').parentElement!.parentElement!
     await userEvent.click(within(wordSection).getByRole('button', { name: '추가' }))
-    await userEvent.type(screen.getByLabelText('논리명'), '주문')
-    await userEvent.type(screen.getByLabelText('물리 약어'), 'ORD')
+    await userEvent.type(screen.getByLabelText(/논리명/), '주문')
+    await userEvent.type(screen.getByLabelText(/물리 약어/), 'ORD')
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
     await waitFor(() => expect(create).toHaveBeenCalledWith({
       libraryId: 'l1',
@@ -130,7 +130,7 @@ describe('ResourceLibraryManager', () => {
     await userEvent.click(await screen.findByRole('button', { name: /항목 3개/ }))
     await screen.findByText('회원')
     await userEvent.click(screen.getByRole('button', { name: '회원 편집' }))
-    const nameInput = screen.getByLabelText('논리명')
+    const nameInput = screen.getByLabelText(/논리명/)
     await userEvent.clear(nameInput)
     await userEvent.type(nameInput, '회원신규')
     await userEvent.click(screen.getByRole('button', { name: '저장' }))

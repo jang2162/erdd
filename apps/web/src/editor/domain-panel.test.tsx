@@ -75,4 +75,18 @@ describe('DomainPanel', () => {
     expect(screen.queryByRole('button', { name: '금액 편집' })).toBeNull()
     expect(screen.queryByRole('button', { name: '금액 삭제' })).toBeNull()
   })
+
+  it('도메인 추가 폼에서 필수 라벨(이름·논리 타입)에는 별표가 붙고 선택 라벨(분류·기본값·허용값·설명)에는 붙지 않는다', async () => {
+    loadModelWithDomains()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /도메인/ }))
+    await userEvent.click(screen.getByRole('button', { name: '도메인 추가' }))
+    const labelText = (text: string) => screen.getByText(text).closest('label')?.textContent
+    expect(labelText('이름')).toBe('이름*(필수)')
+    expect(labelText('논리 타입')).toBe('논리 타입*(필수)')
+    expect(labelText('분류')).toBe('분류')
+    expect(labelText('기본값')).toBe('기본값')
+    expect(labelText('허용값 (쉼표로 구분)')).toBe('허용값 (쉼표로 구분)')
+    expect(labelText('설명')).toBe('설명')
+  })
 })

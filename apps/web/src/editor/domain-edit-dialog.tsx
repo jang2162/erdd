@@ -7,7 +7,7 @@ import { createDomain, updateDomain, usageOf } from './domain-edits.js'
 import { DIALECT_LABEL } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { FieldLabel } from '@/components/field-label'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -111,18 +111,18 @@ export function DomainEditDialog({
         <DialogHeader><DialogTitle>{domain === null ? '도메인 추가' : '도메인 수정'}</DialogTitle></DialogHeader>
         <div className="grid max-h-[70vh] gap-3 overflow-y-auto">
           <div className="grid gap-1.5">
-            <Label htmlFor="dom-name">이름</Label>
+            <FieldLabel htmlFor="dom-name" required>이름</FieldLabel>
             <Input id="dom-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="dom-category">분류</Label>
+            <FieldLabel htmlFor="dom-category">분류</FieldLabel>
             <Input
               id="dom-category" value={category} placeholder="예: 금액, 상태코드"
               onChange={(e) => setCategory(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="dom-logical-type">논리 타입</Label>
+            <FieldLabel htmlFor="dom-logical-type" required>논리 타입</FieldLabel>
             <Input
               id="dom-logical-type" className="font-mono" value={logicalType} placeholder="예: DECIMAL(15)"
               onChange={(e) => setLogicalType(e.target.value)}
@@ -133,9 +133,9 @@ export function DomainEditDialog({
             <div className="grid grid-cols-2 gap-2">
               {DIALECTS.map((d) => (
                 <div key={d} className="grid gap-1">
-                  <Label htmlFor={`dom-dialect-${d}`} className="text-xs text-muted-foreground">
+                  <FieldLabel htmlFor={`dom-dialect-${d}`} className="text-xs text-muted-foreground">
                     {DIALECT_LABEL[d]}
-                  </Label>
+                  </FieldLabel>
                   <Input
                     id={`dom-dialect-${d}`} className="font-mono" value={dialectTypes[d]}
                     onChange={(e) => {
@@ -148,18 +148,18 @@ export function DomainEditDialog({
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="dom-default">기본값</Label>
+            <FieldLabel htmlFor="dom-default">기본값</FieldLabel>
             <Input id="dom-default" value={defaultValue} onChange={(e) => setDefaultValue(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="dom-allowed">허용값 (쉼표로 구분)</Label>
+            <FieldLabel htmlFor="dom-allowed">허용값 (쉼표로 구분)</FieldLabel>
             <Input
               id="dom-allowed" value={allowedValuesText} placeholder="예: ACTIVE, INACTIVE"
               onChange={(e) => setAllowedValuesText(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="dom-description">설명</Label>
+            <FieldLabel htmlFor="dom-description">설명</FieldLabel>
             <textarea
               id="dom-description" className="min-h-16 rounded-md border bg-background p-2 text-sm"
               value={description} onChange={(e) => setDescription(e.target.value)}
