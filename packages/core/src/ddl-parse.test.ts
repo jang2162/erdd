@@ -513,6 +513,15 @@ describe('parseDdl — 컬럼 인라인 제약', () => {
     ])
   })
 
+  // 마스킹본과 원본은 인덱스를 공유한다 — 마스킹이 길이를 바꾸면 그 뒤의 제약명이 통째로
+  // 어긋난다. 서로게이트 페어(코드 유닛 2개)를 문자 단위로 순회하면 실제로 그렇게 된다.
+  it('괄호 안 마스킹이 서로게이트 페어에서도 길이를 보존한다', () => {
+    const r = parseDdl('CREATE TABLE A (COL int CHECK (\u{2000B} > 0) CONSTRAINT UX_A UNIQUE);')
+    expect(r.constraints).toContainEqual({
+      kind: 'unique', table: 'A', name: 'UX_A', columns: ['COL'],
+    })
+  })
+
   it('참조 컬럼 목록이 있는 인라인 REFERENCES는 그대로다(대조군)', () => {
     const r = parseDdl('CREATE TABLE ORD (MBR_NO bigint NOT NULL REFERENCES "public"."MBR" (MBR_NO) ON DELETE CASCADE);')
     expect(r.constraints).toContainEqual({
