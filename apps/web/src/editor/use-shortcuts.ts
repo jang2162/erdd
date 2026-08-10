@@ -20,6 +20,26 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
+ * 다이얼로그가 열려 있는가 — 그렇다면 단축키를 전부 브라우저 기본 동작에 넘긴다(설계 §3.7:
+ * "편집 다이얼로그 안의 복사·붙여넣기는 브라우저 기본 동작이어야 한다").
+ *
+ * `e.target`이 아니라 **문서 전체**를 본다. 다이얼로그가 떠 있어도 포커스는 닫기 버튼·
+ * DialogContent 자신처럼 입력란이 아닌 곳에 있을 수 있고, 그때 Delete가 모달 뒤의 선택
+ * 테이블을 지우는 것이 이 가드가 막는 사고다.
+ *
+ * 표식으로 `[role="dialog"]`를 쓴다. 실측(Radix Dialog + components/ui/dialog.tsx):
+ * - 닫혀 있을 때 Content는 **언마운트**된다 → `[role="dialog"]` 0개. 잔류 오탐이 없다.
+ * - 열리면 DialogContent에 `role="dialog" data-state="open" data-slot="dialog-content"`가 붙는다.
+ * - ⚠️ `[data-state="open"]`만으로는 안 된다 — 다이얼로그 하나가 열렸을 때 3개가 잡힌다.
+ *   **트리거 버튼**도 `data-state="open"`을 달기 때문이다(드롭다운·셀렉트 트리거도 마찬가지).
+ * `[data-state="open"]`을 AND로 묶지 않는 것은 fail-safe 쪽을 택한 것이다 — role만 보면
+ * forceMount·닫힘 애니메이션 중에도 계속 막는다(막는 방향이 안전한 실패다).
+ */
+function isDialogOpen(): boolean {
+  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null
+}
+
+/**
  * 캔버스 단축키. document에 걸되 입력 중에는 아무것도 하지 않는다.
  * 붙여넣기는 paste 이벤트로 받는다 — navigator.clipboard.readText()는 권한 프롬프트를 띄우는
  * 브라우저가 있어 Cmd+V 경로에 쓸 수 없다(설계 §3.8).
@@ -32,7 +52,7 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
       (columnIds.length > 0 ? serializeColumns(model, columnIds) : serializeTables(model, tableIds))
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target)) return
+      if (isTypingTarget(e.target) || isDialogOpen()) return
       const s = useEditorStore.getState()
       const { model, canEdit, selectedTableIds, selectedColumnIds } = s
       const mod = e.metaKey || e.ctrlKey
@@ -80,7 +100,7 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
     }
 
     const onPaste = (e: ClipboardEvent) => {
-      if (isTypingTarget(e.target)) return
+      if (isTypingTarget(e.target) || isDialogOpen()) return
       const s = useEditorStore.getState()
       if (!s.canEdit) return
       const text = e.clipboardData?.getData('text/plain') ?? ''

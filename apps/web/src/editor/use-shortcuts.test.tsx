@@ -1,27 +1,47 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { useEditorStore } from './store.js'
-import { serializeColumns } from './clipboard.js'
+import { serializeColumns, serializeTables } from './clipboard.js'
 import { useEditorShortcuts } from './use-shortcuts.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 
-function Harness() {
+/**
+ * 다이얼로그는 **실제 컴포넌트**(`@/components/ui/dialog`, Radix 기반)를 쓴다. `role="dialog"`를
+ * 손으로 붙인 가짜 div로 시험하면 "실제 다이얼로그가 그 표식을 내는가"가 검증되지 않는다.
+ * `<pre>`는 ExportDialog의 DDL 미리보기를 흉내낸 것이다 — 그 텍스트를 골라 Cmd+C 하는 것이
+ * 이 가드가 지키려는 시나리오다.
+ */
+function Harness({ withDialog = false }: { withDialog?: boolean }) {
   useEditorShortcuts({ projectId: PROJECT_ID })
-  return <input aria-label="텍스트" />
+  return (
+    <>
+      <input aria-label="텍스트" />
+      {withDialog && (
+        <Dialog>
+          <DialogTrigger>내보내기</DialogTrigger>
+          <DialogContent>
+            <DialogTitle>내보내기 설정</DialogTitle>
+            <pre>CREATE TABLE MBR (...)</pre>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
 }
 
 // 실제 렌더에는 trpc provider가 필요하다 — edit-panel.test.tsx의 renderPanel과 같은 wrapper다.
 // useModelMutation → useTRPC가 컨텍스트를 요구하므로 wrapper 없이 렌더하면 훅이 던진다.
-function renderHarness() {
+function renderHarness(props: { withDialog?: boolean } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
@@ -29,7 +49,36 @@ function renderHarness() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  return render(<Harness />, { wrapper: w })
+  return render(<Harness {...props} />, { wrapper: w })
+}
+
+/** 다이얼로그를 실제로 열고, 열렸음을 DOM 표식으로 확인한다. */
+function openDialog() {
+  fireEvent.click(screen.getByRole('button', { name: '내보내기' }))
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+}
+
+/**
+ * `model.mutate` **프로시저 호출 수**를 센다. fetch 호출 수가 아니다 — httpBatchLink는 같은 틱의
+ * 호출을 `/trpc/model.mutate,model.mutate` 한 요청으로 묶을 수 있어서, fetch를 세면 mutation
+ * 2건이 1건으로 보인다. mockTrpcFetch가 경로를 쪼개는 방식(`pathname` → `split(',')`)과 똑같이
+ * 쪼개서 `model.mutate`만 센다.
+ */
+function countModelMutate(fetchMock: { mock: { calls: unknown[][] } }): number {
+  return fetchMock.mock.calls.reduce((n, call) => {
+    const path = new URL(String(call[0]), 'http://localhost').pathname.replace(/^\/trpc\//, '')
+    return n + path.split(',').filter((p) => p === 'model.mutate').length
+  }, 0)
+}
+
+/**
+ * seq를 매번 올리는 model.mutate 목. 실제 서버는 revision마다 seq를 1씩 올린다.
+ * 고정 seq를 쓰면 두 번째 mutation이 `seq !== seqBefore + 1` 분기(남의 revision이 끼어든 경우)로
+ * 새어 resync를 타므로, "단일 mutation인가"를 undoStack으로 재는 단언이 무력해진다.
+ */
+function mockModelMutate() {
+  let seq = 1
+  return mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: ++seq } }) })
 }
 
 const writeText = vi.fn()
@@ -140,6 +189,84 @@ describe('useEditorShortcuts', () => {
     //  것은 null 역참조 예외뿐이라 "테스트 실패"가 아니라 "unhandled error"로 새므로,
     //  이 단언이 그 계약을 단언 수준에서 붙잡는다.)
     expect(e.defaultPrevented).toBe(false)
+  })
+
+  // ⚠️ 설계 §3.7 (b): 다이얼로그가 열려 있으면 단축키는 전부 브라우저 기본 동작에 넘긴다.
+  // project.tsx는 Canvas와 다이얼로그 8개를 상시 마운트하고 Radix Dialog는 임의 keydown을
+  // 막지 않으므로, 이 가드가 없으면 아래 두 사고가 실제로 난다.
+  it('다이얼로그가 열려 있으면 Cmd+C가 클립보드를 건드리지 않는다', async () => {
+    useEditorStore.getState().select('t2')
+    renderHarness({ withDialog: true })
+    openDialog()
+    // 다이얼로그 안의 DDL 미리보기 텍스트를 골라 Cmd+C 하는 상황. 훅이 가로채면
+    // 사용자가 복사하려던 DDL 대신 ERDD JSON이 클립보드에 덮인다.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('다이얼로그가 열려 있으면 Delete가 선택된 테이블을 지우지 않는다', async () => {
+    mockModelMutate()
+    useEditorStore.getState().select('t2')
+    renderHarness({ withDialog: true })
+    openDialog()
+    // 포커스가 입력란이 아니라 DialogContent·닫기 버튼에 있을 때다 — isTypingTarget으로는
+    // 걸러지지 않으므로 다이얼로그 가드만이 모달 뒤의 테이블을 지킨다.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(useEditorStore.getState().model.tables['t2']).toBeDefined()
+  })
+
+  // ⚠️ 설계 §3.6: 여러 대상을 지워도 Revision 1건 · undo 1회여야 한다.
+  it('테이블 2개를 선택하고 Delete하면 mutation 1건으로 둘 다 지워진다', async () => {
+    const fetchMock = mockModelMutate()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']).toBeUndefined()
+      expect(useEditorStore.getState().model.tables['t2']).toBeUndefined()
+    })
+    expect(countModelMutate(fetchMock)).toBe(1)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
+  it('테이블 2개를 선택하고 Cmd+X하면 둘 다 복사되고 mutation 1건으로 지워진다', async () => {
+    const fetchMock = mockModelMutate()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true, bubbles: true }))
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    const payload = JSON.parse(writeText.mock.calls[0]![0] as string)
+    expect(payload.kind).toBe('tables')
+    expect(payload.tables).toHaveLength(2)
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']).toBeUndefined()
+      expect(useEditorStore.getState().model.tables['t2']).toBeUndefined()
+    })
+    expect(countModelMutate(fetchMock)).toBe(1)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
+  })
+
+  it('paste 이벤트로 테이블을 붙여넣으면 원본에서 밀린 위치에 놓이고 새 테이블이 선택된다', async () => {
+    mockModelMutate()
+    const payload = serializeTables(buildSampleModel(), ['t2'])   // t2.position = { x: 300, y: 0 }
+    useEditorStore.getState().select(null)
+    renderHarness()
+    const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(e, 'clipboardData', { value: { getData: () => JSON.stringify(payload) } })
+    document.dispatchEvent(e)
+    await waitFor(() => {
+      expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(3)
+    })
+    const selected = useEditorStore.getState().selectedTableIds
+    expect(selected).toHaveLength(1)
+    const pasted = useEditorStore.getState().model.tables[selected[0]!]
+    expect(pasted).toBeDefined()
+    // PASTE_OFFSET만큼 밀린다 — 원본 위에 정확히 겹치면 붙여넣은 줄도 모른다.
+    expect(pasted!.position).toEqual({ x: 340, y: 40 })
+    expect(pasted!.id).not.toBe('t2')
   })
 
   it('읽기 전용이면 X·V·Delete가 무시되고 C만 동작한다', async () => {
