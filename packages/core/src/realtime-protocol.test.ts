@@ -107,6 +107,46 @@ describe('parseSelections (다중 선택)', () => {
     expect(parsed?.selections.at(-1)).toEqual({ kind: 'table', id: `t${MAX_PEER_SELECTIONS - 1}` })
   })
 
+  it('같은 kind·id 중복은 첫 등장만 남기고 순서를 보존한다', () => {
+    const dup = {
+      type: 'selection',
+      selections: [
+        { kind: 'table', id: 't1' }, { kind: 'note', id: 'n1' },
+        { kind: 'table', id: 't1' }, { kind: 'table', id: 't1' },
+      ],
+    }
+    expect(parseClientMessage(JSON.stringify(dup))?.selections)
+      .toEqual([{ kind: 'table', id: 't1' }, { kind: 'note', id: 'n1' }])
+  })
+
+  it('id가 같아도 kind가 다르면 서로 다른 선택이다', () => {
+    const msg = { type: 'selection', selections: [{ kind: 'table', id: 'x' }, { kind: 'group', id: 'x' }] }
+    expect(parseClientMessage(JSON.stringify(msg))?.selections)
+      .toEqual([{ kind: 'table', id: 'x' }, { kind: 'group', id: 'x' }])
+  })
+
+  it('중복 제거를 절단보다 먼저 한다 — 중복이 상한을 소진해 실제 선택을 잃지 않는다', () => {
+    // 같은 id 40개 + 서로 다른 id 30개. 절단이 먼저면 앞 50개(중복 40 + 고유 10)만 남아
+    // 고유 선택 20개가 사라진다. 중복 제거가 먼저여야 31개가 온전히 남는다.
+    const flood = Array.from({ length: 40 }, () => ({ kind: 'table' as const, id: 'dup' }))
+    const unique = Array.from({ length: 30 }, (_, i) => ({ kind: 'table' as const, id: `u${i}` }))
+    const parsed = parseClientMessage(JSON.stringify({ type: 'selection', selections: [...flood, ...unique] }))
+    expect(parsed?.selections).toHaveLength(31)
+    expect(parsed?.selections.at(-1)).toEqual({ kind: 'table', id: 'u29' })
+  })
+
+  it('presence의 peer 선택도 중복이 제거된다 — 같은 참여자 마크가 여러 번 붙지 않는다', () => {
+    const dup = {
+      type: 'presence',
+      peers: [{ userId: 'u9', name: '아홉', selections: [
+        { kind: 'table', id: 't1' }, { kind: 'table', id: 't1' }, { kind: 'table', id: 't1' },
+      ] }],
+    }
+    const parsed = parseServerMessage(JSON.stringify(dup))
+    expect(parsed?.type === 'presence' ? parsed.peers[0]?.selections : undefined)
+      .toEqual([{ kind: 'table', id: 't1' }])
+  })
+
   it('presence의 peer도 selections 배열을 왕복한다', () => {
     const msg: ServerMessage = {
       type: 'presence',
@@ -116,6 +156,26 @@ describe('parseSelections (다중 선택)', () => {
       ],
     }
     expect(parseServerMessage(JSON.stringify(msg))).toEqual(msg)
+  })
+
+  it('presence의 peer에 selections 필드가 없으면 프레임 전체를 거절한다', () => {
+    // 옛 서버가 보내는 단건 `selection` 프레임이 "모두 선택 없음"으로 조용히 통과하면 안 된다.
+    expect(parseServerMessage(JSON.stringify({ type: 'presence', peers: [{ userId: 'u1', name: '갑' }] }))).toBeNull()
+    const legacy = { type: 'presence', peers: [{ userId: 'u1', name: '갑', selection: { kind: 'table', id: 't1' } }] }
+    expect(parseServerMessage(JSON.stringify(legacy))).toBeNull()
+  })
+
+  it('ready의 peer에 selections 필드가 없어도 프레임 전체를 거절한다', () => {
+    const bad = { type: 'ready', seq: 0, peers: [{ userId: 'u1', name: '갑' }] }
+    expect(parseServerMessage(JSON.stringify(bad))).toBeNull()
+  })
+
+  it('peer의 selections가 배열이 아니면 거절한다(presence·ready 양쪽)', () => {
+    for (const selections of [{}, 'table', 3, null] as const) {
+      const peers = [{ userId: 'u1', name: '갑', selections }]
+      expect(parseServerMessage(JSON.stringify({ type: 'presence', peers }))).toBeNull()
+      expect(parseServerMessage(JSON.stringify({ type: 'ready', seq: 0, peers }))).toBeNull()
+    }
   })
 })
 

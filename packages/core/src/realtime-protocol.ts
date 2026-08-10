@@ -55,13 +55,24 @@ function parseOneSelection(v: unknown): PeerSelection | undefined {
  * 반환 undefined = 형식 오류. 빈 배열은 "선택 없음"이라 유효하다.
  * 상한 초과는 **거절이 아니라 절단**이다 — 신뢰할 수 없는 입력의 payload를 막되,
  * 정상 사용자가 많이 골랐다는 이유로 선택 전체를 잃지는 않게 한다.
+ *
+ * 중복(`kind`+`id`가 같음)은 첫 등장만 남긴다 — 단건 `selection` 시절 구조적으로 불가능했던
+ * 상태라 소비처가 대비하지 않는다(같은 참여자 마크가 N개 붙어 React key가 중복된다).
+ * **절단보다 먼저** 제거한다: 그러지 않으면 같은 id 50개가 상한을 소진해 실제 선택이 잘려 나간다.
+ * 방어는 여기 한 곳에만 둔다 — 소비처(`buildPeerMarks` 등)에 같은 가드를 겹쳐 두면
+ * 어느 한쪽이 사라져도 테스트가 잡지 못한다.
  */
 function parseSelections(v: unknown): PeerSelection[] | undefined {
   if (!Array.isArray(v)) return undefined
   const out: PeerSelection[] = []
+  const seen = new Set<string>()
   for (const raw of v) {
     const one = parseOneSelection(raw)
     if (one === undefined) return undefined
+    // kind는 고정 목록이라 ':'를 담지 않는다 — 키가 모호해지지 않는다.
+    const key = `${one.kind}:${one.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
     out.push(one)
   }
   return out.length > MAX_PEER_SELECTIONS ? out.slice(0, MAX_PEER_SELECTIONS) : out
