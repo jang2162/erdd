@@ -1,6 +1,6 @@
-import { useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { FolderPlus } from 'lucide-react'
-import { createGroup } from '@erdd/core'
+import { createGroup, type Table } from '@erdd/core'
 import { primaryTableId, useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
@@ -22,23 +22,45 @@ export function TableTree({ projectId }: { projectId: string }) {
   const selectGroup = useEditorStore((s) => s.selectGroup)
   const mutate = useModelMutation(projectId)
   const [q, setQ] = useState('')
+  /**
+   * Shift 범위의 **시작점**. 주 선택(`primaryTableId` = 선택 배열의 마지막)과는 다른 개념이다 —
+   * 범위를 아래로 넓히면 마지막 원소는 "내가 클릭한 것"이 아니라 범위의 아래쪽 끝이 되므로,
+   * 주 선택을 앵커로 재사용하면 아래로 늘릴 때만 앵커가 범위를 따라 끌려간다.
+   * 화면 조작의 임시 상태라 store가 아니라 여기 둔다(실시간·캔버스·패널 어디서도 읽지 않는다).
+   */
+  const [anchorId, setAnchorId] = useState<string | null>(null)
 
   const query = q.trim().toLowerCase()
-  const match = (t: { physicalName: string; logicalName: string }) =>
-    query === '' || t.physicalName.toLowerCase().includes(query) || t.logicalName.toLowerCase().includes(query)
 
-  const allTables = Object.values(model.tables).filter(match)
-    .sort((a, b) => a.physicalName.localeCompare(b.physicalName))
-  const groups = Object.values(model.tableGroups).sort((a, b) => a.name.localeCompare(b.name))
-  const unassigned = allTables.filter((t) => t.groupId === null || !model.tableGroups[t.groupId])
+  const allTables = useMemo(() => {
+    const match = (t: { physicalName: string; logicalName: string }) =>
+      query === '' || t.physicalName.toLowerCase().includes(query) || t.logicalName.toLowerCase().includes(query)
+    return Object.values(model.tables).filter(match)
+      .sort((a, b) => a.physicalName.localeCompare(b.physicalName))
+  }, [model.tables, query])
+  const groups = useMemo(
+    () => Object.values(model.tableGroups).sort((a, b) => a.name.localeCompare(b.name)),
+    [model.tableGroups])
+
+  // 그룹 멤버 목록은 표시와 범위 계산이 **같은 목록**이어야 한다 — 둘이 갈리면 화면에 없는
+  // 테이블이 Shift 범위에 끌려 들어온다. 그룹마다 전체 테이블을 훑으면 그 스캔이
+  // O(그룹수 × 테이블수)로 두 번(렌더 + orderedIds) 도므로, 한 번에 갈라 두 곳이 나눠 쓴다.
+  const { membersByGroup, unassigned } = useMemo(() => {
+    const byGroup = new Map<string, Table[]>(groups.map((g) => [g.id, []]))
+    const rest: Table[] = []
+    for (const t of allTables) {
+      const bucket = t.groupId !== null ? byGroup.get(t.groupId) : undefined
+      if (bucket) bucket.push(t)
+      else rest.push(t)   // groupId가 null이거나 이미 사라진 그룹을 가리킨다
+    }
+    return { membersByGroup: byGroup, unassigned: rest }
+  }, [allTables, groups])
+  const membersOf = (groupId: string): Table[] => membersByGroup.get(groupId) ?? []
 
   // 유효 활성 그룹: 설정됐고 실제로 존재할 때만 스코핑한다(삭제된 경우 전체 뷰로 폴백 — canvas와 일치).
   const scopedGroupId = activeGroupView && model.tableGroups[activeGroupView] ? activeGroupView : null
   const visibleGroups = scopedGroupId ? groups.filter((g) => g.id === scopedGroupId) : groups
   const showUnassigned = !scopedGroupId && (unassigned.length > 0 || groups.length > 0)
-  // 그룹 멤버 목록은 표시와 범위 계산이 **같은 식**을 써야 한다 — 둘이 갈리면 화면에 없는
-  // 테이블이 Shift 범위에 끌려 들어온다.
-  const membersOf = (groupId: string) => allTables.filter((t) => t.groupId === groupId)
 
   // Shift 범위 선택의 기준 = **화면에 보이는 순서**. 검색으로 걸러졌거나 그룹 뷰 밖인 항목은 여기 없다.
   const orderedIds = [
@@ -47,11 +69,24 @@ export function TableTree({ projectId }: { projectId: string }) {
   ]
   const selectedIds = new Set(selectedTableIds)
 
+  /**
+   * 범위의 시작 인덱스. 앵커가 쓸 수 없으면(검색·그룹 뷰로 화면에서 사라졌거나, 캔버스가
+   * 선택을 갈아치워 앵커가 더 이상 선택의 일부가 아니면) 주 선택으로 폴백한다.
+   */
+  const rangeStart = (): number => {
+    if (anchorId !== null && selectedIds.has(anchorId)) {
+      const a = orderedIds.indexOf(anchorId)
+      if (a !== -1) return a
+    }
+    return primaryId !== null ? orderedIds.indexOf(primaryId) : -1
+  }
+
   // 선택은 뷰 상태이지 모델 변경이 아니다 — canEdit과 무관하게 Viewer도 고를 수 있다.
   const onItemClick = (e: ReactMouseEvent, id: string) => {
-    if (e.metaKey || e.ctrlKey) { toggleTable(id); return }
-    if (e.shiftKey && primaryId !== null) {
-      const a = orderedIds.indexOf(primaryId)
+    if (e.metaKey || e.ctrlKey) { setAnchorId(id); toggleTable(id); return }
+    // Shift+클릭은 앵커를 옮기지 않는다 — 한 칸씩 넓혀 조준하려면 시작점이 고정돼야 한다.
+    if (e.shiftKey) {
+      const a = rangeStart()
       const b = orderedIds.indexOf(id)
       if (a !== -1 && b !== -1) {
         const [lo, hi] = a <= b ? [a, b] : [b, a]
@@ -59,7 +94,8 @@ export function TableTree({ projectId }: { projectId: string }) {
         return
       }
     }
-    // 수식키가 없거나 anchor가 화면에 없으면 기존 동작: 단일 선택 + 캔버스 포커스.
+    // 수식키가 없거나 앵커·주 선택 어느 쪽도 화면에 없으면 기존 동작: 단일 선택 + 캔버스 포커스.
+    setAnchorId(id)
     focus(id)
   }
 
