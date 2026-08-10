@@ -115,6 +115,30 @@ describe('generateDbml', () => {
     expect(generateDbml(m, 'postgresql')).not.toContain('"MBR_NM" varchar(100) [increment')
   })
 
+  // 리뷰 M-3 의 실전형 재현을 왕복으로 잠근다 — 값에 따옴표·중괄호·JSON 문자열이 들어도
+  // 커스텀이 전부 유실되고 JSON 원문이 설명으로 새던 자리다.
+  it('값에 중괄호·따옴표가 든 커스텀도 설명과 함께 왕복한다', () => {
+    const m = baseModel()
+    m.customFields['f1'] = {
+      id: 'f1', name: '비고', target: 'table', type: 'text', options: [],
+      required: false, defaultValue: null, order: 0, origin: null,
+    }
+    m.customFields['f2'] = {
+      id: 'f2', name: '메타', target: 'table', type: 'text', options: [],
+      required: false, defaultValue: null, order: 1, origin: null,
+    }
+    m.tables['t1']!.comment = '설명에 {중괄호} 가 있다'
+    m.tables['t1']!.custom = { f1: `it's {중괄호} "큰따옴표"`, f2: '{"a":1}' }
+    const parsed = parseDbml(generateDbml(m, 'postgresql'))
+    expect(parsed.customValues).toContainEqual({
+      table: 'MBR', column: null,
+      values: { 비고: `it's {중괄호} "큰따옴표"`, 메타: '{"a":1}' },
+    })
+    expect(parsed.comments).toContainEqual({
+      table: 'MBR', column: null, text: '회원 - 설명에 {중괄호} 가 있다',
+    })
+  })
+
   it('커스텀 항목 값을 note 꼬리로 낸다', () => {
     const m = baseModel()
     m.customFields['f1'] = {

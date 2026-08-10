@@ -49,9 +49,46 @@ describe('splitDbmlNote', () => {
     })
   })
 
-  it('설명 안에 중괄호가 있어도 마지막 것만 꼬리로 본다', () => {
+  it('설명 안에 중괄호가 있어도 꼬리만 떼어낸다', () => {
     expect(splitDbmlNote('회원 - {코드} 설명 {"보안등급":"2"}')).toEqual({
       logicalName: '회원', comment: '{코드} 설명', custom: { 보안등급: '2' },
+    })
+  })
+
+  // 설계 §3 의 "마지막 { 부터" 규칙은 **커스텀 값 안의 {** 를 못 지켰다 — 그 { 가 마지막이 되어
+  // JSON 파싱이 실패하고 꼬리 전체가 설명·논리명으로 샜다(리뷰 M-3). "앞에서부터 훑어 끝까지가
+  // JSON 으로 파싱되는 첫 { " 로 바꾸면 손글씨 중괄호를 지키는 성질은 그대로 유지된다.
+  it('값에 중괄호가 있어도 커스텀으로 읽는다', () => {
+    expect(splitDbmlNote('A {"비고":"a{b"}')).toEqual({
+      logicalName: 'A', comment: null, custom: { 비고: 'a{b' },
+    })
+  })
+
+  it('값에 따옴표·중괄호·JSON 문자열이 들어도 읽는다', () => {
+    const custom = { 비고: `it's {중괄호} "큰따옴표"`, 메타: '{"a":1}' }
+    const note = `회원 - 설명에 {중괄호} 가 있다 ${JSON.stringify(custom)}`
+    expect(splitDbmlNote(note)).toEqual({
+      logicalName: '회원', comment: '설명에 {중괄호} 가 있다', custom,
+    })
+  })
+
+  it('값에 }만 있는 경우도 그대로다(대조군)', () => {
+    expect(splitDbmlNote('A {"비고":"a}b"}')).toEqual({
+      logicalName: 'A', comment: null, custom: { 비고: 'a}b' },
+    })
+  })
+
+  it('값에 개행이 있어도 읽는다(대조군)', () => {
+    // 내보내기는 JSON.stringify 로 꼬리를 만들므로 개행은 \n 으로 이스케이프돼 실린다.
+    const custom = { 비고: '첫 줄\n둘째 줄' }
+    expect(splitDbmlNote(`A - 설명 ${JSON.stringify(custom)}`)).toEqual({
+      logicalName: 'A', comment: '설명', custom,
+    })
+  })
+
+  it('꼬리 없이 손글씨 중괄호만 있으면 통째로 설명이다(대조군)', () => {
+    expect(splitDbmlNote('회원 - 설명에 {중괄호} 가 있다')).toEqual({
+      logicalName: '회원', comment: '설명에 {중괄호} 가 있다', custom: {},
     })
   })
 

@@ -19,21 +19,27 @@ export function buildDbmlNote(
 }
 
 /**
- * buildDbmlNote 의 역. **마지막 `{` 부터 끝까지**를 JSON 으로 읽어 보고, 성공하고 모든 값이
- * 문자열일 때만 꼬리로 떼어낸다. 그 외에는 통째로 설명에 남긴다 — 사람이 손으로 쓴 `{}` 가
- * 섞인 note 를 깨뜨리지 않기 위해서다.
+ * buildDbmlNote 의 역. `{` 위치를 **앞에서부터 훑어 끝까지가 JSON 으로 파싱되는 첫 지점**을
+ * 꼬리로 떼어낸다(모든 값이 문자열일 때만). 어느 위치도 성공하지 않으면 통째로 설명에 남긴다 —
+ * 사람이 손으로 쓴 `{}` 가 섞인 note 를 깨뜨리지 않기 위해서다.
+ *
+ * 처음에는 "마지막 `{` 부터"였는데(설계 §3), 그 규칙은 **커스텀 값 안의 `{`** 를 못 지켰다 —
+ * 값의 `{` 가 마지막이 되어 파싱이 실패하고 꼬리 전체가 설명·논리명으로 조용히 샜다(리뷰 M-3).
+ * 값은 사용자 자유 입력이라 `{` 가 들어올 자리가 설명보다 좁지 않다. 앞에서부터 훑으면
+ * 설명 속 `{중괄호}` 에서는 파싱이 실패해 그대로 넘어가므로 두 요구가 함께 성립한다.
  */
 export function splitDbmlNote(
   text: string,
 ): { logicalName: string; comment: string | null; custom: Record<string, string> } {
   let head = text
   let custom: Record<string, string> = {}
-  const open = text.lastIndexOf('{')
-  if (open >= 0 && text.trimEnd().endsWith('}')) {
-    const parsed = tryParseCustom(text.slice(open).trim())
-    if (parsed !== null) {
+  if (text.trimEnd().endsWith('}')) {
+    for (let open = text.indexOf('{'); open >= 0; open = text.indexOf('{', open + 1)) {
+      const parsed = tryParseCustom(text.slice(open).trim())
+      if (parsed === null) continue
       custom = parsed
       head = text.slice(0, open)
+      break
     }
   }
   const trimmed = head.trim()
