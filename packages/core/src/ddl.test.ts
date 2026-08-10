@@ -218,7 +218,7 @@ describe('빈 물리명', () => {
     const zeroColWarn = warns.find((w) => w.includes('컬럼이 없어'))
     expect(zeroColWarn).toBeDefined()
     expect(zeroColWarn!.startsWith(':')).toBe(false)
-    expect(zeroColWarn).toBe('신규테이블: 컬럼이 없어 DDL에서 제외됨')
+    expect(zeroColWarn).toBe('신규테이블: 컬럼이 없어 내보내기에서 제외됨')
   })
 
   it('논리명도 없으면 0컬럼 경고는 id로 라벨이 붙는다', () => {
@@ -226,6 +226,6 @@ describe('빈 물리명', () => {
     m.tables['empty'] = tbl('empty', '', { logicalName: '' })
     const warns = ddlWarnings(m, 'postgresql')
     const zeroColWarn = warns.find((w) => w.includes('컬럼이 없어'))
-    expect(zeroColWarn).toBe('empty: 컬럼이 없어 DDL에서 제외됨')
+    expect(zeroColWarn).toBe('empty: 컬럼이 없어 내보내기에서 제외됨')
   })
 })

@@ -31,7 +31,7 @@ function autoIncrementToken(dialect: Dialect): string {
   }
 }
 
-function selectTables(model: ProjectModel, scope: DdlScope): Table[] {
+export function selectTables(model: ProjectModel, scope: DdlScope): Table[] {
   const all = Object.values(model.tables)
   let picked: Table[]
   if (scope.kind === 'all') picked = all
@@ -43,12 +43,12 @@ function selectTables(model: ProjectModel, scope: DdlScope): Table[] {
   return picked.sort((a, b) => a.physicalName.localeCompare(b.physicalName))
 }
 
-function tableColumns(model: ProjectModel, tableId: string): Column[] {
+export function tableColumns(model: ProjectModel, tableId: string): Column[] {
   return Object.values(model.columns).filter((c) => c.tableId === tableId).sort((a, b) => a.order - b.order)
 }
 
 /** logicalName/physicalName/comment로부터 코멘트 텍스트 산출. 논리명==물리명이고 설명이 없으면 생략(null). */
-function commentText(logicalName: string, physicalName: string, comment: string | null): string | null {
+export function commentText(logicalName: string, physicalName: string, comment: string | null): string | null {
   const parts: string[] = []
   if (logicalName && logicalName !== physicalName) parts.push(logicalName)
   else if (logicalName && logicalName === physicalName && comment) parts.push(logicalName)
@@ -108,7 +108,7 @@ function createTableBlock(model: ProjectModel, table: Table, dialect: Dialect): 
  * DDL로 낼 수 있는 테이블인가. 물리명이 비면 식별자를 만들 수 없다.
  * generateDdl의 제외와 ddlWarnings의 경고가 같은 판정을 써야 하므로 여기 하나만 둔다.
  */
-function hasEmptyPhysicalName(model: ProjectModel, table: Table): boolean {
+export function hasEmptyPhysicalName(model: ProjectModel, table: Table): boolean {
   if (table.physicalName.trim() === '') return true
   return tableColumns(model, table.id).some((c) => c.physicalName.trim() === '')
 }
@@ -226,11 +226,11 @@ export function ddlWarnings(model: ProjectModel, dialect: Dialect, scope: DdlSco
   const inScope = selectTables(model, scope)
   const out: string[] = []
   for (const t of inScope) {
-    if (tableColumns(model, t.id).length === 0) out.push(`${warningLabel(t)}: 컬럼이 없어 DDL에서 제외됨`)
+    if (tableColumns(model, t.id).length === 0) out.push(`${warningLabel(t)}: 컬럼이 없어 내보내기에서 제외됨`)
   }
   for (const t of inScope) {
     if (!hasEmptyPhysicalName(model, t)) continue
-    out.push(`${warningLabel(t)}: 물리명이 비어 있어 DDL에서 제외됨`)
+    out.push(`${warningLabel(t)}: 물리명이 비어 있어 내보내기에서 제외됨`)
   }
   for (const t of inScope) {
     for (const c of tableColumns(model, t.id)) {
