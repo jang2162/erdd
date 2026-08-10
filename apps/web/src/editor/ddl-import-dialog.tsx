@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Import } from 'lucide-react'
 import {
-  DIALECTS, MAX_OPS_PER_MUTATION, detectDialect, parseDdl, planDdlImport, type Dialect,
+  DIALECTS, MAX_OPS_PER_MUTATION, detectDialect, dialectFromDatabaseType, parseDbml, parseDdl,
+  planDdlImport, type Dialect, type ParsedDbml,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
@@ -14,12 +15,16 @@ import {
 } from '@/components/ui/dialog'
 
 /**
- * 헤더의 "가져오기": DDL 텍스트를 붙여넣으면 즉시 파싱해 미리보기(테이블·컬럼·관계·인덱스 개수와
- * 경고)를 보여주고, 적용하면 단일 mutation(Revision 1건)으로 반영한다.
+ * 헤더의 "가져오기": DDL 또는 DBML 텍스트를 붙여넣으면 즉시 파싱해 미리보기(테이블·컬럼·관계·
+ * 인덱스·그룹 개수와 경고)를 보여주고, 적용하면 단일 mutation(Revision 1건)으로 반영한다.
  *
- * 파싱은 순수 함수(parseDdl·planDdlImport)라 서버 왕복이 없다 — 입력이 바뀔 때마다 useMemo로
- * 즉시 다시 계산한다. 방언은 자동 감지(detectDialect)하되 언제나 수동으로 덮을 수 있다.
+ * 파싱은 순수 함수(parseDdl·parseDbml·planDdlImport)라 서버 왕복이 없다 — 입력이 바뀔 때마다
+ * useMemo로 즉시 다시 계산한다. **형식에 따라 파서만 갈리고** 방언 선택·미리보기·op 상한·적용은
+ * 완전히 공유한다. 방언은 자동 감지(DDL은 detectDialect, DBML은 `Project { database_type }`)하되
+ * 언제나 수동으로 덮을 수 있다.
  */
+type Format = 'ddl' | 'dbml'
+
 export function DdlImportDialog({ projectId }: { projectId: string }) {
   const canEdit = useEditorStore((s) => s.canEdit)
   const model = useEditorStore((s) => s.model)
@@ -28,20 +33,31 @@ export function DdlImportDialog({ projectId }: { projectId: string }) {
 
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
+  const [format, setFormat] = useState<Format>('ddl')
   const [manualDialect, setManualDialect] = useState<Dialect | null>(null)
 
-  const detected = useMemo(() => detectDialect(text), [text])
+  const parsed = useMemo(
+    () => (text.trim() === '' ? null : format === 'ddl' ? parseDdl(text) : parseDbml(text)),
+    [text, format],
+  )
+  const detected = useMemo(() => {
+    if (text.trim() === '') return null
+    if (format === 'ddl') return detectDialect(text)
+    const dt = (parsed as ParsedDbml | null)?.databaseType ?? null
+    return dt === null ? null : dialectFromDatabaseType(dt)
+  }, [text, format, parsed])
   const dialect = manualDialect ?? detected ?? 'postgresql'
   const plan = useMemo(
-    () => (text.trim() === '' ? null : planDdlImport(model, parseDdl(text), dialect, namingRules)),
-    [text, dialect, model, namingRules],
+    () => (parsed === null ? null : planDdlImport(model, parsed, dialect, namingRules)),
+    [parsed, dialect, model, namingRules],
   )
   const overLimit = plan !== null && plan.opCountEstimate > MAX_OPS_PER_MUTATION
 
   const onApply = async () => {
     if (plan === null || overLimit) return
     const captured = plan                       // producer 진입 전에 캡처한다(마이크로태스크 지연 대비)
-    const r = await mutate((m) => applyDdlImport(m, captured, newId), { summary: 'DDL 가져오기' })
+    const summary = format === 'ddl' ? 'DDL 가져오기' : 'DBML 가져오기'
+    const r = await mutate((m) => applyDdlImport(m, captured, newId), { summary })
     if (r === 'applied') { setOpen(false); setText('') }
   }
 
@@ -56,7 +72,21 @@ export function DdlImportDialog({ projectId }: { projectId: string }) {
         <Button variant="ghost" size="sm"><Import /> 가져오기</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>DDL 가져오기</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>가져오기</DialogTitle></DialogHeader>
+        <div className="flex gap-2">
+          <Button
+            type="button" size="sm" variant={format === 'ddl' ? 'default' : 'outline'}
+            onClick={() => { setFormat('ddl'); setManualDialect(null) }}
+          >
+            DDL
+          </Button>
+          <Button
+            type="button" size="sm" variant={format === 'dbml' ? 'default' : 'outline'}
+            onClick={() => { setFormat('dbml'); setManualDialect(null) }}
+          >
+            DBML
+          </Button>
+        </div>
         <div className="grid gap-2">
           <span className="text-sm font-medium">방언</span>
           <select
@@ -73,9 +103,11 @@ export function DdlImportDialog({ projectId }: { projectId: string }) {
           </select>
         </div>
         <textarea
-          aria-label="DDL"
+          aria-label={format === 'ddl' ? 'DDL' : 'DBML'}
           className="min-h-40 rounded-md border bg-muted p-3 font-mono text-xs"
-          placeholder="CREATE TABLE ... 형태의 DDL을 붙여넣으세요"
+          placeholder={format === 'ddl'
+            ? 'CREATE TABLE ... 형태의 DDL을 붙여넣으세요'
+            : 'Table "..." { ... } 형태의 DBML을 붙여넣으세요'}
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
@@ -84,11 +116,12 @@ export function DdlImportDialog({ projectId }: { projectId: string }) {
             <p className="text-sm">
               테이블 {plan.tables.length}개 · 컬럼 {columnCount}개 · 관계 {plan.relationships.length}개
               {' '}· 인덱스 {indexCount}개
+              {plan.groups.length > 0 && ` · 그룹 ${plan.groups.length}개`}
               {plan.skippedTables.length > 0
                 && ` · 건너뜀 ${plan.skippedTables.length}개 (이미 있는 이름: ${plan.skippedTables.join(', ')})`}
             </p>
             {plan.warnings.length > 0 && (
-              <ul aria-label="DDL 경고" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs text-key">
+              <ul aria-label="가져오기 경고" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs text-key">
                 {plan.warnings.map((w, i) => (
                   <li key={i}>
                     ⚠ <span className="font-mono text-muted-foreground">{w.target}</span> {w.message}
@@ -98,7 +131,7 @@ export function DdlImportDialog({ projectId }: { projectId: string }) {
             )}
             {overLimit && (
               <p role="alert" className="text-sm text-destructive">
-                한 번에 가져올 수 있는 양을 넘었습니다. DDL을 나눠 올려주세요.
+                한 번에 가져올 수 있는 양을 넘었습니다. 입력을 나눠 올려주세요.
               </p>
             )}
             <DialogFooter>

@@ -2,6 +2,7 @@ import type {
   ParsedColumn, ParsedComment, ParsedConstraint, ParsedDdl, ParsedIndex, ParsedTable,
   SkippedStatement,
 } from './ddl-parse.js'
+import type { Dialect } from './dialect.js'
 import { splitDbmlNote } from './dbml-note.js'
 
 export type ParsedGroup = { name: string; color: string | null; tables: string[] }
@@ -12,6 +13,16 @@ export type ParsedDbml = ParsedDdl & {
   groups: ParsedGroup[]
   customValues: ParsedCustomValue[]
   databaseType: string | null
+}
+
+/** Project { database_type } 원문 → 방언. 모르면 null. */
+export function dialectFromDatabaseType(s: string): Dialect | null {
+  const v = s.trim().toLowerCase()
+  if (v.startsWith('postgres')) return 'postgresql'
+  if (v === 'mysql' || v === 'mariadb') return 'mysql'
+  if (v === 'oracle') return 'oracle'
+  if (v === 'sql server' || v === 'mssql' || v === 'sqlserver') return 'mssql'
+  return null
 }
 
 /** DBML 설정 값 → 모델의 defaultValue 원문. rawDefaultToDbml 의 역(설계 §4.2). */

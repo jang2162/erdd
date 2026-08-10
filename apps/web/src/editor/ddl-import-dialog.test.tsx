@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -142,5 +142,43 @@ describe('DdlImportDialog', () => {
     // grantEditPermission을 부르지 않는다 — Viewer 상태.
     renderDialog()
     expect(screen.queryByRole('button', { name: '가져오기' })).toBeNull()
+  })
+})
+
+describe('DdlImportDialog — DBML 형식', () => {
+  /** DBML 본문을 textarea에 넣는다. userEvent.type은 `{`·`[`를 특수 키로 해석하므로 쓰지 않는다. */
+  const typeSchema = (el: HTMLElement, value: string): void => {
+    fireEvent.change(el, { target: { value } })
+  }
+
+  const openDbml = async () => {
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
+    await userEvent.click(screen.getByRole('button', { name: 'DBML' }))
+  }
+
+  it('DBML 을 고르면 DBML 파서로 미리보기를 만든다', async () => {
+    await openDbml()
+    typeSchema(screen.getByRole('textbox', { name: 'DBML' }), 'Table "MBR" {\n  "MBR_NO" bigint [pk]\n}')
+    expect(await screen.findByText(/테이블 1개/)).toBeInTheDocument()
+  })
+
+  it('DBML 의 database_type 으로 방언을 자동 감지한다', async () => {
+    await openDbml()
+    typeSchema(screen.getByRole('textbox', { name: 'DBML' }), "Project \"P\" {\n  database_type: 'Oracle'\n}")
+    await waitFor(() => {
+      expect((screen.getByLabelText('방언') as HTMLSelectElement).value).toBe('oracle')
+    })
+  })
+
+  it('DBML 은 그룹 수를 미리보기에 보인다', async () => {
+    await openDbml()
+    typeSchema(
+      screen.getByRole('textbox', { name: 'DBML' }),
+      'Table "MBR" {\n  "A" int\n}\nTableGroup "회원" {\n  "MBR"\n}',
+    )
+    expect(await screen.findByText(/그룹 1개/)).toBeInTheDocument()
   })
 })
