@@ -47,7 +47,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 613 · cli 138 · web 571 · server 194 (erdd_test) · typecheck EXIT=0
+core 617 · cli 138 · web 571 · server 194 (erdd_test) · typecheck EXIT=0
 ```
 
 `apps/server` 테스트는 **`DATABASE_URL`을 직접 줘야 한다** — 없으면 조용히 174건이 skip되고
@@ -62,9 +62,10 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @
 기준선은 `server 143 · web 382`였다). **core·cli는 무변경** — 설계가 못 박은 "core 변경 없음,
 CLI 변경 없음"이 그대로 지켜졌고, 그 둘이 움직였다면 범위를 넘은 것이다.
 
-DBML 가져오기·내보내기 사이클에서 **core +91 · web +10**이 붙었다(직전 기준선은 `core 522 ·
+DBML 가져오기·내보내기 사이클에서 **core +95 · web +10**이 붙었다(직전 기준선은 `core 522 ·
 web 561`이었다). **cli·server는 무변경** — 설계가 "CLI 지원 없음 / 서버 변경 없음"을 못 박았고,
-그 둘이 움직였다면 범위를 넘은 것이다. 구현이 +73, **리뷰 수정 라운드가 +18**이다. core 의 8건은
+그 둘이 움직였다면 범위를 넘은 것이다. 구현이 +73, **리뷰 수정 두 라운드가 +22**다(1차 +18,
+재검증이 새로 찾은 이스케이프 누적 +4). core 의 8건은
 **왕복 테스트**(`dbml-roundtrip.test.ts`)이고, web 10건 중 1건은 같은 픽스처를 `applyDdlImport`까지
 돌려 계획 수준에서 안 보이는 `groupId`·`custom` 배선을 잠근다(그 1건은 배선을 되돌리면 실제로
 빨개지는 것을 확인했다).
@@ -669,6 +670,14 @@ Phase 2 #4·#5를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다
   `CREATE INDEX IX1 ON A (NM ASC, GONE ASC)` 로 **columnId 를 이름처럼 출력**하고, DBML 은 그 컬럼을
   빼고 낸다. **DBML 쪽이 옳고 DDL 쪽이 선재 결함이다.** 모델 정합성상 dangling 은 없어야 하므로
   실사용 영향은 없다고 본다.
+- **인라인 `[pk]` 와 `indexes { [pk] }` 가 공존하며 서로 다른 컬럼을 가리키면 뒤에 오는 쪽이
+  `isPk` 를 잃는다.** `planDdlImport` 의 `pkOf` 가 **먼저 나온 pk 제약**만 쓰기 때문이다(DDL 파서와
+  같은 규칙이고, 인라인 `[pk]` 를 pk 제약으로 정규화하면서 DBML 에도 그대로 적용됐다). **우리
+  내보내기는 그 형태를 내지 않으므로 왕복에는 영향이 없고**(단일 PK 는 인라인, 복합 PK 는 indexes
+  블록 — 둘이 겹치지 않는다), 애초에 두 선언이 어긋난 **모순된 입력**이다. 다만 **남의 파일에서는
+  일어날 수 있고 그때 경고 없이 조용히 갈린다** — 사용자는 자기가 적은 PK 중 하나가 사라진 것을
+  가져오기 미리보기에서 알 수 없다. 나중에 경고를 붙인다면 "한 테이블에 pk 제약이 둘 이상"이
+  판정 조건이다.
 - **Enum 타입 컬럼의 `rawType` 에 큰따옴표가 남는다** — `"ID" "status" [pk]` → `rawType: '"status"'`.
   설계 §5 의 "타입 원문으로 그대로 둔다"에는 부합하지만 따옴표째 남는다. `unknown-type` 경고가
   뜨므로 조용하지는 않다.
