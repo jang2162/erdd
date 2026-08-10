@@ -85,7 +85,7 @@ describe('useEditorShortcuts', () => {
     const input = document.querySelector('input')!
     input.focus()
     const before = Object.keys(useEditorStore.getState().model.columns).length
-    const e = new Event('paste', { bubbles: true }) as ClipboardEvent
+    const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
     Object.defineProperty(e, 'clipboardData', { value: { getData: () => JSON.stringify(payload) } })
     input.dispatchEvent(e)
     await new Promise((r) => setTimeout(r, 0))
@@ -115,7 +115,7 @@ describe('useEditorShortcuts', () => {
     const payload = serializeColumns(buildSampleModel(), ['c2'])
     useEditorStore.getState().select('t1')
     renderHarness()
-    const e = new Event('paste', { bubbles: true }) as ClipboardEvent
+    const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
     Object.defineProperty(e, 'clipboardData', {
       value: { getData: () => JSON.stringify(payload) },
     })
@@ -130,11 +130,16 @@ describe('useEditorShortcuts', () => {
     useEditorStore.getState().select('t1')
     renderHarness()
     const before = Object.keys(useEditorStore.getState().model.columns).length
-    const e = new Event('paste', { bubbles: true }) as ClipboardEvent
+    const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
     Object.defineProperty(e, 'clipboardData', { value: { getData: () => '그냥 텍스트' } })
     document.dispatchEvent(e)
     await new Promise((r) => setTimeout(r, 0))
     expect(Object.keys(useEditorStore.getState().model.columns)).toHaveLength(before)
+    // 남의 텍스트는 브라우저 기본 동작에 그대로 넘긴다 — preventDefault를 부르지 않는다.
+    // (모델이 안 바뀐 것만 보면 `if (!payload) return`을 지워도 단언은 통과한다. 그때 나는
+    //  것은 null 역참조 예외뿐이라 "테스트 실패"가 아니라 "unhandled error"로 새므로,
+    //  이 단언이 그 계약을 단언 수준에서 붙잡는다.)
+    expect(e.defaultPrevented).toBe(false)
   })
 
   it('읽기 전용이면 X·V·Delete가 무시되고 C만 동작한다', async () => {
