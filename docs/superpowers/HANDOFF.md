@@ -486,12 +486,14 @@ docker ps --filter name=erdd-db      # erdd-db-1, postgres:17, :5432
 # 관리자 계정: admin@erdd.local / Passw0rd!erdd
 # ADMIN_EMAIL/ADMIN_PASSWORD를 export하고 서버를 띄우면 없을 때 자동 생성된다(ensureBootstrapAdmin)
 
-# ⚠️ dev 서버는 루트 .env를 자동 로드하지 않는다 → DATABASE_URL 없이 뜨면
-#    ctx.db=null → 모든 tRPC가 412 → 화면에 "연결에 문제가 있습니다"
-set -a; . ./.env; set +a; pnpm --parallel -r dev    # web :5173, server :3000
-# 워크트리에서는 포트·DB를 트랙별로 바꾼다: 서버 PORT + web ERDD_SERVER_PORT(같은 값) + vite --port
+# 서버 프로세스 자체는 .env를 읽지 않는다(dotenv를 쓰지 않는다) — 루트 dev 스크립트가 .env를
+# 셸에 로드해 넘긴다. .env가 없으면 경고만 내고 그대로 뜨는데, 그때는 DATABASE_URL이 없어
+# ctx.db=null → 모든 tRPC가 412 → 화면에 "연결에 문제가 있습니다"
+pnpm dev                                            # web :5173(127.0.0.1), server :3000
+# 워크트리에서는 포트·DB를 트랙별로 바꾼다: 서버 PORT + web ERDD_SERVER_PORT(같은 값) + ERDD_WEB_PORT
 # (할당표는 CLAUDE.md "워크트리 규칙". vite 프록시 타깃이 ERDD_SERVER_PORT로 파라미터화돼 있어,
-#  안 주면 워크트리의 web이 조용히 최상위 서버 3000에 붙는다)
+#  안 주면 워크트리의 web이 조용히 최상위 서버 3000에 붙는다. DATABASE_URL은 그 워크트리의 .env로 준다)
+PORT=3001 ERDD_SERVER_PORT=3001 ERDD_WEB_PORT=5174 pnpm dev   # 워크트리 A
 
 # 테스트
 pnpm --filter @erdd/core exec vitest run
@@ -509,7 +511,7 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @
 **SPA 라우트는 `/p/<projectId>`(프로젝트 에디터)와 `/org/<orgId>`다** — `/projects/<id>`로 가면 "페이지를 찾을 수 없습니다"가 뜬다. 배선 확인은 `/trpc/auth.me?batch=1&input=%7B%7D`로 프로브한다(**401 = DB 정상 + 로그아웃 상태, 412 = DB 미배선**). 서버 `/`와 맨 `/trpc`는 설계상 404다.
 
 스모크에서 매번 물리는 것들:
-- **vite가 IPv6 `[::1]`에만 바인딩**돼 Chrome이 접속을 못 한다(curl은 `localhost`를 `::1`로 풀어 200이라 서버 문제로 오인하기 쉽다). **`pnpm ... dev -- --host 127.0.0.1`은 인자가 전달되지 않는다** — `cd apps/web && ./node_modules/.bin/vite --host 127.0.0.1 --port 5173 --strictPort`로 바이너리를 직접 실행해야 먹는다(루트 `node_modules/.bin/vite`는 없다).
+- **vite의 IPv6 `[::1]` 바인딩은 설정으로 닫혔다.** `apps/web/vite.config.ts`의 `server.host`가 `127.0.0.1`로 고정돼 있다 — 예전에는 `[::1]`에만 붙어 Chrome이 접속을 못 했고, curl은 `localhost`를 `::1`로 풀어 200이라 서버 문제로 오인하기 쉬웠다. 바꿔야 하면 CLI 인자 말고 **환경 변수**를 쓴다: `ERDD_WEB_HOST`(바인딩 주소), `ERDD_WEB_PORT`(포트, `strictPort`라 물려 있으면 옆 포트로 도망가지 않고 죽는다). **`pnpm ... dev -- --host 127.0.0.1`은 여전히 인자가 전달되지 않는다** — 그래서 예전에는 `./node_modules/.bin/vite`를 직접 실행해야 했다.
 - **좀비 dev 프로세스가 구 코드를 조용히 서빙한다.** `tsx watch` 부모는 세션을 넘어 살아남고, 반대로 `pkill -f "tsx src/main.ts"` / `pkill -f vite`는 **부모만** 죽여 `node` 자식이 포트를 쥔 채 남는다. 어느 쪽이든 새로 띄운 서버가 `EADDRINUSE`로 죽고(vite는 `--strictPort`) 몇 시간 전 코드와 계속 대화하게 된다 — 증상은 API의 "No procedure found on path …"와 최신 변경이 빠진 UI다(실시간 스모크에서 이틀 전 코드를 물고 있었다). **띄우기 전에 항상 `lsof -nP -iTCP:3000 -iTCP:5173 -sTCP:LISTEN`으로 확인해 나온 PID를 `kill -9`** 하고, 새 서버가 최신인지 `/trpc/<이번에 추가한 프로시저>`가 404가 아니라 401을 주는 것으로 확증한다. vite는 `rm -rf apps/web/node_modules/.vite` 후 캐시버스팅 쿼리를 붙여 로드한다. 스모크 중에는 watch 없이 `./node_modules/.bin/tsx src/main.ts`로 띄우는 편이 안정적이다.
 - **테스트가 DB를 TRUNCATE한다**(`testing/db.ts`의 `resetDb`). 서버 스위트뿐 아니라 **루트 `pnpm verify`도 dev DB `erdd`를 비운다** — `.env`의 `DATABASE_URL`이 dev DB를 가리키기 때문이다. 테스트를 돌린 뒤 스모크하려면 계정·조직·프로젝트를 다시 시드해야 한다. 부트스트랩 관리자는 `ADMIN_EMAIL`/`ADMIN_PASSWORD`를 export하고 서버를 띄우면 `ensureBootstrapAdmin`이 자동 생성하고, 나머지는 node 스크립트에서 `fetch`로 tRPC를 때리는 게 빠르다: `auth.login` → `org.create` → `admin.users.create` → `org.members.add`(`memberId`를 반환한다) → `project.create`(`dialects` 필요) → Viewer용 `project.members.add`. **호출 사이에 `getSetCookie()`의 `erdd_session` 쿠키를 이어서 넘겨야 한다.**
 - **React 제어 인풋에 브라우저 도구로 타이핑하지 마라.** `computer:type`은 느리고 한글에서 불안정하다. `javascript_tool`로 네이티브 setter를 쓴다 — `Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, text)` 후 `ta.dispatchEvent(new Event('input',{bubbles:true}))`. 미리보기가 갱신되면 React가 받은 것이다. 다이얼로그를 먼저 열어 엘리먼트 존재를 확인한다 — `navigate` 후 stale 해진 엘리먼트 참조는 클릭이 조용히 no-op이 된다.
