@@ -27,26 +27,27 @@ export function wsUrl(projectId: string, href: string): string {
 export type SelectionImpact = 'deleted' | 'changed' | null
 
 type SelectionSource = {
-  selectedTableIds: string[]
-  selectedColumnIds: string[]
+  selectedTableIds: readonly string[]
   selectedRelationshipId: string | null
   selectedNoteId: string | null
   selectedGroupId: string | null
 }
 
 /**
- * 스토어 선택 상태를 프로토콜의 단일 selection으로 좁힌다.
- * 다중 선택이어도 첫 번째 테이블만 보낸다 — PeerSelection은 단일 값이고
- * 프로토콜 확장은 서버까지 움직여야 해서 이 사이클 범위 밖이다(설계 D-C5).
- * 컬럼 선택은 발신하지 않는다(로컬 전용).
+ * 스토어 선택 상태를 프로토콜의 selections 배열로 좁힌다. 테이블은 여러 건일 수 있다.
+ *
+ * **컬럼 선택은 싣지 않는다** — presence 프로토콜에 컬럼을 넣는 것은 canvas-clipboard 설계
+ * D-C5가 명시적으로 범위 밖으로 뺀 결정이고(컬럼 선택은 로컬 전용), 이 사이클이 넓힌 것은
+ * "테이블 선택을 **전부** 보낸다"뿐이다(설계 D4).
  */
-export function selectionOf(s: SelectionSource): PeerSelection | null {
-  const tableId = s.selectedTableIds[0]
-  if (tableId !== undefined) return { kind: 'table', id: tableId }
-  if (s.selectedRelationshipId !== null) return { kind: 'relationship', id: s.selectedRelationshipId }
-  if (s.selectedNoteId !== null) return { kind: 'note', id: s.selectedNoteId }
-  if (s.selectedGroupId !== null) return { kind: 'group', id: s.selectedGroupId }
-  return null
+function selectionsOf(s: SelectionSource): PeerSelection[] {
+  if (s.selectedTableIds.length > 0) {
+    return s.selectedTableIds.map((id) => ({ kind: 'table' as const, id }))
+  }
+  if (s.selectedRelationshipId !== null) return [{ kind: 'relationship', id: s.selectedRelationshipId }]
+  if (s.selectedNoteId !== null) return [{ kind: 'note', id: s.selectedNoteId }]
+  if (s.selectedGroupId !== null) return [{ kind: 'group', id: s.selectedGroupId }]
+  return []
 }
 
 /**
@@ -57,24 +58,27 @@ export function selectionOf(s: SelectionSource): PeerSelection | null {
 export function selectionImpact(
   model: ProjectModel,
   ops: readonly Op[],
-  selected: { tableId: string | null; relationshipId: string | null; noteId: string | null },
+  selected: { tableIds: readonly string[]; relationshipId: string | null; noteId: string | null },
 ): SelectionImpact {
-  const target = selected.tableId ?? selected.relationshipId ?? selected.noteId
-  if (target === null) return null
+  const tableIds = new Set(selected.tableIds)
+  const targets = new Set<string>(tableIds)
+  if (selected.relationshipId !== null) targets.add(selected.relationshipId)
+  if (selected.noteId !== null) targets.add(selected.noteId)
+  if (targets.size === 0) return null
   let impact: SelectionImpact = null
   for (const op of ops) {
-    if (op.entityId === target) {
+    if (targets.has(op.entityId)) {
       if (op.action === 'delete') return 'deleted'
       impact = 'changed'
       continue
     }
-    if (selected.tableId !== null && (op.entity === 'column' || op.entity === 'index')) {
+    if (tableIds.size > 0 && (op.entity === 'column' || op.entity === 'index')) {
       const owner = op.action === 'create'
         ? (op.data as { tableId?: unknown }).tableId
         : op.entity === 'column'
           ? model.columns[op.entityId]?.tableId
           : model.indexes[op.entityId]?.tableId
-      if (owner === selected.tableId) impact = 'changed'
+      if (typeof owner === 'string' && tableIds.has(owner)) impact = 'changed'
     }
   }
   return impact
@@ -128,7 +132,7 @@ export function useRealtime(projectId: string): void {
         return
       }
       const impact = selectionImpact(s.model, msg.ops, {
-        tableId: s.selectedTableIds[0] ?? null,
+        tableIds: s.selectedTableIds,
         relationshipId: s.selectedRelationshipId,
         noteId: s.selectedNoteId,
       })
@@ -136,8 +140,21 @@ export function useRealtime(projectId: string): void {
       useEditorStore.getState().setSeq(msg.seq)
       // 배치당 최대 1건 — 대량 op에서 토스트가 쏟아지지 않게.
       if (impact === 'deleted') {
-        useEditorStore.getState().select(null)
-        toast.info('다른 사용자가 이 항목을 삭제했습니다')
+        // 선택 전체를 비우지 않고 **사라진 것만** 걷어낸다. 다중 선택 중 하나만 삭제됐는데
+        // 나머지까지 잃으면 안 되고, 무엇보다 같은 사건을 seq 간극·재접속으로 받았을 때
+        // (resync) 와 결과가 달라지면 안 된다 — 그래서 store의 같은 규칙을 부른다.
+        // before/after는 pruneSelection이 실제로 읽는 **살아 있는** 상태에서 잰다.
+        const before = useEditorStore.getState().selectedTableIds.length
+        useEditorStore.getState().pruneSelection(next)
+        const after = useEditorStore.getState().selectedTableIds.length
+        // 「이 항목」은 **하나**가 사라졌다는 뜻으로 읽힌다. 일괄 삭제로 고른 N건이 통째로
+        // 날아간 화면에서는 사실과 다르므로, 사라진 것이 2건 이상이면 개수를 말한다.
+        // 관계·메모처럼 단건뿐인 선택은 before가 0이라 기존 문구 그대로다.
+        toast.info(after > 0
+          ? '다른 사용자가 선택 항목 중 일부를 삭제했습니다'
+          : before > 1
+            ? `다른 사용자가 선택한 ${before}개 항목을 삭제했습니다`
+            : '다른 사용자가 이 항목을 삭제했습니다')
       } else if (impact === 'changed') {
         toast.info('다른 사용자가 이 항목을 수정했습니다')
       }
@@ -149,10 +166,10 @@ export function useRealtime(projectId: string): void {
       socketRef.current = socket
       socket.onopen = () => {
         attempt = 0
-        // 재접속 시 서버 쪽 Entry는 selection:null로 새로 시작한다. 로컬 선택이 그대로여도
+        // 재접속 시 서버 쪽 Entry는 빈 selections로 새로 시작한다. 로컬 선택이 그대로여도
         // 다시 알리지 않으면(발신 effect는 "값이 바뀔 때만" 보낸다) 다른 참여자에게는
         // 이 사용자의 하이라이트가 재접속 전까지 사라진 채로 남는다.
-        const msg: ClientMessage = { type: 'selection', selection: selectionOf(useEditorStore.getState()) }
+        const msg: ClientMessage = { type: 'selection', selections: selectionsOf(useEditorStore.getState()) }
         socket.send(JSON.stringify(msg))
       }
       socket.onmessage = (ev) => {
@@ -182,18 +199,18 @@ export function useRealtime(projectId: string): void {
   // 로컬 선택 → 서버. 소켓 수명주기와 독립이므로 별도 effect다(재접속 중이면 조용히 버린다).
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    let last = JSON.stringify(selectionOf(useEditorStore.getState()))
+    let last = JSON.stringify(selectionsOf(useEditorStore.getState()))
 
     const flush = () => {
       timer = undefined
       const socket = socketRef.current
       if (!socket || socket.readyState !== 1) return // 1 = OPEN
-      const msg: ClientMessage = { type: 'selection', selection: selectionOf(useEditorStore.getState()) }
+      const msg: ClientMessage = { type: 'selection', selections: selectionsOf(useEditorStore.getState()) }
       socket.send(JSON.stringify(msg))
     }
 
     const unsubscribe = useEditorStore.subscribe((s) => {
-      const current = JSON.stringify(selectionOf(s))
+      const current = JSON.stringify(selectionsOf(s))
       if (current === last) return
       last = current
       if (timer === undefined) timer = setTimeout(flush, SELECTION_THROTTLE_MS)

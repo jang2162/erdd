@@ -137,7 +137,7 @@ describe.skipIf(!url)('ws', () => {
       const ready = await c.next((m) => m.type === 'ready')
       expect(ready).toEqual({
         type: 'ready', seq: 0,
-        peers: [{ userId, name: '오너', selection: null }],
+        peers: [{ userId, name: '오너', selections: [] }],
       })
 
       const op = noteCreateOp()
@@ -146,6 +146,29 @@ describe.skipIf(!url)('ws', () => {
       expect(await c.next((m) => m.type === 'ops')).toEqual({
         type: 'ops', seq: 1, ops: [op], actorUserId: userId, actorName: '오너',
       })
+      c.socket.terminate()
+    })
+
+    it('형식이 틀린 selection 프레임은 무시할 뿐 소켓을 끊지 않는다', async () => {
+      // selections가 배열이 된 뒤로 형식 오류의 가짓수가 넓어졌다(JSON 깨짐 / 필드 누락 /
+      // 배열 아님 / 원소 오류). 어느 것도 소켓을 끊으면 안 된다 — 끊으면 옛 탭이 접속조차 못 한다.
+      const c = await connect(app, `/ws?projectId=${projectId}`, `erdd_session=${token}`)
+      await c.next((m) => m.type === 'ready')
+      for (const bad of [
+        '{{{',
+        JSON.stringify({ type: 'selection' }),
+        JSON.stringify({ type: 'selection', selections: 't1' }),
+        JSON.stringify({ type: 'selection', selections: [{ kind: 'column', id: 'c1' }] }),
+      ]) c.socket.send(bad)
+
+      // 소켓이 살아 있어야 그 다음 정상 프레임이 presence로 되돌아온다.
+      c.socket.send(JSON.stringify({ type: 'selection', selections: [{ kind: 'table', id: 't1' }] }))
+      expect(await c.next((m) => m.type === 'presence' && m.peers.some((p) => p.selections.length > 0)))
+        .toEqual({
+          type: 'presence',
+          peers: [{ userId, name: '오너', selections: [{ kind: 'table', id: 't1' }] }],
+        })
+      expect(app.hub.connectionCount(projectId)).toBe(1)
       c.socket.terminate()
     })
 

@@ -4,16 +4,25 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import type { Op, ProjectModel, ServerMessage } from '@erdd/core'
-import { createEmptyModel } from '@erdd/core'
+import { applyOps, createEmptyModel } from '@erdd/core'
+import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { useEditorStore } from './store.js'
-import { selectionImpact, selectionOf, useRealtime, wsUrl } from './use-realtime.js'
+import { selectionImpact, useRealtime, wsUrl } from './use-realtime.js'
+
+const { toastInfo, toastError } = vi.hoisted(() => ({ toastInfo: vi.fn(), toastError: vi.fn() }))
+vi.mock('sonner', () => ({ toast: { info: toastInfo, error: toastError, success: vi.fn() } }))
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 const NOTE_A = '018f6b0e-0000-7000-8000-0000000000b1'
 const NOTE_B = '018f6b0e-0000-7000-8000-0000000000b2'
+const [TABLE_A, TABLE_B, TABLE_C] = [
+  '018f6b0e-0000-7000-8000-0000000000d1',
+  '018f6b0e-0000-7000-8000-0000000000d2',
+  '018f6b0e-0000-7000-8000-0000000000d3',
+]
 
 function noteOp(id: string, content: string): Op {
   return {
@@ -67,8 +76,24 @@ const modelWith = (...ids: string[]): ProjectModel => {
   return m
 }
 
+/** 컬럼·그룹이 없는 테이블만 담은 모델. 테이블 delete op가 무결성 검사에 걸리지 않는다. */
+const tablesModel = (...ids: string[]): ProjectModel => {
+  const m = createEmptyModel()
+  ids.forEach((id, i) => {
+    m.tables[id] = {
+      id, logicalName: id, physicalName: id.toUpperCase(), comment: null,
+      groupId: null, position: { x: i * 300, y: 0 }, groupPosition: null, custom: {},
+    }
+  })
+  return m
+}
+
+const deleteTableOp = (id: string): Op => ({ action: 'delete', entity: 'table', entityId: id, before: null })
+
 beforeEach(() => {
   FakeSocket.instances = []
+  toastInfo.mockClear()
+  toastError.mockClear()
   vi.stubGlobal('WebSocket', FakeSocket)
 })
 afterEach(() => {
@@ -86,7 +111,7 @@ describe('wsUrl', () => {
 
 describe('selectionImpact', () => {
   const model = modelWith(NOTE_A)
-  const none = { tableId: null, relationshipId: null, noteId: null }
+  const none = { tableIds: [] as string[], relationshipId: null, noteId: null }
 
   it('선택이 없으면 null', () => {
     expect(selectionImpact(model, [noteOp(NOTE_B, 'x')], none)).toBeNull()
@@ -118,7 +143,7 @@ describe('selectionImpact', () => {
       action: 'update', entity: 'column', entityId: NOTE_B,
       changes: { logicalName: { from: '이름', to: '성명' } },
     }
-    expect(selectionImpact(m, [op], { ...none, tableId: NOTE_A })).toBe('changed')
+    expect(selectionImpact(m, [op], { ...none, tableIds: [NOTE_A] })).toBe('changed')
   })
 
   it('다른 테이블의 컬럼이 바뀌면 null(오탐 방지)', () => {
@@ -133,26 +158,26 @@ describe('selectionImpact', () => {
       action: 'update', entity: 'column', entityId: NOTE_B,
       changes: { logicalName: { from: '이름', to: '성명' } },
     }
-    expect(selectionImpact(m, [op], { ...none, tableId: NOTE_A })).toBeNull()
-  })
-})
-
-describe('selectionOf', () => {
-  it('테이블이 여러 개 선택돼도 presence는 첫 번째만 발신한다', () => {
-    const sel = selectionOf({
-      selectedTableIds: ['t1', 't2'],
-      selectedColumnIds: [],
-      selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
-    })
-    expect(sel).toEqual({ kind: 'table', id: 't1' })
+    expect(selectionImpact(m, [op], { ...none, tableIds: [NOTE_A] })).toBeNull()
   })
 
-  it('선택이 비면 null이다', () => {
-    const sel = selectionOf({
-      selectedTableIds: [], selectedColumnIds: [],
-      selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
-    })
-    expect(sel).toBeNull()
+  it('선택이 여러 건이면 그중 하나만 걸려도 changed다', () => {
+    const m = buildSampleModel()
+    const op: Op = {
+      action: 'update', entity: 'table', entityId: 't2',
+      changes: { logicalName: { from: '회원', to: 'X' } },
+    }
+    expect(selectionImpact(m, [op], { ...none, tableIds: ['t1', 't2'] })).toBe('changed')
+  })
+
+  it('선택이 여러 건이어도 삭제가 수정을 이긴다', () => {
+    const m = buildSampleModel()
+    const upd: Op = {
+      action: 'update', entity: 'table', entityId: 't1',
+      changes: { logicalName: { from: '회원등급', to: 'X' } },
+    }
+    const del: Op = { action: 'delete', entity: 'table', entityId: 't2', before: null }
+    expect(selectionImpact(m, [upd, del], { ...none, tableIds: ['t1', 't2'] })).toBe('deleted')
   })
 })
 
@@ -206,7 +231,7 @@ describe('useRealtime 수신 적용', () => {
     renderHook()
     ;(await socket()).emit({
       type: 'ready', seq: 5,
-      peers: [{ userId: 'u2', name: '동료', selection: null }],
+      peers: [{ userId: 'u2', name: '동료', selections: [] }],
     })
     await waitFor(() => expect(useEditorStore.getState().peers).toHaveLength(1))
     expect(useEditorStore.getState().seq).toBe(5)
@@ -216,10 +241,10 @@ describe('useRealtime 수신 적용', () => {
     renderHook()
     ;(await socket()).emit({
       type: 'presence',
-      peers: [{ userId: 'u2', name: '동료', selection: { kind: 'note', id: NOTE_A } }],
+      peers: [{ userId: 'u2', name: '동료', selections: [{ kind: 'note', id: NOTE_A }] }],
     })
     await waitFor(() => {
-      expect(useEditorStore.getState().peers[0]?.selection).toEqual({ kind: 'note', id: NOTE_A })
+      expect(useEditorStore.getState().peers[0]?.selections).toEqual([{ kind: 'note', id: NOTE_A }])
     })
     expect(useEditorStore.getState().seq).toBe(5)
   })
@@ -252,6 +277,108 @@ describe('useRealtime 권한 무관 수신', () => {
   })
 })
 
+describe('useRealtime 삭제 수신과 선택 정리', () => {
+  // ⚠️ op의 entityId는 UUID여야 한다(core `op-guard`의 UUID_RE). 't1' 같은 짧은 id를 쓰면
+  // parseServerMessage가 프레임을 통째로 버려 아무 일도 일어나지 않는다(조용히 통과하는 함정).
+  const [TA, TB, TC] = [
+    '018f6b0e-0000-7000-8000-0000000000c1',
+    '018f6b0e-0000-7000-8000-0000000000c2',
+    '018f6b0e-0000-7000-8000-0000000000c3',
+  ]
+  const THREE = [TA, TB, TC]
+  /**
+   * 이 describe의 "사건" — TB 삭제 1건. op 경로와 resync 경로가 **같은 사건**을 말한다는 것을
+   * 주석이 아니라 코드로 강제한다: 서버 픽스처를 이 배치에서 유도하므로 대상을 TA로 바꾸면
+   * 두 테스트가 함께 실패한다. 손으로 `tablesModel(TA, TC)`를 적어 두면 op 경로만 실패하고
+   * resync는 그대로 통과해, 짝이 조용히 다른 사건을 말하게 된다.
+   */
+  const DELETE_BATCH: Op[] = [deleteTableOp(TB)]
+
+  beforeEach(() => {
+    useEditorStore.getState().setLoaded(tablesModel(...THREE), 5, PROJECT_ID)
+    // seq 간극으로 리로드가 걸리면 그 사건이 적용된 서버 상태를 준다.
+    mockTrpcFetch({
+      'model.get': () => ({
+        data: { model: applyOps(tablesModel(...THREE), DELETE_BATCH), seq: 42 },
+      }),
+    })
+  })
+
+  it('op 배치로 선택 중 하나만 삭제되면 나머지 선택은 유지된다', async () => {
+    useEditorStore.getState().selectTables(THREE)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(useEditorStore.getState().seq).toBe(6))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([TA, TC])
+  })
+
+  it('같은 삭제를 seq 간극(resync)으로 받아도 결과가 같다', async () => {
+    // 도착 경로가 달라도 선택 상태는 같아야 한다. 이 둘이 갈리면 사용자에게는
+    // "같은 일을 했는데 결과가 다르다"로 보인다.
+    useEditorStore.getState().selectTables(THREE)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 9, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(useEditorStore.getState().seq).toBe(42))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([TA, TC])
+  })
+
+  it('선택이 전부 삭제되면 비워지고 기존 문구를 쓴다', async () => {
+    useEditorStore.getState().selectTables([TB])
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
+    expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 이 항목을 삭제했습니다')
+  })
+
+  it('일부만 삭제되면 남은 선택이 있다는 것을 문구로 알린다', async () => {
+    // "이 항목을 삭제했습니다"는 선택이 통째로 사라졌다는 뜻으로 읽힌다 —
+    // 3개 중 1개만 사라진 화면에서는 사실과 다르다.
+    useEditorStore.getState().selectTables(THREE)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
+    expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 선택 항목 중 일부를 삭제했습니다')
+  })
+
+  it('선택 전체가 2건 이상이었으면 개수를 말한다', async () => {
+    // 「이 항목을 삭제했습니다」는 하나가 사라졌다는 뜻으로 읽힌다. 일괄 삭제로 고른 3건이
+    // 통째로 날아간 화면에서는 사실과 다르다.
+    useEditorStore.getState().selectTables(THREE)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6,
+      ops: THREE.map(deleteTableOp),
+      actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
+    expect(useEditorStore.getState().selectedTableIds).toEqual([])
+    expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 선택한 3개 항목을 삭제했습니다')
+  })
+
+  it('메모처럼 단건인 선택은 삭제되면 그대로 해제된다', async () => {
+    useEditorStore.getState().setLoaded(modelWith(NOTE_A), 5, PROJECT_ID)
+    useEditorStore.getState().selectNote(NOTE_A)
+    renderHook()
+    ;(await socket()).emit({
+      type: 'ops', seq: 6,
+      ops: [{ action: 'delete', entity: 'note', entityId: NOTE_A, before: null }],
+      actorUserId: 'u2', actorName: '동료',
+    })
+    await waitFor(() => expect(useEditorStore.getState().seq).toBe(6))
+    expect(useEditorStore.getState().selectedNoteId).toBeNull()
+    expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 이 항목을 삭제했습니다')
+  })
+})
+
 describe('useRealtime selection 발신', () => {
   beforeEach(() => {
     useEditorStore.getState().setLoaded(modelWith(NOTE_A), 5, PROJECT_ID)
@@ -264,7 +391,54 @@ describe('useRealtime selection 발신', () => {
     useEditorStore.getState().selectNote(NOTE_A)
     await waitFor(() => expect(s.sent).toHaveLength(1))
     expect(JSON.parse(s.sent[0]!)).toEqual({
-      type: 'selection', selection: { kind: 'note', id: NOTE_A },
+      type: 'selection', selections: [{ kind: 'note', id: NOTE_A }],
+    })
+  })
+
+  it('다중 선택은 고른 것 **전부**가 프레임에 실린다 — 대표 1건으로 접히지 않는다', async () => {
+    // 설계 2절 D4에서 사용자가 명시적으로 고른 결정이다("선택한 것 전부"). 대표 1건만 보내면
+    // D4가 배격한 상태로 돌아간다 — 남이 5개를 잡고 있어도 4개는 자유로워 보인다.
+    // core(프로토콜)·server(허브)·web 수신(peer-marks)은 잠겨 있는데 **발신만 비어 있었다**:
+    // `selectionsOf`를 `[{ kind:'table', id: s.selectedTableIds.at(-1)! }]`로 되돌려도 585건이
+    // 전부 초록이었다. 기존 발신 테스트는 메모 1건과 빈 선택뿐이라 배열이 N건 나가는지를
+    // 한 번도 보지 않는다.
+    renderHook()
+    const s = await socket()
+    useEditorStore.getState().selectTables([TABLE_A, TABLE_B, TABLE_C])
+    await waitFor(() => expect(s.sent).toHaveLength(1))
+    expect(JSON.parse(s.sent[0]!)).toEqual({
+      type: 'selection',
+      selections: [
+        { kind: 'table', id: TABLE_A },
+        { kind: 'table', id: TABLE_B },
+        { kind: 'table', id: TABLE_C },
+      ],
+    })
+  })
+
+  it('재접속 재발신도 다중 선택을 그대로 싣는다', async () => {
+    // 발신 지점은 셋이다(onopen 재발신 · throttle flush · subscribe 변경 감지). 재접속 경로는
+    // 서버 Entry가 빈 selections로 새로 시작하므로 여기서 접히면 재접속한 사람의 다중 선택이
+    // 남들에게 1개로만 보인 채 굳는다.
+    renderHook()
+    useEditorStore.getState().selectTables([TABLE_A, TABLE_B, TABLE_C])
+    const first = await socket()
+    await waitFor(() => expect(first.sent.length).toBeGreaterThan(0))
+
+    first.closeWith(1006)
+    await new Promise((r) => setTimeout(r, 1100))
+    const second = await socket()
+    expect(second).not.toBe(first)
+    second.onopen?.()
+
+    await waitFor(() => expect(second.sent.length).toBeGreaterThan(0))
+    expect(JSON.parse(second.sent[0]!)).toEqual({
+      type: 'selection',
+      selections: [
+        { kind: 'table', id: TABLE_A },
+        { kind: 'table', id: TABLE_B },
+        { kind: 'table', id: TABLE_C },
+      ],
     })
   })
 
@@ -275,7 +449,7 @@ describe('useRealtime selection 발신', () => {
     useEditorStore.getState().selectNote(NOTE_A)
     useEditorStore.getState().select(null)
     await waitFor(() => expect(s.sent).toHaveLength(1))
-    expect(JSON.parse(s.sent[0]!)).toEqual({ type: 'selection', selection: null })
+    expect(JSON.parse(s.sent[0]!)).toEqual({ type: 'selection', selections: [] })
   })
 
   it('재접속하면 현재 선택 상태를 다시 보낸다', async () => {
@@ -294,7 +468,7 @@ describe('useRealtime selection 발신', () => {
     second.onopen?.()
     await waitFor(() => expect(second.sent.length).toBeGreaterThan(0))
     expect(JSON.parse(second.sent[0]!)).toEqual({
-      type: 'selection', selection: { kind: 'note', id: NOTE_A },
+      type: 'selection', selections: [{ kind: 'note', id: NOTE_A }],
     })
   })
 })

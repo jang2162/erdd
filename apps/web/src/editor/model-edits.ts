@@ -42,6 +42,19 @@ export function moveTableGroupPosition(model: ProjectModel, id: string, position
   return { ...model, tables: { ...model.tables, [id]: { ...table, groupPosition: position } } }
 }
 
+/**
+ * 그룹이 바뀌면 이전 그룹 뷰 좌표는 의미가 없다 — 전체 뷰 좌표로 폴백하도록 비운다.
+ *
+ * `updateTable`의 patch 타입은 텍스트 3필드(`logicalName`·`physicalName`·`comment`)로 좁혀져 있어
+ * `groupPosition`을 받지 못한다. 그 좁은 계약을 넓히는 대신 `moveTableGroupPosition`과 대칭인
+ * 전용 함수를 둔다.
+ */
+export function clearTableGroupPosition(model: ProjectModel, id: string): ProjectModel {
+  const table = model.tables[id]
+  if (!table || table.groupPosition === null) return model
+  return { ...model, tables: { ...model.tables, [id]: { ...table, groupPosition: null } } }
+}
+
 export function updateTable(
   model: ProjectModel, id: string,
   patch: Partial<Pick<Table, 'logicalName' | 'physicalName' | 'comment'>>,

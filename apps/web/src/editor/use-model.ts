@@ -96,6 +96,13 @@ function useSubmit(projectId: string) {
 
       const seqBefore = store.seq
       store.setModel(next) // 낙관적
+      // 모델에서 사라진 대상은 선택에서도 걷어낸다. **로컬 편집이 모델을 바꾸는 유일한 지점**이라
+      // 여기 한 곳이면 툴바 삭제·undo(추가의 되돌리기)·DDL 임포트가 전부 같은 규칙을 탄다.
+      // 남의 삭제 수신(use-realtime)·resync도 같은 keptSelection을 부르므로 규칙은 한 벌이다 —
+      // 같은 삭제가 도착 경로에 따라 다른 결과를 내면 안 된다.
+      // ⚠️ 위 `store`는 producer 실행 전에 뜬 스냅샷이다. pruneSelection이 읽어야 하는 것은
+      // **지금 살아 있는** 선택이므로 반드시 getState()로 다시 집는다.
+      useEditorStore.getState().pruneSelection(next)
       try {
         const { seq } = await mutation.mutateAsync({ projectId, ops, summary: opts.summary })
         // await 사이 프로젝트가 바뀌었으면 새 프로젝트의 seq/히스토리를 오염시키지 않는다.
@@ -120,7 +127,16 @@ function useSubmit(projectId: string) {
           try {
             const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
             if (useEditorStore.getState().loadedProjectId === projectId) {
-              useEditorStore.getState().setLoaded(fresh.model, fresh.seq, projectId)
+              // setLoaded가 아니라 **resync**다 — 같은 프로젝트를 서버 상태로 되맞추는 것이므로
+              // 위 seq 간극 경로와 같은 함수여야 한다. 셋이 갈린다:
+              // ① 그룹 뷰: 편집 하나가 거절됐다고 그룹 뷰에서 튕기면 안 된다(setLoaded는 튕긴다).
+              // ② 참여자: setLoaded는 peers를 비워, 다음 presence 프레임까지 남들의 하이라이트가
+              //    통째로 사라진다.
+              // ③ 선택: **resync만 keptSelection을 탄다.** 남이 먼저 지운 테이블 때문에 내 op가
+              //    거절된 경우, setLoaded면 모델에 없는 id가 선택에 남아 BulkPanel 헤더 개수와
+              //    목록이 어긋나고 유령 presence가 나간다(설계 §4 — 사라진 대상은 모든 경로에서
+              //    같은 한 규칙으로 걷어낸다).
+              useEditorStore.getState().resync(fresh.model, fresh.seq)
             }
           } catch {
             toast.error('서버 상태를 복구하지 못했습니다. 새로고침해 주세요.')

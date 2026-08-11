@@ -4,7 +4,7 @@ import {
   computeWarnings, customFieldsFor, generatePhysicalName, restoreLogicalName, setTableGroup,
   type Column, type CustomField, type Domain, type Warning,
 } from '@erdd/core'
-import { useEditorStore } from './store.js'
+import { primaryTableId, useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { updateTable } from './model-edits.js'
@@ -13,6 +13,7 @@ import {
 } from './column-edits.js'
 import { createTerm } from './dict-edits.js'
 import { setCustomValue } from './custom-field-edits.js'
+import { BulkPanel } from './bulk-panel.js'
 import { RelationshipPanel } from './relationship-panel.js'
 import { NotePanel } from './note-panel.js'
 import { GroupPanel } from './group-panel.js'
@@ -47,6 +48,7 @@ function CommitInput(props: {
 export function EditPanel({ projectId }: { projectId: string }) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
+  const selectedTableId = useEditorStore(primaryTableId)
   const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
   const selectedColumnIds = useEditorStore((s) => s.selectedColumnIds)
   const selectedRelationshipId = useEditorStore((s) => s.selectedRelationshipId)
@@ -73,16 +75,9 @@ export function EditPanel({ projectId }: { projectId: string }) {
 
   if (selectedGroupId) return <GroupPanel projectId={projectId} />
 
-  if (selectedTableIds.length > 1) {
-    return (
-      <aside className="w-80 shrink-0 border-l bg-card p-4">
-        <p className="text-sm">테이블 {selectedTableIds.length}개 선택됨</p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          복사·잘라내기·삭제는 단축키로 선택 전체에 적용됩니다.
-        </p>
-      </aside>
-    )
-  }
+  // 상세 편집(컬럼 목록·논리명·커스텀 항목)은 다중 선택에서 의미가 모호하다 — 일괄 작업으로 바꾼다.
+  // BulkPanel이 main의 「N개 선택됨」 안내를 흡수한다(개수 + 목록 + 그룹 이동 + 삭제).
+  if (selectedTableIds.length >= 2) return <BulkPanel projectId={projectId} />
 
   if (!table) {
     return (

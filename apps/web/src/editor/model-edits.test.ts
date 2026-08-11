@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, diffModels } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
-import { addTable, moveTable, removeTable } from './model-edits.js'
+import { addTable, clearTableGroupPosition, moveTable, removeTable } from './model-edits.js'
 
 describe('model-edits', () => {
   it('addTable 은 새 테이블을 생성한다 (물리명은 비어 있다)', () => {
@@ -55,5 +55,33 @@ describe('model-edits', () => {
     let m = addTable(buildSampleModel(), { id: 'new1', position: { x: 0, y: 0 } })
     m = addTable(m, { id: 'new2', position: { x: 0, y: 0 } })
     expect(m.tables['new1']!.logicalName).not.toBe(m.tables['new2']!.logicalName)
+  })
+})
+
+describe('clearTableGroupPosition', () => {
+  it('그룹 뷰 좌표를 null로 비운다', () => {
+    const m = buildSampleModel()   // t1.groupPosition = { x: 10, y: 10 }
+    expect(clearTableGroupPosition(m, 't1').tables['t1']?.groupPosition).toBeNull()
+  })
+
+  it('전체 뷰 좌표는 건드리지 않는다 — 비우는 것은 그룹 뷰 좌표뿐이다', () => {
+    const m = buildSampleModel()
+    const next = clearTableGroupPosition(m, 't1')
+    expect(next.tables['t1']?.position).toEqual(m.tables['t1']!.position)
+    const ops = diffModels(m, next)
+    expect(ops).toEqual([
+      { action: 'update', entity: 'table', entityId: 't1',
+        changes: { groupPosition: { from: { x: 10, y: 10 }, to: null } } },
+    ])
+  })
+
+  it('이미 null이면 모델 참조를 그대로 돌려준다', () => {
+    const m = clearTableGroupPosition(buildSampleModel(), 't1')
+    expect(clearTableGroupPosition(m, 't1')).toBe(m)
+  })
+
+  it('없는 id는 무시한다', () => {
+    const m = buildSampleModel()
+    expect(clearTableGroupPosition(m, '없는id')).toBe(m)
   })
 })

@@ -102,7 +102,7 @@ export function wsPlugin(hub: RealtimeHub, db: Db | null) {
       // ws의 타입이 apps/server에서 직접 해석되지 않아(전이 의존성) 핸들러 인자가 추론되지 않는다 — 명시한다.
       socket.on('message', (raw: unknown) => {
         const msg = parseClientMessage(String(raw))
-        if (msg) handle.setSelection(msg.selection) // 형식 오류는 무시(소켓을 끊지 않는다)
+        if (msg) handle.setSelections(msg.selections) // 형식 오류는 무시(소켓을 끊지 않는다)
       })
 
       heartbeat = setInterval(() => {

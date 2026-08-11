@@ -10,6 +10,7 @@ import { CustomFieldPanel } from '@/editor/custom-field-panel'
 import { DdlImportDialog } from '@/editor/ddl-import-dialog'
 import { DictPanel } from '@/editor/dict-panel'
 import { DomainPanel } from '@/editor/domain-panel'
+import { DragGhost } from '@/editor/drag-ghost'
 import { EditPanel } from '@/editor/edit-panel'
 import { ExportDialog } from '@/editor/export-dialog'
 import { GroupViewSelect } from '@/editor/group-view-select'
@@ -72,6 +73,8 @@ export function ProjectPage() {
               )
             : <div className="flex flex-1 items-center justify-center text-muted-foreground">불러오는 중…</div>}
         </div>
+        {/* 드래그 고스트는 셸 루트에 하나만 둔다 — ReactFlow 뷰포트 안에 넣으면 캔버스 변환에 끌려간다. */}
+        <DragGhost />
       </ReactFlowProvider>
     </div>
   )

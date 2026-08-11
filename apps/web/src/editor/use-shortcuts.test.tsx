@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -12,6 +12,7 @@ import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { useEditorStore } from './store.js'
 import { serializeColumns, serializeTables } from './clipboard.js'
 import { useEditorShortcuts } from './use-shortcuts.js'
+import { BulkDeleteDialog } from './bulk-panel.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 
@@ -22,9 +23,17 @@ const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
  * 이 가드가 지키려는 시나리오다.
  */
 function Harness({ withDialog = false }: { withDialog?: boolean }) {
-  useEditorShortcuts({ projectId: PROJECT_ID })
+  // Canvas와 같은 구성이다 — 훅은 확인 대상만 돌려주고 다이얼로그는 호출부가 그린다.
+  // 여기서 그리지 않으면 다중 삭제의 확인 경로가 테스트에서만 사라져 계약이 헐거워진다.
+  const del = useEditorShortcuts({ projectId: PROJECT_ID })
   return (
     <>
+      <BulkDeleteDialog
+        projectId={PROJECT_ID}
+        ids={del.confirmingIds}
+        open={del.confirmingIds.length > 0}
+        onOpenChange={(v) => { if (!v) del.closeConfirm() }}
+      />
       <input aria-label="텍스트" />
       {withDialog && (
         <Dialog>
@@ -238,18 +247,79 @@ describe('useEditorShortcuts', () => {
     expect(useEditorStore.getState().model.tables['t2']).toBeDefined()
   })
 
-  // ⚠️ 설계 §3.6: 여러 대상을 지워도 Revision 1건 · undo 1회여야 한다.
-  it('테이블 2개를 선택하고 Delete하면 mutation 1건으로 둘 다 지워진다', async () => {
+  /*
+   * 다중 삭제는 진입점이 몇 개든 확인을 거친다(사이드바 설계 §7) — 단축키도 예외가 아니다.
+   * 실시간으로 남의 화면에도 즉시 반영되는 파괴적 동작이고, 잘못 선택한 채 누르는 것이 다중
+   * 선택에서 훨씬 쉽다. 확인 뒤에는 §3.6대로 **Revision 1건 · undo 1회**여야 한다.
+   */
+  it('테이블 2개를 선택하고 Delete하면 바로 지우지 않고 확인을 요구한다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    expect(screen.getByText(/테이블 2개와 관계 1개가 삭제됩니다/)).toBeInTheDocument()
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t1']).toBeDefined()
+  })
+
+  it('확인하면 mutation 1건으로 둘 다 지워진다', async () => {
     const fetchMock = mockModelMutate()
     useEditorStore.getState().selectTables(['t1', 't2'])
     renderHarness()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '삭제' }))
+
     await waitFor(() => {
       expect(useEditorStore.getState().model.tables['t1']).toBeUndefined()
       expect(useEditorStore.getState().model.tables['t2']).toBeUndefined()
     })
     expect(countModelMutate(fetchMock)).toBe(1)
     expect(useEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
+  /*
+   * 단축키로 연 다이얼로그는 **키보드만으로** 빠져나갈 수 있어야 한다. 마우스를 쓰지 않고 Delete를
+   * 누른 사용자가 확인 창에 갇히면 그 자체가 접근성 결함이다. Esc는 Radix Dialog가 처리하고,
+   * 확인은 Tab으로 버튼에 닿아 Enter/Space로 누른다(파괴적 동작이라 삭제 버튼에 autoFocus를
+   * 주지 않는다 — Delete 연타가 곧바로 삭제로 이어지면 확인 다이얼로그를 둔 뜻이 없어진다).
+   */
+  it('Esc로 취소된다 — 아무것도 지워지지 않는다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t1']).toBeDefined()
+    expect(useEditorStore.getState().model.tables['t2']).toBeDefined()
+  })
+
+  it('키보드만으로 확인할 수 있다 — 삭제 버튼에 포커스가 닿고 Enter가 먹는다', async () => {
+    const fetchMock = mockModelMutate()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', { name: '삭제' })
+    confirm.focus()
+    expect(confirm).toHaveFocus()
+    // 네이티브 <button>은 포커스된 상태의 Enter를 click으로 바꾼다(jsdom은 그 변환을 하지 않아
+    // keyboard 이벤트만으로는 눌리지 않으므로, 포커스 가능성까지 확인한 뒤 click으로 잇는다).
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t1']).toBeUndefined())
+    expect(countModelMutate(fetchMock)).toBe(1)
   })
 
   it('테이블 2개를 선택하고 Cmd+X하면 둘 다 복사되고 mutation 1건으로 지워진다', async () => {

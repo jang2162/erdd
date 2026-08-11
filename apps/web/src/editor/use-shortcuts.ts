@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { deleteColumnCascade, type ProjectModel } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
@@ -46,10 +46,28 @@ function isDialogOpen(): boolean {
  */
 export function useEditorShortcuts({ projectId }: { projectId: string }) {
   const mutate = useModelMutation(projectId)
+  /*
+   * Delete 키가 **테이블 2개 이상**을 겨눌 때 띄울 확인 대상. 빈 배열이면 다이얼로그가 없다.
+   *
+   * 다중 삭제는 진입점이 몇 개든 확인을 거친다(사이드바 설계 §7) — undo로 되돌아가긴 하나
+   * 실시간으로 남의 화면에도 즉시 반영되는 파괴적 동작이고, 잘못 선택한 채 누르는 것이 다중
+   * 선택에서 훨씬 쉽다. 툴바 버튼·일괄 패널과 **같은 BulkDeleteDialog**를 쓴다(op 상한 가드가
+   * 그 안에 있으므로 이 경로에도 자동으로 따라온다).
+   *
+   * 단일 선택은 기존 동작(즉시 삭제) 그대로다. 컬럼 삭제도 그대로다 — §7이 확인을 요구한 것은
+   * 테이블 일괄 삭제이고, 컬럼은 테이블 하나 안에서 일어나 되돌리기 범위가 눈에 보인다.
+   *
+   * 다이얼로그가 떠 있는 동안 단축키는 전부 멈춘다(아래 `isDialogOpen` 가드) — Delete를 연타해도
+   * 뒤에서 또 삭제가 나가지 않는다.
+   */
+  const [confirmingIds, setConfirmingIds] = useState<readonly string[]>([])
+  const closeConfirm = useCallback(() => setConfirmingIds([]), [])
 
   useEffect(() => {
-    const copyPayload = (model: ProjectModel, tableIds: string[], columnIds: string[]) =>
-      (columnIds.length > 0 ? serializeColumns(model, columnIds) : serializeTables(model, tableIds))
+    // 선택 배열은 store에서 readonly로 나온다(빈 선택이 공유 인스턴스라 변형을 타입으로 막는다).
+    const copyPayload = (
+      model: ProjectModel, tableIds: readonly string[], columnIds: readonly string[],
+    ) => (columnIds.length > 0 ? serializeColumns(model, columnIds) : serializeTables(model, tableIds))
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target) || isDialogOpen()) return
@@ -89,6 +107,12 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
         e.preventDefault()
         const columnIds = [...selectedColumnIds]
         const tableIds = [...selectedTableIds]
+        // 테이블 2개 이상은 확인을 거친다(위 주석). 컬럼 선택이 있으면 컬럼 삭제 경로이고
+        // 그때 테이블은 불변식상 하나뿐이라 여기 걸리지 않는다.
+        if (columnIds.length === 0 && tableIds.length >= 2) {
+          setConfirmingIds(tableIds)
+          return
+        }
         void mutate(
           (m) => (columnIds.length > 0
             ? columnIds.reduce((acc, id) => deleteColumnCascade(acc, id), m)
@@ -135,4 +159,7 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
       document.removeEventListener('paste', onPaste)
     }
   }, [mutate])
+
+  // 다이얼로그는 훅이 그릴 수 없으므로 상태만 넘기고 렌더는 Canvas가 한다.
+  return { confirmingIds, closeConfirm }
 }

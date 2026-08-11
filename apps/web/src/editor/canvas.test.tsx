@@ -9,7 +9,9 @@ import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
-import { useEditorStore } from './store.js'
+import { settle } from '@/testing/settle'
+import { primaryTableId, useEditorStore } from './store.js'
+import { useDragStore } from './drag-store.js'
 import { Canvas } from './canvas.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000bb'
@@ -61,12 +63,12 @@ function lastProps() {
 }
 
 /**
- * React Flow **내부** 선택 플래그(top-level `node.selected`)를 세운다. 내장 키보드 선택(Enter)
- * 경로(NodeWrapper 자체의 onKeyDown)는 Canvas의 onNodeClick을 거치지 않으므로, 클릭이 store
- * 선택을 바꿔 `derived` → useEffect가 노드 배열을 덮어쓰며 그 플래그를 지우는 렌더 경쟁을 피한다.
+ * React Flow **내부** 선택 플래그(top-level `node.selected`)를 내장 키보드 선택(Enter)으로 세운다.
+ * 이 경로(NodeWrapper 자체의 onKeyDown)는 Canvas의 콜백을 거치지 않는 독립 경로라, 선택 배선이
+ * 무엇에 기대는지와 무관하게 "React Flow가 노드를 선택된 것으로 알고 있다"만 만들어 낸다.
+ *
  * 삭제 경로가 useEditorShortcuts(store 선택을 읽는다)로 옮겨진 지금 이것이 쓰이는 곳은
- * 읽기 전용 테스트뿐이다 — "React Flow가 노드를 선택된 것으로 알고 있어도 지워지지 않는다"를
- * 함께 보이기 위해서다.
+ * "React Flow가 노드를 선택된 것으로 알고 있어도 그것만으로는 지워지지 않는다"를 보이는 쪽이다.
  * keyup을 반드시 같이 보내야 한다: keydown만 보내면 문서 레벨 useKeyPress 트래커들의
  * pressedKeys에 'Enter'가 눌린 채로 남아, 크기 비교(isMatchingKey)가 어긋나 이후 Backspace
  * 단일 키 조합을 더는 인식하지 못한다.
@@ -123,7 +125,9 @@ function selectedNodeIds(): string[] {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   useEditorStore.getState().reset()
+  useDragStore.getState().end()
   capturedProps.length = 0
 })
 
@@ -235,11 +239,459 @@ describe('Canvas — 읽기 전용 잠금', () => {
   })
 })
 
+/**
+ * ReactFlow가 선택을 알리는 유일한 경로는 `onNodesChange`의 `select` 변경이다(노드를 prop으로
+ * 통제하면 `onSelectionChange`는 우리가 넘긴 nodes prop의 메아리라 한 틱 늦다 — canvas.tsx 주석 참조).
+ * 테스트도 같은 경로로 알린다.
+ */
+type SelectChange = { type: 'select'; id: string; selected: boolean }
+const notifySelect = (...changes: SelectChange[]) =>
+  (lastProps().onNodesChange as (c: SelectChange[]) => void)(changes)
+
+describe('Canvas — store ↔ ReactFlow 선택 동기화', () => {
+  it('store에 여러 테이블이 선택되면 해당 노드가 모두 selected로 넘어간다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    await waitFor(() => {
+      const nodes = lastProps().nodes as { id: string; type?: string; selected?: boolean }[]
+      const tables = nodes.filter((n) => n.type === 'table')
+      expect(tables.every((n) => n.selected)).toBe(true)
+      expect(tables).toHaveLength(2)
+    })
+  })
+
+  it('선택을 바꾸지 않는 알림은 store를 갱신하지 않는다 — 참조도 주 선택도 그대로다', async () => {
+    // 가드가 없으면 같은 값을 다시 써서 배열 참조가 매번 새로 생기고(구독 화면이 헛리렌더),
+    // selectTables가 CLEARED_SELECTION을 적용해 같은 클릭의 메모·관계 선택까지 지운다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t2', 't1'])
+    await waitFor(() => expect(lastProps().nodes).toBeDefined())
+    const before = useEditorStore.getState().selectedTableIds
+
+    // 이미 선택된 것을 다시 "선택됨"으로, 선택 안 된 것을 다시 "해제됨"으로 알린다.
+    notifySelect(
+      { type: 'select', id: 't1', selected: true },
+      { type: 'select', id: 't2', selected: true },
+    )
+    expect(useEditorStore.getState().selectedTableIds).toBe(before)   // 참조까지 그대로
+    expect(primaryTableId(useEditorStore.getState())).toBe('t2')      // 주 선택([0])도 그대로
+  })
+
+  it('선택 알림은 테이블 노드만 본다(메모는 무시)', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    notifySelect(
+      { type: 'select', id: 't1', selected: true },
+      { type: 'select', id: 'n1', selected: true },
+    )
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
+  })
+
+  it('새로 고른 테이블은 뒤에 붙는다 — 주 선택([0])은 먼저 고른 것이 지킨다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t2'])
+    notifySelect({ type: 'select', id: 't1', selected: true })
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2', 't1'])
+    expect(primaryTableId(useEditorStore.getState())).toBe('t2')
+  })
+
+  it('수식키+클릭은 선택을 토글한다 — 창구가 하나라 한 번 누르면 한 번만 뒤집힌다', () => {
+    // 창구가 둘이면(onNodeClick 에도 토글이 남아 있으면) ReactFlow 내부 토글과 우리 토글이
+    // 겹쳐 서로를 되돌려 아무 일도 안 일어난 것처럼 보인다.
+    //
+    // 수식키는 클릭 이벤트의 ctrlKey 플래그가 아니라 **문서 레벨 키 트래커**(useKeyPress)가
+    // 읽으므로 keyDown/keyUp 을 따로 보낸다. userEvent 로 클릭하면 안 된다 — 그 포인터 이벤트가
+    // jsdom 에서 d3-drag 의 nodrag 핸들러를 때려 "Cannot read properties of null (reading
+    // 'document')" 로 죽는다(테스트는 통과하지만 uncaught exception 3건이 남는다).
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    // jsdom 은 Mac 이 아니므로 ReactFlow 의 multiSelectionKeyCode 기본값은 'Control' 이다.
+    fireEvent.click(screen.getByTestId('rf__node-t1'))
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
+
+    fireEvent.keyDown(document, { key: 'Control', code: 'ControlLeft' })
+    fireEvent.click(screen.getByTestId('rf__node-t2'))
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
+    expect(primaryTableId(useEditorStore.getState())).toBe('t1')   // 먼저 고른 것이 주 선택
+    fireEvent.click(screen.getByTestId('rf__node-t2'))             // 같은 것을 다시 → 빠진다
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
+    fireEvent.keyUp(document, { key: 'Control', code: 'ControlLeft' })
+  })
+
+  /**
+   * 메모 클릭에서 실제 발화 순서는 **델타가 먼저, `onNodeClick`이 나중**이다
+   * (`onSelectNodeHandler`가 `handleNodeClick`을 부른 뒤 `onClick(event, node)`을 부른다).
+   * 그래서 이 테스트가 잡는 것은 `onNodeClick`의 메모 분기 하나다 — 그것을 빼면 이 1건이 실패한다.
+   *
+   * ⚠️ **`selectTables([])`의 비대칭(빈 배열은 메모·관계·그룹 선택을 지우지 않는다)은 여기서
+   * 잡히지 않는다.** 비대칭을 지워도 이 테스트는 통과한다(실증). 그 규약을 잠그는 것은
+   * `store.test.ts`의 「selectTables([])는 테이블만 비우고 메모·관계·그룹 선택은 건드리지 않는다」
+   * 한 건이다.
+   *
+   * 캔버스 쪽에서 "순서가 뒤집혀도 옳다"를 따로 잠그려던 테스트가 있었으나 **아무것도 붙잡지
+   * 못해 지웠다.** `selectNote`가 이미 `selectedTableIds`를 비우므로, 뒤늦게 도착한 해제 델타는
+   * 바꿀 것이 없어 루프 가드에 걸리고 `selectTables`를 **한 번도 부르지 않는다**(호출 횟수 0으로
+   * 계측). 두 단언이 `selectNote` 하나만으로 이미 참이라 어떤 회귀에도 반응하지 않았다.
+   */
+  it('메모를 클릭하면 테이블 선택만 풀리고 메모 선택은 남는다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    useEditorStore.getState().selectTables(['t1'])
+    await waitFor(() => expect(lastProps().nodes).toBeDefined())
+
+    fireEvent.click(screen.getByTestId('rf__node-n1'))
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().selectedNoteId).toBe('n1')
+      expect(useEditorStore.getState().selectedTableIds).toEqual([])
+    })
+  })
+})
+
+/**
+ * 캔버스 → 사이드바 드롭(설계 5.4). 드래그 소스만 다르고 "좌표 → 드롭 타깃" 판정과 그룹 이동
+ * 규칙은 사이드바와 같은 함수(`dropTargetAt`·`applyGroupMove`)로 수렴한다.
+ *
+ * ⚠️ **이 스위트는 `onNodeDrag*` 콜백을 직접 부른다.** jsdom에는 레이아웃이 없어 실제 포인터
+ * 드래그를 재현할 수 없기 때문이다(userEvent의 포인터 이벤트는 d3-drag를 때려 uncaught 예외를
+ * 낸다). 그래서 **ReactFlow가 그 콜백에 무엇을 넘기는지**(특히 `dragged` 배열의 실제 구성)는
+ * 검증되지 않는다 — 자동 팬·노드 원위치 복귀의 시각적 결과와 함께 브라우저 스모크가 덮는다.
+ */
+describe('Canvas — 사이드바 그룹으로 드롭', () => {
+  /** 샘플 모델 + 멤버가 있는 두 번째 그룹 g2. 멤버가 있어야 `planGroupMove`가 좌표를 계산한다. */
+  function withGroupB() {
+    const model = buildSampleModel()
+    model.tableGroups = {
+      ...model.tableGroups,
+      g2: { id: 'g2', name: '주문영역', color: '#000', comment: null },
+    }
+    model.tables = {
+      ...model.tables,
+      t3: {
+        id: 't3', logicalName: '주문', physicalName: 'ORD', comment: null,
+        groupId: 'g2', position: { x: 1000, y: 500 }, groupPosition: null, custom: {},
+      },
+    }
+    return model
+  }
+
+  type FakeNode = { id: string; type: string; position: { x: number; y: number } }
+  const tbl = (id: string, x: number, y: number): FakeNode =>
+    ({ id, type: 'table', position: { x, y } })
+
+  function captureMutations(): { summary?: string }[] {
+    const calls: { summary?: string }[] = []
+    mockTrpcFetch({
+      'model.mutate': (input) => { calls.push(input as { summary?: string }); return { data: { seq: 2 } } },
+    })
+    return calls
+  }
+
+  function dragStart(node: FakeNode | { id: string; type: string; position: { x: number; y: number } }) {
+    act(() => {
+      (lastProps().onNodeDragStart as (e: unknown, n: unknown) => void)({}, node)
+    })
+  }
+
+  function dragMove(node: FakeNode | { id: string; type: string; position: { x: number; y: number } },
+    clientX: number, clientY: number) {
+    act(() => {
+      (lastProps().onNodeDrag as (e: unknown, n: unknown) => void)({ clientX, clientY }, node)
+    })
+  }
+
+  function dragStop(node: { id: string; type: string; position: { x: number; y: number } },
+    dragged: { id: string; type: string; position: { x: number; y: number } }[]) {
+    act(() => {
+      (lastProps().onNodeDragStop as (e: unknown, n: unknown, d: unknown[]) => void)({}, node, dragged)
+    })
+  }
+
+  /** 커서가 사이드바의 어느 그룹 블록 위에 있는 상태를 만든다(jsdom엔 레이아웃이 없다). */
+  function hoverTarget(groupId: string | null) {
+    act(() => { useDragStore.getState().moveOver({ groupId }) })
+  }
+
+  /** ReactFlow 내부 노드만 옮긴다 — 드래그로 노드가 화면에서 움직인 상태를 재현한다. */
+  function moveNodeInternally(id: string, position: { x: number; y: number }) {
+    act(() => {
+      (lastProps().onNodesChange as (c: unknown[]) => void)(
+        [{ type: 'position', id, position, dragging: false }])
+    })
+  }
+
+  function nodePosition(id: string) {
+    const nodes = lastProps().nodes as { id: string; position: { x: number; y: number } }[]
+    return nodes.find((n) => n.id === id)?.position
+  }
+
+  it('드롭 타깃 위에서 놓으면 위치 이동 대신 그룹 이동이 나간다', async () => {
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g2')
+    dragStop(tbl('t2', 999, 999), [tbl('t2', 999, 999)])
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2'))
+    // 드롭 지점의 캔버스 좌표(999,999)는 버린다 — 최종 자리는 planGroupMove가 정한다.
+    // g2의 기준 bbox = t3(1000,500) + (EST_W 260, estHeight(0) 72) → maxX 1260 · minY 500.
+    // dx = 1260 + GAP 60 - 300 = 1020 · dy = 500 - 0 = 500.
+    expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 1320, y: 500 })
+    // 그룹 뷰 전용 좌표는 새 그룹에서 의미가 없다(설계 6.1).
+    expect(useEditorStore.getState().model.tables['t2']?.groupPosition).toBeNull()
+
+    // 그룹 배정·groupPosition 초기화·좌표 재배치가 한 producer라 Revision도 undo도 한 건이다.
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
+  it('드롭 타깃이 없으면 기존 위치 이동 경로 그대로다', async () => {
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    dragStart(tbl('t2', 300, 0))
+    dragStop(tbl('t2', 50, 60), [tbl('t2', 50, 60)])
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 50, y: 60 })
+    })
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')   // 그대로
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.summary).toBe('이동')
+  })
+
+  it('드롭 타깃 위에 있는 동안에는 autoPanOnNodeDrag를 끈다', async () => {
+    // 기본값이 true라, 사이드바 쪽 가장자리에 커서를 대고 있으면 캔버스가 계속 팬되어
+    // 다른 노드들이 화면 밖으로 밀려난다(설계 5.4).
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    expect(lastProps().autoPanOnNodeDrag).toBe(true)
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g1')
+    await waitFor(() => expect(lastProps().autoPanOnNodeDrag).toBe(false))
+
+    // 타깃 밖으로 나오면 다시 켜진다 — 끈 채로 남으면 이후 드래그에서 팬이 영영 죽는다.
+    act(() => { useDragStore.getState().moveOver(null) })
+    await waitFor(() => expect(lastProps().autoPanOnNodeDrag).toBe(true))
+  })
+
+  it('노드를 잡으면 선택 전체를 캔버스 드래그로 시작한다 — 선택 밖이면 그것 하나다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    dragStart(tbl('t1', 0, 0))
+    expect(useDragStore.getState().tableIds).toEqual(['t1', 't2'])
+    // 커서 고스트는 사이드바 전용이다 — 캔버스는 ReactFlow가 노드를 실제로 끌고 다닌다.
+    expect(useDragStore.getState().source).toBe('canvas')
+
+    act(() => { useDragStore.getState().end() })
+    useEditorStore.getState().selectTables(['t1'])
+    dragStart(tbl('t2', 300, 0))
+    expect(useDragStore.getState().tableIds).toEqual(['t2'])
+  })
+
+  it('노드를 끄는 동안 커서 좌표로 드롭 타깃을 세운다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    const block = document.createElement('div')
+    block.setAttribute('data-drop-group', 'g1')
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(block)
+
+    dragStart(tbl('t2', 300, 0))
+    dragMove(tbl('t2', 310, 10), 7, 9)
+    expect(useDragStore.getState().over).toEqual({ groupId: 'g1' })
+
+    // 대조군: 그룹 노드 드래그는 같은 좌표에서도 드롭 타깃을 세우지 않는다 —
+    // 그것은 "그룹 통째 이동"이라는 다른 조작이다(설계 5.4).
+    act(() => { useDragStore.getState().end() })
+    const groupNode = { id: 'group:g1', type: 'group', position: { x: 0, y: 0 } }
+    dragStart(groupNode)
+    dragMove({ ...groupNode, position: { x: 10, y: 10 } }, 7, 9)
+    expect(useDragStore.getState().over).toBeNull()
+  })
+
+  it('터치 드래그도 좌표를 찾는다 — ReactFlow는 TouchEvent도 넘긴다', () => {
+    // 이 콜백의 이벤트 타입은 `MouseEvent | TouchEvent`다. 터치에는 clientX/Y가 없고, 손을 떼는
+    // 순간(touchend)에는 `touches`가 비고 `changedTouches`에만 남는다. 마우스 좌표만 읽으면
+    // 태블릿에서 드롭 타깃이 영영 잡히지 않는다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    const block = document.createElement('div')
+    block.setAttribute('data-drop-group', 'g1')
+    const spy = vi.spyOn(document, 'elementFromPoint').mockReturnValue(block)
+    const onNodeDrag = () => lastProps().onNodeDrag as (e: unknown, n: unknown) => void
+
+    dragStart(tbl('t2', 300, 0))
+    act(() => {
+      onNodeDrag()({ touches: [{ clientX: 11, clientY: 22 }], changedTouches: [] }, tbl('t2', 1, 1))
+    })
+    expect(spy).toHaveBeenLastCalledWith(11, 22)
+    expect(useDragStore.getState().over).toEqual({ groupId: 'g1' })
+
+    act(() => {
+      onNodeDrag()({ touches: [], changedTouches: [{ clientX: 33, clientY: 44 }] }, tbl('t2', 1, 1))
+    })
+    expect(spy).toHaveBeenLastCalledWith(33, 44)
+
+    // 좌표를 아예 못 구하면 "어떤 타깃 위도 아님"으로 떨어진다 — 마지막 타깃을 남겨 두면
+    // 조준 지점을 모르는 채로 엉뚱한 그룹에 떨어진다.
+    act(() => { onNodeDrag()({ touches: [], changedTouches: [] }, tbl('t2', 1, 1)) })
+    expect(useDragStore.getState().over).toBeNull()
+  })
+
+  it('그룹 노드 드래그는 드롭 분기에 들어가지 않는다 — 그룹 통째 이동 그대로다', async () => {
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    const groupNode = { id: 'group:g1', type: 'group', position: { x: 0, y: 0 } }
+    dragStart(groupNode)
+    // 커서가 사이드바의 다른 그룹 위에 있는 상태를 만든다 — 가드가 없으면 여기서 새어 나간다.
+    act(() => { useDragStore.getState().start(['t1', 't2'], 'canvas') })
+    hoverTarget('g2')
+    dragStop({ ...groupNode, position: { x: 40, y: 20 } }, [{ ...groupNode, position: { x: 40, y: 20 } }])
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']?.position).toEqual({ x: 40, y: 20 })
+    })
+    expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 340, y: 20 })
+    expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g1')   // 그룹은 안 바뀐다
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.summary).toBe('그룹 이동')   // 일괄 그룹 배정('그룹 이동 (N개)')이 아니다
+  })
+
+  it('테이블이 아닌 노드는 그룹 이동에 섞이지 않는다', async () => {
+    // 고스트 노드는 **노드 id가 원본 테이블 id 그대로**다(ghost-nodes.ts의 주석) — 거르지 않으면
+    // 다른 그룹에 있는 테이블이 함께 끌려온다. 메모는 애초에 그룹 멤버가 아니다.
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g2')
+    dragStop(tbl('t2', 999, 999), [
+      tbl('t2', 999, 999),
+      { id: 't1', type: 'ghost', position: { x: 5, y: 5 } },
+      { id: 'n1', type: 'note', position: { x: 5, y: 5 } },
+    ])
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g2'))
+    expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g1')
+    expect(useEditorStore.getState().model.notes['n1']?.position).toEqual({ x: 600, y: 0 })
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.summary).toBe('그룹 이동 (1개)')
+  })
+
+  it('다중 선택 드래그는 선택 전체가 함께 옮겨지고 상대 배치가 보존된다', async () => {
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderCanvas()
+
+    dragStart(tbl('t1', 0, 0))
+    hoverTarget('g2')
+    dragStop(tbl('t1', 900, 900), [tbl('t1', 900, 900), tbl('t2', 1200, 900)])
+
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g2'))
+    const tables = useEditorStore.getState().model.tables
+    expect(tables['t2']?.groupId).toBe('g2')
+    // 이동 전 (300, 0) 차이가 그대로다.
+    expect(tables['t2']!.position.x - tables['t1']!.position.x).toBe(300)
+    expect(tables['t2']!.position.y - tables['t1']!.position.y).toBe(0)
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)   // undo 1회로 전부 원복된다
+  })
+
+  it('드롭이 아무것도 바꾸지 않아도 노드는 원위치로 돌아온다', async () => {
+    // 같은 그룹에 놓으면 applyGroupMove가 op를 내지 않는다 → 모델이 그대로라 `derived`도 그대로고,
+    // "모델이 바뀌면 노드를 다시 만든다"는 effect가 돌지 않는다. setNodes(derived)가 없으면 노드가
+    // 드롭 지점에 **영영** 남아 화면과 모델이 갈린다.
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    moveNodeInternally('t2', { x: 999, y: 999 })
+    expect(nodePosition('t2')).toEqual({ x: 999, y: 999 })
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g1')                                   // t2는 이미 g1이다
+    dragStop(tbl('t2', 999, 999), [tbl('t2', 999, 999)])
+
+    expect(nodePosition('t2')).toEqual({ x: 300, y: 0 })
+    await settle()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('드롭 타깃이 그대로면 캔버스를 다시 그리지 않는다', () => {
+    // 캔버스는 autoPanOnNodeDrag 때문에 드래그 store의 `over`를 구독한다. 타깃이 **바뀔 때만**
+    // 리렌더돼야 커서 움직임마다 캔버스 전체가 다시 그려지는 것(설계 5.2)을 피한다.
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    dragStart(tbl('t2', 300, 0))
+    const nodesBefore = lastProps().nodes
+
+    const beforeEnter = capturedProps.length
+    hoverTarget('g1')
+    expect(capturedProps.length).toBeGreaterThan(beforeEnter)   // 진입은 리렌더한다(팬을 꺼야 한다)
+
+    const afterEnter = capturedProps.length
+    hoverTarget('g1')                                           // 같은 블록 위에서 계속 움직인다
+    expect(capturedProps.length).toBe(afterEnter)               // 더는 안 그린다
+    expect(lastProps().nodes).toBe(nodesBefore)                 // 노드 배열도 다시 만들지 않는다
+  })
+
+  it('읽기 전용이면 드롭해도 op가 나가지 않는다', async () => {
+    // 권한 판정은 applyGroupMove 한 곳이다(bulk-panel.tsx) — 여기서 또 막으면 가드가 두 벌이 된다.
+    const calls = captureMutations()
+    useEditorStore.getState().setLoaded(withGroupB(), 1, PROJECT_ID)
+    // grantEditPermission을 부르지 않는다 — Viewer(canEdit=false).
+    renderCanvas()
+
+    dragStart(tbl('t2', 300, 0))
+    hoverTarget('g2')
+    dragStop(tbl('t2', 999, 999), [tbl('t2', 999, 999)])
+
+    await settle()
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')
+  })
+})
+
 describe('Canvas — 컬럼 클릭 선택', () => {
-  // stopPropagation 회귀 검증: 컬럼 <li>의 onClick이 stopPropagation을 부르지 않으면 React
-  // Flow가 클릭을 상위 노드로도 전파해 Canvas의 onNodeClick(select(tableId))이 같은 이벤트
-  // 틱에서 뒤이어 실행되고, select는 CLEARED_SELECTION을 거쳐 selectedColumnIds를 비운다.
-  // 즉 stopPropagation이 빠지면 클릭 직후 selectedColumnIds가 []로 관찰된다.
+  // stopPropagation 회귀 검증: 컬럼 <li>의 onClick이 stopPropagation을 부르지 않으면 클릭이
+  // 상위 노드로도 전파돼 React Flow가 그 노드를 선택하고, 그 `select` 델타가 창구를 통해
+  // selectTables(['t2'])로 도착한다. selectTables는 CLEARED_SELECTION을 거치므로
+  // selectedColumnIds가 조용히 지워진다 — stopPropagation이 빠지면 클릭 직후 []로 관찰된다.
   it('컬럼을 클릭하면 컬럼만 선택되고 테이블 전체 선택으로 덮이지 않는다', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
@@ -255,151 +707,27 @@ describe('Canvas — 컬럼 클릭 선택', () => {
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
     expect(useEditorStore.getState().selectedColumnIds).toEqual(['c2'])
   })
-})
 
-/*
- * 이 블록은 **사용자 조작에서 출발한다.** store 액션(selectTables·toggleTable)을 테스트가 직접
- * 부르지 않는다 — 그렇게 부르는 테스트는 store 계약만 잠그고, "그 상태에 도달할 사용자 경로가
- * 있는가"는 보지 못한다. 실제로 이 배선이 들어오기 전까지 toggleTable은 프로덕션 호출처가 0건,
- * selectTables는 테이블 붙여넣기 하나뿐이어서 캔버스에서 테이블 2개를 고르는 방법이 없었는데도
- * 다중 선택 테스트는 전부 통과하고 있었다.
- */
-describe('Canvas — 테이블 다중 선택 (사용자 조작 경로)', () => {
-  it('Cmd/Ctrl+클릭으로 두 번째 테이블을 더하면 store 선택이 2개가 된다', () => {
+  /*
+   * 컬럼 불변식(`selectedTableIds.length !== 1` → 컬럼 선택은 빈 배열)을 **사용자 조작 경로**에서
+   * 잠근다. store.test.ts가 액션 단위로 같은 것을 잠그지만, 그 상태에 도달할 캔버스 경로가
+   * 실제로 불변식을 지키는지는 별개다 — 두 트랙이 각자 만든 선택 배선이 만나는 자리라 특히 그렇다.
+   */
+  it('컬럼을 고른 뒤 테이블을 더 고르면 컬럼 선택이 비워진다', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderCanvas()
 
-    fireEvent.click(screen.getByTestId('rf__node-t1'))
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
-
-    // 수식 키를 무시하고 항상 select(node.id)로 덮으면 여기서 ['t2']가 된다.
-    fireEvent.click(screen.getByTestId('rf__node-t2'), { metaKey: true })
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
-
-    // ctrlKey(윈도우·리눅스)도 같은 경로여야 한다 — 이미 선택된 것을 다시 누르면 빠진다.
-    fireEvent.click(screen.getByTestId('rf__node-t1'), { ctrlKey: true })
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
-
-    // 수식 키 없는 클릭은 그대로 단일 선택으로 되돌린다.
-    fireEvent.click(screen.getByTestId('rf__node-t1'))
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
-  })
-
-  it('store 선택이 React Flow 노드의 selected 플래그로 미러링된다', () => {
-    // buildNodes가 최상위 selected를 세우지 않으면, store가 바뀔 때마다 도는 setNodes(derived)가
-    // React Flow의 내부 선택을 지운다(선택이라는 같은 사실이 두 곳에 따로 살게 된다).
-    // 그러면 Cmd+클릭으로 store에 2개를 담아도 캔버스는 하나만 선택된 것으로 그린다.
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
-    grantEditPermission()
-    renderCanvas()
-
-    fireEvent.click(screen.getByTestId('rf__node-t1'))
-    fireEvent.click(screen.getByTestId('rf__node-t2'), { metaKey: true })
-
-    expect(selectedNodeIds()).toEqual(['t1', 't2'])
-  })
-
-  it('다중 선택이 되면 컬럼 선택이 비워진다 (불변식 — 사용자 경로에서도)', () => {
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
-    grantEditPermission()
-    renderCanvas()
-
-    // 컬럼 클릭으로 t2 + c2를 선택해 둔다.
     fireEvent.click(screen.getByText('MBR_NO').closest('li')!)
     expect(useEditorStore.getState().selectedColumnIds).toEqual(['c2'])
 
-    // Cmd+클릭으로 t1을 더하면 테이블이 2개가 되므로 컬럼 선택은 성립하지 않는다.
-    fireEvent.click(screen.getByTestId('rf__node-t1'), { metaKey: true })
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2', 't1'])
+    // 수식키는 클릭 이벤트 플래그가 아니라 문서 레벨 키 트래커(useKeyPress)가 읽는다.
+    // jsdom은 Mac이 아니므로 multiSelectionKeyCode 기본값은 'Control'이다.
+    fireEvent.keyDown(document, { key: 'Control', code: 'ControlLeft' })
+    fireEvent.click(screen.getByTestId('rf__node-t1'))
+    fireEvent.keyUp(document, { key: 'Control', code: 'ControlLeft' })
+
+    expect(useEditorStore.getState().selectedTableIds).toHaveLength(2)
     expect(useEditorStore.getState().selectedColumnIds).toEqual([])
-  })
-
-  it('박스 선택이 store를 갱신하고 group·note·ghost는 걸러낸다', () => {
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
-    grantEditPermission()
-    renderCanvas()
-
-    // 캔버스에는 테이블 말고도 그룹(색상 영역)·메모·고스트 노드가 함께 있고 상자에 함께 걸린다.
-    // 고스트는 **원본 테이블 id를 그대로** 쓰므로(buildGhostNodes) id만 보면 테이블과 구별되지
-    // 않는다 — 반드시 type으로 걸러야 한다.
-    fireBoxSelection([
-      rfNode('t2', 'table'),
-      rfNode('t1', 'ghost'),
-      rfNode('group:g1', 'group'),
-      rfNode('n1', 'note'),
-    ])
-
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
-  })
-
-  it('박스 선택이 같은 집합을 실어와도 store를 다시 쓰지 않는다', () => {
-    // 집합이 같은데도 selectTables를 부르면 selectTables가 CLEARED_SELECTION을 거치므로
-    // 컬럼 선택이 조용히 지워진다.
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
-    grantEditPermission()
-    renderCanvas()
-
-    fireEvent.click(screen.getByText('MBR_NO').closest('li')!)
-    expect(useEditorStore.getState().selectedColumnIds).toEqual(['c2'])
-
-    fireBoxSelection([rfNode('t2', 'table')])
-
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
-    expect(useEditorStore.getState().selectedColumnIds).toEqual(['c2'])
-  })
-
-  it('선택 상자 밖에서 온 React Flow 선택 통지는 무시한다', () => {
-    /*
-     * React Flow는 노드를 클릭하면 자기 nodeLookup의 selected를 **직접 변형한 뒤** 통지한다
-     * (handleNodeClick → getSelectionChanges(..., mutateItem=true)). 그 통지를 그대로 받으면
-     * store(우리 판단)와 React Flow(자기 판단)가 한 커밋씩 어긋난 값을 서로에게 되먹여
-     * 무한 루프가 난다 — 실제로 "Maximum update depth exceeded"가 났다.
-     * 그래서 통지는 **선택 상자 제스처 구간**에서만 받는다. 그 밖의 통지는 무시하고,
-     * 미러링이 React Flow를 store에 맞춰 되돌린다.
-     */
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
-    grantEditPermission()
-    renderCanvas()
-
-    fireEvent.click(screen.getByTestId('rf__node-t1'))
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
-
-    // 상자 제스처(onSelectionStart) 없이 들어온 통지 — 받으면 안 된다.
-    fireSelectionChange([rfNode('t1', 'table'), rfNode('t2', 'table')])
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
-
-    // 상자 제스처 안에서는 받는다 — 게이트가 열리지 않으면 박스 선택이 통째로 먹통이 된다.
-    fireBoxSelection([rfNode('t1', 'table'), rfNode('t2', 'table')])
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
-  })
-
-  it('선택 상자가 끝나지 않고 잘려도 다음 클릭이 게이트를 닫는다', () => {
-    /*
-     * 게이트를 닫는 신호(onSelectionEnd)는 **보장되지 않는다.** React Flow의 Pane은
-     * onPointerCancel에서 포인터 캡처 해제와 auto-pan 정리만 하고 onSelectionEnd를 부르지 않는다.
-     * pointercancel은 터치·펜 제스처가 가로채일 때, 그리고 **캡처 대상 DOM 노드가 제거될 때** 난다 —
-     * Shift+드래그를 테이블 위에서 시작했는데 그 사이 남의 실시간 op가 그 테이블을 지우면 그렇다.
-     * 그러면 게이트가 열린 채 래치되고, 그 뒤 노드를 클릭하면 되먹임 루프가 되살아나
-     * **캔버스 전체가 죽는다**("Maximum update depth exceeded").
-     * DOM 노드가 제거된 경우엔 pointercancel조차 우리에게 배달되지 않으므로(분리된 노드의 이벤트는
-     * 위로 전파되지 않는다) 방어는 포인터 이벤트가 아니라 **소비 지점**에 있어야 한다.
-     */
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
-    grantEditPermission()
-    renderCanvas()
-
-    // 상자를 시작해 t1을 잡은 뒤, 끝내지 않는다(잘린 제스처).
-    fireBoxSelectionStart()
-    fireSelectionChange([rfNode('t1', 'table')])
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
-
-    // 게이트가 열린 채로 남아 있어도 클릭은 정상 동작해야 한다(루프가 나면 여기서 죽는다).
-    fireEvent.click(screen.getByTestId('rf__node-t2'), { metaKey: true })
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
-
-    // 그리고 게이트는 닫혀 있어야 한다 — 상자 밖 통지를 다시 받으면 안 된다.
-    fireSelectionChange([rfNode('t1', 'table')])
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
   })
 })

@@ -66,7 +66,7 @@ function toClipboardColumn(model: ProjectModel, columnId: string, names: Map<str
   }
 }
 
-export function serializeTables(model: ProjectModel, tableIds: string[]): ClipboardPayload {
+export function serializeTables(model: ProjectModel, tableIds: readonly string[]): ClipboardPayload {
   const names = customFieldNames(model)
   const tables: ClipboardTable[] = []
   for (const tableId of tableIds) {
@@ -106,7 +106,7 @@ export function serializeTables(model: ProjectModel, tableIds: string[]): Clipbo
   return { __erdd: 1, v: CLIPBOARD_VERSION, kind: 'tables', tables }
 }
 
-export function serializeColumns(model: ProjectModel, columnIds: string[]): ClipboardPayload {
+export function serializeColumns(model: ProjectModel, columnIds: readonly string[]): ClipboardPayload {
   const names = customFieldNames(model)
   const ordered = columnIds
     .map((id) => model.columns[id])

@@ -1,5 +1,5 @@
 import { FileText, LayoutGrid, Plus, Redo2, Trash2, Undo2 } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { setTableGroup } from '@erdd/core'
 import { useEditorStore } from './store.js'
@@ -8,6 +8,7 @@ import { newId } from './uid.js'
 import { addTable, moveTable, moveTableGroupPosition, removeTable } from './model-edits.js'
 import { addNote } from './note-edits.js'
 import { computeAutoLayout } from './auto-layout.js'
+import { BulkDeleteDialog } from './bulk-panel.js'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
@@ -17,6 +18,7 @@ export function Toolbar({ projectId }: { projectId: string }) {
   const { undo, redo, canUndo, canRedo } = useUndoRedo(projectId)
   const model = useEditorStore((s) => s.model)
   const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
+  const [confirmingBulk, setConfirmingBulk] = useState(false)
   const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const select = useEditorStore((s) => s.select)
   const selectNote = useEditorStore((s) => s.selectNote)
@@ -49,14 +51,15 @@ export function Toolbar({ projectId }: { projectId: string }) {
     }, { summary: '테이블 추가' })
     select(id)
   }
+  // 다중 선택이면 일괄 패널과 **같은 확인 다이얼로그**를 띄운다. 여기서 주 선택 하나만 지우면
+  // 화면에 3개가 하이라이트된 채 1개만 사라져 무엇이 지워질지 예측할 수 없다(설계 7절).
+  // 선택 정리는 여기서 하지 않는다 — useSubmit의 낙관적 setModel 직후 pruneSelection이
+  // 모든 로컬 쓰기 경로를 덮으므로, 여기서 또 비우면 규칙이 두 벌이 된다.
   const onDelete = () => {
-    // 선택 전체를 **한 producer**로 지운다 — Revision 1건 · undo 1회(설계 §3.6).
-    // 단축키 Delete(use-shortcuts.ts)와 같은 형태여야 한다. 루프로 mutate를 여러 번 부르면
-    // 같은 "삭제"가 실행 취소 여러 번이 되어 두 경로의 의미가 갈린다.
-    const ids = [...selectedTableIds]
-    if (ids.length === 0) return
-    select(null)
-    void mutate((m) => ids.reduce((acc, id) => removeTable(acc, id), m), { summary: '테이블 삭제' })
+    if (selectedTableIds.length === 0) return
+    if (selectedTableIds.length >= 2) { setConfirmingBulk(true); return }
+    const id = selectedTableIds[0]!
+    void mutate((m) => removeTable(m, id), { summary: '테이블 삭제' })
   }
   const onAddNote = () => {
     const id = newId()
@@ -101,6 +104,8 @@ export function Toolbar({ projectId }: { projectId: string }) {
       <Button size="sm" variant="outline" disabled={selectedTableIds.length === 0} onClick={onDelete}>
         <Trash2 /> 삭제
       </Button>
+      <BulkDeleteDialog projectId={projectId} ids={selectedTableIds}
+        open={confirmingBulk} onOpenChange={setConfirmingBulk} />
       <div className="mx-1 h-5 w-px bg-border" />
       <Button size="icon" variant="ghost" className="size-8" disabled={!canUndo} aria-label="실행 취소" onClick={() => void undo()}>
         <Undo2 className="size-4" />

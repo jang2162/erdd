@@ -6,7 +6,7 @@ import { useEditorStore } from './store.js'
 import { PresenceBar } from './presence.js'
 
 const ME = 'u-me'
-const peer = (userId: string, name: string): Peer => ({ userId, name, selection: null })
+const peer = (userId: string, name: string): Peer => ({ userId, name, selections: [] })
 
 afterEach(() => { cleanup(); useEditorStore.getState().reset() })
 

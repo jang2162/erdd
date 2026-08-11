@@ -37,7 +37,7 @@ export type {
 } from './excel-import.js'
 export { MAX_OPS_PER_MUTATION, OpParseError, parseOps } from './op-guard.js'
 export {
-  PEER_SELECTION_KINDS, PEER_PALETTE, WS_CLOSE_UNAUTHORIZED, WS_CLOSE_FORBIDDEN,
+  MAX_PEER_SELECTIONS, PEER_SELECTION_KINDS, PEER_PALETTE, WS_CLOSE_UNAUTHORIZED, WS_CLOSE_FORBIDDEN,
   peerColor, parseServerMessage, parseClientMessage,
 } from './realtime-protocol.js'
 export type {

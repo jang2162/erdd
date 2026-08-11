@@ -14,7 +14,7 @@ export type TableNodeData = {
   tableWarnings?: Warning[]
   columnWarnings?: Record<string, Warning[]>
   peers?: PeerMark[]
-  selectedColumnIds?: string[]
+  selectedColumnIds?: readonly string[]
   onColumnClick?: (columnId: string, mode: 'replace' | 'toggle' | 'range') => void
 }
 
