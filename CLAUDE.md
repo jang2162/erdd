@@ -107,13 +107,14 @@ Claude-Session: <세션 URL>
   | 워크트리 A | 3001 | 5174 | `erdd_dev_a` | `erdd_test_a` |
   | 워크트리 B | 3002 | 5175 | `erdd_dev_b` | `erdd_test_b` |
 
-  서버는 `PORT`, web 의 프록시 타깃은 `ERDD_SERVER_PORT`(둘을 같은 값으로 준다), vite 포트는 `--port` 다.
+  서버는 `PORT`, web 의 프록시 타깃은 `ERDD_SERVER_PORT`(둘을 같은 값으로 준다), vite 포트는
+  `ERDD_WEB_PORT` 다. 셋을 함께 주면 루트 `pnpm dev` 하나로 그 트랙이 통째로 뜬다.
   ```bash
-  # 워크트리 A에서
-  PORT=3001 DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_dev_a' \
-    pnpm --filter @erdd/server dev
-  ERDD_SERVER_PORT=3001 ./node_modules/.bin/vite --host 127.0.0.1 --port 5174 --strictPort   # apps/web 에서
+  # 워크트리 A 루트에서
+  PORT=3001 ERDD_SERVER_PORT=3001 ERDD_WEB_PORT=5174 pnpm dev
   ```
+  `DATABASE_URL` 은 그 워크트리의 `.env` 로 준다 — 루트 `pnpm dev` 가 `.env` 를 셸에 로드하므로,
+  워크트리마다 `.env` 안의 `DATABASE_URL` 을 격리 DB 로 바꿔 둔다.
   격리 DB는 미리 만들고 `drizzle-kit migrate` 를 적용해 둔다.
 - **정리**: 작업이 끝나 병합·폐기되면 `git worktree remove .worktrees/<...>` 로 지운다. 디렉터리를
   `rm -rf` 로 지웠다면 `git worktree prune` 을 함께 돌린다.
