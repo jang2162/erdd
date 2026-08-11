@@ -492,15 +492,15 @@ docker ps --filter name=erdd-db      # erdd-db-1, postgres:17, :5432
 # ADMIN_EMAIL/ADMIN_PASSWORD를 export하고 서버를 띄우면 없을 때 자동 생성된다(ensureBootstrapAdmin)
 
 # 서버 프로세스 자체는 .env를 읽지 않는다(dotenv를 쓰지 않는다) — 루트 dev 스크립트가 .env를
-# 셸에 로드해 넘긴다. .env가 없으면 경고만 내고 그대로 뜨는데, 그때는 DATABASE_URL이 없어
+# 셸에 로드해 넘긴다. .env가 없으면 아무 말 없이 그대로 뜨는데, 그때는 DATABASE_URL이 없어
 # ctx.db=null → 모든 tRPC가 412 → 화면에 "연결에 문제가 있습니다"
 pnpm dev                                            # web :5173(127.0.0.1), server :3000
 # 워크트리에서는 포트·DB를 트랙별로 바꾼다: 서버 PORT + web ERDD_SERVER_PORT(같은 값) + ERDD_WEB_PORT
 # (할당표는 CLAUDE.md "워크트리 규칙". vite 프록시 타깃이 ERDD_SERVER_PORT로 파라미터화돼 있어,
 #  안 주면 워크트리의 web이 조용히 최상위 서버 3000에 붙는다. DATABASE_URL은 그 워크트리의 .env로 준다)
 PORT=3001 ERDD_SERVER_PORT=3001 ERDD_WEB_PORT=5174 pnpm dev   # 워크트리 A
-# 인라인으로 준 값이 .env 의 같은 키를 이긴다(스크립트가 로드 전 환경을 스냅샷해 뒤에 복원한다).
-# .env 에만 있는 키는 그대로 실린다. 이 우선순위가 깨지면 web 이 남의 서버로 프록시하게 된다.
+# .env 의 키가 인라인으로 준 값을 이긴다(스크립트는 .env 를 로드할 뿐 우선순위를 따지지 않는다).
+# 위 셋은 기본 .env 에 없으니 인라인이 그대로 먹는다 — .env 에 포트를 적으면 web 이 남의 서버로 프록시한다.
 
 # 테스트
 pnpm --filter @erdd/core exec vitest run
