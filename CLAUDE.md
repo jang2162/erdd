@@ -114,7 +114,8 @@ Claude-Session: <세션 URL>
   PORT=3001 ERDD_SERVER_PORT=3001 ERDD_WEB_PORT=5174 pnpm dev
   ```
   `DATABASE_URL` 은 그 워크트리의 `.env` 로 준다 — 루트 `pnpm dev` 가 `.env` 를 셸에 로드하므로,
-  워크트리마다 `.env` 안의 `DATABASE_URL` 을 격리 DB 로 바꿔 둔다.
+  워크트리마다 `.env` 안의 `DATABASE_URL` 을 격리 DB 로 바꿔 둔다. **`.env` 에는 포트를 적지 않는다** —
+  `.env` 의 키가 인라인으로 준 값을 덮으므로, 적어 두면 위 인라인 포트 지정이 무력화된다.
   격리 DB는 미리 만들고 `drizzle-kit migrate` 를 적용해 둔다.
 - **정리**: 작업이 끝나 병합·폐기되면 `git worktree remove .worktrees/<...>` 로 지운다. 디렉터리를
   `rm -rf` 로 지웠다면 `git worktree prune` 을 함께 돌린다.
