@@ -8,10 +8,12 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
+import { computeWarnings } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { useEditorStore } from './store.js'
 import { createDomain } from './domain-edits.js'
 import { createCustomField } from './custom-field-edits.js'
+import { addTable } from './model-edits.js'
 import { EditPanel } from './edit-panel.js'
 
 function renderPanel() {
@@ -40,7 +42,7 @@ describe('EditPanel', () => {
     grantEditPermission()
     useEditorStore.getState().select('t2')
     renderPanel()
-    const input = screen.getByLabelText('테이블 물리명') as HTMLInputElement
+    const input = screen.getByLabelText(/테이블 물리명/) as HTMLInputElement
     await userEvent.clear(input)
     await userEvent.type(input, 'MEMBER')
     await userEvent.tab() // blur → commit
@@ -99,7 +101,8 @@ describe('EditPanel', () => {
     grantEditPermission()
     useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
     renderPanel()
-    const logicalInputs = screen.getAllByLabelText('논리명') // [0] 테이블, [1] 컬럼
+    // selector: 'input' — 「논리명 복원」 버튼의 aria-label도 /논리명/에 매치해 인덱스가 밀리므로 input만 취한다.
+    const logicalInputs = screen.getAllByLabelText(/논리명/, { selector: 'input' }) // [0] 테이블, [1] 컬럼
     await userEvent.type(logicalInputs[1]!, '회원')
     await userEvent.tab()
     await waitFor(() => {
@@ -121,7 +124,8 @@ describe('EditPanel', () => {
     grantEditPermission()
     useEditorStore.getState().select('t1')
     renderPanel()
-    const logicalInputs = screen.getAllByLabelText('논리명')
+    // selector: 'input' — 「논리명 복원」 버튼의 aria-label도 /논리명/에 매치해 인덱스가 밀리므로 input만 취한다.
+    const logicalInputs = screen.getAllByLabelText(/논리명/, { selector: 'input' })
     await userEvent.type(logicalInputs[1]!, '회원')
     await userEvent.tab()
     await waitFor(() => {
@@ -184,6 +188,127 @@ describe('EditPanel', () => {
     expect(screen.getByLabelText('업무구분')).toHaveValue('공통')
   })
 
+  it('테이블 폼은 물리명 입력이 논리명 입력보다 앞에 온다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    const physical = screen.getByLabelText(/테이블 물리명/)
+    const logical = screen.getAllByLabelText(/논리명/, { selector: 'input' })[0]!   // [0] 테이블
+    // compareDocumentPosition: 4 === FOLLOWING (physical 뒤에 logical이 온다)
+    expect(physical.compareDocumentPosition(logical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('빈 논리명 테이블은 물리명 입력 시 논리명이 복원된다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      tables: { ...m.tables, t1: { ...m.tables['t1']!, logicalName: '', physicalName: '' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    const physical = screen.getByLabelText(/테이블 물리명/)
+    await userEvent.type(physical, 'MBR')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']!.logicalName).toBe('회원')
+    })
+  })
+
+  it('논리명이 이미 있으면 물리명 입력이 논리명을 덮지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      tables: { ...m.tables, t1: { ...m.tables['t1']!, logicalName: '유지', physicalName: '' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    await userEvent.type(screen.getByLabelText(/테이블 물리명/), 'MBR')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']!.physicalName).toBe('MBR')
+    })
+    expect(useEditorStore.getState().model.tables['t1']!.logicalName).toBe('유지')
+  })
+
+  it('사전에 없는 약어면 논리명을 채우지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      tables: { ...m.tables, t1: { ...m.tables['t1']!, logicalName: '', physicalName: '' } },
+    }   // words가 비어 있다 — buildSampleModel의 기본값
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    await userEvent.type(screen.getByLabelText(/테이블 물리명/), 'XYZ')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']!.physicalName).toBe('XYZ')
+    })
+    expect(useEditorStore.getState().model.tables['t1']!.logicalName).toBe('')
+  })
+
+  it('「논리명 복원」 버튼은 값이 있어도 덮어쓴다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      tables: { ...m.tables, t1: { ...m.tables['t1']!, logicalName: '옛이름', physicalName: 'MBR' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: '논리명 복원' }))
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['t1']!.logicalName).toBe('회원')
+    })
+  })
+
+  it('새 테이블은 물리명 required-empty가 뜨고, 논리명을 넣으면 사라진다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m, words: { w1: {
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+      englishName: null, description: null, origin: null,
+    } } }
+    m = addTable(m, { id: 'newt', position: { x: 0, y: 0 } })
+    const before = computeWarnings(m).filter(
+      (w) => w.kind === 'required-empty' && w.entityId === 'newt')
+    expect(before).toHaveLength(1)          // 물리명만 비어 있다
+
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('newt')
+    renderPanel()
+    const logical = screen.getAllByLabelText(/논리명/, { selector: 'input' })[0]!
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.tables['newt']!.physicalName).toBe('MBR')
+    })
+    const after = computeWarnings(useEditorStore.getState().model).filter(
+      (w) => w.kind === 'required-empty' && w.entityId === 'newt')
+    expect(after).toEqual([])
+  })
+
   it('편집 권한이 없으면 입력이 잠기고 편집 버튼이 사라진다', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     useEditorStore.getState().select('t1')
@@ -210,16 +335,106 @@ describe('EditPanel', () => {
     expect(screen.getByRole('checkbox', { name: 'NN' })).toBeDisabled()
   })
 
+  it('컬럼 행은 물리명 입력이 논리명 입력보다 앞에 온다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')   // t1은 컬럼 c1 하나뿐
+    renderPanel()
+    // selector: 'input' — 「논리명 복원」·「컬럼 논리명 복원」 버튼의 aria-label도 정규식에 매치해
+    // 인덱스가 밀리므로 input만 취한다(기존 두 테스트와 같은 이유).
+    const physicals = screen.getAllByLabelText(/물리명/, { selector: 'input' })
+    const logicals = screen.getAllByLabelText(/논리명/, { selector: 'input' })
+    // [0]은 테이블 폼, [1]이 컬럼 행
+    const colPhysical = physicals[1]!
+    const colLogical = logicals[1]!
+    expect(colPhysical.compareDocumentPosition(colLogical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('빈 논리명 컬럼은 물리명 입력 시 논리명이 복원된다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '', physicalName: '' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    const colPhysical = screen.getAllByLabelText(/물리명/, { selector: 'input' })[1]!
+    await userEvent.type(colPhysical, 'MBR')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('회원')
+    })
+  })
+
+  it('컬럼의 논리명이 이미 있으면 물리명 입력이 덮지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '유지', physicalName: '' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    await userEvent.type(screen.getAllByLabelText(/물리명/, { selector: 'input' })[1]!, 'MBR')
+    await userEvent.tab()
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.physicalName).toBe('MBR')
+    })
+    expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('유지')
+  })
+
+  it('컬럼의 「논리명 복원」 버튼은 값이 있어도 덮어쓴다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = { ...m,
+      words: { w1: {
+        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+        englishName: null, description: null, origin: null,
+      } },
+      columns: { ...m.columns, c1: { ...m.columns['c1']!, logicalName: '옛이름', physicalName: 'MBR' } },
+    }
+    useEditorStore.getState().setLoaded(m, 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().select('t1')
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: '컬럼 논리명 복원' }))
+    await waitFor(() => {
+      expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('회원')
+    })
+  })
+
+  it('선택된 컬럼 행에 aria-selected가 붙는다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    grantEditPermission()
+    useEditorStore.getState().selectColumn('t2', 'c3', 'replace')
+    renderPanel()
+    const rows = screen.getAllByRole('listitem')
+    const selected = rows.filter((r) => r.getAttribute('aria-selected') === 'true')
+    expect(selected).toHaveLength(1)
+  })
+
   it('2개 이상 선택하면 일괄 작업 패널로 전환된다', () => {
     // 상세 편집은 다중 선택에서 의미가 모호하다. 주 선택 하나를 계속 편집하게 두면
     // 화면에 2개가 하이라이트된 채 한 개만 바뀌어 무엇이 편집되는지 알 수 없다.
+    // BulkPanel이 main의 「N개 선택됨」 안내를 대신한다(개수 + 목록 + 그룹 이동 + 삭제).
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
     renderPanel()
 
     expect(screen.getByText('2개 테이블 선택됨')).toBeInTheDocument()
-    expect(screen.queryByLabelText('테이블 물리명')).toBeNull()
+    expect(screen.queryByLabelText(/테이블 물리명/)).toBeNull()
   })
 
   it('1개만 선택하면 기존 상세 편집 패널 그대로다', () => {
@@ -228,7 +443,20 @@ describe('EditPanel', () => {
     useEditorStore.getState().selectTables(['t2'])
     renderPanel()
 
-    expect(screen.getByLabelText('테이블 물리명')).toBeInTheDocument()
+    expect(screen.getByLabelText(/테이블 물리명/)).toBeInTheDocument()
     expect(screen.queryByText(/테이블 선택됨/)).toBeNull()
+  })
+
+  it('선택된 컬럼 행으로 스크롤한다', () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {})
+    try {
+      useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+      grantEditPermission()
+      useEditorStore.getState().selectColumn('t2', 'c3', 'replace')
+      renderPanel()
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+    } finally {
+      scrollIntoView.mockRestore()
+    }
   })
 })

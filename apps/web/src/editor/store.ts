@@ -14,17 +14,25 @@ type EditorState = {
   loadedProjectId: string | null
   namingRules: NamingRules
   dialects: Dialect[]
+  /** 프로젝트 이름(버전 모델 밖, project.get). DBML 의 Project 블록에 쓴다. */
+  projectName: string | null
   /** 모델을 편집할 수 있는가(서버 판정). 로드 전 기본값 false — fail-closed. */
   canEdit: boolean
   /** 프로젝트를 관리할 수 있는가(스냅샷 복원·삭제). 로드 전 기본값 false. */
   canManage: boolean
   viewMode: ViewMode
   /**
-   * 선택된 테이블들. **마지막 원소가 주 선택**(상세 패널·포커스 대상)이다.
+   * 선택된 테이블들. 순서 = 선택한 순서이고 **`[0]`이 주 선택**(presence·사이드바의 기준)이다.
    * `readonly` 인 이유: 빈 선택은 모두 같은 배열 인스턴스(`NO_TABLES`)를 공유하므로
    * 제자리 변형은 전역 상수를 오염시킨다. 타입으로 막는다.
    */
   selectedTableIds: readonly string[]
+  /**
+   * 선택된 컬럼. `selectedTableIds.length === 1` 일 때만 비어 있지 않을 수 있다(불변식).
+   * 테이블 선택과 같은 이유로 `readonly` + 공유 빈 참조(`NO_COLUMNS`)를 쓴다 — 캔버스가 이 값을
+   * `derived` 노드 메모의 의존으로 읽으므로, 매번 새 빈 배열이면 노드 전체가 다시 만들어진다.
+   */
+  selectedColumnIds: readonly string[]
   selectedRelationshipId: string | null
   selectedNoteId: string | null
   selectedGroupId: string | null
@@ -39,7 +47,9 @@ type EditorState = {
    * 되맞추는 것은 이것이 아니라 resync다.
    */
   setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
-  setProjectConfig: (namingRules: NamingRules, dialects: Dialect[]) => void
+  setProjectConfig: (
+    namingRules: NamingRules, dialects: Dialect[], projectName: string | null,
+  ) => void
   setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
   setModel: (model: ProjectModel) => void
   setSeq: (seq: number) => void
@@ -55,6 +65,7 @@ type EditorState = {
   select: (tableId: string | null) => void
   toggleTable: (tableId: string) => void
   selectTables: (tableIds: readonly string[]) => void
+  selectColumn: (tableId: string, columnId: string, mode: 'replace' | 'toggle' | 'range') => void
   selectRelationship: (id: string | null) => void
   selectNote: (id: string | null) => void
   selectGroup: (id: string | null) => void
@@ -68,14 +79,20 @@ type EditorState = {
   reset: () => void
 }
 
-/** 주 선택 = 마지막으로 고른 테이블. 이 규칙이 흩어지지 않게 셀렉터를 여기서만 정의한다. */
-export const primaryTableId = (s: EditorState): string | null => s.selectedTableIds.at(-1) ?? null
+/**
+ * 주 선택 = **처음** 고른 테이블. 순서는 선택한 순서이므로 `[0]`이 "가장 먼저 잡은 것"이다.
+ * 이 규칙이 흩어지지 않게 셀렉터를 여기서만 정의한다.
+ */
+export const primaryTableId = (s: EditorState): string | null => s.selectedTableIds[0] ?? null
 
 /** 모든 "비운 상태"가 같은 배열 인스턴스를 공유한다 — 불필요한 리렌더를 막는다. 절대 변형하지 마라. */
 const NO_TABLES: readonly string[] = []
+/** 컬럼 선택의 빈 공유 참조. `NO_TABLES`와 같은 이유(리렌더 억제 + 변형 방지)다. */
+const NO_COLUMNS: readonly string[] = []
 
 const CLEARED_SELECTION = {
-  selectedTableIds: NO_TABLES, selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
+  selectedTableIds: NO_TABLES, selectedColumnIds: NO_COLUMNS,
+  selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
 }
 
 /**
@@ -84,16 +101,30 @@ const CLEARED_SELECTION = {
  * 규칙이 두 벌이면 언젠가 갈린다.
  *
  * 참조 규약: 전부 살아남았으면 **원래 배열 참조를 그대로** 돌려준다(리렌더 억제 — 실시간 op는 초당
- * 여러 번 온다). 전부 사라졌으면 새 빈 배열이 아니라 **빈 선택의 공유 참조**(`NO_TABLES`)를 쓴다.
+ * 여러 번 온다). 전부 사라졌으면 새 빈 배열이 아니라 **빈 선택의 공유 참조**를 쓴다.
  */
 function keptSelection(s: EditorState, model: ProjectModel) {
   const keep = (id: string | null, rec: Record<string, unknown>) =>
     (id !== null && Object.hasOwn(rec, id) ? id : null)
   const keptTables = s.selectedTableIds.filter((id) => Object.hasOwn(model.tables, id))
+  const selectedTableIds = keptTables.length === s.selectedTableIds.length
+    ? s.selectedTableIds
+    : keptTables.length === 0 ? NO_TABLES : keptTables
+  /*
+   * 컬럼은 **테이블에 종속된 선택**이라(canvas-clipboard 설계 D-C1) 테이블이 걸러진 뒤에도
+   * 불변식 `selectedTableIds.length !== 1 → selectedColumnIds가 빈 배열`이 유지돼야 한다.
+   * 그래서 남은 테이블이 정확히 하나일 때만, 그 테이블에 아직 붙어 있는 컬럼만 남긴다.
+   * 이 규칙은 원래 resync 안에만 있었다 — pruneSelection(로컬 편집·남의 삭제 수신)이 같은 사건을
+   * 다르게 처리하지 않도록 keptSelection 안으로 들였다.
+   */
+  const keptColumns = selectedTableIds.length === 1
+    ? s.selectedColumnIds.filter((id) => model.columns[id]?.tableId === selectedTableIds[0])
+    : []
   return {
-    selectedTableIds: keptTables.length === s.selectedTableIds.length
-      ? s.selectedTableIds
-      : keptTables.length === 0 ? NO_TABLES : keptTables,
+    selectedTableIds,
+    selectedColumnIds: keptColumns.length === s.selectedColumnIds.length
+      ? s.selectedColumnIds
+      : keptColumns.length === 0 ? NO_COLUMNS : keptColumns,
     selectedRelationshipId: keep(s.selectedRelationshipId, model.relationships),
     selectedNoteId: keep(s.selectedNoteId, model.notes),
     selectedGroupId: keep(s.selectedGroupId, model.tableGroups),
@@ -107,13 +138,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   loadedProjectId: null,
   namingRules: DEFAULT_NAMING_RULES,
   dialects: [],
+  projectName: null,
   canEdit: false,
   canManage: false,
   viewMode: 'physical',
-  selectedTableIds: NO_TABLES,
-  selectedRelationshipId: null,
-  selectedNoteId: null,
-  selectedGroupId: null,
+  ...CLEARED_SELECTION,
   focusTableId: null,
   activeGroupView: null,
   undoStack: [],
@@ -131,7 +160,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       undoStack: [], redoStack: [], activeGroupView: null, peers: [],
       ...CLEARED_SELECTION,
     }),
-  setProjectConfig: (namingRules, dialects) => set({ namingRules, dialects }),
+  setProjectConfig: (namingRules, dialects, projectName) =>
+    set({ namingRules, dialects, projectName }),
   setPermissions: ({ canEdit, canManage }) => set({ canEdit, canManage }),
   setModel: (model) => set({ model }),
   setSeq: (seq) => set((s) => ({ seq: Math.max(s.seq, seq) })),
@@ -146,20 +176,48 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   pruneSelection: (model) => set((s) => keptSelection(s, model)),
   setViewMode: (viewMode) => set({ viewMode }),
   select: (tableId) => set({ ...CLEARED_SELECTION, selectedTableIds: tableId === null ? NO_TABLES : [tableId] }),
+  // 컬럼 선택은 테이블이 하나일 때만 성립한다(불변식) — CLEARED_SELECTION이 함께 비운다.
+  // 토글은 정의상 그 id를 넣거나 빼므로 "같은 단일 테이블이 그대로 남는" 갈래가 존재하지 않는다.
   toggleTable: (tableId) => set((s) => {
     const next = s.selectedTableIds.includes(tableId)
       ? s.selectedTableIds.filter((id) => id !== tableId)
       : [...s.selectedTableIds, tableId]
     return { ...CLEARED_SELECTION, selectedTableIds: next.length === 0 ? NO_TABLES : next }
   }),
-  // 빈 배열은 다른 종류 선택을 지우지 않는다 — 캔버스에서 메모를 클릭하면
+  // 빈 배열은 **다른 종류의** 선택(메모·관계·그룹)을 지우지 않는다 — 캔버스에서 메모를 클릭하면
   // ReactFlow가 테이블 해제로 빈 배열을 쏘는데, 그것이 같은 클릭의 selectNote를 지우면 안 된다.
-  // 이미 비어 있는지 따로 보지 않는다 — zustand는 어떤 partial을 받든 새 루트 상태를 만들어
-  // 리스너를 전부 호출하므로 `{}` 를 돌려줘도 리렌더가 줄지 않는다. 억제는 **같은 참조**가 한다.
+  // **컬럼은 예외다**: 형제가 아니라 테이블에 종속된 선택이라(D-C1) 테이블이 비면 불변식상
+  // 함께 비어야 한다. 이미 비어 있는지 따로 보지 않는다 — zustand는 어떤 partial을 받든 새 루트
+  // 상태를 만들어 리스너를 전부 호출하므로 `{}` 를 돌려줘도 리렌더가 줄지 않는다. 억제는
+  // **같은 참조**가 한다.
   selectTables: (tableIds) => set(
     tableIds.length === 0
-      ? { selectedTableIds: NO_TABLES }
+      ? { selectedTableIds: NO_TABLES, selectedColumnIds: NO_COLUMNS }
       : { ...CLEARED_SELECTION, selectedTableIds: [...tableIds] }),
+  selectColumn: (tableId, columnId, mode) => set((s) => {
+    const sameTable = s.selectedTableIds.length === 1 && s.selectedTableIds[0] === tableId
+    const base: readonly string[] = sameTable ? s.selectedColumnIds : NO_COLUMNS
+    let next: string[]
+    if (mode === 'toggle') {
+      next = base.includes(columnId) ? base.filter((x) => x !== columnId) : [...base, columnId]
+    } else if (mode === 'range' && base.length > 0) {
+      const anchor = base[base.length - 1]!
+      const ordered = Object.values(s.model.columns)
+        .filter((c) => c.tableId === tableId)
+        .sort((a, b) => a.order - b.order)
+        .map((c) => c.id)
+      const i = ordered.indexOf(anchor)
+      const j = ordered.indexOf(columnId)
+      next = i === -1 || j === -1 ? [columnId] : ordered.slice(Math.min(i, j), Math.max(i, j) + 1)
+    } else {
+      next = [columnId]
+    }
+    return {
+      ...CLEARED_SELECTION,
+      selectedTableIds: [tableId],
+      selectedColumnIds: next.length === 0 ? NO_COLUMNS : next,
+    }
+  }),
   selectRelationship: (selectedRelationshipId) => set({ ...CLEARED_SELECTION, selectedRelationshipId }),
   selectNote: (selectedNoteId) => set({ ...CLEARED_SELECTION, selectedNoteId }),
   selectGroup: (selectedGroupId) => set({ ...CLEARED_SELECTION, selectedGroupId }),
@@ -185,7 +243,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   reset: () => set({
     model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
-    namingRules: DEFAULT_NAMING_RULES, dialects: [], peers: [], canEdit: false, canManage: false,
+    namingRules: DEFAULT_NAMING_RULES, dialects: [], projectName: null, peers: [],
+    canEdit: false, canManage: false,
     ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],
   }),
 }))

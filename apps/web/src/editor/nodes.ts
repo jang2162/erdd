@@ -9,6 +9,10 @@ export type NodeView = { kind: 'full' } | { kind: 'group'; groupId: string }
 export function buildNodes(
   model: ProjectModel, viewMode: ViewMode, selectedIds: ReadonlySet<string>, warnings: Warning[],
   view: NodeView = { kind: 'full' }, peerMarks: PeerMarks = new Map(),
+  columnSelection: {
+    selectedColumnIds?: readonly string[]
+    onColumnClick?: (columnId: string, mode: 'replace' | 'toggle' | 'range') => void
+  } = {},
 ): Node<TableNodeData>[] {
   const tables = Object.values(model.tables).filter(
     (t) => view.kind === 'full' || t.groupId === view.groupId,
@@ -34,7 +38,11 @@ export function buildNodes(
       id: table.id,
       type: 'table',
       position,
-      // ReactFlow 내부 선택과 store를 맞춘다 — 박스 선택이 이 값을 읽고 쓴다.
+      // React Flow **자신의** 선택 플래그도 store 기준으로 세운다. canvas.tsx는 store가 바뀔 때마다
+      // 노드 배열을 통째로 교체하므로(setNodes(derived)), 여기서 세우지 않으면 재구성이 React Flow의
+      // 선택을 지운다 — 선택이라는 같은 사실이 두 곳에 따로 살아 어긋난다. store를 단일 진실
+      // 원본으로 두고 React Flow는 그것을 비추기만 한다. 박스 선택도 이 값을 읽고 쓴다.
+      // (아래 data.selected는 TableNode가 선택 링을 그리는 데 쓰는 별개 값이다.)
       selected: isSelected,
       data: {
         table,
@@ -44,6 +52,12 @@ export function buildNodes(
         tableWarnings,
         columnWarnings,
         peers: peerMarks.get(table.id),
+        // 불변식: 컬럼 선택은 한 테이블에만 존재한다 — 선택된 테이블이 정확히 이 노드일 때만 싣는다.
+        // (집합의 크기가 1이고 이 테이블을 담고 있다 = 그 유일한 원소가 이 테이블이다.)
+        selectedColumnIds: selectedIds.size === 1 && isSelected
+          ? columnSelection.selectedColumnIds
+          : [],
+        onColumnClick: columnSelection.onColumnClick,
       },
     }
   })

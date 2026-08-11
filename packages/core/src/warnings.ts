@@ -15,6 +15,7 @@ export type Warning = {
     | 'reserved'
     | 'duplicate-physical-table'
     | 'custom-required'
+    | 'required-empty'
   scope: 'table' | 'column' | 'relationship'
   entityId: string
   tableId?: string
@@ -144,7 +145,28 @@ export function computeWarnings(
     }
   }
 
-  // 5) 커스텀 항목 필수 미입력 — 명명 규칙과 무관하므로 rules 게이트 밖에서 계산한다.
+  // 5) 표준 필드 필수 미입력 — 명명 규칙과 무관한 완결성 경고이므로 rules 게이트 밖에서 계산한다.
+  const requiredEmpty = (
+    scope: 'table' | 'column', entityId: string, tableId: string | undefined,
+    label: string, value: string,
+  ) => {
+    if (value.trim() !== '') return
+    warnings.push({
+      kind: 'required-empty', scope, entityId, tableId,
+      message: `필수 항목 "${label}"이(가) 비어 있습니다`,
+    })
+  }
+  for (const t of Object.values(model.tables)) {
+    requiredEmpty('table', t.id, undefined, '논리명', t.logicalName)
+    requiredEmpty('table', t.id, undefined, '물리명', t.physicalName)
+  }
+  for (const c of Object.values(model.columns)) {
+    requiredEmpty('column', c.id, c.tableId, '논리명', c.logicalName)
+    requiredEmpty('column', c.id, c.tableId, '물리명', c.physicalName)
+    requiredEmpty('column', c.id, c.tableId, '타입', c.type)
+  }
+
+  // 6) 커스텀 항목 필수 미입력 — 명명 규칙과 무관하므로 rules 게이트 밖에서 계산한다.
   const tableFields = customFieldsFor(model, 'table')
   const columnFields = customFieldsFor(model, 'column')
   const checkRequired = (

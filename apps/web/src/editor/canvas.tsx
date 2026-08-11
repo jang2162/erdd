@@ -17,11 +17,12 @@ import { GhostNode } from './ghost-node.js'
 import { buildGhostNodes } from './ghost-nodes.js'
 import { RelationshipEdge, RelationshipMarkers } from './relationship-edge.js'
 import { useModelMutation } from './use-model.js'
+import { useEditorShortcuts } from './use-shortcuts.js'
 import { moveTable, moveTableGroupPosition } from './model-edits.js'
 import { moveNote } from './note-edits.js'
 import { useDragStore } from './drag-store.js'
 import { dropTargetAt } from './drop-target.js'
-import { applyGroupMove } from './bulk-panel.js'
+import { applyGroupMove, BulkDeleteDialog } from './bulk-panel.js'
 import { newId } from './uid.js'
 import { computeWarnings, createRelationshipFromParentPk } from '@erdd/core'
 
@@ -49,6 +50,8 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const viewMode = useEditorStore((s) => s.viewMode)
   const selectedTableIds = useEditorStore((s) => s.selectedTableIds)
   const selectedIds = useMemo(() => new Set(selectedTableIds), [selectedTableIds])
+  const selectedColumnIds = useEditorStore((s) => s.selectedColumnIds)
+  const selectColumn = useEditorStore((s) => s.selectColumn)
   const selectedRelId = useEditorStore((s) => s.selectedRelationshipId)
   const selectedNoteId = useEditorStore((s) => s.selectedNoteId)
   const selectedGroupId = useEditorStore((s) => s.selectedGroupId)
@@ -70,6 +73,9 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
    */
   const dragOver = useDragStore((s) => s.over)
   const mutate = useModelMutation(projectId)
+  // 복사·잘라내기·붙여넣기·삭제 단축키. 삭제 경로는 React Flow가 아니라 이 훅이 소유한다.
+  // 다중 선택 Delete는 즉시 지우지 않고 확인 대상을 돌려준다 — 다이얼로그는 아래에서 그린다.
+  const shortcutDelete = useEditorShortcuts({ projectId })
   const rf = useReactFlow()
   // 그룹 드래그 시작 시점의 그룹 노드 위치 + 소속 테이블 위치 스냅샷(전체 뷰에서만 사용).
   const dragOrigin = useRef<{ groupNodeStart: XYPosition; members: Map<string, XYPosition> } | null>(null)
@@ -86,8 +92,17 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     ? { kind: 'group' as const, groupId: activeGroupView }
     : { kind: 'full' as const }
 
+  const onColumnClick = useCallback(
+    (columnId: string, mode: 'replace' | 'toggle' | 'range') => {
+      const col = model.columns[columnId]
+      if (col) selectColumn(col.tableId, columnId, mode)
+    },
+    [model.columns, selectColumn],
+  )
+
   const derived = useMemo(() => {
-    const tableNodes = buildNodes(model, viewMode, selectedIds, warnings, view, peerMarks)
+    const tableNodes = buildNodes(
+      model, viewMode, selectedIds, warnings, view, peerMarks, { selectedColumnIds, onColumnClick })
     if (view.kind === 'group') {
       // 그룹 뷰: 색상 영역·메모 노드는 숨긴다. 관계로 이어진 외부 테이블은 고스트로 보여준다.
       const ghostNodes = buildGhostNodes(model, view.groupId)
@@ -102,7 +117,7 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     }))
     return [...groupNodes, ...tableNodes, ...noteNodes]
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, viewMode, selectedIds, selectedNoteId, selectedGroupId, canEdit, warnings, peerMarks, view.kind, view.kind === 'group' ? view.groupId : null])
+  }, [model, viewMode, selectedIds, selectedColumnIds, onColumnClick, selectedNoteId, selectedGroupId, canEdit, warnings, peerMarks, view.kind, view.kind === 'group' ? view.groupId : null])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.
@@ -138,8 +153,16 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
    * 무한 반복해 React 가 "Maximum update depth exceeded" 로 끊었다). `onNodesChange` 의 select
    * 변경은 사용자가 조작한 그 틱에 **델타로** 도착해 늦지도 어긋나지도 않는다.
    *
+   * ⚠️ **창구를 둘로 두면 이중 토글로 상쇄된다.** React Flow 는 노드를 클릭하면 `onNodeClick` 보다
+   * **먼저** 자기 lookup 을 직접 변형한다(`onSelectNodeHandler` → `handleNodeClick` →
+   * `getSelectionChanges(..., mutateItem=true)`). 그 변형이 여기 델타로 도착하므로, `onNodeClick`
+   * 에서도 `toggleTable` 을 부르면 Cmd+클릭 한 번에 두 번 토글되어 서로를 되돌린다. 그래서
+   * `onNodeClick` 에는 테이블 선택 로직이 없다(메모·그룹·고스트 분기만 남는다).
+   *
    * 노드 배열에는 그룹·메모·고스트가 섞여 있다(그룹·고스트는 `selectable: false` 라 안 오지만
    * **메모는 온다**) — 모델의 테이블인지로 걸러야 메모 클릭이 테이블 선택으로 둔갑하지 않는다.
+   * 고스트는 노드 id 가 **원본 테이블 id 그대로**라 이 검사만으로는 걸러지지 않지만, 애초에
+   * `selectable: false` 라 select 델타를 만들지 않는다.
    */
   const onNodesChangeWithSelection = useCallback((changes: NodeChange[]) => {
     onNodesChange(changes)
@@ -148,7 +171,7 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     for (const c of changes) {
       if (c.type !== 'select' || !Object.hasOwn(s.model.tables, c.id)) continue
       const has = next.includes(c.id)
-      // 새로 고른 것은 **뒤에 붙인다** — "마지막 원소 = 주 선택" 규약을 캔버스도 지킨다.
+      // 새로 고른 것은 **뒤에 붙인다** — 배열 순서는 "고른 순서"이고 `[0]` 이 주 선택이다.
       if (c.selected && !has) next = [...next, c.id]
       else if (!c.selected && has) next = next.filter((id) => id !== c.id)
     }
@@ -188,15 +211,18 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
         // 팬·줌·선택은 뷰 상태라 그대로 둔다.
         nodesDraggable={canEdit}
         nodesConnectable={canEdit}
-        deleteKeyCode={canEdit ? 'Backspace' : null}
+        // 삭제는 useEditorShortcuts가 전담한다. 두 삭제 경로가 공존하면 컬럼 선택 상태에서
+        // 어느 쪽이 이기는지가 렌더 순서에 달린다 — React Flow 자체 삭제는 끈다.
+        deleteKeyCode={null}
         onNodesChange={onNodesChangeWithSelection}
         onConnect={onConnect}
         onNodeClick={(_, node) => {
           if (node.type === 'ghost') return
           if (node.type === 'group') { select(null); return } // 빈 영역 클릭 = 선택 해제(라벨은 stopPropagation으로 별도 처리)
           if (node.type === 'note') selectNote(node.id)
-          // 테이블 선택은 onNodesChangeWithSelection 한 곳에서만 처리한다 — 창구가 둘이면
-          // Cmd+클릭 한 번에 ReactFlow 내부 토글과 우리 토글이 겹쳐 서로를 되돌린다.
+          // 테이블 선택(단일 클릭·Cmd/Ctrl+클릭 토글·박스 선택)은 onNodesChangeWithSelection
+          // 한 곳에서만 처리한다 — 창구가 둘이면 Cmd+클릭 한 번에 ReactFlow 내부 토글과 우리
+          // 토글이 겹쳐 서로를 되돌린다.
         }}
         onEdgeClick={(_, edge) => selectRelationship(edge.id)}
         onPaneClick={() => select(null)}
@@ -280,6 +306,16 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
         <MiniMap pannable zoomable />
         <Controls showInteractive={false} />
       </ReactFlow>
+      {/*
+        Delete 단축키가 다중 선택을 겨눴을 때의 확인 다이얼로그. 툴바·일괄 패널과 같은 컴포넌트라
+        문구·op 상한 가드가 세 진입점에서 한 벌이다(설계 §7).
+      */}
+      <BulkDeleteDialog
+        projectId={projectId}
+        ids={shortcutDelete.confirmingIds}
+        open={shortcutDelete.confirmingIds.length > 0}
+        onOpenChange={(v) => { if (!v) shortcutDelete.closeConfirm() }}
+      />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { primaryTableId, useEditorStore } from './store.js'
 
@@ -37,13 +37,20 @@ describe('editor store 다중 선택', () => {
     expect(useEditorStore.getState().selectedTableIds).toEqual([])
   })
 
-  it('toggleTable은 없으면 뒤에 붙이고 있으면 뺀다 — 마지막 원소가 주 선택이다', () => {
+  it('toggleTable은 없으면 뒤에 붙이고 있으면 뺀다 — 배열 순서 = 고른 순서', () => {
     useEditorStore.getState().select('a')
     useEditorStore.getState().toggleTable('b')
     expect(useEditorStore.getState().selectedTableIds).toEqual(['a', 'b'])
-    expect(primaryTableId(useEditorStore.getState())).toBe('b')
     useEditorStore.getState().toggleTable('a')
     expect(useEditorStore.getState().selectedTableIds).toEqual(['b'])
+  })
+
+  it('주 선택은 배열의 [0] — 나중에 고른 것이 기준을 빼앗지 않는다', () => {
+    // 순서는 "고른 순서"이고 기준점은 **처음** 고른 것이다. 뒤에 붙이는 규칙과 [0] 규약이
+    // 함께 성립해야 한다 — 앞에 붙이도록 바꾸면 이 단언이 무너진다.
+    useEditorStore.getState().select('a')
+    useEditorStore.getState().toggleTable('b')
+    expect(primaryTableId(useEditorStore.getState())).toBe('a')
   })
 
   it('primaryTableId는 선택이 없으면 null이다', () => {
@@ -166,5 +173,162 @@ describe('editor store pruneSelection', () => {
     delete model.relationships[relationshipId!]
     useEditorStore.getState().pruneSelection(model)
     expect(useEditorStore.getState().selectedRelationshipId).toBeNull()
+  })
+})
+
+/**
+ * 이 사이클이 새로 만든 선택 액션들도 컬럼 불변식을 지켜야 한다
+ * (`selectedTableIds.length !== 1` → `selectedColumnIds`는 빈 배열).
+ * main 트랙이 세운 불변식인데, 그 트랙은 이 액션들의 존재를 몰랐으므로 여기서 따로 잠근다.
+ */
+describe('다중 선택 액션과 컬럼 불변식', () => {
+  const s = () => useEditorStore.getState()
+
+  beforeEach(() => { s().reset(); s().setLoaded(buildSampleModel(), 1, 'p1') })
+
+  it('selectTables로 2개를 고르면 컬럼 선택이 비워진다', () => {
+    s().selectColumn('t2', 'c2', 'replace')
+    expect(s().selectedColumnIds).toEqual(['c2'])
+    s().selectTables(['t1', 't2'])
+    expect(s().selectedColumnIds).toEqual([])
+  })
+
+  it('selectTables([])는 컬럼 선택도 비운다 — 컬럼은 테이블에 종속된다', () => {
+    // 메모·관계·그룹은 형제라 건드리지 않지만(설계 4.1) 컬럼은 자식이다. 테이블 선택이 비었는데
+    // 컬럼만 남으면 불변식이 깨지고, 그 컬럼 id로 Cmd+C가 빈 페이로드를 클립보드에 덮는다.
+    s().selectColumn('t2', 'c2', 'replace')
+    s().selectNote('n1')
+    s().selectColumn('t2', 'c2', 'replace')
+    s().selectTables([])
+    expect(s().selectedTableIds).toEqual([])
+    expect(s().selectedColumnIds).toEqual([])
+  })
+
+  it('pruneSelection도 컬럼 불변식을 지킨다 — 테이블이 사라지면 그 컬럼 선택도 빠진다', () => {
+    // resync만 컬럼을 걸렀던 규칙을 keptSelection으로 들였다. 두 진입점이 갈리면
+    // 같은 삭제가 도착 경로(로컬 편집 / seq 간극 리로드)에 따라 다른 결과를 낸다.
+    s().select('t2')
+    s().selectColumn('t2', 'c2', 'replace')
+    const m = buildSampleModel()
+    delete m.tables['t2']
+    s().pruneSelection(m)
+    expect(s().selectedTableIds).toEqual([])
+    expect(s().selectedColumnIds).toEqual([])
+  })
+
+  it('pruneSelection은 사라진 컬럼만 걷어내고 살아남은 컬럼은 유지한다', () => {
+    s().select('t2')
+    s().selectColumn('t2', 'c2', 'replace')
+    s().selectColumn('t2', 'c3', 'toggle')
+    const m = buildSampleModel()
+    delete m.columns['c3']
+    s().pruneSelection(m)
+    expect(s().selectedTableIds).toEqual(['t2'])
+    expect(s().selectedColumnIds).toEqual(['c2'])
+  })
+
+  it('아무것도 안 사라지면 컬럼 배열 참조도 유지한다', () => {
+    s().select('t2')
+    s().selectColumn('t2', 'c2', 'replace')
+    const before = s().selectedColumnIds
+    s().pruneSelection(buildSampleModel())
+    expect(s().selectedColumnIds).toBe(before)
+  })
+})
+
+describe('선택 배열', () => {
+  const s = () => useEditorStore.getState()
+
+  beforeEach(() => { s().reset(); s().setLoaded(buildSampleModel(), 1, 'p1') })
+
+  it('select는 단일 선택으로 배열을 만든다', () => {
+    s().select('t1')
+    expect(s().selectedTableIds).toEqual(['t1'])
+  })
+
+  it('select(null)은 선택을 비운다', () => {
+    s().select('t1')
+    s().select(null)
+    expect(s().selectedTableIds).toEqual([])
+  })
+
+  it('toggleTable은 있으면 빼고 없으면 더한다', () => {
+    s().select('t1')
+    s().toggleTable('t2')
+    expect(s().selectedTableIds).toEqual(['t1', 't2'])
+    s().toggleTable('t1')
+    expect(s().selectedTableIds).toEqual(['t2'])
+  })
+
+  it('테이블이 2개 이상 선택되면 컬럼 선택이 비워진다', () => {
+    s().select('t2')
+    s().selectColumn('t2', 'c2', 'replace')
+    expect(s().selectedColumnIds).toEqual(['c2'])
+    s().toggleTable('t1')
+    expect(s().selectedTableIds).toHaveLength(2)
+    expect(s().selectedColumnIds).toEqual([])
+  })
+
+  it('다른 테이블의 컬럼을 고르면 테이블 선택이 그 테이블로 바뀌고 컬럼이 교체된다', () => {
+    s().select('t2')
+    s().selectColumn('t2', 'c2', 'replace')
+    s().selectColumn('t1', 'c1', 'replace')
+    expect(s().selectedTableIds).toEqual(['t1'])
+    expect(s().selectedColumnIds).toEqual(['c1'])
+  })
+
+  it("selectColumn 'toggle'은 같은 테이블 안에서 누적·해제한다", () => {
+    s().selectColumn('t2', 'c2', 'replace')
+    s().selectColumn('t2', 'c3', 'toggle')
+    expect(s().selectedColumnIds).toEqual(['c2', 'c3'])
+    s().selectColumn('t2', 'c2', 'toggle')
+    expect(s().selectedColumnIds).toEqual(['c3'])
+  })
+
+  it("selectColumn 'range'는 마지막 선택부터 범위를 order 순으로 채운다", () => {
+    // 픽스처 t2의 컬럼: c2(order 0) · c3(order 1) · c4(order 2)
+    s().selectColumn('t2', 'c2', 'replace')
+    s().selectColumn('t2', 'c4', 'range')
+    expect(s().selectedColumnIds).toEqual(['c2', 'c3', 'c4'])
+  })
+
+  it("range에 앞선 선택이 없으면 replace처럼 동작한다", () => {
+    s().select('t2')
+    s().selectColumn('t2', 'c3', 'range')
+    expect(s().selectedColumnIds).toEqual(['c3'])
+  })
+
+  it('테이블 선택이 바뀌면 컬럼 선택이 비워진다', () => {
+    s().selectColumn('t2', 'c2', 'replace')
+    s().select('t1')
+    expect(s().selectedColumnIds).toEqual([])
+  })
+
+  it('관계·메모·그룹 선택은 테이블·컬럼 선택을 비운다', () => {
+    s().selectColumn('t2', 'c2', 'replace')
+    s().selectRelationship('r1')
+    expect(s().selectedTableIds).toEqual([])
+    expect(s().selectedColumnIds).toEqual([])
+  })
+
+  it('resync는 사라진 테이블·컬럼 id를 선택에서 뺀다', () => {
+    s().select('t2')
+    s().selectColumn('t2', 'c2', 'replace')
+    s().selectColumn('t2', 'c3', 'toggle')
+    const m = buildSampleModel()
+    delete m.columns['c3']
+    s().resync(m, 2)
+    expect(s().selectedTableIds).toEqual(['t2'])
+    expect(s().selectedColumnIds).toEqual(['c2'])
+  })
+
+  it('resync에서 테이블이 사라지면 그 컬럼 선택도 사라진다', () => {
+    s().select('t2')
+    s().selectColumn('t2', 'c2', 'replace')
+    const m = buildSampleModel()
+    delete m.tables['t2']
+    s().resync(m, 2)
+    expect(s().selectedTableIds).toEqual([])
+    expect(s().selectedColumnIds).toEqual([])
   })
 })

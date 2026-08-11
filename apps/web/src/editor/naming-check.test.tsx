@@ -7,16 +7,21 @@ import { NamingCheck } from './naming-check.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 
-// 논리명은 비워둔다(단어사전 미등록으로 인한 unknown-word 경고를 배제해 케이스를 단순화).
+// 논리명 '주문'과 물리명이 정확히 일치하는 용어를 등록해 둔다 — 용어 완전일치 경로로
+// unknown-word(단어사전 미등록)·term-mismatch를 피하면서도 논리명·물리명을 모두 채워
+// required-empty 노이즈 없이 케이스를 단순화한다.
 function loadWith(physicalName: string) {
   const m = createEmptyModel()
+  m.terms['term1'] = {
+    id: 'term1', logicalName: '주문', physicalName, domainId: null, description: null, origin: null,
+  }
   m.tables['t1'] = {
-    id: 't1', logicalName: '', physicalName, comment: null,
+    id: 't1', logicalName: '주문', physicalName, comment: null,
     groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
   }
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
   useEditorStore.getState().setProjectConfig(
-    { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'])
+    { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'], null)
 }
 
 afterEach(() => { cleanup(); useEditorStore.getState().reset() })
@@ -32,7 +37,7 @@ describe('NamingCheck', () => {
   })
 
   it('규칙에 부합하면 경고 없음을 표시한다', async () => {
-    loadWith('ORD') // 안전한 물리명, 논리명 비어 unknown-word도 없음
+    loadWith('ORD') // 안전한 물리명(예약어 아님, 길이 제한 이내), 용어 완전일치로 명명 경고도 없음
     render(<NamingCheck projectId={PROJECT_ID} />)
     await userEvent.click(screen.getByRole('button', { name: /모델 검사/ }))
     expect(screen.getByText(/경고가 없습니다/)).toBeInTheDocument()
@@ -44,13 +49,16 @@ describe('NamingCheck', () => {
       id: 'cf1', name: '업무구분', target: 'table', type: 'text',
       options: [], required: true, defaultValue: null, order: 0, origin: null,
     }
+    m.terms['term1'] = {
+      id: 'term1', logicalName: '주문', physicalName: 'ORD', domainId: null, description: null, origin: null,
+    }
     m.tables['t1'] = {
-      id: 't1', logicalName: '', physicalName: 'ORD', comment: null,
+      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
       groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     useEditorStore.getState().setProjectConfig(
-      { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'])
+      { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'], null)
     render(<NamingCheck projectId={PROJECT_ID} />)
 
     await userEvent.click(screen.getByRole('button', { name: /모델 검사/ }))

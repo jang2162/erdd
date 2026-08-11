@@ -38,6 +38,19 @@ describe('buildGhostNodes', () => {
     expect(usr.draggable).toBe(false)
     expect(usr.connectable).toBe(false)
   })
+  /*
+   * ⚠️ 고스트는 **원본 테이블 id를 그대로** 쓴다(위 주석 — 관계 엣지가 그 id로 끝점을 찾는다).
+   * 그래서 캔버스의 선택 창구(`onNodesChange`의 select 델타)가 쓰는 `Object.hasOwn(model.tables,
+   * id)` 필터로는 고스트가 **걸러지지 않는다** — 델타에는 노드 type이 없기 때문이다.
+   * 그룹 뷰에서 고스트를 클릭해도 다른 그룹의 테이블이 선택되지 않는 것은 오직 이 플래그가
+   * 지킨다. 지우면 아무 데서도 실패하지 않으므로 여기서 잠근다.
+   */
+  it('고스트는 선택할 수 없다 — 선택 창구가 id로는 고스트를 구별하지 못한다', () => {
+    const ghosts = buildGhostNodes(model(), 'G1')
+    expect(ghosts.length).toBeGreaterThan(0)
+    for (const g of ghosts) expect(g.selectable).toBe(false)
+  })
+
   it('한 외부 테이블이 여러 관계로 연결돼도 고스트는 하나다(dedup)', () => {
     const m = model()
     // USR↔ORD가 이미 R1. 두 번째 관계 R3도 USR(외부)↔ORD(내부).

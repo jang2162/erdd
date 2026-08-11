@@ -14,6 +14,8 @@ export type TableNodeData = {
   tableWarnings?: Warning[]
   columnWarnings?: Record<string, Warning[]>
   peers?: PeerMark[]
+  selectedColumnIds?: readonly string[]
+  onColumnClick?: (columnId: string, mode: 'replace' | 'toggle' | 'range') => void
 }
 
 function name(logical: string, physical: string, mode: ViewMode) {
@@ -35,7 +37,8 @@ export function TableNode({
    */
   isConnectable?: boolean
 }) {
-  const { table, columns, viewMode, selected, tableWarnings = [], columnWarnings = {}, peers = [] } = data
+  const { table, columns, viewMode, selected, tableWarnings = [], columnWarnings = {}, peers = [],
+    selectedColumnIds = [], onColumnClick } = data
   const peerColorHex = peers[0]?.color
   const sorted = [...columns].sort((a, b) => a.order - b.order)
   const mixed = viewMode === 'mixed'
@@ -77,7 +80,23 @@ export function TableNode({
         {sorted.map((c) => {
           const cWarnings = columnWarnings[c.id] ?? []
           return (
-            <li key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+            <li
+              key={c.id}
+              role="button"
+              tabIndex={0}
+              aria-selected={selectedColumnIds.includes(c.id)}
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 text-xs',
+                selectedColumnIds.includes(c.id) && 'bg-primary/10',
+                onColumnClick && 'cursor-pointer',
+              )}
+              onClick={(e) => {
+                if (!onColumnClick) return
+                e.stopPropagation() // React Flow의 onNodeClick이 테이블 선택으로 덮어쓰는 것을 막는다
+                const mode = e.shiftKey ? 'range' : (e.metaKey || e.ctrlKey) ? 'toggle' : 'replace'
+                onColumnClick(c.id, mode)
+              }}
+            >
               <span className="flex w-4 shrink-0 justify-center">
                 {c.isPk && <KeyRound className="size-3 text-key" aria-label="기본 키" />}
               </span>

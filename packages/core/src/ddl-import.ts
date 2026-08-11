@@ -2,10 +2,12 @@ import { fromDialectType, type Dialect } from './dialect.js'
 import type { ProjectModel } from './model.js'
 import { restoreLogicalName, type NamingRules } from './naming.js'
 import type { ParsedDdl, ParsedTable, ParsedConstraint } from './ddl-parse.js'
+import type { ParsedDbml } from './dbml-parse.js'
 
 export type DdlImportWarning = {
   kind: 'ambiguous-type' | 'unknown-type' | 'unknown-word'
       | 'table-conflict' | 'unresolved-fk' | 'unresolved-index' | 'skipped-statement'
+      | 'unknown-custom-field'
   target: string
   message: string
 }
@@ -13,24 +15,39 @@ export type DdlImportColumn = {
   physicalName: string; logicalName: string; type: string
   isPk: boolean; nullable: boolean; autoIncrement: boolean
   defaultValue: string | null; comment: string | null
+  /** 키는 customField.id. DDL 경로에서는 항상 빈 객체다. */
+  custom: Record<string, string>
 }
 export type DdlImportTable = {
   physicalName: string; logicalName: string; comment: string | null
   columns: DdlImportColumn[]
   indexes: Array<{ name: string; columnPhysicalNames: string[]; unique: boolean }>
+  custom: Record<string, string>
 }
 export type DdlImportRelationship = {
   childPhysicalName: string; parentPhysicalName: string
   columnPairs: Array<{ child: string; parent: string }>
   identifying: boolean
+  /** DDL 경로는 항상 '1:N' 이다(SQL 에 1:1 표현이 없다). */
+  cardinality: '1:1' | '1:N'
+  /** DDL 경로는 항상 null 이다 — 자동 생성 제약명이 되읽히면 왕복이 깨진다. */
+  name: string | null
+}
+export type DdlImportGroup = {
+  name: string; color: string | null; comment: string | null
+  tablePhysicalNames: string[]; existingId: string | null
 }
 export type DdlImportPlan = {
   tables: DdlImportTable[]
   relationships: DdlImportRelationship[]
   skippedTables: string[]
   warnings: DdlImportWarning[]
+  groups: DdlImportGroup[]
   opCountEstimate: number
 }
+
+/** DBML 파서만 채우는 확장 필드. DDL 경로에서는 undefined 다. */
+type ImportInput = ParsedDdl & Partial<Pick<ParsedDbml, 'groups' | 'customValues'>>
 
 /** commentText의 역 — 첫 ' - '에서 한 번만 쪼갠다. */
 function splitComment(text: string): { logicalName: string; comment: string | null } {
@@ -51,7 +68,7 @@ const isSubset = (a: string[], b: string[]) => {
 }
 
 export function planDdlImport(
-  model: ProjectModel, parsed: ParsedDdl, dialect: Dialect, rules: NamingRules,
+  model: ProjectModel, parsed: ImportInput, dialect: Dialect, rules: NamingRules,
 ): DdlImportPlan {
   const warnings: DdlImportWarning[] = []
 
@@ -94,6 +111,37 @@ export function planDdlImport(
   for (const c of parsed.comments) {
     if (c.column === null) tableComment.set(upper(c.table), c.text)
     else columnComment.set(`${upper(c.table)}.${upper(c.column)}`, c.text)
+  }
+
+  // 3b) 커스텀 항목 값 색인. 커스텀 항목 정의는 **이름으로** 찾는다 — 문서에 UUID 를
+  // 노출하지 않으려고 DBML note 꼬리의 키를 정의 이름으로 냈기 때문이다(설계 §3).
+  const fieldIdByName = new Map<string, string>()
+  for (const f of Object.values(model.customFields)) fieldIdByName.set(`${f.target}:${f.name}`, f.id)
+
+  const customIndex = new Map<string, Record<string, string>>()
+  for (const cv of parsed.customValues ?? []) {
+    const key = cv.column === null ? upper(cv.table) : `${upper(cv.table)}.${upper(cv.column)}`
+    customIndex.set(key, cv.values)
+  }
+
+  /** 이름 키를 정의 id 키로 옮긴다. 정의가 없으면 버리고 경고한다 — 이름 키를 그대로
+   * 심으면 id 공간과 섞여, 나중에 같은 이름의 정의가 생겨도 연결되지 않는 죽은 값이 된다. */
+  const resolveCustom = (
+    values: Record<string, string> | undefined, target: 'table' | 'column', warnTarget: string,
+  ): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const [name, v] of Object.entries(values ?? {})) {
+      const id = fieldIdByName.get(`${target}:${name}`)
+      if (id === undefined) {
+        warnings.push({
+          kind: 'unknown-custom-field', target: warnTarget,
+          message: `커스텀 항목 정의가 없어 "${name}" 값을 버렸습니다`,
+        })
+        continue
+      }
+      out[id] = v
+    }
+    return out
   }
 
   /** 코멘트 → 사전 → 물리명. target은 경고에 쓸 이름이다. */
@@ -146,6 +194,9 @@ export function planDdlImport(
         physicalName: c.name, logicalName: colNamed.logicalName, type,
         isPk, nullable: !c.notNull && !isPk, autoIncrement: c.autoIncrement,
         defaultValue: c.defaultValue, comment: colNamed.comment,
+        custom: resolveCustom(
+          customIndex.get(`${upper(t.name)}.${upper(c.name)}`), 'column', target,
+        ),
       }
     })
 
@@ -153,6 +204,7 @@ export function planDdlImport(
     tables.push({
       physicalName: t.name, logicalName: named.logicalName, comment: named.comment,
       columns, indexes: [],
+      custom: resolveCustom(customIndex.get(upper(t.name)), 'table', t.name),
     })
   }
   const tableByUpper = new Map(tables.map((t) => [upper(t.physicalName), t]))
@@ -286,6 +338,11 @@ export function planDdlImport(
       childPhysicalName: child.name, parentPhysicalName: parent.name,
       columnPairs,
       identifying: childPk.length > 0 && isSubset(fk.columns, childPk),
+      cardinality: fk.oneToOne === true ? '1:1' : '1:N',
+      // 이름은 DBML 파서가 낸 fk 에서만 살린다. DDL 파서도 제약명을 채우지만(ALTER TABLE
+      // ADD CONSTRAINT <이름>), 그것을 살리면 우리 DDL 내보내기의 자동 생성 이름
+      // (FK_자식_부모)이 되읽을 때 들어와 왕복이 깨진다.
+      name: fk.oneToOne === undefined ? null : fk.name,
     })
   }
 
@@ -297,10 +354,27 @@ export function planDdlImport(
     })
   }
 
+  // 8) 그룹(DBML 전용). 살아남은 테이블만 담고, 같은 이름의 그룹이 모델에 있으면 그것을 쓴다.
+  const groups: DdlImportGroup[] = []
+  const groupIdByName = new Map(
+    Object.values(model.tableGroups).map((g) => [upper(g.name), g.id]),
+  )
+  for (const g of parsed.groups ?? []) {
+    const members = g.tables.filter((n) => tableByUpper.has(upper(n)))
+      .map((n) => tableByUpper.get(upper(n))!.physicalName)
+    if (members.length === 0) continue
+    groups.push({
+      name: g.name, color: g.color, comment: g.comment ?? null, tablePhysicalNames: members,
+      existingId: groupIdByName.get(upper(g.name)) ?? null,
+    })
+  }
+
   const opCountEstimate =
     tables.length
     + tables.reduce((n, t) => n + t.columns.length + t.indexes.length, 0)
     + relationships.length
+    // 기존 그룹에 넣는 경우는 테이블 create op 에 groupId 가 실려 나가므로 새 그룹만 센다.
+    + groups.filter((g) => g.existingId === null).length
 
-  return { tables, relationships, skippedTables, warnings, opCountEstimate }
+  return { tables, relationships, skippedTables, warnings, groups, opCountEstimate }
 }

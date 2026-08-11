@@ -68,7 +68,7 @@ describe('DictPanel', () => {
     loadModelWithDict()
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: /사전/ }))
-    await userEvent.click(screen.getByRole('button', { name: /미등록 단어/ }))
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
     // c1 "등급코드"(용어로 정확히 매치되지 않는 t1측 컬럼), c3 "회원명" 등에서 미분해 조각이 남는다.
     expect(screen.getByText('명')).toBeInTheDocument()
   })
@@ -118,8 +118,8 @@ describe('DictPanel', () => {
     expect(screen.queryByRole('button', { name: '등급코드 편집' })).toBeNull()
     expect(screen.queryByRole('button', { name: '등급코드 삭제' })).toBeNull()
 
-    // 미등록 단어 탭은 후보는 보이되 등록 입력·버튼은 없다.
-    await userEvent.click(screen.getByRole('button', { name: /미등록 단어/ }))
+    // 미등록 항목 탭은 후보는 보이되 등록 입력·버튼은 없다.
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
     expect(screen.getByText('명')).toBeInTheDocument()
     expect(screen.queryByLabelText('명 약어')).toBeNull()
     expect(screen.queryByRole('button', { name: '일괄 등록' })).toBeNull()
@@ -143,7 +143,8 @@ async function openTermEdit() {
 }
 
 async function typePhysicalName(value: string) {
-  const physical = screen.getByLabelText('물리명')
+  // FieldLabel의 필수 표기(별표+sr-only "(필수)")가 붙어 정확일치 조회가 깨진다 — 정규식으로 조회한다.
+  const physical = screen.getByLabelText(/^물리명/)
   await userEvent.clear(physical)
   await userEvent.type(physical, value)
 }
@@ -182,7 +183,8 @@ describe('DictPanel 용어 전파', () => {
     renderPanel()
     await openTermEdit()
     // 용어에 도메인을 지정하면 사용처 컬럼(도메인 없음 → dom1)이 전파 대상이 된다.
-    await userEvent.selectOptions(screen.getByLabelText('도메인 (선택)'), 'dom1')
+    // 설계 §5.2 — 「(선택)」 표기를 제거했다. 필수가 아니므로 별표 없이 정확히 "도메인"이다.
+    await userEvent.selectOptions(screen.getByLabelText('도메인'), 'dom1')
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
 
     expect(await screen.findByText(/함께 갱신할까요/)).toBeInTheDocument()
@@ -239,5 +241,63 @@ describe('DictPanel 용어 전파', () => {
     expect(m.columns.c4!.physicalName).toBe('GRADE_CD')
     // Revision 1건 — model.mutate가 정확히 한 번만 나간다
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
+  it('단어 다이얼로그는 약어가 논리명보다 앞에 온다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    // 실측: 탭은 role="tab"이 아니라 일반 버튼이고, 다이얼로그는 "사전" 트리거를 눌러야 열린다.
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+    await userEvent.click(screen.getByRole('button', { name: /단어 추가/ }))
+    const abbr = screen.getByLabelText(/약어/)
+    const logical = screen.getByLabelText(/논리명/)
+    expect(abbr.compareDocumentPosition(logical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('용어 다이얼로그는 물리명이 논리명보다 앞에 온다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+    // 실측: 탭 이름은 정확히 "용어"다(브리프의 role="tab" 조회는 이 파일 구조와 맞지 않는다).
+    await userEvent.click(screen.getByRole('button', { name: '용어' }))
+    await userEvent.click(screen.getByRole('button', { name: /용어 추가/ }))
+    const physical = screen.getByLabelText(/물리명/)
+    const logical = screen.getByLabelText(/논리명/)
+    expect(physical.compareDocumentPosition(logical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('미등록 약어에 논리명을 입력해 일괄 등록하면 단어가 생긴다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+    // 실측: 탭 제목이 "미등록 단어"에서 "미등록 항목"으로 바뀌었다.
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    const input = screen.getByLabelText('GRD 논리명')
+    await userEvent.type(input, '등급')
+    await userEvent.click(screen.getByRole('button', { name: '미등록 약어 일괄 등록' }))
+    await waitFor(() => {
+      const words = Object.values(useEditorStore.getState().model.words)
+      expect(words.some((w) => w.abbreviation === 'GRD' && w.logicalName === '등급')).toBe(true)
+    })
+  })
+
+  it('논리명을 입력하지 않은 약어는 등록되지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /사전/ }))
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.type(screen.getByLabelText('GRD 논리명'), '등급')
+    await userEvent.click(screen.getByRole('button', { name: '미등록 약어 일괄 등록' }))
+    await waitFor(() => {
+      expect(Object.values(useEditorStore.getState().model.words)).toHaveLength(1)
+    })
   })
 })

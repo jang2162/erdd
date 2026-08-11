@@ -4,23 +4,23 @@ import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { addTable, clearTableGroupPosition, moveTable, removeTable } from './model-edits.js'
 
 describe('model-edits', () => {
-  it('addTable inserts a table with a default physical name', () => {
+  it('addTable 은 새 테이블을 생성한다 (물리명은 비어 있다)', () => {
     const m = addTable(createEmptyModel(), { id: 't-new', position: { x: 10, y: 20 } })
     expect(m.tables['t-new']).toMatchObject({ id: 't-new', position: { x: 10, y: 20 } })
-    expect(m.tables['t-new']!.physicalName).not.toBe('')
+    expect(m.tables['t-new']!.physicalName).toBe('')
     // diff가 정확히 create 1건
     const ops = diffModels(createEmptyModel(), m)
     expect(ops).toHaveLength(1)
     expect(ops[0]!.action).toBe('create')
   })
 
-  it('addTable 의 논리명 번호와 물리명 번호가 같다', () => {
-    // 물리명은 nextTablePhysicalName 이 만들고 논리명은 그 반환 문자열에서 번호를 떼어 쓴다 —
-    // planJunction 이 두 번째 호출자가 되면서 'TABLE_n' 형식이 공유 계약이 됐다. 접두사가
-    // 바뀌면 planJunction 은 멀쩡하고 addTable 만 조용히 어긋나므로 쌍으로 잠근다.
+  it('연속으로 addTable 해도 물리명은 계속 비어 있고 논리명 번호만 늘어난다', () => {
+    // 예전에는 물리명이 nextTablePhysicalName 으로 채워지고 논리명이 그 번호를 그대로
+    // 따라갔다(D-A3 이전 설계). 지금은 물리명이 항상 비고, 논리명 번호는 물리명과 무관하게
+    // logicalName 집합만 보고 독립적으로 매겨진다.
     const used = addTable(createEmptyModel(), { id: 'x1', position: { x: 0, y: 0 } })
     const next = addTable(used, { id: 'x2', position: { x: 0, y: 0 } })
-    expect(next.tables['x2']).toMatchObject({ logicalName: '테이블2', physicalName: 'TABLE_2' })
+    expect(next.tables['x2']).toMatchObject({ logicalName: '테이블2', physicalName: '' })
   })
 
   it('moveTable changes only the position (one update op)', () => {
@@ -43,6 +43,18 @@ describe('model-edits', () => {
     expect(next.tables['tx']).toBeUndefined()
     const ops = diffModels(withT, next)
     expect(ops.every((o) => o.action === 'delete')).toBe(true)
+  })
+
+  it('새 테이블의 물리명은 비어 있고 논리명은 임시값이 붙는다', () => {
+    const m = addTable(buildSampleModel(), { id: 'new1', position: { x: 0, y: 0 } })
+    expect(m.tables['new1']!.physicalName).toBe('')
+    expect(m.tables['new1']!.logicalName).not.toBe('')
+  })
+
+  it('연속으로 추가해도 논리명이 서로 다르다', () => {
+    let m = addTable(buildSampleModel(), { id: 'new1', position: { x: 0, y: 0 } })
+    m = addTable(m, { id: 'new2', position: { x: 0, y: 0 } })
+    expect(m.tables['new1']!.logicalName).not.toBe(m.tables['new2']!.logicalName)
   })
 })
 

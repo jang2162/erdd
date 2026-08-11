@@ -13,8 +13,9 @@ export type ParsedTable = { name: string; columns: ParsedColumn[] }
 export type ParsedConstraint =
   | { kind: 'pk'; table: string; columns: string[] }
   | { kind: 'unique'; table: string; name: string | null; columns: string[] }
+  // oneToOne 은 DBML 파서만 채운다(`-` 연산자). DDL 파서는 채우지 않으므로 undefined 다.
   | { kind: 'fk'; table: string; name: string | null; columns: string[]
-      refTable: string; refColumns: string[] }
+      refTable: string; refColumns: string[]; oneToOne?: boolean }
 export type ParsedIndex = { table: string; name: string; columns: string[]; unique: boolean }
 export type ParsedComment = { table: string; column: string | null; text: string }
 export type SkippedStatement = { keyword: string; line: number; excerpt: string }

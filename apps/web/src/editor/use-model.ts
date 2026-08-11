@@ -32,7 +32,9 @@ export function useModelLoader(projectId: string) {
   }, [query.data, setLoaded, projectId])
   useEffect(() => {
     if (projectQuery.data) {
-      setProjectConfig(projectQuery.data.namingRules, projectQuery.data.dialects)
+      setProjectConfig(
+        projectQuery.data.namingRules, projectQuery.data.dialects, projectQuery.data.name,
+      )
       setPermissions({
         canEdit: projectQuery.data.canEdit,
         canManage: projectQuery.data.canManage,
