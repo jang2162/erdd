@@ -262,6 +262,8 @@ journalctl -u erdd -f      # ERDD server listening on :3000 이 보여야 한다
 | 이름 | 어디에 쓰이나 |
 |---|---|
 | `ERDD_SERVER_PORT` | **개발 전용.** vite dev 서버의 프록시 대상 포트(`apps/web/vite.config.ts`). 운영 빌드에는 관여하지 않는다. |
+| `ERDD_WEB_PORT` | **개발 전용.** vite dev 서버가 listen 할 포트(기본 `5173`, `apps/web/vite.config.ts`). 포트로 읽히지 않는 값을 주면 조용히 기본값으로 떨어지지 않고 에러로 죽는다. 운영 빌드에는 관여하지 않는다. |
+| `ERDD_WEB_HOST` | **개발 전용.** vite dev 서버의 바인딩 주소(기본 `127.0.0.1`, `apps/web/vite.config.ts`). 기본값을 두는 이유는 vite 가 IPv6 `[::1]` 에만 붙으면 브라우저가 접속하지 못하기 때문이다. 운영 빌드에는 관여하지 않는다. |
 | `ERDD_TOKEN` | `erdd` CLI 가 쓰는 액세스 토큰(`packages/cli`). 서버 동작에 영향 없다(→ [16-cli](../16-cli.md)). |
 
 ## 6. 최초 기동 후 할 일
