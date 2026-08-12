@@ -1,10 +1,9 @@
 import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { FolderPlus } from 'lucide-react'
-import { createGroup, type Table } from '@erdd/core'
+import type { Table } from '@erdd/core'
 import { primaryTableId, useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
-import { newId } from './uid.js'
-import { nextGroupColor } from './group-palette.js'
+import { createGroupWith } from './group-edits.js'
 import { applyGroupMove } from './bulk-panel.js'
 import { useDragStore } from './drag-store.js'
 import { dropAttrValue, dropTargetAt } from './drop-target.js'
@@ -133,14 +132,10 @@ export function TableTree({ projectId }: { projectId: string }) {
   }
 
   const onAddGroup = () => {
-    const id = newId()
-    // 개수 기반이 아니라 미사용 최소 번호를 찾는다(삭제 후 재추가 시 이름 충돌 방지).
-    const usedNames = new Set(Object.values(model.tableGroups).map((g) => g.name))
-    let n = 1
-    while (usedNames.has(`그룹${n}`)) n++
-    const usedColors = Object.values(model.tableGroups).map((g) => g.color)
-    void mutate((m) => createGroup(m, { id, name: `그룹${n}`, color: nextGroupColor(usedColors) }), { summary: '그룹 추가' })
-    selectGroup(id)
+    // 새 그룹 하나 만들기의 규칙은 createGroupWith 한 곳에 있다 — 우측 일괄 패널의
+    // 「선택 테이블로 새 그룹」과 같은 함수다. 여기서는 멤버 없이 만든다.
+    const id = createGroupWith(mutate, [])
+    if (id !== null) selectGroup(id)
   }
 
   const totalTables = Object.keys(model.tables).length
