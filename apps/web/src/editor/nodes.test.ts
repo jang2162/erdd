@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildNodes } from './nodes.js'
+import { buildAnchors } from './anchors.js'
 import { createEmptyModel, type Column, type ProjectModel, type Table } from '@erdd/core'
 
 function tbl(id: string): Table {
@@ -63,5 +64,38 @@ describe('buildNodes — React Flow 선택 플래그', () => {
   it('다중 선택이면 선택된 테이블 전부가 true다', () => {
     const nodes = buildNodes(model(), 'physical', new Set(['T1', 'T2']), [])
     for (const n of nodes) expect(n.selected).toBe(true)
+  })
+})
+
+describe('buildNodes — 앵커 전달', () => {
+  function relModel(): ProjectModel {
+    const m = model()
+    m.relationships['R'] = {
+      id: 'R', parentTableId: 'T1', childTableId: 'T2',
+      columnMappings: [{ childColumnId: 'C2', parentColumnId: 'C1' }],
+      cardinality: '1:N', identifying: false, name: null,
+    }
+    return m
+  }
+
+  it('테이블마다 자기 앵커 목록을 싣는다', () => {
+    const nodes = buildNodes(relModel(), 'physical', new Set<string>(), [])
+    const t1 = nodes.find((n) => n.id === 'T1')!
+    const t2 = nodes.find((n) => n.id === 'T2')!
+    expect(t1.data.anchors).toEqual([{ key: 'c:C1', columnIds: ['C1'] }])
+    expect(t2.data.anchors).toEqual([{ key: 'c:C2', columnIds: ['C2'] }])
+  })
+
+  it('앵커가 없는 테이블은 빈 배열을 받는다', () => {
+    const nodes = buildNodes(model(), 'physical', new Set<string>(), [])
+    for (const n of nodes) expect(n.data.anchors).toEqual([])
+  })
+
+  it('앵커를 넘기지 않아도 자기 계산으로 올바른 값을 싣는다', () => {
+    // 인자를 빠뜨려도 결과가 옳아야 한다 — 배선 누락이 "조용한 중앙 폴백"으로 숨지 않게 한다.
+    const withArg = buildNodes(relModel(), 'physical', new Set<string>(), [],
+      undefined, undefined, {}, buildAnchors(relModel()))
+    const without = buildNodes(relModel(), 'physical', new Set<string>(), [])
+    expect(without.map((n) => n.data.anchors)).toEqual(withArg.map((n) => n.data.anchors))
   })
 })

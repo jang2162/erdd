@@ -3,6 +3,7 @@ import type { ProjectModel, Warning } from '@erdd/core'
 import type { TableNodeData } from './table-node.js'
 import type { ViewMode } from './store.js'
 import type { PeerMarks } from './peer-marks.js'
+import { buildAnchors, type AnchorIndex } from './anchors.js'
 
 export type NodeView = { kind: 'full' } | { kind: 'group'; groupId: string }
 
@@ -13,6 +14,9 @@ export function buildNodes(
     selectedColumnIds?: readonly string[]
     onColumnClick?: (columnId: string, mode: 'replace' | 'toggle' | 'range') => void
   } = {},
+  // 기본값을 undefined 가 아니라 **자기 계산**으로 둔다 — 인자를 빠뜨려도 결과가 옳다.
+  // undefined 였다면 배선 누락이 "전부 중앙으로 조용히 폴백"으로 나타나 눈에 띄지 않는다.
+  anchors: AnchorIndex = buildAnchors(model),
 ): Node<TableNodeData>[] {
   const tables = Object.values(model.tables).filter(
     (t) => view.kind === 'full' || t.groupId === view.groupId,
@@ -58,6 +62,7 @@ export function buildNodes(
           ? columnSelection.selectedColumnIds
           : [],
         onColumnClick: columnSelection.onColumnClick,
+        anchors: anchors.byTable.get(table.id) ?? [],
       },
     }
   })

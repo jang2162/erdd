@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import type { ViewMode } from './store.js'
 import { WarningBadge } from './warning-badge.js'
 import type { PeerMark } from './peer-marks.js'
+import type { Anchor } from './anchors.js'
 
 export type TableNodeData = {
   table: Table
@@ -16,6 +17,8 @@ export type TableNodeData = {
   peers?: PeerMark[]
   selectedColumnIds?: readonly string[]
   onColumnClick?: (columnId: string, mode: 'replace' | 'toggle' | 'range') => void
+  /** 이 테이블에서 관계선이 붙는 지점들. 단일은 컬럼 행에, 복합은 합성 행에 렌더된다. */
+  anchors?: Anchor[]
 }
 
 function name(logical: string, physical: string, mode: ViewMode) {
