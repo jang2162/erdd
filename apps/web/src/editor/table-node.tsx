@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import type { ViewMode } from './store.js'
 import { WarningBadge } from './warning-badge.js'
 import type { PeerMark } from './peer-marks.js'
+import { AnchorHandles } from './anchor-handles.js'
 import type { Anchor } from './anchors.js'
 
 export type TableNodeData = {
@@ -41,10 +42,22 @@ export function TableNode({
   isConnectable?: boolean
 }) {
   const { table, columns, viewMode, selected, tableWarnings = [], columnWarnings = {}, peers = [],
-    selectedColumnIds = [], onColumnClick } = data
+    selectedColumnIds = [], onColumnClick, anchors = [] } = data
   const peerColorHex = peers[0]?.color
   const sorted = [...columns].sort((a, b) => a.order - b.order)
   const mixed = viewMode === 'mixed'
+  // 단일 앵커는 그 컬럼 행에, 복합 앵커는 맨 아래 합성 행에 붙는다.
+  const anchorByColumn = new Map(
+    anchors.filter((a) => a.columnIds.length === 1).map((a) => [a.columnIds[0]!, a]))
+  const composites = anchors.filter((a) => a.columnIds.length > 1)
+  const columnById = new Map(columns.map((c) => [c.id, c]))
+  /** 합성 행 라벨. 혼합 모드는 물리명만 쓴다 — 둘 다 넣으면 노드가 과하게 넓어진다(설계 D-4). */
+  const compositeLabel = (a: Anchor) =>
+    `(${a.columnIds.map((id) => {
+      const c = columnById.get(id)
+      if (c === undefined) return id
+      return viewMode === 'logical' ? c.logicalName : c.physicalName
+    }).join(', ')})`
 
   return (
     <div
@@ -89,7 +102,7 @@ export function TableNode({
               tabIndex={0}
               aria-selected={selectedColumnIds.includes(c.id)}
               className={cn(
-                'flex items-center gap-2 px-3 py-1.5 text-xs',
+                'relative flex items-center gap-2 px-3 py-1.5 text-xs',
                 selectedColumnIds.includes(c.id) && 'bg-primary/10',
                 onColumnClick && 'cursor-pointer',
               )}
@@ -100,6 +113,9 @@ export function TableNode({
                 onColumnClick(c.id, mode)
               }}
             >
+              {anchorByColumn.has(c.id) && (
+                <AnchorHandles anchorKey={anchorByColumn.get(c.id)!.key} />
+              )}
               <span className="flex w-4 shrink-0 justify-center">
                 {c.isPk && <KeyRound className="size-3 text-key" aria-label="기본 키" />}
               </span>
@@ -130,6 +146,12 @@ export function TableNode({
         {sorted.length === 0 && (
           <li className="px-3 py-1.5 text-xs text-muted-foreground">컬럼 없음</li>
         )}
+        {composites.map((a) => (
+          <li key={a.key} className="relative bg-secondary/40 px-3 py-1.5 text-xs font-medium">
+            <AnchorHandles anchorKey={a.key} />
+            <span className={cn(viewMode !== 'logical' && 'font-mono')}>{compositeLabel(a)}</span>
+          </li>
+        ))}
       </ul>
     </div>
   )

@@ -117,3 +117,76 @@ describe('컬럼 클릭 → 선택', () => {
     expect(row).toHaveAttribute('aria-selected', 'false')
   })
 })
+
+describe('TableNode — 앵커 핸들과 합성 행', () => {
+  const handleIds = (c: HTMLElement) =>
+    [...c.querySelectorAll('[data-handleid]')].map((el) => el.getAttribute('data-handleid'))
+
+  it('단일 앵커 컬럼 행에 좌·우 핸들이 붙는다', () => {
+    const { container } = renderNode({
+      ...DATA, viewMode: 'physical',
+      anchors: [{ key: 'c:c1', columnIds: ['c1'] }],
+    })
+    expect(handleIds(container)).toEqual(expect.arrayContaining(['l:c:c1', 'r:c:c1']))
+  })
+
+  it('앵커가 아닌 컬럼에는 핸들이 없다', () => {
+    const { container } = renderNode({
+      ...DATA, viewMode: 'physical',
+      anchors: [{ key: 'c:c1', columnIds: ['c1'] }],
+    })
+    expect(handleIds(container)).not.toContain('l:c:c2')
+  })
+
+  it('기존 중앙 핸들은 그대로 남는다', () => {
+    // 드래그 연결의 시작점이자 폴백 자리다 — 없어지면 관계를 만들 수 없다.
+    const { container } = renderNode({ ...DATA, viewMode: 'physical', anchors: [] })
+    expect(handleIds(container)).toEqual(expect.arrayContaining(['l', 'r']))
+  })
+
+  it('복합 앵커는 컬럼 목록 맨 아래에 합성 행으로 렌더된다', () => {
+    const { container } = renderNode({
+      ...DATA, viewMode: 'physical',
+      anchors: [{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }],
+    })
+    expect(screen.getByText('(MBR_NO, MBR_NM)')).toBeInTheDocument()
+    expect(handleIds(container)).toEqual(expect.arrayContaining(['l:s:c1+c2', 'r:s:c1+c2']))
+    // 맨 아래여야 한다 — 컬럼 행보다 뒤에 온다.
+    const items = [...container.querySelectorAll('li')].map((el) => el.textContent ?? '')
+    expect(items.at(-1)).toContain('(MBR_NO, MBR_NM)')
+  })
+
+  it('합성 행 라벨은 논리 모드에서 논리명을 쓴다', () => {
+    renderNode({
+      ...DATA, viewMode: 'logical',
+      anchors: [{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }],
+    })
+    expect(screen.getByText('(회원번호, 회원명)')).toBeInTheDocument()
+  })
+
+  it('혼합 모드에서 합성 행은 물리명만 쓴다', () => {
+    // 컬럼 2~3개의 논리명·물리명을 한 줄에 다 넣으면 노드가 과하게 넓어진다(설계 D-4).
+    renderNode({
+      ...DATA, viewMode: 'mixed',
+      anchors: [{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }],
+    })
+    expect(screen.getByText('(MBR_NO, MBR_NM)')).toBeInTheDocument()
+    expect(screen.queryByText('(회원번호, 회원명)')).not.toBeInTheDocument()
+  })
+
+  it('합성 행을 클릭해도 컬럼 선택이 일어나지 않는다', async () => {
+    const onColumnClick = vi.fn()
+    renderNode({
+      ...DATA, viewMode: 'physical', onColumnClick,
+      anchors: [{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }],
+    })
+    await userEvent.click(screen.getByText('(MBR_NO, MBR_NM)'))
+    expect(onColumnClick).not.toHaveBeenCalled()
+  })
+
+  it('앵커를 주지 않아도 렌더된다', () => {
+    // anchors 는 optional 이다 — 이 컴포넌트를 직접 렌더하는 기존 테스트들이 깨지면 안 된다.
+    const { container } = renderNode({ ...DATA, viewMode: 'physical' })
+    expect(handleIds(container)).toEqual(['l', 'r'])
+  })
+})
