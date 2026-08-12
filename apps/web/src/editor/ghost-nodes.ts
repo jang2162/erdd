@@ -1,9 +1,17 @@
 import type { Node } from '@xyflow/react'
 import type { ProjectModel, Table } from '@erdd/core'
+import { buildAnchors, type Anchor, type AnchorIndex } from './anchors.js'
 
-export type GhostNodeData = { table: Table; targetGroupId: string | null }
+export type GhostNodeData = {
+  table: Table
+  targetGroupId: string | null
+  /** 원본 테이블의 앵커 전체. 고스트에는 컬럼 행이 없어 전부 헤더 중앙에 겹쳐 렌더된다. */
+  anchors: Anchor[]
+}
 
-export function buildGhostNodes(model: ProjectModel, groupId: string): Node<GhostNodeData>[] {
+export function buildGhostNodes(
+  model: ProjectModel, groupId: string, anchors: AnchorIndex = buildAnchors(model),
+): Node<GhostNodeData>[] {
   const memberIds = new Set(
     Object.values(model.tables).filter((t) => t.groupId === groupId).map((t) => t.id),
   )
@@ -28,7 +36,7 @@ export function buildGhostNodes(model: ProjectModel, groupId: string): Node<Ghos
       selectable: false,
       connectable: false,
       zIndex: 0,
-      data: { table, targetGroupId: table.groupId },
+      data: { table, targetGroupId: table.groupId, anchors: anchors.byTable.get(id) ?? [] },
     })
   }
   return ghosts

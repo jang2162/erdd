@@ -216,10 +216,20 @@ describe('Canvas — 읽기 전용 잠금', () => {
     expect(groupNode.className).toMatch(/(^|\s)nopan(\s|$)/)
 
     // 대조군: 편집 권한이 있으면 핸들도 실제로 연결 가능 상태(class="connectable")로 렌더된다.
-    const handles = node.querySelectorAll('.react-flow__handle')
+    // 대상은 **연결용 중앙 핸들('l'/'r')뿐이다.** 컬럼 앵커 핸들('l:c:…' 등)은 관계선이 붙는
+    // 자리를 표시하기만 하고 연결 대상이 아니어서(설계 D-3) 권한과 무관하게 connectable 이
+    // 아니다 — 전부를 훑으면 그 설계를 위반해야만 통과하는 테스트가 된다.
+    const handles = node.querySelectorAll(
+      '.react-flow__handle[data-handleid="l"], .react-flow__handle[data-handleid="r"]')
     expect(handles.length).toBeGreaterThan(0)
     for (const h of handles) {
       expect(h.className).toMatch(/(^|\s)connectable(\s|$)/)
+    }
+    // 앵커 핸들은 반대로 연결 불가여야 한다 — 그래야 위 셀렉터 축소가 검사를 무르게 하지 않는다.
+    for (const h of node.querySelectorAll('.react-flow__handle')) {
+      const id = h.getAttribute('data-handleid') ?? ''
+      if (id === 'l' || id === 'r') continue
+      expect(h.className).not.toMatch(/(^|\s)connectable(\s|$)/)
     }
 
     // 대조군: 클릭으로도 여전히 선택(조회)된다.
