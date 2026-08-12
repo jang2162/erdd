@@ -3,6 +3,7 @@ import { generatePhysicalName, junctionTableName } from '@erdd/core'
 import type { JunctionSpec, NamingRules, Position, ProjectModel } from '@erdd/core'
 import type { PeerMark, PeerMarks } from './peer-marks.js'
 import { nextTablePhysicalName } from './model-edits.js'
+import { buildAnchors, handleId, type AnchorIndex } from './anchors.js'
 
 export type RelationshipEdgeData = {
   cardinality: '1:1' | '1:N'
@@ -12,6 +13,8 @@ export type RelationshipEdgeData = {
 
 export function buildEdges(
   model: ProjectModel, visibleTableIds?: Set<string>, peerMarks: PeerMarks = new Map(),
+  // 기본값을 자기 계산으로 둔다(nodes.ts 와 같은 이유) — 인자를 빠뜨려도 결과가 옳다.
+  anchors: AnchorIndex = buildAnchors(model),
 ): Edge[] {
   const edges: Edge[] = []
   for (const rel of Object.values(model.relationships)) {
@@ -21,13 +24,16 @@ export function buildEdges(
     const parent = model.tables[rel.parentTableId]
     const child = model.tables[rel.childTableId]
     // 자식이 부모보다 오른쪽이면 자식의 왼쪽 핸들 → 부모의 오른쪽 핸들.
+    // 좌우 판정 근거는 앵커가 생겨도 여전히 **테이블 위치**다(설계 3.7).
     const childRight = !!parent && !!child && child.position.x >= parent.position.x
+    // 앵커 키가 null 인 끝은 기존 중앙 핸들('l'/'r')로 떨어진다 — 양 끝을 각각 판정한다.
+    const keys = anchors.byRelationship.get(rel.id)
     edges.push({
       id: rel.id,
       source: rel.childTableId,
       target: rel.parentTableId,
-      sourceHandle: childRight ? 'l' : 'r',
-      targetHandle: childRight ? 'r' : 'l',
+      sourceHandle: handleId(childRight ? 'l' : 'r', keys?.childKey ?? null),
+      targetHandle: handleId(childRight ? 'r' : 'l', keys?.parentKey ?? null),
       type: 'relationship',
       data: {
         cardinality: rel.cardinality, identifying: rel.identifying, peers: peerMarks.get(rel.id),
