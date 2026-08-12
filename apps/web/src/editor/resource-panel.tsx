@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Library } from 'lucide-react'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
 import { ResourceResyncTab } from './resource-resync-tab.js'
 import { ResourcePromoteTab } from './resource-promote-tab.js'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 export type LibraryRow = {
@@ -27,10 +26,13 @@ type Tab = 'resync' | 'promote'
  * - 가져오기: 라이브러리 → 프로젝트(최초 가져오기 = 전 항목이 신규인 재동기화)
  * - 조직으로 승격: 프로젝트 → 라이브러리(쓰기 권한이 있는 라이브러리에만)
  */
-export function ResourcePanel({ projectId }: { projectId: string }) {
+export function ResourcePanel({ projectId, open, onOpenChange }: {
+  projectId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const trpc = useTRPC()
   const canEdit = useEditorStore((s) => s.canEdit)
-  const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('resync')
   const [libraryId, setLibraryId] = useState<string | null>(null)
 
@@ -54,10 +56,7 @@ export function ResourcePanel({ projectId }: { projectId: string }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm"><Library /> 공용 리소스</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader><DialogTitle>공용 리소스</DialogTitle></DialogHeader>
         {canPromote && (

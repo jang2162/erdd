@@ -22,7 +22,7 @@ function renderPanel() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<DomainPanel projectId={PROJECT_ID} />, { wrapper: w })
+  render(<DomainPanel projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
 }
 
 function loadModelWithDomains(grant = true) {
@@ -48,7 +48,6 @@ describe('DomainPanel', () => {
   it('opens the dialog and lists domains grouped by category, with usage count shown', async () => {
     loadModelWithDomains()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /도메인/ }))
     expect(screen.getByText('금액')).toBeInTheDocument()
     expect(screen.getByText('상태코드')).toBeInTheDocument()
     expect(screen.getByText('사용처 1개')).toBeInTheDocument()
@@ -58,7 +57,6 @@ describe('DomainPanel', () => {
   it('disables delete for a domain in use and enables it for an unused domain', async () => {
     loadModelWithDomains()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /도메인/ }))
     expect(screen.getByRole('button', { name: '상태코드 삭제' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '금액 삭제' })).toBeEnabled()
   })
@@ -67,7 +65,6 @@ describe('DomainPanel', () => {
     loadModelWithDomains(false)
     // grantEditPermission을 부르지 않는다 — Viewer 상태.
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /도메인/ }))
 
     expect(screen.getByText('금액')).toBeInTheDocument()
     expect(screen.getByText('상태코드')).toBeInTheDocument()
@@ -79,7 +76,6 @@ describe('DomainPanel', () => {
   it('도메인 추가 폼에서 필수 라벨(이름·논리 타입)에는 별표가 붙고 선택 라벨(분류·기본값·허용값·설명)에는 붙지 않는다', async () => {
     loadModelWithDomains()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /도메인/ }))
     await userEvent.click(screen.getByRole('button', { name: '도메인 추가' }))
     const labelText = (text: string) => screen.getByText(text).closest('label')?.textContent
     expect(labelText('이름')).toBe('이름*(필수)')

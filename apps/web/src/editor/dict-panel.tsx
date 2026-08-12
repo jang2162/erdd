@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { BookOpen, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { DEFAULT_NAMING_RULES, type ProjectModel, type Term, type Word } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
@@ -15,18 +15,21 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FieldLabel } from '@/components/field-label'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 type Section = 'words' | 'terms' | 'unregistered' | 'import'
 
 /** 헤더의 "사전": 물리명 자동 생성에 쓰이는 단어·용어 사전의 목록·추가·편집·삭제, 사용처, 미등록 단어 모아보기. */
-export function DictPanel({ projectId }: { projectId: string }) {
+export function DictPanel({ projectId, open, onOpenChange }: {
+  projectId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
   const namingRules = useEditorStore((s) => s.namingRules)
   const mutate = useModelMutation(projectId)
-  const [open, setOpen] = useState(false)
   const [section, setSection] = useState<Section>('words')
   const [editingWord, setEditingWord] = useState<Word | null>(null)
   const [wordEditorOpen, setWordEditorOpen] = useState(false)
@@ -51,10 +54,7 @@ export function DictPanel({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="sm"><BookOpen /> 사전</Button>
-        </DialogTrigger>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader><DialogTitle>단어·용어 사전</DialogTitle></DialogHeader>
           <div className="flex gap-2">

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Database, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { type Domain } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
@@ -7,7 +7,7 @@ import { removeDomain, usageOf } from './domain-edits.js'
 import { DomainEditDialog } from './domain-edit-dialog.js'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 const UNCATEGORIZED = '미분류'
@@ -23,12 +23,19 @@ function groupByCategory(domains: Domain[]): [string, Domain[]][] {
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
 }
 
-/** 헤더의 "도메인": 공통 컬럼 도메인(타입·기본값·허용값 재사용 단위)의 목록·추가·편집·삭제. */
-export function DomainPanel({ projectId }: { projectId: string }) {
+/**
+ * 헤더의 "도메인": 공통 컬럼 도메인(타입·기본값·허용값 재사용 단위)의 목록·추가·편집·삭제.
+ *
+ * 열림 상태는 제어형이다 — 트리거는 `header-tools.tsx`가 렌더한다(설계 D5).
+ */
+export function DomainPanel({ projectId, open, onOpenChange }: {
+  projectId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
-  const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Domain | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
 
@@ -41,10 +48,7 @@ export function DomainPanel({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="sm"><Database /> 도메인</Button>
-        </DialogTrigger>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader><DialogTitle>도메인</DialogTitle></DialogHeader>
           <div className="flex items-center justify-between gap-2">
