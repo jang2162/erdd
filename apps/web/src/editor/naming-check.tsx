@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { AlertCircle, AlertTriangle, ListChecks } from 'lucide-react'
-import { computeWarnings, type Warning } from '@erdd/core'
+import { type Warning } from '@erdd/core'
 import { useEditorStore } from './store.js'
+import { useWarnings } from './use-warnings.js'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -33,15 +34,13 @@ function entityLabel(model: ReturnType<typeof useEditorStore.getState>['model'],
 
 /** 헤더의 "모델 검사": 명명 규칙 위반·경고를 종류별로 모아 보고, 클릭 시 해당 엔티티로 이동한다. */
 export function NamingCheck({ projectId: _projectId }: { projectId: string }) {
+  // model은 entityLabel(model, w)이 계속 쓰므로 구독을 남긴다.
   const model = useEditorStore((s) => s.model)
-  const namingRules = useEditorStore((s) => s.namingRules)
-  const dialects = useEditorStore((s) => s.dialects)
   const select = useEditorStore((s) => s.select)
   const selectRelationship = useEditorStore((s) => s.selectRelationship)
   const [open, setOpen] = useState(false)
 
-  const warnings = useMemo(
-    () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
+  const warnings = useWarnings()
   const groups = useMemo(() => {
     const map = new Map<Warning['kind'], Warning[]>()
     for (const w of warnings) {
