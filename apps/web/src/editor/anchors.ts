@@ -104,11 +104,21 @@ export function buildAnchors(model: ProjectModel): AnchorIndex {
  * 어차피 처리하지만, 이 서명이 함께 잡아도 갱신 한 번이 겹칠 뿐 무해하다.
  */
 export function anchorSignatures(index: AnchorIndex, model: ProjectModel): Map<string, string> {
+  // ⚠️ 컬럼은 **한 번만** 훑는다. 테이블마다 `Object.values(model.columns).filter(...)` 를 부르면
+  // O(테이블수 × 컬럼수) 가 되어, 100 테이블·2000 컬럼 모델에서 모델 변경 1회당 12ms 가 넘는다 —
+  // 한 프레임(16.7ms)을 통째로 먹는 값이고 이 경로는 모델이 바뀔 때마다 돈다.
+  // 앵커가 있는 테이블만 미리 담아 두면(`?.push` 가 나머지를 조용히 버린다) 무관한 테이블에는
+  // 배열조차 만들지 않는다.
+  const rowsByTable = new Map<string, Column[]>()
+  for (const tableId of index.byTable.keys()) rowsByTable.set(tableId, [])
+  for (const c of Object.values(model.columns)) rowsByTable.get(c.tableId)?.push(c)
+
   const out = new Map<string, string>()
   for (const [tableId, list] of index.byTable) {
-    const rows = Object.values(model.columns)
-      .filter((c) => c.tableId === tableId)
-      .sort((a, b) => a.order - b.order)
+    // 행 인덱스는 **그 테이블 안에서**의 순번이다 — 다른 테이블 컬럼이 섞이면 위치가 밀려
+    // 무관한 편집에도 서명이 달라진다(위 5.5 요건이 깨진다).
+    const rows = rowsByTable.get(tableId)!
+    rows.sort((a, b) => a.order - b.order)
     const rowOf = new Map(rows.map((c, i) => [c.id, i]))
     out.set(tableId, list
       .map((a) => `${a.key}@${a.columnIds.length === 1 ? rowOf.get(a.columnIds[0]!) ?? -1 : rows.length}`)

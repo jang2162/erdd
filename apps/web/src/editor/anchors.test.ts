@@ -193,4 +193,27 @@ describe('anchorSignatures / changedAnchorTables', () => {
     grown.columns['c3'] = col('c3', 'C', 2)
     expect(changedAnchorTables(before, sigOf(grown))).toEqual(['C'])
   })
+
+  it('행 인덱스는 그 테이블 안에서의 순번이다', () => {
+    /*
+     * 서명은 테이블별로 **독립**이어야 한다. 컬럼을 한 번만 훑어 테이블별로 모으는 구현이라
+     * 그룹을 잘못 나누면 다른 테이블 컬럼이 섞여 위치가 밀리는데, 그래도 서명끼리는 일관되게
+     * 틀리므로 `changedAnchorTables` 비교만으로는 드러나지 않는다. 값을 직접 못 박는다.
+     */
+    const m = withRel(model(), [{ childColumnId: 'c2', parentColumnId: 'p2' }])
+    const sig = sigOf(m)
+    // c2 는 C 안에서 2번째(인덱스 1), p2 는 P 안에서 2번째. 두 테이블을 한 배열로 모으면
+    // 둘 중 하나가 3이 된다.
+    expect(sig.get('C')).toBe('c:c2@1')
+    expect(sig.get('P')).toBe('c:p2@1')
+  })
+
+  it('복합 앵커의 위치는 그 테이블의 컬럼 개수다', () => {
+    // 합성 행은 컬럼 목록 맨 아래에 렌더되므로 위치가 컬럼 개수다(전체 컬럼 수가 아니다).
+    const m = withRel(model(), [
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+    ])
+    expect(sigOf(m).get('C')).toBe('s:c1+c2@2')
+  })
 })
