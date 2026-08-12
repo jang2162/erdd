@@ -38,7 +38,7 @@ function renderDialog() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<VersionDialog projectId={PROJECT_ID} />, { wrapper: w })
+  render(<VersionDialog projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
@@ -47,7 +47,6 @@ describe('VersionDialog', () => {
   it('opening the dialog renders the snapshot.list result', async () => {
     mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '버전' }))
     expect(await screen.findByText('배포 전 백업')).toBeInTheDocument()
     expect(screen.getByText(/rev 3/)).toBeInTheDocument()
     expect(screen.getByText(/릴리즈 직전 상태/)).toBeInTheDocument()
@@ -63,7 +62,6 @@ describe('VersionDialog', () => {
       },
     })
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '버전' }))
     await screen.findByText('아직 스냅샷이 없습니다')
     await userEvent.type(screen.getByLabelText('이름'), '새 스냅샷')
     await userEvent.click(screen.getByRole('button', { name: '스냅샷 만들기' }))
@@ -91,7 +89,6 @@ describe('VersionDialog', () => {
       'model.get': () => ({ data: { model: { tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {} }, seq: 4 } }),
     })
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '버전' }))
     await screen.findByText('배포 전 백업')
     await userEvent.click(screen.getByRole('button', { name: '복원' }))
 
@@ -109,7 +106,6 @@ describe('VersionDialog', () => {
       'revision.list': () => ({ data: { items: [REVISION_ITEM], nextCursor: null } }),
     })
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '버전' }))
     await userEvent.click(screen.getByRole('button', { name: '이력' }))
     expect(await screen.findByText(/메모 생성/)).toBeInTheDocument()
     expect(screen.getByText(/오너/)).toBeInTheDocument()
@@ -119,7 +115,6 @@ describe('VersionDialog', () => {
     // grantEditPermission을 부르지 않는다 — canEdit=false, canManage=false.
     mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '버전' }))
     await screen.findByText('배포 전 백업')
 
     expect(screen.queryByRole('button', { name: '스냅샷 만들기' })).toBeNull()
@@ -131,7 +126,6 @@ describe('VersionDialog', () => {
     grantEditPermission({ canEdit: true, canManage: false })
     mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '버전' }))
     await screen.findByText('배포 전 백업')
 
     expect(screen.getByRole('button', { name: '스냅샷 만들기' })).toBeInTheDocument()
@@ -143,7 +137,6 @@ describe('VersionDialog', () => {
     grantEditPermission({ canEdit: true, canManage: true })
     mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '버전' }))
     await screen.findByText('배포 전 백업')
 
     expect(screen.getByRole('button', { name: '스냅샷 만들기' })).toBeInTheDocument()

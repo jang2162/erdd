@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, ListPlus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { customFieldsFor, customFieldUsageCount, type CustomField } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
@@ -7,18 +7,21 @@ import { moveCustomField, removeCustomField } from './custom-field-edits.js'
 import { CustomFieldEditDialog } from './custom-field-edit-dialog.js'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 const TARGET_TITLE = { table: '테이블 항목', column: '컬럼 항목' } as const
 const TYPE_LABEL = { text: '텍스트', boolean: '불리언', select: '선택형' } as const
 
 /** 헤더의 "커스텀 항목": 테이블/컬럼에 붙는 조직·프로젝트 고유 메타 항목의 정의를 관리한다. */
-export function CustomFieldPanel({ projectId }: { projectId: string }) {
+export function CustomFieldPanel({ projectId, open, onOpenChange }: {
+  projectId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const model = useEditorStore((s) => s.model)
   const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
-  const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<CustomField | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
 
@@ -39,10 +42,7 @@ export function CustomFieldPanel({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="sm"><ListPlus /> 커스텀 항목</Button>
-        </DialogTrigger>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader><DialogTitle>커스텀 항목</DialogTitle></DialogHeader>
           <div className="flex items-center justify-between gap-2">

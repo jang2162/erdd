@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { History } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTRPC } from '@/lib/trpc'
@@ -11,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 type Section = 'snapshot' | 'history' | 'diff'
@@ -171,16 +170,20 @@ function SnapshotSection({ projectId, onRestored }: { projectId: string; onResto
   )
 }
 
-/** 헤더의 "버전": 스냅샷(생성/열람/복원/삭제)과 이력(Task 4) 두 섹션을 토글로 오간다. */
-export function VersionDialog({ projectId }: { projectId: string }) {
-  const [open, setOpen] = useState(false)
+/**
+ * 헤더의 "버전": 스냅샷(생성/열람/복원/삭제)과 이력(Task 4) 두 섹션을 토글로 오간다.
+ *
+ * 열림 상태는 제어형이다 — 트리거는 `header-tools.tsx`가 렌더한다(설계 D5).
+ */
+export function VersionDialog({ projectId, open, onOpenChange }: {
+  projectId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const [section, setSection] = useState<Section>('snapshot')
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm"><History /> 버전</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>버전</DialogTitle></DialogHeader>
         <div className="flex gap-2">
@@ -204,11 +207,11 @@ export function VersionDialog({ projectId }: { projectId: string }) {
           </Button>
         </div>
         {section === 'snapshot' && (
-          <SnapshotSection projectId={projectId} onRestored={() => setOpen(false)} />
+          <SnapshotSection projectId={projectId} onRestored={() => onOpenChange(false)} />
         )}
         {section === 'history' && <HistoryView projectId={projectId} />}
         {section === 'diff' && (
-          <SnapshotDiff projectId={projectId} onNavigate={() => setOpen(false)} />
+          <SnapshotDiff projectId={projectId} onNavigate={() => onOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>

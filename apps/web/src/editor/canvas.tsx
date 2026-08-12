@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
-  Background, Controls, MiniMap, ReactFlow, ConnectionMode,
+  Background, MiniMap, ReactFlow, ConnectionMode,
   useNodesState, useReactFlow, useUpdateNodeInternals,
   type Connection, type Edge, type Node, type NodeChange,
   type XYPosition,
@@ -372,7 +372,6 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
       >
         <Background gap={20} />
         <MiniMap pannable zoomable />
-        <Controls showInteractive={false} />
       </ReactFlow>
       {/*
         Delete 단축키가 다중 선택을 겨눴을 때의 확인 다이얼로그. 툴바·일괄 패널과 같은 컴포넌트라
