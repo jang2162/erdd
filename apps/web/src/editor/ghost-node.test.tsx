@@ -35,3 +35,20 @@ describe('GhostNode', () => {
     ]))
   })
 })
+
+describe('GhostNode — anchors 런타임 방어', () => {
+  it('anchors 없이 렌더해도 던지지 않고 중앙 핸들은 남는다', () => {
+    // `data` 를 `as unknown as GhostNodeData` 로 받는 자리라 타입 검사가 막아 주지 않는다.
+    // undefined 가 들어오면 anchors.map 이 던지는데, 그러면 고스트 하나가 아니라
+    // **캔버스 전체가 죽는다**(React 는 렌더 예외를 위로 던진다). TableNode 와 같은 방어다.
+    const { container } = render(
+      <ReactFlowProvider>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <GhostNode {...({ data: { table: TABLE, targetGroupId: null } } as any)} />
+      </ReactFlowProvider>,
+    )
+    const ids = [...container.querySelectorAll('[data-handleid]')]
+      .map((el) => el.getAttribute('data-handleid'))
+    expect(ids).toEqual(['l', 'r'])
+  })
+})

@@ -9,7 +9,10 @@ import type { GhostNodeData } from './ghost-nodes.js'
  * 이 노드에 연결되어 렌더된다(엣지는 sourceHandle/targetHandle 'l'/'r'을 지정).
  */
 export function GhostNode({ data, isConnectable }: NodeProps) {
-  const { table, targetGroupId, anchors } = data as unknown as GhostNodeData
+  // `as unknown as` 가 컴파일러 방어를 지운 자리라 기본값이 유일한 방어다 — anchors 가
+  // undefined 로 오면 아래 map 이 던져 고스트 하나가 아니라 **캔버스 전체가 죽는다.**
+  // TableNode 도 같은 이유로 `anchors = []` 를 둔다(대칭).
+  const { table, targetGroupId, anchors = [] } = data as unknown as GhostNodeData
   const enterGroupView = useEditorStore((s) => s.enterGroupView)
   const exitGroupView = useEditorStore((s) => s.exitGroupView)
   const go = () => (targetGroupId ? enterGroupView(targetGroupId) : exitGroupView())
