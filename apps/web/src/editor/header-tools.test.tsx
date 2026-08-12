@@ -55,7 +55,7 @@ const OPENINGS: { trigger: RegExp; menu?: string; dialog: string }[] = [
   { trigger: /사전·리소스/, menu: '커스텀 항목', dialog: '커스텀 항목' },
   { trigger: /사전·리소스/, menu: '공용 리소스', dialog: '공용 리소스' },
   { trigger: /모델 검사/, dialog: '모델 검사' },
-  { trigger: /파일/, menu: 'DDL·DBML 가져오기', dialog: '가져오기' },
+  { trigger: /파일/, menu: 'DDL·DBML 가져오기', dialog: 'DDL·DBML 가져오기' },
   { trigger: /파일/, menu: '내보내기', dialog: '내보내기' },
 ]
 

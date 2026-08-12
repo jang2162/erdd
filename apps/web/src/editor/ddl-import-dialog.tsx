@@ -14,8 +14,12 @@ import {
 } from '@/components/ui/dialog'
 
 /**
- * 헤더의 "가져오기": DDL 또는 DBML 텍스트를 붙여넣으면 즉시 파싱해 미리보기(테이블·컬럼·관계·
- * 인덱스·그룹 개수와 경고)를 보여주고, 적용하면 단일 mutation(Revision 1건)으로 반영한다.
+ * 헤더 「파일 ▾」의 "DDL·DBML 가져오기": DDL 또는 DBML 텍스트를 붙여넣으면 즉시 파싱해
+ * 미리보기(테이블·컬럼·관계·인덱스·그룹 개수와 경고)를 보여주고, 적용하면 단일
+ * mutation(Revision 1건)으로 반영한다.
+ *
+ * 제목은 메뉴 항목과 같은 "DDL·DBML 가져오기"다 — 사전 다이얼로그의 Excel 업로드 탭도
+ * 「가져오기」라, 제목이 그냥 「가져오기」면 서로 다른 두 기능이 같은 이름으로 보인다.
  *
  * 파싱은 순수 함수(parseDdl·parseDbml·planDdlImport)라 서버 왕복이 없다 — 입력이 바뀔 때마다
  * useMemo로 즉시 다시 계산한다. **형식에 따라 파서만 갈리고** 방언 선택·미리보기·op 상한·적용은
@@ -68,7 +72,7 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>가져오기</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>DDL·DBML 가져오기</DialogTitle></DialogHeader>
         <div className="flex gap-2">
           <Button
             type="button" size="sm" variant={format === 'ddl' ? 'default' : 'outline'}
