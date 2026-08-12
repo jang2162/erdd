@@ -5,6 +5,7 @@ import {
 import { useEditorStore } from './store.js'
 import { useModelMutation, type Mutate } from './use-model.js'
 import { clearTableGroupPosition, moveTable } from './model-edits.js'
+import { createGroupWith } from './group-edits.js'
 import { planGroupMove } from './group-move.js'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -147,6 +148,7 @@ export function BulkPanel({ projectId }: { projectId: string }) {
   const ids = useEditorStore((s) => s.selectedTableIds)
   const mutate = useModelMutation(projectId)
   const [confirming, setConfirming] = useState(false)
+  const selectGroup = useEditorStore((s) => s.selectGroup)
 
   const tables = ids.map((id) => model.tables[id]).filter((t) => t !== undefined)
 
@@ -192,6 +194,17 @@ export function BulkPanel({ projectId }: { projectId: string }) {
           ))}
         </select>
       </div>
+
+      {/*
+        드롭다운은 **있는 그룹으로 옮기고**, 이 버튼은 **새 그룹을 만들어** 선택 전원을 담는다.
+        만든 직후 `selectGroup`이 우측을 그룹 패널로 바꾸므로 이름·색을 그 자리에서 고친다
+        (그 액션이 선택을 비우는 것은 의도다 — 패널은 둘 중 하나만 그린다).
+      */}
+      <Button variant="outline" className="mb-4 w-full" disabled={!canEdit}
+        onClick={() => {
+          const id = createGroupWith(mutate, ids)
+          if (id !== null) selectGroup(id)
+        }}>선택 테이블로 새 그룹</Button>
 
       <Button variant="destructive" className="w-full" disabled={!canEdit}
         onClick={() => setConfirming(true)}>선택 테이블 삭제</Button>

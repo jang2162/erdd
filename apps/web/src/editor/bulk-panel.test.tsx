@@ -186,6 +186,56 @@ describe('BulkPanel', () => {
     expect(t2?.groupPosition).toBeNull()    // 그래도 비운다
   })
 
+  it('「선택 테이블로 새 그룹」이 선택 전원을 담는 그룹을 만들고 그 그룹을 연다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: '선택 테이블로 새 그룹' }))
+
+    await waitFor(() => {
+      expect(Object.values(useEditorStore.getState().model.tableGroups)).toHaveLength(2)
+    })
+    const created = Object.values(useEditorStore.getState().model.tableGroups).find((g) => g.id !== 'g1')!
+    const tables = useEditorStore.getState().model.tables
+    expect(tables['t1']?.groupId).toBe(created.id)
+    expect(tables['t2']?.groupId).toBe(created.id)
+    // 기존 그룹은 "회원관리"뿐이므로 미사용 최소 번호는 "그룹1".
+    expect(created.name).toBe('그룹1')
+    // 만든 직후 그 그룹이 열린다 — 이름·색을 그 자리에서 고치는 것이 다음 행동이다.
+    expect(useEditorStore.getState().selectedGroupId).toBe(created.id)
+    // ⚠️ waitFor로는 "최소 1건"밖에 못 본다. 나갈 것을 다 내보낸 뒤 정확히 1건으로 못 박아야
+    // producer를 쪼갠 변경이 잡힌다(위 드롭다운 케이스와 같은 이유).
+    await settle()
+    expect(calls).toHaveLength(1)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
+  it('새 그룹을 만들면 선택 전원의 그룹 뷰 좌표가 비워진다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    const model = buildSampleModel()
+    // 픽스처 사실: t1.groupPosition = {x:10,y:10}, t2.groupPosition = {x:310,y:10}
+    expect(model.tables['t1']?.groupPosition).not.toBeNull()
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectTables(['t1', 't2'])
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: '선택 테이블로 새 그룹' }))
+
+    await waitFor(() => {
+      const tables = useEditorStore.getState().model.tables
+      expect(tables['t1']?.groupPosition).toBeNull()
+      expect(tables['t2']?.groupPosition).toBeNull()
+    })
+    // 전체 뷰 좌표는 그대로다 — 새 그룹은 테이블을 옮기지 않는다(설계 D2).
+    expect(useEditorStore.getState().model.tables['t1']?.position)
+      .toEqual(buildSampleModel().tables['t1']?.position)
+  })
+
   it('일괄 삭제는 확인 다이얼로그를 거친다 — 취소하면 아무 op도 나가지 않는다', async () => {
     const calls: unknown[] = []
     mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
@@ -225,6 +275,7 @@ describe('BulkPanel', () => {
     useEditorStore.getState().selectTables(['t1', 't2'])
     renderPanel()
     expect(screen.getByLabelText('선택 테이블의 그룹')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '선택 테이블로 새 그룹' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '선택 테이블 삭제' })).toBeDisabled()
   })
 
