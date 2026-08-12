@@ -185,11 +185,11 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const updateNodeInternals = useUpdateNodeInternals()
   const prevAnchorSigs = useRef(new Map<string, string>())
   useEffect(() => {
-    const next = anchorSignatures(anchors)
+    const next = anchorSignatures(anchors, model)
     const changed = changedAnchorTables(prevAnchorSigs.current, next)
     prevAnchorSigs.current = next
     if (changed.length > 0) updateNodeInternals(changed)
-  }, [anchors, updateNodeInternals])
+  }, [anchors, model, updateNodeInternals])
 
   const edges = useMemo<Edge[]>(() => {
     const built = view.kind === 'group'

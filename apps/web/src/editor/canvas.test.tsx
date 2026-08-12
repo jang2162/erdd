@@ -6,12 +6,14 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { ReactFlowProvider, type Edge, type Node } from '@xyflow/react'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
+import type { ProjectModel } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { grantEditPermission } from '@/testing/editor-store'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { settle } from '@/testing/settle'
 import { primaryTableId, useEditorStore } from './store.js'
 import { useDragStore } from './drag-store.js'
+import { reorderColumn } from './column-edits.js'
 import { Canvas } from './canvas.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000bb'
@@ -30,7 +32,14 @@ const SELF_USER_ID = '018f6b0e-0000-7000-8000-0000000000cc'
  * 독립적으로 검증하는 보강 신호다. 캡처 wrapper는 진짜 ReactFlow에 위임하므로 나머지 렌더·상호
  * 작용은 실제 그대로다(mock으로 인한 손실이 없다).
  */
-const { capturedProps } = vi.hoisted(() => ({ capturedProps: [] as Record<string, unknown>[] }))
+const { capturedProps, updateNodeInternalsSpy } = vi.hoisted(() => ({
+  capturedProps: [] as Record<string, unknown>[],
+  // 앵커 핸들은 모델에 따라 붙고 떨어지므로 Canvas가 React Flow에 **재측정을 시켜야** 한다.
+  // 그 호출은 DOM에 아무 흔적을 남기지 않아(jsdom은 좌표가 전부 0이다) 관찰할 길이 이 스파이뿐이다.
+  // 훅은 매 렌더 같은 참조를 돌려줘야 한다 — Canvas가 이것을 effect deps에 넣으므로,
+  // 렌더마다 새 함수를 주면 effect가 매번 다시 돌아 검사가 무의미해진다.
+  updateNodeInternalsSpy: vi.fn(),
+}))
 
 vi.mock('@xyflow/react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@xyflow/react')>()
@@ -40,6 +49,8 @@ vi.mock('@xyflow/react', async (importOriginal) => {
       capturedProps.push(props as Record<string, unknown>)
       return <actual.ReactFlow {...props} />
     },
+    // Canvas가 import하는 것만 바뀐다 — React Flow 내부는 자기 구현을 그대로 쓴다.
+    useUpdateNodeInternals: () => updateNodeInternalsSpy,
   }
 })
 
@@ -815,5 +826,79 @@ describe('Canvas — 컬럼 클릭 선택', () => {
 
     expect(useEditorStore.getState().selectedTableIds).toHaveLength(2)
     expect(useEditorStore.getState().selectedColumnIds).toEqual([])
+  })
+})
+
+describe('Canvas — 앵커가 바뀌면 updateNodeInternals를 건다', () => {
+  /*
+   * 설계 5.5 의 배선. 앵커 핸들은 모델에 따라 붙고 떨어지는데 React Flow 는 그 변화를 **자동으로
+   * 반영하지 않는다** — `parseHandles` 는 `measured` 가 있으면(우리는 `keepMeasured` 로 항상
+   * 보존한다) 이전 `handleBounds` 를 그대로 물려주고, `updateNodeInternals` 는
+   * `dimensionChanged || !handleBounds || force` 일 때만 다시 잰다. 그래서 Canvas 가 명시적으로
+   * 불러야 하고, 그 호출은 DOM 에 흔적을 남기지 않으므로 이 스파이 없이는 배선이 통째로 사라져도
+   * 아무 테스트가 빨개지지 않는다(실제로 리뷰 전까지 0건이었다).
+   */
+  function loadAndRender(model: ProjectModel) {
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+    // 첫 렌더는 이전 서명이 비어 있어 앵커를 가진 테이블 전부가 대상이 된다(무해하다).
+    // 이후 조작만 보려고 여기서 지운다.
+    updateNodeInternalsSpy.mockClear()
+  }
+
+  /** 스파이가 받은 테이블 id 전부(호출이 여러 번이어도 합쳐서 본다). 순서에는 기대지 않는다. */
+  function updatedTableIds() {
+    return [...new Set(updateNodeInternalsSpy.mock.calls.flatMap((c) => c[0] as string[]))].sort()
+  }
+
+  it('관계를 지워 앵커가 사라지면 양쪽 테이블에 건다', () => {
+    loadAndRender(buildSampleModel())
+
+    const m = buildSampleModel()
+    m.relationships = {}
+    act(() => { useEditorStore.getState().setModel(m) })
+
+    // r1(t1.c1 ← t2.c4)이 사라지면 두 테이블 모두 앵커가 0개가 된다.
+    expect(updatedTableIds()).toEqual(['t1', 't2'])
+  })
+
+  it('관계를 더해 앵커가 늘면 그 테이블에 건다', () => {
+    loadAndRender(buildSampleModel())
+
+    const m = buildSampleModel()
+    m.relationships['r2'] = {
+      id: 'r2', parentTableId: 't1', childTableId: 't2',
+      columnMappings: [{ childColumnId: 'c3', parentColumnId: 'c1' }],
+      cardinality: '1:N', identifying: false, name: null,
+    }
+    act(() => { useEditorStore.getState().setModel(m) })
+
+    // t2 의 앵커가 [c:c4] → [c:c3, c:c4] 로 늘었다. t1 은 부모 컬럼이 같아 그대로다.
+    expect(updatedTableIds()).toEqual(['t2'])
+  })
+
+  it('컬럼 순서를 바꾸면 앵커 키가 그대로여도 그 테이블에 건다', () => {
+    /*
+     * M-1 회귀. `reorderColumn` 은 두 컬럼의 order 만 맞바꾸므로 **앵커 키 집합이 변하지 않는다.**
+     * 그런데 핸들의 y 는 그 행이 노드 안 몇 번째인가로 정해지고, 행 집합이 같아 노드 크기도
+     * 안 변하니 ResizeObserver 도 뜨지 않는다. 여기서 재측정을 걸지 않으면 컬럼을 위아래로
+     * 옮겼을 때 **선이 옛 행 높이에 남는다.**
+     */
+    loadAndRender(buildSampleModel())
+
+    act(() => { useEditorStore.getState().setModel(reorderColumn(buildSampleModel(), 'c4', -1)) })
+
+    expect(updatedTableIds()).toEqual(['t2'])
+  })
+
+  it('앵커도 컬럼 순서도 그대로면 아예 부르지 않는다', () => {
+    // 설계 5.5 의 성능 요건 — 매 렌더 전부 부르면 그때마다 DOM 을 다시 재는 비용이 붙는다.
+    // 모델 객체는 새것이라 memo·effect 는 실제로 다시 도는데, 서명이 같아 호출이 없어야 한다.
+    loadAndRender(buildSampleModel())
+
+    act(() => { useEditorStore.getState().setModel(buildSampleModel()) })
+
+    expect(updateNodeInternalsSpy).not.toHaveBeenCalled()
   })
 })

@@ -3,6 +3,7 @@ import { createEmptyModel, type Column, type ProjectModel, type Table } from '@e
 import {
   anchorSignatures, buildAnchors, changedAnchorTables, handleId,
 } from './anchors.js'
+import { reorderColumn } from './column-edits.js'
 
 function tbl(id: string): Table {
   return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
@@ -136,23 +137,60 @@ describe('handleId', () => {
 })
 
 describe('anchorSignatures / changedAnchorTables', () => {
+  /** 서명은 그 모델의 앵커에서 뽑는다 — 인자 둘이 어긋나면 위치가 엉뚱하게 계산된다. */
+  const sigOf = (m: ProjectModel) => anchorSignatures(buildAnchors(m), m)
+
   it('앵커가 그대로면 바뀐 테이블이 없다', () => {
     const m = withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }])
-    const sig = anchorSignatures(buildAnchors(m))
-    expect(changedAnchorTables(sig, anchorSignatures(buildAnchors(m)))).toEqual([])
+    expect(changedAnchorTables(sigOf(m), sigOf(m))).toEqual([])
   })
 
   it('관계가 생기면 두 테이블이 바뀐 것으로 나온다', () => {
-    const before = anchorSignatures(buildAnchors(model()))
-    const after = anchorSignatures(buildAnchors(
-      withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }])))
+    const before = sigOf(model())
+    const after = sigOf(withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }]))
     expect(changedAnchorTables(before, after).sort()).toEqual(['C', 'P'])
   })
 
   it('관계가 사라져 앵커가 0개가 된 테이블도 바뀐 것으로 나온다', () => {
-    const before = anchorSignatures(buildAnchors(
-      withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }])))
-    const after = anchorSignatures(buildAnchors(model()))
+    const before = sigOf(withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }]))
+    const after = sigOf(model())
     expect(changedAnchorTables(before, after).sort()).toEqual(['C', 'P'])
+  })
+
+  /*
+   * 아래 세 건이 M-1 회귀를 잠근다. 핸들의 y 는 앵커 **키**가 아니라 그 컬럼 행이 노드 안
+   * **몇 번째인가**로 정해진다. 키만 서명에 넣으면 컬럼 재정렬이 서명을 바꾸지 못해
+   * updateNodeInternals 가 안 걸리고, React Flow 도 스스로 재측정하지 않아(행 집합이 같아
+   * 노드 크기가 안 변한다 → ResizeObserver 도 dimensionChanged 도 없다) 선이 옛 행 높이에 남는다.
+   */
+  it('앵커 컬럼을 위로 옮기면 키가 그대로여도 그 테이블이 바뀐 것으로 나온다', () => {
+    const m = withRel(model(), [{ childColumnId: 'c2', parentColumnId: 'p1' }])
+    const before = sigOf(m)
+    const after = sigOf(reorderColumn(m, 'c2', -1)) // c2(1번째) ↔ c1(0번째)
+    // 키 집합은 그대로다 — 위치가 서명에 없으면 이 단언이 [] 를 받는다.
+    expect([...before.values()]).not.toEqual([...after.values()])
+    expect(changedAnchorTables(before, after)).toEqual(['C'])
+  })
+
+  it('앵커가 아닌 컬럼끼리 순서를 바꾸면 그 테이블은 바뀌지 않는다', () => {
+    // 앵커는 c1(0번째). c2·c3 를 맞바꿔도 c1 의 행 인덱스는 그대로라 재측정이 필요 없다 —
+    // 설계 5.5 의 "매 렌더 전부 부르지 않는다"를 서명이 계속 지키는지 본다.
+    const m = withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }])
+    m.columns['c3'] = col('c3', 'C', 2)
+    const before = sigOf(m)
+    const after = sigOf(reorderColumn(m, 'c2', 1)) // c2(1번째) ↔ c3(2번째)
+    expect(changedAnchorTables(before, after)).toEqual([])
+  })
+
+  it('복합 앵커는 컬럼 개수가 바뀌면 바뀐 것으로 나온다', () => {
+    // 합성 행은 컬럼 목록 **맨 아래**라 그 y 가 컬럼 개수를 따라 움직인다.
+    const m = withRel(model(), [
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+    ])
+    const before = sigOf(m)
+    const grown = structuredClone(m)
+    grown.columns['c3'] = col('c3', 'C', 2)
+    expect(changedAnchorTables(before, sigOf(grown))).toEqual(['C'])
   })
 })

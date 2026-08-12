@@ -84,10 +84,36 @@ export function buildAnchors(model: ProjectModel): AnchorIndex {
   return { byTable, byRelationship }
 }
 
-/** 테이블별 앵커 키 서명. `updateNodeInternals` 대상을 고르는 데 쓴다(설계 5.5). */
-export function anchorSignatures(index: AnchorIndex): Map<string, string> {
+/**
+ * 테이블별 앵커 서명. `updateNodeInternals` 대상을 고르는 데 쓴다(설계 5.5).
+ *
+ * ⚠️ **키만 넣으면 안 된다 — 핸들의 y 는 키가 아니라 `그 행이 노드 안 몇 번째인가`로 정해진다.**
+ * `reorderColumn` 은 두 컬럼의 `order` 만 맞바꾸므로 앵커 키 집합이 그대로다. 키만 서명에 넣으면
+ * `changedAnchorTables` 가 빈 배열을 내 재측정이 안 걸리고, React Flow 도 스스로 다시 재지
+ * 않는다 — 행 집합이 같아 노드 크기가 안 변하니 ResizeObserver 도 `dimensionChanged` 도 없고,
+ * `parseHandles` 는 `measured` 가 있으면(우리는 `keepMeasured` 로 항상 보존한다) 이전
+ * `handleBounds` 를 그대로 물려준다. 그러면 **선이 옛 행 높이에 남는다.**
+ *
+ * 그래서 각 앵커에 **렌더 위치**를 붙인다(`키@행인덱스`). 위치를 바꾸는 편집만 서명을 바꾸므로,
+ * 앵커도 순서도 그대로면 서명이 같아 호출이 아예 없다 — 5.5 의 "매 렌더 전부 부르지 않는다"가
+ * 그대로 유지된다.
+ *
+ * 행 인덱스는 `TableNode` 가 실제로 그리는 순서(`order` 오름차순)와 같아야 한다. 복합 앵커는
+ * 컬럼 목록 **맨 아래**의 합성 행이라 위치를 컬럼 개수로 잡는다(복합끼리의 상대 순서는 `list`
+ * 순서가 이미 문자열 순서로 담고 있다). 컬럼 추가·삭제는 노드 크기가 변해 ResizeObserver 가
+ * 어차피 처리하지만, 이 서명이 함께 잡아도 갱신 한 번이 겹칠 뿐 무해하다.
+ */
+export function anchorSignatures(index: AnchorIndex, model: ProjectModel): Map<string, string> {
   const out = new Map<string, string>()
-  for (const [tableId, list] of index.byTable) out.set(tableId, list.map((a) => a.key).join('|'))
+  for (const [tableId, list] of index.byTable) {
+    const rows = Object.values(model.columns)
+      .filter((c) => c.tableId === tableId)
+      .sort((a, b) => a.order - b.order)
+    const rowOf = new Map(rows.map((c, i) => [c.id, i]))
+    out.set(tableId, list
+      .map((a) => `${a.key}@${a.columnIds.length === 1 ? rowOf.get(a.columnIds[0]!) ?? -1 : rows.length}`)
+      .join('|'))
+  }
   return out
 }
 
