@@ -26,7 +26,7 @@ function renderDialog() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<DdlImportDialog projectId={PROJECT_ID} />, { wrapper: w })
+  render(<DdlImportDialog projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
@@ -36,7 +36,6 @@ describe('DdlImportDialog', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste(DDL)
     expect(await screen.findByText(/테이블 1개/)).toBeInTheDocument()
@@ -47,7 +46,6 @@ describe('DdlImportDialog', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste('GRANT SELECT ON A TO B;')
     expect(await screen.findByText(/건너뛰었습니다/)).toBeInTheDocument()
@@ -59,7 +57,6 @@ describe('DdlImportDialog', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste(DDL)
     await userEvent.click(await screen.findByRole('button', { name: /만들기$/ }))
@@ -70,7 +67,6 @@ describe('DdlImportDialog', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     // 브리프 원문은 'CREATE TABLE A (C1 CLOB);'을 썼는데, CLOB 하나만으로 detectDialect가
     // 이미 'oracle'을 자동 감지한다(ddl-parse.ts의 SIGNATURES, 경쟁 시그니처 없음). 그 상태에서
@@ -95,7 +91,6 @@ describe('DdlImportDialog', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste(many)
     expect(await screen.findByText(/나눠/)).toBeInTheDocument()
@@ -108,7 +103,6 @@ describe('DdlImportDialog', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste('CREATE TABLE MBR (MBR_NO bigint);')
     expect(await screen.findByText('MBR.MBR_NO')).toBeInTheDocument()
@@ -131,18 +125,13 @@ describe('DdlImportDialog', () => {
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste('CREATE TABLE MBR (MBR_NO bigint);')
     expect(await screen.findByText(/건너뜀 1개.*MBR/)).toBeInTheDocument()
   })
 
-  it('편집 권한이 없으면 진입점이 없다', () => {
-    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
-    // grantEditPermission을 부르지 않는다 — Viewer 상태.
-    renderDialog()
-    expect(screen.queryByRole('button', { name: '가져오기' })).toBeNull()
-  })
+  // 「편집 권한이 없으면 진입점이 없다」는 header-tools.test.tsx 로 옮겼다 — canEdit 가드가
+  // 컴포넌트에서 「파일 ▾」 메뉴 항목으로 이동했기 때문이다(설계 3.3).
 })
 
 describe('DdlImportDialog — DBML 형식', () => {
@@ -155,7 +144,6 @@ describe('DdlImportDialog — DBML 형식', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
     await userEvent.click(screen.getByRole('button', { name: 'DBML' }))
   }
 

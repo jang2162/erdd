@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Copy, Download, FileOutput } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Copy, Download } from 'lucide-react'
 import { useReactFlow } from '@xyflow/react'
 import { toast } from 'sonner'
 import {
@@ -13,7 +13,7 @@ import { ExportScopeSelect } from './export-scope-select.js'
 import { DIALECT_LABEL } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 type Section = 'ddl' | 'dbml' | 'image' | 'excel'
@@ -30,17 +30,27 @@ function safeFileNamePart(s: string): string {
  * DDL 과 DBML 은 방언·범위 state 를 **공유한다** — 형식을 바꿔도 고른 방언·범위가 유지되는
  * 것이 자연스럽고, 경고(`ddlWarnings`)도 두 형식이 같은 것을 쓴다(테이블 선정 판정이 같다).
  */
-export function ExportDialog() {
+export function ExportDialog({ open, onOpenChange }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const model = useEditorStore((s) => s.model)
   const projectName = useEditorStore((s) => s.projectName)
-  const activeGroupView = useEditorStore((s) => s.activeGroupView)
   const rf = useReactFlow()
-  const [open, setOpen] = useState(false)
   const [section, setSection] = useState<Section>('ddl')
   const [dialect, setDialect] = useState<Dialect>('postgresql')
   const [scope, setScope] = useState<ExportScope>({ kind: 'all' })
   const [imageFormat, setImageFormat] = useState<ImageFormat>('png')
   const [sheets, setSheets] = useState<ExcelSheetKey[]>([...EXCEL_SHEET_KEYS])
+
+  // 열릴 때 범위를 현재 그룹 뷰에 맞춘다. 제어형이 되어 onOpenChange 가 부모 것이므로 "열림"을
+  // 여기서 감지한다. activeGroupView 를 구독해 의존성에 넣으면 **열려 있는 동안** 그룹 뷰가
+  // 바뀔 때도 범위가 재설정되어 기존 동작과 달라지므로, 그 순간의 값을 store 에서 직접 읽는다.
+  useEffect(() => {
+    if (!open) return
+    const groupId = useEditorStore.getState().activeGroupView
+    setScope(groupId ? { kind: 'group', groupId } : { kind: 'all' })
+  }, [open])
 
   const ddl = useMemo(() => generateDdl(model, dialect, scope), [model, dialect, scope])
   const dbml = useMemo(
@@ -95,16 +105,7 @@ export function ExportDialog() {
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        if (next) setScope(activeGroupView ? { kind: 'group', groupId: activeGroupView } : { kind: 'all' })
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm"><FileOutput /> 내보내기</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>내보내기</DialogTitle></DialogHeader>
         <div className="flex gap-2">

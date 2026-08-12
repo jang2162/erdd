@@ -20,7 +20,7 @@ afterEach(() => { cleanup(); useEditorStore.getState().reset(); downloadExcelWor
 function renderDialog() {
   return render(
     <ReactFlowProvider>
-      <ExportDialog />
+      <ExportDialog open onOpenChange={() => {}} />
     </ReactFlowProvider>,
   )
 }
@@ -29,7 +29,6 @@ describe('ExportDialog', () => {
   it('opening the dialog renders a CREATE TABLE preview for the default dialect', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     const preview = screen.getByLabelText('DDL 미리보기')
     expect(preview.textContent).toContain('CREATE TABLE MBR_GRD')
     expect(preview.textContent).toContain('CREATE TABLE MBR')
@@ -38,7 +37,6 @@ describe('ExportDialog', () => {
   it('switching the dialect to Oracle updates the preview to Oracle-specific types', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: 'Oracle' }))
     const preview = screen.getByLabelText('DDL 미리보기')
     expect(preview.textContent).toContain('VARCHAR2(100)')
@@ -50,7 +48,6 @@ describe('ExportDialog', () => {
     model.columns.c3!.type = 'TIME'
     useEditorStore.getState().setLoaded(model, 1, 'p1')
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: 'Oracle' }))
     const warnings = screen.getByLabelText('DDL 경고')
     expect(warnings.textContent).toContain('MBR.MBR_NM')
@@ -60,7 +57,6 @@ describe('ExportDialog', () => {
   it('switching to the 이미지 section renders format controls and a download button', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: '이미지' }))
     expect(screen.getByRole('button', { name: 'PNG' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'SVG' })).toBeInTheDocument()
@@ -70,7 +66,6 @@ describe('ExportDialog', () => {
   it('Excel 섹션으로 전환하면 시트 체크박스 5개를 보여준다', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: 'Excel' }))
     for (const name of ['테이블 목록', '테이블정의서', '단어사전', '용어사전', '도메인정의서']) {
       expect(screen.getByRole('checkbox', { name })).toBeChecked()
@@ -80,7 +75,6 @@ describe('ExportDialog', () => {
   it('Excel 시트를 전부 해제하면 다운로드 버튼이 비활성된다', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: 'Excel' }))
     for (const name of ['테이블 목록', '테이블정의서', '단어사전', '용어사전', '도메인정의서']) {
       await userEvent.click(screen.getByRole('checkbox', { name }))
@@ -95,7 +89,6 @@ describe('ExportDialog', () => {
       { ...m, tables: { ...m.tables, t2: { ...m.tables['t2']!, groupId: null } } }, 1, 'p1',
     )
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.selectOptions(screen.getByLabelText('그룹 선택'), 'g1')
     const preview = screen.getByLabelText('DDL 미리보기')
     expect(preview.textContent).toContain('CREATE TABLE MBR_GRD')
@@ -105,7 +98,6 @@ describe('ExportDialog', () => {
   it('Excel 다운로드가 선택한 시트만 담아 빌더를 호출한다', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: 'Excel' }))
     await userEvent.click(screen.getByRole('checkbox', { name: '테이블 목록' }))
     await userEvent.click(screen.getByRole('checkbox', { name: '용어사전' }))
@@ -128,7 +120,6 @@ describe('ExportDialog', () => {
       }, 1, 'p1',
     )
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: 'Excel' }))
     await userEvent.selectOptions(screen.getByLabelText('그룹 선택'), 'g1')
     await userEvent.click(screen.getByRole('button', { name: /다운로드/ }))
@@ -143,7 +134,6 @@ describe('ExportDialog', () => {
   it('DBML 섹션에서 미리보기와 다운로드 이름을 낸다', async () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '내보내기' }))
     await userEvent.click(screen.getByRole('button', { name: 'DBML' }))
     expect(screen.getByLabelText('DBML 미리보기').textContent).toContain('Table "MBR"')
   })

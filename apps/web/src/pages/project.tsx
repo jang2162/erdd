@@ -7,14 +7,10 @@ import { PresenceBar } from '@/editor/presence'
 import { useEditorStore } from '@/editor/store'
 import { BottomBar } from '@/editor/bottom-bar'
 import { Canvas } from '@/editor/canvas'
-import { DdlImportDialog } from '@/editor/ddl-import-dialog'
 import { DragGhost } from '@/editor/drag-ghost'
 import { EditPanel } from '@/editor/edit-panel'
-import { ExportDialog } from '@/editor/export-dialog'
 import { HeaderTools } from '@/editor/header-tools'
-import { NamingCheck } from '@/editor/naming-check'
 import { TableTree } from '@/editor/table-tree'
-import { VersionDialog } from '@/editor/version-dialog'
 import { BrandWordmark } from '@/components/brand-mark'
 import { UserMenu } from '@/components/user-menu'
 import { useMe } from '@/components/require-auth'
@@ -39,10 +35,6 @@ export function ProjectPage() {
           <div className="flex items-center gap-2">
             {loaded && <PresenceBar selfUserId={me.id} />}
             {loaded && <HeaderTools projectId={projectId} />}
-            {loaded && <VersionDialog projectId={projectId} />}
-            {loaded && <NamingCheck projectId={projectId} />}
-            {loaded && <DdlImportDialog projectId={projectId} />}
-            {loaded && <ExportDialog />}
             <Button variant="ghost" size="sm" asChild>
               <Link to={`/p/${projectId}/settings`}><Settings /> 설정</Link>
             </Button>

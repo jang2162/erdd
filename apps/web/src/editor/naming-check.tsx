@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react'
-import { AlertCircle, AlertTriangle, ListChecks } from 'lucide-react'
+import { useMemo } from 'react'
+import { AlertCircle, AlertTriangle } from 'lucide-react'
 import { type Warning } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useWarnings } from './use-warnings.js'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 const KIND_LABEL: Record<Warning['kind'], string> = {
@@ -32,13 +32,20 @@ function entityLabel(model: ReturnType<typeof useEditorStore.getState>['model'],
   return model.relationships[w.entityId]?.name ?? '관계'
 }
 
-/** 헤더의 "모델 검사": 명명 규칙 위반·경고를 종류별로 모아 보고, 클릭 시 해당 엔티티로 이동한다. */
-export function NamingCheck({ projectId: _projectId }: { projectId: string }) {
+/**
+ * 헤더의 "모델 검사": 명명 규칙 위반·경고를 종류별로 모아 보고, 클릭 시 해당 엔티티로 이동한다.
+ *
+ * 열림 상태는 제어형이다 — 트리거(건수 배지 포함)는 `header-tools.tsx`가 렌더한다(설계 D5).
+ */
+export function NamingCheck({ projectId: _projectId, open, onOpenChange }: {
+  projectId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   // model은 entityLabel(model, w)이 계속 쓰므로 구독을 남긴다.
   const model = useEditorStore((s) => s.model)
   const select = useEditorStore((s) => s.select)
   const selectRelationship = useEditorStore((s) => s.selectRelationship)
-  const [open, setOpen] = useState(false)
 
   const warnings = useWarnings()
   const groups = useMemo(() => {
@@ -55,16 +62,11 @@ export function NamingCheck({ projectId: _projectId }: { projectId: string }) {
     if (w.scope === 'relationship') selectRelationship(w.entityId)
     else if (w.scope === 'column') { if (w.tableId) select(w.tableId) }
     else select(w.entityId)
-    setOpen(false)
+    onOpenChange(false)
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          <ListChecks /> 모델 검사{warnings.length > 0 ? ` (${warnings.length})` : ''}
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>모델 검사</DialogTitle></DialogHeader>
         {warnings.length === 0 && (
