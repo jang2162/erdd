@@ -43,6 +43,7 @@
 | **좌측 사이드바 다중 선택·드래그 그룹 이동** | 사이드바를 읽기 전용 탐색기에서 **조작 표면**으로 바꿨다. 선택 상태는 캔버스와 **한 벌**(`selectedTableIds`)이고, 사이드바 안에서 끌어 그룹을 옮기고, **캔버스에서 끌어와 사이드바 그룹에 떨어뜨린다**. 그룹 이동 규칙의 소재지는 `applyGroupMove` **한 곳**이라 세 진입점(일괄 패널 드롭다운·사이드바 드롭·캔버스 드롭)이 같은 결과를 낸다(결과 동치를 테스트가 잠근다). 좌표는 `planGroupMove`가 **상대 배치를 보존한 채** 대상 그룹 오른쪽으로 옮기고 **그룹 밖 테이블과 겹치면 아래로 민다**(브라우저 스모크가 잡은 결함 — 초판 설계는 기준 bbox를 대상 그룹 멤버만으로 잡았다). `groupId`·`groupPosition`·좌표가 **한 producer**라 `cmd+Z` 한 번에 전부 원복된다. 드롭 판정은 좌표 하나로 수렴하고(`dropTargetOf`), 드래그 중에는 검색·그룹 뷰로 숨은 그룹이 드롭 타깃으로 다시 열린다. 일괄 작업 패널(2개 이상 선택 시 전환)은 그룹 이동 드롭다운(드래그의 **접근성 대체 경로**)과 확인 다이얼로그를 거치는 삭제를 담고, op 상한 가드는 **다이얼로그 안**에 있어 진입점이 몇 개든 새지 않는다. presence는 `Peer.selections` 배열로 확장해(상한 50·중복 제거를 절단 **앞**에) **선택 전부**를 브로드캐스트한다 — 일괄 삭제 직전에 "남이 그걸 만지고 있다"가 보여야 하기 때문이다. 선택 정리는 `keptSelection` **한 규칙**을 `resync`·`pruneSelection`·`setLoaded`가 공유해 같은 삭제가 도착 경로(op 배치/seq 간극/로컬 편집/거절 복구)에 따라 다른 결과를 내지 않는다. ⚠️ **`onSelectionChange`는 통제 모드에서 쓸 수 없다** — 창구는 `onNodesChange`의 `select` 델타다(설계 4절에 근거). **서버 변경은 presence 프로토콜뿐, 마이그레이션 없음** ([설계](specs/2026-08-10-sidebar-multiselect-dnd-design.md)) |
 
 | **캔버스 박스 선택 깜박임(버그 수정)** | shift+드래그 박스 선택 중 **캔버스 전체 테이블이 깜박이고, 손을 뗀 뒤 박스가 덮지도 않은 전체가 선택된 채 굳던** 결함. 원인은 `derived`가 선택에 의존해 노드 배열을 통째로 새로 만드는데 **그 노드에 `measured`가 없다**는 것 하나다 — `adoptUserNodes`는 `userNode` 참조가 이전과 다르면 internals를 재생성하면서 `parseHandles`를 부르고, 그 함수는 `!userNode.measured`이면 **이전 `handleBounds`까지 함께 버린다.** 그러면 `NodeWrapper`가 `visibility: hidden`으로 그리고(노드가 사라졌다 재측정 후 다시 나타난다), `getNodesInside`가 **박스 밖 노드까지 전부** 고른다. ⚠️ **전량 선택에는 갈래가 둘이고 둘 다 `measured` 소실이 뿌리다** — (A) `forceInitialRender = !handleBounds`, (B) 크기가 `measured.width ?? width ?? initialWidth ?? 0`으로 떨어져 **면적이 0**이 되는 바람에 `overlappingArea(0) >= area(0)`도 참(테이블 노드에는 명시 width/height가 없다). **그래서 `handleBounds`만 캐시하는 대안은 절반만 고친다.** 박스 선택은 `commitUserSelectionRect`가 pointermove마다 재계산하므로 "선택 변경 → 노드 재생성 → 측정 소실 → 전량 선택 → 재측정되면 되돌림"이 무한히 도는 진동 루프가 된다. 고친 것은 `keepMeasured` 하나 — `setNodes` 두 곳에서 이전 배열의 `measured`를 id로 이어붙인다. 실제 크기가 바뀌면 `updateNodeInternals`의 `dimensionChanged` 분기가 갱신하므로 stale이 굳지 않는다. **core·서버·CLI 변경 없음, 마이그레이션 없음** |
+| **에디터 도구 재분배(상단 묶음 + 하단 바)** | 헤더 한 줄에 몰려 1024px 에서 잘리던 도구를 **「캔버스를 조작하는가」** 하나를 축으로 두 줄로 나눴다. 하단은 화면 **전체 폭 고정 바**(`bottom-bar.tsx`)로 편집 도구·실행 취소/다시 실행·뷰 전환·표시 모드·줌을 담는다 — 그룹 뷰와 표시 모드는 트리·편집 패널의 표시에도 걸리는 **전역 상태**라 캔버스 열 안이 아니라 전체 폭이 의미상 맞다. `Toolbar`·`GroupViewSelect`·`ViewModeToggle` 은 **한 줄도 고치지 않고** `BottomBar` 가 조립만 한다. React Flow 기본 `<Controls>` 는 전체 폭 바 위에 겹쳐 "두 겹 툴바"가 되므로 제거하고 같은 API 를 쓰는 `ZoomControls` 로 대신했다(`Background`·`MiniMap` 은 유지). 상단은 8개 → **4개**(「버전」·「사전·리소스 ▾」·「모델 검사 (N)」·「파일 ▾」)로 묶었다 — 앞의 넷은 "재사용할 정의를 관리한다"는 한 성격이지만 버전은 이력, 모델 검사는 진단이라 성격이 달라 단독으로 뒀고 특히 모델 검사는 **경고 건수 배지가 상시 보여야** 해서 메뉴에 숨기면 신호가 죽는다. 다이얼로그 **8개를 전부 제어형으로 전환**하고 트리거 렌더 책임을 `header-tools.tsx` **한 곳**으로 옮겼다(3.4) — 열린 도구가 단일 상태라 둘이 동시에 열리는 상태가 구조적으로 생기지 않는다. `ddl-import-dialog` 의 `if (!canEdit) return null` 가드는 **메뉴 항목으로 옮겼다** — 제어형이 되면 컴포넌트가 스스로 사라져도 **메뉴에는 눌러도 아무 일 없는 죽은 항목이 남는다**(8개 중 이 가드를 가진 것은 이것 하나다). `export-dialog` 가 열릴 때 내보내기 범위를 초기화하던 부수 효과는 `useEffect` 로 옮기되 **열려 있는 동안 그룹 뷰가 바뀔 때는 재설정되지 않도록** 그 순간의 값을 store 에서 직접 읽는다(의존성에 넣으면 기존 동작과 달라진다). 부수로 「가져오기」 이름 충돌(6절 이월)이 해소됐다 — 헤더 쪽이 「파일 ▾ → DDL·DBML 가져오기」가 되어 사전 다이얼로그의 Excel 업로드 탭과 갈린다. **core·서버·CLI 변경 없음, 마이그레이션 없음** ([설계](specs/2026-08-12-editor-toolbar-split-design.md)) |
 
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
@@ -51,7 +52,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 630 · cli 138 · web 719 · server 196 (erdd_test) · typecheck EXIT=0
+core 630 · cli 138 · web 733 · server 196 (erdd_test) · typecheck EXIT=0
 ```
 
 `apps/server` 테스트는 **`DATABASE_URL`을 직접 줘야 한다** — 없으면 조용히 174건이 skip되고
@@ -79,6 +80,20 @@ web 561`이었다). **cli·server는 무변경** — 설계가 "CLI 지원 없�
 빼놓아, 단일 PK 자식의 식별 관계가 **전부 비식별로 뒤집히는데도** 초록이었다. 픽스처에 넣은 필드는
 비교에도 넣어라. 특히 **재추론으로 복원하는 필드**(DBML 에 표현이 없어 규칙으로 되살리는 것)는
 비교에서 빠지면 그 규칙이 아예 안 도는 것과 구분되지 않는다.
+
+에디터 도구 재분배 사이클에서 **web +14**(719 → 733)가 붙었다. **core·cli·server는 무변경** —
+설계가 "core·서버·CLI 변경 없음"을 못 박았고 변경 파일이 전부 `apps/web` 안이라, 그 셋이 움직였다면
+범위를 넘은 것이다. 신규 4파일이 +15(`use-warnings` 2 · `zoom-controls` 3 · `bottom-bar` 2 ·
+`header-tools` 8)이고, `ddl-import-dialog` 의 「편집 권한이 없으면 진입점이 없다」 1건이 **`header-tools`
+쪽으로 옮겨** −1 이다(`canEdit` 가드가 컴포넌트에서 메뉴 항목으로 갔으므로 그 자리에서는 더 이상 잠글 것이
+없다). 제어형으로 바꾼 기존 8개 다이얼로그의 **건수는 그대로다** — 여는 방식만 바뀌었지 검증 내용은
+바뀌지 않았다.
+
+⚠️ **트리거 클릭을 지울 때 그 케이스의 유일한 `await` 가 사라지면 테스트가 조용히 약해진다.**
+`resource-panel`·`resource-promote-tab` 의 두 케이스가 그랬다 — 렌더 직후 동기 단언만 남아 라이브러리
+조회가 **끝나기도 전에** "승격 탭이 없다"를 통과했고, 게다가 배치 링크가 뒤늦게 내보낸 요청이 **다음
+테스트의 fetch 목을 소비해** 엉뚱한 곳을 빨갛게 만들었다(`Body has already been read`). `settle()` 로
+대신했다.
 
 DDL 역설계 인라인 제약 사이클에서 **core +29**(481 → 510)가 붙었다. **cli·web·server는 무변경** —
 변경 파일이 `packages/core/src/ddl-parse.ts`와 그 테스트 2개뿐이라 그 셋이 움직였다면 범위를 넘은
@@ -256,6 +271,12 @@ pnpm -s -C packages/cli typecheck
 - **스냅샷 복원은 정규화 필수**: `snapshot.ts` restore가 `diffModels(current, { ...createEmptyModel(), ...snap.model })`로 누락 컬렉션을 보충한다. 새 컬렉션을 추가해도 이 패턴 덕에 옛 스냅샷이 깨지지 않는다(제거하지 말 것). 단, 이 정규화는 **컬렉션 키만** 보충하고 **엔티티 필드**(예: `table.custom`)는 안 채운다 — 옛 스냅샷의 엔티티에 새 필드가 없으면 `diffModels`가 그 차이를 감지하되(커스텀 항목 sub-project에서 실제 발생), **빈 `changes`의 update op는 만들지 않는다**(`diff.ts`가 target 기준으로 실변경 없으면 op를 내보내지 않도록 방어). 새 엔티티 필드를 추가할 때는 이 케이스(구 스냅샷에 필드 없음)를 회귀 테스트로 남긴다.
 
 ### 3.4 웹 UI 재발 버그
+- **에디터 다이얼로그의 트리거는 `header-tools.tsx` 만 렌더한다.** 다이얼로그 컴포넌트 8개(`version-dialog`·
+  `domain-panel`·`dict-panel`·`custom-field-panel`·`resource-panel`·`naming-check`·`ddl-import-dialog`·
+  `export-dialog`)는 **제어형**이라 `open`·`onOpenChange` 를 받고 **자체 열림 상태를 갖지 않는다.**
+  선택적 제어(prop 이 있으면 제어, 없으면 자체 상태)로 두지 않는다 — 규칙이 두 벌이 되고 트리거가 두 군데서
+  날 수 있다(3.13 과 같은 뿌리). **컴포넌트 안의 권한 가드도 트리거 쪽으로 간다** — 제어형은 컴포넌트가 스스로
+  사라져도 메뉴에 눌러도 아무 일 없는 죽은 항목을 남긴다(`ddl-import-dialog` 의 `canEdit`).
 - **이벤트 값은 producer 진입 전에 캡처.** `serializeMutation`이 producer를 마이크로태스크로 지연 실행하므로, `mutate((m) => ... e.target.value ...)`처럼 lazy read하면 제어 인풋이 먼저 리셋되어 stale 값을 읽는다. 반드시 `const v = e.target.value` 후 producer에 넘긴다.
 - 경고 표면은 이미 있다: `computeWarnings(model, rules?, dialects?)`(core `warnings.ts`) → `buildNodes`가 scope별로 분배 → `WarningBadge`. 새 경고 종류는 이 함수를 확장하면 배지·패널·명명 검사 화면에 자동 노출된다.
 - 프로젝트 설정(방언·명명 규칙)은 버전 모델이 아니라 `projects` 행에 있고, `useModelLoader`가 `project.get`으로 조회해 store(`namingRules`, `dialects`)에 넣는다.
@@ -1133,10 +1154,6 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
   `admin.invitations.list`/`revoke`). 실효 회수 경로는 있다: 재발급이 그 사용자의 미사용 토큰을
   죽인다(`routers/admin.ts:89~96`). **`docs/manual/install.md` 9.5 가 이미 그것을 문서화**했으므로
   운영자 쪽은 닫혔고, 남은 틈은 관리자 화면 문구(`pages/admin.tsx:142~145`)에 같은 안내가 없다는 것
-- **같은 이름의 「가져오기」가 서로 다른 두 기능이다** — 헤더 버튼(`ddl-import-dialog.tsx:56`)은 DDL
-  역설계, 「사전」 안의 탭(`dict-panel.tsx:74~79`)은 Excel 사전 업로드다. 헤더 도구가 8개 나란히
-  있어(`pages/project.tsx:49~56`) 사전을 올리려는 사용자가 헤더를 먼저 누른다. 다이얼로그 제목은 이미
-  「DDL 가져오기」(`:59`)이므로 **버튼 라벨을 제목에 맞추면 끝난다**
 - **기획 문서(`docs/10~18`)에 있으나 구현되지 않은 것 15건** — 매뉴얼 작성 중 전수 확인했고, 확인되지
   않은 것은 문서에서 뺐다(그래서 매뉴얼은 구현된 것만 설명한다). 값이 큰 것은 넷이다 —
   ① 프로젝트 명명 규칙·방언·이름 편집 화면(`13-naming.md:24~29`, `01-concepts.md:126` / 위
