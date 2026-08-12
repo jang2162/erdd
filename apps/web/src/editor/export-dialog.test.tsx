@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReactFlowProvider } from '@xyflow/react'
 import type { SheetData } from '@erdd/core'
@@ -136,5 +136,33 @@ describe('ExportDialog', () => {
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: 'DBML' }))
     expect(screen.getByLabelText('DBML 미리보기').textContent).toContain('Table "MBR"')
+  })
+})
+
+/**
+ * 범위는 **열릴 때만** 현재 그룹 뷰에 맞춘다. 제어형 전환에서 `onOpenChange` 가 부모 것이 되며
+ * 이 부수 효과가 `useEffect` 로 옮겨졌는데, 의존성에 `activeGroupView` 를 넣으면 **열려 있는 동안**
+ * 그룹 뷰가 바뀔 때도 범위가 재설정되어 사용자가 고른 범위를 덮는다. 아래 둘째 케이스가 그 회귀를
+ * 잠근다.
+ */
+describe('ExportDialog — 범위 초기화', () => {
+  const scopeSelect = () => screen.getByLabelText('그룹 선택') as HTMLSelectElement
+
+  it('그룹 뷰가 활성인 상태에서 열면 범위가 그 그룹으로 잡힌다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
+    useEditorStore.getState().enterGroupView('g1')
+    renderDialog()
+
+    expect(scopeSelect().value).toBe('g1')
+  })
+
+  it('열어 둔 채 그룹 뷰가 바뀌어도 범위는 그대로다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
+    renderDialog()
+    expect(scopeSelect().value).toBe('')                      // 전체 뷰에서 열었다
+
+    act(() => { useEditorStore.getState().enterGroupView('g1') })
+
+    expect(scopeSelect().value).toBe('')
   })
 })
