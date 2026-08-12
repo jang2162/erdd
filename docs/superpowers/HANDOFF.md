@@ -1,6 +1,6 @@
 # ERDD 작업 인계 문서 (새 세션 시작점)
 
-**최종 갱신:** 2026-08-10 / **main HEAD:** `7d0e68c`(캔버스 다중 선택·클립보드 병합) / **마이그레이션:** 0012까지(초대·재설정 링크에서 `invitations`·`password_reset_tokens` 추가)
+**최종 갱신:** 2026-08-12 / **main HEAD:** `be347b3`(캔버스 박스 선택 깜박임 수정 병합) / **마이그레이션:** 0012까지(초대·재설정 링크에서 `invitations`·`password_reset_tokens` 추가)
 
 새 세션에서 이 프로젝트를 이어받을 때 **이 문서를 먼저 읽고**, 아래 "읽을 문서" 순서를 따르면 된다. 이 문서는 매 sub-project 완료 시 갱신한다.
 
@@ -42,6 +42,8 @@
 
 | **좌측 사이드바 다중 선택·드래그 그룹 이동** | 사이드바를 읽기 전용 탐색기에서 **조작 표면**으로 바꿨다. 선택 상태는 캔버스와 **한 벌**(`selectedTableIds`)이고, 사이드바 안에서 끌어 그룹을 옮기고, **캔버스에서 끌어와 사이드바 그룹에 떨어뜨린다**. 그룹 이동 규칙의 소재지는 `applyGroupMove` **한 곳**이라 세 진입점(일괄 패널 드롭다운·사이드바 드롭·캔버스 드롭)이 같은 결과를 낸다(결과 동치를 테스트가 잠근다). 좌표는 `planGroupMove`가 **상대 배치를 보존한 채** 대상 그룹 오른쪽으로 옮기고 **그룹 밖 테이블과 겹치면 아래로 민다**(브라우저 스모크가 잡은 결함 — 초판 설계는 기준 bbox를 대상 그룹 멤버만으로 잡았다). `groupId`·`groupPosition`·좌표가 **한 producer**라 `cmd+Z` 한 번에 전부 원복된다. 드롭 판정은 좌표 하나로 수렴하고(`dropTargetOf`), 드래그 중에는 검색·그룹 뷰로 숨은 그룹이 드롭 타깃으로 다시 열린다. 일괄 작업 패널(2개 이상 선택 시 전환)은 그룹 이동 드롭다운(드래그의 **접근성 대체 경로**)과 확인 다이얼로그를 거치는 삭제를 담고, op 상한 가드는 **다이얼로그 안**에 있어 진입점이 몇 개든 새지 않는다. presence는 `Peer.selections` 배열로 확장해(상한 50·중복 제거를 절단 **앞**에) **선택 전부**를 브로드캐스트한다 — 일괄 삭제 직전에 "남이 그걸 만지고 있다"가 보여야 하기 때문이다. 선택 정리는 `keptSelection` **한 규칙**을 `resync`·`pruneSelection`·`setLoaded`가 공유해 같은 삭제가 도착 경로(op 배치/seq 간극/로컬 편집/거절 복구)에 따라 다른 결과를 내지 않는다. ⚠️ **`onSelectionChange`는 통제 모드에서 쓸 수 없다** — 창구는 `onNodesChange`의 `select` 델타다(설계 4절에 근거). **서버 변경은 presence 프로토콜뿐, 마이그레이션 없음** ([설계](specs/2026-08-10-sidebar-multiselect-dnd-design.md)) |
 
+| **캔버스 박스 선택 깜박임(버그 수정)** | shift+드래그 박스 선택 중 **캔버스 전체 테이블이 깜박이고, 손을 뗀 뒤 박스가 덮지도 않은 전체가 선택된 채 굳던** 결함. 원인은 `derived`가 선택에 의존해 노드 배열을 통째로 새로 만드는데 **그 노드에 `measured`가 없다**는 것 하나다 — `adoptUserNodes`는 `userNode` 참조가 이전과 다르면 internals를 재생성하면서 `parseHandles`를 부르고, 그 함수는 `!userNode.measured`이면 **이전 `handleBounds`까지 함께 버린다.** 그러면 `NodeWrapper`가 `visibility: hidden`으로 그리고(노드가 사라졌다 재측정 후 다시 나타난다), `getNodesInside`가 **박스 밖 노드까지 전부** 고른다. ⚠️ **전량 선택에는 갈래가 둘이고 둘 다 `measured` 소실이 뿌리다** — (A) `forceInitialRender = !handleBounds`, (B) 크기가 `measured.width ?? width ?? initialWidth ?? 0`으로 떨어져 **면적이 0**이 되는 바람에 `overlappingArea(0) >= area(0)`도 참(테이블 노드에는 명시 width/height가 없다). **그래서 `handleBounds`만 캐시하는 대안은 절반만 고친다.** 박스 선택은 `commitUserSelectionRect`가 pointermove마다 재계산하므로 "선택 변경 → 노드 재생성 → 측정 소실 → 전량 선택 → 재측정되면 되돌림"이 무한히 도는 진동 루프가 된다. 고친 것은 `keepMeasured` 하나 — `setNodes` 두 곳에서 이전 배열의 `measured`를 id로 이어붙인다. 실제 크기가 바뀌면 `updateNodeInternals`의 `dimensionChanged` 분기가 갱신하므로 stale이 굳지 않는다. **core·서버·CLI 변경 없음, 마이그레이션 없음** |
+
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
 > **Phase 4 완료.** DDL 역설계 → CLI 트랙 A(읽기) → CLI 트랙 B(`push`·3-way 병합·`diff`·에이전트 스킬) 순으로 마쳤다.
@@ -49,7 +51,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 630 · cli 138 · web 717 · server 196 (erdd_test) · typecheck EXIT=0
+core 630 · cli 138 · web 719 · server 196 (erdd_test) · typecheck EXIT=0
 ```
 
 `apps/server` 테스트는 **`DATABASE_URL`을 직접 줘야 한다** — 없으면 조용히 174건이 skip되고
@@ -459,7 +461,10 @@ pnpm -s -C packages/cli typecheck
 - ⚠️ **React Flow의 선택은 별개의 진실 원본이고, store로 흐르는 창구는 `onNodesChange`의 select 델타
   하나뿐이다.** 단일 클릭·Cmd+클릭 토글·박스 선택·팬 클릭 해제가 전부 그 한 갈래로 도착한다.
   `buildNodes`는 **노드 최상위 `selected`도 store 기준으로 세운다**(`nodes.ts`) — 세우지 않으면
-  `setNodes(derived)` 재구성이 React Flow의 선택을 지워 같은 사실이 두 곳에서 어긋난다.
+  노드 배열 재구성이 React Flow의 선택을 지워 같은 사실이 두 곳에서 어긋난다.
+  - ⚠️ **그 재구성은 `keepMeasured`를 거쳐야 한다**(`canvas.tsx`). 선택이 바뀔 때마다 노드 객체가
+    통째로 새로 만들어지는데, `measured`를 이어붙이지 않으면 React Flow가 `handleBounds`까지 버려
+    **박스 선택이 캔버스 전체를 고르는 진동 루프**가 된다(1절 완료 표의 「캔버스 박스 선택 깜박임」).
   - ⚠️ **`onSelectionChange`를 쓰지 않는다.** 노드를 prop으로 통제하면 `triggerNodeChanges`가 내부
     lookup을 갱신하지 않고 `onNodesChange`만 부르므로, `onSelectionChange`는 사실상 **우리가 넘긴
     nodes prop의 메아리**이고 그것도 렌더 한 틱 뒤에 온다. 늦은 스냅샷을 store에 되쓰면 store→nodes
@@ -703,6 +708,16 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 - **여전히 결함을 잡는다** — 단위 테스트 717건과 리뷰 9라운드를 통과한 브랜치에서 Important 1건
   (재배치가 그룹 밖 테이블 위에 정확히 포개짐)이 나왔다.
 - ⚠️ `.playwright-mcp/` 를 **저장소에 남기지 않게** 브리프에 명시해라(cwd 에 생긴다).
+
+⚠️ **코디네이터가 Claude 확장으로 직접 하려 들지 마라 — 렌더 결함은 원리적으로 계측이 안 된다.**
+(2026-08-12 실측, 깜박임 사이클에서 시간을 버렸다.) 확장의 MCP 탭은 **활성 탭이 아니라서**
+`document.visibilityState === 'hidden'` 이고 `document.hasFocus() === false` 다. 그러면
+`requestAnimationFrame` 이 아예 돌지 않아(rAF 대기가 45초 CDP 타임아웃으로 끝난다 — 렌더러가 멈춘
+것으로 오인하기 쉽다) **ResizeObserver 도 돌지 않는다.** 그 결과 캔버스 노드 26개 중 25개가
+`visibility: hidden` 인 채로 남는데, 이것은 **고치려는 버그의 증상과 구분되지 않는다.** 탭을 앞으로
+가져오려는 우회는 전부 막혔다 — `open -a`·System Events 로 창을 띄워도 MCP 탭은 그 창의 활성 탭이
+아니고, Chrome 자동화 권한이 없으면 AppleScript 는 `-1712` 로 타임아웃한다. **워커 + Playwright MCP
+가 답이다**(위 항목). Playwright 브라우저는 headless 여도 `visible` 이라 rAF·ResizeObserver 가 정상이다.
 
 ---
 
@@ -1081,17 +1096,12 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 **웹 UI 전수 대조에서 나온 것** (2026-08-10 `docs/manual/user-guide.md` 작성 + 교차 리뷰. 매뉴얼을
 쓰려면 모든 화면 문구를 코드에서 확인해야 해서, 기능 검토와는 다른 각도로 걸러졌다)
 
-- **`deleteKeyCode='Backspace'` 가 켜져 있는데 모델 삭제로 이어지지 않는다 — 제품 결함이다.**
-  `canvas.tsx:133` 이 키를 활성화하지만 `onNodesDelete`/`onBeforeDelete`/`onEdgesDelete` 가
-  `apps/web/src` 전체에 **0건**이고, `onNodesChange`(`canvas.tsx:78,134`)는 `useNodesState` 기본
-  setter 라 React Flow 로컬 배열만 바꾼다. **지금 드러난다** — 사용자에게는 노드가 사라진 것으로
-  보이는데 저장되지 않아, 새로 고치거나 `canvas.tsx:81` 의 `setNodes(derived)` 가 다시 도는 순간
-  되살아난다. 모델 삭제 경로는 툴바 「삭제」(`toolbar.tsx:56` `removeTable`)뿐이다.
-  ⚠️ **테스트가 이 구멍을 덮지 못한다** — `canvas.test.tsx:172~178` 은 Backspace 뒤
-  `queryByTestId('rf__node-t1')` 가 null 인 것만 보고 모델(`useEditorStore` 의 `model.tables`)은
-  검증하지 않는다. 고칠 때 그 단정을 함께 넣어야 회귀가 잡힌다. 선택지는 둘 — `onNodesDelete` 를
-  붙여 `removeTable` 로 연결하거나, `deleteKeyCode` 를 `null` 로 내려 키를 아예 없앤다
-  (후자는 한 글자 수정이고 지금 문서도 "툴바 「삭제」뿐"으로 안내한다)
+> 여기 있던 **`deleteKeyCode='Backspace'` 가 모델 삭제로 이어지지 않는다**는 **이미 해소됐는데
+> 목록에 남아 있던 것**이라 2026-08-12 에 지웠다(깜박임 사이클에서 발견). 지금 `canvas.tsx` 는
+> `deleteKeyCode={null}` 로 React Flow 의 삭제를 끄고 **`useEditorShortcuts` 가 삭제를 전담**하며,
+> 다중 선택은 확인 다이얼로그를 거친다. 테스트도 Backspace 를 눌러 **모델까지** 확인한다.
+> 이 문서가 경고한 그 패턴이다 — 고친 사이클에서 이월 목록을 함께 지우지 않으면 다음 세션이
+> 끝난 일을 후보로 고른다.
 - **편집 패널에 `comment`·`defaultValue`·`autoIncrement` 입력이 없어 산출물 열이 영구히 빈다 —
   실사용 마찰이다.** `edit-panel.tsx` 에 `comment` grep 0건이고 `ColumnRow`(215~299행)에 기본값·
   자동증가 입력이 없다. 새 컬럼은 `column-edits.ts:17~18` 에서 `defaultValue: null,
