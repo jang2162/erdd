@@ -32,6 +32,31 @@ const edgeTypes = { relationship: RelationshipEdge }
 const groupIdOf = (nodeId: string) => nodeId.slice('group:'.length)
 
 /**
+ * 새로 만든 노드 배열에 **이전 배열의 `measured`를 id로 이어 붙인다.** 노드 종류를 가리지 않는다 —
+ * 테이블·그룹·메모·고스트 전부 같은 이유로 필요하다.
+ *
+ * ⚠️ **이것을 빼면 shift+드래그 박스 선택 중 캔버스 전체 테이블이 깜박인다.** `derived`는 선택에
+ * 의존하므로 선택이 바뀔 때마다 노드 객체를 통째로 새로 만드는데, `adoptUserNodes`는 `userNode`
+ * 참조가 이전과 다르면 internals를 다시 만들면서 `parseHandles`를 부른다. 그 함수는
+ * **`!userNode.measured`이면 이전 `handleBounds`까지 함께 버린다.** 그러면 둘이 동시에 터진다 —
+ * `NodeWrapper`가 `visibility: hidden`으로 그려 노드가 사라졌다 재측정 후 다시 나타나고,
+ * `getNodesInside`의 `forceInitialRender = !node.internals.handleBounds`가 켜져 **박스 밖 노드까지
+ * 전부** 선택 대상이 된다. 박스 선택은 pointermove마다 그 계산을 다시 하므로(`commitUserSelectionRect`)
+ * "박스가 하나를 덮음 → 선택 변경 → 노드 재생성 → handleBounds 소실 → 다음 move에서 전체 선택 →
+ * 재측정되면 다시 전체 해제"가 무한히 도는 진동 루프가 된다.
+ *
+ * 실제 크기가 바뀌면 `updateNodeInternals`의 `dimensionChanged || !handleBounds || force` 분기가
+ * 정상적으로 갱신하므로 stale한 측정값이 굳지는 않는다.
+ */
+function keepMeasured(prev: Node[], next: Node[]): Node[] {
+  const measured = new Map(prev.map((n) => [n.id, n.measured]))
+  return next.map((n) => {
+    const m = measured.get(n.id)
+    return m ? { ...n, measured: m } : n
+  })
+}
+
+/**
  * 노드 드래그 이벤트의 화면 좌표. ReactFlow는 이 콜백에 **`MouseEvent | TouchEvent`**를 넘기는데
  * 터치 이벤트에는 `clientX/Y`가 없고 좌표가 `touches`에 들어 있다. 손을 떼는 순간의 `touchend`는
  * `touches`가 비고 `changedTouches`에만 남으므로 둘 다 본다.
@@ -121,7 +146,8 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.
-  useEffect(() => { setNodes(derived) }, [derived, setNodes])
+  // 이전 배열의 실측 크기는 이어 붙인다 — 버리면 handleBounds까지 함께 날아간다(keepMeasured 주석).
+  useEffect(() => { setNodes((prev) => keepMeasured(prev, derived)) }, [derived, setNodes])
 
   const edges = useMemo<Edge[]>(() => {
     const built = view.kind === 'group'
@@ -265,7 +291,7 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
             // 드롭 지점의 캔버스 좌표는 버린다 — 최종 자리는 planGroupMove가 정한다. 되돌리지
             // 않으면 op가 안 나가는 드롭(같은 그룹·권한 없음)에서 노드가 드롭 지점에 영영 남아
             // 화면과 모델이 갈린다.
-            setNodes(derived)
+            setNodes((prev) => keepMeasured(prev, derived))
             // 무엇을 옮길지·옮겨도 되는지(권한·빈 선택·"전원이 이미 그 그룹")는 전부
             // applyGroupMove가 정한다 — 사이드바 드래그·일괄 패널과 같은 진입점이라 같은 의도가
             // 진입점에 따라 다른 좌표로 끝나지 않는다. 여기서 거르는 것은 **테이블이 아닌 노드**뿐

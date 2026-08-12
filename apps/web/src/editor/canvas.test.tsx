@@ -687,6 +687,75 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
   })
 })
 
+/**
+ * 노드를 다시 만들 때 React Flow가 실측해 둔 `measured`를 이어 붙이는지 잠근다.
+ *
+ * 이어 붙이지 않으면 `adoptUserNodes`가 internals를 다시 만들면서 `parseHandles`가
+ * **이전 `handleBounds`까지 버린다**(`!userNode.measured`면 undefined를 돌려준다). 그러면
+ * NodeWrapper가 `visibility: hidden`으로 그리고, `getNodesInside`의
+ * `forceInitialRender = !node.internals.handleBounds`가 켜져 박스 밖 노드까지 전부 선택 대상이
+ * 된다 — shift+드래그 박스 선택을 유지하는 내내 캔버스 전체가 깜박이던 진동이 이것이다.
+ *
+ * jsdom에는 ResizeObserver 측정이 없으므로 dimensions change를 직접 주입해 measured를 심는다
+ * (`applyNodeChanges`의 `case 'dimensions'`가 `element.measured`를 세운다).
+ */
+describe('Canvas — 노드 재구성이 measured를 버리지 않는다', () => {
+  function measureNode(id: string, width: number, height: number) {
+    act(() => {
+      (lastProps().onNodesChange as (c: unknown[]) => void)(
+        [{ type: 'dimensions', id, dimensions: { width, height } }])
+    })
+  }
+
+  function nodeById(id: string) {
+    return (lastProps().nodes as Node[]).find((n) => n.id === id)
+  }
+
+  it('선택이 바뀌어 노드를 다시 만들어도 이전 measured가 이어진다', () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    measureNode('t1', 240, 120)
+    measureNode('t2', 260, 180)
+    expect(nodeById('t1')?.measured).toEqual({ width: 240, height: 120 })
+
+    act(() => { useEditorStore.getState().selectTables(['t2']) })
+
+    // 재구성이 실제로 일어났다는 증거. 이것이 없으면 아래 measured 단언이 공허하다 —
+    // `derived`가 다시 만들어지지 않았다면 measured는 당연히 그대로다.
+    expect(nodeById('t2')?.selected).toBe(true)
+    expect(nodeById('t1')?.measured).toEqual({ width: 240, height: 120 })
+    expect(nodeById('t2')?.measured).toEqual({ width: 260, height: 180 })
+  })
+
+  it('드롭 후 노드를 원위치로 되돌릴 때도 measured가 이어진다', () => {
+    // onNodeDragStop의 좌표 되돌리기도 노드 배열을 통째로 교체하는 자리다(canvas.tsx의
+    // `setNodes(derived)` 두 곳 중 하나). 여기서 measured가 빠지면 드롭할 때마다 같은 깜박임이 난다.
+    const tbl = (id: string, x: number, y: number) => ({ id, type: 'table', position: { x, y } })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderCanvas()
+
+    measureNode('t2', 240, 120)
+    act(() => {
+      (lastProps().onNodesChange as (c: unknown[]) => void)(
+        [{ type: 'position', id: 't2', position: { x: 999, y: 999 }, dragging: false }])
+    })
+
+    act(() => { (lastProps().onNodeDragStart as (e: unknown, n: unknown) => void)({}, tbl('t2', 300, 0)) })
+    act(() => { useDragStore.getState().moveOver({ groupId: 'g1' }) })   // t2는 이미 g1이다(op 없음)
+    act(() => {
+      (lastProps().onNodeDragStop as (e: unknown, n: unknown, d: unknown[]) => void)(
+        {}, tbl('t2', 999, 999), [tbl('t2', 999, 999)])
+    })
+
+    // 좌표가 되돌아왔다 = setNodes(derived) 경로를 실제로 탔다는 증거.
+    expect(nodeById('t2')?.position).toEqual({ x: 300, y: 0 })
+    expect(nodeById('t2')?.measured).toEqual({ width: 240, height: 120 })
+  })
+})
+
 describe('Canvas — 컬럼 클릭 선택', () => {
   // stopPropagation 회귀 검증: 컬럼 <li>의 onClick이 stopPropagation을 부르지 않으면 클릭이
   // 상위 노드로도 전파돼 React Flow가 그 노드를 선택하고, 그 `select` 델타가 창구를 통해
