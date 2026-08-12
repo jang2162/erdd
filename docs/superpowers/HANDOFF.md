@@ -43,6 +43,7 @@
 | **좌측 사이드바 다중 선택·드래그 그룹 이동** | 사이드바를 읽기 전용 탐색기에서 **조작 표면**으로 바꿨다. 선택 상태는 캔버스와 **한 벌**(`selectedTableIds`)이고, 사이드바 안에서 끌어 그룹을 옮기고, **캔버스에서 끌어와 사이드바 그룹에 떨어뜨린다**. 그룹 이동 규칙의 소재지는 `applyGroupMove` **한 곳**이라 세 진입점(일괄 패널 드롭다운·사이드바 드롭·캔버스 드롭)이 같은 결과를 낸다(결과 동치를 테스트가 잠근다). 좌표는 `planGroupMove`가 **상대 배치를 보존한 채** 대상 그룹 오른쪽으로 옮기고 **그룹 밖 테이블과 겹치면 아래로 민다**(브라우저 스모크가 잡은 결함 — 초판 설계는 기준 bbox를 대상 그룹 멤버만으로 잡았다). `groupId`·`groupPosition`·좌표가 **한 producer**라 `cmd+Z` 한 번에 전부 원복된다. 드롭 판정은 좌표 하나로 수렴하고(`dropTargetOf`), 드래그 중에는 검색·그룹 뷰로 숨은 그룹이 드롭 타깃으로 다시 열린다. 일괄 작업 패널(2개 이상 선택 시 전환)은 그룹 이동 드롭다운(드래그의 **접근성 대체 경로**)과 확인 다이얼로그를 거치는 삭제를 담고, op 상한 가드는 **다이얼로그 안**에 있어 진입점이 몇 개든 새지 않는다. presence는 `Peer.selections` 배열로 확장해(상한 50·중복 제거를 절단 **앞**에) **선택 전부**를 브로드캐스트한다 — 일괄 삭제 직전에 "남이 그걸 만지고 있다"가 보여야 하기 때문이다. 선택 정리는 `keptSelection` **한 규칙**을 `resync`·`pruneSelection`·`setLoaded`가 공유해 같은 삭제가 도착 경로(op 배치/seq 간극/로컬 편집/거절 복구)에 따라 다른 결과를 내지 않는다. ⚠️ **`onSelectionChange`는 통제 모드에서 쓸 수 없다** — 창구는 `onNodesChange`의 `select` 델타다(설계 4절에 근거). **서버 변경은 presence 프로토콜뿐, 마이그레이션 없음** ([설계](specs/2026-08-10-sidebar-multiselect-dnd-design.md)) |
 
 | **캔버스 박스 선택 깜박임(버그 수정)** | shift+드래그 박스 선택 중 **캔버스 전체 테이블이 깜박이고, 손을 뗀 뒤 박스가 덮지도 않은 전체가 선택된 채 굳던** 결함. 원인은 `derived`가 선택에 의존해 노드 배열을 통째로 새로 만드는데 **그 노드에 `measured`가 없다**는 것 하나다 — `adoptUserNodes`는 `userNode` 참조가 이전과 다르면 internals를 재생성하면서 `parseHandles`를 부르고, 그 함수는 `!userNode.measured`이면 **이전 `handleBounds`까지 함께 버린다.** 그러면 `NodeWrapper`가 `visibility: hidden`으로 그리고(노드가 사라졌다 재측정 후 다시 나타난다), `getNodesInside`가 **박스 밖 노드까지 전부** 고른다. ⚠️ **전량 선택에는 갈래가 둘이고 둘 다 `measured` 소실이 뿌리다** — (A) `forceInitialRender = !handleBounds`, (B) 크기가 `measured.width ?? width ?? initialWidth ?? 0`으로 떨어져 **면적이 0**이 되는 바람에 `overlappingArea(0) >= area(0)`도 참(테이블 노드에는 명시 width/height가 없다). **그래서 `handleBounds`만 캐시하는 대안은 절반만 고친다.** 박스 선택은 `commitUserSelectionRect`가 pointermove마다 재계산하므로 "선택 변경 → 노드 재생성 → 측정 소실 → 전량 선택 → 재측정되면 되돌림"이 무한히 도는 진동 루프가 된다. 고친 것은 `keepMeasured` 하나 — `setNodes` 두 곳에서 이전 배열의 `measured`를 id로 이어붙인다. 실제 크기가 바뀌면 `updateNodeInternals`의 `dimensionChanged` 분기가 갱신하므로 stale이 굳지 않는다. **core·서버·CLI 변경 없음, 마이그레이션 없음** |
+| **관계선을 컬럼 위치에 붙임** | 관계선이 테이블 좌우 **중앙**에서 나가 어느 컬럼이 어느 컬럼을 참조하는지 그림에 없던 것을 고쳤다. 단일 FK 는 그 컬럼 행에, 복합 FK 는 양쪽 테이블 맨 아래의 **합성 행 `(col1, col2)`** 끼리 붙는다. 합성 행은 **관계가 쓰는 조합에만** 만든다(복합 PK·인덱스 기준이 아니다 — 그러면 "관계가 쓰는 조합이 인덱스로 정의돼 있지 않다"는 흔한 상태에서 붙을 자리가 없다). ⚠️ **급소는 앵커 키의 소재지가 한 곳이라는 것** — 엣지가 적는 `sourceHandle` 문자열과 노드의 `<Handle id>` 가 한 글자만 어긋나면 React Flow 는 **예외도 경고도 없이 선을 그리지 않는다.** `anchors.ts` 의 `handleId()` 만이 그 문자열을 만들고, `anchor-wiring.test.tsx` 가 "엣지가 가리키는 핸들 ⊆ 실제 렌더된 핸들"을 전수 대조해 잠근다(그린으로 들어온 테스트라 `anchor-handles.tsx` **한쪽에서만** 키를 망가뜨려 빨개지는 것을 실증했다 — `handleId` 를 고치면 엣지·노드가 **함께** 바뀌어 여전히 일치하므로 실증이 되지 않는다). 고스트 노드(컬럼 행이 없다)에도 **같은 앵커 핸들을 전부 헤더 중앙에 겹쳐** 달아 `buildEdges` 가 "상대가 고스트인가"를 몰라도 되게 했다. ⚠️ **핸들이 모델에 따라 붙고 떨어지므로 `updateNodeInternals` 가 새 의무로 붙는다** — React Flow 는 `<Handle>` 이 바뀌어도 `handleBounds` 를 자동 재파싱하지 않아, 부르지 않으면 관계를 만든 직후 선이 옛 자리에 남는다. 직전 사이클의 `keepMeasured`(측정 **보존**)와 방향이 반대이자 상보적이다. ⚠️ **앵커 핸들은 `isConnectable={false}` 라(연결 드래그는 중앙 핸들이 계속 전담한다) `canvas.test.tsx` 의 "핸들 전부가 `connectable`" 전수 단언과 충돌한다** — 단언 대상을 중앙 핸들(`data-handleid="l"|"r"`)로 좁히고, 앵커 핸들은 반대로 연결 불가여야 한다는 단언을 함께 넣어 축소가 검사를 무르게 하지 않도록 했다. **core·서버·CLI 변경 없음, 마이그레이션 없음** ([설계](specs/2026-08-12-column-anchored-edges-design.md)) |
 
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
@@ -51,7 +52,7 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 630 · cli 138 · web 719 · server 196 (erdd_test) · typecheck EXIT=0
+core 630 · cli 138 · web 752 · server 196 (erdd_test) · typecheck EXIT=0
 ```
 
 `apps/server` 테스트는 **`DATABASE_URL`을 직접 줘야 한다** — 없으면 조용히 174건이 skip되고
@@ -91,6 +92,13 @@ DDL 역설계 인라인 제약 사이클에서 **core +29**(481 → 510)가 붙�
 호출해 보는 방식은 **오타가 통과한다**(없는 경로도 404다). tRPC 11의 `appRouter._def.procedures`가
 점 표기 경로를 키로 갖는 평평한 레코드라, 그것을 열거해 배열과 전수 비교하면 추가·삭제·오타가
 전부 깨진다. 같은 형태를 다른 라우터에 복사할 수 있다.
+
+관계선 컬럼 앵커 사이클에서 **web +33**(719 → 752)이 붙었다. **core·cli·server는 무변경** —
+설계가 "apps/web 전용, core·서버·CLI 변경 없음"을 못 박았고 그 셋이 움직였다면 범위를 넘은
+것이다. 내역은 `anchors` 13 · `table-node` 8 · `edges` 5 · `nodes` 3 · `anchor-wiring` 2 ·
+`ghost-nodes` 1 · `ghost-node`(신규 파일) 1 이다. 33건 중 **`anchor-wiring` 2건만이 배선 전체를
+잠근다** — 나머지는 각 조각이 자기 몫을 하는지만 보므로, 엣지와 노드가 **각자 옳은데 서로 다른**
+문자열을 만드는 상태에서도 전부 초록이다. 그 2건은 그린으로 들어왔고 실증은 위 표에 적었다.
 
 **사이클 끝마다 네 수를 전부 실측해 갱신한다.** 기준선이 낡으면 "내 사이클이 올린 수"를 계산할 수
 없다 — CLI push 멱등성 사이클에서 실제로 그랬다. 그 사이클이 올린 것은 **core +10 · cli +24**뿐인데
