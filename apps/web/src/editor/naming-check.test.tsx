@@ -29,8 +29,7 @@ afterEach(() => { cleanup(); useEditorStore.getState().reset() })
 describe('NamingCheck', () => {
   it('예약어 물리명 경고를 보여주고 클릭 시 해당 테이블을 선택한다', async () => {
     loadWith('ORDER') // 예약어
-    render(<NamingCheck projectId={PROJECT_ID} />)
-    await userEvent.click(screen.getByRole('button', { name: /모델 검사/ }))
+    render(<NamingCheck projectId={PROJECT_ID} open onOpenChange={() => {}} />)
     expect(screen.getByText('예약어 (1)')).toBeInTheDocument()
     await userEvent.click(screen.getByText('ORDER'))
     await waitFor(() => expect(useEditorStore.getState().selectedTableIds).toEqual(['t1']))
@@ -38,8 +37,7 @@ describe('NamingCheck', () => {
 
   it('규칙에 부합하면 경고 없음을 표시한다', async () => {
     loadWith('ORD') // 안전한 물리명(예약어 아님, 길이 제한 이내), 용어 완전일치로 명명 경고도 없음
-    render(<NamingCheck projectId={PROJECT_ID} />)
-    await userEvent.click(screen.getByRole('button', { name: /모델 검사/ }))
+    render(<NamingCheck projectId={PROJECT_ID} open onOpenChange={() => {}} />)
     expect(screen.getByText(/경고가 없습니다/)).toBeInTheDocument()
   })
 
@@ -59,9 +57,8 @@ describe('NamingCheck', () => {
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     useEditorStore.getState().setProjectConfig(
       { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }, ['postgresql'], null)
-    render(<NamingCheck projectId={PROJECT_ID} />)
+    render(<NamingCheck projectId={PROJECT_ID} open onOpenChange={() => {}} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /모델 검사/ }))
     expect(screen.getByText('필수 항목 미입력 (1)')).toBeInTheDocument()
     await userEvent.click(screen.getByText('ORD'))
     await waitFor(() => expect(useEditorStore.getState().selectedTableIds).toEqual(['t1']))

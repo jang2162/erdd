@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { Import } from 'lucide-react'
 import {
   DIALECTS, MAX_OPS_PER_MUTATION, detectDialect, dialectFromDatabaseType, parseDbml, parseDdl,
   planDdlImport, type Dialect, type ParsedDbml,
@@ -11,12 +10,16 @@ import { newId } from './uid.js'
 import { DIALECT_LABEL } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 /**
- * 헤더의 "가져오기": DDL 또는 DBML 텍스트를 붙여넣으면 즉시 파싱해 미리보기(테이블·컬럼·관계·
- * 인덱스·그룹 개수와 경고)를 보여주고, 적용하면 단일 mutation(Revision 1건)으로 반영한다.
+ * 헤더 「파일 ▾」의 "DDL·DBML 가져오기": DDL 또는 DBML 텍스트를 붙여넣으면 즉시 파싱해
+ * 미리보기(테이블·컬럼·관계·인덱스·그룹 개수와 경고)를 보여주고, 적용하면 단일
+ * mutation(Revision 1건)으로 반영한다.
+ *
+ * 제목은 메뉴 항목과 같은 "DDL·DBML 가져오기"다 — 사전 다이얼로그의 Excel 업로드 탭도
+ * 「가져오기」라, 제목이 그냥 「가져오기」면 서로 다른 두 기능이 같은 이름으로 보인다.
  *
  * 파싱은 순수 함수(parseDdl·parseDbml·planDdlImport)라 서버 왕복이 없다 — 입력이 바뀔 때마다
  * useMemo로 즉시 다시 계산한다. **형식에 따라 파서만 갈리고** 방언 선택·미리보기·op 상한·적용은
@@ -25,13 +28,15 @@ import {
  */
 type Format = 'ddl' | 'dbml'
 
-export function DdlImportDialog({ projectId }: { projectId: string }) {
-  const canEdit = useEditorStore((s) => s.canEdit)
+export function DdlImportDialog({ projectId, open, onOpenChange }: {
+  projectId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const model = useEditorStore((s) => s.model)
   const namingRules = useEditorStore((s) => s.namingRules)
   const mutate = useModelMutation(projectId)
 
-  const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [format, setFormat] = useState<Format>('ddl')
   const [manualDialect, setManualDialect] = useState<Dialect | null>(null)
@@ -58,21 +63,16 @@ export function DdlImportDialog({ projectId }: { projectId: string }) {
     const captured = plan                       // producer 진입 전에 캡처한다(마이크로태스크 지연 대비)
     const summary = format === 'ddl' ? 'DDL 가져오기' : 'DBML 가져오기'
     const r = await mutate((m) => applyDdlImport(m, captured, newId), { summary })
-    if (r === 'applied') { setOpen(false); setText('') }
+    if (r === 'applied') { onOpenChange(false); setText('') }
   }
-
-  if (!canEdit) return null
 
   const columnCount = plan === null ? 0 : plan.tables.reduce((n, t) => n + t.columns.length, 0)
   const indexCount = plan === null ? 0 : plan.tables.reduce((n, t) => n + t.indexes.length, 0)
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm"><Import /> 가져오기</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>가져오기</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>DDL·DBML 가져오기</DialogTitle></DialogHeader>
         <div className="flex gap-2">
           <Button
             type="button" size="sm" variant={format === 'ddl' ? 'default' : 'outline'}

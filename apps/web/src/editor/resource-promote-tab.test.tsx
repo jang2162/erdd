@@ -9,6 +9,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
+import { settle } from '@/testing/settle'
 import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
 import { overLimitMessage } from './resource-decisions.js'
@@ -59,14 +60,13 @@ function renderPanel(
   render(
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
-        <ResourcePanel projectId={PROJECT_ID} />
+        <ResourcePanel projectId={PROJECT_ID} open onOpenChange={() => {}} />
       </TRPCProvider>
     </QueryClientProvider>,
   )
 }
 
 async function openPromoteTab() {
-  await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
   await userEvent.click(await screen.findByRole('tab', { name: '조직으로 승격' }))
   await userEvent.click(await screen.findByRole('button', { name: /조직 표준/ }))
 }
@@ -80,7 +80,6 @@ describe('ResourcePromoteTab', () => {
       'resource.library.listForProject': () => ({ data: LIBS }),
       'resource.items.list': () => ({ data: [] }),
     }, { ...createEmptyModel(), words: { w1: word('w1', '회원', 'MBR') } })
-    await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
     await userEvent.click(await screen.findByRole('tab', { name: '조직으로 승격' }))
     expect(screen.queryByRole('button', { name: /표준 사전/ })).toBeNull()
     expect(screen.getByRole('button', { name: /조직 표준/ })).toBeDefined()
@@ -172,7 +171,8 @@ describe('ResourcePromoteTab', () => {
       'resource.library.listForProject': () => ({ data: LIBS }),
       'resource.items.list': () => ({ data: [] }),
     }, { ...createEmptyModel(), words: { w1: word('w1', '회원', 'MBR') } }, { canEdit: false, canManage: false })
-    await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
+    // 라이브러리 조회가 끝난 뒤에 단언한다 — 전에는 트리거 클릭의 await가 이 시간을 벌어 줬다.
+    await settle()
     expect(screen.queryByRole('tab', { name: '조직으로 승격' })).toBeNull()
   })
 
@@ -222,7 +222,6 @@ describe('ResourcePromoteTab', () => {
       'promotion.listForProject': () => ({ data: [] }),
     }, createEmptyModel())
 
-    await userEvent.click(screen.getByRole('button', { name: /공용 리소스/ }))
     expect(await screen.findByRole('tab', { name: '조직으로 승격' })).toBeTruthy()
   })
 

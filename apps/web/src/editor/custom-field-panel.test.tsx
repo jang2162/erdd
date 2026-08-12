@@ -22,7 +22,7 @@ function renderPanel() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<CustomFieldPanel projectId={PROJECT_ID} />, { wrapper: w })
+  render(<CustomFieldPanel projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
 }
 
 function loadModelWithFields(grant = true) {
@@ -50,7 +50,6 @@ describe('CustomFieldPanel', () => {
   it('대상별로 항목을 나눠 보여주고 사용 건수를 표시한다', async () => {
     loadModelWithFields()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /커스텀 항목/ }))
     expect(screen.getByText('개인정보여부')).toBeInTheDocument()
     expect(screen.getByText('암호화방식')).toBeInTheDocument()
     expect(screen.getByText('업무구분')).toBeInTheDocument()
@@ -61,7 +60,6 @@ describe('CustomFieldPanel', () => {
   it('첫 항목의 위로 버튼과 마지막 항목의 아래로 버튼이 비활성이다', async () => {
     loadModelWithFields()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /커스텀 항목/ }))
     expect(screen.getByRole('button', { name: '개인정보여부 위로' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '암호화방식 아래로' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '암호화방식 위로' })).toBeEnabled()
@@ -70,7 +68,6 @@ describe('CustomFieldPanel', () => {
   it('순서 이동 버튼이 모델의 order를 바꾼다', async () => {
     loadModelWithFields()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /커스텀 항목/ }))
     await userEvent.click(screen.getByRole('button', { name: '암호화방식 위로' }))
     const m = useEditorStore.getState().model
     expect(m.customFields['f2']!.order).toBeLessThan(m.customFields['f1']!.order)
@@ -80,7 +77,6 @@ describe('CustomFieldPanel', () => {
     loadModelWithFields(false)
     // grantEditPermission을 부르지 않는다 — Viewer 상태.
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /커스텀 항목/ }))
 
     expect(screen.getByText('개인정보여부')).toBeInTheDocument()
     expect(screen.getByText('암호화방식')).toBeInTheDocument()
