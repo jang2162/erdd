@@ -39,7 +39,7 @@ export function buildNodes(
       type: 'table',
       position,
       // React Flow **자신의** 선택 플래그도 store 기준으로 세운다. canvas.tsx는 store가 바뀔 때마다
-      // 노드 배열을 통째로 교체하므로(setNodes(derived)), 여기서 세우지 않으면 재구성이 React Flow의
+      // 노드 배열을 `derived`로 통째로 교체하므로, 여기서 세우지 않으면 재구성이 React Flow의
       // 선택을 지운다 — 선택이라는 같은 사실이 두 곳에 따로 살아 어긋난다. store를 단일 진실
       // 원본으로 두고 React Flow는 그것을 비추기만 한다. 박스 선택도 이 값을 읽고 쓴다.
       // (아래 data.selected는 TableNode가 선택 링을 그리는 데 쓰는 별개 값이다.)

@@ -40,19 +40,31 @@ const groupIdOf = (nodeId: string) => nodeId.slice('group:'.length)
  * 참조가 이전과 다르면 internals를 다시 만들면서 `parseHandles`를 부른다. 그 함수는
  * **`!userNode.measured`이면 이전 `handleBounds`까지 함께 버린다.** 그러면 둘이 동시에 터진다 —
  * `NodeWrapper`가 `visibility: hidden`으로 그려 노드가 사라졌다 재측정 후 다시 나타나고,
- * `getNodesInside`의 `forceInitialRender = !node.internals.handleBounds`가 켜져 **박스 밖 노드까지
- * 전부** 선택 대상이 된다. 박스 선택은 pointermove마다 그 계산을 다시 하므로(`commitUserSelectionRect`)
- * "박스가 하나를 덮음 → 선택 변경 → 노드 재생성 → handleBounds 소실 → 다음 move에서 전체 선택 →
- * 재측정되면 다시 전체 해제"가 무한히 도는 진동 루프가 된다.
+ * `getNodesInside`가 **박스 밖 노드까지 전부** 선택 대상으로 고른다. 박스 선택은 pointermove마다
+ * 그 계산을 다시 하므로(`commitUserSelectionRect`) "박스가 하나를 덮음 → 선택 변경 → 노드 재생성 →
+ * 측정 소실 → 다음 move에서 전체 선택 → 재측정되면 다시 전체 해제"가 무한히 도는 진동 루프가 된다.
+ *
+ * ⚠️ **`handleBounds`만 어떻게든 캐시하는 대안은 절반만 고친다 — 뿌리는 `measured`다.**
+ * `getNodesInside`의 전량 선택에는 갈래가 **둘**이고 둘 다 `measured` 소실에서 나온다.
+ * (A) `forceInitialRender = !node.internals.handleBounds`가 켜진다.
+ * (B) 너비·높이가 `measured.width ?? node.width ?? node.initialWidth ?? 0`으로 떨어져 **면적이 0**이
+ * 되는 바람에 `overlappingArea(0) >= area(0)`도 참이 된다 — `selectionMode` 기본값이
+ * `SelectionMode.Full`(`partially=false`)인데도 그렇다. 테이블 노드에는 명시 width/height가 없어
+ * `measured`가 유일한 크기 근거다.
  *
  * 실제 크기가 바뀌면 `updateNodeInternals`의 `dimensionChanged || !handleBounds || force` 분기가
- * 정상적으로 갱신하므로 stale한 측정값이 굳지는 않는다.
+ * 정상적으로 갱신하므로 stale한 측정값이 굳지는 않는다. **같은 id가 노드 종류를 바꾸는 유일한
+ * 경로는 고스트인데**(`ghost-nodes.ts`가 노드 id로 원본 테이블 id를 그대로 쓴다 → 전체 뷰 ↔ 그룹 뷰
+ * 전환에서 같은 id가 `type:'table'` ↔ `type:'ghost'`로 바뀐다) 그것도 같은 구제를 받는다 —
+ * `typeChanged`면 React Flow가 `updateNodeInternals(..., { force: true })`를 부르고 ResizeObserver가
+ * 실측을 밀어 넣어 한 프레임 안에 덮인다. 결함이 아니니 다시 파지 마라.
  */
 function keepMeasured(prev: Node[], next: Node[]): Node[] {
   const measured = new Map(prev.map((n) => [n.id, n.measured]))
   return next.map((n) => {
     const m = measured.get(n.id)
-    return m ? { ...n, measured: m } : n
+    // 의도는 "이전 측정값이 **있으면**"이다. truthiness가 아니라 존재로 판정한다.
+    return m !== undefined ? { ...n, measured: m } : n
   })
 }
 

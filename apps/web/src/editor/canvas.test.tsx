@@ -632,8 +632,8 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
 
   it('드롭이 아무것도 바꾸지 않아도 노드는 원위치로 돌아온다', async () => {
     // 같은 그룹에 놓으면 applyGroupMove가 op를 내지 않는다 → 모델이 그대로라 `derived`도 그대로고,
-    // "모델이 바뀌면 노드를 다시 만든다"는 effect가 돌지 않는다. setNodes(derived)가 없으면 노드가
-    // 드롭 지점에 **영영** 남아 화면과 모델이 갈린다.
+    // "모델이 바뀌면 노드를 다시 만든다"는 effect가 돌지 않는다. onNodeDragStop이 노드 배열을
+    // `derived`로 되돌리지 않으면 노드가 드롭 지점에 **영영** 남아 화면과 모델이 갈린다.
     const calls = captureMutations()
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
@@ -692,12 +692,18 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
  *
  * 이어 붙이지 않으면 `adoptUserNodes`가 internals를 다시 만들면서 `parseHandles`가
  * **이전 `handleBounds`까지 버린다**(`!userNode.measured`면 undefined를 돌려준다). 그러면
- * NodeWrapper가 `visibility: hidden`으로 그리고, `getNodesInside`의
- * `forceInitialRender = !node.internals.handleBounds`가 켜져 박스 밖 노드까지 전부 선택 대상이
- * 된다 — shift+드래그 박스 선택을 유지하는 내내 캔버스 전체가 깜박이던 진동이 이것이다.
+ * NodeWrapper가 `visibility: hidden`으로 그리고, `getNodesInside`가 박스 밖 노드까지 전부 선택
+ * 대상으로 고른다(`forceInitialRender`가 켜지는 갈래와, 크기가 0으로 떨어져
+ * `overlappingArea(0) >= area(0)`이 참이 되는 갈래 **둘 다** — canvas.tsx의 `keepMeasured` 주석).
+ * shift+드래그 박스 선택을 유지하는 내내 캔버스 전체가 깜박이던 진동이 이것이다.
  *
  * jsdom에는 ResizeObserver 측정이 없으므로 dimensions change를 직접 주입해 measured를 심는다
  * (`applyNodeChanges`의 `case 'dimensions'`가 `element.measured`를 세운다).
+ *
+ * ⚠️ **여기서 잠그는 것은 사용자 노드 배열의 `measured`까지다.** 그 결과 React Flow 내부의
+ * `internals.handleBounds`가 실제로 살아남는지는 잠그지 못한다 — jsdom에는 레이아웃이 없어
+ * `getBoundingClientRect`가 전부 0이라 핸들 측정 자체가 성립하지 않는다. 그 마지막 한 칸은
+ * 브라우저 스모크가 덮는다.
  */
 describe('Canvas — 노드 재구성이 measured를 버리지 않는다', () => {
   function measureNode(id: string, width: number, height: number) {
@@ -730,8 +736,9 @@ describe('Canvas — 노드 재구성이 measured를 버리지 않는다', () =>
   })
 
   it('드롭 후 노드를 원위치로 되돌릴 때도 measured가 이어진다', () => {
-    // onNodeDragStop의 좌표 되돌리기도 노드 배열을 통째로 교체하는 자리다(canvas.tsx의
-    // `setNodes(derived)` 두 곳 중 하나). 여기서 measured가 빠지면 드롭할 때마다 같은 깜박임이 난다.
+    // onNodeDragStop의 좌표 되돌리기도 노드 배열을 통째로 교체하는 자리다(canvas.tsx에서
+    // `keepMeasured(prev, derived)`를 거치는 두 곳 중 하나). 여기서 measured가 빠지면 드롭할
+    // 때마다 같은 깜박임이 난다.
     const tbl = (id: string, x: number, y: number) => ({ id, type: 'table', position: { x, y } })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
@@ -750,7 +757,7 @@ describe('Canvas — 노드 재구성이 measured를 버리지 않는다', () =>
         {}, tbl('t2', 999, 999), [tbl('t2', 999, 999)])
     })
 
-    // 좌표가 되돌아왔다 = setNodes(derived) 경로를 실제로 탔다는 증거.
+    // 좌표가 되돌아왔다 = 노드 배열을 `derived`로 되돌리는 경로를 실제로 탔다는 증거.
     expect(nodeById('t2')?.position).toEqual({ x: 300, y: 0 })
     expect(nodeById('t2')?.measured).toEqual({ width: 240, height: 120 })
   })
