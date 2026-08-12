@@ -152,8 +152,34 @@ pnpm -s -C packages/cli typecheck
 
 가장 확실한 방법은 루트의 `pnpm verify` 하나로 돌리는 것이다(typecheck + 4개 스위트 —
 `packages/core`·`packages/cli`·`apps/web`·`apps/server` — 를 `&&`로 묶어 어느 하나라도 실패하면
-비정상 종료한다). 서버 스위트는 DB env가 필요하므로 `set -a && . ./.env && set +a && pnpm verify`로
-실행한다.
+비정상 종료한다). 서버 스위트는 DB env가 필요하다. **`DATABASE_URL`을 `erdd_test`로 명시해서 준다:**
+
+```bash
+DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm verify
+```
+
+🔥 **`. ./.env` 로 verify 를 돌리지 마라 — 개발 DB가 통째로 날아간다.** 여기에는 이전에
+`set -a && . ./.env && set +a && pnpm verify` 가 정상 절차로 적혀 있었는데, **그것은 개발 데이터를
+파괴하는 명령이다.** 루트 `.env` 의 `DATABASE_URL` 은 개발 DB(`erdd`)를 가리키고, 서버 테스트는 그
+값을 **그대로** 쓰며(`apps/server/src/testing/helpers.ts:7` → `buildServer({ databaseUrl:
+process.env.DATABASE_URL })`), 각 테스트가 **전 테이블을 `TRUNCATE ... CASCADE`** 한다
+(`apps/server/src/testing/db.ts:16`). 즉 그 명령은 "서버 테스트를 개발 DB에서 돌린다"는 뜻이다.
+
+**2026-08-12 실제 발생.** 도구 재분배 사이클의 최종 검증에서 이 문서의 지시를 그대로 따랐고,
+`erdd` 의 데이터가 전부 지워졌다(남은 것은 마지막 테스트가 만든 픽스처 — `o@t.dev`·`x@t.dev`,
+「오너의 공간」·「팀」·「외부의 공간」, 프로젝트 「P」). 테스트는 196건 전부 통과했으므로 **아무 경고도
+뜨지 않는다** — 초록색을 보고 지나간다.
+
+⚠️ **`erdd_test` DB가 없으면 만들어 두고 마이그레이션을 적용해라.** 없는 상태에서 위 명령을 돌리면
+연결이 실패하고, 그때 `.env` 로 되돌리고 싶어지는 것이 바로 이 사고의 경로다.
+
+```bash
+docker exec -i erdd-db-1 createdb -U postgres erdd_test
+DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm -C apps/server exec drizzle-kit migrate
+```
+
+워크트리에서는 그 트랙의 격리 test DB(`erdd_test_a` 등)를 같은 방식으로 준다. **워크트리의 `.env` 를
+로드해 verify 를 돌리는 것도 같은 사고다** — 그 `.env` 의 `DATABASE_URL` 은 그 트랙의 **개발** DB다.
 
 ### 다음 작업
 
