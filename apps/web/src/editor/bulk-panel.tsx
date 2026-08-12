@@ -3,7 +3,7 @@ import {
   deleteTableCascade, MAX_OPS_PER_MUTATION, setTableGroup, type ProjectModel,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
-import { useModelMutation } from './use-model.js'
+import { useModelMutation, type Mutate } from './use-model.js'
 import { clearTableGroupPosition, moveTable } from './model-edits.js'
 import { planGroupMove } from './group-move.js'
 import { Button } from '@/components/ui/button'
@@ -11,8 +11,6 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-
-type Mutate = ReturnType<typeof useModelMutation>
 
 /** 드롭다운에서 "미분류"를 뜻하는 값. 빈 문자열은 "여러 그룹에 걸쳐 있음"이 이미 쓴다. */
 const NO_GROUP = '__none__'

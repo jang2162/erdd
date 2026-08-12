@@ -166,6 +166,13 @@ export function useModelMutation(projectId: string) {
   )
 }
 
+/**
+ * `useModelMutation`이 돌려주는 함수의 타입. 컴포넌트 밖의 편집 헬퍼(`applyGroupMove`·
+ * `createGroupWith`)가 mutate를 인자로 받으므로 여러 모듈이 이 타입을 쓴다 — 선언은 출처인
+ * 여기 하나다.
+ */
+export type Mutate = ReturnType<typeof useModelMutation>
+
 export function useUndoRedo(projectId: string) {
   const submit = useSubmit(projectId)
   const undoStack = useEditorStore((s) => s.undoStack)
