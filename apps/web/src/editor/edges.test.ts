@@ -29,6 +29,72 @@ describe('buildEdges', () => {
     const edges = buildEdges(model())
     expect(edges[0]!.data).toMatchObject({ cardinality: '1:N', identifying: false })
   })
+
+  it('단일 FK 는 양 끝 모두 컬럼 앵커 핸들에 붙는다', () => {
+    const m = model()
+    m.columns['pc'] = { id: 'pc', tableId: 'P', logicalName: 'pc', physicalName: 'pc',
+      type: 'INT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
+      order: 0, comment: null, domainId: null, custom: {} }
+    m.columns['cc'] = { id: 'cc', tableId: 'C', logicalName: 'cc', physicalName: 'cc',
+      type: 'INT', isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
+      order: 0, comment: null, domainId: null, custom: {} }
+    m.relationships['R']!.columnMappings = [{ childColumnId: 'cc', parentColumnId: 'pc' }]
+    const e = buildEdges(m)[0]!
+    // 자식 C(x=400)가 부모 P(x=0)보다 오른쪽 → 자식은 왼쪽, 부모는 오른쪽.
+    expect(e.sourceHandle).toBe('l:c:cc')
+    expect(e.targetHandle).toBe('r:c:pc')
+  })
+
+  it('복합 FK 는 양 끝 모두 합성 앵커 핸들에 붙는다', () => {
+    const m = model()
+    for (const [id, tableId, order] of [
+      ['p1', 'P', 0], ['p2', 'P', 1], ['c1', 'C', 0], ['c2', 'C', 1],
+    ] as const) {
+      m.columns[id] = { id, tableId, logicalName: id, physicalName: id, type: 'INT',
+        isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
+        order, comment: null, domainId: null, custom: {} }
+    }
+    m.relationships['R']!.columnMappings = [
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+    ]
+    const e = buildEdges(m)[0]!
+    expect(e.sourceHandle).toBe('l:s:c1+c2')
+    expect(e.targetHandle).toBe('r:s:p1+p2')
+  })
+
+  it('빈 매핑 관계는 양 끝 모두 중앙 핸들로 폴백한다', () => {
+    // DDL/DBML 가져오기가 이런 관계를 만든다 — 예외가 아니라 정상 경로다(설계 3.5).
+    const e = buildEdges(model())[0]!
+    expect(e.sourceHandle).toBe('l')
+    expect(e.targetHandle).toBe('r')
+  })
+
+  it('한쪽 매핑만 깨졌으면 그 끝만 중앙으로 폴백한다', () => {
+    const m = model()
+    m.columns['pc'] = { id: 'pc', tableId: 'P', logicalName: 'pc', physicalName: 'pc',
+      type: 'INT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
+      order: 0, comment: null, domainId: null, custom: {} }
+    m.relationships['R']!.columnMappings = [{ childColumnId: 'GONE', parentColumnId: 'pc' }]
+    const e = buildEdges(m)[0]!
+    expect(e.sourceHandle).toBe('l')          // 자식 끝만 폴백
+    expect(e.targetHandle).toBe('r:c:pc')     // 부모 끝은 앵커
+  })
+
+  it('부모가 자식보다 오른쪽이면 좌우가 뒤집힌다', () => {
+    const m = model()
+    m.tables['P']!.position = { x: 800, y: 0 } // 부모를 오른쪽으로
+    m.columns['pc'] = { id: 'pc', tableId: 'P', logicalName: 'pc', physicalName: 'pc',
+      type: 'INT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
+      order: 0, comment: null, domainId: null, custom: {} }
+    m.columns['cc'] = { id: 'cc', tableId: 'C', logicalName: 'cc', physicalName: 'cc',
+      type: 'INT', isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
+      order: 0, comment: null, domainId: null, custom: {} }
+    m.relationships['R']!.columnMappings = [{ childColumnId: 'cc', parentColumnId: 'pc' }]
+    const e = buildEdges(m)[0]!
+    expect(e.sourceHandle).toBe('r:c:cc')
+    expect(e.targetHandle).toBe('l:c:pc')
+  })
 })
 
 describe('buildEdges 핸들 휴리스틱', () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildGhostNodes } from './ghost-nodes.js'
+import { buildAnchors } from './anchors.js'
 import { createEmptyModel, type ProjectModel, type Table, type Relationship } from '@erdd/core'
 
 function tbl(id: string, groupId: string | null): Table {
@@ -58,5 +59,30 @@ describe('buildGhostNodes', () => {
       columnMappings: [], cardinality: '1:N', identifying: false, name: null }
     const usrGhosts = buildGhostNodes(m, 'G1').filter((g) => g.id === 'USR')
     expect(usrGhosts).toHaveLength(1)
+  })
+})
+
+describe('buildGhostNodes — 앵커 전달', () => {
+  it('고스트 노드도 원본 테이블의 앵커 목록을 싣는다', () => {
+    // 그룹 g1 안의 자식 C 가 그룹 밖 부모 P 를 참조한다 → P 가 고스트로 나온다.
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: 'G', color: '#000', comment: null }
+    m.tables['P'] = { id: 'P', logicalName: 'P', physicalName: 'P', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+    m.tables['C'] = { id: 'C', logicalName: 'C', physicalName: 'C', comment: null,
+      groupId: 'g1', position: { x: 300, y: 0 }, groupPosition: null, custom: {} }
+    m.columns['p1'] = { id: 'p1', tableId: 'P', logicalName: 'p1', physicalName: 'p1',
+      type: 'INT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
+      order: 0, comment: null, domainId: null, custom: {} }
+    m.columns['c1'] = { id: 'c1', tableId: 'C', logicalName: 'c1', physicalName: 'c1',
+      type: 'INT', isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
+      order: 0, comment: null, domainId: null, custom: {} }
+    m.relationships['R'] = { id: 'R', parentTableId: 'P', childTableId: 'C',
+      columnMappings: [{ childColumnId: 'c1', parentColumnId: 'p1' }],
+      cardinality: '1:N', identifying: false, name: null }
+
+    const ghosts = buildGhostNodes(m, 'g1', buildAnchors(m))
+    expect(ghosts).toHaveLength(1)
+    expect(ghosts[0]!.data.anchors).toEqual([{ key: 'c:p1', columnIds: ['p1'] }])
   })
 })

@@ -1,0 +1,219 @@
+import { describe, expect, it } from 'vitest'
+import { createEmptyModel, type Column, type ProjectModel, type Table } from '@erdd/core'
+import {
+  anchorSignatures, buildAnchors, changedAnchorTables, handleId,
+} from './anchors.js'
+import { reorderColumn } from './column-edits.js'
+
+function tbl(id: string): Table {
+  return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+}
+function col(id: string, tableId: string, order: number): Column {
+  return { id, tableId, logicalName: id, physicalName: id, type: 'VARCHAR(10)',
+    isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
+    order, comment: null, domainId: null, custom: {} }
+}
+
+/** 부모 P(p1, p2) · 자식 C(c1, c2). 관계는 테스트마다 따로 넣는다. */
+function model(): ProjectModel {
+  const m = createEmptyModel()
+  m.tables['P'] = tbl('P')
+  m.tables['C'] = tbl('C')
+  m.columns['p1'] = col('p1', 'P', 0)
+  m.columns['p2'] = col('p2', 'P', 1)
+  m.columns['c1'] = col('c1', 'C', 0)
+  m.columns['c2'] = col('c2', 'C', 1)
+  return m
+}
+
+function withRel(m: ProjectModel, mappings: { childColumnId: string; parentColumnId: string }[]) {
+  m.relationships['R'] = {
+    id: 'R', parentTableId: 'P', childTableId: 'C',
+    columnMappings: mappings, cardinality: '1:N', identifying: false, name: null,
+  }
+  return m
+}
+
+describe('buildAnchors', () => {
+  it('단일 매핑은 양 끝 모두 c: 키를 낸다', () => {
+    const a = buildAnchors(withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }]))
+    expect(a.byRelationship.get('R')).toEqual({ childKey: 'c:c1', parentKey: 'c:p1' })
+    expect(a.byTable.get('C')).toEqual([{ key: 'c:c1', columnIds: ['c1'] }])
+    expect(a.byTable.get('P')).toEqual([{ key: 'c:p1', columnIds: ['p1'] }])
+  })
+
+  it('복합 매핑은 s: 키를 내고 컬럼은 order 순으로 고정 정렬된다', () => {
+    // 매핑 배열을 일부러 역순으로 준다 — 입력 순서가 키에 새면 안 된다.
+    const a = buildAnchors(withRel(model(), [
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+    ]))
+    expect(a.byRelationship.get('R')).toEqual({ childKey: 's:c1+c2', parentKey: 's:p1+p2' })
+    expect(a.byTable.get('C')).toEqual([{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }])
+  })
+
+  it('order가 같으면 컬럼 id 사전순으로 결정된다', () => {
+    const m = model()
+    m.columns['c2']!.order = 0 // c1과 동률
+    const a = buildAnchors(withRel(m, [
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+    ]))
+    expect(a.byRelationship.get('R')!.childKey).toBe('s:c1+c2')
+  })
+
+  it('같은 childColumnId가 두 번 담겨도 단일 앵커로 남는다', () => {
+    // remapRelationshipChildColumn이 실제로 이런 매핑을 만든다.
+    const a = buildAnchors(withRel(model(), [
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+      { childColumnId: 'c1', parentColumnId: 'p2' },
+    ]))
+    expect(a.byRelationship.get('R')!.childKey).toBe('c:c1')
+    expect(a.byRelationship.get('R')!.parentKey).toBe('s:p1+p2')
+  })
+
+  it('빈 columnMappings는 양 끝이 null이다', () => {
+    const a = buildAnchors(withRel(model(), []))
+    expect(a.byRelationship.get('R')).toEqual({ childKey: null, parentKey: null })
+    expect(a.byTable.size).toBe(0)
+  })
+
+  it('모델에 없는 컬럼을 가리키면 그 끝만 null이다', () => {
+    const a = buildAnchors(withRel(model(), [{ childColumnId: 'GONE', parentColumnId: 'p1' }]))
+    expect(a.byRelationship.get('R')).toEqual({ childKey: null, parentKey: 'c:p1' })
+  })
+
+  it('매핑 컬럼이 그 관계의 테이블 소속이 아니면 걸러진다', () => {
+    // c1은 C 소속인데 부모(P) 쪽 매핑에 들어왔다 — 잘못된 모델에서 엉뚱한 행에 붙지 않게 한다.
+    const a = buildAnchors(withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'c1' }]))
+    expect(a.byRelationship.get('R')).toEqual({ childKey: 'c:c1', parentKey: null })
+  })
+
+  it('두 관계가 같은 조합을 쓰면 그 테이블의 앵커는 하나다', () => {
+    const m = withRel(model(), [
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+    ])
+    m.tables['C2'] = tbl('C2')
+    m.relationships['R2'] = {
+      id: 'R2', parentTableId: 'C', childTableId: 'C2',
+      // 부모(C) 쪽이 R과 같은 조합이다.
+      columnMappings: [
+        { childColumnId: 'c1', parentColumnId: 'c1' },
+        { childColumnId: 'c2', parentColumnId: 'c2' },
+      ],
+      cardinality: '1:N', identifying: false, name: null,
+    }
+    const a = buildAnchors(m)
+    expect(a.byTable.get('C')).toHaveLength(1)
+    expect(a.byTable.get('C')![0]!.key).toBe('s:c1+c2')
+  })
+
+  it('한 테이블의 앵커 목록은 단일 먼저·복합 나중으로 고정 정렬된다', () => {
+    const m = withRel(model(), [
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+    ])
+    m.tables['P2'] = tbl('P2')
+    m.columns['q1'] = col('q1', 'P2', 0)
+    m.relationships['R2'] = {
+      id: 'R2', parentTableId: 'P2', childTableId: 'C',
+      columnMappings: [{ childColumnId: 'c2', parentColumnId: 'q1' }],
+      cardinality: '1:N', identifying: false, name: null,
+    }
+    const a = buildAnchors(m)
+    expect(a.byTable.get('C')!.map((x) => x.key)).toEqual(['c:c2', 's:c1+c2'])
+  })
+})
+
+describe('handleId', () => {
+  it('키가 있으면 side:key, 없으면 side만 낸다(중앙 폴백)', () => {
+    expect(handleId('l', 'c:c1')).toBe('l:c:c1')
+    expect(handleId('r', 's:c1+c2')).toBe('r:s:c1+c2')
+    expect(handleId('l', null)).toBe('l')
+    expect(handleId('r', null)).toBe('r')
+  })
+})
+
+describe('anchorSignatures / changedAnchorTables', () => {
+  /** 서명은 그 모델의 앵커에서 뽑는다 — 인자 둘이 어긋나면 위치가 엉뚱하게 계산된다. */
+  const sigOf = (m: ProjectModel) => anchorSignatures(buildAnchors(m), m)
+
+  it('앵커가 그대로면 바뀐 테이블이 없다', () => {
+    const m = withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }])
+    expect(changedAnchorTables(sigOf(m), sigOf(m))).toEqual([])
+  })
+
+  it('관계가 생기면 두 테이블이 바뀐 것으로 나온다', () => {
+    const before = sigOf(model())
+    const after = sigOf(withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }]))
+    expect(changedAnchorTables(before, after).sort()).toEqual(['C', 'P'])
+  })
+
+  it('관계가 사라져 앵커가 0개가 된 테이블도 바뀐 것으로 나온다', () => {
+    const before = sigOf(withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }]))
+    const after = sigOf(model())
+    expect(changedAnchorTables(before, after).sort()).toEqual(['C', 'P'])
+  })
+
+  /*
+   * 아래 세 건이 M-1 회귀를 잠근다. 핸들의 y 는 앵커 **키**가 아니라 그 컬럼 행이 노드 안
+   * **몇 번째인가**로 정해진다. 키만 서명에 넣으면 컬럼 재정렬이 서명을 바꾸지 못해
+   * updateNodeInternals 가 안 걸리고, React Flow 도 스스로 재측정하지 않아(행 집합이 같아
+   * 노드 크기가 안 변한다 → ResizeObserver 도 dimensionChanged 도 없다) 선이 옛 행 높이에 남는다.
+   */
+  it('앵커 컬럼을 위로 옮기면 키가 그대로여도 그 테이블이 바뀐 것으로 나온다', () => {
+    const m = withRel(model(), [{ childColumnId: 'c2', parentColumnId: 'p1' }])
+    const before = sigOf(m)
+    const after = sigOf(reorderColumn(m, 'c2', -1)) // c2(1번째) ↔ c1(0번째)
+    // 키 집합은 그대로다 — 위치가 서명에 없으면 이 단언이 [] 를 받는다.
+    expect([...before.values()]).not.toEqual([...after.values()])
+    expect(changedAnchorTables(before, after)).toEqual(['C'])
+  })
+
+  it('앵커가 아닌 컬럼끼리 순서를 바꾸면 그 테이블은 바뀌지 않는다', () => {
+    // 앵커는 c1(0번째). c2·c3 를 맞바꿔도 c1 의 행 인덱스는 그대로라 재측정이 필요 없다 —
+    // 설계 5.5 의 "매 렌더 전부 부르지 않는다"를 서명이 계속 지키는지 본다.
+    const m = withRel(model(), [{ childColumnId: 'c1', parentColumnId: 'p1' }])
+    m.columns['c3'] = col('c3', 'C', 2)
+    const before = sigOf(m)
+    const after = sigOf(reorderColumn(m, 'c2', 1)) // c2(1번째) ↔ c3(2번째)
+    expect(changedAnchorTables(before, after)).toEqual([])
+  })
+
+  it('복합 앵커는 컬럼 개수가 바뀌면 바뀐 것으로 나온다', () => {
+    // 합성 행은 컬럼 목록 **맨 아래**라 그 y 가 컬럼 개수를 따라 움직인다.
+    const m = withRel(model(), [
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+    ])
+    const before = sigOf(m)
+    const grown = structuredClone(m)
+    grown.columns['c3'] = col('c3', 'C', 2)
+    expect(changedAnchorTables(before, sigOf(grown))).toEqual(['C'])
+  })
+
+  it('행 인덱스는 그 테이블 안에서의 순번이다', () => {
+    /*
+     * 서명은 테이블별로 **독립**이어야 한다. 컬럼을 한 번만 훑어 테이블별로 모으는 구현이라
+     * 그룹을 잘못 나누면 다른 테이블 컬럼이 섞여 위치가 밀리는데, 그래도 서명끼리는 일관되게
+     * 틀리므로 `changedAnchorTables` 비교만으로는 드러나지 않는다. 값을 직접 못 박는다.
+     */
+    const m = withRel(model(), [{ childColumnId: 'c2', parentColumnId: 'p2' }])
+    const sig = sigOf(m)
+    // c2 는 C 안에서 2번째(인덱스 1), p2 는 P 안에서 2번째. 두 테이블을 한 배열로 모으면
+    // 둘 중 하나가 3이 된다.
+    expect(sig.get('C')).toBe('c:c2@1')
+    expect(sig.get('P')).toBe('c:p2@1')
+  })
+
+  it('복합 앵커의 위치는 그 테이블의 컬럼 개수다', () => {
+    // 합성 행은 컬럼 목록 맨 아래에 렌더되므로 위치가 컬럼 개수다(전체 컬럼 수가 아니다).
+    const m = withRel(model(), [
+      { childColumnId: 'c1', parentColumnId: 'p1' },
+      { childColumnId: 'c2', parentColumnId: 'p2' },
+    ])
+    expect(sigOf(m).get('C')).toBe('s:c1+c2@2')
+  })
+})

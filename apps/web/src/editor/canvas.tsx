@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   Background, MiniMap, ReactFlow, ConnectionMode,
-  useNodesState, useReactFlow, type Connection, type Edge, type Node, type NodeChange,
+  useNodesState, useReactFlow, useUpdateNodeInternals,
+  type Connection, type Edge, type Node, type NodeChange,
   type XYPosition,
 } from '@xyflow/react'
 import { toast } from 'sonner'
@@ -15,6 +16,7 @@ import { GroupNode } from './group-node.js'
 import { buildGroupNodes } from './group-nodes.js'
 import { GhostNode } from './ghost-node.js'
 import { buildGhostNodes } from './ghost-nodes.js'
+import { anchorSignatures, buildAnchors, changedAnchorTables } from './anchors.js'
 import { RelationshipEdge, RelationshipMarkers } from './relationship-edge.js'
 import { useModelMutation } from './use-model.js'
 import { useEditorShortcuts } from './use-shortcuts.js'
@@ -123,6 +125,8 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
   const peers = useEditorStore((s) => s.peers)
   const peerMarks = useMemo(() => buildPeerMarks(peers, selfUserId), [peers, selfUserId])
+  // 앵커는 노드·엣지·고스트 셋이 함께 읽는다 — 한 번만 계산해 넘긴다(설계 3.3).
+  const anchors = useMemo(() => buildAnchors(model), [model])
 
   // 유효 뷰: 활성 그룹이 삭제됐으면(그룹 뷰 도중 삭제) 전체 뷰로 폴백한다.
   const view = activeGroupView && model.tableGroups[activeGroupView]
@@ -139,10 +143,11 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
 
   const derived = useMemo(() => {
     const tableNodes = buildNodes(
-      model, viewMode, selectedIds, warnings, view, peerMarks, { selectedColumnIds, onColumnClick })
+      model, viewMode, selectedIds, warnings, view, peerMarks,
+      { selectedColumnIds, onColumnClick }, anchors)
     if (view.kind === 'group') {
       // 그룹 뷰: 색상 영역·메모 노드는 숨긴다. 관계로 이어진 외부 테이블은 고스트로 보여준다.
-      const ghostNodes = buildGhostNodes(model, view.groupId)
+      const ghostNodes = buildGhostNodes(model, view.groupId, anchors)
       return [...ghostNodes, ...tableNodes]
     }
     const groupNodes = buildGroupNodes(model, selectedGroupId, canEdit)
@@ -154,23 +159,48 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     }))
     return [...groupNodes, ...tableNodes, ...noteNodes]
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, viewMode, selectedIds, selectedColumnIds, onColumnClick, selectedNoteId, selectedGroupId, canEdit, warnings, peerMarks, view.kind, view.kind === 'group' ? view.groupId : null])
+  }, [model, viewMode, selectedIds, selectedColumnIds, onColumnClick, selectedNoteId, selectedGroupId, canEdit, warnings, peerMarks, anchors, view.kind, view.kind === 'group' ? view.groupId : null])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.
   // 이전 배열의 실측 크기는 이어 붙인다 — 버리면 handleBounds까지 함께 날아간다(keepMeasured 주석).
   useEffect(() => { setNodes((prev) => keepMeasured(prev, derived)) }, [derived, setNodes])
 
+  /**
+   * 핸들 집합이 바뀐 테이블에 `updateNodeInternals` 를 건다.
+   *
+   * ⚠️ 앵커 핸들은 **모델에 따라 붙고 떨어진다**(관계를 만들거나 지우면 그 두 테이블의 앵커가
+   * 늘고 준다). React Flow 는 그 변화를 자동으로 반영하지 않으므로 — `handleBounds` 는
+   * `updateNodeInternals` 가 DOM 을 다시 재야 갱신된다 — 부르지 않으면 관계를 만든 직후
+   * 선이 옛 자리에 남거나 붙지 못한다.
+   *
+   * `keepMeasured`(위 effect)와 방향이 반대이자 상보적이다. 그쪽은 선택이 바뀌었을 뿐인데
+   * `measured` 가 날아가 `handleBounds` 까지 함께 버려지는 것을 **막고**, 이쪽은 핸들이 실제로
+   * 바뀌었는데 옛 측정이 남는 것을 **갱신으로** 막는다. 둘 중 하나만 있으면 각각 깜박임과
+   * 선 어긋남이 난다.
+   *
+   * 서명이 같은 테이블은 건드리지 않는다 — 매 렌더 전부 부르면 그때마다 DOM 을 다시 재는
+   * 비용이 붙는다. 첫 실행에서는 모든 테이블이 대상이 되는데(이전 서명이 비어 있다) 무해하다.
+   */
+  const updateNodeInternals = useUpdateNodeInternals()
+  const prevAnchorSigs = useRef(new Map<string, string>())
+  useEffect(() => {
+    const next = anchorSignatures(anchors, model)
+    const changed = changedAnchorTables(prevAnchorSigs.current, next)
+    prevAnchorSigs.current = next
+    if (changed.length > 0) updateNodeInternals(changed)
+  }, [anchors, model, updateNodeInternals])
+
   const edges = useMemo<Edge[]>(() => {
     const built = view.kind === 'group'
       ? buildEdges(model, new Set([
           ...Object.values(model.tables).filter((t) => t.groupId === view.groupId).map((t) => t.id),
-          ...buildGhostNodes(model, view.groupId).map((g) => g.data.table.id),
-        ]), peerMarks)
-      : buildEdges(model, undefined, peerMarks)
+          ...buildGhostNodes(model, view.groupId, anchors).map((g) => g.data.table.id),
+        ]), peerMarks, anchors)
+      : buildEdges(model, undefined, peerMarks, anchors)
     return selectedRelId ? built.map((e) => (e.id === selectedRelId ? { ...e, selected: true } : e)) : built
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, view.kind, view.kind === 'group' ? view.groupId : null, selectedRelId, peerMarks])
+  }, [model, view.kind, view.kind === 'group' ? view.groupId : null, selectedRelId, peerMarks, anchors])
 
   // 트리에서 발행한 포커스 신호를 소비해 해당 테이블로 이동한다.
   useEffect(() => {
