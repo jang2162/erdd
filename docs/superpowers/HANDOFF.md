@@ -58,11 +58,11 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 641 · cli 138 · web 839 · server 196 (erdd_test) · typecheck EXIT=0
+core 646 · cli 138 · web 859 · server 196 (erdd_test) · typecheck EXIT=0
 ```
 
-명명 입력 UI 개편 사이클에서 **core +16 · web +56**이 붙었다(직전 기준선은 `core 630 · web 800`이었다).
-구현이 `core +11 · web +39`, **리뷰 수정 라운드가 `core +5 · web +17`** 이다(Major 4 · Minor 8 · Nit 3 ·
+명명 입력 UI 개편 사이클에서 **core +16 · web +59**가 붙었다(직전 기준선은 `core 630 · web 800`이었다).
+구현이 `core +11 · web +39`, **리뷰 수정 라운드가 `core +5 · web +20`** 이다(Major 4 · Minor 8 · Nit 3 ·
 잠기지 않은 5곳을 전부 닫았다).
 **cli·server는 무변경** — 설계가 "서버 변경 없음 · CLI 변경 없음"을 못 박았고 변경 파일이
 `packages/core/src/naming.ts`(+테스트·`index.ts`)와 `apps/web/src/editor/**` 뿐이라, 그 둘이 움직였다면
