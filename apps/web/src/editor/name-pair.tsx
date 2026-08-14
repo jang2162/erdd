@@ -1,7 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import { generatePhysicalName, restoreLogicalName, type ProjectModel } from '@erdd/core'
+import {
+  generatePhysicalName, restoreLogicalName, suggestCompletions,
+  type Completion, type ProjectModel,
+} from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { Input } from '@/components/ui/input'
@@ -134,7 +137,33 @@ function NameField(props: {
   onCommit: (value: string) => void
   onRegenerate: () => void
 }) {
+  const namingRules = useEditorStore((s) => s.namingRules)
+  const words = useEditorStore((s) => s.model.words)
+  const terms = useEditorStore((s) => s.model.terms)
+  const [focused, setFocused] = useState(false)
+  // 확정·Esc 로 닫은 상태. 다음 타이핑에서 풀린다.
+  const [dismissed, setDismissed] = useState(false)
+  const [active, setActive] = useState(0)
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (blurTimer.current) clearTimeout(blurTimer.current) }, [])
+
+  const completions = useMemo(
+    () => (props.canEdit
+      ? suggestCompletions(props.value, props.side, words, terms, namingRules)
+      : { query: '', items: [] as Completion[] }),
+    [props.value, props.side, props.canEdit, words, terms, namingRules],
+  )
+  const open = focused && !dismissed && completions.items.length > 0
+  useEffect(() => { setActive(0) }, [completions.query])
+
+  const apply = (item: Completion) => {
+    props.onChange(props.value.slice(0, item.start) + item.insert)
+    setDismissed(true)      // 확정하면 닫는다. 다음 글자를 치면 다시 열린다.
+  }
+
   const regenerateLabel = props.side === 'physical' ? '물리명 재생성' : '논리명 재생성'
+  const listId = `${props.id}-completions`
+
   return (
     <div className="grid gap-1.5">
       <FieldLabel htmlFor={props.id} required>{props.label}</FieldLabel>
@@ -142,12 +171,42 @@ function NameField(props: {
         <Input
           id={props.id}
           aria-label={props.label}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          aria-activedescendant={open ? `${listId}-${active}` : undefined}
+          autoComplete="off"
           value={props.value}
           readOnly={!props.canEdit}
           className={props.side === 'physical' ? 'pr-9 font-mono' : 'pr-9'}
-          onChange={(e) => props.onChange(e.target.value)}
-          onBlur={(e) => props.onCommit(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onChange={(e) => { setDismissed(false); props.onChange(e.target.value) }}
+          onBlur={(e) => {
+            const value = e.target.value
+            // 목록 항목을 누른 경우 mousedown 의 preventDefault 로 blur 가 오지 않는다.
+            // 그래도 방어로 한 틱 미뤄 확정이 먼저 반영되게 한다.
+            blurTimer.current = setTimeout(() => { setFocused(false); props.onCommit(value) }, 0)
+          }}
           onKeyDown={(e) => {
+            if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+              e.preventDefault()
+              const delta = e.key === 'ArrowDown' ? 1 : -1
+              setActive((i) => (i + delta + completions.items.length) % completions.items.length)
+              return
+            }
+            if (open && e.key === 'Enter') {
+              // 목록이 열려 있는 동안 Enter 는 확정 전용이다 — 커밋으로 내려가지 않는다.
+              e.preventDefault()
+              const item = completions.items[active]
+              if (item) apply(item)
+              return
+            }
+            if (open && e.key === 'Escape') {
+              e.preventDefault()
+              e.stopPropagation()     // 상위(다이얼로그·캔버스)로 새면 안 된다
+              setDismissed(true)
+              return
+            }
             if (e.key === 'Enter') { e.preventDefault(); props.onCommit(props.value) }
           }}
         />
@@ -163,6 +222,31 @@ function NameField(props: {
           >
             <RotateCcw className="size-3.5" />
           </Button>
+        )}
+        {open && (
+          <ul
+            id={listId} role="listbox"
+            className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+          >
+            {completions.items.map((item, i) => (
+              <li
+                key={`${item.kind}-${item.insert}`}
+                id={`${listId}-${i}`}
+                role="option"
+                aria-selected={i === active}
+                className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 text-sm ${
+                  i === active ? 'bg-accent' : ''
+                }`}
+                onMouseDown={(e) => e.preventDefault()}   // blur 로 목록이 닫히기 전에 클릭이 온다
+                onClick={() => apply(item)}
+              >
+                <span className={props.side === 'physical' ? 'font-mono' : undefined}>{item.insert}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {item.kind === 'term' ? `용어 · ${item.hint}` : item.hint}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </div>

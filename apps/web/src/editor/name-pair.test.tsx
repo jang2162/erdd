@@ -150,3 +150,119 @@ describe('NamePair', () => {
     expect(screen.getByLabelText('논리명')).toHaveAttribute('readonly')
   })
 })
+
+describe('NamePair 자동완성', () => {
+  it('논리명 꼬리에 맞는 후보를 목록으로 낸다', async () => {
+    loadModel()
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원주')
+    const list = await screen.findByRole('listbox')
+    expect(list).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /주문/ })).toBeInTheDocument()
+  })
+
+  it('사전 단어로 딱 떨어지면 목록이 없다', async () => {
+    loadModel()
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원주문')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('클릭으로 확정하면 꼬리만 치환되고 커밋은 나가지 않는다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    loadModel()
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원주')
+    await userEvent.click(await screen.findByRole('option', { name: /주문/ }))
+    expect(logical.value).toBe('회원주문')
+    expect(calls).toHaveLength(0)                 // 확정은 커밋이 아니다
+    expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원')
+  })
+
+  it('아래 화살표 + Enter 로 확정하고, 그 Enter 는 커밋으로 내려가지 않는다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    loadModel()
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원주')
+    await screen.findByRole('listbox')
+    await userEvent.keyboard('{ArrowDown}{Enter}')
+    expect(logical.value).toBe('회원주문')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('Esc 로 닫고, 한 글자 더 치면 다시 열린다', async () => {
+    loadModel()
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원주')
+    await screen.findByRole('listbox')
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    // 닫은 뒤 한 글자 더 치면 다시 열린다
+    await userEvent.type(logical, '문')
+    expect(logical.value).toBe('회원주문')
+  })
+
+  it('목록을 닫는 Esc 는 상위로 전파되지 않는다', async () => {
+    const onKeyDown = vi.fn()
+    loadModel()
+    // 상위 감시자를 끼운 래퍼로 다시 렌더한다(renderPair 와 같은 provider 를 쓴다).
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
+    const table = useEditorStore.getState().model.tables['t2']!
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+          <div onKeyDown={onKeyDown}>
+            <NamePair
+              projectId={PROJECT}
+              logicalName={table.logicalName}
+              physicalName={table.physicalName}
+              idPrefix="tbl"
+              physicalLabel="테이블 물리명"
+              canEdit
+              applyNames={(m, patch) => updateTable(m, 't2', patch)}
+            />
+          </div>
+        </TRPCProvider>
+      </QueryClientProvider>,
+    )
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원주')
+    await screen.findByRole('listbox')
+    onKeyDown.mockClear()
+    await userEvent.keyboard('{Escape}')
+    expect(onKeyDown).not.toHaveBeenCalled()
+  })
+
+  it('물리명에서는 약어를 제안한다', async () => {
+    loadModel()
+    renderPair()
+    const physical = screen.getByLabelText(/테이블 물리명/) as HTMLInputElement
+    await userEvent.clear(physical)
+    await userEvent.type(physical, 'MBR_OR')
+    expect(await screen.findByRole('option', { name: /ORD/ })).toBeInTheDocument()
+  })
+
+  it('읽기 전용이면 목록이 열리지 않는다', async () => {
+    loadModel()
+    useEditorStore.setState({ canEdit: false })
+    renderPair(false)
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.click(logical)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+})
