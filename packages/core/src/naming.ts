@@ -116,6 +116,8 @@ export type CompletionResult = { query: string; items: Completion[] }
 
 /** 한 번에 보여 주는 후보 수. 이 위로는 목록이 스크롤되어 고르는 비용이 타이핑보다 커진다. */
 const MAX_COMPLETIONS = 8
+/** 그중 용어가 가져갈 수 있는 최대 칸. 나머지는 단어 몫으로 남는다(설계 §3.4). */
+const MAX_TERM_COMPLETIONS = 3
 
 /**
  * 입력 중인 이름의 **아직 사전에 매칭되지 않은 꼬리 한 조각**을 쿼리로 삼아 후보를 낸다.
@@ -133,15 +135,8 @@ export function suggestCompletions(
   input: string, side: 'logical' | 'physical',
   words: Record<string, Word>, terms: Record<string, Term>, rules: NamingRules,
 ): CompletionResult {
-  const none: CompletionResult = { query: '', items: [] }
-  if (input === '' || input !== input.trim()) return none
+  if (input === '' || input !== input.trim()) return { query: '', items: [] }
 
-  const query = side === 'logical'
-    ? logicalQuery(input, words)
-    : physicalQuery(input, words, rules)
-  if (query === '') return none
-
-  const start = input.length - query.length
   const seen = new Set<string>()
   const push = (list: Completion[], c: Completion) => {
     if (c.insert === '' || seen.has(`${c.kind} ${c.insert}`)) return
@@ -149,7 +144,10 @@ export function suggestCompletions(
     list.push(c)
   }
 
-  // 용어 먼저 — generatePhysicalName이 용어를 먼저 보는 것과 같은 우선순위다.
+  // ⚠️ 용어는 **입력 전체** 접두일치라 꼬리 쿼리와 무관하다 — 그래서 빈 쿼리 조기 반환보다 **앞**에
+  // 있어야 한다. 뒤에 두면 입력이 사전 단어로 딱 떨어지는 순간(= 용어로 가는 길목의 정상 모양)
+  // 용어 후보가 통째로 죽고, 물리명 쪽은 구분자 덕에 우연히 안 걸려 D2 의 대칭이 깨진다.
+  // 용어 먼저 담는 것은 generatePhysicalName 이 용어를 먼저 보는 것과 같은 우선순위다.
   const termItems: Completion[] = []
   for (const t of Object.values(terms)) {
     const target = side === 'logical' ? t.logicalName : t.physicalName
@@ -160,14 +158,22 @@ export function suggestCompletions(
     })
   }
 
+  const query = side === 'logical'
+    ? logicalQuery(input, words)
+    : physicalQuery(input, words, rules)
+  const start = input.length - query.length
+
+  // 단어만 꼬리 쿼리에 의존한다 — 쿼리가 비었는데 단어를 열면 한 글자마다 사전 전체가 뜬다.
   const wordItems: Completion[] = []
-  for (const w of Object.values(words)) {
-    const target = side === 'logical' ? w.logicalName : w.abbreviation
-    if (!startsWithFold(target, query, side) || foldEq(target, query, side)) continue
-    push(wordItems, {
-      insert: target, hint: side === 'logical' ? w.abbreviation : w.logicalName,
-      kind: 'word', start,
-    })
+  if (query !== '') {
+    for (const w of Object.values(words)) {
+      const target = side === 'logical' ? w.logicalName : w.abbreviation
+      if (!startsWithFold(target, query, side) || foldEq(target, query, side)) continue
+      push(wordItems, {
+        insert: target, hint: side === 'logical' ? w.abbreviation : w.logicalName,
+        kind: 'word', start,
+      })
+    }
   }
 
   const byLength = (a: Completion, b: Completion) => (
@@ -177,7 +183,12 @@ export function suggestCompletions(
   )
   termItems.sort(byLength)
   wordItems.sort(byLength)
-  return { query, items: [...termItems, ...wordItems].slice(0, MAX_COMPLETIONS) }
+  // ⚠️ 용어에 따로 상한을 두고 남는 칸을 단어에 준다. 합친 뒤에 한 번만 자르면 접두일치 용어가
+  // MAX_COMPLETIONS 개 이상일 때 단어 후보가 0건이 되어 단어 자동완성이 조용히 죽는다.
+  return {
+    query,
+    items: [...termItems.slice(0, MAX_TERM_COMPLETIONS), ...wordItems].slice(0, MAX_COMPLETIONS),
+  }
 }
 
 /** 물리명 쪽만 대소문자를 접어 비교한다(약어는 대문자 규약이지만 소문자로 치는 것을 허용한다). */
@@ -204,14 +215,18 @@ function physicalQuery(input: string, words: Record<string, Word>, rules: Naming
     const idx = input.lastIndexOf(rules.separator)
     return idx === -1 ? input : input.slice(idx + rules.separator.length)
   }
+  const upper = input.toUpperCase()
+  // ⚠️ 아래 순회는 upper 인덱스로 돌고 부르는 쪽은 start 를 `input.length - query.length` 로 잡는다.
+  // 대문자 변환이 길이를 바꾸는 문자(ß→SS 등)가 섞이면 두 인덱스가 어긋나 치환이 원본을 망친다.
+  // 그런 입력에서는 후보를 내지 않는다(실사용 빈도는 0에 가깝지만 조용히 틀리는 것보다 낫다).
+  if (upper.length !== input.length) return ''
   const index = abbreviationIndex(words)
   const byLen = [...index.keys()].sort((a, b) => b.length - a.length)
-  const upper = input.toUpperCase()
   let i = 0
   let pending = ''
   while (i < upper.length) {
     const hit = byLen.find((abbr) => upper.startsWith(abbr, i))
-    if (hit) { pending = ''; i += hit.length } else { pending += input[i]!; i += 1 }
+    if (hit) { pending = ''; i += hit.length } else { pending += upper[i]!; i += 1 }
   }
   return pending
 }

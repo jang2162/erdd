@@ -135,7 +135,7 @@ describe('suggestCompletions', () => {
     expect('회원주'.slice(0, r.items[0]!.start) + r.items[0]!.insert).toBe('회원주문')
   })
 
-  it('논리명 — 사전 단어로 딱 떨어지면 후보를 내지 않는다', () => {
+  it('논리명 — 사전 단어로 딱 떨어지면 단어 후보를 내지 않는다(용어는 별개다 — 아래)', () => {
     const r = suggestCompletions('회원주문', 'logical', w, {}, DEFAULT_NAMING_RULES)
     expect(r.query).toBe('')
     expect(r.items).toEqual([])
@@ -202,6 +202,60 @@ describe('suggestCompletions', () => {
     expect(r.items).toHaveLength(8)
     expect(r.items[0]!.insert).toBe('가나')            // 가장 짧은 것이 먼저다
     expect(r.items[0]!.insert.length).toBeLessThanOrEqual(r.items[7]!.insert.length)
+  })
+
+  // ⚠️ m5. 용어는 **입력 전체** 접두일치라 꼬리 쿼리와 무관하다. 빈 쿼리 조기 반환이 용어 탐색보다
+  // 앞에 있으면 '회원주문'처럼 사전 단어로 딱 떨어지는 순간 용어 후보가 통째로 죽는다 —
+  // 하필 용어로 가는 길목의 접두가 대개 그 모양이라 주 동선이 막힌다.
+  it('입력이 사전 단어로 딱 떨어져도 용어 후보는 나온다', () => {
+    const r = suggestCompletions('회원주문', 'logical', w, t, DEFAULT_NAMING_RULES)
+    expect(r.query).toBe('')
+    expect(r.items.map((i) => i.insert)).toEqual(['회원주문번호'])
+    expect(r.items[0]!.kind).toBe('term')
+    expect(r.items[0]!.start).toBe(0)
+  })
+
+  it('그때 단어 후보는 나오지 않는다(쿼리가 비면 사전 전체가 뜨는 것을 막는 규칙은 그대로다)', () => {
+    const r = suggestCompletions('회원주문', 'logical', w, t, DEFAULT_NAMING_RULES)
+    expect(r.items.filter((i) => i.kind === 'word')).toEqual([])
+  })
+
+  it('물리명도 같다 — 약어로 딱 떨어져도 용어 후보가 나온다', () => {
+    // 무구분자 규칙에서만 물리명 쿼리가 빈다(구분자가 있으면 마지막 토큰이 남아 우연히 안 걸린다).
+    const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, maxLengthBytes: 30 }
+    const flat = {
+      t2: { id:'t2', logicalName:'회원주문번호', physicalName:'MBRORDNO', domainId:null, description:null, origin:null },
+    }
+    const r = suggestCompletions('MBRORD', 'physical', w, flat, rules)
+    expect(r.query).toBe('')
+    expect(r.items.map((i) => i.insert)).toEqual(['MBRORDNO'])
+  })
+
+  // ⚠️ m6. slice 를 합친 뒤에 걸면 접두일치 용어가 8개 이상일 때 단어 후보가 0건이 된다.
+  it('용어가 상한을 넘어도 단어 후보가 남는다', () => {
+    const many: Record<string, Term> = {}
+    for (let i = 1; i <= 9; i += 1) {
+      many[`t${i}`] = {
+        id: `t${i}`, logicalName: `회원주${'문'.repeat(i)}`, physicalName: `MBR_ORD_${i}`,
+        domainId: null, description: null, origin: null,
+      }
+    }
+    const r = suggestCompletions('회원주', 'logical', w, many, DEFAULT_NAMING_RULES)
+    expect(r.items.filter((i) => i.kind === 'term')).toHaveLength(3)   // 용어 상한
+    expect(r.items.some((i) => i.kind === 'word')).toBe(true)          // 단어가 밀려나지 않는다
+    expect(r.items.length).toBeLessThanOrEqual(8)
+  })
+
+  // ⚠️ n13. 무구분자 경로는 upper 인덱스로 순회하므로, 대문자 변환이 길이를 바꾸면
+  // start(= input.length - query.length)가 원본에서 어긋나 치환이 문자열을 망친다.
+  it('대문자 변환이 길이를 바꾸는 입력은 물리명 후보를 내지 않는다', () => {
+    const withSsn = {
+      ...w,
+      w9: { id:'w9', logicalName:'주민등록번호', abbreviation:'SSN', englishName:null, description:null, origin:null },
+    }
+    const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, maxLengthBytes: 30 }
+    expect('MBR\u00df'.toUpperCase().length).not.toBe('MBR\u00df'.length)   // 전제
+    expect(suggestCompletions('MBR\u00df', 'physical', withSsn, {}, rules).items).toEqual([])
   })
 
   it('같은 약어를 가진 단어가 둘이어도 후보는 하나다', () => {
