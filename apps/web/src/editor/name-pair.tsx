@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { Plus, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   generatePhysicalName, restoreLogicalName, suggestCompletions,
@@ -7,6 +7,8 @@ import {
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
+import { canRegisterWord, createWord } from './dict-edits.js'
+import { newId } from './uid.js'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { FieldLabel } from '@/components/field-label'
@@ -106,21 +108,49 @@ export function NamePair(props: {
     commit(patch, side === 'physical' ? '물리명 재생성' : '논리명 재생성')
   }
 
+  /**
+   * 미등록 구간을 단어로 등록한다. 등록과 "반대편이 비어 있으면 채우기"를 **한 producer** 로 묶어
+   * Revision 1건 · undo 1회로 만든다.
+   * ⚠️ 자동 생성은 next.words(방금 등록한 단어가 든 모델)로 계산해야 한다.
+   */
+  const registerWord = (logical: string, abbreviation: string) => {
+    const id = newId()
+    const draftLogical = draft.logicalName
+    const draftPhysical = draft.physicalName
+    void mutate((m) => {
+      const next = createWord(m, {
+        id, logicalName: logical.trim(), abbreviation: abbreviation.trim(),
+        englishName: null, description: null, origin: null,
+      })
+      const patch: NamePatch = {}
+      if (draftPhysical.trim() === '' && draftLogical.trim() !== '') {
+        const gen = generatePhysicalName(draftLogical, next.words, next.terms, namingRules)
+        if (gen.physicalName) patch.physicalName = gen.physicalName
+      } else if (draftLogical.trim() === '' && draftPhysical.trim() !== '') {
+        const r = restoreLogicalName(draftPhysical, next.words, next.terms, namingRules)
+        if (r.ok) patch.logicalName = r.logicalName
+      }
+      return Object.keys(patch).length > 0 ? applyNames(next, patch) : next
+    }, { summary: '단어 등록' })
+  }
+
   return (
     <div className="grid gap-3">
       <NameField
         side="physical" label={props.physicalLabel} id={`${props.idPrefix}-physical`}
-        value={draft.physicalName} canEdit={canEdit}
+        value={draft.physicalName} committed={physicalName} canEdit={canEdit}
         onChange={(v) => setDraft((d) => ({ ...d, physicalName: v }))}
         onCommit={(v) => commitSide('physical', v)}
         onRegenerate={() => regenerate('physical')}
+        onRegisterWord={registerWord}
       />
       <NameField
         side="logical" label="논리명" id={`${props.idPrefix}-logical`}
-        value={draft.logicalName} canEdit={canEdit}
+        value={draft.logicalName} committed={logicalName} canEdit={canEdit}
         onChange={(v) => setDraft((d) => ({ ...d, logicalName: v }))}
         onCommit={(v) => commitSide('logical', v)}
         onRegenerate={() => regenerate('logical')}
+        onRegisterWord={registerWord}
       />
       {props.extra}
     </div>
@@ -132,15 +162,21 @@ function NameField(props: {
   label: string
   id: string
   value: string
+  /** 모델에 커밋된 값. 미등록 칩은 이것으로만 계산한다(draft 면 타이핑 중 깜박인다). */
+  committed: string
   canEdit: boolean
   onChange: (value: string) => void
   onCommit: (value: string) => void
   onRegenerate: () => void
+  onRegisterWord: (logical: string, abbreviation: string) => void
 }) {
+  const model = useEditorStore((s) => s.model)
   const namingRules = useEditorStore((s) => s.namingRules)
   const words = useEditorStore((s) => s.model.words)
   const terms = useEditorStore((s) => s.model.terms)
   const [focused, setFocused] = useState(false)
+  const [openChip, setOpenChip] = useState<string | null>(null)
+  const [chipValue, setChipValue] = useState('')
   // 확정·Esc 로 닫은 상태. 다음 타이핑에서 풀린다.
   const [dismissed, setDismissed] = useState(false)
   const [active, setActive] = useState(0)
@@ -160,6 +196,27 @@ function NameField(props: {
     props.onChange(props.value.slice(0, item.start) + item.insert)
     setDismissed(true)      // 확정하면 닫는다. 다음 글자를 치면 다시 열린다.
   }
+
+  // ⚠️ draft 가 아니라 committed 로 계산한다 — draft 로 하면 타이핑 중 꼬리가 늘 미등록이라 깜박인다.
+  const chips = useMemo(() => {
+    if (!props.canEdit || props.committed.trim() === '') return []
+    if (props.side === 'logical') {
+      return generatePhysicalName(props.committed, words, terms, namingRules).unknownWords
+    }
+    const r = restoreLogicalName(props.committed, words, terms, namingRules)
+    return r.ok ? [] : r.unknownTokens
+  }, [props.canEdit, props.committed, props.side, words, terms, namingRules])
+
+  // 사전이 바뀌어 칩이 사라지면 펼친 폼도 닫는다.
+  useEffect(() => {
+    if (openChip !== null && !chips.includes(openChip)) { setOpenChip(null); setChipValue('') }
+  }, [chips, openChip])
+
+  const check = openChip === null
+    ? null
+    : canRegisterWord(model, props.side === 'logical'
+      ? { logicalName: openChip, abbreviation: chipValue }
+      : { logicalName: chipValue, abbreviation: openChip })
 
   const regenerateLabel = props.side === 'physical' ? '물리명 재생성' : '논리명 재생성'
   const listId = `${props.id}-completions`
@@ -249,6 +306,61 @@ function NameField(props: {
           </ul>
         )}
       </div>
+      {chips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 text-xs">
+          <span className="text-muted-foreground">미등록</span>
+          {chips.map((chip) => (
+            <Button
+              key={chip} type="button" size="sm" variant="outline"
+              className="h-6 gap-0.5 px-1.5 text-[11px]"
+              aria-label={`${chip} 등록`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setOpenChip((cur) => (cur === chip ? null : chip))
+                setChipValue('')
+              }}
+            >
+              <Plus className="size-3" />
+              <span className={props.side === 'physical' ? 'font-mono' : undefined}>{chip}</span>
+            </Button>
+          ))}
+        </div>
+      )}
+      {openChip !== null && (
+        <div className="grid gap-1 rounded-md border p-2">
+          <span className="text-xs font-medium">{openChip}</span>
+          <div className="flex items-center gap-1">
+            <Input
+              aria-label={`${openChip} ${props.side === 'logical' ? '약어' : '논리명'}`}
+              placeholder={props.side === 'logical' ? '약어' : '논리명'}
+              className={props.side === 'logical' ? 'h-8 font-mono' : 'h-8'}
+              value={chipValue}
+              onChange={(e) => setChipValue(e.target.value)}
+            />
+            <Button
+              type="button" size="sm" className="h-8 shrink-0"
+              disabled={!check?.ok}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const target = openChip
+                const value = chipValue
+                setOpenChip(null)
+                setChipValue('')
+                if (props.side === 'logical') props.onRegisterWord(target, value)
+                else props.onRegisterWord(value, target)
+              }}
+            >
+              단어 등록
+            </Button>
+          </div>
+          {check?.abbrClash && (
+            <span className="text-[11px] text-muted-foreground">이미 쓰는 약어입니다</span>
+          )}
+          {check?.reason === 'duplicate' && (
+            <span className="text-[11px] text-destructive">사전에 이미 있는 이름입니다</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -266,3 +266,117 @@ describe('NamePair 자동완성', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 })
+
+describe('NamePair 미등록 칩', () => {
+  it('커밋된 논리명의 미등록 단어를 칩으로 낸다', () => {
+    loadModel({ logicalName: '회원쿠폰', physicalName: 'MBR' })
+    renderPair()
+    expect(screen.getByRole('button', { name: '쿠폰 등록' })).toBeInTheDocument()
+  })
+
+  it('타이핑 중에는 칩이 바뀌지 않는다(커밋된 값 기준)', async () => {
+    loadModel({ logicalName: '회원', physicalName: 'MBR' })
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.type(logical, '쿠')
+    expect(screen.queryByRole('button', { name: '쿠 등록' })).not.toBeInTheDocument()
+  })
+
+  it('칩을 누르면 약어 입력이 펼쳐지고 등록하면 단어가 생긴다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    loadModel({ logicalName: '회원쿠폰', physicalName: 'MBR_XXX' })
+    renderPair()
+    await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
+    await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'CPN')
+    await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
+    await waitFor(() => {
+      const added = Object.values(useEditorStore.getState().model.words)
+        .find((w) => w.logicalName === '쿠폰')
+      expect(added?.abbreviation).toBe('CPN')
+    })
+  })
+
+  it('물리명 칩은 논리명을 받아 역방향으로 등록한다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    loadModel({ logicalName: '회원', physicalName: 'MBR_CPN' })
+    renderPair()
+    await userEvent.click(screen.getByRole('button', { name: 'CPN 등록' }))
+    await userEvent.type(screen.getByLabelText('CPN 논리명'), '쿠폰')
+    await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
+    await waitFor(() => {
+      const added = Object.values(useEditorStore.getState().model.words)
+        .find((w) => w.abbreviation === 'CPN')
+      expect(added?.logicalName).toBe('쿠폰')
+    })
+  })
+
+  // ⚠️ duplicate 는 **물리명 칩 방향에서만** 도달한다. 논리명 칩은 정의상 사전에 없는 구간이라
+  // 그쪽으로는 중복이 생길 수 없다 — 물리명 칩 'CPN' 에 이미 있는 논리명 '회원' 을 넣는 것이
+  // 실제로 일어나는 형태다.
+  it('물리명 칩에 이미 있는 논리명을 넣으면 등록이 막히고 사유가 보인다', async () => {
+    loadModel({ logicalName: '회원', physicalName: 'MBR_CPN' })
+    renderPair()
+    await userEvent.click(screen.getByRole('button', { name: 'CPN 등록' }))
+    const input = screen.getByLabelText('CPN 논리명')
+    await userEvent.type(input, '주문')          // 사전에 있다(w2)
+    expect(screen.getByRole('button', { name: '단어 등록' })).toBeDisabled()
+    expect(screen.getByText(/이미 있는 이름/)).toBeInTheDocument()
+    await userEvent.clear(input)
+    await userEvent.type(input, '쿠폰')          // 사전에 없다
+    expect(screen.getByRole('button', { name: '단어 등록' })).toBeEnabled()
+  })
+
+  it('사전이 채워져 칩이 사라지면 펼친 폼도 닫힌다', async () => {
+    loadModel({ logicalName: '회원쿠폰', physicalName: 'MBR' })
+    renderPair()
+    await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
+    expect(screen.getByLabelText('쿠폰 약어')).toBeInTheDocument()
+    const m = useEditorStore.getState().model
+    useEditorStore.getState().setLoaded(
+      createWord(m, { id:'w9', logicalName:'쿠폰', abbreviation:'CPN', englishName:null, description:null, origin:null }),
+      2, PROJECT,
+    )
+    grantEditPermission()
+    await waitFor(() => expect(screen.queryByLabelText('쿠폰 약어')).not.toBeInTheDocument())
+  })
+
+  it('약어가 겹치면 막지 않고 경고만 보여 준다', async () => {
+    loadModel({ logicalName: '회원쿠폰', physicalName: 'MBR' })
+    renderPair()
+    await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
+    await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'MBR')   // w1과 겹친다
+    expect(screen.getByRole('button', { name: '단어 등록' })).toBeEnabled()
+    expect(screen.getByText(/이미 쓰는 약어/)).toBeInTheDocument()
+  })
+
+  it('등록하면 반대편이 비어 있을 때만 함께 채운다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    loadModel({ logicalName: '회원쿠폰', physicalName: '' })
+    renderPair()
+    await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
+    await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'CPN')
+    await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_CPN'))
+  })
+
+  it('반대편이 이미 차 있으면 등록이 그것을 덮지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    loadModel({ logicalName: '회원쿠폰', physicalName: '기존물리명' })
+    renderPair()
+    await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
+    await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'CPN')
+    await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
+    await waitFor(() =>
+      expect(Object.values(useEditorStore.getState().model.words).some((w) => w.logicalName === '쿠폰'))
+        .toBe(true))
+    expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('기존물리명')
+  })
+
+  it('읽기 전용이면 칩이 없다', () => {
+    loadModel({ logicalName: '회원쿠폰', physicalName: 'MBR' })
+    useEditorStore.setState({ canEdit: false })
+    renderPair(false)
+    expect(screen.queryByRole('button', { name: '쿠폰 등록' })).not.toBeInTheDocument()
+  })
+})
