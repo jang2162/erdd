@@ -9,6 +9,7 @@ import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { useEditorStore } from './store.js'
 import { createWord, createTerm } from './dict-edits.js'
+import { updateTable } from './model-edits.js'
 import { DictPanel } from './dict-panel.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
@@ -267,9 +268,10 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     renderPanel()
     // 실측: 탭 제목이 "미등록 단어"에서 "미등록 항목"으로 바뀌었다.
     await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
     const input = screen.getByLabelText('GRD 논리명')
     await userEvent.type(input, '등급')
-    await userEvent.click(screen.getByRole('button', { name: '미등록 약어 일괄 등록' }))
+    await userEvent.click(screen.getByRole('button', { name: '일괄 등록' }))
     await waitFor(() => {
       const words = Object.values(useEditorStore.getState().model.words)
       expect(words.some((w) => w.abbreviation === 'GRD' && w.logicalName === '등급')).toBe(true)
@@ -282,10 +284,44 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     grantEditPermission()
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
     await userEvent.type(screen.getByLabelText('GRD 논리명'), '등급')
-    await userEvent.click(screen.getByRole('button', { name: '미등록 약어 일괄 등록' }))
+    await userEvent.click(screen.getByRole('button', { name: '일괄 등록' }))
     await waitFor(() => {
       expect(Object.values(useEditorStore.getState().model.words)).toHaveLength(1)
     })
+  })
+  it('미등록 항목이 방향별 하위 탭으로 갈린다', async () => {
+    // 논리명에 미등록 단어('쿠폰'), 물리명에 미등록 약어('XXX')가 각각 있는 모델
+    let m = buildSampleModel()
+    m = updateTable(m, 't2', { logicalName: '회원쿠폰', physicalName: 'MBR_XXX' })
+    m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+
+    // 기본 탭 — 논리명 → 약어
+    expect(screen.getByLabelText('쿠폰 약어')).toBeInTheDocument()
+    expect(screen.queryByLabelText('XXX 논리명')).not.toBeInTheDocument()
+
+    // 반대 탭
+    await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
+    expect(screen.getByLabelText('XXX 논리명')).toBeInTheDocument()
+    expect(screen.queryByLabelText('쿠폰 약어')).not.toBeInTheDocument()
+  })
+
+  it('하위 탭에 각 방향의 건수가 붙는다', async () => {
+    let m = buildSampleModel()
+    m = updateTable(m, 't2', { logicalName: '회원쿠폰', physicalName: 'MBR_XXX' })
+    m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    // 건수는 모델 전체 기준이라 픽스처의 다른 테이블·컬럼도 후보를 낸다 — 정확한 수가 아니라
+    // "괄호 안에 수가 붙는다"를 본다.
+    expect(screen.getByRole('button', { name: /논리명 → 약어 \(\d+\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /물리명 → 논리명 \(\d+\)/ })).toBeInTheDocument()
   })
 })
