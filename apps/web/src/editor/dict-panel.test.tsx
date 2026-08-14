@@ -324,4 +324,60 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     expect(screen.getByRole('button', { name: /논리명 → 약어 \(\d+\)/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /물리명 → 논리명 \(\d+\)/ })).toBeInTheDocument()
   })
+  // ⚠️ 설계 §4 가 요구한 세 번째 dict-panel 테스트. 계획서가 옮겨 담지 않아 통째로 빠져 있었다.
+  // 정방향은 rules 가 결과에 영향을 주지 않아 관측 차이가 0이지만, 역방향은 restoreLogicalName 이
+  // rules.separator 로 분기하므로 store 규칙이 필수다 — 실측: 'MBRXXX' 가 '_' 규칙에서는 통째로
+  // 미등록 약어가 되고 '' 규칙에서는 'MBR' 이 떼여 'XXX' 만 남는다.
+  it('통합 섹션이 store 명명 규칙을 받는다', async () => {
+    let m = buildSampleModel()
+    m = updateTable(m, 't2', { physicalName: 'MBRXXX' })
+    m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    useEditorStore.setState({ namingRules: { case: 'UPPER_SNAKE', separator: '', maxLengthBytes: 30 } })
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
+    expect(screen.getByLabelText('XXX 논리명')).toBeInTheDocument()
+    expect(screen.queryByLabelText('MBRXXX 논리명')).not.toBeInTheDocument()
+  })
+
+  // ⚠️ m9. 역방향은 사용자가 논리명을 **직접 친다** — 「미등록 목록에서 오므로 정의상 중복이 아니다」는
+  // 정방향에만 성립한다. 겹치면 decomposeByWords 가 하나만 쓰고 나머지는 유령이 된다.
+  it('역방향에서 같은 논리명을 두 번 넣으면 하나만 등록되고 사유가 보인다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
+    await userEvent.type(screen.getByLabelText('GRD 논리명'), '등급')
+    await userEvent.type(screen.getByLabelText('CD 논리명'), '등급')     // 같은 논리명
+    expect(screen.getByText('위 항목과 겹칩니다')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '일괄 등록' }))
+    await waitFor(() => {
+      const added = Object.values(useEditorStore.getState().model.words)
+        .filter((w) => w.logicalName === '등급')
+      expect(added).toHaveLength(1)
+    })
+  })
+
+  it('역방향에서 사전에 이미 있는 논리명을 넣으면 등록되지 않고 사유가 보인다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    let m = buildSampleModel()
+    m = createWord(m, { id:'w1', logicalName:'등급', abbreviation:'GRADE', englishName:null, description:null, origin:null })
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
+    await userEvent.type(screen.getByLabelText('GRD 논리명'), '등급')
+    expect(screen.getByText('사전에 이미 있습니다')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '일괄 등록' }))
+    await waitFor(() => {
+      const added = Object.values(useEditorStore.getState().model.words)
+        .filter((w) => w.logicalName === '등급')
+      expect(added).toHaveLength(1)          // 원래 있던 하나뿐이다
+    })
+  })
 })

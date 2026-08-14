@@ -5,6 +5,7 @@ import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import {
+  canRegisterWord,
   createTerm, createWord, removeTerm, removeWord, termUsage, unregisteredAbbreviations, unregisteredWords,
   updateTerm, updateWord,
   planTermPropagation, applyTermPropagation, type TermPropagationPlan,
@@ -234,6 +235,7 @@ function UnregisteredSection(
     direction: 'toAbbr' | 'toLogical'
   },
 ) {
+  const model = useEditorStore((s) => s.model)
   const mutate = useModelMutation(projectId)
   const [valueByCandidate, setValueByCandidate] = useState<Record<string, string>>({})
   const toAbbr = direction === 'toAbbr'
@@ -241,26 +243,42 @@ function UnregisteredSection(
   // 방향이 바뀌면 입력 중이던 값을 비운다 — 후보 집합이 통째로 다르다.
   useEffect(() => { setValueByCandidate({}) }, [direction])
 
+  /**
+   * 행별 등록 계획. ⚠️ **역방향은 사용자가 논리명을 직접 치므로 중복이 실제로 생긴다** —
+   * 「미등록 목록에서 오므로 정의상 중복이 아니다」는 정방향에만 성립한다. 같은 논리명 단어가 둘이면
+   * decomposeByWords 가 하나만 쓰고 나머지는 유령이 되므로, 사전 중복과 **배치 안 자기 충돌**을
+   * 모두 걸러 낸다(앞선 행이 만든 이름을 누적하며 판정한다).
+   */
+  const seenLogical = new Set<string>()
+  const rows = candidates.map((candidate) => {
+    const typed = (valueByCandidate[candidate] ?? '').trim()
+    const logicalName = toAbbr ? candidate : typed
+    const abbreviation = toAbbr ? typed : candidate
+    let reason: 'duplicate' | 'batch' | null = null
+    if (typed !== '') {
+      if (!canRegisterWord(model, { logicalName, abbreviation }).ok) reason = 'duplicate'
+      else if (seenLogical.has(logicalName)) reason = 'batch'
+      else seenLogical.add(logicalName)
+    }
+    return { candidate, typed, logicalName, abbreviation, reason }
+  })
+
   const onBulkRegister = () => {
     // producer 진입 전에 등록 대상(후보 + 입력값 + 신규 id)을 모두 확정한 상수 배열로 캡처한다.
-    const registrations = candidates
-      .map((candidate) => {
-        const typed = (valueByCandidate[candidate] ?? '').trim()
-        return {
-          id: newId(),
-          logicalName: toAbbr ? candidate : typed,
-          abbreviation: toAbbr ? typed : candidate,
-          typed,
-        }
-      })
-      .filter((r) => r.typed !== '')
+    const registrations = rows
+      .filter((r) => r.typed !== '' && r.reason === null)
+      .map((r) => ({ id: newId(), logicalName: r.logicalName, abbreviation: r.abbreviation }))
     if (registrations.length === 0) return
     void mutate(
+      // 누적 모델로 한 번 더 판정한다 — 낙관적 체인에서 producer 가 받는 모델은 화면이 판정한
+      // 모델과 다를 수 있다(그 사이 남이 같은 단어를 만들었을 수 있다).
       (m: ProjectModel) => registrations.reduce(
-        (acc, r) => createWord(acc, {
-          id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
-          englishName: null, description: null, origin: null,
-        }),
+        (acc, r) => (canRegisterWord(acc, { logicalName: r.logicalName, abbreviation: r.abbreviation }).ok
+          ? createWord(acc, {
+              id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
+              englishName: null, description: null, origin: null,
+            })
+          : acc),
         m,
       ),
       { summary: toAbbr ? '미등록 단어 일괄 등록' : '미등록 약어 일괄 등록' },
@@ -284,9 +302,14 @@ function UnregisteredSection(
         : (
             <>
               <ul className="grid max-h-72 gap-2 overflow-y-auto">
-                {candidates.map((candidate) => (
+                {rows.map(({ candidate, reason }) => (
                   <li key={candidate} className="flex items-center gap-2 rounded-md border p-2">
                     <span className={`flex-1 font-medium ${toAbbr ? '' : 'font-mono'}`}>{candidate}</span>
+                    {reason && (
+                      <span className="shrink-0 text-[11px] text-destructive">
+                        {reason === 'duplicate' ? '사전에 이미 있습니다' : '위 항목과 겹칩니다'}
+                      </span>
+                    )}
                     {canEdit && (
                       <Input
                         aria-label={`${candidate} ${toAbbr ? '약어' : '논리명'}`}
