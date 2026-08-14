@@ -577,6 +577,19 @@ describe('EditPanel 용어 등록', () => {
     expect(within(c3Card()).getByRole('button', { name: '용어 등록' })).toBeDisabled()
   })
 
+  // ⚠️ F2. 다른 버튼 4개와 같은 형태의 포커스 케이스. 이 줄만 잠금이 없어 지워도 전건이 통과했다.
+  it('용어 등록을 눌러도 포커스가 이름 입력란에 남는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT)
+    grantEditPermission()
+    useEditorStore.getState().select('t2')
+    renderPanel()
+    const input = screen.getByLabelText('논리명', { selector: '#col-c3-logical' })
+    await userEvent.click(input)
+    await userEvent.click(within(c3Card()).getByRole('button', { name: '용어 등록' }))
+    expect(input).toHaveFocus()
+  })
+
   // ⚠️ m7. useModelMutation 의 계약이 "완료 토스트는 applied 일 때만"이라고 못 박고 있다.
   it('용어 등록이 거절되면 성공 토스트가 뜨지 않는다', async () => {
     const { toast } = await import('sonner')

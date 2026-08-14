@@ -255,7 +255,11 @@ describe('suggestCompletions', () => {
     }
     const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, maxLengthBytes: 30 }
     expect('MBR\u00df'.toUpperCase().length).not.toBe('MBR\u00df'.length)   // 전제
-    expect(suggestCompletions('MBR\u00df', 'physical', withSsn, {}, rules).items).toEqual([])
+    const r = suggestCompletions('MBR\u00df', 'physical', withSsn, {}, rules)
+    // ⚠️ query 도 함께 못 박아야 잠긴다. items 만 보면 가드가 있든 없든 [] 라 아무것도 구분하지
+    // 못한다 — 가드 없이 upper 인덱스로 input 을 읽으면 범위를 넘어 'ßundefined' 가 쿼리가 된다.
+    expect(r.query).toBe('')
+    expect(r.items).toEqual([])
   })
 
   it('같은 약어를 가진 단어가 둘이어도 후보는 하나다', () => {

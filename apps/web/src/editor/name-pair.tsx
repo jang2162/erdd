@@ -27,10 +27,12 @@ export type NameDraft = { logicalName: string; physicalName: string }
  * 실증: regenerate 가 draft 대신 props 의 커밋된 값을 읽게 바꾸면 「방금 친 값」이 빨개진다.
  *
  * ⚠️ 버튼의 onMouseDown preventDefault 가 막는 것은 **포커스 이탈뿐이다. 뮤테이션 수와 무관하다.**
- * blur 는 실제로 발화하지만 그 커밋은 (a) `commitSide` 의 값-동일 조기 반환, (b) `regenerate` 가
- * 반대편 draft 를 같은 patch 에 접어 넣어 모델이 이미 그 값이 된 뒤 도착하므로 `use-model` 의
- * `ops.length === 0 → noop` 에 걸려 Revision 을 만들지 않는다. 실증: 이 줄들을 지워도 web 839건이
- * 전부 통과하고, 빨개지는 것은 「포커스 유지」 케이스 3건뿐이다.
+ * blur 는 실제로 발화하고 `commitSide` 까지 도달한다 — **값-동일 조기 반환은 걸리지 않는다.**
+ * `onBlur` 콜백은 자기가 만들어진 렌더의 props 를 쥐고 있어 `current` 가 옛 값이기 때문이다
+ * (계측: `commitSide side=logical value="회원주문번호" current="회원" skip=false`).
+ * 실제로 막는 것은 **`use-model` 의 `ops.length === 0 → noop` 하나뿐이다** — `regenerate` 가 반대편
+ * draft 를 같은 patch 에 접어 넣어 모델이 이미 그 값이 된 뒤에 blur 커밋이 도착하므로 diff 가 비어
+ * 있다. 실증: 이 줄들을 지워도 web 전건이 통과하고, 빨개지는 것은 「포커스 유지」 케이스뿐이다.
  *
  * mutate 를 이 컴포넌트가 소유하는 이유: 단어 인라인 등록과 이름 갱신을 **한 producer** 로
  * 합성해야 하기 때문이다. 대상이 테이블인지 컬럼인지는 applyNames 가 안다.
