@@ -280,7 +280,7 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm -C apps/se
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
 4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-28-phase3-snapshot-diff-design.md`와 `plans/2026-07-28-phase3-snapshot-diff.md`
 5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 1~4 전 항목 확정 완료. 다음 Phase 착수 시 이 문서에 새 항목을 추가한다)
-6. **사용자용 매뉴얼** — `docs/manual/install.md`(사내 서버 설치·운영), `docs/manual/user-guide.md`(웹 UI 기능별 레퍼런스 19절). 개발자용이 아니라 **제품 사용자용**이다. 기능을 바꾸면 여기도 함께 고쳐야 한다 — 특히 화면 문구를 바꾸면 user-guide 의 「」 인용이 어긋나고, 환경변수·compose·마이그레이션을 건드리면 install 의 표와 절차가 어긋난다.
+6. **사용자용 매뉴얼** — `docs/manual/install.md`(사내 서버 설치·운영), `docs/manual/user-guide.md`(웹 UI 기능별 레퍼런스 19절), `docs/manual/cli-guide.md`(`erdd` CLI 11절 — 설치·연결, 워크플로, 파일 포맷, 명령 레퍼런스, 3-way 병합·충돌, 에이전트 연동, `--json` 규약). 개발자용이 아니라 **제품 사용자용**이다. 기능을 바꾸면 여기도 함께 고쳐야 한다 — 특히 화면 문구를 바꾸면 user-guide 의 「」 인용이 어긋나고, 환경변수·compose·마이그레이션을 건드리면 install 의 표와 절차가 어긋나며, **CLI 의 명령·옵션·출력 문구·종료 코드·파일 포맷을 바꾸면 cli-guide 가 어긋난다**(그 문서는 실물 출력을 그대로 인용한다).
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
 

@@ -1,7 +1,7 @@
 # ERDD 설치·운영 매뉴얼
 
 사내 서버에 ERDD 를 올리고 운영하는 담당자를 위한 문서다. 화면 사용법은
-[사용자 가이드](user-guide.md), 개발 기여자용 워크플로는
+[사용자 가이드](user-guide.md), 명령줄 도구는 [CLI 매뉴얼](cli-guide.md), 개발 기여자용 워크플로는
 [HANDOFF](../superpowers/HANDOFF.md) 에 있다.
 
 ## 1. 개요
@@ -264,7 +264,7 @@ journalctl -u erdd -f      # ERDD server listening on :3000 이 보여야 한다
 | `ERDD_SERVER_PORT` | **개발 전용.** vite dev 서버의 프록시 대상 포트(`apps/web/vite.config.ts`). 운영 빌드에는 관여하지 않는다. |
 | `ERDD_WEB_PORT` | **개발 전용.** vite dev 서버가 listen 할 포트(`apps/web/vite.config.ts`). 설정하지 않거나 빈 값이면 기본 `5173` 이고, 값이 있는데 포트로 읽히지 않으면 조용히 기본값으로 떨어지지 않고 에러로 죽는다. 운영 빌드에는 관여하지 않는다. |
 | `ERDD_WEB_HOST` | **개발 전용.** vite dev 서버의 바인딩 주소(`apps/web/vite.config.ts`). 설정하지 않거나 빈 값이면 기본 `127.0.0.1` 이다 — vite 가 IPv6 `[::1]` 에만 붙으면 브라우저가 접속하지 못하므로 빈 값도 기본값으로 돌린다. 운영 빌드에는 관여하지 않는다. |
-| `ERDD_TOKEN` | `erdd` CLI 가 쓰는 액세스 토큰(`packages/cli`). 서버 동작에 영향 없다(→ [16-cli](../16-cli.md)). |
+| `ERDD_TOKEN` | `erdd` CLI 가 쓰는 액세스 토큰(`packages/cli`). 서버 동작에 영향 없다(→ [CLI 매뉴얼](cli-guide.md)). |
 
 ## 6. 최초 기동 후 할 일
 

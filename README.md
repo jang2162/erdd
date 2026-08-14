@@ -24,5 +24,6 @@ Phase 1~4(에디터·실시간 협업·명명 체계·CLI·가져오기/내보�
 | [91-checklist](docs/91-checklist.md) | 구현 전 구체화 체크리스트 |
 | [manual/install](docs/manual/install.md) | 설치·운영 매뉴얼 — Docker Compose·소스 설치, 환경 변수, 리버스 프록시, 백업, 문제 해결 |
 | [manual/user-guide](docs/manual/user-guide.md) | 사용자 가이드 — 로그인부터 ERD 설계·협업·산출물까지 화면 사용법 |
+| [manual/cli-guide](docs/manual/cli-guide.md) | CLI 매뉴얼 — 설치·토큰 연결, pull/push 워크플로, 파일 포맷, 충돌 해결, 에이전트 연동 |
 
 기능 문서(10~18)는 공통 템플릿을 따른다: **목적 → 사용자 시나리오 → 기능 상세 → 다른 영역과의 연계 → 단계별 범위**.
