@@ -13,7 +13,7 @@ import {
   addColumn, clearColumnDomain, removeColumn, reorderColumn, setColumnDomain, updateColumn,
 } from './column-edits.js'
 import { canRegisterTerm, createTerm } from './dict-edits.js'
-import { NamePair, type NamePatch } from './name-pair.js'
+import { NamePair, type NameDraft, type NamePatch } from './name-pair.js'
 import { setCustomValue } from './custom-field-edits.js'
 import { BulkPanel } from './bulk-panel.js'
 import { RelationshipPanel } from './relationship-panel.js'
@@ -144,7 +144,25 @@ export function EditPanel({ projectId }: { projectId: string }) {
       </div>
 
       <ul className="mt-2 grid gap-3">
-        {columns.map((c, i) => (
+        {columns.map((c, i) => {
+          /**
+           * 컬럼 이름 갱신 규칙. 대상별 규칙을 담는 자리이므로 「논리명이 용어와 완전일치하면
+           * 도메인도 함께 채운다」가 여기에 있다.
+           * ⚠️ **물리명이 비어 있던 경우에만** 돈다 — main 의 옛 동작이 그 가드 안에 있었고,
+           * 가드를 없애 「항상」으로 넓히는 것은 설계·문서에 근거가 없는 제품 동작 변경이다
+           * (HANDOFF 6절 이월). `m` 은 producer 진입 시점 모델이라 "변경 전 물리명"을 그대로 읽는다.
+           */
+          const applyNames = (m: ProjectModel, patch: NamePatch) => {
+            const before = m.columns[c.id]
+            const next = updateColumn(m, c.id, patch)
+            const cur = next.columns[c.id]
+            if (patch.logicalName === undefined || !before || !cur) return next
+            if (before.physicalName.trim() !== '' || patch.logicalName.trim() === '') return next
+            if (cur.domainId !== null) return next
+            const gen = generatePhysicalName(patch.logicalName, next.words, next.terms, namingRules)
+            return gen.domainId ? setColumnDomain(next, c.id, gen.domainId) : next
+          }
+          return (
           <ColumnRow
             key={c.id} column={c} isFirst={i === 0} isLast={i === columns.length - 1} canEdit={canEdit}
             domains={Object.values(model.domains)}
@@ -155,27 +173,26 @@ export function EditPanel({ projectId }: { projectId: string }) {
             onRemove={() => void mutate((m) => removeColumn(m, c.id), { summary: '컬럼 삭제' })}
             onMove={(dir) => void mutate((m) => reorderColumn(m, c.id, dir))}
             projectId={projectId}
-            applyNames={(m, patch) => {
-              const next = updateColumn(m, c.id, patch)
-              const cur = next.columns[c.id]
-              // 논리명이 용어와 완전일치하면 그 용어의 도메인도 함께 채운다(도메인이 비어 있을 때만).
-              // ⚠️ NamePair 로 옮기면서 이 규칙이 사라질 뻔했다 — 컬럼에만 있는 동작이라 컨테이너가
-              // 모르고, applyNames 가 대상별 규칙을 담는 자리라 여기서 되살린다.
-              if (patch.logicalName === undefined || !cur || cur.domainId !== null) return next
-              const gen = generatePhysicalName(patch.logicalName, next.words, next.terms, namingRules)
-              return gen.domainId ? setColumnDomain(next, c.id, gen.domainId) : next
-            }}
-            onRegisterTerm={() => {
-              const logicalName = c.logicalName
-              const physicalName = c.physicalName
+            applyNames={applyNames}
+            onRegisterTerm={(draft) => {
+              // ⚠️ 아직 커밋되지 않은 draft 를 쓴다. 커밋값을 읽으면 「치고 바로 등록」에서 컬럼은
+              // 새 이름으로, 용어는 옛 이름으로 갈라진다(설계 §3.2 가 지목한 "등록 버튼").
+              const { logicalName, physicalName } = draft
               const domainId = c.domainId
-              void mutate(
-                (m) => createTerm(
-                  m, { id: newId(), logicalName, physicalName, domainId, description: null, origin: null },
-                ),
-                { summary: '용어 등록' },
-              )
-              toast.success(`용어 「${logicalName}」을(를) 등록했습니다`)
+              const id = newId()
+              // 이름 확정과 용어 등록을 **한 producer** 로 묶는다 — 갈리면 Revision 2건에 내용도 어긋난다.
+              void mutate((m) => {
+                const patch: NamePatch = {}
+                if (logicalName !== c.logicalName) patch.logicalName = logicalName
+                if (physicalName !== c.physicalName) patch.physicalName = physicalName
+                const next = Object.keys(patch).length > 0 ? applyNames(m, patch) : m
+                return createTerm(
+                  next, { id, logicalName, physicalName, domainId, description: null, origin: null },
+                )
+              }, { summary: '용어 등록' }).then((r) => {
+                // useModelMutation 의 계약 — 완료 토스트는 applied 일 때만 낸다(거절·noop 은 아니다).
+                if (r === 'applied') toast.success(`용어 「${logicalName}」을(를) 등록했습니다`)
+              })
             }}
             onDomainChange={(domainId) => {
               if (domainId === '') {
@@ -190,7 +207,8 @@ export function EditPanel({ projectId }: { projectId: string }) {
                 { summary: '커스텀 항목 값 변경' })
             }}
           />
-        ))}
+          )
+        })}
         {columns.length === 0 && <li className="text-xs text-muted-foreground">컬럼이 없습니다.</li>}
       </ul>
 
@@ -209,13 +227,12 @@ function ColumnRow(props: {
   onRemove: () => void; onMove: (dir: -1 | 1) => void
   onDomainChange: (domainId: string) => void
   applyNames: (m: ProjectModel, patch: NamePatch) => ProjectModel
-  onRegisterTerm: () => void
+  onRegisterTerm: (draft: NameDraft) => void
   customFields: CustomField[]
   onCustomChange: (fieldId: string, value: string) => void
 }) {
   const { column: c, canEdit } = props
   const model = useEditorStore((s) => s.model)
-  const termCheck = canRegisterTerm(model, { logicalName: c.logicalName, physicalName: c.physicalName })
   const locked = c.domainId !== null
   const domain = locked ? props.domains.find((d) => d.id === c.domainId) : undefined
   return (
@@ -234,22 +251,27 @@ function ColumnRow(props: {
             physicalLabel="물리명"
             canEdit={canEdit}
             applyNames={props.applyNames}
-            extra={canEdit ? (
-              <div>
-                <Button
-                  size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-                  disabled={!termCheck.ok}
-                  title={termCheck.reason === 'duplicate'
-                    ? '같은 논리명의 용어가 이미 있습니다'
-                    : termCheck.reason === 'empty'
-                      ? '논리명과 물리명이 모두 있어야 등록할 수 있습니다'
-                      : undefined}
-                  onClick={props.onRegisterTerm}
-                >
-                  용어 등록
-                </Button>
-              </div>
-            ) : undefined}
+            extra={canEdit ? (draft) => {
+              // 판정도 draft 기준이다 — 커밋값으로 보면 방금 친 이름이 중복인데도 버튼이 활성이다.
+              const termCheck = canRegisterTerm(model, draft)
+              return (
+                <div>
+                  <Button
+                    size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+                    disabled={!termCheck.ok}
+                    title={termCheck.reason === 'duplicate'
+                      ? '같은 논리명의 용어가 이미 있습니다'
+                      : termCheck.reason === 'empty'
+                        ? '논리명과 물리명이 모두 있어야 등록할 수 있습니다'
+                        : undefined}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => props.onRegisterTerm(draft)}
+                  >
+                    용어 등록
+                  </Button>
+                </div>
+              )
+            } : undefined}
           />
         </div>
         <WarningBadge warnings={props.warnings} className="shrink-0" />

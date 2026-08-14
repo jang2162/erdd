@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button'
 import { FieldLabel } from '@/components/field-label'
 
 export type NamePatch = { logicalName?: string; physicalName?: string }
+/** 아직 커밋되지 않은 두 이름. `extra` 슬롯이 이 값으로 판정하고 이 값을 넘겨야 한다. */
+export type NameDraft = { logicalName: string; physicalName: string }
 
 /**
  * 논리명·물리명을 **쌍으로** 쥐는 컨테이너.
@@ -41,7 +43,12 @@ export function NamePair(props: {
   physicalLabel: string
   canEdit: boolean
   applyNames: (m: ProjectModel, patch: NamePatch) => ProjectModel
-  extra?: ReactNode
+  /**
+   * 두 입력란 아래에 붙는 슬롯(컬럼의 「용어 등록」). **렌더 prop 이다** — 그 버튼도 "치고 바로
+   * 옆 버튼"이 주 동선이라 ↻ 와 같은 대우가 필요한데, 고정 ReactNode 로 받으면 컨테이너의 draft 에
+   * 닿을 수 없어 커밋된 옛 값을 읽게 된다(설계 §3.2 가 지목한 "등록 버튼"이 이것이다).
+   */
+  extra?: (draft: NameDraft) => ReactNode
 }) {
   const { logicalName, physicalName, canEdit, applyNames } = props
   const namingRules = useEditorStore((s) => s.namingRules)
@@ -165,7 +172,7 @@ export function NamePair(props: {
         onRegenerate={() => regenerate('logical')}
         onRegisterWord={registerWord}
       />
-      {props.extra}
+      {props.extra?.(draft)}
     </div>
   )
 }
