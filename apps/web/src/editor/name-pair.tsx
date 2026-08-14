@@ -24,10 +24,11 @@ export type NamePatch = { logicalName?: string; physicalName?: string }
  * 비제어 인풋이라 친 값이 React 상태 어디에도 없어 버튼이 모델의 커밋된 값밖에 못 봤다.
  * 실증: regenerate 가 draft 대신 props 의 커밋된 값을 읽게 바꾸면 「방금 친 값」이 빨개진다.
  *
- * ⚠️ 버튼에는 onMouseDown 에서 preventDefault 를 건다. 없으면
- * `mousedown → blur(커밋 1건) → click(커밋 1건 더)` 로 **뮤테이션이 2건**이 되어 Revision 2건 ·
- * undo 2회가 된다(값 자체는 draft 덕에 맞게 나온다). 실증: 그 줄을 지우면 「재생성 한 번이
- * 뮤테이션 한 건이다」가 2건으로 빨개진다.
+ * ⚠️ 버튼의 onMouseDown preventDefault 가 막는 것은 **포커스 이탈뿐이다. 뮤테이션 수와 무관하다.**
+ * blur 는 실제로 발화하지만 그 커밋은 (a) `commitSide` 의 값-동일 조기 반환, (b) `regenerate` 가
+ * 반대편 draft 를 같은 patch 에 접어 넣어 모델이 이미 그 값이 된 뒤 도착하므로 `use-model` 의
+ * `ops.length === 0 → noop` 에 걸려 Revision 을 만들지 않는다. 실증: 이 줄들을 지워도 web 839건이
+ * 전부 통과하고, 빨개지는 것은 「포커스 유지」 케이스 3건뿐이다.
  *
  * mutate 를 이 컴포넌트가 소유하는 이유: 단어 인라인 등록과 이름 갱신을 **한 producer** 로
  * 합성해야 하기 때문이다. 대상이 테이블인지 컬럼인지는 applyNames 가 안다.
@@ -290,8 +291,8 @@ function NameField(props: {
             type="button" size="icon" variant="ghost"
             className="absolute top-1/2 right-1 size-7 -translate-y-1/2"
             aria-label={regenerateLabel}
-            // ⚠️ 포커스를 뺏지 않는다 — blur 가 먼저 커밋을 내면 ↻ 의 커밋과 합쳐 뮤테이션이 2건이 된다
-            // (Revision 2건 · undo 2회). 「재생성 한 번이 뮤테이션 한 건이다」가 이 줄을 잠근다.
+            // ⚠️ 포커스를 뺏지 않는다 — 커서가 입력란에 남아 이어서 칠 수 있다.
+            // 「↻ 를 눌러도 포커스가 입력란에 남는다」가 이 줄을 잠근다(뮤테이션 수와는 무관하다).
             onMouseDown={(e) => e.preventDefault()}
             onClick={props.onRegenerate}
           >

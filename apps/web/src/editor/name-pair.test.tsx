@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -235,8 +235,11 @@ describe('NamePair 자동완성', () => {
     expect(calls).toHaveLength(0)
   })
 
+  // ⚠️ 옛 형태는 후반부에 listbox 단정이 아예 없었고, 게다가 '회원주문'은 사전 단어로 딱 떨어져
+  // 후보가 0건이라 단정을 넣어도 통과하지 못했다. 용어를 실어 '회원주문'에서도 후보가 남게 한다
+  // (core 의 「입력이 사전 단어로 딱 떨어져도 용어 후보는 나온다」와 같은 상황이다).
   it('Esc 로 닫고, 한 글자 더 치면 다시 열린다', async () => {
-    loadModel()
+    loadModel(undefined, [{ id: 'tm1', logicalName: '회원주문번호', physicalName: 'MBR_ORD_NO' }])
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
@@ -244,9 +247,10 @@ describe('NamePair 자동완성', () => {
     await screen.findByRole('listbox')
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-    // 닫은 뒤 한 글자 더 치면 다시 열린다
+    // 닫은 뒤 한 글자 더 치면 다시 열린다 — 이 단정이 테스트 이름이 약속한 것이다.
     await userEvent.type(logical, '문')
     expect(logical.value).toBe('회원주문')
+    expect(await screen.findByRole('listbox')).toBeInTheDocument()
   })
 
   it('목록을 닫는 Esc 는 상위로 전파되지 않는다', async () => {
@@ -292,13 +296,22 @@ describe('NamePair 자동완성', () => {
     expect(await screen.findByRole('option', { name: /ORD/ })).toBeInTheDocument()
   })
 
+  // ⚠️ 커밋값이 '회원'(사전 단어로 딱 떨어짐)이면 권한과 무관하게 후보가 0건이라 아무것도 잠기지
+  // 않는다. 꼬리 '주'가 남는 값을 써야 "권한 때문에 안 열린다"를 본다 — 대조군이 그것을 드러낸다.
   it('읽기 전용이면 목록이 열리지 않는다', async () => {
-    loadModel()
+    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
     useEditorStore.setState({ canEdit: false })
     renderPair(false)
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.click(logical)
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('편집 권한이 있으면 같은 값에서 목록이 열린다', async () => {
+    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    renderPair()
+    await userEvent.click(screen.getByLabelText('논리명'))
+    expect(await screen.findByRole('listbox')).toBeInTheDocument()
   })
 })
 
@@ -478,5 +491,46 @@ describe('NamePair 접근성·목록 상태', () => {
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
     await userEvent.keyboard('{Enter}')
     expect(logical.value).toBe('회원주문번호')      // 리셋되지 않으면 items[1] 이 없어 아무 일도 없다
+  })
+})
+
+/**
+ * ⚠️ 버튼 4개의 `onMouseDown preventDefault` 는 **뮤테이션 수와 무관하다** — 지워도 839건이 전부
+ * 통과했다(리뷰어 실측). 실제 효용은 **포커스 유지** 하나뿐이므로 그것을 직접 본다.
+ * `regenerate` 가 draft 를 읽는 것은 별개로 「방금 친 값」·「뮤테이션 한 건」이 잠근다.
+ */
+describe('NamePair 포커스 유지', () => {
+  it('↻ 를 눌러도 포커스가 입력란에 남는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    loadModel()
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원주문번호')
+    await userEvent.click(screen.getByRole('button', { name: '물리명 재생성' }))
+    expect(logical).toHaveFocus()
+  })
+
+  it('미등록 칩을 눌러도 포커스가 이름 입력란에 남는다', async () => {
+    loadModel({ logicalName: '회원쿠폰', physicalName: '' })
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.click(logical)
+    await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
+    expect(screen.getByLabelText('쿠폰 약어')).toBeInTheDocument()   // 폼은 펼쳐진다
+    expect(logical).toHaveFocus()
+  })
+
+  it('「단어 등록」을 눌러도 포커스가 이름 입력란에 남는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    loadModel({ logicalName: '회원쿠폰', physicalName: '' })
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.click(logical)
+    await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
+    // fireEvent 로 값을 넣어 포커스를 옮기지 않는다 — 「단어 등록」의 preventDefault 만 시험한다.
+    fireEvent.change(screen.getByLabelText('쿠폰 약어'), { target: { value: 'CPN' } })
+    await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
+    expect(logical).toHaveFocus()
   })
 })
