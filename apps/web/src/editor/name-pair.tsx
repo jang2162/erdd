@@ -49,9 +49,21 @@ export function NamePair(props: {
   const mutate = useModelMutation(props.projectId)
   const [draft, setDraft] = useState({ logicalName, physicalName })
 
-  // 모델 값이 바뀌면 draft 를 맞춘다 — 낙관적 반영·undo·남의 편집이 전부 이 경로로 온다.
-  // 값이 같으면 setState 가 no-op 이라 내가 방금 커밋한 값으로는 아무 일도 일어나지 않는다.
-  useEffect(() => { setDraft({ logicalName, physicalName }) }, [logicalName, physicalName])
+  /**
+   * 모델 값이 바뀌면 draft 를 맞춘다 — 낙관적 반영·undo·남의 편집이 전부 이 경로로 온다.
+   *
+   * ⚠️ **실제로 바뀐 쪽만 덮는다.** 두 값을 통째로 `setDraft` 하면 한쪽만 원격으로 바뀌어도
+   * 반대쪽의 **커밋되지 않은 타이핑이 모델 값으로 되돌아간다**(실시간 협업·undo·인라인 단어 등록의
+   * 반대편 채움이 전부 그 경로다). "값이 같으면 no-op" 은 두 필드가 **함께** 바뀔 때만 성립한다.
+   */
+  const prevNames = useRef({ logicalName, physicalName })
+  useEffect(() => {
+    setDraft((d) => ({
+      logicalName: logicalName !== prevNames.current.logicalName ? logicalName : d.logicalName,
+      physicalName: physicalName !== prevNames.current.physicalName ? physicalName : d.physicalName,
+    }))
+    prevNames.current = { logicalName, physicalName }
+  }, [logicalName, physicalName])
 
   const commit = (patch: NamePatch, summary: string) => {
     if (Object.keys(patch).length === 0) return
@@ -190,7 +202,10 @@ function NameField(props: {
     [props.value, props.side, props.canEdit, words, terms, namingRules],
   )
   const open = focused && !dismissed && completions.items.length > 0
-  useEffect(() => { setActive(0) }, [completions.query])
+  // ⚠️ query 만 보면 안 된다 — 용어만 나오는 구간은 query 가 '' 로 고정이라, 사전이 바뀌어 항목이
+  // 줄어들어도 활성 인덱스가 그대로 남아 범위를 벗어나고 Enter 가 아무 일도 하지 않는다.
+  const itemsKey = completions.items.map((i) => `${i.kind}:${i.insert}`).join('|')
+  useEffect(() => { setActive(0) }, [completions.query, itemsKey])
 
   const apply = (item: Completion) => {
     props.onChange(props.value.slice(0, item.start) + item.insert)
@@ -228,8 +243,10 @@ function NameField(props: {
         <Input
           id={props.id}
           aria-label={props.label}
-          role="combobox"
-          aria-expanded={open}
+          // ⚠️ 읽기 전용에서는 combobox 로 노출하지 않는다 — 목록이 canEdit 로 막혀 있어
+          // 스크린리더가 "펼칠 수 있다"고 읽어도 절대 열리지 않는다.
+          role={props.canEdit ? 'combobox' : undefined}
+          aria-expanded={props.canEdit ? open : undefined}
           aria-controls={open ? listId : undefined}
           aria-activedescendant={open ? `${listId}-${active}` : undefined}
           autoComplete="off"
@@ -242,6 +259,7 @@ function NameField(props: {
             const value = e.target.value
             // 목록 항목을 누른 경우 mousedown 의 preventDefault 로 blur 가 오지 않는다.
             // 그래도 방어로 한 틱 미뤄 확정이 먼저 반영되게 한다.
+            if (blurTimer.current) clearTimeout(blurTimer.current)
             blurTimer.current = setTimeout(() => { setFocused(false); props.onCommit(value) }, 0)
           }}
           onKeyDown={(e) => {

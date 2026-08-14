@@ -10,21 +10,56 @@ import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { useEditorStore } from './store.js'
-import { createWord } from './dict-edits.js'
+import { createTerm, createWord, removeTerm } from './dict-edits.js'
 import { updateTable } from './model-edits.js'
 import { NamePair } from './name-pair.js'
 
 const PROJECT = '018f6b0e-0000-7000-8000-0000000000aa'
 
 /** 단어 사전을 채운 모델을 store에 싣는다. t2 = 회원/MBR. */
-function loadModel(over?: { logicalName?: string; physicalName?: string }) {
+function loadModel(
+  over?: { logicalName?: string; physicalName?: string },
+  terms?: { id: string; logicalName: string; physicalName: string }[],
+) {
   let m = buildSampleModel()
   m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
   m = createWord(m, { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null })
   m = createWord(m, { id:'w3', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null })
+  for (const t of terms ?? []) {
+    m = createTerm(m, { ...t, domainId: null, description: null, origin: null })
+  }
   if (over) m = updateTable(m, 't2', over)
   useEditorStore.getState().setLoaded(m, 1, PROJECT)
   grantEditPermission()
+}
+
+/**
+ * store 를 **구독해** prop 을 흘리는 래퍼. 원격 변경(실시간·undo·남의 편집)이 실제로 prop 경로로
+ * 도착해야 draft 동기화를 시험할 수 있다 — `renderPair` 는 값을 한 번 읽어 고정하므로 그 경로가 없다.
+ */
+function renderLivePair() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
+  const w = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+    </QueryClientProvider>
+  )
+  function Live() {
+    const table = useEditorStore((s) => s.model.tables['t2']!)
+    return (
+      <NamePair
+        projectId={PROJECT}
+        logicalName={table.logicalName}
+        physicalName={table.physicalName}
+        idPrefix="tbl"
+        physicalLabel="테이블 물리명"
+        canEdit
+        applyNames={(m, patch) => updateTable(m, 't2', patch)}
+      />
+    )
+  }
+  render(<Live />, { wrapper: w })
 }
 
 function renderPair(canEdit = true) {
@@ -378,5 +413,70 @@ describe('NamePair 미등록 칩', () => {
     useEditorStore.setState({ canEdit: false })
     renderPair(false)
     expect(screen.queryByRole('button', { name: '쿠폰 등록' })).not.toBeInTheDocument()
+  })
+})
+
+describe('NamePair 원격 변경 동기화', () => {
+  // ⚠️ M4. 한쪽 prop 만 바뀌어도 draft 객체를 통째로 덮으면 반대쪽의 커밋되지 않은 타이핑이 날아간다.
+  it('반대편이 원격으로 바뀌어도 내가 치던 값은 남는다', async () => {
+    loadModel()
+    renderLivePair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원주문번호')          // 커밋하지 않는다
+    const m = useEditorStore.getState().model
+    useEditorStore.setState({ model: updateTable(m, 't2', { physicalName: 'CHANGED_BY_PEER' }) })
+    await waitFor(() =>
+      expect((screen.getByLabelText(/테이블 물리명/) as HTMLInputElement).value).toBe('CHANGED_BY_PEER'))
+    expect(logical.value).toBe('회원주문번호')             // 내가 치던 값은 그대로다
+  })
+
+  it('내 필드가 원격으로 바뀌면 그 값으로 맞춰진다', async () => {
+    loadModel()
+    renderLivePair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '치던값')
+    const m = useEditorStore.getState().model
+    useEditorStore.setState({ model: updateTable(m, 't2', { logicalName: '남이바꾼값' }) })
+    await waitFor(() => expect(logical.value).toBe('남이바꾼값'))
+  })
+})
+
+describe('NamePair 접근성·목록 상태', () => {
+  // ⚠️ n14. 읽기 전용에서 열 수 없는 combobox 로 노출되면 스크린리더가 "펼칠 수 있다"고 읽는다.
+  it('읽기 전용이면 combobox 로 노출되지 않는다', () => {
+    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    useEditorStore.setState({ canEdit: false })
+    renderPair(false)
+    const logical = screen.getByLabelText('논리명')
+    expect(logical).not.toHaveAttribute('role', 'combobox')
+    expect(logical).not.toHaveAttribute('aria-expanded')
+  })
+
+  it('편집 가능하면 combobox 로 노출된다', () => {
+    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    renderPair()
+    expect(screen.getByLabelText('논리명')).toHaveAttribute('role', 'combobox')
+  })
+
+  // ⚠️ m5 의 부수 효과. 용어만 나오는 구간에서는 query 가 '' 로 고정되므로, 활성 인덱스를 query 로만
+  // 리셋하면 항목 수가 줄어들 때 인덱스가 범위를 벗어나 Enter 가 아무 일도 하지 않는다.
+  it('후보 집합이 줄어들면 활성 인덱스가 범위 안으로 리셋된다', async () => {
+    loadModel({ logicalName: '', physicalName: 'X' }, [
+      { id: 'tm1', logicalName: '회원주문번호', physicalName: 'MBR_ORD_NO' },
+      { id: 'tm2', logicalName: '회원주문', physicalName: 'MBR_ORD' },
+    ])
+    renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.type(logical, '회원')          // query '' · 용어 후보 2건
+    await screen.findByRole('listbox')
+    await userEvent.keyboard('{ArrowDown}')        // 활성 인덱스 1
+    // 입력은 그대로 둔 채 사전만 바꾼다 — query 는 '' 로 고정이고 항목만 1건으로 줄어든다.
+    // (타이핑으로 줄이면 도중에 query 가 '주' 로 바뀌어 우연히 리셋되므로 아무것도 잠기지 않는다.)
+    useEditorStore.setState({ model: removeTerm(useEditorStore.getState().model, 'tm2') })
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
+    await userEvent.keyboard('{Enter}')
+    expect(logical.value).toBe('회원주문번호')      // 리셋되지 않으면 items[1] 이 없어 아무 일도 없다
   })
 })
