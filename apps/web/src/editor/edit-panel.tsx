@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, type Ref } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import {
-  computeWarnings, customFieldsFor, generatePhysicalName, restoreLogicalName, setTableGroup,
-  type Column, type CustomField, type Domain, type Warning,
+  computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
+  type Column, type CustomField, type Domain, type ProjectModel, type Warning,
 } from '@erdd/core'
 import { primaryTableId, useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
@@ -11,7 +12,8 @@ import { updateTable } from './model-edits.js'
 import {
   addColumn, clearColumnDomain, removeColumn, reorderColumn, setColumnDomain, updateColumn,
 } from './column-edits.js'
-import { createTerm } from './dict-edits.js'
+import { canRegisterTerm, createTerm } from './dict-edits.js'
+import { NamePair, type NamePatch } from './name-pair.js'
 import { setCustomValue } from './custom-field-edits.js'
 import { BulkPanel } from './bulk-panel.js'
 import { RelationshipPanel } from './relationship-panel.js'
@@ -95,63 +97,17 @@ export function EditPanel({ projectId }: { projectId: string }) {
   return (
     <aside className="w-80 shrink-0 overflow-y-auto border-l bg-card p-4">
       <div className="grid gap-3">
-        <div className="grid gap-1.5">
-          <div className="flex items-center justify-between">
-            <FieldLabel htmlFor="tbl-physical" required>테이블 물리명</FieldLabel>
-            {canEdit && (
-              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-                onClick={() => {
-                  const logical = table.logicalName
-                  void mutate((m) => {
-                    const gen = generatePhysicalName(logical, m.words, m.terms, namingRules)
-                    return gen.physicalName ? updateTable(m, tid, { physicalName: gen.physicalName }) : m
-                  }, { summary: '물리명 재생성' })
-                }}>재생성</Button>
-            )}
-          </div>
-          <CommitInput id="tbl-physical" value={table.physicalName} mono readOnly={!canEdit}
-            onCommit={(v) => {
-              const physical = v
-              void mutate((m) => {
-                let next = updateTable(m, tid, { physicalName: physical })
-                const cur = next.tables[tid]
-                if (cur && cur.logicalName.trim() === '' && physical.trim() !== '') {
-                  const r = restoreLogicalName(physical, next.words, next.terms, namingRules)
-                  if (r.ok) next = updateTable(next, tid, { logicalName: r.logicalName })
-                }
-                return next
-              }, { summary: '물리명 변경' })
-            }} />
-        </div>
-        <div className="grid gap-1.5">
-          <div className="flex items-center justify-between">
-            <FieldLabel htmlFor="tbl-logical" required>논리명</FieldLabel>
-            {canEdit && (
-              <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-                aria-label="논리명 복원"
-                onClick={() => {
-                  const physical = table.physicalName
-                  void mutate((m) => {
-                    const r = restoreLogicalName(physical, m.words, m.terms, namingRules)
-                    return r.ok ? updateTable(m, tid, { logicalName: r.logicalName }) : m
-                  }, { summary: '논리명 복원' })
-                }}>복원</Button>
-            )}
-          </div>
-          <CommitInput id="tbl-logical" value={table.logicalName} readOnly={!canEdit}
-            onCommit={(v) => {
-              const logical = v
-              void mutate((m) => {
-                let next = updateTable(m, tid, { logicalName: logical })
-                const cur = next.tables[tid]
-                if (cur && cur.physicalName.trim() === '' && logical.trim() !== '') {
-                  const gen = generatePhysicalName(logical, next.words, next.terms, namingRules)
-                  if (gen.physicalName) next = updateTable(next, tid, { physicalName: gen.physicalName })
-                }
-                return next
-              }, { summary: '논리명 변경' })
-            }} />
-        </div>
+        {/* key={tid} — 선택이 다른 테이블로 옮겨갈 때 draft 가 남지 않게 한다. */}
+        <NamePair
+          key={tid}
+          projectId={projectId}
+          logicalName={table.logicalName}
+          physicalName={table.physicalName}
+          idPrefix="tbl"
+          physicalLabel="테이블 물리명"
+          canEdit={canEdit}
+          applyNames={(m, patch) => updateTable(m, tid, patch)}
+        />
         <div className="grid gap-1.5">
           <FieldLabel htmlFor="tbl-group">소속 그룹</FieldLabel>
           <select id="tbl-group" className="h-9 rounded-md border bg-background px-2 text-sm"
@@ -198,56 +154,28 @@ export function EditPanel({ projectId }: { projectId: string }) {
             onPatch={(patch) => void mutate((m) => updateColumn(m, c.id, patch))}
             onRemove={() => void mutate((m) => removeColumn(m, c.id), { summary: '컬럼 삭제' })}
             onMove={(dir) => void mutate((m) => reorderColumn(m, c.id, dir))}
-            onPhysicalName={(v) => {
-              const physical = v
-              void mutate((m) => {
-                let next = updateColumn(m, c.id, { physicalName: physical })
-                const cur = next.columns[c.id]
-                if (cur && cur.logicalName.trim() === '' && physical.trim() !== '') {
-                  const r = restoreLogicalName(physical, next.words, next.terms, namingRules)
-                  if (r.ok) next = updateColumn(next, c.id, { logicalName: r.logicalName })
-                }
-                return next
-              }, { summary: '물리명 변경' })
-            }}
-            onRestoreLogical={() => {
-              const physical = c.physicalName
-              void mutate((m) => {
-                const r = restoreLogicalName(physical, m.words, m.terms, namingRules)
-                return r.ok ? updateColumn(m, c.id, { logicalName: r.logicalName }) : m
-              }, { summary: '논리명 복원' })
-            }}
-            onLogicalName={(v) => {
-              const logical = v
-              void mutate((m) => {
-                let next = updateColumn(m, c.id, { logicalName: logical })
-                const cur = next.columns[c.id]
-                if (cur && cur.physicalName.trim() === '' && logical.trim() !== '') {
-                  const gen = generatePhysicalName(logical, next.words, next.terms, namingRules)
-                  if (gen.physicalName) next = updateColumn(next, c.id, { physicalName: gen.physicalName })
-                  if (gen.domainId && cur.domainId === null) next = setColumnDomain(next, c.id, gen.domainId)
-                }
-                return next
-              }, { summary: '논리명 변경' })
-            }}
-            onRegenerate={() => {
-              const logical = c.logicalName
-              void mutate((m) => {
-                const gen = generatePhysicalName(logical, m.words, m.terms, namingRules)
-                return gen.physicalName ? updateColumn(m, c.id, { physicalName: gen.physicalName }) : m
-              }, { summary: '물리명 재생성' })
+            projectId={projectId}
+            applyNames={(m, patch) => {
+              const next = updateColumn(m, c.id, patch)
+              const cur = next.columns[c.id]
+              // 논리명이 용어와 완전일치하면 그 용어의 도메인도 함께 채운다(도메인이 비어 있을 때만).
+              // ⚠️ NamePair 로 옮기면서 이 규칙이 사라질 뻔했다 — 컬럼에만 있는 동작이라 컨테이너가
+              // 모르고, applyNames 가 대상별 규칙을 담는 자리라 여기서 되살린다.
+              if (patch.logicalName === undefined || !cur || cur.domainId !== null) return next
+              const gen = generatePhysicalName(patch.logicalName, next.words, next.terms, namingRules)
+              return gen.domainId ? setColumnDomain(next, c.id, gen.domainId) : next
             }}
             onRegisterTerm={() => {
               const logicalName = c.logicalName
               const physicalName = c.physicalName
               const domainId = c.domainId
-              if (logicalName.trim() === '' || physicalName.trim() === '') return
               void mutate(
                 (m) => createTerm(
                   m, { id: newId(), logicalName, physicalName, domainId, description: null, origin: null },
                 ),
                 { summary: '용어 등록' },
               )
+              toast.success(`용어 「${logicalName}」을(를) 등록했습니다`)
             }}
             onDomainChange={(domainId) => {
               if (domainId === '') {
@@ -276,18 +204,18 @@ function ColumnRow(props: {
   canEdit: boolean
   selected: boolean
   rowRef?: Ref<HTMLLIElement>
+  projectId: string
   onPatch: (patch: Partial<Omit<Column, 'id' | 'tableId'>>) => void
   onRemove: () => void; onMove: (dir: -1 | 1) => void
   onDomainChange: (domainId: string) => void
-  onPhysicalName: (value: string) => void
-  onLogicalName: (value: string) => void
-  onRegenerate: () => void
-  onRestoreLogical: () => void
+  applyNames: (m: ProjectModel, patch: NamePatch) => ProjectModel
   onRegisterTerm: () => void
   customFields: CustomField[]
   onCustomChange: (fieldId: string, value: string) => void
 }) {
   const { column: c, canEdit } = props
+  const model = useEditorStore((s) => s.model)
+  const termCheck = canRegisterTerm(model, { logicalName: c.logicalName, physicalName: c.physicalName })
   const locked = c.domainId !== null
   const domain = locked ? props.domains.find((d) => d.id === c.domainId) : undefined
   return (
@@ -296,25 +224,36 @@ function ColumnRow(props: {
       aria-selected={props.selected}
       ref={props.rowRef}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="grid flex-1 grid-cols-2 gap-2">
-          <CommitInput label="물리명" value={c.physicalName} mono readOnly={!canEdit}
-            onCommit={props.onPhysicalName} />
-          <CommitInput label="논리명" value={c.logicalName} readOnly={!canEdit}
-            onCommit={props.onLogicalName} />
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <NamePair
+            projectId={props.projectId}
+            logicalName={c.logicalName}
+            physicalName={c.physicalName}
+            idPrefix={`col-${c.id}`}
+            physicalLabel="물리명"
+            canEdit={canEdit}
+            applyNames={props.applyNames}
+            extra={canEdit ? (
+              <div>
+                <Button
+                  size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+                  disabled={!termCheck.ok}
+                  title={termCheck.reason === 'duplicate'
+                    ? '같은 논리명의 용어가 이미 있습니다'
+                    : termCheck.reason === 'empty'
+                      ? '논리명과 물리명이 모두 있어야 등록할 수 있습니다'
+                      : undefined}
+                  onClick={props.onRegisterTerm}
+                >
+                  용어 등록
+                </Button>
+              </div>
+            ) : undefined}
+          />
         </div>
         <WarningBadge warnings={props.warnings} className="shrink-0" />
       </div>
-      {canEdit && (
-        <div className="flex gap-1">
-          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-            aria-label="물리명 재생성" onClick={props.onRegenerate}>재생성</Button>
-          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-            aria-label="컬럼 논리명 복원" onClick={props.onRestoreLogical}>복원</Button>
-          <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-            aria-label="용어로 등록" onClick={props.onRegisterTerm}>용어 등록</Button>
-        </div>
-      )}
       <div className="grid gap-1.5">
         <FieldLabel htmlFor={`col-domain-${c.id}`}>도메인</FieldLabel>
         <select id={`col-domain-${c.id}`}
