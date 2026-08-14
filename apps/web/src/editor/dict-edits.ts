@@ -33,6 +33,40 @@ export function removeTerm(model: ProjectModel, id: string): ProjectModel {
   return { ...model, terms: next }
 }
 
+/**
+ * 인라인 등록의 사전 판정. createWord·createTerm 에는 중복 검사가 없어서(같은 논리명 단어를 둘
+ * 만들면 decomposeByWords 가 하나만 쓰고 나머지는 유령이 된다) 부르는 쪽이 막아야 한다.
+ * 사전 화면의 일괄 등록은 미등록 목록에서 오므로 정의상 중복이 아니다 — 그래서 이 판정은
+ * 인라인 등록 경로만 쓴다.
+ */
+export type RegisterCheck = { ok: boolean; reason?: 'empty' | 'duplicate'; abbrClash?: boolean }
+
+export function canRegisterWord(
+  model: ProjectModel, w: { logicalName: string; abbreviation: string },
+): RegisterCheck {
+  const logicalName = w.logicalName.trim()
+  const abbreviation = w.abbreviation.trim()
+  if (logicalName === '' || abbreviation === '') return { ok: false, reason: 'empty' }
+  const values = Object.values(model.words)
+  if (values.some((x) => x.logicalName.trim() === logicalName)) return { ok: false, reason: 'duplicate' }
+  // 약어 충돌은 막지 않는다 — abbreviationIndex 가 id 가 작은 쪽으로 결정론적으로 고르므로
+  // 무결성 문제가 아니고, 같은 약어를 쓰는 단어가 실제로 존재한다(표시만 경고한다).
+  const abbrClash = values.some((x) => x.abbreviation.trim().toUpperCase() === abbreviation.toUpperCase())
+  return { ok: true, abbrClash }
+}
+
+export function canRegisterTerm(
+  model: ProjectModel, t: { logicalName: string; physicalName: string },
+): RegisterCheck {
+  const logicalName = t.logicalName.trim()
+  const physicalName = t.physicalName.trim()
+  if (logicalName === '' || physicalName === '') return { ok: false, reason: 'empty' }
+  if (Object.values(model.terms).some((x) => x.logicalName.trim() === logicalName)) {
+    return { ok: false, reason: 'duplicate' }
+  }
+  return { ok: true }
+}
+
 export type DictUsageEntry =
   | { kind: 'table'; entity: Table }
   | { kind: 'column'; entity: Column }
