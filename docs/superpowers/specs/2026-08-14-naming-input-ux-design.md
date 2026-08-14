@@ -193,7 +193,8 @@ export function suggestCompletions(
 | 물리명 | `restoreLogicalName(값)` 실패 시 `unknownTokens` | `논리명 [___] [등록]` | `createWord({ logicalName: 입력, abbreviation: 칩 })` |
 
 둘 다 **같은 `createWord` 경로**다(물리명 우선 명명 사이클이 세운 역방향 등록과 동일한 형태).
-한 번에 하나만 펼쳐진다. `englishName: ''` · `description: null` · `origin: null`.
+한 번에 하나만 펼쳐진다. 나머지 필드는 사전 화면의 일괄 등록과 같다 — `englishName: null` ·
+`description: null` · `origin: null`.
 
 이 산출은 `dict-edits.ts`의 `unregisteredWords`(206)·`unregisteredAbbreviations`(225)가 **모델 전체**로
 도는 것의 단일 엔티티판이다. 같은 core 함수를 쓰므로 사전 화면과 결과가 어긋나지 않는다.
@@ -288,8 +289,9 @@ origin)이 추가되면 두 곳이 갈릴 수 있다"* 고 경고했는데 이�
 
 ### `apps/web/src/editor/name-pair.test.tsx` (신규)
 
-- ⚠️ **치고 blur 없이 ↻ → 방금 친 값 기준으로 동작한다.** 이월 결함의 실증이다 — **현재 코드에
-  대고 돌리면 빨개지는** 형태로 쓴다(구현자가 그것을 확인하고 보고한다).
+- ⚠️ **치고 blur 없이 ↻ → 방금 친 값 기준으로 동작한다.** 이월 결함의 실증이다. 새 컴포넌트라
+  "예전 코드에 대고 돌린다"가 성립하지 않으므로, **`onMouseDown`의 `preventDefault` 한 줄을 지우면
+  빨개지는 것**으로 실증한다(구현자가 확인하고 보고한다).
 - ↻ 한 번 = `mutate` 호출 1회(Revision 1건)
 - 자동완성 — 후보 렌더 · `↓↑` 이동 · **`Enter` 확정이 커밋을 내지 않는다** · `Esc`가 상위로 새지 않음
 - 칩이 draft로 깜박이지 않는다(커밋된 값 기준)
