@@ -102,7 +102,7 @@ describe('EditPanel', () => {
     grantEditPermission()
     useEditorStore.getState().select('t1') // t1은 컬럼 c1 하나뿐
     renderPanel()
-    // selector: 'input' — 「논리명 재생성」 버튼의 aria-label도 /논리명/에 매치해 인덱스가 밀리므로 input만 취한다.
+    // selector: 'input' — 「논리명 채우기」 버튼의 aria-label도 /논리명/에 매치해 인덱스가 밀리므로 input만 취한다.
     const logicalInputs = screen.getAllByLabelText(/논리명/, { selector: 'input' }) // [0] 테이블, [1] 컬럼
     await userEvent.type(logicalInputs[1]!, '회원')
     await userEvent.tab()
@@ -125,7 +125,7 @@ describe('EditPanel', () => {
     grantEditPermission()
     useEditorStore.getState().select('t1')
     renderPanel()
-    // selector: 'input' — 「논리명 재생성」 버튼의 aria-label도 /논리명/에 매치해 인덱스가 밀리므로 input만 취한다.
+    // selector: 'input' — 「논리명 채우기」 버튼의 aria-label도 /논리명/에 매치해 인덱스가 밀리므로 input만 취한다.
     const logicalInputs = screen.getAllByLabelText(/논리명/, { selector: 'input' })
     await userEvent.type(logicalInputs[1]!, '회원')
     await userEvent.tab()
@@ -262,7 +262,7 @@ describe('EditPanel', () => {
     expect(useEditorStore.getState().model.tables['t1']!.logicalName).toBe('')
   })
 
-  it('「논리명 재생성」 버튼은 값이 있어도 덮어쓴다', async () => {
+  it('「논리명 채우기」 화살표는 값이 있어도 덮어쓴다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
     m = { ...m,
@@ -277,7 +277,7 @@ describe('EditPanel', () => {
     useEditorStore.getState().select('t1')
     renderPanel()
     // 테이블·컬럼이 같은 이름의 버튼을 가지므로 [0](테이블)으로 좁힌다.
-    await userEvent.click(screen.getAllByRole('button', { name: '논리명 재생성' })[0]!)
+    await userEvent.click(screen.getAllByRole('button', { name: '논리명 채우기' })[0]!)
     await waitFor(() => {
       expect(useEditorStore.getState().model.tables['t1']!.logicalName).toBe('회원')
     })
@@ -318,9 +318,9 @@ describe('EditPanel', () => {
     renderPanel()
 
     expect(screen.queryByRole('button', { name: '컬럼 삭제' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '물리명 재생성' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '물리명 채우기' })).toBeNull()
     expect(screen.queryByRole('button', { name: '용어 등록' })).toBeNull()
-    expect(screen.queryByRole('button', { name: '논리명 재생성' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '논리명 채우기' })).toBeNull()
     expect(screen.queryByRole('button', { name: '컬럼 추가' })).toBeNull()
     expect(screen.queryByRole('button', { name: '위로' })).toBeNull()
     expect(screen.queryByRole('button', { name: '아래로' })).toBeNull()
@@ -342,7 +342,7 @@ describe('EditPanel', () => {
     grantEditPermission()
     useEditorStore.getState().select('t1')   // t1은 컬럼 c1 하나뿐
     renderPanel()
-    // selector: 'input' — 「논리명 재생성」 버튼의 aria-label도 정규식에 매치해
+    // selector: 'input' — 「논리명 채우기」 버튼의 aria-label도 정규식에 매치해
     // 인덱스가 밀리므로 input만 취한다(기존 두 테스트와 같은 이유).
     const physicals = screen.getAllByLabelText(/물리명/, { selector: 'input' })
     const logicals = screen.getAllByLabelText(/논리명/, { selector: 'input' })
@@ -396,7 +396,7 @@ describe('EditPanel', () => {
     expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('유지')
   })
 
-  it('컬럼의 「논리명 재생성」 버튼은 값이 있어도 덮어쓴다', async () => {
+  it('컬럼의 「논리명 채우기」 화살표는 값이 있어도 덮어쓴다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
     m = { ...m,
@@ -411,7 +411,7 @@ describe('EditPanel', () => {
     useEditorStore.getState().select('t1')
     renderPanel()
     const card = screen.getByLabelText('논리명', { selector: '#col-c1-logical' }).closest('li')!
-    await userEvent.click(within(card).getByRole('button', { name: '논리명 재생성' }))
+    await userEvent.click(within(card).getByRole('button', { name: '논리명 채우기' }))
     await waitFor(() => {
       expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('회원')
     })
