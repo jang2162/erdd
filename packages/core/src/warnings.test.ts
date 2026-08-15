@@ -333,6 +333,27 @@ describe('missing-logical-separator', () => {
       .not.toContain('missing-logical-separator')
   })
 
+  /**
+   * ⚠️ **용어와 완전일치하는 옛 형식 논리명** — 기존 프로젝트의 가장 흔한 모양이다.
+   * generatePhysicalName 이 1단계(용어 완전일치)에서 조기 반환하므로 `gen.segments` 가 없고,
+   * 경고 판정은 그때만 직접 분해하는 **폴백 갈래**를 탄다. 그 갈래를 지우면 이 모양에서만
+   * 구분자 경고가 조용히 사라진다(다른 케이스는 전부 2단계를 타므로 아무것도 빨개지지 않는다).
+   * 성능 최적화(GenResult.segments 재사용)가 만든 갈래라 그 최적화를 되돌릴 때 함께 본다.
+   */
+  it('용어와 완전일치하는 옛 형식 논리명에도 경고한다(분해 폴백 갈래)', () => {
+    const m = modelWith('회원주문')
+    // 용어 저장값도 구분자가 없다 — 논리명과 완전일치해 물리명 생성이 용어로 끝난다.
+    m.terms['tm1'] = {
+      id:'tm1', logicalName:'회원주문', physicalName:'MBR_ORD',
+      domainId:null, description:null, origin:null,
+    }
+    const ws = computeWarnings(m, DEFAULT_NAMING_RULES)
+    // 전제: 용어로 끝났으므로 미등록 단어 경고는 없다(= 2단계 분해를 타지 않았다).
+    expect(ws.map((w) => w.kind)).not.toContain('unknown-word')
+    expect(ws.map((w) => w.kind)).toContain('missing-logical-separator')
+    expect(ws.find((w) => w.kind === 'missing-logical-separator')?.message).toContain('회원_주문')
+  })
+
   it('메시지가 구분자를 넣은 형태를 알려 준다', () => {
     const w = computeWarnings(modelWith('회원주문'), DEFAULT_NAMING_RULES)
       .find((x) => x.kind === 'missing-logical-separator')

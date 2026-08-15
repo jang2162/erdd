@@ -60,17 +60,28 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 691 · cli 141 · web 882 · server 200 (erdd_test_a) · typecheck EXIT=0
+core 692 · cli 141 · web 882 · server 200 (erdd_test_a) · typecheck EXIT=0
 ```
 
 ⚠️ **server 수치는 워크트리 격리 DB(`erdd_test_a`)로 잰 값이다.** 최상위의 공유 `erdd_test` 로
 재면 같아야 하지만 확인하지 않았다 — 병합 후 한 번 재어 확정할 것.
 
-논리명 구분자 사이클에서 **core +41 · cli +2 · web +13 · server +3** 이 붙었다(직전 기준선은
+논리명 구분자 사이클에서 **core +46 · cli +3 · web +22 · server +4** 가 붙었다(직전 기준선은
 `core 646 · cli 138 · web 860 · server 196`). **이 트랙은 네 패키지가 전부 움직인 것이 정상이다** —
 설계가 서버(jsonb 파싱)와 CLI(옛 config 키 보정)를 범위 안에 뒀다.
-core 내역은 `naming` +33 · `warnings` +7 · `excel-sheets` +1 이고, web 은
-`project-settings`(신규 파일) +6 · `name-pair` +7 이다.
+
+내역은 세 라운드로 갈린다.
+
+| 라운드 | core | cli | web | server | 담은 것 |
+|---|---|---|---|---|---|
+| 구현 | +41 | +2 | +13 | +3 | `naming` +33 · `warnings` +7 · `excel-sheets` +1 / web 은 `project-settings`(신규) +6 · `name-pair` +7 |
+| **리뷰 수정** | **+4** | **+1** | **+9** | **+1** | Major 3 · Minor 5 · Nit 4 를 전부 닫았다(이월 0). core 는 M1 잠금 1 · `findMatchingTerm` 2 · n4 1, web 은 `export-dialog` 1 · `dict-panel` 2 · `dict-edits` 4 · `name-pair` 2, cli 는 m4 1, server 는 m5 1 |
+| **재검증 잔여** | **+1** | — | — | — | M2 (a) 가 만든 **분해 폴백 갈래**(용어 완전일치로 끝난 논리명) — 그 갈래를 지워도 전건이 초록이던 자리다 |
+
+⚠️ **리뷰 수정 라운드가 잡은 것의 절반이 「배선은 옳은데 잠기지 않은」 자리였다** — 이 사이클이 새로
+뚫은 `rules` 인자 3곳(`findMatchingTerm` · `export-dialog` · `dict-panel`)이 전부 되돌려도 초록이었다.
+성능 수정(M2)도 **자기가 만든 폴백 갈래를 잠그지 않아** 재검증에서 한 건이 더 나왔다 —
+**최적화로 갈래를 늘리면 늘어난 갈래마다 잠금이 필요하다.**
 
 ⚠️ **기존 케이스의 기댓값이 바뀐 자리가 넷 있다. 전부 의도된 변경이다** — `restoreLogicalName` 이
 구분자를 넣어 조립하므로 core `naming`(5건)·`ddl-import`(1건)·web `name-pair`(2건)의 옛 단언이
