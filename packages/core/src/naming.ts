@@ -28,7 +28,18 @@ export const NamingRulesSchema = z.object({
   logicalSeparator: z.enum(['_', '']).default('_'),
   maxLengthBytes: z.number().int().positive(),
 })
-export type GenResult = { physicalName: string; unknownWords: string[]; termId?: string; domainId?: string | null }
+export type GenResult = {
+  physicalName: string
+  unknownWords: string[]
+  termId?: string
+  domainId?: string | null
+  /**
+   * 2단계(사전 분해)를 탄 경우의 세그먼트. **용어 완전일치로 끝나면 없다** — 그때는 분해를
+   * 하지 않기 때문이다. 경고 계산이 같은 논리명을 두 번 분해하지 않도록 실어 보낸다
+   * (없으면 부르는 쪽이 직접 분해해야 한다 — `?? decomposeByWords(...)`).
+   */
+  segments?: WordSegment[]
+}
 
 /** 논리명 분해 결과 한 조각. word가 null이면 사전에 없는 구간이다. */
 export type WordSegment = { text: string; word: Word | null }
@@ -56,6 +67,11 @@ export function decomposeByWords(
   const name = logicalName.trim()
   if (name === '') return []
   if (rules.logicalSeparator === '') return greedyDecompose(name, words)
+
+  // ⚠️ 구분자가 없는 이름은 곧장 그리디로 간다. 구분자 없는 논리명은 split 토큰이 하나이고
+  // 사전에 그런 단어가 없어 어차피 폴백으로 떨어지는데, 그 전에 사전 전체로 Map 을 만드는 것이
+  // **통째로 낭비**다(설계 D3 이 기존 프로젝트 전부를 이 상태로 만든다).
+  if (!name.includes(rules.logicalSeparator)) return greedyDecompose(name, words)
 
   // ⚠️ 동명 단어가 둘이면 **앞엣것**을 쓴다 — `new Map(entries)` 는 나중 키가 이기는데
   // greedyDecompose 의 `find` 는 앞엣것이 이긴다. 맞추지 않으면 같은 사전에서 '회원_번호' 와
@@ -101,7 +117,10 @@ function greedyDecompose(name: string, words: Record<string, Word>): WordSegment
  * 내려오므로 이 프로젝트의 구분자 정책을 강요할 수 없다.
  */
 export function stripLogicalSeparator(name: string, rules: NamingRules): string {
-  return rules.logicalSeparator === '' ? name : name.split(rules.logicalSeparator).join('')
+  // ⚠️ 구분자가 없는 이름에서 곧장 빠진다. 용어 매칭이 **엔티티마다 용어 전부**에 대해 이
+  // 함수를 부르므로(경고 계산에서 수십만 회) split/join 할당이 그대로 비용이 된다.
+  if (rules.logicalSeparator === '' || !name.includes(rules.logicalSeparator)) return name
+  return name.split(rules.logicalSeparator).join('')
 }
 
 /**
@@ -133,7 +152,7 @@ export function generatePhysicalName(
   const unknownWords = segments.filter((s) => s.word === null).map((s) => s.text)
   const joined = parts.join(rules.separator)
   const physicalName = rules.case === 'lower_snake' ? joined.toLowerCase() : joined.toUpperCase()
-  return { physicalName, unknownWords }
+  return { physicalName, unknownWords, segments }
 }
 
 export type RestoreLogicalResult =

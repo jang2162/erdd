@@ -115,7 +115,10 @@ export function computeWarnings(
         // 구분자가 의미를 갖는 것은 단어가 둘 이상일 때뿐이다 — 단일 단어에까지 붙이면
         // 경고가 노이즈가 되어 신호가 죽는다(설계 3.5).
         if (rules.logicalSeparator !== '' && !logical.includes(rules.logicalSeparator)) {
-          const segments = decomposeByWords(logical, model.words, rules)
+          // ⚠️ 같은 논리명을 **두 번 분해하지 않는다.** 위 generatePhysicalName 이 2단계를
+          // 탔다면 그 세그먼트가 그대로 온다. 용어 완전일치로 끝난 경우에만 없으므로 그때만
+          // 직접 분해한다(그 갈래에서도 경고 판정은 논리명 자체를 보는 것이라 그대로여야 한다).
+          const segments = gen.segments ?? decomposeByWords(logical, model.words, rules)
           if (segments.length >= 2) {
             warnings.push({
               kind: 'missing-logical-separator', scope, entityId, tableId,
