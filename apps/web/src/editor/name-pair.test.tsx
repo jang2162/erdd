@@ -192,7 +192,7 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     const list = await screen.findByRole('listbox')
     expect(list).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /주문/ })).toBeInTheDocument()
@@ -203,7 +203,7 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주문')
+    await userEvent.type(logical, '회원_주문')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
@@ -214,9 +214,9 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     await userEvent.click(await screen.findByRole('option', { name: /주문/ }))
-    expect(logical.value).toBe('회원주문')
+    expect(logical.value).toBe('회원_주문')
     expect(calls).toHaveLength(0)                 // 확정은 커밋이 아니다
     expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원')
   })
@@ -228,10 +228,10 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     await screen.findByRole('listbox')
     await userEvent.keyboard('{ArrowDown}{Enter}')
-    expect(logical.value).toBe('회원주문')
+    expect(logical.value).toBe('회원_주문')
     expect(calls).toHaveLength(0)
   })
 
@@ -243,13 +243,13 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     await screen.findByRole('listbox')
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     // 닫은 뒤 한 글자 더 치면 다시 열린다 — 이 단정이 테스트 이름이 약속한 것이다.
     await userEvent.type(logical, '문')
-    expect(logical.value).toBe('회원주문')
+    expect(logical.value).toBe('회원_주문')
     expect(await screen.findByRole('listbox')).toBeInTheDocument()
   })
 
@@ -280,7 +280,7 @@ describe('NamePair 자동완성', () => {
     )
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     await screen.findByRole('listbox')
     onKeyDown.mockClear()
     await userEvent.keyboard('{Escape}')
@@ -299,7 +299,7 @@ describe('NamePair 자동완성', () => {
   // ⚠️ 커밋값이 '회원'(사전 단어로 딱 떨어짐)이면 권한과 무관하게 후보가 0건이라 아무것도 잠기지
   // 않는다. 꼬리 '주'가 남는 값을 써야 "권한 때문에 안 열린다"를 본다 — 대조군이 그것을 드러낸다.
   it('읽기 전용이면 목록이 열리지 않는다', async () => {
-    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    loadModel({ logicalName: '회원_주', physicalName: 'MBR' })
     useEditorStore.setState({ canEdit: false })
     renderPair(false)
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
@@ -308,7 +308,7 @@ describe('NamePair 자동완성', () => {
   })
 
   it('편집 권한이 있으면 같은 값에서 목록이 열린다', async () => {
-    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    loadModel({ logicalName: '회원_주', physicalName: 'MBR' })
     renderPair()
     await userEvent.click(screen.getByLabelText('논리명'))
     expect(await screen.findByRole('listbox')).toBeInTheDocument()
@@ -459,7 +459,7 @@ describe('NamePair 원격 변경 동기화', () => {
 describe('NamePair 접근성·목록 상태', () => {
   // ⚠️ n14. 읽기 전용에서 열 수 없는 combobox 로 노출되면 스크린리더가 "펼칠 수 있다"고 읽는다.
   it('읽기 전용이면 combobox 로 노출되지 않는다', () => {
-    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    loadModel({ logicalName: '회원_주', physicalName: 'MBR' })
     useEditorStore.setState({ canEdit: false })
     renderPair(false)
     const logical = screen.getByLabelText('논리명')
@@ -468,7 +468,7 @@ describe('NamePair 접근성·목록 상태', () => {
   })
 
   it('편집 가능하면 combobox 로 노출된다', () => {
-    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    loadModel({ logicalName: '회원_주', physicalName: 'MBR' })
     renderPair()
     expect(screen.getByLabelText('논리명')).toHaveAttribute('role', 'combobox')
   })
@@ -490,7 +490,7 @@ describe('NamePair 접근성·목록 상태', () => {
     useEditorStore.setState({ model: removeTerm(useEditorStore.getState().model, 'tm2') })
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
     await userEvent.keyboard('{Enter}')
-    expect(logical.value).toBe('회원주문번호')      // 리셋되지 않으면 items[1] 이 없어 아무 일도 없다
+    expect(logical.value).toBe('회원_주문_번호')    // 리셋되지 않으면 items[1] 이 없어 아무 일도 없다
   })
 })
 

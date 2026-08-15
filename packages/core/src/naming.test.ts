@@ -168,7 +168,7 @@ describe('suggestCompletions', () => {
   }
 
   it('논리명 — 마지막 미매칭 꼬리만 쿼리가 된다', () => {
-    const r = suggestCompletions('회원주', 'logical', w, {}, DEFAULT_NAMING_RULES)
+    const r = suggestCompletions('회원주', 'logical', w, {}, NO_LOGICAL_SEP)
     expect(r.query).toBe('주')
     expect(r.items.map((i) => i.insert)).toEqual(['주문', '주소'])
     // '회원'은 매칭돼 확정 구간이므로 치환은 그 뒤부터다
@@ -177,7 +177,7 @@ describe('suggestCompletions', () => {
   })
 
   it('논리명 — 사전 단어로 딱 떨어지면 단어 후보를 내지 않는다(용어는 별개다 — 아래)', () => {
-    const r = suggestCompletions('회원주문', 'logical', w, {}, DEFAULT_NAMING_RULES)
+    const r = suggestCompletions('회원주문', 'logical', w, {}, NO_LOGICAL_SEP)
     expect(r.query).toBe('')
     expect(r.items).toEqual([])
   })
@@ -193,7 +193,7 @@ describe('suggestCompletions', () => {
   })
 
   it('용어는 입력 전체로 찾고 전체를 치환한다(start 0)', () => {
-    const r = suggestCompletions('회원주', 'logical', w, t, DEFAULT_NAMING_RULES)
+    const r = suggestCompletions('회원주', 'logical', w, t, NO_LOGICAL_SEP)
     const term = r.items.find((i) => i.kind === 'term')
     expect(term).toBeDefined()
     expect(term!.insert).toBe('회원주문번호')
@@ -249,7 +249,7 @@ describe('suggestCompletions', () => {
   // 앞에 있으면 '회원주문'처럼 사전 단어로 딱 떨어지는 순간 용어 후보가 통째로 죽는다 —
   // 하필 용어로 가는 길목의 접두가 대개 그 모양이라 주 동선이 막힌다.
   it('입력이 사전 단어로 딱 떨어져도 용어 후보는 나온다', () => {
-    const r = suggestCompletions('회원주문', 'logical', w, t, DEFAULT_NAMING_RULES)
+    const r = suggestCompletions('회원주문', 'logical', w, t, NO_LOGICAL_SEP)
     expect(r.query).toBe('')
     expect(r.items.map((i) => i.insert)).toEqual(['회원주문번호'])
     expect(r.items[0]!.kind).toBe('term')
@@ -257,7 +257,7 @@ describe('suggestCompletions', () => {
   })
 
   it('그때 단어 후보는 나오지 않는다(쿼리가 비면 사전 전체가 뜨는 것을 막는 규칙은 그대로다)', () => {
-    const r = suggestCompletions('회원주문', 'logical', w, t, DEFAULT_NAMING_RULES)
+    const r = suggestCompletions('회원주문', 'logical', w, t, NO_LOGICAL_SEP)
     expect(r.items.filter((i) => i.kind === 'word')).toEqual([])
   })
 
@@ -281,7 +281,7 @@ describe('suggestCompletions', () => {
         domainId: null, description: null, origin: null,
       }
     }
-    const r = suggestCompletions('회원주', 'logical', w, many, DEFAULT_NAMING_RULES)
+    const r = suggestCompletions('회원주', 'logical', w, many, NO_LOGICAL_SEP)
     expect(r.items.filter((i) => i.kind === 'term')).toHaveLength(3)   // 용어 상한
     expect(r.items.some((i) => i.kind === 'word')).toBe(true)          // 단어가 밀려나지 않는다
     expect(r.items.length).toBeLessThanOrEqual(8)
@@ -461,5 +461,79 @@ describe('구분자와 용어', () => {
     const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
     const r = restoreLogicalName('MBR_ORD_NO', w, {}, rules)
     expect(r.ok && r.logicalName).toBe('회원주문번호')
+  })
+})
+
+describe('suggestCompletions 구분자', () => {
+  const w = {
+    w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+    w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+    w3: { id:'w3', logicalName:'주소', abbreviation:'ADDR', englishName:null, description:null, origin:null },
+  }
+  const t = {
+    t1: { id:'t1', logicalName:'회원주문번호', physicalName:'MBR_ORD_NO', domainId:null, description:null, origin:null },
+  }
+
+  it('논리명 쿼리는 마지막 구분자 뒤 토큰이다', () => {
+    const r = suggestCompletions('회원_주', 'logical', w, {}, DEFAULT_NAMING_RULES)
+    expect(r.query).toBe('주')
+    expect(r.items.map((i) => i.insert)).toEqual(['주문', '주소'])
+    expect('회원_주'.slice(0, r.items[0]!.start) + r.items[0]!.insert).toBe('회원_주문')
+  })
+
+  // 사전에 없는 단어가 껴도 구분자가 경계를 못박는다 — 그리디 추측에 기대지 않는다
+  it('앞 토큰이 미등록이어도 꼬리 쿼리가 흔들리지 않는다', () => {
+    const r = suggestCompletions('쿠폰_주', 'logical', w, {}, DEFAULT_NAMING_RULES)
+    expect(r.query).toBe('주')
+    expect(r.items.map((i) => i.insert)).toEqual(['주문', '주소'])
+  })
+
+  // ⚠️ 여기가 「분해의 마지막 미매칭 세그먼트」와 「마지막 구분자 뒤 토큰」이 갈리는 자리다.
+  // 그리디로 쪼개면 '주문'이 먼저 먹혀 쿼리가 '번'이 되지만, 구분자 정책에서 한 토큰은 한 단어라
+  // 사용자가 치고 있는 것은 '주문번…' 전체다. 이 케이스가 없으면 logicalQuery 를 되돌려도
+  // 아무것도 빨개지지 않는다.
+  it('꼬리 토큰은 그리디로 다시 쪼개지 않는다', () => {
+    const r = suggestCompletions('회원_주문번', 'logical', w, {}, DEFAULT_NAMING_RULES)
+    expect(r.query).toBe('주문번')
+    expect(r.items.filter((i) => i.kind === 'word')).toEqual([])   // '주문번' 으로 시작하는 단어는 없다
+  })
+
+  it('구분자로 딱 끝나면 쿼리가 비어 단어 후보를 내지 않는다', () => {
+    const r = suggestCompletions('회원_', 'logical', w, {}, DEFAULT_NAMING_RULES)
+    expect(r.query).toBe('')
+    expect(r.items.filter((i) => i.kind === 'word')).toEqual([])
+  })
+
+  it('용어 후보는 구분자 형식으로 변환돼 들어간다', () => {
+    const r = suggestCompletions('회원_주', 'logical', w, t, DEFAULT_NAMING_RULES)
+    const term = r.items.find((i) => i.kind === 'term')
+    expect(term?.insert).toBe('회원_주문_번호')   // 저장값은 '회원주문번호'
+    expect(term?.start).toBe(0)
+  })
+
+  it('용어는 구분자를 무시하고 입력 전체로 찾는다', () => {
+    // 입력에 구분자가 있어도 용어 저장값(구분자 없음)과 접두가 맞아야 한다
+    const r = suggestCompletions('회원_주문', 'logical', w, t, DEFAULT_NAMING_RULES)
+    expect(r.items.some((i) => i.kind === 'term')).toBe(true)
+  })
+
+  it('구분자 없는 규칙에서는 기존 그리디 쿼리 그대로다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+    const r = suggestCompletions('회원주', 'logical', w, {}, rules)
+    expect(r.query).toBe('주')
+  })
+
+  // ⚠️ 수용된 퇴행 — 구분자 규칙에서 **옛 형식**(구분자 없는) 논리명을 이어 치면 입력 전체가
+  // 한 토큰이라 단어 후보가 좁아진다. 그리디로 되돌리면 '주'가 되어 후보가 나오지만, 그러면
+  // 설계 3.4 의 「경계가 흔들리지 않는다」가 깨진다. D3 이 옛 형식을 고쳐 쓰라고 정했으므로
+  // 자동완성도 구분자 형식을 유도하는 쪽에 선다. **분해 폴백(3.1)과는 다른 판단이다** —
+  // 그쪽은 물리명 생성이 죽는 것을 막고, 이쪽은 후보가 줄 뿐이다.
+  it('구분자 규칙에서 옛 형식 입력은 입력 전체가 쿼리다(그리디로 되돌리지 않는다)', () => {
+    const r = suggestCompletions('회원주', 'logical', w, {}, DEFAULT_NAMING_RULES)
+    expect(r.query).toBe('회원주')
+    expect(r.items.filter((i) => i.kind === 'word')).toEqual([])
+    // 구분자를 찍어 주면 곧바로 후보가 돌아온다 — 사용자가 빠져나갈 길이 있다.
+    expect(suggestCompletions('회원_주', 'logical', w, {}, DEFAULT_NAMING_RULES)
+      .items.map((i) => i.insert)).toEqual(['주문', '주소'])
   })
 })

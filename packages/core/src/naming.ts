@@ -239,9 +239,12 @@ export function suggestCompletions(
   const termItems: Completion[] = []
   for (const t of Object.values(terms)) {
     const target = side === 'logical' ? t.logicalName : t.physicalName
-    if (!startsWithFold(target, input, side) || foldEq(target, input, side)) continue
+    // 논리명 쪽은 입력에 구분자가 있을 수 있으므로 양쪽을 벗겨 비교한다(설계 D4).
+    const probe = side === 'logical' ? stripLogicalSeparator(input, rules) : input
+    if (!startsWithFold(target, probe, side) || foldEq(target, probe, side)) continue
     push(termItems, {
-      insert: target, hint: side === 'logical' ? t.physicalName : t.logicalName,
+      insert: side === 'logical' ? withLogicalSeparator(target, words, rules) : target,
+      hint: side === 'logical' ? t.physicalName : t.logicalName,
       kind: 'term', start: 0,
     })
   }
@@ -290,8 +293,21 @@ function foldEq(a: string, b: string, side: 'logical' | 'physical'): boolean {
   return fold(a, side) === fold(b, side)
 }
 
-/** 논리명의 미매칭 꼬리. decomposeByWords의 마지막 세그먼트가 word:null일 때만 있다. */
+/**
+ * 논리명의 미매칭 꼬리.
+ * 구분자가 있으면 **마지막 구분자 뒤 토큰**이다 — 물리명 쪽(physicalQuery)과 같은 방식이고,
+ * 사전에 없는 단어가 껴도 경계가 흔들리지 않는다. 없으면 그리디 분해의 마지막 미매칭 세그먼트다.
+ *
+ * ⚠️ 분해에 기대면 안 된다. 구분자 정책에서 한 토큰은 한 단어인데, 분해의 마지막 세그먼트를
+ * 쓰면 '회원_주문번'의 꼬리가 그리디에 먹혀 '번'이 된다(사용자가 치고 있는 것은 '주문번…'이다).
+ */
 function logicalQuery(input: string, words: Record<string, Word>, rules: NamingRules): string {
+  if (rules.logicalSeparator !== '') {
+    const idx = input.lastIndexOf(rules.logicalSeparator)
+    const tail = idx === -1 ? input : input.slice(idx + rules.logicalSeparator.length)
+    // 꼬리가 통째로 사전 단어면 더 칠 것이 없다(단어 후보를 열지 않는다).
+    return Object.values(words).some((w) => w.logicalName === tail) ? '' : tail
+  }
   const segments = decomposeByWords(input, words, rules)
   const last = segments[segments.length - 1]
   return last && last.word === null ? last.text : ''
