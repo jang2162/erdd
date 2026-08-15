@@ -7,7 +7,7 @@ export const TEST_CONFIG = {
   serverUrl: 'https://erdd.example.com',
   projectId: '018f6b0e-0000-7000-8000-000000000000',
   dialects: ['postgresql'] as const,
-  namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 } as const,
+  namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 } as const,
 }
 
 /** 서버 모델을 pull한 직후 상태(트리 + base)를 만든다. */

@@ -23,7 +23,7 @@ beforeEach(async () => {
     serverUrl: 'https://erdd.example.com',
     projectId: '018f6b0e-0000-7000-8000-000000000000',
     dialects: ['postgresql'],
-    namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 },
+    namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
   })
 })
 afterEach(() => vi.restoreAllMocks())
@@ -48,7 +48,7 @@ function stubClient(overrides: Partial<Record<string, unknown>> = {}): ApiClient
       if (path === 'project.get') {
         return {
           id: 'p1', name: '커머스', dialects: ['postgresql'],
-          namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 },
+          namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
           ...(overrides['project.get'] as object ?? {}),
         }
       }
@@ -74,7 +74,7 @@ describe('pull', () => {
   it('서버의 방언·명명 규칙을 config에 갱신한다', async () => {
     await pull({
       cwd: dir, json: true, yes: false, strict: false,
-      client: stubClient({ 'project.get': { dialects: ['oracle'], namingRules: { case: 'lower_snake', separator: '', maxLengthBytes: 20 } } }),
+      client: stubClient({ 'project.get': { dialects: ['oracle'], namingRules: { case: 'lower_snake', separator: '', logicalSeparator: '_', maxLengthBytes: 20 } } }),
     })
     const raw = await readFile(join(dir, 'erdd.config.yaml'), 'utf8')
     expect(raw).toContain('oracle')

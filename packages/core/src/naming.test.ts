@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   generatePhysicalName, decomposeByWords, restoreLogicalName, DEFAULT_NAMING_RULES, suggestCompletions,
+  NamingRulesSchema,
 } from './naming.js'
 import type { Term, Word } from './model.js'
 const words = {
@@ -23,8 +24,8 @@ describe('generatePhysicalName', () => {
     expect(r.unknownWords).toContain('쿠폰')
   })
   it('lower_snake·구분자 없음', () => {
-    expect(generatePhysicalName('회원상태', words, {}, { case:'lower_snake', separator:'_', maxLengthBytes:30 }).physicalName).toBe('mbr_stat')
-    expect(generatePhysicalName('회원상태', words, {}, { case:'UPPER_SNAKE', separator:'', maxLengthBytes:30 }).physicalName).toBe('MBRSTAT')
+    expect(generatePhysicalName('회원상태', words, {}, { case:'lower_snake', separator:'_', logicalSeparator:'_', maxLengthBytes:30 }).physicalName).toBe('mbr_stat')
+    expect(generatePhysicalName('회원상태', words, {}, { case:'UPPER_SNAKE', separator:'', logicalSeparator:'_', maxLengthBytes:30 }).physicalName).toBe('MBRSTAT')
   })
 })
 
@@ -175,7 +176,7 @@ describe('suggestCompletions', () => {
   })
 
   it('물리명 — 구분자가 없는 규칙에서는 약어 그리디로 끊고 남은 꼬리가 쿼리다', () => {
-    const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, maxLengthBytes: 30 }
+    const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, logicalSeparator: '_' as const, maxLengthBytes: 30 }
     const r = suggestCompletions('MBROR', 'physical', w, {}, rules)
     expect(r.query).toBe('OR')
     expect(r.items.map((i) => i.insert)).toEqual(['ORD'])
@@ -222,7 +223,7 @@ describe('suggestCompletions', () => {
 
   it('물리명도 같다 — 약어로 딱 떨어져도 용어 후보가 나온다', () => {
     // 무구분자 규칙에서만 물리명 쿼리가 빈다(구분자가 있으면 마지막 토큰이 남아 우연히 안 걸린다).
-    const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, maxLengthBytes: 30 }
+    const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, logicalSeparator: '_' as const, maxLengthBytes: 30 }
     const flat = {
       t2: { id:'t2', logicalName:'회원주문번호', physicalName:'MBRORDNO', domainId:null, description:null, origin:null },
     }
@@ -253,7 +254,7 @@ describe('suggestCompletions', () => {
       ...w,
       w9: { id:'w9', logicalName:'주민등록번호', abbreviation:'SSN', englishName:null, description:null, origin:null },
     }
-    const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, maxLengthBytes: 30 }
+    const rules = { case: 'UPPER_SNAKE' as const, separator: '' as const, logicalSeparator: '_' as const, maxLengthBytes: 30 }
     expect('MBR\u00df'.toUpperCase().length).not.toBe('MBR\u00df'.length)   // 전제
     const r = suggestCompletions('MBR\u00df', 'physical', withSsn, {}, rules)
     // ⚠️ query 도 함께 못 박아야 잠긴다. items 만 보면 가드가 있든 없든 [] 라 아무것도 구분하지
@@ -269,5 +270,31 @@ describe('suggestCompletions', () => {
     }
     const r = suggestCompletions('MBR_OR', 'physical', dup, {}, DEFAULT_NAMING_RULES)
     expect(r.items.filter((i) => i.insert === 'ORD')).toHaveLength(1)
+  })
+})
+
+describe('NamingRulesSchema', () => {
+  it('logicalSeparator 가 없는 옛 값에 기본값 _ 를 주입한다', () => {
+    // 기존 projects.naming_rules jsonb 의 실제 모양이다(2026-08-15 실측).
+    const legacy = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
+    expect(NamingRulesSchema.parse(legacy)).toEqual({
+      case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+    })
+  })
+
+  it('명시된 logicalSeparator 는 그대로 둔다', () => {
+    const given = { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 }
+    expect(NamingRulesSchema.parse(given).logicalSeparator).toBe('')
+  })
+
+  it('DEFAULT_NAMING_RULES 는 스키마를 만족한다', () => {
+    expect(NamingRulesSchema.parse(DEFAULT_NAMING_RULES)).toEqual(DEFAULT_NAMING_RULES)
+  })
+
+  it('잘못된 값은 거부한다', () => {
+    expect(() => NamingRulesSchema.parse({ case: 'X', separator: '_', maxLengthBytes: 30 })).toThrow()
+    expect(() => NamingRulesSchema.parse({
+      case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '-', maxLengthBytes: 30,
+    })).toThrow()
   })
 })

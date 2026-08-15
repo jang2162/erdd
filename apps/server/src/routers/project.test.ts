@@ -159,7 +159,9 @@ describe.skipIf(!url)('project', () => {
 
   it('project.update persists namingRules and project.get reflects the new value', async () => {
     const projectId = await createProject()
-    const customRules = { case: 'lower_snake' as const, separator: '' as const, maxLengthBytes: 63 }
+    const customRules = {
+      case: 'lower_snake' as const, separator: '' as const, logicalSeparator: '_' as const, maxLengthBytes: 63,
+    }
 
     const upd = await post(app, 'project.update', ownerToken, {
       projectId, namingRules: customRules,

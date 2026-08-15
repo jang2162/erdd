@@ -16,7 +16,7 @@ const CONFIG: ErddConfig = {
   serverUrl: 'https://erdd.example.com',
   projectId: '018f6b0e-0000-7000-8000-000000000000',
   dialects: ['postgresql'],
-  namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 },
+  namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
 }
 
 describe('config', () => {

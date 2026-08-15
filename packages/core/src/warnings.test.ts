@@ -75,7 +75,7 @@ describe('computeWarnings', () => {
 })
 
 describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
-  const rules: NamingRules = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
+  const rules: NamingRules = { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 }
 
   it('논리명에 미등록 단어가 있으면 unknown-word를 경고한다', () => {
     const m = createEmptyModel()

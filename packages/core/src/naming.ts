@@ -1,7 +1,33 @@
+import { z } from 'zod'
 import type { Word, Term } from './model.js'
 
-export type NamingRules = { case: 'UPPER_SNAKE' | 'lower_snake'; separator: '_' | ''; maxLengthBytes: number }
-export const DEFAULT_NAMING_RULES: NamingRules = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
+export type NamingRules = {
+  case: 'UPPER_SNAKE' | 'lower_snake'
+  /** 물리명 토큰 구분자. 약어를 잇는다. */
+  separator: '_' | ''
+  /**
+   * 논리명 단어 구분자. 물리명과 **별도 축**이다 — 한글 논리명과 영문 약어는 구분자 정책이
+   * 다를 이유가 충분하고, 공유하면 물리명 규칙을 바꾸는 순간 논리명 저장값 전체가 규칙 위반이
+   * 된다(설계 D1).
+   */
+  logicalSeparator: '_' | ''
+  maxLengthBytes: number
+}
+
+export const DEFAULT_NAMING_RULES: NamingRules = {
+  case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+}
+
+/**
+ * 프로젝트 명명 규칙의 단일 스키마. 서버가 DB jsonb 를 이것으로 파싱해 **키가 없는 기존 행에
+ * 기본값을 주입**한다(설계 3.6). 서버에 손으로 미러링한 zod 를 두지 않는다.
+ */
+export const NamingRulesSchema = z.object({
+  case: z.enum(['UPPER_SNAKE', 'lower_snake']),
+  separator: z.enum(['_', '']),
+  logicalSeparator: z.enum(['_', '']).default('_'),
+  maxLengthBytes: z.number().int().positive(),
+})
 export type GenResult = { physicalName: string; unknownWords: string[]; termId?: string; domainId?: string | null }
 
 /** 논리명 분해 결과 한 조각. word가 null이면 사전에 없는 구간이다. */
