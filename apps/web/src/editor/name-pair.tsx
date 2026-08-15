@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Plus, RotateCcw } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   generatePhysicalName, restoreLogicalName, suggestCompletions,
@@ -20,17 +20,18 @@ export type NameDraft = { logicalName: string; physicalName: string }
 /**
  * 논리명·물리명을 **쌍으로** 쥐는 컨테이너.
  *
- * ⚠️ 두 draft 를 한 곳에 두는 것이 이 컴포넌트의 존재 이유다 — ↻ 버튼은 *반대편 필드의 아직
- * 커밋되지 않은 값*을 기준으로 삼아야 맞는데, draft 가 각 필드 안에만 있으면 그 값에 닿을 수 없다.
+ * ⚠️ 두 draft 를 한 곳에 두는 것이 이 컴포넌트의 존재 이유다 — 화살표 버튼은 *내 필드의 아직
+ * 커밋되지 않은 값*을 읽어 **상대**를 채워야 하는데, draft 가 각 필드 안에만 있으면 그 값에 닿을 수
+ * 없고 자동완성 확정이 상대 draft 를 바꾸는 것도 불가능하다(설계 3.7).
  * **이월 결함(「버튼이 blur 커밋 전 값을 읽는다」)을 실제로 닫는 것이 이 draft 다.** 옛 코드는
  * 비제어 인풋이라 친 값이 React 상태 어디에도 없어 버튼이 모델의 커밋된 값밖에 못 봤다.
- * 실증: regenerate 가 draft 대신 props 의 커밋된 값을 읽게 바꾸면 「방금 친 값」이 빨개진다.
+ * 실증: fillOther 가 draft 대신 props 의 커밋된 값을 읽게 바꾸면 「방금 친 값」이 빨개진다.
  *
  * ⚠️ 버튼의 onMouseDown preventDefault 가 막는 것은 **포커스 이탈뿐이다. 뮤테이션 수와 무관하다.**
  * blur 는 실제로 발화하고 `commitSide` 까지 도달한다 — **값-동일 조기 반환은 걸리지 않는다.**
  * `onBlur` 콜백은 자기가 만들어진 렌더의 props 를 쥐고 있어 `current` 가 옛 값이기 때문이다
  * (계측: `commitSide side=logical value="회원주문번호" current="회원" skip=false`).
- * 실제로 막는 것은 **`use-model` 의 `ops.length === 0 → noop` 하나뿐이다** — `regenerate` 가 반대편
+ * 실제로 막는 것은 **`use-model` 의 `ops.length === 0 → noop` 하나뿐이다** — `fillOther` 가 반대편
  * draft 를 같은 patch 에 접어 넣어 모델이 이미 그 값이 된 뒤에 blur 커밋이 도착하므로 diff 가 비어
  * 있다. 실증: 이 줄들을 지워도 web 전건이 통과하고, 빨개지는 것은 「포커스 유지」 케이스뿐이다.
  *
@@ -47,7 +48,7 @@ export function NamePair(props: {
   applyNames: (m: ProjectModel, patch: NamePatch) => ProjectModel
   /**
    * 두 입력란 아래에 붙는 슬롯(컬럼의 「용어 등록」). **렌더 prop 이다** — 그 버튼도 "치고 바로
-   * 옆 버튼"이 주 동선이라 ↻ 와 같은 대우가 필요한데, 고정 ReactNode 로 받으면 컨테이너의 draft 에
+   * 옆 버튼"이 주 동선이라 화살표와 같은 대우가 필요한데, 고정 ReactNode 로 받으면 컨테이너의 draft 에
    * 닿을 수 없어 커밋된 옛 값을 읽게 된다(설계 §3.2 가 지목한 "등록 버튼"이 이것이다).
    */
   extra?: (draft: NameDraft) => ReactNode
@@ -80,27 +81,63 @@ export function NamePair(props: {
     void mutate((m) => applyNames(m, patch), { summary })
   }
 
-  /** 한쪽을 커밋한다. 반대쪽이 비어 있으면 기존 정책대로 함께 채운다(버튼만 덮어쓴다). */
-  const commitSide = (side: 'logical' | 'physical', value: string) => {
+  /**
+   * 아직 커밋되지 않은 **반대편 draft** 를 patch 에 접어 넣는다.
+   * 자동완성 확정이 상대 draft 만 바꿔 두므로(설계 3.7), 이 커밋이 그것을 실어 보내지 않으면
+   * 화면과 모델이 갈린 채 남는다. 이미 계산된 값이 patch 에 있으면 건드리지 않는다.
+   * 유니온 키로 patch[other] 에 쓰면 TS 가 거부하므로 분기로 적는다.
+   */
+  const foldOtherDraft = (side: 'logical' | 'physical', patch: NamePatch) => {
+    if (side === 'logical') {
+      if (patch.physicalName === undefined && draft.physicalName !== physicalName) {
+        patch.physicalName = draft.physicalName
+      }
+    } else if (patch.logicalName === undefined && draft.logicalName !== logicalName) {
+      patch.logicalName = draft.logicalName
+    }
+  }
+
+  /**
+   * 한쪽을 커밋한다. overwriteOther 면 상대를 덮고, 아니면 **비어 있을 때만** 채운다.
+   * blur 만 false 다 — 필드를 스쳐 지나가기만 해도 발생하므로 손으로 정한 값이 날아가면 안 된다(D6).
+   */
+  const commitSide = (side: 'logical' | 'physical', value: string, overwriteOther: boolean) => {
     const current = side === 'logical' ? logicalName : physicalName
-    if (value === current) return
+    const otherDraft = side === 'logical' ? draft.physicalName : draft.logicalName
     const patch: NamePatch = side === 'logical' ? { logicalName: value } : { physicalName: value }
-    if (side === 'physical' && draft.logicalName.trim() === '' && value.trim() !== '') {
-      const r = restoreLogicalName(value, words, terms, namingRules)
-      if (r.ok) patch.logicalName = r.logicalName
+    const shouldFill = overwriteOther || otherDraft.trim() === ''
+    if (shouldFill && value.trim() !== '') {
+      if (side === 'logical') {
+        const gen = generatePhysicalName(value, words, terms, namingRules)
+        if (gen.physicalName) patch.physicalName = gen.physicalName
+      } else {
+        const r = restoreLogicalName(value, words, terms, namingRules)
+        if (r.ok) patch.logicalName = r.logicalName
+      }
     }
-    if (side === 'logical' && draft.physicalName.trim() === '' && value.trim() !== '') {
-      const gen = generatePhysicalName(value, words, terms, namingRules)
-      if (gen.physicalName) patch.physicalName = gen.physicalName
-    }
+    foldOtherDraft(side, patch)
+    // ⚠️ **편집이 없으면 아무 일도 하지 않는다.** D6 이 blur 를 덮어쓰기에서 뺀 근거는 「손으로
+    // 정한 값이 스쳐 지나가는 동작에 파괴되면 안 된다」인데, 아무것도 고치지 않은 Enter 도 같은
+    // 성격이다(그대로 두면 Enter 한 번에 상대가 덮이고 Revision 이 1건 남는다).
+    // ⚠️ 단순히 `value === current` 로만 판정하면 안 된다 — 자동완성 확정이 **상대 draft 만**
+    // 바꿔 둔 상태에서 blur 가 오면 내 쪽 값은 그대로라 조기 반환에 걸려, foldOtherDraft 가
+    // 실어 보내야 할 그 값이 통째로 사라진다(설계 3.7 · 「확정 뒤 blur 는 두 필드가 한
+    // 뮤테이션」이 red 가 된다). 그래서 **상대 draft 가 커밋값과 다른가**를 함께 본다.
+    const dirtyOther = side === 'logical'
+      ? draft.physicalName !== physicalName
+      : draft.logicalName !== logicalName
+    if (value === current && !dirtyOther) return
     setDraft((d) => ({ ...d, ...patch }))
     commit(patch, side === 'logical' ? '논리명 변경' : '물리명 변경')
   }
 
-  /** ↻ — 자기 필드를 반대편 draft 기준으로 다시 만든다. 덮어쓴다. */
-  const regenerate = (side: 'logical' | 'physical') => {
+  /**
+   * 화살표 — **상대** 필드를 내 draft 기준으로 채운다. 덮어쓴다(설계 D6).
+   * side 는 버튼이 놓인 칸이고, 채우는 대상은 그 반대다.
+   */
+  const fillOther = (side: 'logical' | 'physical') => {
     const patch: NamePatch = {}
-    if (side === 'physical') {
+    if (side === 'logical') {
       const gen = generatePhysicalName(draft.logicalName, words, terms, namingRules)
       if (!gen.physicalName) {
         toast.error(gen.unknownWords.length > 0
@@ -109,6 +146,7 @@ export function NamePair(props: {
         return
       }
       if (gen.physicalName !== physicalName) patch.physicalName = gen.physicalName
+      if (draft.logicalName !== logicalName) patch.logicalName = draft.logicalName
     } else {
       const r = restoreLogicalName(draft.physicalName, words, terms, namingRules)
       if (!r.ok) {
@@ -118,16 +156,26 @@ export function NamePair(props: {
         return
       }
       if (r.logicalName !== logicalName) patch.logicalName = r.logicalName
-    }
-    // 아직 커밋되지 않은 반대편 draft 도 함께 확정한다 — 안 그러면 다음 blur 가 뮤테이션을 하나 더 낸다.
-    // 유니온 키로 patch[other] 에 쓰면 TS 가 거부하므로 분기로 적는다.
-    if (side === 'physical') {
-      if (draft.logicalName !== logicalName) patch.logicalName = draft.logicalName
-    } else if (draft.physicalName !== physicalName) {
-      patch.physicalName = draft.physicalName
+      if (draft.physicalName !== physicalName) patch.physicalName = draft.physicalName
     }
     setDraft((d) => ({ ...d, ...patch }))
-    commit(patch, side === 'physical' ? '물리명 재생성' : '논리명 재생성')
+    commit(patch, side === 'logical' ? '물리명 채우기' : '논리명 채우기')
+  }
+
+  /**
+   * 자동완성 확정 — 상대 draft 만 갱신한다.
+   * 확정은 커밋이 아니다(이어서 칠 수 있어야 한다). 화면에는 즉시 보이고 커밋은 blur/Enter 때
+   * 두 필드가 함께 나간다(Revision 1건 — 설계 3.7).
+   */
+  const previewOther = (side: 'logical' | 'physical', value: string) => {
+    if (value.trim() === '') return
+    if (side === 'logical') {
+      const gen = generatePhysicalName(value, words, terms, namingRules)
+      if (gen.physicalName) setDraft((d) => ({ ...d, physicalName: gen.physicalName }))
+    } else {
+      const r = restoreLogicalName(value, words, terms, namingRules)
+      if (r.ok) setDraft((d) => ({ ...d, logicalName: r.logicalName }))
+    }
   }
 
   /**
@@ -162,16 +210,18 @@ export function NamePair(props: {
         side="physical" label={props.physicalLabel} id={`${props.idPrefix}-physical`}
         value={draft.physicalName} committed={physicalName} canEdit={canEdit}
         onChange={(v) => setDraft((d) => ({ ...d, physicalName: v }))}
-        onCommit={(v) => commitSide('physical', v)}
-        onRegenerate={() => regenerate('physical')}
+        onCommit={(v, overwrite) => commitSide('physical', v, overwrite)}
+        onFillOther={() => fillOther('physical')}
+        onPreviewOther={(v) => previewOther('physical', v)}
         onRegisterWord={registerWord}
       />
       <NameField
         side="logical" label="논리명" id={`${props.idPrefix}-logical`}
         value={draft.logicalName} committed={logicalName} canEdit={canEdit}
         onChange={(v) => setDraft((d) => ({ ...d, logicalName: v }))}
-        onCommit={(v) => commitSide('logical', v)}
-        onRegenerate={() => regenerate('logical')}
+        onCommit={(v, overwrite) => commitSide('logical', v, overwrite)}
+        onFillOther={() => fillOther('logical')}
+        onPreviewOther={(v) => previewOther('logical', v)}
         onRegisterWord={registerWord}
       />
       {props.extra?.(draft)}
@@ -188,8 +238,10 @@ function NameField(props: {
   committed: string
   canEdit: boolean
   onChange: (value: string) => void
-  onCommit: (value: string) => void
-  onRegenerate: () => void
+  /** overwrite 는 상대 필드를 덮어쓸지다 — Enter 는 true, blur 는 false(D6). */
+  onCommit: (value: string, overwrite: boolean) => void
+  onFillOther: () => void
+  onPreviewOther: (value: string) => void
   onRegisterWord: (logical: string, abbreviation: string) => void
 }) {
   const model = useEditorStore((s) => s.model)
@@ -218,7 +270,10 @@ function NameField(props: {
   useEffect(() => { setActive(0) }, [completions.query, itemsKey])
 
   const apply = (item: Completion) => {
-    props.onChange(props.value.slice(0, item.start) + item.insert)
+    const next = props.value.slice(0, item.start) + item.insert
+    props.onChange(next)
+    // 확정은 커밋이 아니지만 상대 draft 는 즉시 따라간다(설계 3.7).
+    props.onPreviewOther(next)
     setDismissed(true)      // 확정하면 닫는다. 다음 글자를 치면 다시 열린다.
   }
 
@@ -243,7 +298,9 @@ function NameField(props: {
       ? { logicalName: openChip, abbreviation: chipValue }
       : { logicalName: chipValue, abbreviation: openChip })
 
-  const regenerateLabel = props.side === 'physical' ? '물리명 재생성' : '논리명 재생성'
+  // ⚠️ 라벨은 **채우는 대상** 기준이다 — 버튼이 놓인 칸의 반대편을 채운다(설계 D5·3.7).
+  const fillLabel = props.side === 'physical' ? '논리명 채우기' : '물리명 채우기'
+  const FillIcon = props.side === 'physical' ? ArrowDown : ArrowUp
   const listId = `${props.id}-completions`
 
   return (
@@ -270,7 +327,7 @@ function NameField(props: {
             // 목록 항목을 누른 경우 mousedown 의 preventDefault 로 blur 가 오지 않는다.
             // 그래도 방어로 한 틱 미뤄 확정이 먼저 반영되게 한다.
             if (blurTimer.current) clearTimeout(blurTimer.current)
-            blurTimer.current = setTimeout(() => { setFocused(false); props.onCommit(value) }, 0)
+            blurTimer.current = setTimeout(() => { setFocused(false); props.onCommit(value, false) }, 0)
           }}
           onKeyDown={(e) => {
             if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -292,20 +349,20 @@ function NameField(props: {
               setDismissed(true)
               return
             }
-            if (e.key === 'Enter') { e.preventDefault(); props.onCommit(props.value) }
+            if (e.key === 'Enter') { e.preventDefault(); props.onCommit(props.value, true) }
           }}
         />
         {props.canEdit && (
           <Button
             type="button" size="icon" variant="ghost"
             className="absolute top-1/2 right-1 size-7 -translate-y-1/2"
-            aria-label={regenerateLabel}
+            aria-label={fillLabel}
             // ⚠️ 포커스를 뺏지 않는다 — 커서가 입력란에 남아 이어서 칠 수 있다.
-            // 「↻ 를 눌러도 포커스가 입력란에 남는다」가 이 줄을 잠근다(뮤테이션 수와는 무관하다).
+            // 「화살표를 눌러도 포커스가 입력란에 남는다」가 이 줄을 잠근다(뮤테이션 수와는 무관하다).
             onMouseDown={(e) => e.preventDefault()}
-            onClick={props.onRegenerate}
+            onClick={props.onFillOther}
           >
-            <RotateCcw className="size-3.5" />
+            <FillIcon className="size-3.5" />
           </Button>
         )}
         {open && (

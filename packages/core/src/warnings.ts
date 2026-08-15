@@ -1,5 +1,7 @@
 import type { ProjectModel, Term } from './model.js'
-import { generatePhysicalName, type NamingRules } from './naming.js'
+import {
+  decomposeByWords, generatePhysicalName, stripLogicalSeparator, type NamingRules,
+} from './naming.js'
 import { isReservedWord } from './identifier.js'
 import type { Dialect } from './dialect.js'
 import { customFieldsFor, resolveCustomValue } from './custom-field.js'
@@ -16,6 +18,7 @@ export type Warning = {
     | 'duplicate-physical-table'
     | 'custom-required'
     | 'required-empty'
+    | 'missing-logical-separator'
   scope: 'table' | 'column' | 'relationship'
   entityId: string
   tableId?: string
@@ -23,10 +26,16 @@ export type Warning = {
   severity?: 'warning' | 'error'
 }
 
-/** terms에서 논리명이 정확히 일치하는 Term을 찾는다(naming.ts의 용어 완전일치 규칙과 동일). */
-function findMatchingTerm(logicalName: string, terms: Record<string, Term>): Term | undefined {
-  const name = logicalName.trim()
-  return Object.values(terms).find((t) => t.logicalName.trim() === name)
+/**
+ * terms에서 논리명이 정확히 일치하는 Term을 찾는다(naming.ts의 용어 완전일치 규칙과 동일).
+ * 양쪽에서 구분자를 벗겨 비교한다 — generatePhysicalName 의 1단계와 같은 정책이어야 한다(설계 D4).
+ */
+function findMatchingTerm(
+  logicalName: string, terms: Record<string, Term>, rules: NamingRules,
+): Term | undefined {
+  const bare = stripLogicalSeparator(logicalName.trim(), rules)
+  return Object.values(terms).find(
+    (t) => stripLogicalSeparator(t.logicalName.trim(), rules) === bare)
 }
 
 export function computeWarnings(
@@ -96,12 +105,27 @@ export function computeWarnings(
             message: `등록되지 않은 단어가 있습니다: ${gen.unknownWords.join(', ')}`,
           })
         }
-        const term = findMatchingTerm(logical, model.terms)
+        const term = findMatchingTerm(logical, model.terms, rules)
         if (term && term.physicalName !== physicalName) {
           warnings.push({
             kind: 'term-mismatch', scope, entityId, tableId,
             message: `용어 "${term.logicalName}"의 표준 물리명은 "${term.physicalName}"입니다(현재 "${physicalName}")`,
           })
+        }
+        // 구분자가 의미를 갖는 것은 단어가 둘 이상일 때뿐이다 — 단일 단어에까지 붙이면
+        // 경고가 노이즈가 되어 신호가 죽는다(설계 3.5).
+        if (rules.logicalSeparator !== '' && !logical.includes(rules.logicalSeparator)) {
+          // ⚠️ 같은 논리명을 **두 번 분해하지 않는다.** 위 generatePhysicalName 이 2단계를
+          // 탔다면 그 세그먼트가 그대로 온다. 용어 완전일치로 끝난 경우에만 없으므로 그때만
+          // 직접 분해한다(그 갈래에서도 경고 판정은 논리명 자체를 보는 것이라 그대로여야 한다).
+          const segments = gen.segments ?? decomposeByWords(logical, model.words, rules)
+          if (segments.length >= 2) {
+            warnings.push({
+              kind: 'missing-logical-separator', scope, entityId, tableId,
+              message: `논리명 "${logical}"에 단어 구분자(${rules.logicalSeparator})가 없습니다`
+                + ` — "${segments.map((s) => s.text).join(rules.logicalSeparator)}"`,
+            })
+          }
         }
       }
       if (new TextEncoder().encode(physicalName).length > rules.maxLengthBytes) {

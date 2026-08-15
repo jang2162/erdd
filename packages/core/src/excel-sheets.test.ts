@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildSampleModel } from './testing/fixtures.js'
 import type { ProjectModel } from './model.js'
 import { createEmptyModel } from './model.js'
+import { DEFAULT_NAMING_RULES } from './naming.js'
 import {
   buildChangeSheet, buildDictTemplateSheets, buildExcelSheets, CHANGE_HEADERS, EXCEL_SHEET_NAME,
 } from './excel-sheets.js'
@@ -144,6 +145,20 @@ describe('buildExcelSheets', () => {
     const s = sheetOf(buildExcelSheets(richModel()), 'terms')!
     expect(s.headers).toEqual(['용어', '구성 단어', '물리명', '기본 도메인', '설명'])
     expect(s.rows).toEqual([['회원번호', '회원, 번호', 'MBR_NO', '등급코드', '회원 식별자']])
+  })
+
+  // 「구성 단어」는 분해 결과라 프로젝트의 논리명 구분자 규칙에 따라 달라진다. 규칙을 넘기지
+  // 않으면 구분자를 끈 프로젝트에서 '_' 가 단어 사이에 낀 채 분해돼 실제와 어긋난다.
+  it('용어사전: 구성 단어는 넘겨받은 명명 규칙으로 분해한다', () => {
+    const m = richModel()
+    m.terms['tm1']!.logicalName = '회원_번호'
+    const withSep = sheetOf(buildExcelSheets(m, { rules: DEFAULT_NAMING_RULES }), 'terms')!
+    expect(withSep.rows[0]![1]).toBe('회원, 번호')
+
+    const noSep = sheetOf(
+      buildExcelSheets(m, { rules: { ...DEFAULT_NAMING_RULES, logicalSeparator: '' } }), 'terms',
+    )!
+    expect(noSep.rows[0]![1]).toBe('회원, _, 번호')
   })
 
   it('도메인정의서: 방언별 타입과 허용값을 낸다', () => {

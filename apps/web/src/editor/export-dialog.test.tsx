@@ -109,6 +109,33 @@ describe('ExportDialog', () => {
     expect(fileName).toBe('erdd_정의서.xlsx')
   })
 
+  // ⚠️ 「구성 단어」는 분해 결과라 프로젝트 규칙에 따라 달라진다. rules 를 안 넘기면
+  // buildExcelSheets 가 DEFAULT 로 조용히 떨어져 통과하므로(리뷰 실측: 되돌려도 web 전건 초록)
+  // store 규칙이 실제로 흘러가는지를 **결과 값**으로 본다.
+  it('Excel 내보내기는 store 의 namingRules 로 구성 단어를 분해한다', async () => {
+    const m = buildSampleModel()
+    m.words = {
+      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+      w2: { id:'w2', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null },
+    }
+    m.terms = {
+      tm1: { id:'tm1', logicalName:'회원_번호', physicalName:'MBR_NO',
+             domainId:null, description:null, origin:null },
+    }
+    useEditorStore.getState().setLoaded(m, 1, 'p1')
+    useEditorStore.setState({
+      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+    })
+    renderDialog()
+    await userEvent.click(screen.getByRole('button', { name: 'Excel' }))
+    await userEvent.click(screen.getByRole('button', { name: /다운로드/ }))
+
+    const [sheets] = downloadExcelWorkbook.mock.calls[0]!
+    // 구분자를 끈 규칙에서는 '_' 가 단어의 일부라 미매칭 세그먼트로 남는다.
+    // 규칙이 안 흘러가면(DEFAULT 로 떨어지면) '회원, 번호' 가 나온다.
+    expect(sheets.find((sh) => sh.key === 'terms')!.rows[0]![1]).toBe('회원, _, 번호')
+  })
+
   it('그룹 범위 Excel 다운로드는 그 그룹만 담고 파일명의 금지문자를 치환한다', async () => {
     // 샘플 모델은 두 테이블이 모두 g1이므로, t2를 미배정으로 돌려 범위가 실제로 좁혀지는지 본다.
     const m = buildSampleModel()

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { computeWarnings } from './warnings.js'
 import type { Column, CustomField, ProjectModel, Relationship, Table, Term, Word } from './model.js'
 import { createEmptyModel } from './model.js'
-import type { NamingRules } from './naming.js'
+import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import { buildSampleModel } from './testing/fixtures.js'
 
 function tbl(id: string, over: Partial<Table> = {}): Table {
@@ -75,7 +75,7 @@ describe('computeWarnings', () => {
 })
 
 describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
-  const rules: NamingRules = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
+  const rules: NamingRules = { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 }
 
   it('논리명에 미등록 단어가 있으면 unknown-word를 경고한다', () => {
     const m = createEmptyModel()
@@ -250,5 +250,113 @@ describe('required-empty', () => {
     m.tables['t1']!.physicalName = ''
     const ws = computeWarnings(m).filter((w) => w.kind === 'required-empty')
     expect(ws.length).toBeGreaterThan(0)
+  })
+})
+
+describe('findMatchingTerm 구분자 정규화', () => {
+  // ⚠️ 용어 매칭은 네 자리(generatePhysicalName · restoreLogicalName · suggestCompletions ·
+  // findMatchingTerm)가 같은 정규화를 써야 한다(HANDOFF 3.5b). 여기만 평문 비교로 되돌리면
+  // 구분자가 든 논리명에서 term-mismatch 가 통째로 사라지는데, 되돌려도 아무것도 빨개지지
+  // 않았다(리뷰 실측).
+  const modelWithPair = () => {
+    const m = createEmptyModel()
+    m.words = {
+      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+      w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+    }
+    // 용어 저장값에는 구분자가 없다(공용 라이브러리에서 내려온 모양 — 설계 D4).
+    m.terms['tm1'] = {
+      id:'tm1', logicalName:'회원주문', physicalName:'MBR_ORD_STD',
+      domainId:null, description:null, origin:null,
+    }
+    m.tables['t1'] = {
+      id:'t1', logicalName:'회원_주문', physicalName:'MBR_ORD', comment:null, groupId:null,
+      position:{x:0,y:0}, groupPosition:null, custom:{},
+    }
+    return m
+  }
+
+  it('구분자가 든 논리명도 구분자 없는 용어와 매칭돼 term-mismatch 를 낸다', () => {
+    const ws = computeWarnings(modelWithPair(), DEFAULT_NAMING_RULES)
+    expect(ws.map((w) => w.kind)).toContain('term-mismatch')
+  })
+
+  // 대조군 — 구분자를 끈 규칙(옛 세계)에서는 같은 쌍이 만나지 않는다. 이것이 없으면 위 케이스가
+  // "언제나 뜨는 경고"와 구분되지 않는다.
+  it('구분자를 끈 규칙에서는 같은 쌍이 매칭되지 않는다', () => {
+    const ws = computeWarnings(modelWithPair(), { ...DEFAULT_NAMING_RULES, logicalSeparator: '' })
+    expect(ws.map((w) => w.kind)).not.toContain('term-mismatch')
+  })
+})
+
+describe('missing-logical-separator', () => {
+  const words = {
+    w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+    w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+  }
+  const modelWith = (logicalName: string) => {
+    const m = createEmptyModel()
+    m.words = words
+    m.tables['t1'] = {
+      id:'t1', logicalName, physicalName:'MBR_ORD', comment:null, groupId:null,
+      position:{x:0,y:0}, groupPosition:null, custom:{},
+    }
+    return m
+  }
+  const kinds = (name: string, rules = DEFAULT_NAMING_RULES) =>
+    computeWarnings(modelWith(name), rules).map((w) => w.kind)
+
+  it('구분자 없이 두 단어 이상이면 경고한다', () => {
+    expect(kinds('회원주문')).toContain('missing-logical-separator')
+  })
+
+  it('구분자가 있으면 경고하지 않는다', () => {
+    expect(kinds('회원_주문')).not.toContain('missing-logical-separator')
+  })
+
+  // ⚠️ 이것이 없으면 단일 단어 논리명 전부에 경고가 붙어 신호가 죽는다(설계 3.5).
+  it('단일 단어에는 경고하지 않는다', () => {
+    expect(kinds('회원')).not.toContain('missing-logical-separator')
+  })
+
+  it('사전에 없어 한 덩어리로 남는 이름에는 경고하지 않는다', () => {
+    expect(kinds('쿠폰')).not.toContain('missing-logical-separator')
+  })
+
+  it('구분자 없는 규칙에서는 경고하지 않는다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+    expect(kinds('회원주문', rules)).not.toContain('missing-logical-separator')
+  })
+
+  it('rules 를 주지 않으면 계산하지 않는다', () => {
+    expect(computeWarnings(modelWith('회원주문')).map((w) => w.kind))
+      .not.toContain('missing-logical-separator')
+  })
+
+  /**
+   * ⚠️ **용어와 완전일치하는 옛 형식 논리명** — 기존 프로젝트의 가장 흔한 모양이다.
+   * generatePhysicalName 이 1단계(용어 완전일치)에서 조기 반환하므로 `gen.segments` 가 없고,
+   * 경고 판정은 그때만 직접 분해하는 **폴백 갈래**를 탄다. 그 갈래를 지우면 이 모양에서만
+   * 구분자 경고가 조용히 사라진다(다른 케이스는 전부 2단계를 타므로 아무것도 빨개지지 않는다).
+   * 성능 최적화(GenResult.segments 재사용)가 만든 갈래라 그 최적화를 되돌릴 때 함께 본다.
+   */
+  it('용어와 완전일치하는 옛 형식 논리명에도 경고한다(분해 폴백 갈래)', () => {
+    const m = modelWith('회원주문')
+    // 용어 저장값도 구분자가 없다 — 논리명과 완전일치해 물리명 생성이 용어로 끝난다.
+    m.terms['tm1'] = {
+      id:'tm1', logicalName:'회원주문', physicalName:'MBR_ORD',
+      domainId:null, description:null, origin:null,
+    }
+    const ws = computeWarnings(m, DEFAULT_NAMING_RULES)
+    // 전제: 용어로 끝났으므로 미등록 단어 경고는 없다(= 2단계 분해를 타지 않았다).
+    expect(ws.map((w) => w.kind)).not.toContain('unknown-word')
+    expect(ws.map((w) => w.kind)).toContain('missing-logical-separator')
+    expect(ws.find((w) => w.kind === 'missing-logical-separator')?.message).toContain('회원_주문')
+  })
+
+  it('메시지가 구분자를 넣은 형태를 알려 준다', () => {
+    const w = computeWarnings(modelWith('회원주문'), DEFAULT_NAMING_RULES)
+      .find((x) => x.kind === 'missing-logical-separator')
+    expect(w?.message).toContain('회원_주문')
   })
 })

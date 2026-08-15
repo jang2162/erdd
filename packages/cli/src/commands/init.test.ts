@@ -25,7 +25,7 @@ function stubClient(): ApiClient {
       if (path === 'project.get') {
         return {
           name: '커머스', dialects: ['postgresql'],
-          namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 },
+          namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
         }
       }
       throw new Error(`unexpected ${path}`)

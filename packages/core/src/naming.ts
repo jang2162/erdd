@@ -1,20 +1,109 @@
+import { z } from 'zod'
 import type { Word, Term } from './model.js'
 
-export type NamingRules = { case: 'UPPER_SNAKE' | 'lower_snake'; separator: '_' | ''; maxLengthBytes: number }
-export const DEFAULT_NAMING_RULES: NamingRules = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
-export type GenResult = { physicalName: string; unknownWords: string[]; termId?: string; domainId?: string | null }
+export type NamingRules = {
+  case: 'UPPER_SNAKE' | 'lower_snake'
+  /** 물리명 토큰 구분자. 약어를 잇는다. */
+  separator: '_' | ''
+  /**
+   * 논리명 단어 구분자. 물리명과 **별도 축**이다 — 한글 논리명과 영문 약어는 구분자 정책이
+   * 다를 이유가 충분하고, 공유하면 물리명 규칙을 바꾸는 순간 논리명 저장값 전체가 규칙 위반이
+   * 된다(설계 D1).
+   */
+  logicalSeparator: '_' | ''
+  maxLengthBytes: number
+}
+
+export const DEFAULT_NAMING_RULES: NamingRules = {
+  case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+}
+
+/**
+ * 프로젝트 명명 규칙의 단일 스키마. 서버가 DB jsonb 를 이것으로 파싱해 **키가 없는 기존 행에
+ * 기본값을 주입**한다(설계 3.6). 서버에 손으로 미러링한 zod 를 두지 않는다.
+ */
+export const NamingRulesSchema = z.object({
+  case: z.enum(['UPPER_SNAKE', 'lower_snake']),
+  separator: z.enum(['_', '']),
+  logicalSeparator: z.enum(['_', '']).default('_'),
+  maxLengthBytes: z.number().int().positive(),
+})
+
+/**
+ * **쓰기 검증용** — 기본값 주입을 겸하지 않는다(모든 키가 필수).
+ *
+ * ⚠️ `NamingRulesSchema` 의 `.default('_')` 는 **읽기 시점 주입**이 목적이다. 그것을 쓰기 입력에
+ * 그대로 걸면 키 누락이 곧 기본값 쓰기가 되어, 3키만 보낸 클라이언트가 **꺼 둔 프로젝트(`''`)를
+ * 조용히 켠다** — 부분 페이로드가 전체 덮어쓰기로 둔갑한다. 두 목적이 정반대라 스키마를 나눈다.
+ */
+export const NamingRulesStrictSchema = NamingRulesSchema.extend({
+  logicalSeparator: z.enum(['_', '']),
+})
+export type GenResult = {
+  physicalName: string
+  unknownWords: string[]
+  termId?: string
+  domainId?: string | null
+  /**
+   * 2단계(사전 분해)를 탄 경우의 세그먼트. **용어 완전일치로 끝나면 없다** — 그때는 분해를
+   * 하지 않기 때문이다. 경고 계산이 같은 논리명을 두 번 분해하지 않도록 실어 보낸다
+   * (없으면 부르는 쪽이 직접 분해해야 한다 — `?? decomposeByWords(...)`).
+   */
+  segments?: WordSegment[]
+}
 
 /** 논리명 분해 결과 한 조각. word가 null이면 사전에 없는 구간이다. */
 export type WordSegment = { text: string; word: Word | null }
 
 /**
- * 논리명을 단어 사전으로 최장일치 그리디 분해한다.
- * 매칭 실패 구간은 연속으로 모아 word: null 세그먼트 하나가 된다.
- * 세그먼트 text를 이어붙이면 trim된 원본 논리명이 복원된다.
+ * 논리명을 단어 세그먼트로 분해한다.
+ *
+ * rules.logicalSeparator 가 있으면 **구분자 split 이 1차**이고, 사전에 없는 토큰만
+ * 최장일치 그리디로 재분해한다(폴백).
+ *
+ * ⚠️ 폴백이 이 함수의 급소다. 구분자가 없는 옛 논리명('회원주문번호')을 split 하면 토큰이
+ * 하나이고 사전에 그런 단어는 없다 → 폴백이 없으면 **통째로 미등록 단어**가 되어 물리명 생성이
+ * 죽고 칩에 이름 전체가 뜬다. 기존 프로젝트가 전부 그 꼴이 된다(설계 3.1).
+ * 폴백 덕에 바뀌는 것은 경고 한 줄뿐이다.
+ *
+ * ⚠️ 계약 변경: 예전 주석은 "세그먼트 text 를 이어붙이면 원본이 복원된다"였지만, 구분자가 있으면
+ * **구분자가 빠진 문자열**이 된다. 원본을 되살리려면 rules.logicalSeparator 로 join 해야 한다
+ * (withLogicalSeparator 가 그것을 한다).
+ *
  * generatePhysicalName의 2단계와 동일 알고리즘 — 그쪽이 이 함수를 호출한다.
  */
-export function decomposeByWords(logicalName: string, words: Record<string, Word>): WordSegment[] {
+export function decomposeByWords(
+  logicalName: string, words: Record<string, Word>, rules: NamingRules,
+): WordSegment[] {
   const name = logicalName.trim()
+  if (name === '') return []
+  if (rules.logicalSeparator === '') return greedyDecompose(name, words)
+
+  // ⚠️ 구분자가 없는 이름은 곧장 그리디로 간다. 구분자 없는 논리명은 split 토큰이 하나이고
+  // 사전에 그런 단어가 없어 어차피 폴백으로 떨어지는데, 그 전에 사전 전체로 Map 을 만드는 것이
+  // **통째로 낭비**다(설계 D3 이 기존 프로젝트 전부를 이 상태로 만든다).
+  if (!name.includes(rules.logicalSeparator)) return greedyDecompose(name, words)
+
+  // ⚠️ 동명 단어가 둘이면 **앞엣것**을 쓴다 — `new Map(entries)` 는 나중 키가 이기는데
+  // greedyDecompose 의 `find` 는 앞엣것이 이긴다. 맞추지 않으면 같은 사전에서 '회원_번호' 와
+  // '회원번호' 가 서로 다른 단어를 잡아 약어(=물리명)까지 갈린다.
+  const byName = new Map<string, Word>()
+  for (const w of Object.values(words)) if (!byName.has(w.logicalName)) byName.set(w.logicalName, w)
+  const segments: WordSegment[] = []
+  for (const token of name.split(rules.logicalSeparator)) {
+    if (token === '') continue           // '회원__주문'·'_회원_' 의 빈 토큰
+    const hit = byName.get(token)
+    if (hit) segments.push({ text: token, word: hit })
+    else segments.push(...greedyDecompose(token, words))
+  }
+  return segments
+}
+
+/**
+ * 구분자 없는 이름을 최장일치 그리디로 분해한다. 예전 decomposeByWords 의 본문이다.
+ * 매칭 실패 구간은 연속으로 모아 word: null 세그먼트 하나가 된다.
+ */
+function greedyDecompose(name: string, words: Record<string, Word>): WordSegment[] {
   const byLen = Object.values(words).slice().sort((a, b) => b.logicalName.length - a.logicalName.length)
   const segments: WordSegment[] = []
   let i = 0
@@ -33,20 +122,48 @@ export function decomposeByWords(logicalName: string, words: Record<string, Word
   return segments
 }
 
+/**
+ * 비교용 — 논리명에서 구분자를 벗긴다.
+ * 용어 매칭이 구분자 유무에 흔들리지 않게 한다(설계 D4). 용어 저장값은 공용 라이브러리에서
+ * 내려오므로 이 프로젝트의 구분자 정책을 강요할 수 없다.
+ */
+export function stripLogicalSeparator(name: string, rules: NamingRules): string {
+  // ⚠️ 구분자가 없는 이름에서 곧장 빠진다. 용어 매칭이 **엔티티마다 용어 전부**에 대해 이
+  // 함수를 부르므로(경고 계산에서 수십만 회) split/join 할당이 그대로 비용이 된다.
+  if (rules.logicalSeparator === '' || !name.includes(rules.logicalSeparator)) return name
+  return name.split(rules.logicalSeparator).join('')
+}
+
+/**
+ * 삽입용 — 사전으로 분해해 **세그먼트 경계마다** 구분자를 끼운다.
+ * 미매칭 구간(word: null)도 세그먼트 하나로 취급하므로 그 앞뒤에 구분자가 붙는다.
+ * 이미 구분자가 든 이름은 분해가 그 경계를 그대로 따르므로 두 번 들어가지 않는다.
+ */
+export function withLogicalSeparator(
+  name: string, words: Record<string, Word>, rules: NamingRules,
+): string {
+  if (rules.logicalSeparator === '') return name
+  const bare = stripLogicalSeparator(name.trim(), rules)
+  if (bare === '') return name
+  return decomposeByWords(bare, words, rules).map((s) => s.text).join(rules.logicalSeparator)
+}
+
 export function generatePhysicalName(
   logicalName: string, words: Record<string, Word>, terms: Record<string, Term>, rules: NamingRules,
 ): GenResult {
   const name = logicalName.trim()
-  // 1) 용어 완전일치
-  const term = Object.values(terms).find((t) => t.logicalName.trim() === name)
+  // 1) 용어 완전일치 — 양쪽에서 구분자를 벗겨 비교한다(설계 D4).
+  const bare = stripLogicalSeparator(name, rules)
+  const term = Object.values(terms).find(
+    (t) => stripLogicalSeparator(t.logicalName.trim(), rules) === bare)
   if (term) return { physicalName: term.physicalName, unknownWords: [], termId: term.id, domainId: term.domainId }
   // 2) 최장일치 분해조합
-  const segments = decomposeByWords(name, words)
+  const segments = decomposeByWords(name, words, rules)
   const parts = segments.filter((s) => s.word !== null).map((s) => s.word!.abbreviation)
   const unknownWords = segments.filter((s) => s.word === null).map((s) => s.text)
   const joined = parts.join(rules.separator)
   const physicalName = rules.case === 'lower_snake' ? joined.toLowerCase() : joined.toUpperCase()
-  return { physicalName, unknownWords }
+  return { physicalName, unknownWords, segments }
 }
 
 export type RestoreLogicalResult =
@@ -73,10 +190,11 @@ export function restoreLogicalName(
   const name = physicalName.trim()
   if (name === '') return { ok: false, unknownTokens: [] }
 
-  // 1) 용어 물리명 완전일치 — generatePhysicalName의 1단계와 대칭
+  // 1) 용어 물리명 완전일치 — generatePhysicalName의 1단계와 대칭.
+  //    넣을 때는 구분자 형식으로 변환한다(용어 저장값은 그대로 둔다 — 설계 D4).
   const upper = name.toUpperCase()
   const term = Object.values(terms).find((t) => t.physicalName.trim().toUpperCase() === upper)
-  if (term) return { ok: true, logicalName: term.logicalName }
+  if (term) return { ok: true, logicalName: withLogicalSeparator(term.logicalName, words, rules) }
 
   const index = abbreviationIndex(words)
 
@@ -86,7 +204,11 @@ export function restoreLogicalName(
     if (tokens.length === 0) return { ok: false, unknownTokens: [] }
     const unknownTokens = tokens.filter((t) => !index.has(t.toUpperCase()))
     if (unknownTokens.length > 0) return { ok: false, unknownTokens }
-    return { ok: true, logicalName: tokens.map((t) => index.get(t.toUpperCase())!.logicalName).join('') }
+    return {
+      ok: true,
+      logicalName: tokens.map((t) => index.get(t.toUpperCase())!.logicalName)
+        .join(rules.logicalSeparator),
+    }
   }
 
   // 2-b) 구분자가 없으면 최장일치 그리디 — decomposeByWords의 약어판
@@ -107,7 +229,7 @@ export function restoreLogicalName(
   }
   if (pending) unknownTokens.push(pending)
   if (unknownTokens.length > 0) return { ok: false, unknownTokens }
-  return { ok: true, logicalName: parts.join('') }
+  return { ok: true, logicalName: parts.join(rules.logicalSeparator) }
 }
 
 /** 자동완성 후보 하나. 넣는 방법은 `input.slice(0, start) + insert` 다. */
@@ -151,15 +273,21 @@ export function suggestCompletions(
   const termItems: Completion[] = []
   for (const t of Object.values(terms)) {
     const target = side === 'logical' ? t.logicalName : t.physicalName
-    if (!startsWithFold(target, input, side) || foldEq(target, input, side)) continue
+    // 논리명 쪽은 입력에도 **용어 저장값에도** 구분자가 있을 수 있으므로 양쪽을 벗겨 비교한다
+    // (설계 D4). ⚠️ 한쪽만 벗기면 구분자가 든 용어가 후보에서 통째로 사라진다 —
+    // 「용어 등록」이 draft 논리명을 그대로 저장하므로 D2 이후 그 모양이 오히려 표준이다.
+    const probe = side === 'logical' ? stripLogicalSeparator(input, rules) : input
+    const bare = side === 'logical' ? stripLogicalSeparator(target, rules) : target
+    if (!startsWithFold(bare, probe, side) || foldEq(bare, probe, side)) continue
     push(termItems, {
-      insert: target, hint: side === 'logical' ? t.physicalName : t.logicalName,
+      insert: side === 'logical' ? withLogicalSeparator(target, words, rules) : target,
+      hint: side === 'logical' ? t.physicalName : t.logicalName,
       kind: 'term', start: 0,
     })
   }
 
   const query = side === 'logical'
-    ? logicalQuery(input, words)
+    ? logicalQuery(input, words, rules)
     : physicalQuery(input, words, rules)
   const start = input.length - query.length
 
@@ -202,9 +330,22 @@ function foldEq(a: string, b: string, side: 'logical' | 'physical'): boolean {
   return fold(a, side) === fold(b, side)
 }
 
-/** 논리명의 미매칭 꼬리. decomposeByWords의 마지막 세그먼트가 word:null일 때만 있다. */
-function logicalQuery(input: string, words: Record<string, Word>): string {
-  const segments = decomposeByWords(input, words)
+/**
+ * 논리명의 미매칭 꼬리.
+ * 구분자가 있으면 **마지막 구분자 뒤 토큰**이다 — 물리명 쪽(physicalQuery)과 같은 방식이고,
+ * 사전에 없는 단어가 껴도 경계가 흔들리지 않는다. 없으면 그리디 분해의 마지막 미매칭 세그먼트다.
+ *
+ * ⚠️ 분해에 기대면 안 된다. 구분자 정책에서 한 토큰은 한 단어인데, 분해의 마지막 세그먼트를
+ * 쓰면 '회원_주문번'의 꼬리가 그리디에 먹혀 '번'이 된다(사용자가 치고 있는 것은 '주문번…'이다).
+ */
+function logicalQuery(input: string, words: Record<string, Word>, rules: NamingRules): string {
+  if (rules.logicalSeparator !== '') {
+    const idx = input.lastIndexOf(rules.logicalSeparator)
+    const tail = idx === -1 ? input : input.slice(idx + rules.logicalSeparator.length)
+    // 꼬리가 통째로 사전 단어면 더 칠 것이 없다(단어 후보를 열지 않는다).
+    return Object.values(words).some((w) => w.logicalName === tail) ? '' : tail
+  }
+  const segments = decomposeByWords(input, words, rules)
   const last = segments[segments.length - 1]
   return last && last.word === null ? last.text : ''
 }

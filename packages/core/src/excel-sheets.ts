@@ -1,7 +1,7 @@
 import type { Column, ProjectModel, Table } from './model.js'
 import type { ExportScope } from './ddl.js'
 import { customFieldsFor, resolveCustomValue } from './custom-field.js'
-import { decomposeByWords } from './naming.js'
+import { decomposeByWords, DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import { CHANGE_KIND_LABEL, DIFF_KIND_LABEL, type ModelDiff } from './model-diff.js'
 
 export type ExcelSheetKey = 'tableList' | 'tableSpec' | 'words' | 'terms' | 'domains'
@@ -94,12 +94,17 @@ function resolveForSheet(
  * 프로젝트 모델을 Excel 시트 데이터로 만든다.
  * scope는 테이블 시트(tableList/tableSpec)에만 적용된다 — 사전 3종은 그룹 개념이
  * 없는 프로젝트 전역 자산이라 항상 전체를 낸다.
+ *
+ * rules 는 용어 시트의 파생 컬럼 「구성 단어」를 분해할 때만 쓴다. 주지 않으면 기본 규칙으로
+ * 떨어지는데, 구분자를 끄고 쓰는 프로젝트에서는 그 컬럼이 실제 분해와 어긋난다 —
+ * **실호출처는 프로젝트의 namingRules 를 넘겨야 한다.**
  */
 export function buildExcelSheets(
   model: ProjectModel,
-  opts: { scope?: ExportScope; sheets?: readonly ExcelSheetKey[] } = {},
+  opts: { scope?: ExportScope; sheets?: readonly ExcelSheetKey[]; rules?: NamingRules } = {},
 ): SheetData[] {
   const scope = opts.scope ?? { kind: 'all' }
+  const rules = opts.rules ?? DEFAULT_NAMING_RULES
   const wanted = new Set<ExcelSheetKey>(opts.sheets ?? EXCEL_SHEET_KEYS)
   const tables = scopedTables(model, scope)
   const tableFields = customFieldsFor(model, 'table')
@@ -149,7 +154,7 @@ export function buildExcelSheets(
             .sort((a, b) => a.logicalName.localeCompare(b.logicalName))
             .map((t) => [
               t.logicalName,
-              decomposeByWords(t.logicalName, model.words).map((s) => s.text).join(', '),
+              decomposeByWords(t.logicalName, model.words, rules).map((s) => s.text).join(', '),
               t.physicalName,
               t.domainId ? text(model.domains[t.domainId]?.name) : '',
               text(t.description),

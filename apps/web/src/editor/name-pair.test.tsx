@@ -110,14 +110,14 @@ describe('NamePair', () => {
   })
 
   // ⚠️ 이 트랙의 핵심 회귀. onMouseDown 의 preventDefault 를 지우면 빨개진다.
-  it('치고 blur 없이 재생성을 누르면 방금 친 값을 기준으로 돈다', async () => {
+  it('치고 blur 없이 화살표를 누르면 방금 친 값을 기준으로 돈다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     loadModel()
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원주문번호')      // blur 하지 않는다
-    await userEvent.click(screen.getByRole('button', { name: '물리명 재생성' }))
+    await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
     await waitFor(() => {
       const t = useEditorStore.getState().model.tables['t2']!
       expect(t.physicalName).toBe('MBR_ORD_NO')      // 옛 값('회원')이면 'MBR' 이 나온다
@@ -125,7 +125,7 @@ describe('NamePair', () => {
     })
   })
 
-  it('재생성 한 번이 뮤테이션 한 건이다', async () => {
+  it('화살표 한 번이 뮤테이션 한 건이다', async () => {
     const calls: unknown[] = []
     mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
     loadModel()
@@ -133,17 +133,17 @@ describe('NamePair', () => {
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원주문번호')
-    await userEvent.click(screen.getByRole('button', { name: '물리명 재생성' }))
+    await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
     await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD_NO'))
     expect(calls).toHaveLength(1)
   })
 
-  it('논리명 재생성은 물리명을 기준으로 돈다', async () => {
+  it('물리명 칸의 화살표는 논리명을 채운다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     loadModel({ logicalName: '', physicalName: 'MBR_ORD' })
     renderPair()
-    await userEvent.click(screen.getByRole('button', { name: '논리명 재생성' }))
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원주문'))
+    await userEvent.click(screen.getByRole('button', { name: '논리명 채우기' }))
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'))
   })
 
   it('복원할 수 없으면 사유를 토스트로 알린다', async () => {
@@ -151,7 +151,7 @@ describe('NamePair', () => {
     const spy = vi.spyOn(toast, 'error').mockImplementation(() => '' as never)
     loadModel({ logicalName: '', physicalName: 'MBR_XXX' })
     renderPair()
-    await userEvent.click(screen.getByRole('button', { name: '논리명 재생성' }))
+    await userEvent.click(screen.getByRole('button', { name: '논리명 채우기' }))
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('XXX'))
     expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('')
   })
@@ -163,7 +163,7 @@ describe('NamePair', () => {
     const input = screen.getByLabelText(/테이블 물리명/) as HTMLInputElement
     await userEvent.type(input, 'MBR_ORD')
     await userEvent.tab()
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원주문'))
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'))
   })
 
   it('논리명이 이미 있으면 물리명 커밋이 그것을 덮지 않는다', async () => {
@@ -177,12 +177,138 @@ describe('NamePair', () => {
     expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('기존이름')
   })
 
-  it('읽기 전용이면 재생성 버튼이 없고 입력이 readOnly 다', () => {
+  it('읽기 전용이면 화살표 버튼이 없고 입력이 readOnly 다', () => {
     loadModel()
     useEditorStore.setState({ canEdit: false })
     renderPair(false)
-    expect(screen.queryByRole('button', { name: '물리명 재생성' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '물리명 채우기' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('논리명')).toHaveAttribute('readonly')
+  })
+})
+
+describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
+  // 물리명이 손으로 정해져 있고 논리명을 고치는 상황. 경로마다 물리명이 덮이는지 갈린다(설계 D6).
+  const setup = () => loadModel({ logicalName: '회원', physicalName: 'MBR_X' })
+
+  it('blur 는 이미 찬 상대를 덮지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원_주문')
+    await userEvent.tab()
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'))
+    expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_X')
+  })
+
+  it('Enter 는 덮는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원_주문{Enter}')
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
+  })
+
+  // ⚠️ D6 의 근거는 「손으로 정한 값이 스쳐 지나가는 동작에 파괴되면 안 된다」이고,
+  // **아무것도 고치지 않은 Enter** 는 정확히 같은 성격이다. 편집이 없으면 아무 일도 없어야 한다.
+  // (main 은 `value === current` 로 즉시 빠졌는데, 덮어쓰기 경로에서 patch 가 2키가 되면서
+  //  그 가드가 무력해졌다.)
+  it('고치지 않은 Enter 는 상대를 덮지 않고 뮤테이션도 내지 않는다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    logical.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_X')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('화살표 버튼은 덮는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원_주문')          // blur 하지 않는다
+    await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
+  })
+
+  it('자동완성 확정은 상대 draft 를 바꾸되 커밋하지 않는다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원_주')
+    await userEvent.click(await screen.findByRole('option', { name: /주문/ }))
+    // 화면(draft)에는 반영된다
+    expect((screen.getByLabelText(/테이블 물리명/) as HTMLInputElement).value).toBe('MBR_ORD')
+    // 모델은 아직 그대로다
+    expect(calls).toHaveLength(0)
+    expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_X')
+  })
+
+  it('확정 뒤 blur 하면 두 필드가 한 뮤테이션으로 나간다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원_주')
+    await userEvent.click(await screen.findByRole('option', { name: /주문/ }))
+    await userEvent.tab()
+    await waitFor(() => {
+      const t = useEditorStore.getState().model.tables['t2']!
+      expect(t.logicalName).toBe('회원_주문')
+      expect(t.physicalName).toBe('MBR_ORD')
+    })
+    expect(calls).toHaveLength(1)
+  })
+
+  // ⚠️ 위 「고치지 않은 Enter」 가드는 **내 값만** 보면 안 된다 — 자동완성 확정이 상대 draft 만
+  // 바꿔 둔 뒤 내 쪽을 원래 값으로 되돌리면, 내 값 기준으로는 "안 고쳤다"인데 상대 draft 는
+  // 더럽다. 그때 조기 반환하면 화면에 보이는 물리명이 저장되지 않고 조용히 사라진다(설계 3.7).
+  it('내 값을 되돌려도 확정으로 바뀐 상대 draft 는 커밋된다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원_주')
+    await userEvent.click(await screen.findByRole('option', { name: /주문/ }))
+    expect((screen.getByLabelText(/테이블 물리명/) as HTMLInputElement).value).toBe('MBR_ORD')
+    // 논리명만 원래 커밋값으로 되돌린다 — 물리명 draft 는 'MBR_ORD' 인 채로 남는다.
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원')
+    await userEvent.tab()
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
+    expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원')
+  })
+
+  it('화살표를 눌러도 포커스가 입력란에 남는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    logical.focus()
+    await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
+    expect(document.activeElement).toBe(logical)
+  })
+
+  // ⚠️ 라벨만 맞으면 버튼이 어느 칸에 있든 위 케이스가 전부 통과한다. 방향 혼동은 **배치** 문제라
+  // 각 화살표가 자기 칸 안에 있는지를 따로 잠근다(설계 D5 — 누른 칸의 반대가 채워진다).
+  it('화살표는 채우는 대상의 반대 칸에 놓인다', () => {
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명')
+    const physical = screen.getByLabelText(/테이블 물리명/)
+    expect(logical.parentElement!.querySelector('[aria-label="물리명 채우기"]')).not.toBeNull()
+    expect(logical.parentElement!.querySelector('[aria-label="논리명 채우기"]')).toBeNull()
+    expect(physical.parentElement!.querySelector('[aria-label="논리명 채우기"]')).not.toBeNull()
+    expect(physical.parentElement!.querySelector('[aria-label="물리명 채우기"]')).toBeNull()
   })
 })
 
@@ -192,7 +318,7 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     const list = await screen.findByRole('listbox')
     expect(list).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /주문/ })).toBeInTheDocument()
@@ -203,7 +329,7 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주문')
+    await userEvent.type(logical, '회원_주문')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
@@ -214,9 +340,9 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     await userEvent.click(await screen.findByRole('option', { name: /주문/ }))
-    expect(logical.value).toBe('회원주문')
+    expect(logical.value).toBe('회원_주문')
     expect(calls).toHaveLength(0)                 // 확정은 커밋이 아니다
     expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원')
   })
@@ -228,10 +354,10 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     await screen.findByRole('listbox')
     await userEvent.keyboard('{ArrowDown}{Enter}')
-    expect(logical.value).toBe('회원주문')
+    expect(logical.value).toBe('회원_주문')
     expect(calls).toHaveLength(0)
   })
 
@@ -243,13 +369,13 @@ describe('NamePair 자동완성', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     await screen.findByRole('listbox')
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     // 닫은 뒤 한 글자 더 치면 다시 열린다 — 이 단정이 테스트 이름이 약속한 것이다.
     await userEvent.type(logical, '문')
-    expect(logical.value).toBe('회원주문')
+    expect(logical.value).toBe('회원_주문')
     expect(await screen.findByRole('listbox')).toBeInTheDocument()
   })
 
@@ -280,7 +406,7 @@ describe('NamePair 자동완성', () => {
     )
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주')
+    await userEvent.type(logical, '회원_주')
     await screen.findByRole('listbox')
     onKeyDown.mockClear()
     await userEvent.keyboard('{Escape}')
@@ -299,7 +425,7 @@ describe('NamePair 자동완성', () => {
   // ⚠️ 커밋값이 '회원'(사전 단어로 딱 떨어짐)이면 권한과 무관하게 후보가 0건이라 아무것도 잠기지
   // 않는다. 꼬리 '주'가 남는 값을 써야 "권한 때문에 안 열린다"를 본다 — 대조군이 그것을 드러낸다.
   it('읽기 전용이면 목록이 열리지 않는다', async () => {
-    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    loadModel({ logicalName: '회원_주', physicalName: 'MBR' })
     useEditorStore.setState({ canEdit: false })
     renderPair(false)
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
@@ -308,7 +434,7 @@ describe('NamePair 자동완성', () => {
   })
 
   it('편집 권한이 있으면 같은 값에서 목록이 열린다', async () => {
-    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    loadModel({ logicalName: '회원_주', physicalName: 'MBR' })
     renderPair()
     await userEvent.click(screen.getByLabelText('논리명'))
     expect(await screen.findByRole('listbox')).toBeInTheDocument()
@@ -459,7 +585,7 @@ describe('NamePair 원격 변경 동기화', () => {
 describe('NamePair 접근성·목록 상태', () => {
   // ⚠️ n14. 읽기 전용에서 열 수 없는 combobox 로 노출되면 스크린리더가 "펼칠 수 있다"고 읽는다.
   it('읽기 전용이면 combobox 로 노출되지 않는다', () => {
-    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    loadModel({ logicalName: '회원_주', physicalName: 'MBR' })
     useEditorStore.setState({ canEdit: false })
     renderPair(false)
     const logical = screen.getByLabelText('논리명')
@@ -468,7 +594,7 @@ describe('NamePair 접근성·목록 상태', () => {
   })
 
   it('편집 가능하면 combobox 로 노출된다', () => {
-    loadModel({ logicalName: '회원주', physicalName: 'MBR' })
+    loadModel({ logicalName: '회원_주', physicalName: 'MBR' })
     renderPair()
     expect(screen.getByLabelText('논리명')).toHaveAttribute('role', 'combobox')
   })
@@ -490,24 +616,24 @@ describe('NamePair 접근성·목록 상태', () => {
     useEditorStore.setState({ model: removeTerm(useEditorStore.getState().model, 'tm2') })
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
     await userEvent.keyboard('{Enter}')
-    expect(logical.value).toBe('회원주문번호')      // 리셋되지 않으면 items[1] 이 없어 아무 일도 없다
+    expect(logical.value).toBe('회원_주문_번호')    // 리셋되지 않으면 items[1] 이 없어 아무 일도 없다
   })
 })
 
 /**
  * ⚠️ 버튼 4개의 `onMouseDown preventDefault` 는 **뮤테이션 수와 무관하다** — 지워도 839건이 전부
  * 통과했다(리뷰어 실측). 실제 효용은 **포커스 유지** 하나뿐이므로 그것을 직접 본다.
- * `regenerate` 가 draft 를 읽는 것은 별개로 「방금 친 값」·「뮤테이션 한 건」이 잠근다.
+ * `fillOther` 가 draft 를 읽는 것은 별개로 「방금 친 값」·「뮤테이션 한 건」이 잠근다.
  */
 describe('NamePair 포커스 유지', () => {
-  it('↻ 를 눌러도 포커스가 입력란에 남는다', async () => {
+  it('화살표를 눌러도 포커스가 입력란에 남는다(논리명 칸)', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     loadModel()
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원주문번호')
-    await userEvent.click(screen.getByRole('button', { name: '물리명 재생성' }))
+    await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
     expect(logical).toHaveFocus()
   })
 
