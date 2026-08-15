@@ -36,6 +36,7 @@ export function ExportDialog({ open, onOpenChange }: {
 }) {
   const model = useEditorStore((s) => s.model)
   const projectName = useEditorStore((s) => s.projectName)
+  const namingRules = useEditorStore((s) => s.namingRules)
   const rf = useReactFlow()
   const [section, setSection] = useState<Section>('ddl')
   const [dialect, setDialect] = useState<Dialect>('postgresql')
@@ -95,7 +96,7 @@ export function ExportDialog({ open, onOpenChange }: {
 
   const onDownloadExcel = async () => {
     try {
-      const data = buildExcelSheets(model, { scope, sheets })
+      const data = buildExcelSheets(model, { scope, sheets, rules: namingRules })
       const groupName = scope.kind === 'group' ? model.tableGroups[scope.groupId]?.name : undefined
       const suffix = groupName ? `_${safeFileNamePart(groupName)}` : ''
       await downloadExcelWorkbook(data, `erdd_정의서${suffix}.xlsx`)
