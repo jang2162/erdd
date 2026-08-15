@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   generatePhysicalName, decomposeByWords, restoreLogicalName, DEFAULT_NAMING_RULES, suggestCompletions,
-  NamingRulesSchema,
+  NamingRulesSchema, stripLogicalSeparator, withLogicalSeparator,
 } from './naming.js'
 import type { Term, Word } from './model.js'
 const words = {
@@ -296,5 +296,46 @@ describe('NamingRulesSchema', () => {
     expect(() => NamingRulesSchema.parse({
       case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '-', maxLengthBytes: 30,
     })).toThrow()
+  })
+})
+
+describe('논리명 구분자 정규화', () => {
+  const w = {
+    w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+    w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+    w3: { id:'w3', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null },
+  }
+
+  it('strip 은 구분자를 벗긴다', () => {
+    expect(stripLogicalSeparator('회원_주문_번호', DEFAULT_NAMING_RULES)).toBe('회원주문번호')
+    expect(stripLogicalSeparator('회원주문번호', DEFAULT_NAMING_RULES)).toBe('회원주문번호')
+  })
+
+  it('strip 은 구분자가 없는 규칙에서 원본을 그대로 낸다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+    expect(stripLogicalSeparator('회원_주문', rules)).toBe('회원_주문')
+  })
+
+  it('with 는 세그먼트 경계마다 구분자를 넣는다', () => {
+    expect(withLogicalSeparator('회원주문번호', w, DEFAULT_NAMING_RULES)).toBe('회원_주문_번호')
+  })
+
+  it('with 는 미매칭 구간도 세그먼트 하나로 취급한다', () => {
+    // '쿠폰'은 사전에 없다 → 미매칭 세그먼트 하나 → 앞에 구분자가 붙는다
+    expect(withLogicalSeparator('회원쿠폰', w, DEFAULT_NAMING_RULES)).toBe('회원_쿠폰')
+  })
+
+  it('with 는 이미 구분자가 있는 이름을 두 번 넣지 않는다', () => {
+    expect(withLogicalSeparator('회원_주문', w, DEFAULT_NAMING_RULES)).toBe('회원_주문')
+  })
+
+  it('with 는 구분자가 없는 규칙에서 원본을 그대로 낸다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+    expect(withLogicalSeparator('회원주문번호', w, rules)).toBe('회원주문번호')
+  })
+
+  it('strip 과 with 는 왕복한다', () => {
+    const withSep = withLogicalSeparator('회원주문번호', w, DEFAULT_NAMING_RULES)
+    expect(stripLogicalSeparator(withSep, DEFAULT_NAMING_RULES)).toBe('회원주문번호')
   })
 })

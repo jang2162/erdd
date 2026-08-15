@@ -59,6 +59,29 @@ export function decomposeByWords(logicalName: string, words: Record<string, Word
   return segments
 }
 
+/**
+ * 비교용 — 논리명에서 구분자를 벗긴다.
+ * 용어 매칭이 구분자 유무에 흔들리지 않게 한다(설계 D4). 용어 저장값은 공용 라이브러리에서
+ * 내려오므로 이 프로젝트의 구분자 정책을 강요할 수 없다.
+ */
+export function stripLogicalSeparator(name: string, rules: NamingRules): string {
+  return rules.logicalSeparator === '' ? name : name.split(rules.logicalSeparator).join('')
+}
+
+/**
+ * 삽입용 — 사전으로 분해해 **세그먼트 경계마다** 구분자를 끼운다.
+ * 미매칭 구간(word: null)도 세그먼트 하나로 취급하므로 그 앞뒤에 구분자가 붙는다.
+ * 이미 구분자가 든 이름은 분해가 그 경계를 그대로 따르므로 두 번 들어가지 않는다.
+ */
+export function withLogicalSeparator(
+  name: string, words: Record<string, Word>, rules: NamingRules,
+): string {
+  if (rules.logicalSeparator === '') return name
+  const bare = stripLogicalSeparator(name.trim(), rules)
+  if (bare === '') return name
+  return decomposeByWords(bare, words).map((s) => s.text).join(rules.logicalSeparator)
+}
+
 export function generatePhysicalName(
   logicalName: string, words: Record<string, Word>, terms: Record<string, Term>, rules: NamingRules,
 ): GenResult {
