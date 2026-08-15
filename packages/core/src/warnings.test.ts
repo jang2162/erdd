@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { computeWarnings } from './warnings.js'
 import type { Column, CustomField, ProjectModel, Relationship, Table, Term, Word } from './model.js'
 import { createEmptyModel } from './model.js'
-import type { NamingRules } from './naming.js'
+import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import { buildSampleModel } from './testing/fixtures.js'
 
 function tbl(id: string, over: Partial<Table> = {}): Table {
@@ -250,5 +250,56 @@ describe('required-empty', () => {
     m.tables['t1']!.physicalName = ''
     const ws = computeWarnings(m).filter((w) => w.kind === 'required-empty')
     expect(ws.length).toBeGreaterThan(0)
+  })
+})
+
+describe('missing-logical-separator', () => {
+  const words = {
+    w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+    w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+  }
+  const modelWith = (logicalName: string) => {
+    const m = createEmptyModel()
+    m.words = words
+    m.tables['t1'] = {
+      id:'t1', logicalName, physicalName:'MBR_ORD', comment:null, groupId:null,
+      position:{x:0,y:0}, groupPosition:null, custom:{},
+    }
+    return m
+  }
+  const kinds = (name: string, rules = DEFAULT_NAMING_RULES) =>
+    computeWarnings(modelWith(name), rules).map((w) => w.kind)
+
+  it('구분자 없이 두 단어 이상이면 경고한다', () => {
+    expect(kinds('회원주문')).toContain('missing-logical-separator')
+  })
+
+  it('구분자가 있으면 경고하지 않는다', () => {
+    expect(kinds('회원_주문')).not.toContain('missing-logical-separator')
+  })
+
+  // ⚠️ 이것이 없으면 단일 단어 논리명 전부에 경고가 붙어 신호가 죽는다(설계 3.5).
+  it('단일 단어에는 경고하지 않는다', () => {
+    expect(kinds('회원')).not.toContain('missing-logical-separator')
+  })
+
+  it('사전에 없어 한 덩어리로 남는 이름에는 경고하지 않는다', () => {
+    expect(kinds('쿠폰')).not.toContain('missing-logical-separator')
+  })
+
+  it('구분자 없는 규칙에서는 경고하지 않는다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+    expect(kinds('회원주문', rules)).not.toContain('missing-logical-separator')
+  })
+
+  it('rules 를 주지 않으면 계산하지 않는다', () => {
+    expect(computeWarnings(modelWith('회원주문')).map((w) => w.kind))
+      .not.toContain('missing-logical-separator')
+  })
+
+  it('메시지가 구분자를 넣은 형태를 알려 준다', () => {
+    const w = computeWarnings(modelWith('회원주문'), DEFAULT_NAMING_RULES)
+      .find((x) => x.kind === 'missing-logical-separator')
+    expect(w?.message).toContain('회원_주문')
   })
 })
