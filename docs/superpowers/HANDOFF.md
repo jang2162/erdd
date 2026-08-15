@@ -51,6 +51,8 @@
 
 | **명명 입력 UI 개편** | 이름을 치는 자리(편집 패널 테이블·컬럼)에서 사전을 오가지 않고 이름을 완성하게 했다. 컬럼의 2열 가로 배치를 **세로**로 펴고(라벨 자리가 생겨 필수 표시가 붙는다), 재생성 버튼을 **입력란 안**으로 넣고 이름을 「물리명 재생성」·「논리명 재생성」으로 통일했다. ⚠️ **급소는 두 draft 를 한 컨테이너(`NamePair`)가 쥐는 것이다** — ↻ 는 *반대편 필드의 아직 커밋되지 않은 값*을 기준으로 삼아야 맞는데, draft 가 각 필드 안에만 있으면 그 값에 닿을 수 없다. 이것이 이월 결함(「버튼이 blur 커밋 전 값을 읽는다」)을 **실제로 닫는** 자리다(옛 코드는 비제어 인풋이라 친 값이 React 상태 어디에도 없었다). ⚠️ **`onMouseDown` 의 `preventDefault` 가 막는 것은 포커스 이탈뿐이고 뮤테이션 수와 무관하다.** blur 는 발화하고 `commitSide` 까지 **도달한다** — 억제하는 것은 `use-model` 의 `ops.length===0 → noop` **하나뿐이다**(`regenerate` 가 반대편 draft 를 같은 patch 에 접어 넣어 모델이 이미 그 값이 된 뒤 blur 가 도착하므로 diff 가 비어 있다). ⚠️ **`commitSide` 의 값-동일 조기 반환은 걸리지 않는다** — `onBlur` 콜백이 자기 렌더의 props 를 쥐고 있어 `current` 가 옛 값이라 `skip=false` 로 통과한다. 수정 라운드가 그것을 "둘 중 하나" 로 적었다가 재검증 계측에서 갈렸다(같은 종류의 결함이 한 번 더 나온 것이다). **설계·계획서·초판 보고가 이 줄을 두고 적은 인과는 셋 다 틀렸고, 리뷰가 그것을 잡았다** — 지금은 「포커스 유지」 케이스 3건이 그 줄을 잠근다. ⚠️ **컬럼의 「용어 등록」도 같은 대우가 필요하다** — 초판은 그 버튼만 `extra` 에 고정 `ReactNode` 로 들어가 draft 에 닿지 못해 이월 결함이 같은 카드 안에서 열린 채였다(리뷰 M1). `extra` 는 **렌더 prop**(`(draft) => ReactNode`)이다. 자동완성은 core `suggestCompletions` **하나**만 내려갔다 — 쿼리 산출이 `generatePhysicalName`·`restoreLogicalName` 과 **같은 분해 규칙**이어야 하고 `abbreviationIndex` 가 `naming.ts` 의 private 함수라 밖에서 재현할 수 없다. **용어만 입력 전체로 찾는다**(용어의 적용 규칙이 논리명 전체 완전일치라 꼬리 조각으로 찾으면 의미가 달라진다 — 그래서 용어 후보의 `start` 는 0 이다). ⚠️ **미등록 칩은 커밋된 값으로 계산한다** — draft 로 하면 타이핑 중 마지막 구간이 늘 미등록이라 칩이 깜박인다(**자동완성은 입력 중, 칩은 입력 후**로 역할을 가른다). 인라인 등록은 사전 화면의 일괄 등록과 **같은 `createWord` 경로**이고, 등록과 「반대편이 비면 채우기」를 한 producer 로 묶어 Revision 1건이다. 사전 화면의 미등록 항목은 **방향별 하위 탭 2개**로 갈리고 55줄 중복이던 두 섹션이 `direction` prop 하나로 합쳐졌다(그 통합이 `DEFAULT_NAMING_RULES` 하드코딩도 함께 닫았다). ⚠️ **컬럼의 「논리명이 용어와 완전일치하면 도메인도 함께 채운다」 규칙은 `applyNames` 안에 되살려야 한다** — 컬럼에만 있는 규칙이라 컨테이너가 모르고, 계획서가 그것을 옮겨 담지 않아 조용히 사라질 뻔했다. ⚠️ **되살릴 때 「물리명이 비어 있을 때만」 가드까지 함께 가져와야 한다** — 초판이 그 가드를 빠뜨려 「항상」으로 넓어졌고, 테스트가 0건이라 아무것도 빨개지지 않았다(리뷰 M3). 지금은 4건이 잠그고 그중 하나가 가드 자체를 본다. ⚠️ **제어 인풋 승격은 새 경로를 하나 만든다** — 한쪽 prop 만 원격으로 바뀌어도 draft 를 통째로 덮으면 반대쪽의 커밋되지 않은 타이핑이 날아간다(리뷰 M4). 이전 prop 을 ref 로 들고 **바뀐 키만** 덮는다. **서버·CLI 변경 없음, 마이그레이션 없음** ([설계](specs/2026-08-14-naming-input-ux-design.md)) |
 
+| **논리명 구분자 + 상대 필드 적용** | 논리명 저장값에 단어 구분자(`_`)를 넣고, 편집 패널의 `↻` 2개를 **상대 필드를 채우는 화살표 2개**로 바꿨다. `logicalSeparator` 는 물리명 `separator` 와 **별도 축**이다 — 한글 논리명과 영문 약어는 구분자 정책이 다를 이유가 충분하고, 공유하면 물리명 규칙을 바꾸는 순간 **저장된 논리명 전체가 규칙 위반**이 된다. ⚠️ **급소는 분해 폴백이다** — `decomposeByWords` 는 구분자 split 이 1차이고 **사전에 없는 토큰만** 최장일치 그리디로 재분해하는데, 이 폴백이 없으면 구분자 없는 기존 논리명(`회원주문번호`)이 split 후 토큰 하나가 되고 사전에 그런 단어가 없어 **통째로 미등록 단어**가 된다(물리명 생성이 죽고 칩에 이름 전체가 뜬다 — 기존 프로젝트가 전부 그 꼴이 된다). 폴백 덕에 바뀌는 것은 경고 한 줄뿐이다. **용어는 저장값을 바꾸지 않는다** — 비교할 때 양쪽에서 `stripLogicalSeparator` 로 벗기고 넣을 때만 `withLogicalSeparator` 로 변환한다(용어는 전역·조직 라이브러리에서 fork 로 내려오므로 남의 데이터에 이 프로젝트의 정책을 강요할 수 없다). ⚠️ **기본값이 주입되는 자리는 서버의 `project.get` 하나뿐이다** — DB 컬럼 기본값은 마이그레이션에 구운 3키라 `NamingRulesSchema.parse` 를 태우지 않으면 `logicalSeparator: undefined` 가 그대로 클라이언트에 나간다(**Task 1 에서 `DEFAULT_NAMING_RULES` 가 4키가 되는 순간 이 테스트가 빨개진다** — 서버 변경을 뒤로 미룰 수 없었다). 새 경고 `missing-logical-separator` 는 **분해가 2개 이상일 때만** 띄운다(단일 단어에까지 붙이면 신호가 죽는다). 덮어쓰기는 **blur 만 제외**한다(blur 는 필드를 스쳐 지나가기만 해도 발생한다) — 자동완성 확정은 **상대 draft 만** 바꾸고 커밋은 blur/Enter 때 두 필드가 함께 나간다(Revision 1건). ⚠️ **`commitSide` 만으로는 그 「함께」가 성립하지 않는다** — 확정이 draft 만 바꿔 두는데 blur 는 `shouldFill` 이 false 라 그 값을 안 실어 보낸다. `foldOtherDraft` 가 아직 커밋되지 않은 반대편 draft 를 patch 에 접어 넣는다. **수용된 퇴행 하나:** 구분자 규칙에서 **옛 형식**(구분자 없는) 논리명을 이어 치면 자동완성 쿼리가 입력 전체가 되어 단어 후보가 좁아진다(밑줄을 한 번 찍으면 곧바로 돌아온다). 분해 폴백과 다른 판단인 이유는 그쪽은 물리명 생성이 죽고 이쪽은 후보가 줄 뿐이기 때문이다. **마이그레이션 없음**(jsonb 읽기 시점 주입) ([설계](specs/2026-08-15-logical-name-separator-design.md)) |
+
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
 > **Phase 4 완료.** DDL 역설계 → CLI 트랙 A(읽기) → CLI 트랙 B(`push`·3-way 병합·`diff`·에이전트 스킬) 순으로 마쳤다.
@@ -58,8 +60,20 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 646 · cli 138 · web 860 · server 196 (erdd_test) · typecheck EXIT=0
+core 687 · cli 140 · web 873 · server 199 (erdd_test) · typecheck EXIT=0
 ```
+
+논리명 구분자 사이클에서 **core +41 · cli +2 · web +13 · server +3** 이 붙었다(직전 기준선은
+`core 646 · cli 138 · web 860 · server 196`). **이 트랙은 네 패키지가 전부 움직인 것이 정상이다** —
+설계가 서버(jsonb 파싱)와 CLI(옛 config 키 보정)를 범위 안에 뒀다.
+core 내역은 `naming` +33 · `warnings` +7 · `excel-sheets` +1 이고, web 은
+`project-settings`(신규 파일) +6 · `name-pair` +7 이다.
+
+⚠️ **기존 케이스의 기댓값이 바뀐 자리가 넷 있다. 전부 의도된 변경이다** — `restoreLogicalName` 이
+구분자를 넣어 조립하므로 core `naming`(5건)·`ddl-import`(1건)·web `name-pair`(2건)의 옛 단언이
+어긋났고, `suggestCompletions` 의 그리디 쿼리를 잠그던 core 6건은 **구분자를 끈 규칙으로 옮겨**
+옛 세계의 대조군으로 남겼다. 계획서는 "기존 케이스가 그대로 유지된다"고 적었는데 **틀렸다** —
+구분자 규칙에서 구분자 없는 입력은 입력 전체가 한 토큰이다.
 
 명명 입력 UI 개편 사이클에서 **core +16 · web +60**이 붙었다(직전 기준선은 `core 630 · web 800`이었다).
 **`cli`·`server` 는 무변경** — 설계가 "서버 변경 없음 · CLI 변경 없음"을 못 박았고 변경 파일이
@@ -426,6 +440,34 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm -C apps/se
 - `packages/core`는 **IO·런타임 의존성 free**(순수 도메인 로직). 레이아웃 계산용 dagre 같은 것은 `apps/web`에만. Excel의 `exceljs`도 `apps/web`에만 두고 **동적 `import()`로만** 쓴다(초기 번들 영향 없음) — 양식 정의·파싱 규칙 자체는 core의 순수 함수(`excel-sheets.ts` / `excel-import.ts`)다.
 - DDL은 `generateDdl(model, dialect, scope)` 시그니처 불변, 경고는 `ddlWarnings(model, dialect, scope)`로 분리.
 - **Excel 왕복 계약**: 내보내기 헤더 배열과 업로드 파서가 같은 상수를 공유해, 내보낸 파일을 그대로 다시 올릴 수 있다(단어·용어·도메인 3시트). 양식 다운로드도 같은 빌더를 쓴다. 유일한 예외는 용어사전의 `구성 단어`(파생값 — 업로드 시 무시).
+
+### 3.5b 논리명 구분자 (`NamingRules.logicalSeparator`)
+
+- **`logicalSeparator` 는 물리명 `separator` 와 별도 축이다. 하나로 합치지 마라.** 합치면 물리명
+  규칙을 `''` 로 바꾸는 순간 **저장된 논리명 전체가 규칙 위반**이 된다 — 저장 데이터가 다른 축의
+  설정에 끌려다니는 결합이다.
+- **논리명 분해는 구분자 split 이 1차이고, 사전에 없는 토큰만 그리디로 재분해한다**
+  (`decomposeByWords` 의 폴백). ⚠️ **이 폴백을 지우면 구분자 없는 기존 논리명이 통째로 미등록
+  단어가 되어 물리명 생성이 죽는다.** 실증: `else segments.push(...greedyDecompose(token, words))`
+  를 `{ text: token, word: null }` 로 바꾸면 「구분자가 없는 옛 논리명은 그리디로 재분해한다」가
+  `['회원주문번호']` 로 빨개진다.
+- **용어 매칭은 항상 `stripLogicalSeparator` 를 거친다.** 용어 저장값은 건드리지 않는다 — 전역·조직
+  라이브러리에서 fork 로 내려오므로 이 프로젝트의 구분자 정책을 강요할 수 없다. 넣을 때만
+  `withLogicalSeparator` 로 변환한다. 이 정책을 쓰는 자리는 넷이다:
+  `generatePhysicalName` 1단계 · `restoreLogicalName` 1단계 · `suggestCompletions` 의 용어 후보 ·
+  `warnings.ts` 의 `findMatchingTerm`. **한 곳만 고치면 같은 이름이 경로에 따라 매칭되거나 안 된다.**
+- ⚠️ **기본값이 주입되는 지점은 `project.get` 의 `NamingRulesSchema.parse` 하나뿐이다.**
+  DB 컬럼 기본값은 마이그레이션에 구운 3키라 파싱을 태우지 않으면 `logicalSeparator: undefined` 가
+  클라이언트에 도착한다. **`DEFAULT_NAMING_RULES` 에 키를 더하는 순간 이 파싱이 없으면 서버 테스트가
+  빨개진다** — 명명 규칙에 새 필드를 붙일 때 서버 변경을 뒤로 미룰 수 없다는 뜻이다.
+  CLI 는 같은 문제를 `readConfig` 반환 직전의 보정으로 푼다(필수로 요구하면 기존 사용자의 pull 이 깨진다).
+- **`decomposeByWords` 의 계약이 바뀌었다** — 세그먼트 `text` 를 이어붙여도 **원본이 복원되지 않는다**
+  (구분자가 빠진다). 원본을 되살리려면 `rules.logicalSeparator` 로 join 해야 한다.
+- **분해 규칙을 쓰는 함수는 `rules` 를 받아야 한다. `DEFAULT_NAMING_RULES` 를 하드코딩하지 마라** —
+  `buildExcelSheets`(「구성 단어」 파생 컬럼)와 `wordUsage` 가 이번에 인자를 뚫었고, 실호출처는
+  프로젝트의 `namingRules` 를 넘긴다. 하드코딩하면 구분자를 끈 프로젝트에서 조용히 어긋난다.
+
+---
 
 ---
 
@@ -897,6 +939,20 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
   범위 밖으로 두고 `export`를 유지했다. 이제 DDL 이 빈 물리명을 안전하게 제외하므로 **"폴백이 꼭
   필요하다"는 전제는 사라졌다** — 교차 테이블도 물리명을 비우는 선택지가 열려 있다.
 
+**논리명 구분자 + 상대 필드 적용 (구현 완료, 잔여)**
+- **기존 논리명 일괄 변환 도구가 없다.** 설계 D3 이 배제했다 — 경고만 띄우고 사용자가 고친다.
+  나중에 붙인다면 자리는 사전 화면의 「미등록 항목」 옆이고, 분해 실패 이름은 건너뛰어야 하므로
+  미리보기가 필요하다.
+- **명명 규칙 나머지 3개(`case`·`separator`·`maxLengthBytes`)의 설정 UI 가 없다.** 각자 기존 모델에
+  미치는 영향이 다르다(특히 `separator` 를 바꾸면 물리명 전체가 재생성 대상이다).
+- **`↻` 가 하던 「같은 칸에서 자기 필드 재생성」이 사라졌다.** D5 의 수용된 한계 — 이제 반대편 칸의
+  화살표를 눌러야 한다. 결과는 같고 누르는 자리만 바뀐다.
+- **구분자 규칙에서 옛 형식 논리명의 단어 자동완성이 좁아진다.** 밑줄 없이 이어 친 이름은 입력
+  전체가 한 토큰이라 후보가 줄어든다(밑줄을 한 번 찍으면 돌아온다). 그리디로 되돌리면 설계 3.4 의
+  「경계가 흔들리지 않는다」가 깨지므로 수용했고, core 케이스가 그 동작을 명시적으로 잠근다.
+- **저장된 논리명의 밑줄이 토글을 꺼도 남는다는 것은 UI 테스트로 관측되지 않는다**(데이터 무변경).
+  core 수준에서 "규칙이 값을 바꾸지 않는다"로만 확인한다.
+
 **DBML 가져오기·내보내기 (구현 완료, 리뷰가 이월로 판정한 4건)**
 
 리뷰가 짚었고 코디네이터가 **이번 브랜치 범위 밖으로 판정**한 것들이다. 전부 non-blocking.
@@ -1053,7 +1109,6 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 **명명 체계**
 - `duplicate-physical-table`이 `rules` 게이트 안에 있음(컬럼 중복은 항상 계산 — 스키마 정확성 경고라 항상 계산이 더 일관적)
 - `reserved` 경고가 `rules` truthiness에 결합(`dialects`만 줘도 무효)
-- core에 `NamingRulesSchema`(zod) export → server `project.ts`의 손-미러 제거
 - `apps/server/src/testing/db.ts` `TEST_TABLES`에 `model_domains/model_words/model_terms/snapshots` 명시(현재는 TRUNCATE CASCADE로 무해)
 - `dict-panel.tsx`의 `wordUsage` 렌더마다 재계산 → memo
 
@@ -1209,7 +1264,6 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 - presence에서 Viewer와 Editor를 구분해 표시하지 않는다
 - `domain-edit-dialog`·`custom-field-edit-dialog`, 그리고 `dict-panel.tsx`의 `WordEditDialog`·`TermEditDialog`에는 권한 분기가 없다. 부모 패널이 여는 추가·수정 버튼을 숨겨 도달 불가이기 때문이다 — 나중에 다른 곳에서 이 다이얼로그들을 렌더하면 가드를 추가해야 한다(`useSubmit` 가드가 저장은 막는다)
 - **프로젝트 전환 시 권한이 fail-closed로 초기화되지 않는다.** `reset()`은 프로덕션에서 호출되지 않고 `setLoaded`도 권한을 건드리지 않으므로, 프로젝트 A→B 전환 시 `project.get(B)`가 도착할 때까지 A의 권한이 남는다. 실제 위험은 낮다 — `httpBatchLink`가 `model.get`/`project.get`을 한 요청으로 묶어 사실상 동시에 도착한다. 남는 창은 `project.get`만 에러일 때뿐이고 그때는 fail-open이 된다(서버가 막으므로 데이터는 안전, 대신 FORBIDDEN 바운스가 발생). 고친다면 `useModelLoader`에서 `projectId` 변경 시 초기화해야 하며, **`setLoaded` 안에 넣으면 안 된다** — mutation 실패 롤백이 같은 함수를 쓰므로 Editor가 잠긴다.
-- **`project-settings.tsx:109`의 역할 조합식이 이제 중복이다.** `p.myOrgRole === 'owner' || … || p.myRole === 'admin'`은 오늘 `perm.ts`와 정확히 일치하지만, 같은 응답에 이제 `canManage`가 실려 온다. "클라가 역할 조합식을 재현하지 않는다"는 제약을 지키려면 한 줄 교체가 자연스럽다(설계가 이 파일을 범위 밖으로 뒀으므로 이월).
 - **잔여 커버리지 구멍:** `toolbar.tsx`의 Cmd+Z 가드(리포 전체에 키보드 단축키 테스트가 0건), `group-panel.tsx`의 색상 입력 `disabled`(같은 성격의 `note-panel`만 검증됨), `relationship-panel.tsx`의 관계명 `readOnly`·컬럼 매핑 select `disabled`, `resource-panel.tsx`의 충돌 라디오 숨김(테스트 픽스처에 충돌 항목이 없어 미도달), `ghost-node.tsx`의 `isConnectable` 배선(`ghost-nodes.ts`가 이미 `connectable:false`라 실질 no-op).
 
 **DDL 역설계 (구현 완료, 잔여 한계)**
