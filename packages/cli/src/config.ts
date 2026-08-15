@@ -52,7 +52,13 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
       || typeof namingRules['maxLengthBytes'] !== 'number') {
     throw new CliError('VALIDATION', `${CONFIG_FILE}의 namingRules가 올바르지 않습니다`)
   }
-  return { serverUrl, projectId, dialects, namingRules: namingRules as unknown as NamingRules }
+  // 옛 config 에는 이 키가 없다. 필수로 요구하면 기존 사용자의 pull 이 깨지므로 여기서 채운다.
+  // 명시적으로 빈 문자열을 적은 경우만 '' 이고 나머지(누락 포함)는 기본값 '_' 다.
+  const logicalSeparator = namingRules['logicalSeparator'] === '' ? '' as const : '_' as const
+  return {
+    serverUrl, projectId, dialects,
+    namingRules: { ...(namingRules as unknown as NamingRules), logicalSeparator },
+  }
 }
 
 export async function writeConfig(cwd: string, config: ErddConfig): Promise<void> {

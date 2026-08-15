@@ -29,6 +29,31 @@ describe('config', () => {
     expect(await readConfig(dir)).toEqual(CONFIG)
   })
 
+  it('logicalSeparator 가 없는 옛 config 에 기본값을 채운다', async () => {
+    // Task 1 이전에 writeConfig 가 내던 모양 그대로다.
+    const yaml = [
+      'serverUrl: https://erdd.example.com',
+      'projectId: 018f6b0e-0000-7000-8000-000000000000',
+      'dialects:',
+      '  - postgresql',
+      'namingRules:',
+      '  case: UPPER_SNAKE',
+      '  separator: "_"',
+      '  maxLengthBytes: 30',
+    ].join('\n')
+    await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
+    const cfg = await readConfig(dir)
+    expect(cfg.namingRules.logicalSeparator).toBe('_')
+  })
+
+  it('명시된 빈 logicalSeparator 는 그대로 둔다', async () => {
+    await writeConfig(dir, {
+      ...CONFIG,
+      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+    })
+    expect((await readConfig(dir)).namingRules.logicalSeparator).toBe('')
+  })
+
   it('설정 파일은 YAML이다', async () => {
     await writeConfig(dir, CONFIG)
     const raw = await readFile(join(dir, 'erdd.config.yaml'), 'utf8')
