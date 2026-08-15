@@ -116,7 +116,17 @@ export function NamePair(props: {
       }
     }
     foldOtherDraft(side, patch)
-    if (value === current && Object.keys(patch).length === 1) return
+    // ⚠️ **편집이 없으면 아무 일도 하지 않는다.** D6 이 blur 를 덮어쓰기에서 뺀 근거는 「손으로
+    // 정한 값이 스쳐 지나가는 동작에 파괴되면 안 된다」인데, 아무것도 고치지 않은 Enter 도 같은
+    // 성격이다(그대로 두면 Enter 한 번에 상대가 덮이고 Revision 이 1건 남는다).
+    // ⚠️ 단순히 `value === current` 로만 판정하면 안 된다 — 자동완성 확정이 **상대 draft 만**
+    // 바꿔 둔 상태에서 blur 가 오면 내 쪽 값은 그대로라 조기 반환에 걸려, foldOtherDraft 가
+    // 실어 보내야 할 그 값이 통째로 사라진다(설계 3.7 · 「확정 뒤 blur 는 두 필드가 한
+    // 뮤테이션」이 red 가 된다). 그래서 **상대 draft 가 커밋값과 다른가**를 함께 본다.
+    const dirtyOther = side === 'logical'
+      ? draft.physicalName !== physicalName
+      : draft.logicalName !== logicalName
+    if (value === current && !dirtyOther) return
     setDraft((d) => ({ ...d, ...patch }))
     commit(patch, side === 'logical' ? '논리명 변경' : '물리명 변경')
   }

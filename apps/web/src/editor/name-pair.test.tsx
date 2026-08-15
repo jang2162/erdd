@@ -212,6 +212,21 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
       expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
   })
 
+  // ⚠️ D6 의 근거는 「손으로 정한 값이 스쳐 지나가는 동작에 파괴되면 안 된다」이고,
+  // **아무것도 고치지 않은 Enter** 는 정확히 같은 성격이다. 편집이 없으면 아무 일도 없어야 한다.
+  // (main 은 `value === current` 로 즉시 빠졌는데, 덮어쓰기 경로에서 patch 가 2키가 되면서
+  //  그 가드가 무력해졌다.)
+  it('고치지 않은 Enter 는 상대를 덮지 않고 뮤테이션도 내지 않는다', async () => {
+    const calls: unknown[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    logical.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_X')
+    expect(calls).toHaveLength(0)
+  })
+
   it('화살표 버튼은 덮는다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     setup(); renderPair()
@@ -253,6 +268,26 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
       expect(t.physicalName).toBe('MBR_ORD')
     })
     expect(calls).toHaveLength(1)
+  })
+
+  // ⚠️ 위 「고치지 않은 Enter」 가드는 **내 값만** 보면 안 된다 — 자동완성 확정이 상대 draft 만
+  // 바꿔 둔 뒤 내 쪽을 원래 값으로 되돌리면, 내 값 기준으로는 "안 고쳤다"인데 상대 draft 는
+  // 더럽다. 그때 조기 반환하면 화면에 보이는 물리명이 저장되지 않고 조용히 사라진다(설계 3.7).
+  it('내 값을 되돌려도 확정으로 바뀐 상대 draft 는 커밋된다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    setup(); renderPair()
+    const logical = screen.getByLabelText('논리명') as HTMLInputElement
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원_주')
+    await userEvent.click(await screen.findByRole('option', { name: /주문/ }))
+    expect((screen.getByLabelText(/테이블 물리명/) as HTMLInputElement).value).toBe('MBR_ORD')
+    // 논리명만 원래 커밋값으로 되돌린다 — 물리명 draft 는 'MBR_ORD' 인 채로 남는다.
+    await userEvent.clear(logical)
+    await userEvent.type(logical, '회원')
+    await userEvent.tab()
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
+    expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원')
   })
 
   it('화살표를 눌러도 포커스가 입력란에 남는다', async () => {
