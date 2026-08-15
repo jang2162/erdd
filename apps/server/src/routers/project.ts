@@ -2,7 +2,9 @@ import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
-import { DEFAULT_NAMING_RULES, DIALECTS, NamingRulesSchema } from '@erdd/core'
+import {
+  DEFAULT_NAMING_RULES, DIALECTS, NamingRulesSchema, NamingRulesStrictSchema,
+} from '@erdd/core'
 import { members, projectMembers, projects, users } from '../db/schema.js'
 import { getOrgMember, requireProjectAccess } from '../services/perm.js'
 import { apiProcedure, authedProcedure, router } from '../trpc.js'
@@ -79,7 +81,9 @@ export const projectRouter = router({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
       dialects: dialectSchema.optional(),
-      namingRules: NamingRulesSchema.optional(),
+      // ⚠️ 쓰기에는 **strict** 를 쓴다 — 읽기용 스키마의 기본값이 걸리면 키 누락이 곧
+      // 「기본값으로 되쓰기」가 되어 꺼 둔 구분자가 조용히 켜진다.
+      namingRules: NamingRulesStrictSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')

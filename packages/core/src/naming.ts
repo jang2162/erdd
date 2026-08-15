@@ -28,6 +28,17 @@ export const NamingRulesSchema = z.object({
   logicalSeparator: z.enum(['_', '']).default('_'),
   maxLengthBytes: z.number().int().positive(),
 })
+
+/**
+ * **쓰기 검증용** — 기본값 주입을 겸하지 않는다(모든 키가 필수).
+ *
+ * ⚠️ `NamingRulesSchema` 의 `.default('_')` 는 **읽기 시점 주입**이 목적이다. 그것을 쓰기 입력에
+ * 그대로 걸면 키 누락이 곧 기본값 쓰기가 되어, 3키만 보낸 클라이언트가 **꺼 둔 프로젝트(`''`)를
+ * 조용히 켠다** — 부분 페이로드가 전체 덮어쓰기로 둔갑한다. 두 목적이 정반대라 스키마를 나눈다.
+ */
+export const NamingRulesStrictSchema = NamingRulesSchema.extend({
+  logicalSeparator: z.enum(['_', '']),
+})
 export type GenResult = {
   physicalName: string
   unknownWords: string[]

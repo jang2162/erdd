@@ -180,6 +180,27 @@ describe.skipIf(!url)('project', () => {
     expect(got.namingRules.logicalSeparator).toBe('')
   })
 
+  // ⚠️ 읽기 스키마의 `.default('_')` 가 쓰기 입력에도 걸리면 **부분 페이로드가 전체 덮어쓰기**가
+  // 된다 — 3키만 보낸 클라이언트가 꺼 둔 프로젝트('')를 조용히 켠다. 읽기 기본값 주입과 쓰기
+  // 검증은 목적이 반대라 스키마를 나눈다.
+  it('logicalSeparator 가 빠진 namingRules 는 update 가 거절하고 꺼 둔 값을 지킨다', async () => {
+    const projectId = await createProject()
+    const off = await post(app, 'project.update', ownerToken, {
+      projectId,
+      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+    })
+    expect(off.statusCode).toBe(200)
+
+    const partial = await post(app, 'project.update', ownerToken, {
+      projectId,
+      namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 },
+    })
+    expect(partial.statusCode).toBe(400)
+
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.namingRules.logicalSeparator).toBe('')
+  })
+
   it('update 로 logicalSeparator 를 바꿀 수 있다', async () => {
     const projectId = await createProject()
     const res = await post(app, 'project.update', ownerToken, {
