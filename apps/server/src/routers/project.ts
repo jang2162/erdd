@@ -2,18 +2,12 @@ import { TRPCError } from '@trpc/server'
 import { and, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
-import { DEFAULT_NAMING_RULES, DIALECTS } from '@erdd/core'
+import { DEFAULT_NAMING_RULES, DIALECTS, NamingRulesSchema } from '@erdd/core'
 import { members, projectMembers, projects, users } from '../db/schema.js'
 import { getOrgMember, requireProjectAccess } from '../services/perm.js'
 import { apiProcedure, authedProcedure, router } from '../trpc.js'
 
 const dialectSchema = z.array(z.enum(DIALECTS)).min(1)
-const namingRulesSchema = z.object({
-  case: z.enum(['UPPER_SNAKE', 'lower_snake']),
-  separator: z.enum(['_', '']),
-  logicalSeparator: z.enum(['_', '']).default('_'),
-  maxLengthBytes: z.number().int().positive(),
-})
 
 export const projectRouter = router({
   create: authedProcedure
@@ -70,7 +64,7 @@ export const projectRouter = router({
         ...access.project,
         // ⚠️ DB jsonb 를 스키마로 파싱해야 키가 없는 기존 행에 기본값이 주입된다(설계 3.6).
         // 파싱 없이 넘기면 logicalSeparator 가 undefined 인 채로 클라이언트에 도착한다.
-        namingRules: namingRulesSchema.parse(access.project.namingRules ?? DEFAULT_NAMING_RULES),
+        namingRules: NamingRulesSchema.parse(access.project.namingRules ?? DEFAULT_NAMING_RULES),
         myRole: access.projectRole ?? null,
         myOrgRole: access.orgRole ?? null,
         // 판정은 서버가 한다. 클라가 역할 조합식을 재현하면 perm.ts가 바뀔 때 조용히 어긋난다.
@@ -85,7 +79,7 @@ export const projectRouter = router({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
       dialects: dialectSchema.optional(),
-      namingRules: namingRulesSchema.optional(),
+      namingRules: NamingRulesSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')

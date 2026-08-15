@@ -4,6 +4,8 @@ import { DEFAULT_NAMING_RULES } from '@erdd/core'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
+import { eq } from 'drizzle-orm'
+import { projects } from '../db/schema.js'
 
 const url = process.env.DATABASE_URL
 
@@ -155,6 +157,38 @@ describe.skipIf(!url)('project', () => {
     const got = await get(app, 'project.get', ownerToken, { projectId })
     expect(got.statusCode).toBe(200)
     expect(got.json().result.data.namingRules).toEqual(DEFAULT_NAMING_RULES)
+  })
+
+  it('logicalSeparator 키가 없는 기존 행에 기본값을 주입해 내려준다', async () => {
+    const projectId = await createProject()
+    // 마이그레이션 이전 모양으로 되돌린다(DB 컬럼 기본값은 여전히 이 3키다).
+    await app.db!.update(projects)
+      .set({ namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 } as never })
+      .where(eq(projects.id, projectId))
+
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.namingRules.logicalSeparator).toBe('_')
+  })
+
+  it('명시된 logicalSeparator 는 그대로 내려준다', async () => {
+    const projectId = await createProject()
+    await app.db!.update(projects)
+      .set({ namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 } })
+      .where(eq(projects.id, projectId))
+
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.namingRules.logicalSeparator).toBe('')
+  })
+
+  it('update 로 logicalSeparator 를 바꿀 수 있다', async () => {
+    const projectId = await createProject()
+    const res = await post(app, 'project.update', ownerToken, {
+      projectId,
+      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+    })
+    expect(res.statusCode).toBe(200)
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.namingRules.logicalSeparator).toBe('')
   })
 
   it('project.update persists namingRules and project.get reflects the new value', async () => {
