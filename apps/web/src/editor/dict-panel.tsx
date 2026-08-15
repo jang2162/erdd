@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { DEFAULT_NAMING_RULES, type ProjectModel, type Term, type Word } from '@erdd/core'
+import type { ProjectModel, Term, Word } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import {
+  canRegisterWord,
   createTerm, createWord, removeTerm, removeWord, termUsage, unregisteredAbbreviations, unregisteredWords,
   updateTerm, updateWord,
   planTermPropagation, applyTermPropagation, type TermPropagationPlan,
@@ -31,6 +32,7 @@ export function DictPanel({ projectId, open, onOpenChange }: {
   const namingRules = useEditorStore((s) => s.namingRules)
   const mutate = useModelMutation(projectId)
   const [section, setSection] = useState<Section>('words')
+  const [direction, setDirection] = useState<'toAbbr' | 'toLogical'>('toAbbr')
   const [editingWord, setEditingWord] = useState<Word | null>(null)
   const [wordEditorOpen, setWordEditorOpen] = useState(false)
   const [editingTerm, setEditingTerm] = useState<Term | null>(null)
@@ -38,8 +40,8 @@ export function DictPanel({ projectId, open, onOpenChange }: {
 
   const words = Object.values(model.words).sort((a, b) => a.logicalName.localeCompare(b.logicalName))
   const terms = Object.values(model.terms).sort((a, b) => a.logicalName.localeCompare(b.logicalName))
-  // Task 6에서 store에 실제 프로젝트 명명 규칙이 로드되면 그 규칙으로 교체한다.
-  const candidates = unregisteredWords(model, DEFAULT_NAMING_RULES)
+  const candidates = useMemo(
+    () => unregisteredWords(model, namingRules), [model, namingRules])
   // 물리명 분해에서 나온 미등록 약어(위 candidates의 대칭 — 논리명 분해 vs 물리명 분해).
   const abbrCandidates = useMemo(
     () => unregisteredAbbreviations(model, namingRules), [model, namingRules])
@@ -182,17 +184,25 @@ export function DictPanel({ projectId, open, onOpenChange }: {
           )}
 
           {section === 'unregistered' && (
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <h3 className="text-sm font-semibold">논리명 → 약어</h3>
-                <UnregisteredWordsSection projectId={projectId} candidates={candidates} canEdit={canEdit} />
+            <div className="grid gap-3">
+              <div className="flex gap-2">
+                <Button
+                  type="button" size="sm" variant={direction === 'toAbbr' ? 'default' : 'outline'}
+                  onClick={() => setDirection('toAbbr')}
+                >
+                  논리명 → 약어{candidates.length > 0 ? ` (${candidates.length})` : ''}
+                </Button>
+                <Button
+                  type="button" size="sm" variant={direction === 'toLogical' ? 'default' : 'outline'}
+                  onClick={() => setDirection('toLogical')}
+                >
+                  물리명 → 논리명{abbrCandidates.length > 0 ? ` (${abbrCandidates.length})` : ''}
+                </Button>
               </div>
-              <div className="grid gap-2">
-                <h3 className="text-sm font-semibold">물리명 → 논리명</h3>
-                <UnregisteredAbbreviationsSection
-                  projectId={projectId} candidates={abbrCandidates} canEdit={canEdit}
-                />
-              </div>
+              <UnregisteredSection
+                projectId={projectId} canEdit={canEdit} direction={direction}
+                candidates={direction === 'toAbbr' ? candidates : abbrCandidates}
+              />
             </div>
           )}
           {section === 'import' && <DictImportSection projectId={projectId} />}
@@ -215,60 +225,100 @@ export function DictPanel({ projectId, open, onOpenChange }: {
 }
 
 /**
- * 테이블·컬럼 논리명 분해 중 사전에 없는 단어(후보) 목록을 보여주고, 약어를 입력한 후보들을
- * 단일 mutation으로 일괄 createWord 등록한다. 등록되면 다음 렌더에서 후보 목록에서 자연히 빠진다.
+ * 미등록 항목 일괄 등록. 방향만 다르고 등록은 같은 createWord 다 —
+ * toAbbr 는 논리명이 후보이고 약어를 받고, toLogical 은 그 반대다.
+ * ⚠️ 두 방향을 각각의 컴포넌트로 두면 등록 규칙이 갈린다(그래서 합쳤다).
  */
-function UnregisteredWordsSection(
-  { projectId, candidates, canEdit }: { projectId: string; candidates: string[]; canEdit: boolean },
+function UnregisteredSection(
+  { projectId, candidates, canEdit, direction }: {
+    projectId: string; candidates: string[]; canEdit: boolean
+    direction: 'toAbbr' | 'toLogical'
+  },
 ) {
+  const model = useEditorStore((s) => s.model)
   const mutate = useModelMutation(projectId)
-  const [abbrByCandidate, setAbbrByCandidate] = useState<Record<string, string>>({})
+  const [valueByCandidate, setValueByCandidate] = useState<Record<string, string>>({})
+  const toAbbr = direction === 'toAbbr'
 
-  const onAbbreviationChange = (candidate: string, value: string) => {
-    setAbbrByCandidate((prev) => ({ ...prev, [candidate]: value }))
-  }
+  // 방향이 바뀌면 입력 중이던 값을 비운다 — 후보 집합이 통째로 다르다.
+  useEffect(() => { setValueByCandidate({}) }, [direction])
+
+  /**
+   * 행별 등록 계획. ⚠️ **역방향은 사용자가 논리명을 직접 치므로 중복이 실제로 생긴다** —
+   * 「미등록 목록에서 오므로 정의상 중복이 아니다」는 정방향에만 성립한다. 같은 논리명 단어가 둘이면
+   * decomposeByWords 가 하나만 쓰고 나머지는 유령이 되므로, 사전 중복과 **배치 안 자기 충돌**을
+   * 모두 걸러 낸다(앞선 행이 만든 이름을 누적하며 판정한다).
+   */
+  const seenLogical = new Set<string>()
+  const rows = candidates.map((candidate) => {
+    const typed = (valueByCandidate[candidate] ?? '').trim()
+    const logicalName = toAbbr ? candidate : typed
+    const abbreviation = toAbbr ? typed : candidate
+    let reason: 'duplicate' | 'batch' | null = null
+    if (typed !== '') {
+      if (!canRegisterWord(model, { logicalName, abbreviation }).ok) reason = 'duplicate'
+      else if (seenLogical.has(logicalName)) reason = 'batch'
+      else seenLogical.add(logicalName)
+    }
+    return { candidate, typed, logicalName, abbreviation, reason }
+  })
 
   const onBulkRegister = () => {
-    // producer 진입 전에 등록 대상(후보 + 약어 + 신규 id)을 모두 확정한 상수 배열로 캡처한다.
-    const registrations = candidates
-      .map((candidate) => ({
-        id: newId(), logicalName: candidate, abbreviation: (abbrByCandidate[candidate] ?? '').trim(),
-      }))
-      .filter((r) => r.abbreviation !== '')
+    // producer 진입 전에 등록 대상(후보 + 입력값 + 신규 id)을 모두 확정한 상수 배열로 캡처한다.
+    const registrations = rows
+      .filter((r) => r.typed !== '' && r.reason === null)
+      .map((r) => ({ id: newId(), logicalName: r.logicalName, abbreviation: r.abbreviation }))
     if (registrations.length === 0) return
     void mutate(
+      // 누적 모델로 한 번 더 판정한다 — 낙관적 체인에서 producer 가 받는 모델은 화면이 판정한
+      // 모델과 다를 수 있다(그 사이 남이 같은 단어를 만들었을 수 있다).
       (m: ProjectModel) => registrations.reduce(
-        (acc, r) => createWord(acc, {
-          id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
-          englishName: null, description: null, origin: null,
-        }),
+        (acc, r) => (canRegisterWord(acc, { logicalName: r.logicalName, abbreviation: r.abbreviation }).ok
+          ? createWord(acc, {
+              id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
+              englishName: null, description: null, origin: null,
+            })
+          : acc),
         m,
       ),
-      { summary: '미등록 단어 일괄 등록' },
+      { summary: toAbbr ? '미등록 단어 일괄 등록' : '미등록 약어 일괄 등록' },
     )
-    setAbbrByCandidate({})
+    setValueByCandidate({})
   }
 
   return (
     <div className="grid gap-2">
       <p className="text-sm text-muted-foreground">
-        테이블·컬럼 논리명 분해 중 사전에 없는 단어입니다. 약어를 입력한 항목만 일괄 등록됩니다
+        {toAbbr
+          ? '테이블·컬럼 논리명 분해 중 사전에 없는 단어입니다. 약어를 입력한 항목만 일괄 등록됩니다'
+          : '테이블·컬럼 물리명 분해 중 사전에 없는 약어입니다. 논리명을 입력한 항목만 일괄 등록됩니다'}
       </p>
       {candidates.length === 0
-        ? <p className="text-sm text-muted-foreground">미등록 단어가 없습니다</p>
+        ? (
+            <p className="text-sm text-muted-foreground">
+              {toAbbr ? '미등록 단어가 없습니다' : '미등록 약어가 없습니다'}
+            </p>
+          )
         : (
             <>
               <ul className="grid max-h-72 gap-2 overflow-y-auto">
-                {candidates.map((candidate) => (
+                {rows.map(({ candidate, reason }) => (
                   <li key={candidate} className="flex items-center gap-2 rounded-md border p-2">
-                    <span className="flex-1 font-medium">{candidate}</span>
+                    <span className={`flex-1 font-medium ${toAbbr ? '' : 'font-mono'}`}>{candidate}</span>
+                    {reason && (
+                      <span className="shrink-0 text-[11px] text-destructive">
+                        {reason === 'duplicate' ? '사전에 이미 있습니다' : '위 항목과 겹칩니다'}
+                      </span>
+                    )}
                     {canEdit && (
                       <Input
-                        aria-label={`${candidate} 약어`} placeholder="약어" className="w-32 font-mono"
-                        value={abbrByCandidate[candidate] ?? ''}
+                        aria-label={`${candidate} ${toAbbr ? '약어' : '논리명'}`}
+                        placeholder={toAbbr ? '약어' : '논리명'}
+                        className={`w-32 ${toAbbr ? 'font-mono' : ''}`}
+                        value={valueByCandidate[candidate] ?? ''}
                         onChange={(e) => {
                           const value = e.target.value
-                          onAbbreviationChange(candidate, value)
+                          setValueByCandidate((prev) => ({ ...prev, [candidate]: value }))
                         }}
                       />
                     )}
@@ -278,74 +328,6 @@ function UnregisteredWordsSection(
               {canEdit && (
                 <div className="flex justify-end">
                   <Button size="sm" onClick={onBulkRegister}><Plus /> 일괄 등록</Button>
-                </div>
-              )}
-            </>
-          )}
-    </div>
-  )
-}
-
-/**
- * 물리명 분해에서 나온 미등록 약어에 논리명을 붙여 일괄 등록한다.
- * UnregisteredWordsSection의 대칭 — 빈 칸이 약어냐 논리명이냐만 다르고 등록은 같은 createWord다.
- */
-function UnregisteredAbbreviationsSection(
-  { projectId, candidates, canEdit }: { projectId: string; candidates: string[]; canEdit: boolean },
-) {
-  const mutate = useModelMutation(projectId)
-  const [logicalByCandidate, setLogicalByCandidate] = useState<Record<string, string>>({})
-
-  const onBulkRegister = () => {
-    // producer 진입 전에 등록 대상(후보 + 논리명 + 신규 id)을 모두 확정한 상수 배열로 캡처한다.
-    const registrations = candidates
-      .map((candidate) => ({
-        id: newId(), abbreviation: candidate, logicalName: (logicalByCandidate[candidate] ?? '').trim(),
-      }))
-      .filter((r) => r.logicalName !== '')
-    if (registrations.length === 0) return
-    void mutate(
-      (m: ProjectModel) => registrations.reduce(
-        (acc, r) => createWord(acc, {
-          id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
-          englishName: null, description: null, origin: null,
-        }),
-        m,
-      ),
-      { summary: '미등록 약어 일괄 등록' },
-    )
-    setLogicalByCandidate({})
-  }
-
-  return (
-    <div className="grid gap-2">
-      <p className="text-sm text-muted-foreground">
-        테이블·컬럼 물리명 분해 중 사전에 없는 약어입니다. 논리명을 입력한 항목만 일괄 등록됩니다
-      </p>
-      {candidates.length === 0
-        ? <p className="text-sm text-muted-foreground">미등록 약어가 없습니다</p>
-        : (
-            <>
-              <ul className="grid max-h-72 gap-2 overflow-y-auto">
-                {candidates.map((candidate) => (
-                  <li key={candidate} className="flex items-center gap-2 rounded-md border p-2">
-                    <span className="flex-1 font-mono font-medium">{candidate}</span>
-                    {canEdit && (
-                      <Input
-                        aria-label={`${candidate} 논리명`} placeholder="논리명" className="w-32"
-                        value={logicalByCandidate[candidate] ?? ''}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setLogicalByCandidate((prev) => ({ ...prev, [candidate]: value }))
-                        }}
-                      />
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {canEdit && (
-                <div className="flex justify-end">
-                  <Button size="sm" onClick={onBulkRegister}>미등록 약어 일괄 등록</Button>
                 </div>
               )}
             </>

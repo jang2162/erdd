@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { createEmptyModel, DEFAULT_NAMING_RULES } from '@erdd/core'
+import { createEmptyModel, DEFAULT_NAMING_RULES, type ProjectModel } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import {
   createWord, updateWord, removeWord,
   createTerm, updateTerm, removeTerm,
   wordUsage, termUsage, unregisteredWords, unregisteredAbbreviations,
   planTermPropagation, applyTermPropagation,
+  canRegisterWord, canRegisterTerm,
 } from './dict-edits.js'
 
 const word = (id: string, over = {}) => (
@@ -308,5 +309,64 @@ describe('planTermPropagation / applyTermPropagation', () => {
     const next = applyTermPropagation(remote, plan)
     expect(next.columns.c1!.physicalName).toBe('JOIN_DT')      // 남의 변경 보존
     expect(next.columns.c2!.physicalName).toBe('ORDER_NO')     // 나머지는 정상 반영
+  })
+})
+
+describe('canRegisterWord', () => {
+  const base = (): ProjectModel => ({
+    ...createEmptyModel(),
+    words: {
+      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+    },
+  })
+
+  it('정상 등록', () => {
+    expect(canRegisterWord(base(), { logicalName: '주문', abbreviation: 'ORD' }))
+      .toEqual({ ok: true, abbrClash: false })
+  })
+
+  it('같은 논리명이 이미 있으면 막는다', () => {
+    expect(canRegisterWord(base(), { logicalName: '회원', abbreviation: 'MEM' }))
+      .toEqual({ ok: false, reason: 'duplicate' })
+  })
+
+  it('앞뒤 공백을 무시하고 중복을 판정한다', () => {
+    expect(canRegisterWord(base(), { logicalName: ' 회원 ', abbreviation: 'MEM' }).ok).toBe(false)
+  })
+
+  it('약어가 겹치면 막지는 않고 표식만 세운다', () => {
+    expect(canRegisterWord(base(), { logicalName: '멤버', abbreviation: 'mbr' }))
+      .toEqual({ ok: true, abbrClash: true })
+  })
+
+  it('어느 한쪽이 비면 막는다', () => {
+    expect(canRegisterWord(base(), { logicalName: '', abbreviation: 'X' }))
+      .toEqual({ ok: false, reason: 'empty' })
+    expect(canRegisterWord(base(), { logicalName: '주문', abbreviation: '  ' }))
+      .toEqual({ ok: false, reason: 'empty' })
+  })
+})
+
+describe('canRegisterTerm', () => {
+  const base = (): ProjectModel => ({
+    ...createEmptyModel(),
+    terms: {
+      t1: { id:'t1', logicalName:'회원번호', physicalName:'MBR_NO', domainId:null, description:null, origin:null },
+    },
+  })
+
+  it('정상 등록', () => {
+    expect(canRegisterTerm(base(), { logicalName: '주문번호', physicalName: 'ORD_NO' }))
+      .toEqual({ ok: true })
+  })
+
+  it('같은 논리명이 이미 있으면 막는다', () => {
+    expect(canRegisterTerm(base(), { logicalName: '회원번호', physicalName: 'MEMBER_NO' }))
+      .toEqual({ ok: false, reason: 'duplicate' })
+  })
+
+  it('어느 한쪽이 비면 막는다', () => {
+    expect(canRegisterTerm(base(), { logicalName: '주문번호', physicalName: '' }))
+      .toEqual({ ok: false, reason: 'empty' })
   })
 })

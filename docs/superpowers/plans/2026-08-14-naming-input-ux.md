@@ -859,12 +859,22 @@ pnpm -s -C apps/web typecheck; echo "EXIT=$?"
 
 - [ ] **Step 5: 회귀 테스트가 공허하지 않은지 실증한다**
 
-`name-pair.tsx`의 `onMouseDown={(e) => e.preventDefault()}` 한 줄을 **잠시 지우고** 다시 돌린다.
+⚠️ **이 Step 은 리뷰 수정 라운드에서 고쳐 적은 것이다.** 원래는 *"`onMouseDown` 의 `preventDefault` 한 줄을 지우면 「방금 친 값」이 빨개진다"* 로 적혀 있었는데 **사실이 아니다** — 그 줄을 지워도 web 전건이 통과한다(리뷰어·구현자 각각 실측). 「방금 친 값」이 잠그는 것은 **draft 기반 읽기**다.
+
+`regenerate`(`name-pair.tsx`)의 `draft.logicalName`·`draft.physicalName` 을 커밋된 props 로 **잠시 바꾸고** 돌린다.
 
 ```bash
-pnpm -C apps/web exec vitest run src/editor/name-pair.test.tsx -t '방금 친 값'
+pnpm -C apps/web exec vitest run src/editor/name-pair.test.tsx
 ```
-기대: **FAIL**(물리명이 `MBR`로 나온다). 확인했으면 그 줄을 되살리고 다시 PASS를 확인한다. **이 실증 결과를 보고에 적는다** — 이 테스트가 이 트랙의 핵심 회귀다.
+기대: **「방금 친 값」·「뮤테이션 한 건」 2건 FAIL**(물리명이 `MBR`로 나온다). 확인했으면 되살리고 다시 PASS를 확인한다.
+
+`preventDefault` 는 **포커스 유지**가 실효이므로 그것을 보는 케이스로 따로 잠근다(Task 4 이후에 넣는다):
+```tsx
+it('↻ 를 눌러도 포커스가 입력란에 남는다', async () => { /* … */ expect(logical).toHaveFocus() })
+```
+그 줄을 지우면 이 케이스가 빨개진다.
+
+⚠️ **실증은 반드시 최종 코드에서 다시 돌려라.** 이 Task 시점의 실증 결과는 Task 4 가 blur 를 `setTimeout` 으로 미루면서 뒤집힌다 — 그때는 blur 커밋이 ↻ 커밋보다 **먼저** 도착해 실제 op 를 냈지만, 지연 뒤에는 나중에 도착해 `ops.length===0 → noop` 으로 사라진다. 중간 단계의 실증을 최종 보고에 그대로 옮겨 적으면 안 된다.
 
 - [ ] **Step 6: 커밋**
 
