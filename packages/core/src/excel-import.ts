@@ -258,7 +258,7 @@ export function planDictImport(
       // 어느 단어 때문인지 알려 준다.
       if (physicalName !== '') {
         const blanks = [...new Set(
-          decomposeByWords(logicalName, effectiveWords)
+          decomposeByWords(logicalName, effectiveWords, rules)
             .flatMap((s) => (s.word !== null && s.word.abbreviation.trim() === '' ? [s.word.logicalName] : [])),
         )]
         if (blanks.length > 0) {

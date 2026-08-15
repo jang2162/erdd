@@ -34,13 +34,45 @@ export type GenResult = { physicalName: string; unknownWords: string[]; termId?:
 export type WordSegment = { text: string; word: Word | null }
 
 /**
- * 논리명을 단어 사전으로 최장일치 그리디 분해한다.
- * 매칭 실패 구간은 연속으로 모아 word: null 세그먼트 하나가 된다.
- * 세그먼트 text를 이어붙이면 trim된 원본 논리명이 복원된다.
+ * 논리명을 단어 세그먼트로 분해한다.
+ *
+ * rules.logicalSeparator 가 있으면 **구분자 split 이 1차**이고, 사전에 없는 토큰만
+ * 최장일치 그리디로 재분해한다(폴백).
+ *
+ * ⚠️ 폴백이 이 함수의 급소다. 구분자가 없는 옛 논리명('회원주문번호')을 split 하면 토큰이
+ * 하나이고 사전에 그런 단어는 없다 → 폴백이 없으면 **통째로 미등록 단어**가 되어 물리명 생성이
+ * 죽고 칩에 이름 전체가 뜬다. 기존 프로젝트가 전부 그 꼴이 된다(설계 3.1).
+ * 폴백 덕에 바뀌는 것은 경고 한 줄뿐이다.
+ *
+ * ⚠️ 계약 변경: 예전 주석은 "세그먼트 text 를 이어붙이면 원본이 복원된다"였지만, 구분자가 있으면
+ * **구분자가 빠진 문자열**이 된다. 원본을 되살리려면 rules.logicalSeparator 로 join 해야 한다
+ * (withLogicalSeparator 가 그것을 한다).
+ *
  * generatePhysicalName의 2단계와 동일 알고리즘 — 그쪽이 이 함수를 호출한다.
  */
-export function decomposeByWords(logicalName: string, words: Record<string, Word>): WordSegment[] {
+export function decomposeByWords(
+  logicalName: string, words: Record<string, Word>, rules: NamingRules,
+): WordSegment[] {
   const name = logicalName.trim()
+  if (name === '') return []
+  if (rules.logicalSeparator === '') return greedyDecompose(name, words)
+
+  const byName = new Map(Object.values(words).map((w) => [w.logicalName, w]))
+  const segments: WordSegment[] = []
+  for (const token of name.split(rules.logicalSeparator)) {
+    if (token === '') continue           // '회원__주문'·'_회원_' 의 빈 토큰
+    const hit = byName.get(token)
+    if (hit) segments.push({ text: token, word: hit })
+    else segments.push(...greedyDecompose(token, words))
+  }
+  return segments
+}
+
+/**
+ * 구분자 없는 이름을 최장일치 그리디로 분해한다. 예전 decomposeByWords 의 본문이다.
+ * 매칭 실패 구간은 연속으로 모아 word: null 세그먼트 하나가 된다.
+ */
+function greedyDecompose(name: string, words: Record<string, Word>): WordSegment[] {
   const byLen = Object.values(words).slice().sort((a, b) => b.logicalName.length - a.logicalName.length)
   const segments: WordSegment[] = []
   let i = 0
@@ -79,7 +111,7 @@ export function withLogicalSeparator(
   if (rules.logicalSeparator === '') return name
   const bare = stripLogicalSeparator(name.trim(), rules)
   if (bare === '') return name
-  return decomposeByWords(bare, words).map((s) => s.text).join(rules.logicalSeparator)
+  return decomposeByWords(bare, words, rules).map((s) => s.text).join(rules.logicalSeparator)
 }
 
 export function generatePhysicalName(
@@ -90,7 +122,7 @@ export function generatePhysicalName(
   const term = Object.values(terms).find((t) => t.logicalName.trim() === name)
   if (term) return { physicalName: term.physicalName, unknownWords: [], termId: term.id, domainId: term.domainId }
   // 2) 최장일치 분해조합
-  const segments = decomposeByWords(name, words)
+  const segments = decomposeByWords(name, words, rules)
   const parts = segments.filter((s) => s.word !== null).map((s) => s.word!.abbreviation)
   const unknownWords = segments.filter((s) => s.word === null).map((s) => s.text)
   const joined = parts.join(rules.separator)
@@ -208,7 +240,7 @@ export function suggestCompletions(
   }
 
   const query = side === 'logical'
-    ? logicalQuery(input, words)
+    ? logicalQuery(input, words, rules)
     : physicalQuery(input, words, rules)
   const start = input.length - query.length
 
@@ -252,8 +284,8 @@ function foldEq(a: string, b: string, side: 'logical' | 'physical'): boolean {
 }
 
 /** 논리명의 미매칭 꼬리. decomposeByWords의 마지막 세그먼트가 word:null일 때만 있다. */
-function logicalQuery(input: string, words: Record<string, Word>): string {
-  const segments = decomposeByWords(input, words)
+function logicalQuery(input: string, words: Record<string, Word>, rules: NamingRules): string {
+  const segments = decomposeByWords(input, words, rules)
   const last = segments[segments.length - 1]
   return last && last.word === null ? last.text : ''
 }

@@ -39,7 +39,7 @@ describe('dict-edits', () => {
     let m = createEmptyModel()
     m = createWord(m, word('w1'))
     m.tables['t'] = table('t', '주문')
-    expect(wordUsage(m, 'w1')).toHaveLength(1)
+    expect(wordUsage(m, 'w1', DEFAULT_NAMING_RULES)).toHaveLength(1)
     m = removeWord(m, 'w1')
     expect(m.words['w1']).toBeUndefined()
   })
@@ -70,11 +70,11 @@ describe('dict-edits', () => {
     m.tables['t'] = table('t', '주문번호')
     m.columns['c'] = column('c', 't', '고객명')
 
-    const usageW1 = wordUsage(m, 'w1')
+    const usageW1 = wordUsage(m, 'w1', DEFAULT_NAMING_RULES)
     expect(usageW1).toHaveLength(1)
     expect(usageW1[0]).toEqual({ kind: 'table', entity: m.tables['t'] })
 
-    const usageW2 = wordUsage(m, 'w2')
+    const usageW2 = wordUsage(m, 'w2', DEFAULT_NAMING_RULES)
     expect(usageW2).toHaveLength(1)
     expect(usageW2[0]).toEqual({ kind: 'table', entity: m.tables['t'] })
   })
@@ -86,9 +86,9 @@ describe('dict-edits', () => {
     m.tables['t'] = table('t', '주문')
     m.columns['c'] = column('c', 't', '주문번호')
 
-    const usage = wordUsage(m, 'w1')
+    const usage = wordUsage(m, 'w1', DEFAULT_NAMING_RULES)
     expect(usage).toEqual([{ kind: 'column', entity: m.columns['c'] }])
-    expect(wordUsage(m, 'unused')).toEqual([])
+    expect(wordUsage(m, 'unused', DEFAULT_NAMING_RULES)).toEqual([])
   })
 
   it('wordUsage: 완전일치 용어가 있으면 그 논리명은 단어 분해를 거치지 않는다', () => {
@@ -97,7 +97,7 @@ describe('dict-edits', () => {
     m = createTerm(m, term('term1', { logicalName: '주문번호', physicalName: 'ORD_NO' }))
     m.tables['t'] = table('t', '주문번호')
 
-    expect(wordUsage(m, 'w1')).toEqual([])
+    expect(wordUsage(m, 'w1', DEFAULT_NAMING_RULES)).toEqual([])
   })
 
   it('termUsage: 논리명이 term.logicalName과 일치하는 table/column을 반환한다', () => {

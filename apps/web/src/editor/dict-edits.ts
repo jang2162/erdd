@@ -86,21 +86,28 @@ function matchesTermExactly(name: string, terms: Record<string, Term>): boolean 
  */
 function usesWord(
   logicalName: string, wordId: string, words: Record<string, Word>, terms: Record<string, Term>,
+  rules: NamingRules,
 ): boolean {
   const name = logicalName.trim()
   if (name === '') return false
   if (matchesTermExactly(name, terms)) return false
-  return decomposeByWords(name, words).some((s) => s.word?.id === wordId)
+  return decomposeByWords(name, words, rules).some((s) => s.word?.id === wordId)
 }
 
-/** 그 단어의 logicalName이 논리명 분해에 실제로 쓰인 테이블/컬럼 목록. */
-export function wordUsage(model: ProjectModel, wordId: string): DictUsageEntry[] {
+/**
+ * 그 단어의 logicalName이 논리명 분해에 실제로 쓰인 테이블/컬럼 목록.
+ * rules 는 분해 규칙이라 프로젝트의 것을 그대로 넘겨야 한다 — 기본값을 하드코딩하면
+ * 구분자를 끈 프로젝트에서 사용처가 실제와 어긋난다.
+ */
+export function wordUsage(
+  model: ProjectModel, wordId: string, rules: NamingRules,
+): DictUsageEntry[] {
   const entries: DictUsageEntry[] = []
   for (const t of Object.values(model.tables)) {
-    if (usesWord(t.logicalName, wordId, model.words, model.terms)) entries.push({ kind: 'table', entity: t })
+    if (usesWord(t.logicalName, wordId, model.words, model.terms, rules)) entries.push({ kind: 'table', entity: t })
   }
   for (const c of Object.values(model.columns)) {
-    if (usesWord(c.logicalName, wordId, model.words, model.terms)) entries.push({ kind: 'column', entity: c })
+    if (usesWord(c.logicalName, wordId, model.words, model.terms, rules)) entries.push({ kind: 'column', entity: c })
   }
   return entries
 }

@@ -31,28 +31,36 @@ describe('generatePhysicalName', () => {
 
 describe('decomposeByWords', () => {
   it('최장일치로 논리명을 단어 세그먼트로 나눈다', () => {
-    const segs = decomposeByWords('회원상태코드', words)
+    const segs = decomposeByWords('회원상태코드', words, DEFAULT_NAMING_RULES)
     expect(segs.map((s) => s.text)).toEqual(['회원', '상태', '코드'])
     expect(segs.map((s) => s.word?.id)).toEqual(['w1', 'w2', 'w3'])
   })
 
   it('사전에 없는 구간은 연속으로 모아 word: null 세그먼트 하나가 된다', () => {
-    const segs = decomposeByWords('회원쿠폰번호', words)
+    const segs = decomposeByWords('회원쿠폰번호', words, DEFAULT_NAMING_RULES)
     expect(segs.map((s) => s.text)).toEqual(['회원', '쿠폰번호'])
     expect(segs.map((s) => s.word === null)).toEqual([false, true])
   })
 
   it('앞뒤 공백을 제거하고 분해한다', () => {
-    expect(decomposeByWords('  회원  ', words).map((s) => s.text)).toEqual(['회원'])
+    expect(decomposeByWords('  회원  ', words, DEFAULT_NAMING_RULES).map((s) => s.text)).toEqual(['회원'])
   })
 
   it('빈 논리명이나 빈 사전은 빈 배열/미매칭 한 조각을 낸다', () => {
-    expect(decomposeByWords('', words)).toEqual([])
-    expect(decomposeByWords('회원', {})).toEqual([{ text: '회원', word: null }])
+    expect(decomposeByWords('', words, DEFAULT_NAMING_RULES)).toEqual([])
+    expect(decomposeByWords('회원', {}, DEFAULT_NAMING_RULES)).toEqual([{ text: '회원', word: null }])
   })
 
-  it('세그먼트 text를 이어붙이면 원본 논리명이 복원된다', () => {
-    expect(decomposeByWords('회원쿠폰번호', words).map((s) => s.text).join('')).toBe('회원쿠폰번호')
+  it('구분자가 없는 이름은 세그먼트 text를 이어붙이면 원본이 복원된다', () => {
+    expect(decomposeByWords('회원쿠폰번호', words, DEFAULT_NAMING_RULES).map((s) => s.text).join('')).toBe('회원쿠폰번호')
+  })
+
+  // ⚠️ 계약 변경 — 옛 주석은 "이어붙이면 원본이 복원된다"였지만 구분자가 있으면 그것이 빠진다.
+  // 원본을 되살리려면 rules.logicalSeparator 로 join 해야 한다(withLogicalSeparator 가 그것을 한다).
+  it('구분자가 든 이름은 이어붙여도 원본이 복원되지 않는다(구분자가 빠진다)', () => {
+    const segs = decomposeByWords('회원_상태', words, DEFAULT_NAMING_RULES)
+    expect(segs.map((s) => s.text).join('')).toBe('회원상태')
+    expect(segs.map((s) => s.text).join('_')).toBe('회원_상태')
   })
 })
 
@@ -337,5 +345,45 @@ describe('논리명 구분자 정규화', () => {
   it('strip 과 with 는 왕복한다', () => {
     const withSep = withLogicalSeparator('회원주문번호', w, DEFAULT_NAMING_RULES)
     expect(stripLogicalSeparator(withSep, DEFAULT_NAMING_RULES)).toBe('회원주문번호')
+  })
+})
+
+describe('decomposeByWords 구분자', () => {
+  const w = {
+    w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+    w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+    w3: { id:'w3', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null },
+  }
+  const texts = (name: string, rules = DEFAULT_NAMING_RULES) =>
+    decomposeByWords(name, w, rules).map((s) => s.text)
+
+  it('구분자로 쪼갠다', () => {
+    expect(texts('회원_주문_번호')).toEqual(['회원', '주문', '번호'])
+  })
+
+  // ⚠️ 폴백이 없으면 기존 프로젝트 전체가 통째로 미등록 단어가 된다(설계 3.1 급소).
+  it('구분자가 없는 옛 논리명은 그리디로 재분해한다', () => {
+    expect(texts('회원주문번호')).toEqual(['회원', '주문', '번호'])
+    expect(decomposeByWords('회원주문번호', w, DEFAULT_NAMING_RULES).every((s) => s.word !== null))
+      .toBe(true)
+  })
+
+  it('구분자로 쪼갠 토큰 중 사전에 없는 것만 재분해한다', () => {
+    // '회원주문'은 토큰으로는 사전에 없지만 그리디로는 갈린다. '쿠폰'은 어느 쪽으로도 없다.
+    const segs = decomposeByWords('회원주문_쿠폰', w, DEFAULT_NAMING_RULES)
+    expect(segs.map((s) => s.text)).toEqual(['회원', '주문', '쿠폰'])
+    expect(segs.filter((s) => s.word === null).map((s) => s.text)).toEqual(['쿠폰'])
+  })
+
+  it('빈 토큰은 버린다', () => {
+    expect(texts('회원__주문')).toEqual(['회원', '주문'])
+    expect(texts('_회원_')).toEqual(['회원'])
+  })
+
+  it('구분자 없는 규칙에서는 기존 그리디 그대로다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+    expect(texts('회원주문번호', rules)).toEqual(['회원', '주문', '번호'])
+    // 이 규칙에서는 _ 가 단어의 일부로 취급된다(기존 동작)
+    expect(texts('회원_주문', rules)).toEqual(['회원', '_', '주문'])
   })
 })

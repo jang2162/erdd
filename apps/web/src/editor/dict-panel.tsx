@@ -100,7 +100,7 @@ export function DictPanel({ projectId, open, onOpenChange }: {
               <ul className="grid max-h-96 gap-2 overflow-y-auto">
                 {words.length === 0 && <p className="text-sm text-muted-foreground">아직 단어가 없습니다</p>}
                 {words.map((w) => {
-                  const usage = wordUsage(model, w.id)
+                  const usage = wordUsage(model, w.id, namingRules)
                   return (
                     <li key={w.id} className="flex items-center justify-between gap-2 rounded-md border p-2">
                       <div className="grid gap-0.5">
