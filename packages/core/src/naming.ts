@@ -57,7 +57,11 @@ export function decomposeByWords(
   if (name === '') return []
   if (rules.logicalSeparator === '') return greedyDecompose(name, words)
 
-  const byName = new Map(Object.values(words).map((w) => [w.logicalName, w]))
+  // ⚠️ 동명 단어가 둘이면 **앞엣것**을 쓴다 — `new Map(entries)` 는 나중 키가 이기는데
+  // greedyDecompose 의 `find` 는 앞엣것이 이긴다. 맞추지 않으면 같은 사전에서 '회원_번호' 와
+  // '회원번호' 가 서로 다른 단어를 잡아 약어(=물리명)까지 갈린다.
+  const byName = new Map<string, Word>()
+  for (const w of Object.values(words)) if (!byName.has(w.logicalName)) byName.set(w.logicalName, w)
   const segments: WordSegment[] = []
   for (const token of name.split(rules.logicalSeparator)) {
     if (token === '') continue           // '회원__주문'·'_회원_' 의 빈 토큰

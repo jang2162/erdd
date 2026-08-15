@@ -46,6 +46,25 @@ describe('config', () => {
     expect(cfg.namingRules.logicalSeparator).toBe('_')
   })
 
+  // ⚠️ 누락은 기본값으로 채우되(하위호환), **잘못 적은 값은 삼키지 않는다.** 조용히 '_' 로
+  // 돌면 erdd validate 결과가 웹의 「모델 검사」와 갈린다 — 사용자는 자기가 적은 값이
+  // 무시된 줄 모른다.
+  it('잘못된 logicalSeparator 는 거부한다', async () => {
+    const yaml = [
+      'serverUrl: https://erdd.example.com',
+      'projectId: 018f6b0e-0000-7000-8000-000000000000',
+      'dialects:',
+      '  - postgresql',
+      'namingRules:',
+      '  case: UPPER_SNAKE',
+      '  separator: "_"',
+      '  logicalSeparator: "-"',
+      '  maxLengthBytes: 30',
+    ].join('\n')
+    await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
+  })
+
   it('명시된 빈 logicalSeparator 는 그대로 둔다', async () => {
     await writeConfig(dir, {
       ...CONFIG,

@@ -407,6 +407,23 @@ describe('decomposeByWords 구분자', () => {
     expect(segs.filter((s) => s.word === null).map((s) => s.text)).toEqual(['쿠폰'])
   })
 
+  // ⚠️ 동명 단어가 둘일 때 **어느 쪽을 고르는지가 경로마다 달라선 안 된다.** `new Map` 은
+  // 나중 키가 이기고 greedy 의 `find` 는 앞엣것이 이기므로, 그대로 두면 같은 사전에서
+  // `회원_번호` 와 `회원번호` 가 서로 다른 단어를 잡는다(약어가 다르면 물리명까지 갈린다).
+  // 동명 단어는 정의상 하나만 쓰이고 나머지는 유령이지만(dict-edits 의 등록 가드), Excel
+  // 업로드·라이브러리 fork 로는 생길 수 있다.
+  it('동명 단어는 구분자 유무와 무관하게 같은 것을 고른다', () => {
+    const dup = {
+      a: { id:'a', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+      b: { id:'b', logicalName:'회원', abbreviation:'MEM', englishName:null, description:null, origin:null },
+      c: { id:'c', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null },
+    }
+    const viaSplit = decomposeByWords('회원_번호', dup, DEFAULT_NAMING_RULES)[0]!.word!.id
+    const viaGreedy = decomposeByWords('회원번호', dup, DEFAULT_NAMING_RULES)[0]!.word!.id
+    expect(viaSplit).toBe(viaGreedy)
+    expect(viaSplit).toBe('a')      // 앞엣것 우선(greedy 의 find 와 같은 규칙)
+  })
+
   it('빈 토큰은 버린다', () => {
     expect(texts('회원__주문')).toEqual(['회원', '주문'])
     expect(texts('_회원_')).toEqual(['회원'])

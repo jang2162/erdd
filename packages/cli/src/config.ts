@@ -52,9 +52,17 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
       || typeof namingRules['maxLengthBytes'] !== 'number') {
     throw new CliError('VALIDATION', `${CONFIG_FILE}의 namingRules가 올바르지 않습니다`)
   }
-  // 옛 config 에는 이 키가 없다. 필수로 요구하면 기존 사용자의 pull 이 깨지므로 여기서 채운다.
-  // 명시적으로 빈 문자열을 적은 경우만 '' 이고 나머지(누락 포함)는 기본값 '_' 다.
-  const logicalSeparator = namingRules['logicalSeparator'] === '' ? '' as const : '_' as const
+  // 옛 config 에는 이 키가 없다. 필수로 요구하면 기존 사용자의 pull 이 깨지므로 **누락만**
+  // 기본값으로 채운다. ⚠️ 잘못 적은 값은 삼키지 않는다 — 조용히 '_' 로 돌면 erdd validate 의
+  // 결과가 웹의 「모델 검사」와 갈리고, 사용자는 자기가 적은 값이 무시된 줄 모른다.
+  const ls = namingRules['logicalSeparator']
+  if (ls !== undefined && ls !== '' && ls !== '_') {
+    throw new CliError(
+      'VALIDATION',
+      `${CONFIG_FILE}의 namingRules.logicalSeparator 는 "_" 또는 "" 여야 합니다`,
+    )
+  }
+  const logicalSeparator = ls === '' ? '' as const : '_' as const
   return {
     serverUrl, projectId, dialects,
     namingRules: { ...(namingRules as unknown as NamingRules), logicalSeparator },
