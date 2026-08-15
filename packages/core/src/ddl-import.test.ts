@@ -68,7 +68,9 @@ describe('planDdlImport', () => {
     }
     const model = { ...createEmptyModel(), words }
     const p = plan('CREATE TABLE MBR (MBR_NO bigint);', model)
-    expect(p.tables[0]!.columns[0]!.logicalName).toBe('회원번호')
+    // 복원된 논리명은 프로젝트의 논리명 구분자 형식으로 들어온다(설계 D2 — 저장값 자체에
+    // 구분자가 든다). DDL 경로는 논리명을 그대로 실을 뿐이라 코드는 그대로고 값만 바뀐다.
+    expect(p.tables[0]!.columns[0]!.logicalName).toBe('회원_번호')
   })
 
   it('코멘트도 사전도 없으면 물리명을 논리명으로 두고 경고한다', () => {

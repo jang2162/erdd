@@ -143,7 +143,7 @@ describe('NamePair', () => {
     loadModel({ logicalName: '', physicalName: 'MBR_ORD' })
     renderPair()
     await userEvent.click(screen.getByRole('button', { name: '논리명 재생성' }))
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원주문'))
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'))
   })
 
   it('복원할 수 없으면 사유를 토스트로 알린다', async () => {
@@ -163,7 +163,7 @@ describe('NamePair', () => {
     const input = screen.getByLabelText(/테이블 물리명/) as HTMLInputElement
     await userEvent.type(input, 'MBR_ORD')
     await userEvent.tab()
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원주문'))
+    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'))
   })
 
   it('논리명이 이미 있으면 물리명 커밋이 그것을 덮지 않는다', async () => {

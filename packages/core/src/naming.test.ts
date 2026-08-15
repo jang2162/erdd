@@ -80,14 +80,25 @@ const TERMS: Record<string, Term> = {
   t1: term('t1', '회원식별번호', 'MBR_ID'),
 }
 
+/** 논리명 구분자를 끈 규칙. 이 트랙 이전의 동작을 그대로 남기는 대조군이다. */
+const NO_LOGICAL_SEP = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+
 describe('restoreLogicalName', () => {
+  // ⚠️ 기댓값이 구분자 형식으로 바뀐 것은 의도된 변경이다(설계 3.3). 각 케이스마다 구분자를
+  // 끈 규칙의 대조군을 함께 둬 옛 경로가 살아 있음을 잠근다.
   it('용어 물리명이 통째로 일치하면 단어 분해보다 우선한다', () => {
+    // 용어 저장값은 '회원식별번호'(구분자 없음)이고 '식별'은 사전에 없다 —
+    // 미매칭 구간도 세그먼트 하나라 그 앞뒤에 구분자가 붙는다(설계 3.2).
     expect(restoreLogicalName('MBR_ID', WORDS, TERMS, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: true, logicalName: '회원_식별_번호' })
+    expect(restoreLogicalName('MBR_ID', WORDS, TERMS, NO_LOGICAL_SEP))
       .toEqual({ ok: true, logicalName: '회원식별번호' })
   })
 
-  it('모든 토큰이 매칭되면 논리명을 이어붙인다', () => {
+  it('모든 토큰이 매칭되면 논리명을 구분자로 잇는다', () => {
     expect(restoreLogicalName('MBR_NO', WORDS, TERMS, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: true, logicalName: '회원_번호' })
+    expect(restoreLogicalName('MBR_NO', WORDS, TERMS, NO_LOGICAL_SEP))
       .toEqual({ ok: true, logicalName: '회원번호' })
   })
 
@@ -98,12 +109,15 @@ describe('restoreLogicalName', () => {
 
   it('대소문자를 무시하고 매칭한다', () => {
     expect(restoreLogicalName('mbr_no', WORDS, TERMS, DEFAULT_NAMING_RULES))
-      .toEqual({ ok: true, logicalName: '회원번호' })
+      .toEqual({ ok: true, logicalName: '회원_번호' })
   })
 
-  it('구분자가 없는 규칙에서는 최장일치로 쪼갠다', () => {
+  it('물리명 구분자가 없는 규칙에서는 최장일치로 쪼갠다', () => {
     const rules = { ...DEFAULT_NAMING_RULES, separator: '' as const }
     expect(restoreLogicalName('MBRNO', WORDS, TERMS, rules))
+      .toEqual({ ok: true, logicalName: '회원_번호' })
+    // 두 구분자는 별도 축이다(설계 D1) — 물리명 쪽만 꺼도 논리명 쪽은 그대로 붙는다.
+    expect(restoreLogicalName('MBRNO', WORDS, TERMS, { ...rules, logicalSeparator: '' }))
       .toEqual({ ok: true, logicalName: '회원번호' })
     expect(restoreLogicalName('MBRXNO', WORDS, TERMS, rules))
       .toEqual({ ok: false, unknownTokens: ['X'] })
@@ -114,13 +128,31 @@ describe('restoreLogicalName', () => {
       .toEqual({ ok: false, unknownTokens: ['MBR', 'NO'] })
   })
 
-  it('왕복 — generatePhysicalName이 만든 물리명을 원래 논리명으로 되돌린다', () => {
+  // 왕복 계약이 바뀌었다 — 되돌아오는 것은 원본이 아니라 **구분자 형식으로 정규화된** 논리명이다.
+  it('왕복 — 되돌린 논리명은 원본의 구분자 형식이다', () => {
     for (const logical of ['회원번호', '주문번호', '회원식별번호']) {
       const gen = generatePhysicalName(logical, WORDS, TERMS, DEFAULT_NAMING_RULES)
       expect(gen.unknownWords, `${logical} 은 사전으로 완전히 분해돼야 한다`).toEqual([])
       expect(restoreLogicalName(gen.physicalName, WORDS, TERMS, DEFAULT_NAMING_RULES))
+        .toEqual({ ok: true, logicalName: withLogicalSeparator(logical, WORDS, DEFAULT_NAMING_RULES) })
+    }
+  })
+
+  it('왕복 — 구분자를 끈 규칙에서는 원본 그대로 돌아온다(옛 계약)', () => {
+    for (const logical of ['회원번호', '주문번호', '회원식별번호']) {
+      const gen = generatePhysicalName(logical, WORDS, TERMS, NO_LOGICAL_SEP)
+      expect(restoreLogicalName(gen.physicalName, WORDS, TERMS, NO_LOGICAL_SEP))
         .toEqual({ ok: true, logicalName: logical })
     }
+  })
+
+  // 구분자가 든 논리명으로 시작해도 왕복이 닫힌다 — D2 가 저장값에 구분자를 넣기 때문에
+  // 실사용에서 가장 흔한 입력 모양이다.
+  it('왕복 — 구분자가 든 논리명은 그대로 돌아온다', () => {
+    const gen = generatePhysicalName('회원_번호', WORDS, {}, DEFAULT_NAMING_RULES)
+    expect(gen.physicalName).toBe('MBR_NO')
+    expect(restoreLogicalName(gen.physicalName, WORDS, {}, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: true, logicalName: '회원_번호' })
   })
 })
 
@@ -385,5 +417,49 @@ describe('decomposeByWords 구분자', () => {
     expect(texts('회원주문번호', rules)).toEqual(['회원', '주문', '번호'])
     // 이 규칙에서는 _ 가 단어의 일부로 취급된다(기존 동작)
     expect(texts('회원_주문', rules)).toEqual(['회원', '_', '주문'])
+  })
+})
+
+describe('구분자와 용어', () => {
+  const w = {
+    w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+    w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+    w3: { id:'w3', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null },
+  }
+  // ⚠️ 용어 저장값에는 구분자가 없다 — 공용 라이브러리에서 내려온 모양이다(설계 D4).
+  const t = {
+    t1: { id:'t1', logicalName:'회원주문번호', physicalName:'MBR_ORD_NO', domainId:'d1', description:null, origin:null },
+  }
+
+  it('구분자가 든 논리명이 구분자 없는 용어와 매칭된다', () => {
+    const r = generatePhysicalName('회원_주문_번호', w, t, DEFAULT_NAMING_RULES)
+    expect(r.physicalName).toBe('MBR_ORD_NO')
+    expect(r.termId).toBe('t1')
+    expect(r.domainId).toBe('d1')
+  })
+
+  it('구분자 없는 논리명도 여전히 같은 용어와 매칭된다', () => {
+    expect(generatePhysicalName('회원주문번호', w, t, DEFAULT_NAMING_RULES).termId).toBe('t1')
+  })
+
+  it('용어가 없으면 분해 조합으로 떨어진다', () => {
+    expect(generatePhysicalName('회원_주문', w, {}, DEFAULT_NAMING_RULES).physicalName).toBe('MBR_ORD')
+  })
+
+  it('복원은 구분자를 넣어 조립한다', () => {
+    const r = restoreLogicalName('MBR_ORD_NO', w, {}, DEFAULT_NAMING_RULES)
+    expect(r.ok && r.logicalName).toBe('회원_주문_번호')
+  })
+
+  it('용어 물리명이 일치하면 용어 논리명을 구분자 형식으로 변환해 낸다', () => {
+    const r = restoreLogicalName('MBR_ORD_NO', w, t, DEFAULT_NAMING_RULES)
+    // 용어 저장값은 '회원주문번호' 이지만 넣을 때는 변환된다
+    expect(r.ok && r.logicalName).toBe('회원_주문_번호')
+  })
+
+  it('구분자 없는 규칙에서는 기존 동작 그대로다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+    const r = restoreLogicalName('MBR_ORD_NO', w, {}, rules)
+    expect(r.ok && r.logicalName).toBe('회원주문번호')
   })
 })

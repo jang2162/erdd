@@ -118,8 +118,10 @@ export function generatePhysicalName(
   logicalName: string, words: Record<string, Word>, terms: Record<string, Term>, rules: NamingRules,
 ): GenResult {
   const name = logicalName.trim()
-  // 1) 용어 완전일치
-  const term = Object.values(terms).find((t) => t.logicalName.trim() === name)
+  // 1) 용어 완전일치 — 양쪽에서 구분자를 벗겨 비교한다(설계 D4).
+  const bare = stripLogicalSeparator(name, rules)
+  const term = Object.values(terms).find(
+    (t) => stripLogicalSeparator(t.logicalName.trim(), rules) === bare)
   if (term) return { physicalName: term.physicalName, unknownWords: [], termId: term.id, domainId: term.domainId }
   // 2) 최장일치 분해조합
   const segments = decomposeByWords(name, words, rules)
@@ -154,10 +156,11 @@ export function restoreLogicalName(
   const name = physicalName.trim()
   if (name === '') return { ok: false, unknownTokens: [] }
 
-  // 1) 용어 물리명 완전일치 — generatePhysicalName의 1단계와 대칭
+  // 1) 용어 물리명 완전일치 — generatePhysicalName의 1단계와 대칭.
+  //    넣을 때는 구분자 형식으로 변환한다(용어 저장값은 그대로 둔다 — 설계 D4).
   const upper = name.toUpperCase()
   const term = Object.values(terms).find((t) => t.physicalName.trim().toUpperCase() === upper)
-  if (term) return { ok: true, logicalName: term.logicalName }
+  if (term) return { ok: true, logicalName: withLogicalSeparator(term.logicalName, words, rules) }
 
   const index = abbreviationIndex(words)
 
@@ -167,7 +170,11 @@ export function restoreLogicalName(
     if (tokens.length === 0) return { ok: false, unknownTokens: [] }
     const unknownTokens = tokens.filter((t) => !index.has(t.toUpperCase()))
     if (unknownTokens.length > 0) return { ok: false, unknownTokens }
-    return { ok: true, logicalName: tokens.map((t) => index.get(t.toUpperCase())!.logicalName).join('') }
+    return {
+      ok: true,
+      logicalName: tokens.map((t) => index.get(t.toUpperCase())!.logicalName)
+        .join(rules.logicalSeparator),
+    }
   }
 
   // 2-b) 구분자가 없으면 최장일치 그리디 — decomposeByWords의 약어판
@@ -188,7 +195,7 @@ export function restoreLogicalName(
   }
   if (pending) unknownTokens.push(pending)
   if (unknownTokens.length > 0) return { ok: false, unknownTokens }
-  return { ok: true, logicalName: parts.join('') }
+  return { ok: true, logicalName: parts.join(rules.logicalSeparator) }
 }
 
 /** 자동완성 후보 하나. 넣는 방법은 `input.slice(0, start) + insert` 다. */
