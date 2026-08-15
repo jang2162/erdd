@@ -1,6 +1,6 @@
 import {
   type Word, type Term, type Table, type Column, type ProjectModel, type NamingRules,
-  generatePhysicalName, decomposeByWords, restoreLogicalName,
+  generatePhysicalName, decomposeByWords, restoreLogicalName, stripLogicalSeparator,
 } from '@erdd/core'
 
 export function createWord(model: ProjectModel, word: Word): ProjectModel {
@@ -55,13 +55,21 @@ export function canRegisterWord(
   return { ok: true, abbrClash }
 }
 
+/**
+ * ⚠️ 중복 판정도 **양쪽 strip** 이다(설계 D4). 평문으로 두면 `회원주문번호` 가 이미 있는데
+ * `회원_주문_번호` 로 등록이 통과해 **같은 bare 이름에 매칭되는 용어가 둘** 생긴다 —
+ * generatePhysicalName 의 `find` 가 모델 순서로 하나를 고르므로 나머지는 유령이 된다
+ * (UI 가 「중복 아님」이라 하고 엔진은 「중복」으로 취급하는 어긋남).
+ */
 export function canRegisterTerm(
-  model: ProjectModel, t: { logicalName: string; physicalName: string },
+  model: ProjectModel, t: { logicalName: string; physicalName: string }, rules: NamingRules,
 ): RegisterCheck {
   const logicalName = t.logicalName.trim()
   const physicalName = t.physicalName.trim()
   if (logicalName === '' || physicalName === '') return { ok: false, reason: 'empty' }
-  if (Object.values(model.terms).some((x) => x.logicalName.trim() === logicalName)) {
+  const bare = stripLogicalSeparator(logicalName, rules)
+  if (Object.values(model.terms).some(
+    (x) => stripLogicalSeparator(x.logicalName.trim(), rules) === bare)) {
     return { ok: false, reason: 'duplicate' }
   }
   return { ok: true }
@@ -74,10 +82,17 @@ export type DictUsageEntry =
 /**
  * 논리명 name이 완전일치하는 용어를 갖는지(naming.ts generatePhysicalName의 1단계 규칙과 동일).
  * 완전일치 용어가 있으면 그 논리명은 단어 분해를 거치지 않는다.
+ *
+ * ⚠️ **양쪽에서 구분자를 벗겨 비교한다(설계 D4).** 여기만 평문으로 두면 용어로 끝나는 논리명이
+ * 표기(`회원_주문_번호` vs `회원주문번호`)에 따라 분해로 내려가 사용처가 과다 계산된다 —
+ * generatePhysicalName 은 매칭하는데 이 함수만 못 하는 어긋남이다.
  */
-function matchesTermExactly(name: string, terms: Record<string, Term>): boolean {
-  const trimmed = name.trim()
-  return Object.values(terms).some((t) => t.logicalName.trim() === trimmed)
+function matchesTermExactly(
+  name: string, terms: Record<string, Term>, rules: NamingRules,
+): boolean {
+  const bare = stripLogicalSeparator(name.trim(), rules)
+  return Object.values(terms).some(
+    (t) => stripLogicalSeparator(t.logicalName.trim(), rules) === bare)
 }
 
 /**
@@ -90,7 +105,7 @@ function usesWord(
 ): boolean {
   const name = logicalName.trim()
   if (name === '') return false
-  if (matchesTermExactly(name, terms)) return false
+  if (matchesTermExactly(name, terms, rules)) return false
   return decomposeByWords(name, words, rules).some((s) => s.word?.id === wordId)
 }
 

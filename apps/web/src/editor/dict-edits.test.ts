@@ -347,6 +347,39 @@ describe('canRegisterWord', () => {
   })
 })
 
+describe('usesWord 의 용어 완전일치 판정', () => {
+  // ⚠️ matchesTermExactly 가 평문 비교면, 용어로 끝나야 할 논리명이 표기 차이로 분해까지 내려가
+  // 「사용처」가 과다 계산된다. generatePhysicalName 은 매칭하는데 이 함수만 못 하는 어긋남이다.
+  const model = (logicalName: string): ProjectModel => ({
+    ...createEmptyModel(),
+    words: {
+      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+      w2: { id:'w2', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null },
+    },
+    // 용어 저장값에는 구분자가 없다(공용 라이브러리에서 내려온 모양).
+    terms: {
+      t1: { id:'t1', logicalName:'회원번호', physicalName:'MBR_NO', domainId:null, description:null, origin:null },
+    },
+    tables: {
+      t: { id:'t', logicalName, physicalName:'MBR_NO', comment:null, groupId:null,
+           position:{x:0,y:0}, groupPosition:null, custom:{} },
+    },
+  })
+
+  it('구분자가 든 논리명도 용어로 끝나므로 단어를 쓰지 않는다', () => {
+    expect(wordUsage(model('회원_번호'), 'w1', DEFAULT_NAMING_RULES)).toEqual([])
+    // 표기가 다를 뿐 같은 모델이다 — 구분자 없는 쪽과 결과가 같아야 한다.
+    expect(wordUsage(model('회원번호'), 'w1', DEFAULT_NAMING_RULES)).toEqual([])
+  })
+
+  // 대조군 — 구분자를 끈 규칙에서는 표기가 다르면 용어에 닿지 못해 분해로 내려간다(옛 세계).
+  it('구분자를 끈 규칙에서는 표기가 다르면 분해로 내려간다', () => {
+    const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
+    expect(wordUsage(model('회원번호'), 'w1', rules)).toEqual([])
+    expect(wordUsage(model('회원_번호'), 'w1', rules)).toHaveLength(1)
+  })
+})
+
 describe('canRegisterTerm', () => {
   const base = (): ProjectModel => ({
     ...createEmptyModel(),
@@ -356,17 +389,32 @@ describe('canRegisterTerm', () => {
   })
 
   it('정상 등록', () => {
-    expect(canRegisterTerm(base(), { logicalName: '주문번호', physicalName: 'ORD_NO' }))
+    expect(canRegisterTerm(base(), { logicalName: '주문번호', physicalName: 'ORD_NO' }, DEFAULT_NAMING_RULES))
       .toEqual({ ok: true })
   })
 
   it('같은 논리명이 이미 있으면 막는다', () => {
-    expect(canRegisterTerm(base(), { logicalName: '회원번호', physicalName: 'MEMBER_NO' }))
+    expect(canRegisterTerm(base(), { logicalName: '회원번호', physicalName: 'MEMBER_NO' }, DEFAULT_NAMING_RULES))
       .toEqual({ ok: false, reason: 'duplicate' })
   })
 
   it('어느 한쪽이 비면 막는다', () => {
-    expect(canRegisterTerm(base(), { logicalName: '주문번호', physicalName: '' }))
+    expect(canRegisterTerm(base(), { logicalName: '주문번호', physicalName: '' }, DEFAULT_NAMING_RULES))
       .toEqual({ ok: false, reason: 'empty' })
+  })
+
+  // ⚠️ 중복 판정이 평문이면 `회원_번호` 가 통과해 같은 bare 이름의 용어가 둘 생긴다 —
+  // generatePhysicalName 의 find 가 모델 순서로 하나를 골라 나머지는 유령이 된다(설계 D4).
+  it('구분자 표기만 다른 용어는 중복으로 막는다', () => {
+    expect(canRegisterTerm(base(), { logicalName: '회원_번호', physicalName: 'MBR_NO2' }, DEFAULT_NAMING_RULES))
+      .toEqual({ ok: false, reason: 'duplicate' })
+  })
+
+  // 대조군 — 구분자를 끈 규칙에서는 표기가 다르면 다른 이름이다(옛 세계).
+  it('구분자를 끈 규칙에서는 표기가 다르면 등록된다', () => {
+    expect(canRegisterTerm(
+      base(), { logicalName: '회원_번호', physicalName: 'MBR_NO2' },
+      { ...DEFAULT_NAMING_RULES, logicalSeparator: '' },
+    )).toEqual({ ok: true })
   })
 })

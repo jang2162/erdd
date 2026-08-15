@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { DEFAULT_NAMING_RULES, createEmptyModel } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { createWord, createTerm } from './dict-edits.js'
 import { updateTable } from './model-edits.js'
@@ -379,5 +380,49 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
         .filter((w) => w.logicalName === '등급')
       expect(added).toHaveLength(1)          // 원래 있던 하나뿐이다
     })
+  })
+})
+
+describe('DictPanel 사용처 계산의 명명 규칙', () => {
+  /**
+   * ⚠️ `wordUsage` 에 `DEFAULT_NAMING_RULES` 를 하드코딩해도 아무것도 빨개지지 않았다(리뷰 실측).
+   * 사용처는 **store 규칙**으로 분해해야 한다.
+   *
+   * 픽스처가 두 규칙에서 실제로 갈리는 것을 `dict-edits.test.ts` 의
+   * 「usesWord 의 용어 완전일치 판정」이 직접 확인한다 — 논리명 `회원_번호` 는
+   * `'_'` 규칙에서 용어 `회원번호` 로 끝나 단어를 쓰지 않고(0개), `''` 규칙에서는
+   * 용어에 닿지 못해 분해로 내려가 `회원` 을 쓴다(1개).
+   */
+  const load = (logicalSeparator: '_' | '') => {
+    let m = createEmptyModel()
+    m = createWord(m, {
+      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
+      englishName: null, description: null, origin: null,
+    })
+    m = createTerm(m, {
+      id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NO',
+      domainId: null, description: null, origin: null,
+    })
+    m.tables['t1'] = {
+      id: 't1', logicalName: '회원_번호', physicalName: 'MBR_NO', comment: null, groupId: null,
+      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    useEditorStore.setState({ namingRules: { ...DEFAULT_NAMING_RULES, logicalSeparator } })
+    grantEditPermission()
+  }
+
+  it('구분자를 끈 프로젝트에서는 용어에 닿지 못해 단어 사용처가 잡힌다', async () => {
+    load('')
+    renderPanel()
+    expect(await screen.findByText('사용처 1개')).toBeInTheDocument()
+  })
+
+  it('구분자가 켜진 프로젝트에서는 같은 모델이 용어로 끝나 사용처가 없다', async () => {
+    load('_')
+    renderPanel()
+    // 사용처가 0이면 그 배지 자체가 렌더되지 않는다(`usage.length > 0` 가드).
+    expect(await screen.findByText('회원')).toBeInTheDocument()   // 목록은 떴다
+    expect(screen.queryByText(/사용처 \d+개/)).not.toBeInTheDocument()
   })
 })

@@ -253,6 +253,42 @@ describe('required-empty', () => {
   })
 })
 
+describe('findMatchingTerm 구분자 정규화', () => {
+  // ⚠️ 용어 매칭은 네 자리(generatePhysicalName · restoreLogicalName · suggestCompletions ·
+  // findMatchingTerm)가 같은 정규화를 써야 한다(HANDOFF 3.5b). 여기만 평문 비교로 되돌리면
+  // 구분자가 든 논리명에서 term-mismatch 가 통째로 사라지는데, 되돌려도 아무것도 빨개지지
+  // 않았다(리뷰 실측).
+  const modelWithPair = () => {
+    const m = createEmptyModel()
+    m.words = {
+      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+      w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+    }
+    // 용어 저장값에는 구분자가 없다(공용 라이브러리에서 내려온 모양 — 설계 D4).
+    m.terms['tm1'] = {
+      id:'tm1', logicalName:'회원주문', physicalName:'MBR_ORD_STD',
+      domainId:null, description:null, origin:null,
+    }
+    m.tables['t1'] = {
+      id:'t1', logicalName:'회원_주문', physicalName:'MBR_ORD', comment:null, groupId:null,
+      position:{x:0,y:0}, groupPosition:null, custom:{},
+    }
+    return m
+  }
+
+  it('구분자가 든 논리명도 구분자 없는 용어와 매칭돼 term-mismatch 를 낸다', () => {
+    const ws = computeWarnings(modelWithPair(), DEFAULT_NAMING_RULES)
+    expect(ws.map((w) => w.kind)).toContain('term-mismatch')
+  })
+
+  // 대조군 — 구분자를 끈 규칙(옛 세계)에서는 같은 쌍이 만나지 않는다. 이것이 없으면 위 케이스가
+  // "언제나 뜨는 경고"와 구분되지 않는다.
+  it('구분자를 끈 규칙에서는 같은 쌍이 매칭되지 않는다', () => {
+    const ws = computeWarnings(modelWithPair(), { ...DEFAULT_NAMING_RULES, logicalSeparator: '' })
+    expect(ws.map((w) => w.kind)).not.toContain('term-mismatch')
+  })
+})
+
 describe('missing-logical-separator', () => {
   const words = {
     w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },

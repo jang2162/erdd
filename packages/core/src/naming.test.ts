@@ -517,6 +517,23 @@ describe('suggestCompletions 구분자', () => {
     expect(r.items.some((i) => i.kind === 'term')).toBe(true)
   })
 
+  // ⚠️ 「용어 등록」은 draft 논리명을 그대로 저장한다(edit-panel.tsx). D2 가 논리명 저장값에
+  // 구분자를 넣으라고 하므로 이 프로젝트에서 만든 용어는 저장값에 구분자가 든다. 그 용어도
+  // 매칭돼야 한다 — generatePhysicalName 은 매칭하는데 자동완성만 못 하면 같은 용어가 경로에
+  // 따라 나오거나 안 나온다(설계 D4 · HANDOFF 3.5b 의 네 자리).
+  it('구분자가 든 용어 저장값도 후보로 나온다', () => {
+    const tSep = {
+      t1: { id:'t1', logicalName:'회원_주문_번호', physicalName:'MBR_ORD_NO',
+            domainId:null, description:null, origin:null },
+    }
+    expect(generatePhysicalName('회원주문번호', w, tSep, DEFAULT_NAMING_RULES).termId).toBe('t1')
+    const r = suggestCompletions('회원_주', 'logical', w, tSep, DEFAULT_NAMING_RULES)
+    expect(r.items.find((i) => i.kind === 'term')?.insert).toBe('회원_주문_번호')
+    // 구분자 없는 입력으로도 같은 용어에 닿는다(양쪽을 벗기므로 표기가 달라도 만난다).
+    const r2 = suggestCompletions('회원주', 'logical', w, tSep, DEFAULT_NAMING_RULES)
+    expect(r2.items.some((i) => i.kind === 'term')).toBe(true)
+  })
+
   it('구분자 없는 규칙에서는 기존 그리디 쿼리 그대로다', () => {
     const rules = { ...DEFAULT_NAMING_RULES, logicalSeparator: '' as const }
     const r = suggestCompletions('회원주', 'logical', w, {}, rules)

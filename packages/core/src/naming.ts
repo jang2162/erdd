@@ -239,9 +239,12 @@ export function suggestCompletions(
   const termItems: Completion[] = []
   for (const t of Object.values(terms)) {
     const target = side === 'logical' ? t.logicalName : t.physicalName
-    // 논리명 쪽은 입력에 구분자가 있을 수 있으므로 양쪽을 벗겨 비교한다(설계 D4).
+    // 논리명 쪽은 입력에도 **용어 저장값에도** 구분자가 있을 수 있으므로 양쪽을 벗겨 비교한다
+    // (설계 D4). ⚠️ 한쪽만 벗기면 구분자가 든 용어가 후보에서 통째로 사라진다 —
+    // 「용어 등록」이 draft 논리명을 그대로 저장하므로 D2 이후 그 모양이 오히려 표준이다.
     const probe = side === 'logical' ? stripLogicalSeparator(input, rules) : input
-    if (!startsWithFold(target, probe, side) || foldEq(target, probe, side)) continue
+    const bare = side === 'logical' ? stripLogicalSeparator(target, rules) : target
+    if (!startsWithFold(bare, probe, side) || foldEq(bare, probe, side)) continue
     push(termItems, {
       insert: side === 'logical' ? withLogicalSeparator(target, words, rules) : target,
       hint: side === 'logical' ? t.physicalName : t.logicalName,

@@ -233,6 +233,8 @@ function ColumnRow(props: {
 }) {
   const { column: c, canEdit } = props
   const model = useEditorStore((s) => s.model)
+  // 용어 중복 판정은 프로젝트 규칙으로 구분자를 벗겨 비교한다(설계 D4).
+  const namingRules = useEditorStore((s) => s.namingRules)
   const locked = c.domainId !== null
   const domain = locked ? props.domains.find((d) => d.id === c.domainId) : undefined
   return (
@@ -253,7 +255,7 @@ function ColumnRow(props: {
             applyNames={props.applyNames}
             extra={canEdit ? (draft) => {
               // 판정도 draft 기준이다 — 커밋값으로 보면 방금 친 이름이 중복인데도 버튼이 활성이다.
-              const termCheck = canRegisterTerm(model, draft)
+              const termCheck = canRegisterTerm(model, draft, namingRules)
               return (
                 <div>
                   <Button
