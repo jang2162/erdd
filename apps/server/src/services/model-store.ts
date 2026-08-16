@@ -56,7 +56,7 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
 
   return {
     tableGroups: keyed(groupRows.map((r): TableGroup => ({
-      id: r.id, name: r.name, color: r.color, comment: r.comment, alias: '',
+      id: r.id, name: r.name, color: r.color, comment: r.comment, alias: r.alias,
     }))),
     tables: keyed(tableRows.map((r): Table => ({
       id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,

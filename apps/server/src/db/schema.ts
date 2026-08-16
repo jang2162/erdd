@@ -107,6 +107,8 @@ export const modelTableGroups = pgTable('model_table_groups', {
   name: text('name').notNull(),
   color: text('color').notNull(),
   comment: text('comment'),
+  // 물리명 조합용 별칭. 선택 입력이라 null 이 아니라 빈 문자열이다(설계 3.1).
+  alias: text('alias').notNull().default(''),
 })
 
 export const modelTables = pgTable('model_tables', {

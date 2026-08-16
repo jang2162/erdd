@@ -1,0 +1,2 @@
+ALTER TABLE "projects" ALTER COLUMN "naming_rules" SET DEFAULT '{"case":"UPPER_SNAKE","separator":"_","logicalSeparator":"_","maxLengthBytes":30}'::jsonb;--> statement-breakpoint
+ALTER TABLE "model_table_groups" ADD COLUMN "alias" text DEFAULT '' NOT NULL;

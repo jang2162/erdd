@@ -62,6 +62,31 @@ describe.skipIf(!url)('model', () => {
     expect(got.json().result.data.seq).toBe(1)
   })
 
+  it('그룹 별칭이 왕복한다', async () => {
+    const target = withUuidIds(buildSampleModel())
+    const groupId = Object.keys(target.tableGroups)[0]!
+    target.tableGroups[groupId]!.alias = 'MBR'
+    const res = await post(app, 'model.mutate', editorToken, {
+      projectId, ops: diffModels(createEmptyModel(), target),
+    })
+    expect(res.statusCode).toBe(200)
+
+    const got = await get(app, 'model.get', editorToken, { projectId })
+    expect(got.json().result.data.model.tableGroups[groupId].alias).toBe('MBR')
+  })
+
+  it('별칭을 비운 그룹은 빈 문자열로 왕복한다', async () => {
+    // DB 컬럼이 NOT NULL DEFAULT '' 라 null 이 아니라 '' 로 돌아와야 한다.
+    const target = withUuidIds(buildSampleModel())
+    const groupId = Object.keys(target.tableGroups)[0]!
+    expect(target.tableGroups[groupId]!.alias).toBe('')      // 픽스처 기본값
+    await post(app, 'model.mutate', editorToken, {
+      projectId, ops: diffModels(createEmptyModel(), target),
+    })
+    const got = await get(app, 'model.get', editorToken, { projectId })
+    expect(got.json().result.data.model.tableGroups[groupId].alias).toBe('')
+  })
+
   it('rewrites update.from and delete.before with authoritative values', async () => {
     const target = withUuidIds(buildSampleModel())
     await post(app, 'model.mutate', editorToken, {
