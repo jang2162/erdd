@@ -311,6 +311,11 @@ docker exec -i erdd-db-1 createdb -U postgres erdd_test
 DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm -C apps/server exec drizzle-kit migrate
 ```
 
+⚠️ **여기서 루트 `pnpm db:migrate` 를 쓰지 마라.** 그 스크립트는 `dev` 와 같은 관용구로 `.env` 를
+셸에 로드하는데, **`.env` 의 `DATABASE_URL` 이 인라인으로 준 값을 이긴다** — `DATABASE_URL=...erdd_test
+pnpm db:migrate` 는 조용히 `.env` 의 **dev** DB에 적용된다(실측: 존재하지 않는 DB명을 인라인으로 줘도
+성공한다). `.env` 가 아닌 DB를 가리킬 때는 위처럼 **인라인 + 원시 호출**을 쓴다.
+
 워크트리에서는 그 트랙의 격리 test DB(`erdd_test_a` 등)를 같은 방식으로 준다. **워크트리의 `.env` 를
 로드해 verify 를 돌리는 것도 같은 사고다** — 그 `.env` 의 `DATABASE_URL` 은 그 트랙의 **개발** DB다.
 
@@ -785,10 +790,13 @@ pnpm --filter @erdd/web exec vitest run
 DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @erdd/server exec vitest run
 pnpm -r typecheck
 
-# 마이그레이션 (스키마 변경 시)
-pnpm --filter @erdd/server exec drizzle-kit generate
-DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd'      pnpm --filter @erdd/server exec drizzle-kit migrate
-DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm --filter @erdd/server exec drizzle-kit migrate
+# 마이그레이션 (스키마 변경 시) — 루트 스크립트가 dev 와 같은 관용구로 .env 를 셸에 로드한다
+pnpm db:generate                                    # 스키마 → 새 마이그레이션 파일(.env 없어도 그냥 돈다)
+pnpm db:migrate                                     # .env 의 DATABASE_URL(= dev DB)에 적용
+pnpm db studio                                      # 임의 drizzle-kit 서브커맨드도 같은 .env 로딩으로 통과한다
+# .env 가 아닌 DB(test DB·격리 DB)를 가리킬 때는 인라인 + 원시 호출을 쓴다 — pnpm db 계열은 .env 를
+# 로드하고 그 값이 인라인을 이기므로, 인라인을 줘도 조용히 .env 의 dev DB로 간다.
+DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm -C apps/server exec drizzle-kit migrate
 ```
 
 브라우저 스모크: 브라우저는 항상 **`127.0.0.1`로 접속**한다(`localhost`는 IPv6로 풀릴 수 있다).

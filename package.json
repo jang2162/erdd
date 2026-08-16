@@ -5,6 +5,9 @@
   "packageManager": "pnpm@10.4.1",
   "scripts": {
     "dev": "set -a; [ -f .env ] && . ./.env; set +a; pnpm --parallel -r dev",
+    "db": "set -a; [ -f .env ] && . ./.env; set +a; pnpm -C apps/server exec drizzle-kit",
+    "db:generate": "pnpm run db generate",
+    "db:migrate": "pnpm run db migrate",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "verify": "pnpm -r typecheck && pnpm -C packages/core test && pnpm -C packages/cli test && pnpm -C apps/web test && pnpm -C apps/server test"
