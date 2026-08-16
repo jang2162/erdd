@@ -207,15 +207,55 @@ Claude-Session: <세션 URL>
     ```bash
     orca terminal read --terminal <handle> --json
     ```
-    입력창(`❯`)에 브리프 텍스트가 그대로 보이면 미제출이다. 엔터만 보내 제출시키고, **다시 읽어 입력창이
-    비었는지 확인한 뒤에** 대기로 넘어간다.
-    ```bash
-    orca terminal send --terminal <handle> --text "" --enter --json      # Enter만 보낸다
-    orca terminal read  --terminal <handle> --json                       # 입력창이 비어 있어야 한다
-    ```
+    **미제출은 두 형태이고 대응이 다르다.** 판정 기준은 `Ctx Used` 다 — **`0.0%` 면 무조건 미제출**이다.
+    - **(a) 입력창(`❯`)에 브리프 텍스트가 그대로 보인다** — 바이트는 들어갔고 Enter 만 흡수됐다.
+      엔터만 보내 제출시키고, **다시 읽어 입력창이 비었는지 확인한 뒤에** 대기로 넘어간다.
+      ```bash
+      orca terminal send --terminal <handle> --text "" --enter --json      # Enter만 보낸다
+      orca terminal read  --terminal <handle> --json                       # 입력창이 비어 있어야 한다
+      ```
+    - **(b) 입력창도 비어 있다(시작 화면만 있고 `Ctx Used: 0.0%`)** — 바이트가 **아예 안 들어갔다.**
+      보낼 Enter 가 없으므로 (a) 의 방법이 통하지 않는다. **브리프를 워크트리에 파일로 쓰고 한 줄로
+      가리켜라**(아래 ⚠️ 파일 경유).
+
     `worker-read` 로도 같은 것을 본다 — `orca orchestration worker-read --dispatch <id> --limit 20 --json`
     의 `terminal.tail` 에 프롬프트가 그대로 있고 "Ctx Used: 0.0%" 면 미제출이다. 제출되면 `source` 가
     `terminal` → `transcript` 로 바뀌고 실제 도구 호출이 보인다.
+- ⚠️ **예방책을 지켜도 실패한다 — 2026-08-16/17 세션은 `worker-start` 주입이 4/4 전부 (b) 로 실패했다.**
+  `terminal create` → `tui-idle` 대기 → `--terminal <handle>` 로 주입하는 위 순서를 **정확히 따랐는데도**
+  네 워커 모두 컨텍스트 0.0% 로 아무것도 받지 못했다. 위 문단의 "될 때도 있고 안 될 때도 있다"보다
+  **실패 쪽이 기본값에 가깝다고 보고 처음부터 파일 경유로 가는 편이 빠르다.**
+  - **파일 경유(권장 레시피).** 브리프를 워크트리 루트에 파일로 쓰고 짧은 한 줄만 보낸다. 여러 줄이
+    TUI 에 흡수되는 문제 자체가 사라진다.
+    ```bash
+    # 1) 브리프 파일을 쓴다 (⚠️ heredoc 은 반드시 따옴표로 — 아래 항목 참조)
+    # 2) 한 줄만 보낸다
+    orca terminal send --terminal <handle> \
+      --text "워크트리 루트의 BRIEF.txt 를 읽고 그 지시를 그대로 수행해라." --enter --json
+    orca terminal read --terminal <handle> --json      # Ctx Used 가 0.0% 를 벗어나야 제출된 것
+    ```
+  - ⚠️ **파일 경유로 우회하면 `worker_done` 을 보낼 수 없다.** `worker-start` 가 주입하는 lifecycle
+    preamble 에 `taskId`·`dispatchId` 가 들어 있는데 `terminal send` 에는 그것이 없다. 워커는 일을
+    정상적으로 마치고도 보고할 방법이 없어 화면에만 결과를 남긴다(실제로 한 번 그렇게 잃었다).
+    **브리프 파일 끝에 완료 보고 명령을 ID 와 함께 박아 둔다.**
+    ```bash
+    D=$(orca orchestration dispatch-show --task <task_id> --json \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['dispatch']['id'])")
+    # 브리프 끝에 아래를 적는다:
+    #   orca orchestration send --type worker_done --subject "<요약>" --body "<본문>" \
+    #     --task-id <task_id> --dispatch-id $D --outcome succeeded --json
+    ```
+  - ⚠️ **디스패치 capability 가 폐기되면 메시지 채널이 통째로 막힌다.**
+    `dispatch_capability_invalid`("capability is revoked")가 나오면 `worker_done` 도 `heartbeat` 도
+    거부된다(거부된 메일이 `escalation`·`status` 로 재전송돼 같은 보고가 두세 번 도착하기도 한다).
+    **워커 실패가 아니다** — 프로세스는 정상으로 돌고 있다. 완료 보고를 **파일로 받아라**:
+    워커에게 "끝나면 워크트리 루트에 `DONE.md` 를 쓰라"고 지시하고 그 파일을 폴링한다.
+- ⚠️ **브리프 heredoc 은 반드시 따옴표로 막아라 — `<<'BRIEF'`.** 따옴표 없는 `<<BRIEF` 는 `$`·백틱·
+  글롭을 확장한다. 2026-08-16 에 두 번 물렸다: 브리프의 `alias` 라는 낱말이 셸 빌트인으로 확장돼
+  **`alias` 출력 270줄이 브리프 한가운데 통째로 끼어들었고**(리뷰어가 원문을 추정 복원해야 했다),
+  다른 브리프에서는 `[groupId, groupAlias]` 가 글롭으로 해석돼 `no matches found` 와 함께 **그 줄만
+  조용히 사라졌다**(핵심 수정 방법이 담긴 줄이었다). 변수를 넣어야 하면 파일을 쓴 뒤 치환하거나 Write
+  도구를 쓴다. **쓴 뒤에는 줄 수와 핵심 문자열을 grep 으로 확인하라.**
 - ⚠️ **`--json` 출력은 NDJSON이고 keepalive가 섞인다.** `check --wait` 는 15초마다
   `{"_keepalive":true,…}` 를 한 줄씩 내고 **마지막 실제 결과는 여러 줄 pretty-print** 다. `json.load`
   로 통째 파싱하면 `Extra data` 로 깨지고, 줄 단위 파싱은 마지막 결과를 놓친다. `raw_decode` 로
