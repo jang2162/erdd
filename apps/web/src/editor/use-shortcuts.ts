@@ -126,6 +126,11 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
         // 메모·관계는 우측 패널 버튼과 **같은 함수·같은 summary·같은 순서**(선택을 먼저 비우고
         // mutate)를 쓴다 — 진입점이 둘이면 규칙은 하나여야 한다(설계 D2).
         // 확인 다이얼로그는 없다: 그 정책은 「테이블 2개 이상」에만 걸리고 메모·관계는 단일 선택이다.
+        //
+        // ⚠️ 아래 `selectNote(null)`/`selectRelationship(null)` 은 **테스트로 잠기지 않는다.**
+        // 지워도 동작이 같기 때문이다 — 삭제가 반영되면 `pruneSelection`(→ `keptSelection`)이
+        // 모델에서 사라진 id 를 어차피 걷어낸다. 패널 버튼과의 **대칭으로** 남긴다.
+        // 관측 불가능한 것을 행위 테스트로 잠그려 하지 마라(HANDOFF 6절에 이월로 적어 두었다).
         if (s.selectedNoteId) {
           if (!canEdit) return
           e.preventDefault()
@@ -188,6 +193,12 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
       }
 
       if (payload.kind === 'notes') {
+        // ⚠️ 그룹 뷰에서는 메모를 만들 수 없다 — 하단 바 「메모」 버튼이 `disabled={!!activeGroupView}`
+        // 로 막는 것과 **같은 규칙**이다(진입점이 둘이면 규칙은 하나여야 한다, 설계 D2).
+        // 이 가드가 없으면 메모가 모델에는 들어가는데 캔버스에는 안 그려진다(그룹 뷰는 noteNodes 를
+        // 빼고 조립한다 — canvas.tsx) — 그리고 아래 selectNote 가 **보이지 않는 것을 선택해**
+        // 편집 패널만 열린다. 붙여넣기는 선택과 무관하게 도달하므로 C·X 와 달리 이 갈래가 실재한다.
+        if (s.activeGroupView) return
         const ids = planPasteNoteIds(payload, newId)      // producer 밖에서 발급
         void mutate((m) => pasteNotes(m, payload, { ids, offset: PASTE_OFFSET }),
           { summary: '메모 붙여넣기' })

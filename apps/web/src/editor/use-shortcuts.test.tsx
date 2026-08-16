@@ -450,6 +450,42 @@ describe('useEditorShortcuts', () => {
     await waitFor(() => expect(useEditorStore.getState().model.notes['n1']).toBeUndefined())
     expect(writeText).toHaveBeenCalled()
     expect(countModelMutate(fetchMock)).toBe(1)
+    // 한 뮤테이션이면 실행 취소도 한 번이다(테이블 잘라내기와 같은 계약, 설계 3.5).
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
+  /*
+   * 삭제 summary 는 Revision 이력에 그대로 보이는 **사용자 대면 값**이고, 우측 패널 버튼과 같아야
+   * 한다는 것이 D2 의 일부다(`note-panel.tsx`·`relationship-panel.tsx`가 같은 문자열을 쓴다).
+   * 서버 입력을 직접 들여다봐야 관측된다 — 모델 결과만 보면 문자열을 바꿔도 초록이다.
+   */
+  it('메모·관계 삭제 summary 가 패널 버튼과 같다', async () => {
+    const inputs: { summary?: string }[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => {
+      inputs.push(input as { summary?: string }); return { data: { seq: 2 } }
+    } })
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(inputs).toHaveLength(1))
+    expect(inputs[0]!.summary).toBe('메모 삭제')
+
+    useEditorStore.getState().selectRelationship('r1')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(inputs).toHaveLength(2))
+    expect(inputs[1]!.summary).toBe('관계 삭제')
+  })
+
+  it('메모 잘라내기 summary 는 「메모 잘라내기」다', async () => {
+    const inputs: { summary?: string }[] = []
+    mockTrpcFetch({ 'model.mutate': (input) => {
+      inputs.push(input as { summary?: string }); return { data: { seq: 2 } }
+    } })
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true, bubbles: true }))
+    await waitFor(() => expect(inputs).toHaveLength(1))
+    expect(inputs[0]!.summary).toBe('메모 잘라내기')
   })
 
   it('메모 붙여넣기가 offset만큼 밀고 새 메모를 선택한다', async () => {
@@ -480,6 +516,97 @@ describe('useEditorShortcuts', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))
     await waitFor(() => expect(writeText).toHaveBeenCalled())
     expect(useEditorStore.getState().model.notes['n1']).toBeDefined()
+  })
+
+  /*
+   * 읽기 전용 가드 3곳을 **각각** 잠근다. 위의 「지우지 못하고 복사만 된다」는 이것들을 잠그지
+   * 못한다 — `useSubmit`이 데이터를 막아 주므로 훅 가드를 지워도 모델은 그대로이기 때문이다.
+   *
+   * ⚠️ 갈리는 관측치는 **선택이 풀리는가**다. 훅 가드가 없으면 `selectNote(null)`/
+   * `selectRelationship(null)`까지 흘러가 Viewer가 Delete를 누른 순간 토스트 에러와 함께
+   * 선택이 사라진다 — 데이터는 지켜지지만 UX가 퇴행한다. 그것이 이 가드가 막는 것이다.
+   *
+   * ⚠️ `countModelMutate`가 0인 것은 **이 가드를 잠그지 않는다** — `useSubmit`이 canEdit false면
+   * fetch 자체를 내지 않으므로(`use-model.ts`) 가드가 있든 없든 0이다. 회귀 방어로 함께 두되
+   * 이 단언에 기대지 마라.
+   */
+  it('읽기 전용이면 Delete가 메모 선택을 풀지 않는다', async () => {
+    const fetchMock = mockModelMutate()
+    useEditorStore.setState({ canEdit: false })
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(useEditorStore.getState().selectedNoteId).toBe('n1')
+    expect(useEditorStore.getState().model.notes['n1']).toBeDefined()
+    expect(countModelMutate(fetchMock)).toBe(0)
+  })
+
+  it('읽기 전용이면 Delete가 관계 선택을 풀지 않는다', async () => {
+    const fetchMock = mockModelMutate()
+    useEditorStore.setState({ canEdit: false })
+    useEditorStore.getState().selectRelationship('r1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(useEditorStore.getState().selectedRelationshipId).toBe('r1')
+    expect(useEditorStore.getState().model.relationships['r1']).toBeDefined()
+    expect(countModelMutate(fetchMock)).toBe(0)
+  })
+
+  // ⚠️ Cmd+X는 mutate보다 **먼저** writeText를 부르므로 useSubmit의 canEdit 가드로는 막히지
+  // 않는다 — 훅 자신의 가드가 빠지면 읽기 전용 사용자의 시스템 클립보드가 덮인다.
+  // 테이블 Cmd+X의 「X의 유일한 방어선」과 같은 성질이고, 메모 경로에는 그 잠금이 없었다.
+  it('읽기 전용이면 메모 Cmd+X가 클립보드를 덮지 않는다', async () => {
+    const fetchMock = mockModelMutate()
+    useEditorStore.setState({ canEdit: false })
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true, bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(writeText).not.toHaveBeenCalled()
+    expect(useEditorStore.getState().selectedNoteId).toBe('n1')
+    expect(useEditorStore.getState().model.notes['n1']).toBeDefined()
+    expect(countModelMutate(fetchMock)).toBe(0)
+  })
+
+  it('읽기 전용이면 메모를 붙여넣지 못한다', async () => {
+    mockModelMutate()
+    useEditorStore.setState({ canEdit: false })
+    renderHarness()
+    const before = Object.keys(useEditorStore.getState().model.notes).length
+    const payload = {
+      __erdd: 1, v: 1, kind: 'notes',
+      notes: [{ content: '붙인메모', color: '#fff', position: { x: 10, y: 20 } }],
+    }
+    const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(e, 'clipboardData', { value: { getData: () => JSON.stringify(payload) } })
+    document.dispatchEvent(e)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(Object.keys(useEditorStore.getState().model.notes)).toHaveLength(before)
+  })
+
+  /*
+   * ⚠️ 그룹 뷰에서는 메모를 만들 수 없다 — 하단 바 「메모」 버튼이 `disabled={!!activeGroupView}`로
+   * 막는다. 붙여넣기는 **선택과 무관하게** 도달하므로(C·X는 그룹 뷰 진입이 선택을 비워 도달 자체가
+   * 안 된다) 이 갈래만 실재한다. 가드가 없으면 메모가 모델에는 들어가는데 캔버스에는 안 그려지고
+   * (그룹 뷰는 noteNodes를 빼고 조립한다) `selectNote`가 **보이지 않는 것을 선택한다.**
+   */
+  it('그룹 뷰에서는 메모를 붙여넣지 못한다', async () => {
+    mockModelMutate()
+    useEditorStore.getState().enterGroupView('g1')
+    renderHarness()
+    const before = Object.keys(useEditorStore.getState().model.notes).length
+    const payload = {
+      __erdd: 1, v: 1, kind: 'notes',
+      notes: [{ content: '붙인메모', color: '#fff', position: { x: 10, y: 20 } }],
+    }
+    const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(e, 'clipboardData', { value: { getData: () => JSON.stringify(payload) } })
+    document.dispatchEvent(e)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(Object.keys(useEditorStore.getState().model.notes)).toHaveLength(before)
+    expect(useEditorStore.getState().selectedNoteId).toBeNull()
   })
 
   it('다이얼로그가 열려 있으면 메모 삭제가 막힌다', async () => {

@@ -205,6 +205,14 @@ describe('메모 붙여넣기', () => {
     expect(Object.keys(m.notes)).toHaveLength(before)
   })
 
+  // pasteColumns 의 같은 케이스와 대칭이다 — kind 가드를 지우면 테이블 페이로드가 notes 로
+  // 읽혀 `payload.notes` 가 undefined 인 채 forEach 로 들어간다.
+  it('kind가 맞지 않으면 모델을 그대로 돌려준다', () => {
+    const m = buildSampleModel()
+    const tablePayload = serializeTables(m, ['t2'])
+    expect(pasteNotes(m, tablePayload, { ids: ['nn1'], offset: { x: 0, y: 0 } })).toBe(m)
+  })
+
   it('id 가 모자라면 그만큼만 만든다', () => {
     const two: ClipboardPayload = {
       __erdd: 1, v: 1, kind: 'notes',
