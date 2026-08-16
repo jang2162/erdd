@@ -444,7 +444,7 @@ describe('planDdlImport — DBML 확장 필드', () => {
 
   it('같은 이름의 그룹이 있으면 existingId 를 채운다', () => {
     const m = createEmptyModel()
-    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null }
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null, alias: '' }
     const p = planDdlImport(
       m, parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR'] }] }),
       'postgresql', DEFAULT_NAMING_RULES,

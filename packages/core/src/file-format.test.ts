@@ -22,6 +22,15 @@ describe('modelToFiles', () => {
     expect(TOP_LEVEL_FILES).toHaveLength(5)
   })
 
+  it('그룹 별칭을 groups.yaml 에 싣고 빈 별칭은 생략한다', () => {
+    const m = fullModel()
+    m.tableGroups['g2'] = { id: 'g2', name: '주문관리', color: '#fee', comment: null, alias: '' }
+    const groups = (modelToFiles(m).tree[`${TREE_ROOT}/groups.yaml`] as
+      { groups: Array<Record<string, unknown>> }).groups
+    expect(groups.find((g) => g['id'] === 'g1')!['alias']).toBe('MBR')
+    expect(groups.find((g) => g['id'] === 'g2')).not.toHaveProperty('alias')
+  })
+
   it('컬럼·인덱스·관계를 테이블 파일 안에 이름으로 적는다', () => {
     const { tree } = modelToFiles(fullModel())
     expect(tree[`${TREE_ROOT}/tables/MBR.yaml`]).toEqual({

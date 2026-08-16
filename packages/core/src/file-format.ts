@@ -171,7 +171,8 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
   tree[`${TREE_ROOT}/groups.yaml`] = {
     groups: Object.values(model.tableGroups).map((g) => omitDefaults({
       id: g.id, name: g.name, color: g.color, comment: g.comment ?? undefined,
-    }, {})),
+      alias: g.alias,
+    }, { alias: '' })),
   }
   tree[`${TREE_ROOT}/words.yaml`] = {
     words: Object.values(model.words).map((w) => omitDefaults({
@@ -333,7 +334,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     const id = idOf(g, `${TREE_ROOT}/groups.yaml`, 'groups', i)
     model.tableGroups[id] = {
       id, name: asStr(g['name']) ?? '', color: asStr(g['color']) ?? '#ffffff',
-      comment: asStr(g['comment']),
+      comment: asStr(g['comment']), alias: asStr(g['alias']) ?? '',
     }
   })
   readList(`${TREE_ROOT}/domains.yaml`, 'domains').forEach((d, i) => {

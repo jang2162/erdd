@@ -69,6 +69,13 @@ export const TableGroupSchema = z.strictObject({
   name: z.string(),
   color: z.string(),
   comment: z.string().nullable(),
+  /**
+   * 물리명 조합용 짧은 식별자(영문·숫자·밑줄, 대문자). 선택 입력이라 없으면 빈 문자열이다.
+   * ⚠️ HANDOFF 3.3 의 관례(`.nullable().default(null)`)를 따르지 않는다 — 별칭은 comment 가 아니라
+   * physicalName 쪽 성격(비어 있을 수 있는 식별자)이라 null 이면 소비처마다 `?? ''` 가 붙는다.
+   * `.default('')` 도 옛 op 페이로드 파싱을 똑같이 만족한다(설계 3.1).
+   */
+  alias: z.string().default(''),
 })
 export type TableGroup = z.infer<typeof TableGroupSchema>
 

@@ -69,7 +69,7 @@ function trio(): { base: ProjectModel; local: ProjectModel; server: ProjectModel
 describe('mergeModels — 상태표', () => {
   it('서버만 추가한 것은 그대로 유지한다', () => {
     const { base, local, server } = trio()
-    server.tableGroups['g2'] = { id: 'g2', name: '주문관리', color: '#fee', comment: null }
+    server.tableGroups['g2'] = { id: 'g2', name: '주문관리', color: '#fee', comment: null, alias: '' }
     const { merged, conflicts } = mergeModels(base, local, server)
     expect(conflicts).toEqual([])
     expect(merged.tableGroups['g2']).toBeDefined()
@@ -106,16 +106,35 @@ describe('mergeModels — 상태표', () => {
 
   it('로컬만 추가한 것은 생성한다', () => {
     const { base, local, server } = trio()
-    local.tableGroups['g9'] = { id: 'g9', name: '정산', color: '#efe', comment: null }
+    local.tableGroups['g9'] = { id: 'g9', name: '정산', color: '#efe', comment: null, alias: '' }
     const { merged, conflicts } = mergeModels(base, local, server)
     expect(conflicts).toEqual([])
     expect(merged.tableGroups['g9']!.name).toBe('정산')
   })
 
+  it('로컬이 고친 그룹 별칭을 채택한다', () => {
+    // 픽스처의 base 별칭은 'MBR' 이다 — 그것과 다른 값으로 고쳐야 "로컬이 고쳤다"가 성립한다.
+    const { base, local, server } = trio()
+    const g = Object.keys(base.tableGroups)[0]!
+    local.tableGroups[g] = { ...local.tableGroups[g]!, alias: 'MBRSHIP' }
+    const { merged, conflicts } = mergeModels(base, local, server)
+    expect(conflicts).toEqual([])
+    expect(merged.tableGroups[g]!.alias).toBe('MBRSHIP')
+  })
+
+  it('양쪽이 별칭을 다르게 고치면 그 필드가 충돌이다', () => {
+    const { base, local, server } = trio()
+    const g = Object.keys(base.tableGroups)[0]!
+    local.tableGroups[g] = { ...local.tableGroups[g]!, alias: 'MBRSHIP' }
+    server.tableGroups[g] = { ...server.tableGroups[g]!, alias: 'MEM' }
+    const { conflicts } = mergeModels(base, local, server)
+    expect(conflicts.some((c) => c.field === 'alias')).toBe(true)
+  })
+
   it('양쪽이 같은 id로 다르게 추가하면 필드마다 충돌이다', () => {
     const { base, local, server } = trio()
-    local.tableGroups['g9'] = { id: 'g9', name: '정산', color: '#efe', comment: null }
-    server.tableGroups['g9'] = { id: 'g9', name: '결제', color: '#efe', comment: null }
+    local.tableGroups['g9'] = { id: 'g9', name: '정산', color: '#efe', comment: null, alias: '' }
+    server.tableGroups['g9'] = { id: 'g9', name: '결제', color: '#efe', comment: null, alias: '' }
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({

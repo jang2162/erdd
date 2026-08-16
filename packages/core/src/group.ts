@@ -5,13 +5,15 @@ export function createGroup(
   args: { id: string; name: string; color: string; comment?: string | null },
 ): ProjectModel {
   if (Object.hasOwn(model.tableGroups, args.id)) return model
-  const group: TableGroup = { id: args.id, name: args.name, color: args.color, comment: args.comment ?? null }
+  const group: TableGroup = {
+    id: args.id, name: args.name, color: args.color, comment: args.comment ?? null, alias: '',
+  }
   return { ...model, tableGroups: { ...model.tableGroups, [args.id]: group } }
 }
 
 export function updateGroup(
   model: ProjectModel, id: string,
-  patch: Partial<Pick<TableGroup, 'name' | 'color' | 'comment'>>,
+  patch: Partial<Pick<TableGroup, 'name' | 'color' | 'comment' | 'alias'>>,
 ): ProjectModel {
   const group = model.tableGroups[id]
   if (!group) return model

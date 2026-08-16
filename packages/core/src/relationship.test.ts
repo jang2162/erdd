@@ -385,7 +385,7 @@ describe('resolveManyToMany', () => {
     // groupId 를 실제 그룹으로 두어야 무결성 검사를 통과한다(integrity.ts:41).
     const m = {
       ...base,
-      tableGroups: { g1: { id: 'g1', name: '주문영역', color: '#e0e0e0', comment: null } },
+      tableGroups: { g1: { id: 'g1', name: '주문영역', color: '#e0e0e0', comment: null, alias: '' } },
     }
     const out = resolveManyToMany(m, {
       ...ARGS,

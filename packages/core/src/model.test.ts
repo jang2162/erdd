@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ColumnSchema, ProjectModelSchema, TableSchema, createEmptyModel,
+  ColumnSchema, ProjectModelSchema, TableSchema, TableGroupSchema, createEmptyModel,
   DomainSchema, WordSchema, TermSchema, CustomFieldSchema,
 } from './model.js'
 
@@ -130,5 +130,18 @@ describe('WordSchema englishName', () => {
       id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', description: null,
     }
     expect(WordSchema.parse(word)).toEqual({ ...word, origin: null })
+  })
+})
+
+describe('TableGroupSchema alias', () => {
+  it('alias 가 없는 옛 페이로드를 파싱하면 빈 문자열이 된다', () => {
+    // 별칭은 nullable 이 아니라 빈 문자열 기본값이다(설계 3.1) — null 이면 소비처마다 `?? ''` 가 붙는다.
+    const legacy = { id: 'g1', name: '회원관리', color: '#4A90D9', comment: null }
+    expect(TableGroupSchema.parse(legacy).alias).toBe('')
+  })
+
+  it('alias 값을 그대로 보존한다', () => {
+    const group = { id: 'g1', name: '회원관리', color: '#4A90D9', comment: null, alias: 'MBR' }
+    expect(TableGroupSchema.parse(group)).toEqual(group)
   })
 })

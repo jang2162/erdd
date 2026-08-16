@@ -9,8 +9,8 @@ function tbl(id: string, groupId: string | null): Table {
 }
 function model(): ProjectModel {
   const m = createEmptyModel()
-  m.tableGroups['G1'] = { id: 'G1', name: '주문', color: '#000', comment: null }
-  m.tableGroups['G2'] = { id: 'G2', name: '회원', color: '#111', comment: null }
+  m.tableGroups['G1'] = { id: 'G1', name: '주문', color: '#000', comment: null, alias: '' }
+  m.tableGroups['G2'] = { id: 'G2', name: '회원', color: '#111', comment: null, alias: '' }
   m.tables['ORD'] = tbl('ORD', 'G1')   // 그룹 내
   m.tables['USR'] = tbl('USR', 'G2')   // 다른 그룹
   m.tables['LOG'] = tbl('LOG', null)   // 미분류
@@ -66,7 +66,7 @@ describe('buildGhostNodes — 앵커 전달', () => {
   it('고스트 노드도 원본 테이블의 앵커 목록을 싣는다', () => {
     // 그룹 g1 안의 자식 C 가 그룹 밖 부모 P 를 참조한다 → P 가 고스트로 나온다.
     const m = createEmptyModel()
-    m.tableGroups['g1'] = { id: 'g1', name: 'G', color: '#000', comment: null }
+    m.tableGroups['g1'] = { id: 'g1', name: 'G', color: '#000', comment: null, alias: '' }
     m.tables['P'] = { id: 'P', logicalName: 'P', physicalName: 'P', comment: null,
       groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
     m.tables['C'] = { id: 'C', logicalName: 'C', physicalName: 'C', comment: null,

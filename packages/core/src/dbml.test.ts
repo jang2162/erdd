@@ -203,7 +203,7 @@ describe('generateDbml', () => {
 
 function relModel(): ProjectModel {
   const m = baseModel()
-  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: null }
+  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: null, alias: '' }
   m.tables['t1']!.groupId = 'g1'
   m.tables['t2'] = {
     id: 't2', logicalName: '주문', physicalName: 'ORD', comment: null,

@@ -139,7 +139,7 @@ describe('tree', () => {
 /** 디스크를 거친 왕복이 실제로 전 경로를 지나가게 하는 모델. */
 function richModel(): ProjectModel {
   const m = createEmptyModel()
-  m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#eef', comment: '회원 도메인' }
+  m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#eef', comment: '회원 도메인', alias: '' }
   m.domains['d1'] = {
     id: 'd1', name: '명', category: '문자', logicalType: 'VARCHAR(100)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },

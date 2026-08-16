@@ -44,8 +44,8 @@ describe('createGroupWith', () => {
     grantEditPermission()
     const m = buildSampleModel()
     m.tableGroups = {
-      a: { id: 'a', name: '그룹1', color: '#111111', comment: null },
-      b: { id: 'b', name: '그룹3', color: '#222222', comment: null },
+      a: { id: 'a', name: '그룹1', color: '#111111', comment: null, alias: '' },
+      b: { id: 'b', name: '그룹3', color: '#222222', comment: null, alias: '' },
     }
     const { mutate, calls } = fakeMutate()
 
@@ -63,7 +63,7 @@ describe('createGroupWith', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     const ahead = buildSampleModel()
-    ahead.tableGroups = { ...ahead.tableGroups, z: { id: 'z', name: '그룹1', color: '#333333', comment: null } }
+    ahead.tableGroups = { ...ahead.tableGroups, z: { id: 'z', name: '그룹1', color: '#333333', comment: null, alias: '' } }
     const { mutate, calls } = fakeMutate()
 
     const id = createGroupWith(mutate, [])

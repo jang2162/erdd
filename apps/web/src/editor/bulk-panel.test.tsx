@@ -31,7 +31,7 @@ function renderPanel() {
 /** 픽스처(t1·t2가 g1 소속)에 빈 그룹 g2를 더한다. */
 function modelWithEmptyG2(): ProjectModel {
   const m = buildSampleModel()
-  m.tableGroups['g2'] = { id: 'g2', name: '주문영역', color: '#000000', comment: null }
+  m.tableGroups['g2'] = { id: 'g2', name: '주문영역', color: '#000000', comment: null, alias: '' }
   return m
 }
 

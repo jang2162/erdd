@@ -239,45 +239,46 @@ function ColumnRow(props: {
   const domain = locked ? props.domains.find((d) => d.id === c.domainId) : undefined
   return (
     <li
-      className={cn('grid gap-2 rounded-md border p-2', props.selected && 'ring-2 ring-primary')}
+      className={cn('relative grid gap-2 rounded-md border p-2', props.selected && 'ring-2 ring-primary')}
       aria-selected={props.selected}
       ref={props.rowRef}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <NamePair
-            projectId={props.projectId}
-            logicalName={c.logicalName}
-            physicalName={c.physicalName}
-            idPrefix={`col-${c.id}`}
-            physicalLabel="물리명"
-            canEdit={canEdit}
-            applyNames={props.applyNames}
-            extra={canEdit ? (draft) => {
-              // 판정도 draft 기준이다 — 커밋값으로 보면 방금 친 이름이 중복인데도 버튼이 활성이다.
-              const termCheck = canRegisterTerm(model, draft, namingRules)
-              return (
-                <div>
-                  <Button
-                    size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
-                    disabled={!termCheck.ok}
-                    title={termCheck.reason === 'duplicate'
-                      ? '같은 논리명의 용어가 이미 있습니다'
-                      : termCheck.reason === 'empty'
-                        ? '논리명과 물리명이 모두 있어야 등록할 수 있습니다'
-                        : undefined}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => props.onRegisterTerm(draft)}
-                  >
-                    용어 등록
-                  </Button>
-                </div>
-              )
-            } : undefined}
-          />
-        </div>
-        <WarningBadge warnings={props.warnings} className="shrink-0" />
-      </div>
+      {/*
+        ⚠️ 배지를 NamePair 와 같은 flex row 에 두면 shrink-0 인 배지가 폭을 뺏어
+        **경고가 있는 컬럼만 입력란이 좁아진다**(320px 사이드바에서 컬럼마다 폭이 들쭉날쭉해진다).
+        직전 사이클 설계 3.7 의 「카드 우상단」 의도대로 띄운다. 물리명 라벨이 짧아 겹치지 않는다.
+      */}
+      <WarningBadge warnings={props.warnings} className="absolute top-2 right-2" />
+      <NamePair
+        projectId={props.projectId}
+        logicalName={c.logicalName}
+        physicalName={c.physicalName}
+        idPrefix={`col-${c.id}`}
+        physicalLabel="물리명"
+        canEdit={canEdit}
+        applyNames={props.applyNames}
+        extra={canEdit ? (draft) => {
+          // 판정도 draft 기준이다 — 커밋값으로 보면 방금 친 이름이 중복인데도 버튼이 활성이다.
+          const termCheck = canRegisterTerm(model, draft, namingRules)
+          return (
+            <div>
+              <Button
+                size="sm" variant="ghost" className="h-6 px-1.5 text-[10px]"
+                disabled={!termCheck.ok}
+                title={termCheck.reason === 'duplicate'
+                  ? '같은 논리명의 용어가 이미 있습니다'
+                  : termCheck.reason === 'empty'
+                    ? '논리명과 물리명이 모두 있어야 등록할 수 있습니다'
+                    : undefined}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => props.onRegisterTerm(draft)}
+              >
+                용어 등록
+              </Button>
+            </div>
+          )
+        } : undefined}
+      />
       <div className="grid gap-1.5">
         <FieldLabel htmlFor={`col-domain-${c.id}`}>도메인</FieldLabel>
         <select id={`col-domain-${c.id}`}

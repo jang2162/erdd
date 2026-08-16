@@ -114,7 +114,7 @@ describe('TableTree', () => {
     // 그룹1·그룹2가 있는 상태에서 그룹1을 지운 모델 → 추가 시 새 이름은 "그룹1"이어야 한다.
     const model = buildSampleModel()
     model.tableGroups = {
-      g2: { id: 'g2', name: '그룹2', color: '#000', comment: null },
+      g2: { id: 'g2', name: '그룹2', color: '#000', comment: null, alias: '' },
     }
     model.tables = Object.fromEntries(
       Object.entries(model.tables).map(([id, t]) => [id, { ...t, groupId: null }]),
@@ -282,7 +282,7 @@ describe('TableTree 다중 선택 제스처', () => {
     const model = buildSampleModel()
     model.tableGroups = {
       ...model.tableGroups,
-      g2: { id: 'g2', name: '주문관리', color: '#111', comment: null },
+      g2: { id: 'g2', name: '주문관리', color: '#111', comment: null, alias: '' },
     }
     model.tables = { ...model.tables, t3: tbl('t3', 'ORD', '주문', 'g2') }
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
@@ -461,7 +461,7 @@ describe('TableTree 드래그 그룹 이동', () => {
   /** g1(회원관리)에 t1·t2, 그리고 멤버 없는 빈 그룹 하나를 더한 모델. */
   function withEmptyGroup(id: string, name: string) {
     const model = buildSampleModel()
-    model.tableGroups = { ...model.tableGroups, [id]: { id, name, color: '#000', comment: null } }
+    model.tableGroups = { ...model.tableGroups, [id]: { id, name, color: '#000', comment: null, alias: '' } }
     return model
   }
 

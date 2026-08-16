@@ -222,7 +222,7 @@ describe('applyDdlImport — DBML 확장', () => {
 
   it('existingId 가 있으면 새로 만들지 않고 색·설명도 덮어쓰지 않는다', () => {
     const m = createEmptyModel()
-    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: '원래 설명' }
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: '원래 설명', alias: '' }
     const next = applyDdlImport(m, planWith({
       groups: [{
         name: '회원 관리', color: '#0E7A6C', comment: '가져온 설명',
@@ -270,7 +270,7 @@ function roundTripModel(): ProjectModel {
     id: 'f2', name: '개인정보', target: 'column', type: 'text', options: [],
     required: false, defaultValue: null, order: 0, origin: null,
   }
-  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인' }
+  m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인', alias: '' }
   m.tables['t1'] = {
     id: 't1', logicalName: '회원', physicalName: 'MBR', comment: "it's 회원\n두 줄 설명",
     groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: { f1: '2' },
