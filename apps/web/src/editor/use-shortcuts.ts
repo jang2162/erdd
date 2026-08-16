@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { deleteColumnCascade, type ProjectModel } from '@erdd/core'
+import { deleteColumnCascade, deleteRelationship, type ProjectModel } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
-import { parseClipboard, serializeColumns, serializeTables } from './clipboard.js'
+import { parseClipboard, serializeColumns, serializeNotes, serializeTables } from './clipboard.js'
 import {
-  pasteColumns, pasteTables, planPasteColumnIds, planPasteTableIds,
+  pasteColumns, pasteNotes, pasteTables,
+  planPasteColumnIds, planPasteNoteIds, planPasteTableIds,
 } from './clipboard-edits.js'
 import { removeTable } from './model-edits.js'
+import { removeNote } from './note-edits.js'
 
 /** 붙여넣은 테이블을 원본 위에 겹치지 않게 밀어 놓는 거리(px). */
 const PASTE_OFFSET = { x: 40, y: 40 }
@@ -77,6 +79,14 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
       const nothingSelected = selectedTableIds.length === 0
 
       if (mod && e.key.toLowerCase() === 'c') {
+        // 선택은 항상 한 종류다(store의 CLEARED_SELECTION) — 우선순위를 정할 필요가 없다.
+        // ⚠️ 메모가 선택되면 selectedTableIds는 비어 있으므로 이 분기는 nothingSelected 가드
+        // **앞**에 와야 한다. 뒤에 두면 그 가드에 걸려 아무 일도 일어나지 않는다.
+        if (s.selectedNoteId) {
+          e.preventDefault()
+          void navigator.clipboard.writeText(JSON.stringify(serializeNotes(model, [s.selectedNoteId])))
+          return
+        }
         if (nothingSelected) return
         e.preventDefault()
         void navigator.clipboard.writeText(JSON.stringify(
@@ -85,6 +95,16 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
       }
 
       if (mod && e.key.toLowerCase() === 'x') {
+        if (s.selectedNoteId) {
+          if (!canEdit) return
+          e.preventDefault()
+          const noteId = s.selectedNoteId
+          // 복사와 삭제를 한 mutation으로 — Revision 1건 · undo 1회(설계 3.5)
+          void navigator.clipboard.writeText(JSON.stringify(serializeNotes(model, [noteId])))
+          void mutate((m) => removeNote(m, noteId), { summary: '메모 잘라내기' })
+          s.selectNote(null)
+          return
+        }
         if (!canEdit || nothingSelected) return
         e.preventDefault()
         // 복사와 삭제를 한 mutation으로 — Revision 1건 · undo 1회(설계 §3.6)
@@ -103,6 +123,27 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        // 메모·관계는 우측 패널 버튼과 **같은 함수·같은 summary·같은 순서**(선택을 먼저 비우고
+        // mutate)를 쓴다 — 진입점이 둘이면 규칙은 하나여야 한다(설계 D2).
+        // 확인 다이얼로그는 없다: 그 정책은 「테이블 2개 이상」에만 걸리고 메모·관계는 단일 선택이다.
+        if (s.selectedNoteId) {
+          if (!canEdit) return
+          e.preventDefault()
+          const noteId = s.selectedNoteId
+          s.selectNote(null)
+          void mutate((m) => removeNote(m, noteId), { summary: '메모 삭제' })
+          return
+        }
+        if (s.selectedRelationshipId) {
+          if (!canEdit) return
+          e.preventDefault()
+          const relId = s.selectedRelationshipId
+          s.selectRelationship(null)
+          // ⚠️ deleteRelationship 이다 — 자식 FK 컬럼을 일부러 보존한다(설계 D2).
+          // deleteColumnCascade 로 바꾸면 같은 「관계 삭제」가 진입점에 따라 다른 결과를 낸다.
+          void mutate((m) => deleteRelationship(m, relId), { summary: '관계 삭제' })
+          return
+        }
         if (!canEdit || nothingSelected) return
         e.preventDefault()
         const columnIds = [...selectedColumnIds]
@@ -143,6 +184,16 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
         if (tableId === undefined) return
         const ids = planPasteColumnIds(payload, newId)     // producer 밖에서 발급
         void mutate((m) => pasteColumns(m, payload, { tableId, ids }), { summary: '컬럼 붙여넣기' })
+        return
+      }
+
+      if (payload.kind === 'notes') {
+        const ids = planPasteNoteIds(payload, newId)      // producer 밖에서 발급
+        void mutate((m) => pasteNotes(m, payload, { ids, offset: PASTE_OFFSET }),
+          { summary: '메모 붙여넣기' })
+        // 테이블 붙여넣기가 selectTables로 하는 것과 대칭 — 붙여넣은 것이 곧바로 선택된다.
+        const first = ids[0]
+        if (first !== undefined) s.selectNote(first)
         return
       }
 

@@ -390,4 +390,105 @@ describe('useEditorShortcuts', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))
     await waitFor(() => expect(writeText).toHaveBeenCalled())
   })
+
+  /*
+   * 메모·관계선 단축키. 선택은 항상 한 종류다(store의 CLEARED_SELECTION) — 메모를 고르면
+   * 테이블 선택이 비워지므로 「테이블과 메모가 동시에 선택된」 상태가 구조적으로 없고,
+   * 그래서 분기는 우선순위를 정할 필요 없이 nothingSelected 가드 **앞**에 오면 된다.
+   */
+  it('메모를 선택하고 Delete로 지운다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(useEditorStore.getState().model.notes['n1']).toBeUndefined())
+    expect(useEditorStore.getState().selectedNoteId).toBeNull()
+  })
+
+  it('관계를 선택하고 Delete로 지운다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().selectRelationship('r1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(useEditorStore.getState().model.relationships['r1']).toBeUndefined())
+    expect(useEditorStore.getState().selectedRelationshipId).toBeNull()
+  })
+
+  // ⚠️ 설계 D2의 급소. 자식 FK 컬럼을 함께 지우는 함수로 바꾸면 이 케이스가 빨개진다.
+  it('관계를 지워도 자식 FK 컬럼은 남는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().selectRelationship('r1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await waitFor(() => expect(useEditorStore.getState().model.relationships['r1']).toBeUndefined())
+    expect(useEditorStore.getState().model.columns['c4']).toBeDefined()
+  })
+
+  it('Backspace도 메모를 지운다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+    await waitFor(() => expect(useEditorStore.getState().model.notes['n1']).toBeUndefined())
+  })
+
+  it('메모를 선택하고 Cmd+C를 누르면 notes 페이로드가 쓰인다', async () => {
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    const payload = JSON.parse(writeText.mock.calls[0]![0] as string)
+    expect(payload.kind).toBe('notes')
+    expect(payload.notes[0].content).toBe('회원 도메인 메모')
+  })
+
+  it('메모 Cmd+X는 복사와 삭제를 한 뮤테이션으로 낸다', async () => {
+    const fetchMock = mockModelMutate()
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true, bubbles: true }))
+    await waitFor(() => expect(useEditorStore.getState().model.notes['n1']).toBeUndefined())
+    expect(writeText).toHaveBeenCalled()
+    expect(countModelMutate(fetchMock)).toBe(1)
+  })
+
+  it('메모 붙여넣기가 offset만큼 밀고 새 메모를 선택한다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    renderHarness()
+    const payload = {
+      __erdd: 1, v: 1, kind: 'notes',
+      notes: [{ content: '붙인메모', color: '#fff', position: { x: 10, y: 20 } }],
+    }
+    const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(e, 'clipboardData', { value: { getData: () => JSON.stringify(payload) } })
+    document.dispatchEvent(e)
+    await waitFor(() => {
+      const added = Object.values(useEditorStore.getState().model.notes)
+        .find((n) => n.content === '붙인메모')
+      expect(added?.position).toEqual({ x: 50, y: 60 })
+    })
+    const added = Object.values(useEditorStore.getState().model.notes)
+      .find((n) => n.content === '붙인메모')!
+    expect(useEditorStore.getState().selectedNoteId).toBe(added.id)
+  })
+
+  it('읽기 전용이면 메모를 지우지 못하고 복사만 된다', async () => {
+    useEditorStore.setState({ canEdit: false })
+    useEditorStore.getState().selectNote('n1')
+    renderHarness()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    expect(useEditorStore.getState().model.notes['n1']).toBeDefined()
+  })
+
+  it('다이얼로그가 열려 있으면 메모 삭제가 막힌다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    useEditorStore.getState().selectNote('n1')
+    renderHarness({ withDialog: true })
+    openDialog()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(useEditorStore.getState().model.notes['n1']).toBeDefined()
+  })
 })
