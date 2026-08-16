@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -114,6 +114,57 @@ describe('GroupPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: '이름으로 별칭 채우기' }))
     expect(spy).toHaveBeenCalled()
     expect(useEditorStore.getState().model.tableGroups['g1']!.alias).toBe('')
+  })
+
+  // ⚠️ 아래 두 건은 「그룹을 갈아타도 별칭 입력이 앞 그룹 값을 들고 있다」를 잠근다.
+  // 별칭 입력은 D3(타이핑 중 정규화) 때문에 제어 인풋이라, 다른 세 필드가 `key` 로 공짜로 얻는
+  // 리셋이 없다. 동기화 트리거가 alias 문자열 하나뿐이면 **두 그룹의 별칭이 같을 때**
+  // (신설 필드라 실사용에서는 거의 전부 '') effect 가 돌지 않아 앞 그룹 값이 남는다.
+  // 그래서 두 그룹의 alias 는 반드시 둘 다 '' 여야 한다 — 값이 다르면 결함이 있어도 통과한다.
+  function loadTwoGroups() {
+    const m = buildSampleModel()
+    m.tableGroups['g2'] = { id: 'g2', name: '주문관리', color: '#fee', comment: null, alias: '' }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    useEditorStore.getState().selectGroup('g1')
+  }
+
+  /**
+   * 캔버스에서 다른 그룹을 클릭하는 동선을 그대로 재현한다 — blur(커밋 시작)와 selectGroup 이
+   * **같은 클릭에서** 일어난다.
+   * ⚠️ 둘 사이에 커밋 도착을 기다리면 결함이 가려진다 — g1.alias 가 먼저 'AAA' 가 되어
+   * groupAlias 가 'AAA'→'' 로 바뀌고, 그러면 deps 가 alias 하나뿐이어도 effect 가 돈다.
+   * 커밋은 serializeMutation 이 마이크로태스크로 지연 실행하므로 실사용에서는 늦게 도착한다.
+   */
+  async function typeAliasThenSwitchGroup(value: string) {
+    const input = screen.getByLabelText('별칭')
+    await userEvent.type(input, value)
+    act(() => {
+      input.blur()
+      useEditorStore.getState().selectGroup('g2')
+    })
+    // ⚠️ 커밋이 도착한 뒤에 단언한다 — 안 그러면 타이밍에 따라 우연히 통과한다.
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tableGroups['g1']!.alias).toBe(value))
+  }
+
+  it('그룹을 갈아타면 별칭 입력이 새 그룹 값으로 바뀐다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    loadTwoGroups()
+    renderPanel()
+    await typeAliasThenSwitchGroup('AAA')
+    expect(screen.getByLabelText('별칭')).toHaveValue('')
+  })
+
+  it('갈아탄 뒤 별칭 칸을 스쳐 지나가도 새 그룹의 별칭이 바뀌지 않는다', async () => {
+    mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
+    loadTwoGroups()
+    renderPanel()
+    await typeAliasThenSwitchGroup('AAA')
+
+    await userEvent.click(screen.getByLabelText('별칭'))      // 값은 건드리지 않고 스쳐 지나간다
+    await userEvent.tab()
+    expect(useEditorStore.getState().model.tableGroups['g2']!.alias).toBe('')
   })
 
   it('읽기 전용이면 별칭이 readOnly 이고 채우기 버튼이 없다', () => {

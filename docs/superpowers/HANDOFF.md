@@ -64,14 +64,14 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 699 · cli 141 · web 915 · server 202 · typecheck EXIT=0
+core 700 · cli 141 · web 917 · server 202 · typecheck EXIT=0
 ```
 
 ⚠️ **server 수치는 워크트리 격리 DB(`erdd_test_b`, 0013 적용)로 잰 값이고 최상위의 공유 `erdd_test`
 로는 재지 않았다.** 같아야 하지만 확인하지 않았다 — 병합 후 한 번 재어 확정할 것. **공유 `erdd_test`
 에는 0013 을 적용해야 한다.**
 
-그룹 별칭 사이클에서 **core +7 · web +5** 가 붙었다(직전 기준선은 `core 692 · cli 141 · web 910 ·
+그룹 별칭 사이클에서 **core +8 · web +7** 가 붙었다(직전 기준선은 `core 692 · cli 141 · web 910 ·
 server 200`). **cli 무변경이 정상이다** — 파일 포맷은 core 의 `file-format.ts`·`file-merge.ts` 가 쥐고
 있고 CLI 패키지는 그것을 그대로 쓴다. **server +2 는 그룹 별칭 왕복 2건**이다.
 
@@ -82,6 +82,14 @@ server 200`). **cli 무변경이 정상이다** — 파일 포맷은 core 의 `f
 | Task 3 | +1 | 0 | 0 | `file-format` +1(groups.yaml 에 싣고 빈 값은 생략) |
 | Task 4 | 0 | **+5** | 0 | `group-panel` — blur 커밋 · 타이핑 중 정규화 · 자동 생성 · 토스트 · 읽기 전용 |
 | Task 5 | 0 | 0 | 0 | (B) 배지 — **설계 3.5 대로 잠기지 않는다** |
+| **리뷰 수정** | **+1** | **+2** | 0 | M1(그룹 갈아타기) 2 · m1(`FIELD_LABEL`) 1 |
+
+⚠️ **리뷰가 잡은 Major 는 「계획서에 있던 코드를 그대로 옮겨 적어서」 생겼다** — 계획서의
+`useEffect(…, [group.alias])` 에 `groupId` 가 빠져 있었고, 구현·자체 검증 어느 쪽도 **그룹을 갈아타는
+동선을 한 번도 밟지 않아** 8건이 전부 초록이었다. 계획서가 준 코드도 잠금 대상이다.
+⚠️ **그 회귀 테스트는 순서 하나로 공허해진다** — blur 와 `selectGroup` 사이에서 커밋 도착을 기다리면
+`groupAlias` 가 `'AAA'→''` 로 바뀌어 deps 가 alias 하나여도 effect 가 돈다(초판이 실제로 그렇게 써서
+결함이 있는데도 통과했다). 둘을 **같은 `act()` 안에서** 일으켜야 실사용 동선이 된다.
 
 메모·관계선 단축키 사이클에서 **web +28** 만 붙었다(직전 기준선은 `core 692 · cli 141 · web 882 ·
 server 200`). **core·cli·server 는 무변경이 정상이다** — 설계가 `apps/web` 전용을 못 박았고 변경
@@ -793,11 +801,22 @@ pnpm db:migrate` 는 조용히 `.env` 의 **dev** DB에 적용된다(실측: 존
     옵셔널(`group?.alias ?? ''`)로 읽는다.
 - **`null` 이 아니라 빈 문자열이다**(3.3 관례와 갈리는 지점 — 1절 완료 표에 근거). DB 컬럼도
   `text NOT NULL DEFAULT ''` 다.
-- **등록처는 넷이다** — `model.ts`(스키마) · `group.ts`(`updateGroup` patch 타입 + `createGroup` 리터럴) ·
-  `db/schema.ts` + 마이그레이션 · `model-store.ts`(`loadProjectModel` 이 컬럼을 **손으로 나열**한다 —
-  자동이 아니다). 파일 포맷은 **둘**이다: `file-merge.ts` 의 `FILE_FIELDS`(병합 대상 + 완전성 게이트)와
-  `file-format.ts` 의 쓰기·읽기(실제 `groups.yaml`). **앞의 것만 넣으면 게이트는 통과하는데 왕복이
-  성립하지 않는다.**
+- **등록처는 일곱이다.** ⚠️ 설계·계획서가 **둘을 빠뜨렸고 리뷰가 잡았다** — 새 엔티티 **필드**를 더할
+  때 이 목록을 그대로 훑어라.
+  1. `model.ts` — 스키마
+  2. `group.ts` — `updateGroup` patch 타입 + `createGroup` 리터럴
+  3. `db/schema.ts` + 마이그레이션
+  4. `model-store.ts` — ⚠️ `loadProjectModel` 이 **10개 컬렉션을 전부 손으로 나열**한다. 설계 3.2 의
+     「행 전체를 읽으므로 매핑 배선이 자동으로 따라온다 — 확인만 하고 손대지 않는다」는 **사실이
+     아니다**(설계 문서에 정정 표시를 남겼다). `drizzle` 이 행을 통째로 주기는 하지만 `ProjectModel`
+     로 옮기는 것은 손으로 적은 매핑이다.
+  5. `file-merge.ts` 의 `FILE_FIELDS` — 병합 대상 + **완전성 게이트**(필드를 분류하지 않으면 즉시 red)
+  6. `file-format.ts` 의 쓰기·읽기 — 실제 `groups.yaml`. ⚠️ **5번만 넣으면 게이트는 통과하는데 CLI
+     왕복이 성립하지 않는다.**
+  7. `model-diff.ts` 의 `FIELD_LABEL` — ⚠️ **누락해도 테스트가 통과한다**(3.2 가 명시한 성질이다).
+     `IGNORED_FIELDS` 에 없으면 표시용 diff 에는 잡히므로 `?? field` 폴백이 **영문 원문**을 낸다.
+     새는 곳 셋: 웹 스냅샷 비교 화면 · 변경분 Excel · CLI `erdd diff`. 잠그려면 라벨 단언 1건이면
+     된다(`model-diff.test.ts` 의 「그룹 별칭을 한국어 라벨로 표시한다」).
 - ⚠️ **지금은 소비처가 없다.** DDL·DBML·Excel 어디에도 나가지 않는다 — 의도된 상태이고 소비자는
   테이블명 형식 템플릿이다(6절 이월).
 

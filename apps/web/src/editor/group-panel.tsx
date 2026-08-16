@@ -27,7 +27,11 @@ export function GroupPanel({ projectId }: { projectId: string }) {
   const groupAlias = group?.alias ?? ''
   const [alias, setAlias] = useState(groupAlias)
   // 모델 값이 바뀌면(자동 생성·실시간·undo) 입력을 맞춘다.
-  useEffect(() => { setAlias(groupAlias) }, [groupAlias])
+  // ⚠️ deps 의 groupId 를 빼지 마라 — 이 인풋은 D3(타이핑 중 정규화) 때문에 제어 인풋이라
+  // 다른 세 필드가 `key` 로 공짜로 얻는 리셋이 없다. 트리거가 alias 문자열 하나뿐이면
+  // **두 그룹의 별칭이 같을 때**(신설 필드라 실사용에서는 거의 전부 '') 그룹을 갈아타도
+  // effect 가 안 돌아 앞 그룹 값이 남고, 그 칸을 스쳐 지나가기만 해도 새 그룹에 커밋된다.
+  useEffect(() => { setAlias(groupAlias) }, [groupId, groupAlias])
   if (!group) return null
 
   const memberCount = Object.values(model.tables).filter((t) => t.groupId === groupId).length
@@ -57,7 +61,7 @@ export function GroupPanel({ projectId }: { projectId: string }) {
           <Label htmlFor="grp-alias">별칭</Label>
           <div className="relative">
             <Input
-              id="grp-alias" aria-label="별칭" className="pr-9 font-mono"
+              id="grp-alias" className="pr-9 font-mono"
               value={alias} readOnly={!canEdit}
               onChange={(e) => setAlias(normalizeAlias(e.target.value))}
               onBlur={() => {

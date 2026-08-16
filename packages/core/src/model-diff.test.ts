@@ -225,6 +225,20 @@ describe('diffModelsForDisplay', () => {
       expect(f.after).toBe('인사관리')
     })
 
+    it('그룹 별칭을 한국어 라벨로 표시한다', () => {
+      // HANDOFF 3.2: FIELD_LABEL 은 등록처다 — 빠뜨리면 `?? field` 폴백이 영문 원문을 그대로 낸다.
+      // 라벨이 없어도 diff 자체는 잡히므로 이 단언이 없으면 아무것도 빨개지지 않는다.
+      const base = buildSampleModel()
+      const target = clone(base)
+      target.tableGroups['g1']!.alias = 'MBR'
+      const d = diffModelsForDisplay(base, target)
+      const e = d.entries.find((x) => x.kind === 'tableGroup')!
+      const f = e.fields.find((x) => x.field === 'alias')!
+      expect(f.label).toBe('별칭')
+      expect(f.before).toBe('')
+      expect(f.after).toBe('MBR')
+    })
+
     it('tableId는 테이블 물리명으로 표시한다', () => {
       const base = buildSampleModel()
       const target = clone(base)

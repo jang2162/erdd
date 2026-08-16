@@ -63,7 +63,7 @@ const FIELD_LABEL: Record<string, string> = {
   defaultValue: '기본값', order: '순번', domainId: '도메인', custom: '커스텀 항목',
   abbreviation: '약어', englishName: '영문명', logicalType: '논리 타입',
   dialectTypes: '방언별 타입', allowedValues: '허용값', category: '분류',
-  color: '색상', content: '내용', unique: '유니크', columns: '구성 컬럼',
+  color: '색상', alias: '별칭', content: '내용', unique: '유니크', columns: '구성 컬럼',
   parentTableId: '부모 테이블', childTableId: '자식 테이블', cardinality: '카디널리티',
   identifying: '식별 관계', columnMappings: '컬럼 매핑', target: '적용 대상',
   options: '선택지', required: '필수', origin: '원본 참조',

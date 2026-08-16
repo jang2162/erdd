@@ -23,6 +23,9 @@
 | `packages/core/src/file-merge.ts` | `FILE_FIELDS.tableGroup`에 `alias` |
 | `apps/web/src/editor/group-panel.tsx` | 별칭 입력란 + 사전 기반 자동 생성 |
 | `apps/web/src/editor/edit-panel.tsx` | 컬럼 행 배지를 `absolute`로 (B) |
+| `packages/core/src/file-format.ts` | ⚠️ **초판 누락** — `groups.yaml` 쓰기·읽기. `FILE_FIELDS`만으로는 CLI 왕복이 성립하지 않는다 |
+| `apps/server/src/services/model-store.ts` | ⚠️ **초판 누락** — `loadProjectModel`의 손매핑(아래 3.2 정정) |
+| `packages/core/src/model-diff.ts` | ⚠️ **초판 누락(리뷰 m1)** — `FIELD_LABEL`에 `alias`. 없으면 변경 내역·변경분 Excel·CLI `diff`에 영문 원문이 노출된다(HANDOFF 3.2가 명시한 등록처인데 설계·계획서 둘 다 빠뜨렸다) |
 
 **범위 밖 (건드리지 않는다)**
 
@@ -103,8 +106,16 @@ export const TableGroupSchema = z.strictObject({
 alias: text('alias').notNull().default(''),
 ```
 
-`drizzle-kit generate`로 0013을 만든다. `loadProjectModel`은 `db.select().from(modelTableGroups)`로
-행 전체를 읽으므로 **매핑 배선이 자동으로 따라온다** — 확인만 하고 손대지 않는다.
+`drizzle-kit generate`로 0013을 만든다.
+
+> ⚠️ **정정(리뷰에서 확인, 2026-08-16).** 초판은 여기에 「`loadProjectModel`은
+> `db.select().from(modelTableGroups)`로 행 전체를 읽으므로 **매핑 배선이 자동으로 따라온다** — 확인만
+> 하고 손대지 않는다」고 적었는데 **사실이 아니다.** `drizzle`이 행을 통째로 주기는 하지만 그것을
+> `ProjectModel`로 옮기는 것은 **손으로 적은 매핑**이고, `loadProjectModel`은 10개 컬렉션을 전부 그렇게
+> 나열한다(`model-store.ts:58` 부근). 그래서 `alias: r.alias`를 **직접 더해야 했다.** 계획서 Task 2
+> Step 4의 조건부 문구(「손으로 컬럼을 나열하고 있으면 그때만 고친다」)가 이 오류를 덮어 구현은 옳게
+> 갔지만, 설계만 읽고 「확인만」 하면 별칭이 조용히 `''`로 돌아온다. **새 필드를 더할 때 이 파일은
+> 등록처다**(HANDOFF 3.15의 일곱 곳 중 4번).
 
 ### 3.3 CLI 파일 포맷
 
