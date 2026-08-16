@@ -393,7 +393,7 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
     const model = buildSampleModel()
     model.tableGroups = {
       ...model.tableGroups,
-      g2: { id: 'g2', name: '주문영역', color: '#000', comment: null },
+      g2: { id: 'g2', name: '주문영역', color: '#000', comment: null, alias: '' },
     }
     model.tables = {
       ...model.tables,

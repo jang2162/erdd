@@ -333,7 +333,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     const id = idOf(g, `${TREE_ROOT}/groups.yaml`, 'groups', i)
     model.tableGroups[id] = {
       id, name: asStr(g['name']) ?? '', color: asStr(g['color']) ?? '#ffffff',
-      comment: asStr(g['comment']),
+      comment: asStr(g['comment']), alias: '',
     }
   })
   readList(`${TREE_ROOT}/domains.yaml`, 'domains').forEach((d, i) => {

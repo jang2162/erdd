@@ -14,7 +14,7 @@ function loadWithGroups() {
     ...m,
     tableGroups: {
       ...m.tableGroups,
-      g2: { id: 'g2', name: '주문관리', color: '#E58F65', comment: null },
+      g2: { id: 'g2', name: '주문관리', color: '#E58F65', comment: null, alias: '' },
     },
   }
   useEditorStore.getState().setLoaded(withTwo, 1, 'p1')

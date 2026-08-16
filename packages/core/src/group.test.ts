@@ -37,6 +37,10 @@ describe('updateGroup', () => {
     const m = base()
     expect(updateGroup(m, 'X', { name: 'y' })).toBe(m)
   })
+  it('별칭을 고친다', () => {
+    const m = createGroup(base(), { id: 'G1', name: '회원', color: '#000' })
+    expect(updateGroup(m, 'G1', { alias: 'MBR' }).tableGroups['G1']!.alias).toBe('MBR')
+  })
 })
 
 describe('setTableGroup', () => {

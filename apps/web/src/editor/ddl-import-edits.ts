@@ -47,7 +47,7 @@ export function applyDdlImport(
       groupId = newId()
       const color = g.color ?? nextGroupColor(usedColors)
       usedColors.push(color)
-      tableGroups[groupId] = { id: groupId, name: g.name, color, comment: g.comment }
+      tableGroups[groupId] = { id: groupId, name: g.name, color, comment: g.comment, alias: '' }
     }
     for (const name of g.tablePhysicalNames) groupIdByTable.set(name, groupId)
   }

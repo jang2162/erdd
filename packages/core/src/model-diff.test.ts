@@ -216,7 +216,7 @@ describe('diffModelsForDisplay', () => {
     it('groupId는 소속 그룹 이름으로 표시한다', () => {
       const base = buildSampleModel()
       const target = clone(base)
-      target.tableGroups['g2'] = { id: 'g2', name: '인사관리', color: '#000', comment: null }
+      target.tableGroups['g2'] = { id: 'g2', name: '인사관리', color: '#000', comment: null, alias: '' }
       target.tables['t1']!.groupId = 'g2'
       const d = diffModelsForDisplay(base, target)
       const e = d.entries.find((x) => x.entityId === 't1')!

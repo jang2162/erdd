@@ -158,4 +158,19 @@ describe('diffModels', () => {
     const ops = diffModels(base, target)
     expect(ops.filter((o) => o.action === 'update')).toEqual([])
   })
+
+  it('does not emit an update op when the target group merely lacks alias (legacy snapshot regression)', () => {
+    // alias는 이번 sub-project에서 tableGroup에 새로 추가된 필드다.
+    // HANDOFF 3.3: 새 필드를 추가할 때는 "구 스냅샷에 필드 없음" 케이스를 회귀 테스트로 남긴다.
+    // alias가 생기기 전 스냅샷의 jsonb에는 그룹에 alias 키가 아예 없고 현재 모델(base)에는 있다.
+    // 이때 값 없는 update op가 나가면 옛 스냅샷 복원이 500으로 터진다.
+    const base = buildSampleModel()
+    const target = structuredClone(base)
+    const legacyGroup = { ...target.tableGroups.g1! } as Record<string, unknown>
+    delete legacyGroup.alias
+    target.tableGroups.g1 = legacyGroup as unknown as NonNullable<typeof base.tableGroups.g1>
+
+    const ops = diffModels(base, target)
+    expect(ops.filter((o) => o.action === 'update')).toEqual([])
+  })
 })

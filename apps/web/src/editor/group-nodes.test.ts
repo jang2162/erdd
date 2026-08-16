@@ -8,7 +8,7 @@ function tbl(id: string, x: number, y: number, groupId: string | null): Table {
 }
 function model(): ProjectModel {
   const m = createEmptyModel()
-  m.tableGroups['G1'] = { id: 'G1', name: '회원', color: '#0E7A6C', comment: null }
+  m.tableGroups['G1'] = { id: 'G1', name: '회원', color: '#0E7A6C', comment: null, alias: '' }
   m.tables['T1'] = tbl('T1', 0, 0, 'G1')
   m.tables['T2'] = tbl('T2', 400, 200, 'G1')
   m.tables['T3'] = tbl('T3', 1000, 0, null) // 미분류
@@ -37,7 +37,7 @@ describe('buildGroupNodes', () => {
   })
   it('멤버가 없는 그룹은 노드를 만들지 않는다', () => {
     const m = createEmptyModel()
-    m.tableGroups['G1'] = { id: 'G1', name: '빈그룹', color: '#000', comment: null }
+    m.tableGroups['G1'] = { id: 'G1', name: '빈그룹', color: '#000', comment: null, alias: '' }
     expect(buildGroupNodes(m, null, true)).toHaveLength(0)
   })
   it('selectedGroupId면 selected=true', () => {

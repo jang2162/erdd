@@ -28,7 +28,7 @@ function col(id: string, tableId: string, order: number): Column {
  */
 function fixture(): ProjectModel {
   const m = createEmptyModel()
-  m.tableGroups['g1'] = { id: 'g1', name: '주문', color: '#4A90D9', comment: null }
+  m.tableGroups['g1'] = { id: 'g1', name: '주문', color: '#4A90D9', comment: null, alias: '' }
   m.tables['orders'] = tbl('orders', 0, 'g1')
   m.tables['products'] = tbl('products', 0, null)      // 그룹 밖 → 고스트로 나온다
   m.tables['items'] = tbl('items', 400, 'g1')

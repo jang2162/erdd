@@ -12,7 +12,7 @@ function tbl(id: string, groupId: string | null, x: number, y: number): Table {
 
 function modelWith(tables: Table[], groupIds: string[]): ProjectModel {
   const m = createEmptyModel()
-  for (const g of groupIds) m.tableGroups[g] = { id: g, name: g, color: '#fff', comment: null }
+  for (const g of groupIds) m.tableGroups[g] = { id: g, name: g, color: '#fff', comment: null, alias: '' }
   for (const t of tables) m.tables[t.id] = t
   return m
 }

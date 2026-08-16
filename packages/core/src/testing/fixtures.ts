@@ -4,7 +4,7 @@ import { createEmptyModel, type ProjectModel } from '../model.js'
 export function buildSampleModel(): ProjectModel {
   return {
     tableGroups: {
-      g1: { id: 'g1', name: '회원관리', color: '#4A90D9', comment: null },
+      g1: { id: 'g1', name: '회원관리', color: '#4A90D9', comment: null, alias: '' },
     },
     tables: {
       t1: {
@@ -64,7 +64,7 @@ export function buildSampleModel(): ProjectModel {
 /** 9개 컬렉션을 전부 채운 픽스처. 왕복이 실제로 모든 경로를 지나가게 한다. */
 export function fullModel(): ProjectModel {
   const m = createEmptyModel()
-  m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#eef', comment: '회원 도메인' }
+  m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#eef', comment: '회원 도메인', alias: '' }
   m.domains['d1'] = {
     id: 'd1', name: '명', category: '문자', logicalType: 'VARCHAR(100)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },

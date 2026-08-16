@@ -22,7 +22,7 @@ describe('GroupViewSelect', () => {
     useEditorStore.setState((s) => ({
       model: {
         ...s.model,
-        tableGroups: { ...s.model.tableGroups, g2: { id: 'g2', name: '주문', color: '#000', comment: null } },
+        tableGroups: { ...s.model.tableGroups, g2: { id: 'g2', name: '주문', color: '#000', comment: null, alias: '' } },
       },
     }))
     useEditorStore.getState().enterGroupView('g1')

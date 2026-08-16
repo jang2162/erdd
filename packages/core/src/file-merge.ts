@@ -21,7 +21,7 @@ export const MERGE_KINDS: readonly MergeKind[] =
  * 괄호 표기는 파일에 전용 키가 없고 배열 위치·파일 소속으로 표현되는 것들이다.
  */
 export const FILE_FIELDS: Record<MergeKind, Record<string, string>> = {
-  tableGroup: { name: 'name', color: 'color', comment: 'comment' },
+  tableGroup: { name: 'name', color: 'color', comment: 'comment', alias: 'alias' },
   domain: {
     name: 'name', category: 'category', logicalType: 'logicalType',
     dialectTypes: 'dialectTypes', defaultValue: 'defaultValue',
