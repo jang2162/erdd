@@ -56,7 +56,7 @@
   export function serializeNotes(model: ProjectModel, noteIds: readonly string[]): ClipboardPayload
   ```
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 `clipboard.test.ts`에 추가한다(그 파일의 기존 import·픽스처를 쓴다 — `buildSampleModel`의 메모는 `n1` / content `'회원 도메인 메모'` / color `'#FFF3B0'` / position `{x:600,y:0}`).
 
@@ -100,14 +100,14 @@ describe('메모 클립보드', () => {
 })
 ```
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C apps/web exec vitest run src/editor/clipboard.test.ts
 ```
 기대: `serializeNotes is not a function`으로 FAIL.
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 `clipboard.ts`의 타입에 더한다(`ClipboardPayload` 유니온 위):
 
@@ -149,7 +149,7 @@ export function serializeNotes(model: ProjectModel, noteIds: readonly string[]):
   }
 ```
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C apps/web exec vitest run src/editor/clipboard.test.ts
@@ -159,7 +159,7 @@ pnpm -s -C apps/web typecheck; echo "EXIT=$?"
 
 ⚠️ **`ClipboardPayload`가 유니온이라 기존 소비처가 깨질 수 있다** — `payload.kind`로 좁히지 않고 `payload.tables`를 바로 읽는 곳이 있으면 타입 오류가 난다. `pnpm -r typecheck`로 전 패키지를 확인한다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add apps/web/src/editor/clipboard.ts apps/web/src/editor/clipboard.test.ts && \
@@ -191,7 +191,7 @@ Claude-Session: <세션 URL>"
   ): ProjectModel
   ```
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 ```ts
 describe('메모 붙여넣기', () => {
@@ -242,14 +242,14 @@ describe('메모 붙여넣기', () => {
 })
 ```
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C apps/web exec vitest run src/editor/clipboard-edits.test.ts
 ```
 기대: `planPasteNoteIds is not a function`으로 FAIL.
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 `planPasteColumnIds` 아래:
 
@@ -286,7 +286,7 @@ export function pasteNotes(
 }
 ```
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C apps/web exec vitest run src/editor/clipboard-edits.test.ts
@@ -294,7 +294,7 @@ pnpm -s -C apps/web typecheck; echo "EXIT=$?"
 ```
 기대: 신규 5건 PASS.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add apps/web/src/editor/clipboard-edits.ts apps/web/src/editor/clipboard-edits.test.ts && \
@@ -321,7 +321,7 @@ Claude-Session: <세션 URL>"
 
 ⚠️ **분기는 기존 `nothingSelected` 가드보다 앞에 둔다.** 메모·관계가 선택된 상태에서는 `selectedTableIds`가 비어 있으므로(`CLEARED_SELECTION`) 뒤에 두면 그 가드에 걸려 죽는다.
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 `use-shortcuts.test.tsx`의 `describe('useEditorShortcuts', …)` 안에 추가한다.
 
@@ -437,14 +437,14 @@ Claude-Session: <세션 URL>"
 ⚠️ **`selectNote('n1')`은 `renderHarness()` 앞에 부른다** — 그 파일의 기존 케이스들이 전부 그 순서다
 (`select('t2')` → `renderHarness()`).
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C apps/web exec vitest run src/editor/use-shortcuts.test.tsx -t '메모·관계선 단축키'
 ```
 기대: 삭제·복사·붙여넣기가 전부 no-op이라 FAIL.
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 import를 더한다:
 
@@ -531,7 +531,7 @@ import {
       }
 ```
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C apps/web exec vitest run src/editor/use-shortcuts.test.tsx
@@ -540,7 +540,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 ```
 기대: 신규 10건 PASS, 전체 실패 0, `EXIT=0`.
 
-- [ ] **Step 5: D2 의 급소가 진짜 잠기는지 실증한다**
+- [x] **Step 5: D2 의 급소가 진짜 잠기는지 실증한다**
 
 `deleteRelationship(m, relId)`을 **`deleteColumnCascade(deleteRelationship(m, relId), 'c4')`** 로
 잠시 바꾸고 돌린다.
@@ -559,7 +559,7 @@ pnpm -C apps/web exec vitest run src/editor/use-shortcuts.test.tsx -t '자식 FK
 기대: **그 1건만 FAIL**(관계 삭제 케이스는 여전히 green). 되돌리고 PASS를 확인한 뒤 **결과를
 보고에 적는다.**
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add apps/web/src/editor/use-shortcuts.ts apps/web/src/editor/use-shortcuts.test.tsx && \
@@ -580,14 +580,14 @@ Claude-Session: <세션 URL>"
 **Files:**
 - Modify: `docs/manual/user-guide.md` · `docs/superpowers/HANDOFF.md`
 
-- [ ] **Step 1: 매뉴얼을 고친다**
+- [x] **Step 1: 매뉴얼을 고친다**
 
 ```bash
 grep -n "단축키\|Cmd+C\|Delete" docs/manual/user-guide.md | head -20
 ```
 단축키 절에 메모·관계선을 더한다 — **메모는 삭제·복사·잘라내기·붙여넣기, 관계선은 삭제만**(복사가 없는 이유도 한 줄로: 두 테이블에 의존해 붙여넣을 대상이 정해지지 않는다).
 
-- [ ] **Step 2: 최종 검증**
+- [x] **Step 2: 최종 검증**
 
 ```bash
 pnpm -C apps/web test
@@ -598,14 +598,14 @@ pnpm -r typecheck; echo "EXIT=$?"
 서버 테스트는 **돌리지 않는다**(이 트랙은 서버를 안 건드린다). 🔥 `. ./.env` 금지.
 `core`·`cli`는 **무변경이어야 한다**(각각 692·141). 움직였으면 범위를 넘은 것이다.
 
-- [ ] **Step 3: HANDOFF 를 갱신한다**
+- [x] **Step 3: HANDOFF 를 갱신한다**
 
 1. **1절 완료 표**에 한 줄. 담을 것: 선택이 항상 한 종류라 분기가 단순하다는 것(`CLEARED_SELECTION`), 삭제가 패널 버튼과 **같은 함수**라는 것과 **관계는 `deleteRelationship`(FK 보존)** 이라는 것, `CLIPBOARD_VERSION`을 올리지 않은 이유.
 2. **테스트 기준선**을 실측값으로 갱신하고 직전 기준선(`core 692 · cli 141 · web 882 · server 200`)과 함께 적는다. **core·cli·server 무변경**을 명시한다.
 3. **6절 이월** — **새로 적는 것:** 관계 복사 없음(D3) · 그룹 단축키 없음(D4) · 메모 다중 선택 없음(D5).
 4. **1절 「다음 작업」** — 남은 묶음 **B: 그룹 별칭 + 테이블명 형식 템플릿**을 적는다(`TableGroupSchema`에 필드 추가 → 마이그레이션 + 등록처 6~8곳, 그리고 "저장된 물리명 vs 조합해서 보여 주는 물리명"이 갈리는 새 개념).
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add docs/manual/user-guide.md docs/superpowers/HANDOFF.md && \
@@ -617,6 +617,19 @@ Claude-Session: <세션 URL>"
 
 ---
 
+---
+
+## 리뷰 수정 라운드 (계획서 밖에서 붙은 것)
+
+계획서 스니펫에 **없던 것 하나가 리뷰에서 추가됐다** — `onPaste`의 notes 분기에 **`if (s.activeGroupView) return`**.
+하단 바 「메모」 버튼이 그룹 뷰에서 잠기는 것과 같은 규칙인데(D2) 새 분기에 빠져 있었다. C·X는 그룹 뷰
+진입이 선택을 비워 도달하지 않지만 **붙여넣기는 선택과 무관하게 도달한다**.
+
+그 밖에 **잠금 테스트 8건**이 붙었다(읽기 전용 가드 3곳 + 메모 붙여넣기 · summary 2 · `pasteNotes`
+kind 가드 · 그룹 뷰). ⚠️ **읽기 전용 가드는 모델을 단언하면 잠기지 않는다** — `useSubmit`이 데이터를
+막아 주므로 가드를 지워도 모델은 그대로다. 갈리는 관측치는 **선택이 풀리는가**와 **`writeText`가
+불렸는가**다.
+
 ## 브라우저 스모크 (병합 전, 확장이 하나뿐이라 사용자가 돈다)
 
 1. 메모를 클릭해 고르고 `Delete` — 지워지는지.
@@ -624,3 +637,7 @@ Claude-Session: <세션 URL>"
 3. 관계선을 클릭해 고르고 `Delete` — 선만 사라지고 **자식 테이블의 FK 컬럼은 남는지**(이번 사이클의 급소).
 4. 테이블을 고른 상태에서 `Delete` — 기존 동작이 그대로인지(회귀 확인).
 5. 다이얼로그(예: 「파일 ▾ → 내보내기」)를 열고 `Delete` — **뒤에 있는 메모가 지워지지 않는지**.
+6. (리뷰 M1) 메모를 `Cmd+C` 한 뒤 **그룹 뷰로 들어가** `Cmd+V` — **아무 일도 일어나지 않는지**.
+   가드가 없으면 모델에는 들어가는데 캔버스에 안 보이고 우측 편집 패널만 열린다.
+7. (리뷰 m1~m3) **읽기 전용 계정**으로 메모·관계선을 고르고 `Delete`, 메모를 고르고 `Cmd+X` —
+   **선택이 그대로 남아 있는지**(토스트 에러가 뜨며 선택이 풀리면 가드가 빠진 것이다).

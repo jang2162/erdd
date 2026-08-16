@@ -53,7 +53,7 @@
 
 | **논리명 구분자 + 상대 필드 적용** | 논리명 저장값에 단어 구분자(`_`)를 넣고, 편집 패널의 `↻` 2개를 **상대 필드를 채우는 화살표 2개**로 바꿨다. `logicalSeparator` 는 물리명 `separator` 와 **별도 축**이다 — 한글 논리명과 영문 약어는 구분자 정책이 다를 이유가 충분하고, 공유하면 물리명 규칙을 바꾸는 순간 **저장된 논리명 전체가 규칙 위반**이 된다. ⚠️ **급소는 분해 폴백이다** — `decomposeByWords` 는 구분자 split 이 1차이고 **사전에 없는 토큰만** 최장일치 그리디로 재분해하는데, 이 폴백이 없으면 구분자 없는 기존 논리명(`회원주문번호`)이 split 후 토큰 하나가 되고 사전에 그런 단어가 없어 **통째로 미등록 단어**가 된다(물리명 생성이 죽고 칩에 이름 전체가 뜬다 — 기존 프로젝트가 전부 그 꼴이 된다). 폴백 덕에 바뀌는 것은 경고 한 줄뿐이다. **용어는 저장값을 바꾸지 않는다** — 비교할 때 양쪽에서 `stripLogicalSeparator` 로 벗기고 넣을 때만 `withLogicalSeparator` 로 변환한다(용어는 전역·조직 라이브러리에서 fork 로 내려오므로 남의 데이터에 이 프로젝트의 정책을 강요할 수 없다). ⚠️ **기본값이 주입되는 자리는 서버의 `project.get` 하나뿐이다** — DB 컬럼 기본값은 마이그레이션에 구운 3키라 `NamingRulesSchema.parse` 를 태우지 않으면 `logicalSeparator: undefined` 가 그대로 클라이언트에 나간다(**Task 1 에서 `DEFAULT_NAMING_RULES` 가 4키가 되는 순간 이 테스트가 빨개진다** — 서버 변경을 뒤로 미룰 수 없었다). 새 경고 `missing-logical-separator` 는 **분해가 2개 이상일 때만** 띄운다(단일 단어에까지 붙이면 신호가 죽는다). 덮어쓰기는 **blur 만 제외**한다(blur 는 필드를 스쳐 지나가기만 해도 발생한다) — 자동완성 확정은 **상대 draft 만** 바꾸고 커밋은 blur/Enter 때 두 필드가 함께 나간다(Revision 1건). ⚠️ **`commitSide` 만으로는 그 「함께」가 성립하지 않는다** — 확정이 draft 만 바꿔 두는데 blur 는 `shouldFill` 이 false 라 그 값을 안 실어 보낸다. `foldOtherDraft` 가 아직 커밋되지 않은 반대편 draft 를 patch 에 접어 넣는다. **수용된 퇴행 하나:** 구분자 규칙에서 **옛 형식**(구분자 없는) 논리명을 이어 치면 자동완성 쿼리가 입력 전체가 되어 단어 후보가 좁아진다(밑줄을 한 번 찍으면 곧바로 돌아온다). 분해 폴백과 다른 판단인 이유는 그쪽은 물리명 생성이 죽고 이쪽은 후보가 줄 뿐이기 때문이다. **마이그레이션 없음**(jsonb 읽기 시점 주입) ([설계](specs/2026-08-15-logical-name-separator-design.md)) |
 
-| **메모·관계선 단축키** | 캔버스에서 메모·관계선을 `Delete`/`Backspace` 로 지우고 메모를 `Cmd+C`/`X`/`V` 로 복사·잘라내기·붙여넣는다. **이 트랙이 서는 근거는 선택이 항상 한 종류라는 것**(`store.ts` 의 `selectRelationship`·`selectNote`·`selectGroup` 이 전부 `...CLEARED_SELECTION` 을 앞에 둔다 — 3.13) — 「테이블과 메모가 동시에 선택된」 상태가 구조적으로 없으므로 우선순위를 정할 필요 없이 분기를 얹기만 하면 된다. ⚠️ **다만 그 분기는 기존 `nothingSelected` 가드보다 반드시 앞에 와야 한다** — 메모·관계가 선택되면 `selectedTableIds` 는 비어 있어서 뒤에 두면 그 가드에 걸려 아무 일도 일어나지 않는다. 삭제는 우측 패널 버튼과 **같은 함수·같은 summary·같은 순서**(선택을 먼저 비우고 mutate)다 — 진입점이 둘이면 규칙은 하나여야 한다(`applyGroupMove`·`createGroupWith` 가 세운 형태). ⚠️ **특히 관계는 `deleteRelationship` 이다**(`deleteColumnCascade` 가 아니다) — 전자는 **자식 FK 컬럼을 일부러 보존**하므로 무심코 후자를 쓰면 같은 「관계 삭제」가 진입점에 따라 다른 결과를 낸다. 그 급소를 잠그는 케이스(「관계를 지워도 자식 FK 컬럼은 남는다」)를 **`deleteColumnCascade(deleteRelationship(m, relId), 'c4')` 로 바꿔 정확히 그 1건만 빨개지는 것을 실증**했다(`deleteColumnCascade` 단독으로 바꾸면 관계가 안 지워져 다른 케이스가 먼저 깨져 실증이 되지 않는다). 클립보드는 `kind: 'notes'` 를 더했고 **`CLIPBOARD_VERSION` 을 올리지 않았다** — `parseClipboard` 가 `raw['v'] !== CLIPBOARD_VERSION` 이면 버리므로 올리면 사용자가 이미 복사해 둔 테이블·컬럼이 전부 무효가 된다(kind 추가는 하위호환이다: 옛 페이로드는 그대로 읽히고 새 페이로드를 옛 코드가 읽으면 `null` 로 안전하게 무시된다). 메모는 참조가 없어 이름으로 재연결할 것이 없고 필드가 셋(`content`·`color`·`position`)으로 끝난다. **`apps/web` 전용 — core·서버·CLI 변경 없음, 마이그레이션 없음** ([설계](specs/2026-08-16-note-relationship-shortcuts-design.md)) |
+| **메모·관계선 단축키** | 캔버스에서 메모·관계선을 `Delete`/`Backspace` 로 지우고 메모를 `Cmd+C`/`X`/`V` 로 복사·잘라내기·붙여넣는다. **이 트랙이 서는 근거는 선택이 항상 한 종류라는 것**(`store.ts` 의 `selectRelationship`·`selectNote`·`selectGroup` 이 전부 `...CLEARED_SELECTION` 을 앞에 둔다 — 3.13) — 「테이블과 메모가 동시에 선택된」 상태가 구조적으로 없으므로 우선순위를 정할 필요 없이 분기를 얹기만 하면 된다. ⚠️ **다만 그 분기는 기존 `nothingSelected` 가드보다 반드시 앞에 와야 한다** — 메모·관계가 선택되면 `selectedTableIds` 는 비어 있어서 뒤에 두면 그 가드에 걸려 아무 일도 일어나지 않는다. 삭제는 우측 패널 버튼과 **같은 함수·같은 summary·같은 순서**(선택을 먼저 비우고 mutate)다 — 진입점이 둘이면 규칙은 하나여야 한다(`applyGroupMove`·`createGroupWith` 가 세운 형태). ⚠️ **특히 관계는 `deleteRelationship` 이다**(`deleteColumnCascade` 가 아니다) — 전자는 **자식 FK 컬럼을 일부러 보존**하므로 무심코 후자를 쓰면 같은 「관계 삭제」가 진입점에 따라 다른 결과를 낸다. 그 급소를 잠그는 케이스(「관계를 지워도 자식 FK 컬럼은 남는다」)를 **`deleteColumnCascade(deleteRelationship(m, relId), 'c4')` 로 바꿔 정확히 그 1건만 빨개지는 것을 실증**했다(`deleteColumnCascade` 단독으로 바꾸면 관계가 안 지워져 다른 케이스가 먼저 깨져 실증이 되지 않는다). 클립보드는 `kind: 'notes'` 를 더했고 **`CLIPBOARD_VERSION` 을 올리지 않았다** — `parseClipboard` 가 `raw['v'] !== CLIPBOARD_VERSION` 이면 버리므로 올리면 사용자가 이미 복사해 둔 테이블·컬럼이 전부 무효가 된다(kind 추가는 하위호환이다: 옛 페이로드는 그대로 읽히고 새 페이로드를 옛 코드가 읽으면 `null` 로 안전하게 무시된다). 메모는 참조가 없어 이름으로 재연결할 것이 없고 필드가 셋(`content`·`color`·`position`)으로 끝난다. ⚠️ **붙여넣기만은 `activeGroupView` 가드가 따로 필요하다**(리뷰 M1) — 하단 바 「메모」 버튼이 `disabled={!!activeGroupView}` 로 막는 것과 같은 규칙인데 새 분기에 그것이 없었다. **C·X 는 그룹 뷰 진입이 선택을 비워 도달 자체가 안 되지만 붙여넣기는 선택과 무관하게 도달한다** — 가드가 없으면 메모가 모델에는 들어가는데 그룹 뷰는 `noteNodes` 를 빼고 조립해 안 그려지고, `selectNote` 가 **보이지 않는 것을 선택해** 편집 패널만 뜬다. **`apps/web` 전용 — core·서버·CLI 변경 없음, 마이그레이션 없음** ([설계](specs/2026-08-16-note-relationship-shortcuts-design.md)) |
 
 > **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
@@ -62,17 +62,26 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 692 · cli 141 · web 902 · server 200 · typecheck EXIT=0
+core 692 · cli 141 · web 910 · server 200 · typecheck EXIT=0
 ```
 
 ⚠️ **server 수치는 워크트리 격리 DB(`erdd_test_a`)로 잰 값이고 그 뒤로 다시 재지 않았다.** 최상위의
 공유 `erdd_test` 로 재면 같아야 하지만 확인하지 않았다 — 병합 후 한 번 재어 확정할 것.
 
-메모·관계선 단축키 사이클에서 **web +20** 만 붙었다(직전 기준선은 `core 692 · cli 141 · web 882 ·
+메모·관계선 단축키 사이클에서 **web +28** 만 붙었다(직전 기준선은 `core 692 · cli 141 · web 882 ·
 server 200`). **core·cli·server 는 무변경이 정상이다** — 설계가 `apps/web` 전용을 못 박았고 변경
 파일이 `apps/web/src/editor/**` 와 `docs/**` 뿐이라, 그 셋이 움직였으면 범위를 넘은 것이다.
 **server 는 돌리지 않았다**(이 트랙이 서버를 건드리지 않고, 워크트리에 `.env` 가 없다).
-내역은 `clipboard` +6 · `clipboard-edits` +5 · `use-shortcuts` +9 이다.
+
+| 라운드 | web | 담은 것 |
+|---|---|---|
+| 구현 | +20 | `clipboard` +6 · `clipboard-edits` +5 · `use-shortcuts` +9 |
+| **리뷰 수정** | **+8** | M1(그룹 뷰 붙여넣기) 1 · 읽기 전용 가드 3곳 + 메모 붙여넣기 4 · summary 2 · `pasteNotes` kind 가드 1 |
+
+⚠️ **리뷰가 잡은 것의 대부분이 「배선은 옳은데 잠기지 않은」 자리였다** — 새로 넣은 `canEdit` 가드
+3곳이 **하나도 잠기지 않아** 전부 지워도 초록이었다. 원인은 단언 대상을 잘못 고른 것이다(모델을
+봤는데 `useSubmit` 이 데이터를 이미 막아 준다). 실패 유형이 반복되고 있다 — 직전 두 사이클도 같은
+지적을 받았다.
 
 ⚠️ **기존 케이스 하나의 기댓값이 바뀌었다. 의도된 변경이다** — `clipboard.test.ts` 의 「kind 가 모르는
 값이면 null」이 하필 **`kind: 'notes'` 를 그 예시로 쓰고 있어서** notes 가 아는 kind 가 되는 순간
@@ -1089,10 +1098,17 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
   깨지지 않는다 — 위 클립보드 사이클의 `planPasteColumnIds` 와 **완전히 같은 성질**이고 근거도 같다
   (`use-model.ts` 가 producer 를 정확히 한 번만 부르고 seq 불일치 시 resync 만 한다). 억지 테스트는
   만들지 않았다.
-- ⚠️ **「다이얼로그가 열려 있으면 메모 삭제가 막힌다」는 배선 전에도 초록이었다.** 신규 9건 중 구현 전
-  red 가 된 것은 8건이고 이 하나만 통과했다 — 그 시점에는 메모 경로가 통째로 no-op 이라 **진공
-  통과**였기 때문이다. 배선이 붙은 지금은 `isDialogOpen` 가드를 지우면 빨개질 것으로 보이지만
-  **그것을 실증하지는 않았다.** (같은 가드를 테이블 경로에서 잠그는 기존 케이스 2건은 그대로 있다.)
+- **`selectNote(null)`/`selectRelationship(null)` 의 「선택을 먼저 비우고 mutate」 순서는 잠그지
+  않는다 — 잠글 수 없어서다.** 그 줄을 지워도 동작이 같다: 삭제가 반영되면 `pruneSelection`
+  (→ `keptSelection`)이 모델에서 사라진 id 를 어차피 걷어낸다(3.13). 패널 버튼과의 **대칭으로**
+  남기고 코드 주석이 그 근거를 적는다. ⚠️ **관측 불가능한 것을 행위 테스트로 잠그려 하지 마라** —
+  이 저장소가 반복해 물린 실패 유형이고, 리뷰에서도 같은 판정이 나왔다.
+  - **읽기 전용 가드 3곳은 이와 다르다. 관측 가능해서 잠갔다** — 가드가 없으면 `useSubmit` 이
+    데이터는 막아 주지만 **선택이 풀리고 토스트 에러가 뜨는 UX 퇴행**이 남는다. 그래서 단언 대상은
+    모델이 아니라 **선택 유지**(`selectedNoteId`/`selectedRelationshipId`)이고, Cmd+X 는
+    **`writeText` 미호출**이다(mutate 보다 먼저 불려 `useSubmit` 가드가 닿지 않는 유일한 부작용).
+    ⚠️ **`countModelMutate` 0 은 이 가드를 잠그지 못한다** — `useSubmit` 이 canEdit false 면 fetch
+    자체를 내지 않아 가드가 있든 없든 0 이다. 회귀 방어로 함께 두되 그 단언에 기대지 마라.
 
 **관계선 컬럼 앵커 (구현 완료, 잔여 — 리뷰 Nit 2건을 코디네이터가 이월 판정)**
 - **그룹 뷰에서 좌/우 판정 근거와 노드 배치 좌표가 다르다.** `edges.ts:28` 은
