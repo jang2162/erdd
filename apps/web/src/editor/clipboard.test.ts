@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildSampleModel, fullModel } from '@erdd/core/src/testing/fixtures.js'
-import { parseClipboard, serializeColumns, serializeTables, uniqueName } from './clipboard.js'
+import { parseClipboard, serializeColumns, serializeNotes, serializeTables, uniqueName } from './clipboard.js'
 
 describe('serializeTables', () => {
   it('테이블·컬럼·인덱스를 싣고 id는 싣지 않는다', () => {
@@ -102,8 +102,50 @@ describe('parseClipboard', () => {
     expect(parseClipboard('')).toBeNull()
   })
 
+  // ⚠️ 예시로 쓰던 `notes`가 이제 **아는 kind**가 됐다. 모르는 kind의 대표로는 관계를 쓴다 —
+  // 관계는 복사하지 않기로 확정돼 있어(설계 D3) 앞으로도 아는 kind가 될 일이 없다.
   it('kind가 모르는 값이면 null', () => {
-    expect(parseClipboard(JSON.stringify({ __erdd: 1, v: 1, kind: 'notes', notes: [] }))).toBeNull()
+    expect(parseClipboard(JSON.stringify({
+      __erdd: 1, v: 1, kind: 'relationships', relationships: [],
+    }))).toBeNull()
+  })
+})
+
+describe('메모 클립보드', () => {
+  it('선택한 메모를 notes 페이로드로 직렬화한다', () => {
+    const m = buildSampleModel()
+    const payload = serializeNotes(m, ['n1'])
+    expect(payload).toEqual({
+      __erdd: 1, v: 1, kind: 'notes',
+      notes: [{ content: '회원 도메인 메모', color: '#FFF3B0', position: { x: 600, y: 0 } }],
+    })
+  })
+
+  it('id 는 싣지 않는다', () => {
+    const payload = serializeNotes(buildSampleModel(), ['n1'])
+    expect(JSON.stringify(payload)).not.toContain('"id"')
+  })
+
+  it('없는 id 는 건너뛴다', () => {
+    const payload = serializeNotes(buildSampleModel(), ['없음', 'n1'])
+    expect(payload.kind === 'notes' && payload.notes).toHaveLength(1)
+  })
+
+  it('parseClipboard 가 notes 를 받는다', () => {
+    const text = JSON.stringify(serializeNotes(buildSampleModel(), ['n1']))
+    const parsed = parseClipboard(text)
+    expect(parsed?.kind).toBe('notes')
+  })
+
+  // ⚠️ 버전을 올리면 사용자가 이미 복사해 둔 테이블·컬럼이 전부 무효가 된다.
+  it('버전이 다르면 여전히 버린다', () => {
+    const bad = JSON.stringify({ __erdd: 1, v: 999, kind: 'notes', notes: [] })
+    expect(parseClipboard(bad)).toBeNull()
+  })
+
+  it('notes 가 배열이 아니면 버린다', () => {
+    const bad = JSON.stringify({ __erdd: 1, v: 1, kind: 'notes', notes: 'x' })
+    expect(parseClipboard(bad)).toBeNull()
   })
 })
 

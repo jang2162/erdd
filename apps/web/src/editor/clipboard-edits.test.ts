@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { buildSampleModel, fullModel } from '@erdd/core/src/testing/fixtures.js'
-import { serializeColumns, serializeTables } from './clipboard.js'
-import { planPasteColumnIds, planPasteTableIds, pasteColumns, pasteTables } from './clipboard-edits.js'
+import { serializeColumns, serializeTables, type ClipboardPayload } from './clipboard.js'
+import {
+  planPasteColumnIds, planPasteNoteIds, planPasteTableIds, pasteColumns, pasteNotes, pasteTables,
+} from './clipboard-edits.js'
 
 /** 결정론적 id 생성기 — 테스트에서 발급 순서를 그대로 관찰한다. */
 function idGen() {
@@ -167,5 +169,60 @@ describe('pasteColumns', () => {
     const m = buildSampleModel()
     const tablePayload = serializeTables(m, ['t2'])
     expect(pasteColumns(m, tablePayload, { tableId: 't1', ids: [] })).toBe(m)
+  })
+})
+
+describe('메모 붙여넣기', () => {
+  const payload = (): ClipboardPayload => ({
+    __erdd: 1, v: 1, kind: 'notes',
+    notes: [{ content: '메모A', color: '#FFF3B0', position: { x: 100, y: 50 } }],
+  })
+
+  it('메모 수만큼 id 를 발급한다', () => {
+    let n = 0
+    expect(planPasteNoteIds(payload(), () => `id${++n}`)).toEqual(['id1'])
+  })
+
+  it('다른 kind 면 빈 배열이다', () => {
+    const cols: ClipboardPayload = { __erdd: 1, v: 1, kind: 'columns', columns: [] }
+    expect(planPasteNoteIds(cols, () => 'x')).toEqual([])
+  })
+
+  it('offset 만큼 밀어 메모를 만든다', () => {
+    const m = buildSampleModel()
+    const before = Object.keys(m.notes).length
+    const next = pasteNotes(m, payload(), { ids: ['nn1'], offset: { x: 40, y: 40 } })
+    expect(Object.keys(next.notes)).toHaveLength(before + 1)
+    expect(next.notes['nn1']).toEqual({
+      id: 'nn1', content: '메모A', color: '#FFF3B0', position: { x: 140, y: 90 },
+    })
+  })
+
+  it('원본 모델을 변형하지 않는다', () => {
+    const m = buildSampleModel()
+    const before = Object.keys(m.notes).length
+    pasteNotes(m, payload(), { ids: ['nn1'], offset: { x: 40, y: 40 } })
+    expect(Object.keys(m.notes)).toHaveLength(before)
+  })
+
+  // pasteColumns 의 같은 케이스와 대칭이다 — kind 가드를 지우면 테이블 페이로드가 notes 로
+  // 읽혀 `payload.notes` 가 undefined 인 채 forEach 로 들어간다.
+  it('kind가 맞지 않으면 모델을 그대로 돌려준다', () => {
+    const m = buildSampleModel()
+    const tablePayload = serializeTables(m, ['t2'])
+    expect(pasteNotes(m, tablePayload, { ids: ['nn1'], offset: { x: 0, y: 0 } })).toBe(m)
+  })
+
+  it('id 가 모자라면 그만큼만 만든다', () => {
+    const two: ClipboardPayload = {
+      __erdd: 1, v: 1, kind: 'notes',
+      notes: [
+        { content: 'A', color: '#fff', position: { x: 0, y: 0 } },
+        { content: 'B', color: '#fff', position: { x: 0, y: 0 } },
+      ],
+    }
+    const next = pasteNotes(buildSampleModel(), two, { ids: ['only'], offset: { x: 0, y: 0 } })
+    expect(next.notes['only']?.content).toBe('A')
+    expect(Object.values(next.notes).filter((n) => n.content === 'B')).toHaveLength(0)
   })
 })

@@ -26,6 +26,11 @@ export function planPasteColumnIds(payload: ClipboardPayload, newId: () => strin
   return payload.columns.map(() => newId())
 }
 
+export function planPasteNoteIds(payload: ClipboardPayload, newId: () => string): string[] {
+  if (payload.kind !== 'notes') return []
+  return payload.notes.map(() => newId())
+}
+
 /** customField 이름 → id. 없는 이름은 버린다(다른 프로젝트에는 그 정의가 없다). */
 function customByName(model: ProjectModel, custom: Record<string, string>): Record<string, string> {
   const idByName = new Map(Object.values(model.customFields).map((f) => [f.name, f.id]))
@@ -161,4 +166,26 @@ export function pasteColumns(
     }
   })
   return { ...model, columns }
+}
+
+/**
+ * 메모를 붙여넣는다. 원본 좌표에서 offset 만큼 밀어 놓는다.
+ * ⚠️ 다른 프로젝트에 붙여넣으면 그 좌표가 그 프로젝트와 무관한 자리일 수 있다 —
+ * 테이블 붙여넣기와 같은 성질이고 사용자가 보고 끌어 옮긴다(설계 3.4).
+ */
+export function pasteNotes(
+  model: ProjectModel, payload: ClipboardPayload,
+  { ids, offset }: { ids: readonly string[]; offset: { x: number; y: number } },
+): ProjectModel {
+  if (payload.kind !== 'notes') return model
+  const notes = { ...model.notes }
+  payload.notes.forEach((n, i) => {
+    const id = ids[i]
+    if (id === undefined) return
+    notes[id] = {
+      id, content: n.content, color: n.color,
+      position: { x: n.position.x + offset.x, y: n.position.y + offset.y },
+    }
+  })
+  return { ...model, notes }
 }
