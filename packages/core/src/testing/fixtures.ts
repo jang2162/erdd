@@ -64,7 +64,8 @@ export function buildSampleModel(): ProjectModel {
 /** 9개 컬렉션을 전부 채운 픽스처. 왕복이 실제로 모든 경로를 지나가게 한다. */
 export function fullModel(): ProjectModel {
   const m = createEmptyModel()
-  m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#eef', comment: '회원 도메인', alias: '' }
+  // alias 는 비어 있지 않아야 파일 왕복이 그 필드를 실제로 지나간다(빈 값은 생략돼 왕복이 항등이 된다).
+  m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#eef', comment: '회원 도메인', alias: 'MBR' }
   m.domains['d1'] = {
     id: 'd1', name: '명', category: '문자', logicalType: 'VARCHAR(100)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },

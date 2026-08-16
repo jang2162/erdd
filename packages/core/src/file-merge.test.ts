@@ -113,18 +113,19 @@ describe('mergeModels — 상태표', () => {
   })
 
   it('로컬이 고친 그룹 별칭을 채택한다', () => {
+    // 픽스처의 base 별칭은 'MBR' 이다 — 그것과 다른 값으로 고쳐야 "로컬이 고쳤다"가 성립한다.
     const { base, local, server } = trio()
     const g = Object.keys(base.tableGroups)[0]!
-    local.tableGroups[g] = { ...local.tableGroups[g]!, alias: 'MBR' }
+    local.tableGroups[g] = { ...local.tableGroups[g]!, alias: 'MBRSHIP' }
     const { merged, conflicts } = mergeModels(base, local, server)
     expect(conflicts).toEqual([])
-    expect(merged.tableGroups[g]!.alias).toBe('MBR')
+    expect(merged.tableGroups[g]!.alias).toBe('MBRSHIP')
   })
 
   it('양쪽이 별칭을 다르게 고치면 그 필드가 충돌이다', () => {
     const { base, local, server } = trio()
     const g = Object.keys(base.tableGroups)[0]!
-    local.tableGroups[g] = { ...local.tableGroups[g]!, alias: 'MBR' }
+    local.tableGroups[g] = { ...local.tableGroups[g]!, alias: 'MBRSHIP' }
     server.tableGroups[g] = { ...server.tableGroups[g]!, alias: 'MEM' }
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts.some((c) => c.field === 'alias')).toBe(true)
