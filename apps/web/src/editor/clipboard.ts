@@ -35,9 +35,13 @@ export type ClipboardTable = {
   indexes: ClipboardIndex[]
 }
 
+/** 메모 한 장. 참조가 없어 이름으로 재연결할 것도 없다 — 세 필드로 끝난다. */
+export type ClipboardNote = { content: string; color: string; position: { x: number; y: number } }
+
 export type ClipboardPayload =
   | { __erdd: 1; v: number; kind: 'tables'; tables: ClipboardTable[] }
   | { __erdd: 1; v: number; kind: 'columns'; columns: ClipboardColumn[] }
+  | { __erdd: 1; v: number; kind: 'notes'; notes: ClipboardNote[] }
 
 /** customField id → 이름. 값 맵의 키를 이름으로 바꿀 때 쓴다. */
 function customFieldNames(model: ProjectModel): Map<string, string> {
@@ -120,6 +124,20 @@ export function serializeColumns(model: ProjectModel, columnIds: readonly string
   }
 }
 
+/**
+ * 메모를 클립보드 페이로드로. id 는 싣지 않고(붙여넣기가 새로 발급한다) position 은 싣는다
+ * (붙여넣기가 그 자리에서 PASTE_OFFSET 만큼 밀어 놓는 기준점이다).
+ */
+export function serializeNotes(model: ProjectModel, noteIds: readonly string[]): ClipboardPayload {
+  const notes: ClipboardNote[] = []
+  for (const id of noteIds) {
+    const n = model.notes[id]
+    if (!n) continue
+    notes.push({ content: n.content, color: n.color, position: { ...n.position } })
+  }
+  return { __erdd: 1, v: CLIPBOARD_VERSION, kind: 'notes', notes }
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
@@ -142,6 +160,9 @@ export function parseClipboard(text: string): ClipboardPayload | null {
     return raw as unknown as ClipboardPayload
   }
   if (raw['kind'] === 'columns' && Array.isArray(raw['columns'])) {
+    return raw as unknown as ClipboardPayload
+  }
+  if (raw['kind'] === 'notes' && Array.isArray(raw['notes'])) {
     return raw as unknown as ClipboardPayload
   }
   return null
