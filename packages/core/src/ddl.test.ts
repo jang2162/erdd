@@ -311,4 +311,36 @@ describe('물리명 템플릿', () => {
     expect(ddlWarnings(x, 'postgresql', { kind: 'all' }, tpl('{물리명}'))
       .some((w) => w.includes('물리명이 비어 있어'))).toBe(true)
   })
+
+  // ⚠️ 설계 3.3 이 ⚠️ 로 못 박은 자리다 — 「논리명==물리명이면 코멘트 생략」 판정이 **조합 이름**과
+  // 비교돼야 한다. 부분과 비교하면 논리명이 부분과 같은 테이블의 코멘트가 **통째로 사라진다**
+  // (DBML 의 쌍둥이 자리는 「note 의 논리명 생략 판정이 조합 이름 기준이다」로 이미 잠겨 있다).
+  // ⚠️ 두 방언을 모두 단언해야 두 자리가 잠긴다 — mysql 은 CREATE TABLE 안의 인라인 코멘트이고
+  // 나머지는 별도 COMMENT 문이라 코드가 갈라져 있다.
+  it('코멘트 생략 판정이 조합 이름 기준이다', () => {
+    const x = m()
+    // 논리명 == 부분 물리명 == 'MBR', 설명 없음 → 부분 기준으로 판정하면 코멘트가 안 나온다.
+    x.tables['t2'] = { ...x.tables['t2']!, logicalName: 'MBR', comment: null }
+    expect(generateDdl(x, 'postgresql', { kind: 'all' }, tpl(TPL)))
+      .toContain("COMMENT ON TABLE TB_MBR_MBR IS 'MBR';")
+    expect(generateDdl(x, 'mysql', { kind: 'all' }, tpl(TPL))).toContain("COMMENT 'MBR'")
+    // 대조군: 템플릿이 없으면 논리명 == 물리명이라 코멘트가 생략된다(기존 동작).
+    expect(generateDdl(x, 'postgresql')).not.toContain('COMMENT ON TABLE MBR IS')
+    expect(generateDdl(x, 'mysql')).not.toContain("COMMENT 'MBR'")
+  })
+
+  // 「고칠 곳을 알려 준다」가 경고의 목적이다 — 화면에 없는 이름(부분)을 가리키면 안 된다.
+  it('경고 문구의 테이블 라벨과 타입경고 접두가 조합 이름이다', () => {
+    const x = m()
+    // (1) 컬럼이 없는 테이블 → warningLabel 을 탄다.
+    x.tables['t3'] = { ...x.tables['t2']!, id: 't3', physicalName: 'NOCOL' }
+    // (2) Oracle 에서 변환 경고가 나는 컬럼 → 타입경고 접두를 탄다.
+    x.columns['c9'] = col('c9', 't2', 'CRT_TM', 'TIME', { order: 9 })
+    const warns = ddlWarnings(x, 'oracle', { kind: 'all' }, tpl(TPL))
+    expect(warns).toContain('TB_MBR_NOCOL: 컬럼이 없어 내보내기에서 제외됨')
+    expect(warns.some((w) => w.startsWith('TB_MBR_MBR.CRT_TM: '))).toBe(true)
+    // 조합 전 이름으로 가리키면 안 된다
+    expect(warns.some((w) => w.startsWith('NOCOL:'))).toBe(false)
+    expect(warns.some((w) => w.startsWith('MBR.CRT_TM:'))).toBe(false)
+  })
 })
