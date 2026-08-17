@@ -5,6 +5,7 @@ import {
 import { isReservedWord } from './identifier.js'
 import type { Dialect } from './dialect.js'
 import { customFieldsFor, resolveCustomValue } from './custom-field.js'
+import { composeTablePhysicalName } from './name-template.js'
 
 export type Warning = {
   kind:
@@ -95,6 +96,8 @@ export function computeWarnings(
     const checkNamingEntity = (
       scope: 'table' | 'column', entityId: string, tableId: string | undefined,
       logicalName: string, physicalName: string,
+      // ⚠️ 길이·예약어만 최종 이름 기준이다. 용어 비교는 사용자가 입력하는 부분과 해야 한다.
+      finalName: string = physicalName,
     ) => {
       const logical = logicalName.trim()
       if (logical !== '') {
@@ -128,42 +131,45 @@ export function computeWarnings(
           }
         }
       }
-      if (new TextEncoder().encode(physicalName).length > rules.maxLengthBytes) {
+      if (new TextEncoder().encode(finalName).length > rules.maxLengthBytes) {
         warnings.push({
           kind: 'too-long', scope, entityId, tableId,
-          message: `물리명 "${physicalName}"이(가) 최대 길이(${rules.maxLengthBytes}바이트)를 초과합니다`,
+          message: `물리명 "${finalName}"이(가) 최대 길이(${rules.maxLengthBytes}바이트)를 초과합니다`,
         })
       }
-      if (dialects?.some((d) => isReservedWord(physicalName, d))) {
+      if (dialects?.some((d) => isReservedWord(finalName, d))) {
         warnings.push({
           kind: 'reserved', scope, entityId, tableId,
-          message: `물리명 "${physicalName}"은(는) 예약어입니다`,
+          message: `물리명 "${finalName}"은(는) 예약어입니다`,
         })
       }
     }
 
     for (const t of Object.values(model.tables)) {
-      checkNamingEntity('table', t.id, undefined, t.logicalName, t.physicalName)
+      checkNamingEntity('table', t.id, undefined, t.logicalName, t.physicalName,
+        composeTablePhysicalName(t, model, rules))
     }
     for (const c of Object.values(model.columns)) {
       checkNamingEntity('column', c.id, c.tableId, c.logicalName, c.physicalName)
     }
 
     // 테이블 물리명 간 중복(테이블 간)
-    const tableNames = new Map<string, string[]>() // physicalName → tableIds
+    // 실제 DB 에서 충돌하는 것은 최종 이름이다 — 다른 그룹의 같은 부분 이름은 충돌이 아니다(설계 D3).
+    const tableNames = new Map<string, string[]>() // 조합된 최종 이름 → tableIds
     for (const t of Object.values(model.tables)) {
-      if (t.physicalName === '') continue
-      const ids = tableNames.get(t.physicalName) ?? []
+      const finalName = composeTablePhysicalName(t, model, rules)
+      if (finalName === '') continue
+      const ids = tableNames.get(finalName) ?? []
       ids.push(t.id)
-      tableNames.set(t.physicalName, ids)
+      tableNames.set(finalName, ids)
     }
-    for (const [physicalName, ids] of tableNames) {
+    for (const [finalName, ids] of tableNames) {
       if (ids.length < 2) continue
       for (const id of ids) {
         warnings.push({
           kind: 'duplicate-physical-table', scope: 'table', entityId: id,
           severity: 'error',
-          message: `테이블 물리명 "${physicalName}"이(가) 중복됩니다`,
+          message: `테이블 물리명 "${finalName}"이(가) 중복됩니다`,
         })
       }
     }

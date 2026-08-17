@@ -363,3 +363,81 @@ describe('missing-logical-separator', () => {
     expect(w?.message).toContain('회원_주문')
   })
 })
+
+describe('물리명 템플릿과 경고', () => {
+  const tpl = (t: string): NamingRules => ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: t })
+  const TPL = 'TB_{그룹별칭}_{물리명}'
+
+  /** g1(MBR)·g2(PRD) 에 각각 부분 이름이 'ORD' 인 테이블을 하나씩. */
+  function twoGroups(): ProjectModel {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원', color: '#eeeeee', comment: null, alias: 'MBR' }
+    m.tableGroups['g2'] = { id: 'g2', name: '상품', color: '#eeeeee', comment: null, alias: 'PRD' }
+    m.tables['t1'] = tbl('t1', { groupId: 'g1', physicalName: 'ORD', logicalName: '주문' })
+    m.tables['t2'] = tbl('t2', { groupId: 'g2', physicalName: 'ORD', logicalName: '주문' })
+    return m
+  }
+
+  // ⚠️ D3 의 근거를 잠근다 — 실제 DB 에서 충돌하는 것은 최종 이름이다.
+  it('다른 그룹의 같은 부분 이름은 중복이 아니다', () => {
+    const kinds = computeWarnings(twoGroups(), tpl(TPL)).map((w) => w.kind)
+    expect(kinds).not.toContain('duplicate-physical-table')
+  })
+
+  it('템플릿이 없으면 같은 부분 이름이 중복이다', () => {
+    const kinds = computeWarnings(twoGroups(), DEFAULT_NAMING_RULES).map((w) => w.kind)
+    expect(kinds).toContain('duplicate-physical-table')
+  })
+
+  it('조합 결과가 같으면 부분이 달라도 중복이다', () => {
+    const m = twoGroups()
+    // 두 테이블이 같은 그룹이면 조합 결과가 같아진다.
+    m.tables['t2'] = { ...m.tables['t2']!, groupId: 'g1' }
+    const w = computeWarnings(m, tpl(TPL)).filter((x) => x.kind === 'duplicate-physical-table')
+    expect(w.map((x) => x.entityId).sort()).toEqual(['t1', 't2'])
+    expect(w[0]!.message).toContain('TB_MBR_ORD')       // 문구도 최종 이름이라야 고칠 곳을 안다
+  })
+
+  // maxLengthBytes 는 30 이다. 부분 25바이트는 통과, 접두 10바이트를 붙인 35바이트는 초과.
+  it('길이 검사가 조합 기준이다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = tbl('t1', { physicalName: 'A'.repeat(25), logicalName: '긴이름' })
+    const kindsPlain = computeWarnings(m, DEFAULT_NAMING_RULES)
+      .filter((w) => w.entityId === 't1').map((w) => w.kind)
+    expect(kindsPlain).not.toContain('too-long')
+
+    const kindsTpl = computeWarnings(m, tpl('TB_PREFIX_{물리명}'))   // 접두 10바이트 → 35바이트
+      .filter((w) => w.entityId === 't1').map((w) => w.kind)
+    expect(kindsTpl).toContain('too-long')
+  })
+
+  // 'user' 는 네 방언 공통 예약어다(identifier.ts BASE). 'ER' 은 예약어가 아니다.
+  it('예약어 검사가 조합 기준이다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = tbl('t1', { physicalName: 'ER', logicalName: '사용자' })
+    const plain = computeWarnings(m, DEFAULT_NAMING_RULES, ['postgresql'])
+      .filter((w) => w.entityId === 't1').map((w) => w.kind)
+    expect(plain).not.toContain('reserved')
+
+    const composed = computeWarnings(m, tpl('US{물리명}'), ['postgresql'])   // → 'USER'
+      .filter((w) => w.entityId === 't1').map((w) => w.kind)
+    expect(composed).toContain('reserved')
+  })
+
+  it('부분이 예약어라도 조합 결과가 예약어가 아니면 경고하지 않는다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = tbl('t1', { physicalName: 'ORDER', logicalName: '주문' })
+    expect(computeWarnings(m, DEFAULT_NAMING_RULES, ['postgresql'])
+      .filter((w) => w.entityId === 't1').map((w) => w.kind)).toContain('reserved')
+    expect(computeWarnings(m, tpl('TB_{물리명}'), ['postgresql'])
+      .filter((w) => w.entityId === 't1').map((w) => w.kind)).not.toContain('reserved')
+  })
+
+  // ⚠️ 용어 검사만 부분 기준이다 — 사용자가 사전에 등록하는 표준 물리명은 접두가 없는 값이다.
+  it('용어 불일치 검사는 조합 이름에 오염되지 않는다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = tbl('t1', { physicalName: 'ORD', logicalName: '주문' })
+    m.terms['tm1'] = term('tm1', '주문', 'ORD')
+    expect(computeWarnings(m, tpl(TPL)).filter((w) => w.kind === 'term-mismatch')).toEqual([])
+  })
+})
