@@ -49,6 +49,33 @@ describe('config', () => {
     expect(cfg.namingRules.logicalSeparator).toBe('_')
   })
 
+  // 논리명 구분자와 **다른 정책**이다. logicalSeparator 는 값 집합이 '_' | '' 로 좁아 오타를
+  // 거절할 수 있지만, 템플릿은 임의 문자열이라 「잘못 적은 값」이 없다 — 누락만 채우고
+  // 검증하지 않는다.
+  it('tablePhysicalTemplate 가 없는 옛 config 에 빈 문자열을 채운다', async () => {
+    const yaml = [
+      'serverUrl: https://erdd.example.com',
+      'projectId: 018f6b0e-0000-7000-8000-000000000000',
+      'dialects:',
+      '  - postgresql',
+      'namingRules:',
+      '  case: UPPER_SNAKE',
+      '  separator: "_"',
+      '  logicalSeparator: "_"',
+      '  maxLengthBytes: 30',
+    ].join('\n')
+    await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
+    expect((await readConfig(dir)).namingRules.tablePhysicalTemplate).toBe('')
+  })
+
+  it('적어 둔 템플릿은 그대로 읽는다', async () => {
+    await writeConfig(dir, {
+      ...CONFIG,
+      namingRules: { ...CONFIG.namingRules, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' },
+    })
+    expect((await readConfig(dir)).namingRules.tablePhysicalTemplate).toBe('TB_{그룹별칭}_{물리명}')
+  })
+
   // ⚠️ 누락은 기본값으로 채우되(하위호환), **잘못 적은 값은 삼키지 않는다.** 조용히 '_' 로
   // 돌면 erdd validate 결과가 웹의 「모델 검사」와 갈린다 — 사용자는 자기가 적은 값이
   // 무시된 줄 모른다.
