@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, type Ref } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
+  composeTablePhysicalName, computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
   type Column, type CustomField, type Domain, type ProjectModel, type Warning,
 } from '@erdd/core'
 import { primaryTableId, useEditorStore } from './store.js'
@@ -108,6 +108,12 @@ export function EditPanel({ projectId }: { projectId: string }) {
           canEdit={canEdit}
           applyNames={(m, patch) => updateTable(m, tid, patch)}
         />
+        {/* ⚠️ NamePair **밖**에 둔다 — NamePair 는 컬럼과 공유하는데 컬럼에는 템플릿이 없다. */}
+        {namingRules.tablePhysicalTemplate !== '' && (
+          <p className="-mt-1 text-xs text-muted-foreground">
+            <span className="font-mono">→ {composeTablePhysicalName(table, model, namingRules)}</span>
+          </p>
+        )}
         <div className="grid gap-1.5">
           <FieldLabel htmlFor="tbl-group">소속 그룹</FieldLabel>
           <select id="tbl-group" className="h-9 rounded-md border bg-background px-2 text-sm"
