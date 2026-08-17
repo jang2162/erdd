@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { generateDdl, ddlWarnings } from './ddl.js'
+import {
+  generateDdl as generateDdlRaw, ddlWarnings as ddlWarningsRaw, type DdlScope,
+} from './ddl.js'
 import { createEmptyModel, type ProjectModel, type Table, type Column } from './model.js'
 import { buildSampleModel } from './testing/fixtures.js'
+import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
+import type { Dialect } from './dialect.js'
+
+// 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다. 심으로 그 전제를 한 줄에 적고
+// 호출부 30곳을 그대로 둔다. 템플릿을 쓰는 새 케이스는 rules 를 직접 넘긴다.
+const generateDdl = (
+  model: ProjectModel, dialect: Dialect,
+  scope: DdlScope = { kind: 'all' }, rules: NamingRules = DEFAULT_NAMING_RULES,
+) => generateDdlRaw(model, dialect, scope, rules)
+const ddlWarnings = (
+  model: ProjectModel, dialect: Dialect,
+  scope: DdlScope = { kind: 'all' }, rules: NamingRules = DEFAULT_NAMING_RULES,
+) => ddlWarningsRaw(model, dialect, scope, rules)
 
 function tbl(id: string, physicalName: string, over: Partial<Table> = {}): Table {
   return { id, logicalName: physicalName, physicalName, comment: null, groupId: null,
@@ -227,5 +242,73 @@ describe('빈 물리명', () => {
     const warns = ddlWarnings(m, 'postgresql')
     const zeroColWarn = warns.find((w) => w.includes('컬럼이 없어'))
     expect(zeroColWarn).toBe('empty: 컬럼이 없어 내보내기에서 제외됨')
+  })
+})
+
+describe('물리명 템플릿', () => {
+  const tpl = (t: string): NamingRules => ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: t })
+  const TPL = 'TB_{그룹별칭}_{물리명}'
+  /** buildSampleModel: g1 에 t1(MBR_GRD)·t2(MBR), r1 이 t1→t2, i1 은 t2 의 유니크 인덱스. */
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, alias: 'MBR' }
+    return x
+  }
+
+  it('CREATE TABLE 이 조합된 이름을 쓴다', () => {
+    const sql = generateDdl(m(), 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(sql).toContain('CREATE TABLE TB_MBR_MBR ')
+    expect(sql).toContain('CREATE TABLE TB_MBR_MBR_GRD ')
+  })
+
+  // ⚠️ 한 자리만 안 바뀌어도 DDL 이 깨진다 — 존재하지 않는 테이블을 가리킨다.
+  it('FK·인덱스·코멘트가 모두 같은 조합 이름을 쓴다', () => {
+    const sql = generateDdl(m(), 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(sql).toContain('ALTER TABLE TB_MBR_MBR ADD CONSTRAINT')
+    expect(sql).toContain('REFERENCES TB_MBR_MBR_GRD ')
+    expect(sql).toContain('ON TB_MBR_MBR ')             // CREATE INDEX … ON <테이블>
+    expect(sql).toContain('COMMENT ON TABLE TB_MBR_MBR IS')
+    expect(sql).toContain('COMMENT ON COLUMN TB_MBR_MBR.MBR_NO IS')
+    // 조합 전 이름이 한 자리라도 남으면 안 된다(\b 는 밑줄을 단어 문자로 보므로 TB_MBR_MBR 안에서는 안 걸린다)
+    expect(sql).not.toMatch(/\bMBR\b/)
+    expect(sql).not.toMatch(/\bMBR_GRD\b/)
+  })
+
+  // 부분 기준 정렬이면 MBR(t2) < MBR_GRD(t1) 라 t2 가 앞이다. t1 을 별칭 AA 인 그룹으로 옮기면
+  // 조합 기준으로는 TB_AA_MBR_GRD < TB_MBR_MBR 이라 순서가 **뒤집힌다** — 그 뒤집힘을 잠근다.
+  it('정렬도 조합 이름 기준이다', () => {
+    const x = m()
+    x.tableGroups['g2'] = { id: 'g2', name: '기타', color: '#eeeeee', comment: null, alias: 'AA' }
+    x.tables['t1'] = { ...x.tables['t1']!, groupId: 'g2' }
+    const sql = generateDdl(x, 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(sql.indexOf('CREATE TABLE TB_AA_MBR_GRD '))
+      .toBeLessThan(sql.indexOf('CREATE TABLE TB_MBR_MBR '))
+    // 같은 모델을 템플릿 없이 내면 순서가 반대다(부분 기준 MBR < MBR_GRD).
+    const plain = generateDdl(x, 'postgresql')
+    expect(plain.indexOf('CREATE TABLE MBR ('))
+      .toBeLessThan(plain.indexOf('CREATE TABLE MBR_GRD ('))
+  })
+
+  it('템플릿이 없으면 지금과 같다', () => {
+    expect(generateDdl(m(), 'postgresql')).toContain('CREATE TABLE MBR (')
+  })
+
+  // ⚠️ 부분이 비어도 접두가 있으면 유효한 이름이다(설계 3.3 — hasEmptyPhysicalName).
+  it('부분이 비어도 조합 결과가 있으면 DDL 에 나가고 경고하지 않는다', () => {
+    const x = m()
+    x.tables['t2'] = { ...x.tables['t2']!, physicalName: '' }
+    const sql = generateDdl(x, 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(sql).toContain('CREATE TABLE TB_MBR ')
+    const warns = ddlWarnings(x, 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(warns.filter((w) => w.includes('물리명이 비어 있어'))).toEqual([])
+  })
+
+  it('조합해도 이름이 비면 제외하고 경고한다', () => {
+    const x = m()
+    x.tables['t2'] = { ...x.tables['t2']!, physicalName: '' }
+    const sql = generateDdl(x, 'postgresql', { kind: 'all' }, tpl('{물리명}'))
+    expect(sql).not.toContain('CREATE TABLE ""')
+    expect(ddlWarnings(x, 'postgresql', { kind: 'all' }, tpl('{물리명}'))
+      .some((w) => w.includes('물리명이 비어 있어'))).toBe(true)
   })
 })
