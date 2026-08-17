@@ -4,6 +4,8 @@ import { parseLogicalType } from './logical-type.js'
 import { resolveColumn } from './domain-resolve.js'
 import { customFieldsFor } from './custom-field.js'
 import { buildDbmlNote } from './dbml-note.js'
+import { composeTablePhysicalName } from './name-template.js'
+import type { NamingRules } from './naming.js'
 import {
   selectTables, tableColumns, hasEmptyPhysicalName, type ExportScope,
 } from './ddl.js'
@@ -112,7 +114,10 @@ function indexLines(model: ProjectModel, table: Table, cols: Column[]): string[]
   return lines
 }
 
-function tableBlock(model: ProjectModel, table: Table, dialect: Dialect): string {
+function tableBlock(
+  model: ProjectModel, table: Table, dialect: Dialect, rules: NamingRules,
+): string {
+  const tableName = composeTablePhysicalName(table, model, rules)
   const cols = tableColumns(model, table.id)
   const pks = cols.filter((c) => c.isPk)
   const lines = cols.map((c) => columnLine(model, c, dialect, pks.length === 1))
@@ -120,8 +125,9 @@ function tableBlock(model: ProjectModel, table: Table, dialect: Dialect): string
   const settings: string[] = []
   const group = table.groupId === null ? undefined : model.tableGroups[table.groupId]
   if (group) settings.push(`headercolor: ${normalizeHexColor(group.color)}`)
+  // 「논리명==물리명이면 생략」 판정은 최종 이름과 비교해야 한다.
   const note = buildDbmlNote(
-    table.logicalName, table.physicalName, table.comment, customOf(model, table, 'table'),
+    table.logicalName, tableName, table.comment, customOf(model, table, 'table'),
   )
   if (note !== null) settings.push(`note: ${quoteDbmlString(note)}`)
   const head = settings.length > 0 ? ` [${settings.join(', ')}]` : ''
@@ -130,10 +136,10 @@ function tableBlock(model: ProjectModel, table: Table, dialect: Dialect): string
   const body = ixLines.length > 0
     ? `${lines.join('\n')}\n\n  indexes {\n${ixLines.join('\n')}\n  }`
     : lines.join('\n')
-  return `Table ${quoteDbmlIdent(table.physicalName)}${head} {\n${body}\n}`
+  return `Table ${quoteDbmlIdent(tableName)}${head} {\n${body}\n}`
 }
 
-function groupBlocks(model: ProjectModel, tables: Table[]): string[] {
+function groupBlocks(model: ProjectModel, tables: Table[], rules: NamingRules): string[] {
   const byGroup = new Map<string, Table[]>()
   for (const t of tables) {
     if (t.groupId === null) continue
@@ -145,7 +151,8 @@ function groupBlocks(model: ProjectModel, tables: Table[]): string[] {
   for (const [groupId, members] of byGroup) {
     const g = model.tableGroups[groupId]
     if (!g) continue
-    const names = members.map((t) => `  ${quoteDbmlIdent(t.physicalName)}`).join('\n')
+    const names = members
+      .map((t) => `  ${quoteDbmlIdent(composeTablePhysicalName(t, model, rules))}`).join('\n')
     const settings = [`color: ${normalizeHexColor(g.color)}`]
     if (g.comment) settings.push(`note: ${quoteDbmlString(g.comment)}`)
     out.push(`TableGroup ${quoteDbmlIdent(g.name)} [${settings.join(', ')}] {\n${names}\n}`)
@@ -160,7 +167,8 @@ function side(table: string, cols: string[]): string {
     : `${quoteDbmlIdent(table)}.(${inner.join(', ')})`
 }
 
-function refLines(model: ProjectModel, selectedIds: Set<string>): string[] {
+function refLines(model: ProjectModel, selectedIds: Set<string>, rules: NamingRules): string[] {
+  const compose = (t: Table) => composeTablePhysicalName(t, model, rules)
   const out: string[] = []
   for (const rel of Object.values(model.relationships)) {
     if (!selectedIds.has(rel.parentTableId) || !selectedIds.has(rel.childTableId)) continue
@@ -175,27 +183,28 @@ function refLines(model: ProjectModel, selectedIds: Set<string>): string[] {
     // 원본에 없던 이름이 생겨 왕복이 깨진다(설계 §4.3).
     const label = rel.name && rel.name.trim() !== '' ? ` ${quoteDbmlIdent(rel.name)}` : ''
     const op = rel.cardinality === '1:1' ? '-' : '>'
-    out.push(`Ref${label}: ${side(child.physicalName, childCols)} ${op} ${side(parent.physicalName, parentCols)}`)
+    out.push(`Ref${label}: ${side(compose(child), childCols)} ${op} ${side(compose(parent), parentCols)}`)
   }
   return out
 }
 
+// ⚠️ opts 를 `?:` 로 두면 뒤에 필수 인자를 못 붙인다(TS1016). 기본값 인자로 바꾼다.
 export function generateDbml(
   model: ProjectModel, dialect: Dialect, scope: ExportScope = { kind: 'all' },
-  opts?: { projectName?: string },
+  opts: { projectName?: string } = {}, rules: NamingRules,
 ): string {
-  const tables = selectTables(model, scope).filter(
-    (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t),
+  const tables = selectTables(model, scope, rules).filter(
+    (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t, rules),
   )
   const blocks: string[] = []
-  if (opts?.projectName) {
+  if (opts.projectName) {
     blocks.push(
       `Project ${quoteDbmlIdent(opts.projectName)} {\n  database_type: '${DBML_DATABASE_TYPE[dialect]}'\n}`,
     )
   }
-  for (const t of tables) blocks.push(tableBlock(model, t, dialect))
+  for (const t of tables) blocks.push(tableBlock(model, t, dialect, rules))
   const selectedIds = new Set(tables.map((t) => t.id))
-  blocks.push(...groupBlocks(model, tables))
-  blocks.push(...refLines(model, selectedIds))
+  blocks.push(...groupBlocks(model, tables, rules))
+  blocks.push(...refLines(model, selectedIds, rules))
   return blocks.join('\n\n')
 }

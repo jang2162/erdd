@@ -2,11 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { buildSampleModel } from './testing/fixtures.js'
 import type { ProjectModel } from './model.js'
 import { createEmptyModel } from './model.js'
-import { DEFAULT_NAMING_RULES } from './naming.js'
+import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import {
-  buildChangeSheet, buildDictTemplateSheets, buildExcelSheets, CHANGE_HEADERS, EXCEL_SHEET_NAME,
+  buildChangeSheet, buildDictTemplateSheets, buildExcelSheets as buildExcelSheetsRaw,
+  CHANGE_HEADERS, EXCEL_SHEET_NAME, type ExcelSheetKey,
 } from './excel-sheets.js'
+import type { ExportScope } from './ddl.js'
 import { diffModelsForDisplay } from './model-diff.js'
+
+// 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적고
+// 호출부 15곳을 그대로 둔다.
+// ⚠️ `{ rules: DEFAULT_NAMING_RULES, ...opts }` 순서로 쓰지 마라 — opts.rules 가 명시적
+// undefined 면 기본값을 덮어 다시 깨진다.
+const buildExcelSheets = (
+  model: ProjectModel,
+  opts: { scope?: ExportScope; sheets?: readonly ExcelSheetKey[]; rules?: NamingRules } = {},
+) => buildExcelSheetsRaw(model, { ...opts, rules: opts.rules ?? DEFAULT_NAMING_RULES })
 
 /** 시트 key로 하나를 꺼낸다(없으면 테스트 실패를 유도하도록 undefined 반환). */
 function sheetOf(sheets: ReturnType<typeof buildExcelSheets>, key: string) {
@@ -274,5 +285,53 @@ describe('buildChangeSheet', () => {
     const sheet = buildChangeSheet(diffModelsForDisplay(base, target), meta)
     expect(sheet.rows).toHaveLength(1)
     expect(sheet.rows[0]).toEqual(['컬럼', 'MBR.MBR_NM', '삭제', '', '', ''])
+  })
+})
+
+describe('물리명 템플릿', () => {
+  const TPL: NamingRules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, alias: 'MBR' }
+    return x
+  }
+
+  it('테이블 목록 시트의 물리명 열이 조합 이름이다', () => {
+    const s = sheetOf(buildExcelSheetsRaw(m(), { rules: TPL }), 'tableList')!
+    const names = s.rows.map((r) => r[2])          // [그룹, 논리명, 물리명, 설명, …]
+    expect(names).toContain('TB_MBR_MBR')
+    expect(names).not.toContain('MBR')
+  })
+
+  it('테이블 정의서 시트의 물리명 열도 조합 이름이다', () => {
+    const s = sheetOf(buildExcelSheetsRaw(m(), { rules: TPL }), 'tableSpec')!
+    const names = new Set(s.rows.map((r) => r[2]))
+    expect(names.has('TB_MBR_MBR')).toBe(true)
+    expect(names.has('MBR')).toBe(false)
+  })
+
+  it('템플릿이 없으면 지금과 같다', () => {
+    const s = sheetOf(buildExcelSheets(m()), 'tableList')!
+    expect(s.rows.map((r) => r[2])).toContain('MBR')
+  })
+
+  // ⚠️ 행 순서도 조합 기준이다 — 표시되는 물리명 열이 조합 이름인데 정렬만 부분 기준이면
+  // 열이 정렬돼 있지 않은 것처럼 보이고, 같은 모델의 DDL 순서와도 갈린다(DDL 정렬을 조합
+  // 기준으로 바꾼 근거가 여기에도 그대로 적용된다).
+  it('행 순서도 조합 이름 기준이다', () => {
+    // 같은 그룹 안에서 접두가 갈리는 템플릿을 쓴다 — 그래야 부분 기준과 조합 기준이 갈린다.
+    const x = m()
+    x.customFields['cf9'] = {
+      id: 'cf9', name: '서브시스템', target: 'table', type: 'text',
+      options: [], required: false, defaultValue: null, order: 0, origin: null,
+    }
+    // 부분 기준: MBR(t2) < MBR_GRD(t1). 조합 기준: AA_MBR_GRD(t1) < ZZ_MBR(t2) 로 뒤집힌다.
+    x.tables['t2'] = { ...x.tables['t2']!, custom: { cf9: 'ZZ' } }
+    x.tables['t1'] = { ...x.tables['t1']!, custom: { cf9: 'AA' } }
+    const rules: NamingRules = {
+      ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: '{커스텀:서브시스템}_{물리명}',
+    }
+    const names = sheetOf(buildExcelSheetsRaw(x, { rules }), 'tableList')!.rows.map((r) => r[2])
+    expect(names).toEqual(['AA_MBR_GRD', 'ZZ_MBR'])
   })
 })

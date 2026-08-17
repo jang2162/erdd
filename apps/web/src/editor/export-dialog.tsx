@@ -53,12 +53,14 @@ export function ExportDialog({ open, onOpenChange }: {
     setScope(groupId ? { kind: 'group', groupId } : { kind: 'all' })
   }, [open])
 
-  const ddl = useMemo(() => generateDdl(model, dialect, scope), [model, dialect, scope])
+  const ddl = useMemo(
+    () => generateDdl(model, dialect, scope, namingRules), [model, dialect, scope, namingRules])
   const dbml = useMemo(
-    () => generateDbml(model, dialect, scope, { projectName: projectName ?? undefined }),
-    [model, dialect, scope, projectName],
+    () => generateDbml(model, dialect, scope, { projectName: projectName ?? undefined }, namingRules),
+    [model, dialect, scope, projectName, namingRules],
   )
-  const warnings = useMemo(() => ddlWarnings(model, dialect, scope), [model, dialect, scope])
+  const warnings = useMemo(
+    () => ddlWarnings(model, dialect, scope, namingRules), [model, dialect, scope, namingRules])
 
   const onCopy = () => { void navigator.clipboard?.writeText(ddl) }
   const onDownload = () => {

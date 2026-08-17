@@ -8,7 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
-import { computeWarnings } from '@erdd/core'
+import { DEFAULT_NAMING_RULES, computeWarnings, type NamingRules } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { useEditorStore } from './store.js'
 import { createDomain } from './domain-edits.js'
@@ -650,5 +650,45 @@ describe('EditPanel 컬럼 도메인 자동 지정', () => {
     await userEvent.tab()
     await waitFor(() => expect(useEditorStore.getState().model.columns['c1']!.logicalName).toBe('결제금액'))
     expect(useEditorStore.getState().model.columns['c1']!.domainId).toBeNull()
+  })
+})
+
+describe('EditPanel — 테이블 물리명 미리보기', () => {
+  const PID = '018f6b0e-0000-7000-8000-0000000000aa'
+  /** 모델과 명명 규칙을 store 에 얹는다. namingRules 는 setLoaded 가 건드리지 않는다. */
+  function load(m: ReturnType<typeof buildSampleModel>, rules: NamingRules) {
+    useEditorStore.getState().setLoaded(m, 1, PID)
+    useEditorStore.setState({ namingRules: rules })
+    grantEditPermission()
+  }
+  function withAlias() {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    return m
+  }
+
+  it('템플릿이 있으면 조합 결과를 보여 준다', async () => {
+    load(withAlias(), { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' })
+    useEditorStore.getState().selectTables(['t2'])   // t2 = MBR
+    renderPanel()
+    expect(await screen.findByText('→ TB_MBR_MBR')).toBeInTheDocument()
+  })
+
+  it('템플릿이 없으면 미리보기를 렌더하지 않는다', async () => {
+    load(buildSampleModel(), DEFAULT_NAMING_RULES)
+    useEditorStore.getState().selectTables(['t2'])
+    renderPanel()
+    await screen.findByLabelText(/테이블 물리명/)
+    expect(screen.queryByText(/^→ /)).not.toBeInTheDocument()
+  })
+
+  // ⚠️ 컬럼에는 템플릿이 없다(범위 밖). NamePair 안에 넣으면 여기가 빨개진다.
+  it('컬럼 물리명에는 미리보기가 없다', async () => {
+    load(withAlias(), { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' })
+    useEditorStore.getState().selectColumn('t2', 'c3', 'replace')
+    renderPanel()
+    // 컬럼마다 NamePair 가 있어 '물리명' 라벨은 여럿이다 — 존재만 확인한다.
+    expect(await screen.findAllByLabelText(/^물리명$/)).not.toHaveLength(0)
+    expect(screen.getAllByText(/^→ /)).toHaveLength(1)               // 테이블 것 하나뿐
   })
 })

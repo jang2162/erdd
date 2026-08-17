@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { generateDdl, ddlWarnings } from './ddl.js'
+import {
+  generateDdl as generateDdlRaw, ddlWarnings as ddlWarningsRaw, type DdlScope,
+} from './ddl.js'
 import { createEmptyModel, type ProjectModel, type Table, type Column } from './model.js'
 import { buildSampleModel } from './testing/fixtures.js'
+import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
+import type { Dialect } from './dialect.js'
+
+// 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다. 심으로 그 전제를 한 줄에 적고
+// 호출부 30곳을 그대로 둔다. 템플릿을 쓰는 새 케이스는 rules 를 직접 넘긴다.
+const generateDdl = (
+  model: ProjectModel, dialect: Dialect,
+  scope: DdlScope = { kind: 'all' }, rules: NamingRules = DEFAULT_NAMING_RULES,
+) => generateDdlRaw(model, dialect, scope, rules)
+const ddlWarnings = (
+  model: ProjectModel, dialect: Dialect,
+  scope: DdlScope = { kind: 'all' }, rules: NamingRules = DEFAULT_NAMING_RULES,
+) => ddlWarningsRaw(model, dialect, scope, rules)
 
 function tbl(id: string, physicalName: string, over: Partial<Table> = {}): Table {
   return { id, logicalName: physicalName, physicalName, comment: null, groupId: null,
@@ -227,5 +242,105 @@ describe('빈 물리명', () => {
     const warns = ddlWarnings(m, 'postgresql')
     const zeroColWarn = warns.find((w) => w.includes('컬럼이 없어'))
     expect(zeroColWarn).toBe('empty: 컬럼이 없어 내보내기에서 제외됨')
+  })
+})
+
+describe('물리명 템플릿', () => {
+  const tpl = (t: string): NamingRules => ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: t })
+  const TPL = 'TB_{그룹별칭}_{물리명}'
+  /** buildSampleModel: g1 에 t1(MBR_GRD)·t2(MBR), r1 이 t1→t2, i1 은 t2 의 유니크 인덱스. */
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, alias: 'MBR' }
+    return x
+  }
+
+  it('CREATE TABLE 이 조합된 이름을 쓴다', () => {
+    const sql = generateDdl(m(), 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(sql).toContain('CREATE TABLE TB_MBR_MBR ')
+    expect(sql).toContain('CREATE TABLE TB_MBR_MBR_GRD ')
+  })
+
+  // ⚠️ 한 자리만 안 바뀌어도 DDL 이 깨진다 — 존재하지 않는 테이블을 가리킨다.
+  it('FK·인덱스·코멘트가 모두 같은 조합 이름을 쓴다', () => {
+    const sql = generateDdl(m(), 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(sql).toContain('ALTER TABLE TB_MBR_MBR ADD CONSTRAINT')
+    expect(sql).toContain('REFERENCES TB_MBR_MBR_GRD ')
+    expect(sql).toContain('ON TB_MBR_MBR ')             // CREATE INDEX … ON <테이블>
+    expect(sql).toContain('COMMENT ON TABLE TB_MBR_MBR IS')
+    expect(sql).toContain('COMMENT ON COLUMN TB_MBR_MBR.MBR_NO IS')
+    // 조합 전 이름이 한 자리라도 남으면 안 된다(\b 는 밑줄을 단어 문자로 보므로 TB_MBR_MBR 안에서는 안 걸린다)
+    expect(sql).not.toMatch(/\bMBR\b/)
+    expect(sql).not.toMatch(/\bMBR_GRD\b/)
+  })
+
+  // 부분 기준 정렬이면 MBR(t2) < MBR_GRD(t1) 라 t2 가 앞이다. t1 을 별칭 AA 인 그룹으로 옮기면
+  // 조합 기준으로는 TB_AA_MBR_GRD < TB_MBR_MBR 이라 순서가 **뒤집힌다** — 그 뒤집힘을 잠근다.
+  it('정렬도 조합 이름 기준이다', () => {
+    const x = m()
+    x.tableGroups['g2'] = { id: 'g2', name: '기타', color: '#eeeeee', comment: null, alias: 'AA' }
+    x.tables['t1'] = { ...x.tables['t1']!, groupId: 'g2' }
+    const sql = generateDdl(x, 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(sql.indexOf('CREATE TABLE TB_AA_MBR_GRD '))
+      .toBeLessThan(sql.indexOf('CREATE TABLE TB_MBR_MBR '))
+    // 같은 모델을 템플릿 없이 내면 순서가 반대다(부분 기준 MBR < MBR_GRD).
+    const plain = generateDdl(x, 'postgresql')
+    expect(plain.indexOf('CREATE TABLE MBR ('))
+      .toBeLessThan(plain.indexOf('CREATE TABLE MBR_GRD ('))
+  })
+
+  it('템플릿이 없으면 지금과 같다', () => {
+    expect(generateDdl(m(), 'postgresql')).toContain('CREATE TABLE MBR (')
+  })
+
+  // ⚠️ 부분이 비어도 접두가 있으면 유효한 이름이다(설계 3.3 — hasEmptyPhysicalName).
+  it('부분이 비어도 조합 결과가 있으면 DDL 에 나가고 경고하지 않는다', () => {
+    const x = m()
+    x.tables['t2'] = { ...x.tables['t2']!, physicalName: '' }
+    const sql = generateDdl(x, 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(sql).toContain('CREATE TABLE TB_MBR ')
+    const warns = ddlWarnings(x, 'postgresql', { kind: 'all' }, tpl(TPL))
+    expect(warns.filter((w) => w.includes('물리명이 비어 있어'))).toEqual([])
+  })
+
+  it('조합해도 이름이 비면 제외하고 경고한다', () => {
+    const x = m()
+    x.tables['t2'] = { ...x.tables['t2']!, physicalName: '' }
+    const sql = generateDdl(x, 'postgresql', { kind: 'all' }, tpl('{물리명}'))
+    expect(sql).not.toContain('CREATE TABLE ""')
+    expect(ddlWarnings(x, 'postgresql', { kind: 'all' }, tpl('{물리명}'))
+      .some((w) => w.includes('물리명이 비어 있어'))).toBe(true)
+  })
+
+  // ⚠️ 설계 3.3 이 ⚠️ 로 못 박은 자리다 — 「논리명==물리명이면 코멘트 생략」 판정이 **조합 이름**과
+  // 비교돼야 한다. 부분과 비교하면 논리명이 부분과 같은 테이블의 코멘트가 **통째로 사라진다**
+  // (DBML 의 쌍둥이 자리는 「note 의 논리명 생략 판정이 조합 이름 기준이다」로 이미 잠겨 있다).
+  // ⚠️ 두 방언을 모두 단언해야 두 자리가 잠긴다 — mysql 은 CREATE TABLE 안의 인라인 코멘트이고
+  // 나머지는 별도 COMMENT 문이라 코드가 갈라져 있다.
+  it('코멘트 생략 판정이 조합 이름 기준이다', () => {
+    const x = m()
+    // 논리명 == 부분 물리명 == 'MBR', 설명 없음 → 부분 기준으로 판정하면 코멘트가 안 나온다.
+    x.tables['t2'] = { ...x.tables['t2']!, logicalName: 'MBR', comment: null }
+    expect(generateDdl(x, 'postgresql', { kind: 'all' }, tpl(TPL)))
+      .toContain("COMMENT ON TABLE TB_MBR_MBR IS 'MBR';")
+    expect(generateDdl(x, 'mysql', { kind: 'all' }, tpl(TPL))).toContain("COMMENT 'MBR'")
+    // 대조군: 템플릿이 없으면 논리명 == 물리명이라 코멘트가 생략된다(기존 동작).
+    expect(generateDdl(x, 'postgresql')).not.toContain('COMMENT ON TABLE MBR IS')
+    expect(generateDdl(x, 'mysql')).not.toContain("COMMENT 'MBR'")
+  })
+
+  // 「고칠 곳을 알려 준다」가 경고의 목적이다 — 화면에 없는 이름(부분)을 가리키면 안 된다.
+  it('경고 문구의 테이블 라벨과 타입경고 접두가 조합 이름이다', () => {
+    const x = m()
+    // (1) 컬럼이 없는 테이블 → warningLabel 을 탄다.
+    x.tables['t3'] = { ...x.tables['t2']!, id: 't3', physicalName: 'NOCOL' }
+    // (2) Oracle 에서 변환 경고가 나는 컬럼 → 타입경고 접두를 탄다.
+    x.columns['c9'] = col('c9', 't2', 'CRT_TM', 'TIME', { order: 9 })
+    const warns = ddlWarnings(x, 'oracle', { kind: 'all' }, tpl(TPL))
+    expect(warns).toContain('TB_MBR_NOCOL: 컬럼이 없어 내보내기에서 제외됨')
+    expect(warns.some((w) => w.startsWith('TB_MBR_MBR.CRT_TM: '))).toBe(true)
+    // 조합 전 이름으로 가리키면 안 된다
+    expect(warns.some((w) => w.startsWith('NOCOL:'))).toBe(false)
+    expect(warns.some((w) => w.startsWith('MBR.CRT_TM:'))).toBe(false)
   })
 })

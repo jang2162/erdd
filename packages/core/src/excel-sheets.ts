@@ -1,7 +1,8 @@
 import type { Column, ProjectModel, Table } from './model.js'
 import type { ExportScope } from './ddl.js'
 import { customFieldsFor, resolveCustomValue } from './custom-field.js'
-import { decomposeByWords, DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
+import { decomposeByWords, type NamingRules } from './naming.js'
+import { composeTablePhysicalName } from './name-template.js'
 import { CHANGE_KIND_LABEL, DIFF_KIND_LABEL, type ModelDiff } from './model-diff.js'
 
 export type ExcelSheetKey = 'tableList' | 'tableSpec' | 'words' | 'terms' | 'domains'
@@ -56,8 +57,13 @@ function groupNameOf(model: ProjectModel, t: Table): string {
   return t.groupId ? text(model.tableGroups[t.groupId]?.name) : ''
 }
 
-/** 범위에 드는 테이블을 (그룹명, 물리명) 순으로 낸다. */
-function scopedTables(model: ProjectModel, scope: ExportScope): Table[] {
+/**
+ * 범위에 드는 테이블을 (그룹명, 조합된 물리명) 순으로 낸다.
+ * ⚠️ 두 번째 키는 **조합 이름**이다 — 물리명 열에 찍히는 값이 조합 이름이므로 부분으로 정렬하면
+ * 열이 정렬돼 있지 않은 것처럼 보이고, 같은 모델의 DDL 순서와도 갈린다(`ddl.ts` 의 `selectTables`
+ * 와 같은 근거).
+ */
+function scopedTables(model: ProjectModel, scope: ExportScope, rules: NamingRules): Table[] {
   const all = Object.values(model.tables)
   let picked: Table[]
   if (scope.kind === 'all') picked = all
@@ -66,9 +72,10 @@ function scopedTables(model: ProjectModel, scope: ExportScope): Table[] {
     const ids = new Set(scope.tableIds)
     picked = all.filter((t) => ids.has(t.id))
   }
+  const compose = (t: Table) => composeTablePhysicalName(t, model, rules)
   return picked.sort((a, b) =>
     groupNameOf(model, a).localeCompare(groupNameOf(model, b))
-    || a.physicalName.localeCompare(b.physicalName))
+    || compose(a).localeCompare(compose(b)))
 }
 
 function tableColumns(model: ProjectModel, tableId: string): Column[] {
@@ -95,18 +102,18 @@ function resolveForSheet(
  * scope는 테이블 시트(tableList/tableSpec)에만 적용된다 — 사전 3종은 그룹 개념이
  * 없는 프로젝트 전역 자산이라 항상 전체를 낸다.
  *
- * rules 는 용어 시트의 파생 컬럼 「구성 단어」를 분해할 때만 쓴다. 주지 않으면 기본 규칙으로
- * 떨어지는데, 구분자를 끄고 쓰는 프로젝트에서는 그 컬럼이 실제 분해와 어긋난다 —
- * **실호출처는 프로젝트의 namingRules 를 넘겨야 한다.**
+ * rules 는 **테이블 물리명 조합**과 용어 시트의 파생 컬럼 「구성 단어」 분해에 쓴다.
+ * ⚠️ 폴백을 두지 마라 — `?? DEFAULT_NAMING_RULES` 는 프로젝트 규칙을 조용히 무시하는 자리였다.
+ * 필수 인자라 호출처가 반드시 넘긴다(테스트는 import 별칭 심으로 채운다).
  */
 export function buildExcelSheets(
   model: ProjectModel,
-  opts: { scope?: ExportScope; sheets?: readonly ExcelSheetKey[]; rules?: NamingRules } = {},
+  opts: { scope?: ExportScope; sheets?: readonly ExcelSheetKey[]; rules: NamingRules },
 ): SheetData[] {
   const scope = opts.scope ?? { kind: 'all' }
-  const rules = opts.rules ?? DEFAULT_NAMING_RULES
+  const rules = opts.rules
   const wanted = new Set<ExcelSheetKey>(opts.sheets ?? EXCEL_SHEET_KEYS)
-  const tables = scopedTables(model, scope)
+  const tables = scopedTables(model, scope, rules)
   const tableFields = customFieldsFor(model, 'table')
   const columnFields = customFieldsFor(model, 'column')
 
@@ -117,7 +124,8 @@ export function buildExcelSheets(
           key, name: EXCEL_SHEET_NAME[key],
           headers: [...TABLE_LIST_HEADERS, ...tableFields.map((f) => f.name)],
           rows: tables.map((t) => [
-            groupNameOf(model, t), t.logicalName, t.physicalName, text(t.comment),
+            groupNameOf(model, t), t.logicalName, composeTablePhysicalName(t, model, rules),
+            text(t.comment),
             ...tableFields.map((f) => resolveCustomValue(t, f)),
           ]),
         }
@@ -127,7 +135,8 @@ export function buildExcelSheets(
           tableColumns(model, t.id).forEach((c, i) => {
             const r = resolveForSheet(model, c)
             rows.push([
-              groupNameOf(model, t), t.logicalName, t.physicalName, String(i + 1),
+              groupNameOf(model, t), t.logicalName, composeTablePhysicalName(t, model, rules),
+              String(i + 1),
               c.logicalName, c.physicalName, r.domainName, r.type,
               c.isPk ? 'Y' : '', c.nullable ? '' : 'Y', r.defaultValue, text(c.comment),
               ...columnFields.map((f) => resolveCustomValue(c, f)),

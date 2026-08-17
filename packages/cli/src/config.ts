@@ -63,9 +63,15 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
     )
   }
   const logicalSeparator = ls === '' ? '' as const : '_' as const
+  // 템플릿은 임의 문자열이라 「잘못 적은 값」이 없다 — logicalSeparator 와 달리 검증하지 않고
+  // 누락만 빈 문자열로 채운다(빈 문자열 = 템플릿을 쓰지 않음).
+  const tpl = namingRules['tablePhysicalTemplate']
+  const tablePhysicalTemplate = typeof tpl === 'string' ? tpl : ''
   return {
     serverUrl, projectId, dialects,
-    namingRules: { ...(namingRules as unknown as NamingRules), logicalSeparator },
+    namingRules: {
+      ...(namingRules as unknown as NamingRules), logicalSeparator, tablePhysicalTemplate,
+    },
   }
 }
 

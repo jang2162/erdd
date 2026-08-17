@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import type { Domain, ProjectModel, SheetData, Term, Word } from '@erdd/core'
-import { DEFAULT_NAMING_RULES, buildExcelSheets, createEmptyModel, planDictImport } from '@erdd/core'
+import type {
+  Domain, ExcelSheetKey, ExportScope, NamingRules, ProjectModel, SheetData, Term, Word,
+} from '@erdd/core'
+import {
+  DEFAULT_NAMING_RULES, buildExcelSheets as buildExcelSheetsRaw, createEmptyModel, planDictImport,
+} from '@erdd/core'
+
+// 이 파일의 기존 케이스는 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적는다.
+const buildExcelSheets = (
+  model: ProjectModel,
+  opts: { scope?: ExportScope; sheets?: readonly ExcelSheetKey[]; rules?: NamingRules } = {},
+) => buildExcelSheetsRaw(model, { ...opts, rules: opts.rules ?? DEFAULT_NAMING_RULES })
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { buildWorkbookBlob, readDictSheets } from './excel-file.js'
 import { applyDictImport } from './dict-import-edits.js'

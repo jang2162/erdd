@@ -12,10 +12,16 @@ export type NamingRules = {
    */
   logicalSeparator: '_' | ''
   maxLengthBytes: number
+  /**
+   * 테이블 물리명 조합 틀. 빈 문자열이면 조합하지 않고 physicalName 을 그대로 쓴다(기존 동작).
+   * 예: 'TB_{그룹별칭}_{물리명}'
+   */
+  tablePhysicalTemplate: string
 }
 
 export const DEFAULT_NAMING_RULES: NamingRules = {
   case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+  tablePhysicalTemplate: '',
 }
 
 /**
@@ -27,6 +33,7 @@ export const NamingRulesSchema = z.object({
   separator: z.enum(['_', '']),
   logicalSeparator: z.enum(['_', '']).default('_'),
   maxLengthBytes: z.number().int().positive(),
+  tablePhysicalTemplate: z.string().default(''),   // 읽기 시점 주입
 })
 
 /**
@@ -38,6 +45,7 @@ export const NamingRulesSchema = z.object({
  */
 export const NamingRulesStrictSchema = NamingRulesSchema.extend({
   logicalSeparator: z.enum(['_', '']),
+  tablePhysicalTemplate: z.string(),               // 쓰기: 기본값 주입 금지
 })
 export type GenResult = {
   physicalName: string

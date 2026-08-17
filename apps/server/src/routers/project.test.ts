@@ -173,7 +173,10 @@ describe.skipIf(!url)('project', () => {
   it('명시된 logicalSeparator 는 그대로 내려준다', async () => {
     const projectId = await createProject()
     await app.db!.update(projects)
-      .set({ namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 } })
+      .set({ namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+      } })
       .where(eq(projects.id, projectId))
 
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
@@ -187,7 +190,10 @@ describe.skipIf(!url)('project', () => {
     const projectId = await createProject()
     const off = await post(app, 'project.update', ownerToken, {
       projectId,
-      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+      },
     })
     expect(off.statusCode).toBe(200)
 
@@ -201,11 +207,77 @@ describe.skipIf(!url)('project', () => {
     expect(got.namingRules.logicalSeparator).toBe('')
   })
 
+  it('tablePhysicalTemplate 키가 없는 기존 행에 빈 문자열을 주입해 내려준다', async () => {
+    const projectId = await createProject()
+    await app.db!.update(projects)
+      .set({ namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+      } as never })
+      .where(eq(projects.id, projectId))
+
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.namingRules.tablePhysicalTemplate).toBe('')
+  })
+
+  it('설정된 템플릿은 그대로 내려준다', async () => {
+    const projectId = await createProject()
+    await app.db!.update(projects)
+      .set({ namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+      } })
+      .where(eq(projects.id, projectId))
+
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.namingRules.tablePhysicalTemplate).toBe('TB_{그룹별칭}_{물리명}')
+  })
+
+  // ⚠️ 급소. strict 스키마가 .default('') 를 물려받으면 4키만 보낸 클라이언트가 설정해 둔
+  // 템플릿을 조용히 지운다 — 부분 페이로드가 전체 덮어쓰기로 둔갑한다.
+  it('tablePhysicalTemplate 가 빠진 namingRules 는 update 가 거절하고 설정값을 지킨다', async () => {
+    const projectId = await createProject()
+    const set = await post(app, 'project.update', ownerToken, {
+      projectId,
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+        tablePhysicalTemplate: 'TB_{물리명}',
+      },
+    })
+    expect(set.statusCode).toBe(200)
+
+    const partial = await post(app, 'project.update', ownerToken, {
+      projectId,
+      // tablePhysicalTemplate 를 일부러 뺀 옛 클라이언트 페이로드
+      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
+    })
+    expect(partial.statusCode).toBe(400)
+
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.namingRules.tablePhysicalTemplate).toBe('TB_{물리명}')
+  })
+
+  it('update 로 템플릿을 바꿀 수 있다', async () => {
+    const projectId = await createProject()
+    const res = await post(app, 'project.update', ownerToken, {
+      projectId,
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+        tablePhysicalTemplate: 'PRE_{논리명}',
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.namingRules.tablePhysicalTemplate).toBe('PRE_{논리명}')
+  })
+
   it('update 로 logicalSeparator 를 바꿀 수 있다', async () => {
     const projectId = await createProject()
     const res = await post(app, 'project.update', ownerToken, {
       projectId,
-      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+      },
     })
     expect(res.statusCode).toBe(200)
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
@@ -216,6 +288,7 @@ describe.skipIf(!url)('project', () => {
     const projectId = await createProject()
     const customRules = {
       case: 'lower_snake' as const, separator: '' as const, logicalSeparator: '_' as const, maxLengthBytes: 63,
+      tablePhysicalTemplate: '' as const,
     }
 
     const upd = await post(app, 'project.update', ownerToken, {

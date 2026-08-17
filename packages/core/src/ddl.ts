@@ -3,6 +3,8 @@ import { resolveColumnType, type Dialect } from './dialect.js'
 import { parseLogicalType } from './logical-type.js'
 import { quoteIdentifier } from './identifier.js'
 import { resolveColumn } from './domain-resolve.js'
+import { composeTablePhysicalName } from './name-template.js'
+import type { NamingRules } from './naming.js'
 
 export type DdlScope =
   | { kind: 'all' }
@@ -31,7 +33,9 @@ function autoIncrementToken(dialect: Dialect): string {
   }
 }
 
-export function selectTables(model: ProjectModel, scope: DdlScope): Table[] {
+export function selectTables(
+  model: ProjectModel, scope: DdlScope, rules: NamingRules,
+): Table[] {
   const all = Object.values(model.tables)
   let picked: Table[]
   if (scope.kind === 'all') picked = all
@@ -40,7 +44,9 @@ export function selectTables(model: ProjectModel, scope: DdlScope): Table[] {
     const ids = new Set(scope.tableIds)
     picked = all.filter((t) => ids.has(t.id))
   }
-  return picked.sort((a, b) => a.physicalName.localeCompare(b.physicalName))
+  // ⚠️ 최종 이름 기준으로 정렬한다 — 그래야 DDL 순서가 실제로 만들어질 테이블 순서와 맞는다.
+  const compose = (t: Table) => composeTablePhysicalName(t, model, rules)
+  return picked.sort((a, b) => compose(a).localeCompare(compose(b)))
 }
 
 export function tableColumns(model: ProjectModel, tableId: string): Column[] {
@@ -91,14 +97,18 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string 
   return `  ${parts.join(' ')}`
 }
 
-function createTableBlock(model: ProjectModel, table: Table, dialect: Dialect): string {
+function createTableBlock(
+  model: ProjectModel, table: Table, dialect: Dialect, rules: NamingRules,
+): string {
+  const tableName = composeTablePhysicalName(table, model, rules)
   const cols = tableColumns(model, table.id)
   const lines = cols.map((c) => columnLine(model, c, dialect))
   const pks = cols.filter((c) => c.isPk)
   if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => quoteIdentifier(c.physicalName, dialect)).join(', ')})`)
-  let block = `CREATE TABLE ${quoteIdentifier(table.physicalName, dialect)} (\n${lines.join(',\n')}\n)`
+  let block = `CREATE TABLE ${quoteIdentifier(tableName, dialect)} (\n${lines.join(',\n')}\n)`
   if (dialect === 'mysql') {
-    const text = commentText(table.logicalName, table.physicalName, table.comment)
+    // 「논리명==물리명이면 생략」 판정은 최종 이름과 비교해야 한다.
+    const text = commentText(table.logicalName, tableName, table.comment)
     if (text !== null) block += ` COMMENT '${esc(text)}'`
   }
   return `${block};`
@@ -108,8 +118,11 @@ function createTableBlock(model: ProjectModel, table: Table, dialect: Dialect): 
  * DDL로 낼 수 있는 테이블인가. 물리명이 비면 식별자를 만들 수 없다.
  * generateDdl의 제외와 ddlWarnings의 경고가 같은 판정을 써야 하므로 여기 하나만 둔다.
  */
-export function hasEmptyPhysicalName(model: ProjectModel, table: Table): boolean {
-  if (table.physicalName.trim() === '') return true
+export function hasEmptyPhysicalName(
+  model: ProjectModel, table: Table, rules: NamingRules,
+): boolean {
+  // ⚠️ 부분이 비어도 접두가 있으면 유효한 이름이다 — 조합 결과로 판정한다(설계 3.3).
+  if (composeTablePhysicalName(table, model, rules).trim() === '') return true
   return tableColumns(model, table.id).some((c) => c.physicalName.trim() === '')
 }
 
@@ -117,8 +130,9 @@ export function hasEmptyPhysicalName(model: ProjectModel, table: Table): boolean
  * 경고 문구에 쓸 테이블 라벨. 물리명이 비어 있으면 논리명(없으면 id)으로 폴백한다 —
  * 그렇지 않으면 신규 테이블(물리명 '')의 경고가 ": ..." 형태로 이름 없이 뜬다.
  */
-function warningLabel(t: Table): string {
-  return t.physicalName.trim() === '' ? (t.logicalName || t.id) : t.physicalName
+function warningLabel(t: Table, model: ProjectModel, rules: NamingRules): string {
+  const name = composeTablePhysicalName(t, model, rules)
+  return name.trim() === '' ? (t.logicalName || t.id) : name
 }
 
 function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): Relationship[] {
@@ -127,7 +141,10 @@ function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): R
   )
 }
 
-function fkStatements(model: ProjectModel, selectedIds: Set<string>, dialect: Dialect): string[] {
+function fkStatements(
+  model: ProjectModel, selectedIds: Set<string>, dialect: Dialect, rules: NamingRules,
+): string[] {
+  const compose = (t: Table) => composeTablePhysicalName(t, model, rules)
   const rels = selectedRelationships(model, selectedIds)
   const statements: string[] = []
   const used = new Set<string>() // 원문 기준 유일성 추적, 출력 시 인용
@@ -139,24 +156,28 @@ function fkStatements(model: ProjectModel, selectedIds: Set<string>, dialect: Di
     const rawChildCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
     const childCols = rawChildCols.map(q)
     const parentCols = rel.columnMappings.map((m) => q(model.columns[m.parentColumnId]?.physicalName ?? ''))
-    const name = uniqueConstraintName(fkBaseName(rel, child.physicalName, parent.physicalName), used)
+    const childName = compose(child)
+    const parentName = compose(parent)
+    const name = uniqueConstraintName(fkBaseName(rel, childName, parentName), used)
     statements.push(
-      `ALTER TABLE ${q(child.physicalName)} ADD CONSTRAINT ${q(name)} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${q(parent.physicalName)} (${parentCols.join(', ')});`,
+      `ALTER TABLE ${q(childName)} ADD CONSTRAINT ${q(name)} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${q(parentName)} (${parentCols.join(', ')});`,
     )
     if (rel.cardinality === '1:1') {
-      const uqName = uniqueConstraintName(`UQ_${child.physicalName}_${rawChildCols.join('_')}`, used)
-      statements.push(`ALTER TABLE ${q(child.physicalName)} ADD CONSTRAINT ${q(uqName)} UNIQUE (${childCols.join(', ')});`)
+      const uqName = uniqueConstraintName(`UQ_${childName}_${rawChildCols.join('_')}`, used)
+      statements.push(`ALTER TABLE ${q(childName)} ADD CONSTRAINT ${q(uqName)} UNIQUE (${childCols.join(', ')});`)
     }
   }
   return statements
 }
 
-function indexStatements(model: ProjectModel, selectedIds: Set<string>, dialect: Dialect): string[] {
+function indexStatements(
+  model: ProjectModel, selectedIds: Set<string>, dialect: Dialect, rules: NamingRules,
+): string[] {
   const indexes = Object.values(model.indexes).filter((ix) => selectedIds.has(ix.tableId))
   const q = (s: string) => quoteIdentifier(s, dialect)
   return indexes.map((ix) => {
     const table = model.tables[ix.tableId]
-    const tableName = table ? table.physicalName : ix.tableId
+    const tableName = table ? composeTablePhysicalName(table, model, rules) : ix.tableId
     const cols = ix.columns
       .map((c) => {
         const col = model.columns[c.columnId]
@@ -169,15 +190,18 @@ function indexStatements(model: ProjectModel, selectedIds: Set<string>, dialect:
   })
 }
 
-function commentStatements(model: ProjectModel, tables: Table[], dialect: Dialect): string[] {
+function commentStatements(
+  model: ProjectModel, tables: Table[], dialect: Dialect, rules: NamingRules,
+): string[] {
   const statements: string[] = []
   for (const table of tables) {
-    const tableText = commentText(table.logicalName, table.physicalName, table.comment)
-    if (tableText !== null) statements.push(tableCommentStatement(dialect, table.physicalName, tableText))
+    const tableName = composeTablePhysicalName(table, model, rules)
+    const tableText = commentText(table.logicalName, tableName, table.comment)
+    if (tableText !== null) statements.push(tableCommentStatement(dialect, tableName, tableText))
     const cols = tableColumns(model, table.id)
     for (const col of cols) {
       const colText = commentText(col.logicalName, col.physicalName, col.comment)
-      if (colText !== null) statements.push(columnCommentStatement(dialect, table.physicalName, col.physicalName, colText))
+      if (colText !== null) statements.push(columnCommentStatement(dialect, tableName, col.physicalName, colText))
     }
   }
   return statements
@@ -207,35 +231,39 @@ function columnCommentStatement(dialect: Dialect, tableName: string, columnName:
   }
 }
 
-export function generateDdl(model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }): string {
-  const tables = selectTables(model, scope).filter(
-    (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t),
+export function generateDdl(
+  model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }, rules: NamingRules,
+): string {
+  const tables = selectTables(model, scope, rules).filter(
+    (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t, rules),
   )
   const selectedIds = new Set(tables.map((t) => t.id))
 
-  const createBlocks = tables.map((table) => createTableBlock(model, table, dialect))
-  const fk = fkStatements(model, selectedIds, dialect).join('\n')
-  const index = indexStatements(model, selectedIds, dialect).join('\n')
-  const comment = dialect === 'mysql' ? '' : commentStatements(model, tables, dialect).join('\n')
+  const createBlocks = tables.map((table) => createTableBlock(model, table, dialect, rules))
+  const fk = fkStatements(model, selectedIds, dialect, rules).join('\n')
+  const index = indexStatements(model, selectedIds, dialect, rules).join('\n')
+  const comment = dialect === 'mysql' ? '' : commentStatements(model, tables, dialect, rules).join('\n')
 
   return [createBlocks.join('\n\n'), fk, index, comment].filter((s) => s.trim() !== '').join('\n\n')
 }
 
 /** DDL 생성 시 사용자가 알아야 할 경고 목록(0컬럼 제외, 타입 변환 등). scope를 반영한다. */
-export function ddlWarnings(model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }): string[] {
-  const inScope = selectTables(model, scope)
+export function ddlWarnings(
+  model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }, rules: NamingRules,
+): string[] {
+  const inScope = selectTables(model, scope, rules)
   const out: string[] = []
   for (const t of inScope) {
-    if (tableColumns(model, t.id).length === 0) out.push(`${warningLabel(t)}: 컬럼이 없어 내보내기에서 제외됨`)
+    if (tableColumns(model, t.id).length === 0) out.push(`${warningLabel(t, model, rules)}: 컬럼이 없어 내보내기에서 제외됨`)
   }
   for (const t of inScope) {
-    if (!hasEmptyPhysicalName(model, t)) continue
-    out.push(`${warningLabel(t)}: 물리명이 비어 있어 내보내기에서 제외됨`)
+    if (!hasEmptyPhysicalName(model, t, rules)) continue
+    out.push(`${warningLabel(t, model, rules)}: 물리명이 비어 있어 내보내기에서 제외됨`)
   }
   for (const t of inScope) {
     for (const c of tableColumns(model, t.id)) {
       const { warning } = resolveColumnType(c.type, dialect)
-      if (warning) out.push(`${t.physicalName}.${c.physicalName}: ${warning}`)
+      if (warning) out.push(`${composeTablePhysicalName(t, model, rules)}.${c.physicalName}: ${warning}`)
     }
   }
   return out

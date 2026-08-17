@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
-import type { NamingRules } from '@erdd/core'
+import {
+  DEFAULT_NAMING_RULES, composeTablePhysicalName, createEmptyModel, type NamingRules,
+  type ProjectModel,
+} from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -99,7 +102,35 @@ function ProjectMembers({ projectId, orgId }: { projectId: string; orgId: string
 }
 
 /**
- * 명명 규칙 중 **논리명 구분자 하나만** 연다(설계 D7).
+ * 템플릿을 현재 모델의 테이블 하나에 적용해 보여 준다(설계 3.4). 모델에 테이블이 없으면
+ * 가상 예시로 떨어진다 — 새 프로젝트에서도 형식을 확인할 수 있어야 한다.
+ *
+ * ⚠️ 여기의 `DEFAULT_NAMING_RULES` 는 **폴백이 아니라 「미리보기는 템플릿만 본다」**는 뜻이다 —
+ * 조합은 case·separator·maxLengthBytes 를 쓰지 않는다. 다른 규칙을 섞으면 오해를 만든다.
+ */
+function TemplatePreview({ template, model }: { template: string; model: ProjectModel | undefined }) {
+  if (template === '') return null
+  const table = model === undefined ? undefined : Object.values(model.tables)[0]
+  const sample: ProjectModel = table !== undefined && model !== undefined ? model : {
+    ...createEmptyModel(),
+    tableGroups: { g: { id: 'g', name: '회원관리', color: '#eeeeee', comment: null, alias: 'MBR' } },
+    tables: { t: {
+      id: 't', logicalName: '주문', physicalName: 'ORD', comment: null, groupId: 'g',
+      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    } },
+  }
+  const target = table ?? sample.tables['t']!
+  const composed = composeTablePhysicalName(
+    target, sample, { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: template })
+  return (
+    <p className="text-xs text-muted-foreground">
+      미리보기: <span className="font-mono text-foreground">{composed}</span>
+    </p>
+  )
+}
+
+/**
+ * 명명 규칙 중 **논리명 구분자와 테이블 물리명 형식**을 연다(설계 D7).
  * case·separator·maxLengthBytes 는 각자 기존 모델에 미치는 영향이 달라 함께 열지 않는다 —
  * 특히 separator 를 바꾸면 물리명 전체가 재생성 대상이 된다.
  */
@@ -116,6 +147,14 @@ function NamingRulesSection({
       onError: (err) => toast.error(err.message),
     }),
   )
+  // 미리보기는 현재 모델의 테이블 하나로 만든다 — 에디터가 이미 쓰는 쿼리라 캐시를 탄다.
+  const model = useQuery(trpc.model.get.queryOptions({ projectId }))
+  // 매 글자마다 mutate 하지 않는다 — 로컬 draft 로 받고 blur 에 커밋한다.
+  const [template, setTemplate] = useState(namingRules.tablePhysicalTemplate)
+  // 서버 값이 바뀌면 draft 를 맞춘다. ⚠️ projectId 를 deps 에 함께 넣는다 — 그룹 별칭 사이클에서
+  // 값만 넣었다가 「같은 값을 가진 다른 대상」으로 옮길 때 draft 가 남는 버그를 만들었다.
+  useEffect(() => { setTemplate(namingRules.tablePhysicalTemplate) },
+    [projectId, namingRules.tablePhysicalTemplate])
 
   return (
     <section className="grid gap-2">
@@ -137,6 +176,25 @@ function NamingRulesSection({
         켜면 논리명을 「회원_주문_번호」처럼 단어마다 밑줄로 나눠 적습니다.
         끄더라도 이미 저장된 논리명의 밑줄은 그대로 남습니다.
       </p>
+      <div className="grid gap-1">
+        <Label htmlFor="tpl" className="text-xs">테이블 물리명 형식</Label>
+        <input
+          id="tpl" className="h-9 rounded-md border bg-background px-2 font-mono text-sm"
+          value={template} disabled={update.isPending}
+          onChange={(e) => setTemplate(e.target.value)}
+          onBlur={() => {
+            if (template === namingRules.tablePhysicalTemplate) return
+            update.mutate({
+              projectId, namingRules: { ...namingRules, tablePhysicalTemplate: template },
+            })
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          비우면 입력한 물리명을 그대로 씁니다. 쓸 수 있는 변수:
+          <code className="font-mono"> {'{그룹별칭}'} {'{그룹명}'} {'{물리명}'} {'{논리명}'} {'{커스텀:항목이름}'}</code>
+        </p>
+        <TemplatePreview template={template} model={model.data?.model} />
+      </div>
     </section>
   )
 }

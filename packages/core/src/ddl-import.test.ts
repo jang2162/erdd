@@ -1,13 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel } from './model.js'
+import { buildSampleModel } from './testing/fixtures.js'
 import { DEFAULT_NAMING_RULES } from './naming.js'
 import { parseDdl } from './ddl-parse.js'
 import { planDdlImport } from './ddl-import.js'
-import { generateDdl } from './ddl.js'
+import { generateDdl as generateDdlRaw, type DdlScope } from './ddl.js'
 import { DIALECTS, type Dialect } from './dialect.js'
+import type { NamingRules } from './naming.js'
 import type { ProjectModel, Word } from './model.js'
 import type { ParsedDdl } from './ddl-parse.js'
 import type { ParsedDbml } from './dbml-parse.js'
+
+// 이 파일의 기존 케이스는 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적는다.
+const generateDdl = (
+  model: ProjectModel, dialect: Dialect,
+  scope: DdlScope = { kind: 'all' }, rules: NamingRules = DEFAULT_NAMING_RULES,
+) => generateDdlRaw(model, dialect, scope, rules)
 
 const plan = (ddl: string, model: ProjectModel = createEmptyModel(), dialect: Dialect = 'postgresql') =>
   planDdlImport(model, parseDdl(ddl), dialect, DEFAULT_NAMING_RULES)
@@ -525,5 +533,17 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const p = planDdlImport(createEmptyModel(), parsed, 'postgresql', DEFAULT_NAMING_RULES)
     expect(p.groups).toEqual([])
     expect(p.tables[0]!.custom).toEqual({})
+  })
+
+  // ⚠️ 설계 D2 를 **고정**하는 테스트다. 「깨진다」가 의도된 동작이라는 뜻이지 옳다는 뜻이 아니다.
+  // 역분해를 넣게 되면 이 테스트가 빨개진다 — 그때 설계 D2 를 다시 읽어라.
+  it('템플릿이 걸린 DDL 을 되읽으면 접두가 부분에 박힌다(역분해하지 않는다)', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort())
+      .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
   })
 })

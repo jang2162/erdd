@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type ProjectModel } from './model.js'
-import { DEFAULT_NAMING_RULES } from './naming.js'
-import { generateDbml } from './dbml.js'
+import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
+import { generateDbml as generateDbmlRaw } from './dbml.js'
 import { parseDbml } from './dbml-parse.js'
 import { planDdlImport } from './ddl-import.js'
+import type { DdlScope } from './ddl.js'
+import type { Dialect } from './dialect.js'
+
+// 왕복 픽스처는 「템플릿 없는 규칙」을 전제한다 — 템플릿을 걸면 왕복이 깨진다(설계 D2).
+const generateDbml = (
+  model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' },
+  opts: { projectName?: string } = {}, rules: NamingRules = DEFAULT_NAMING_RULES,
+) => generateDbmlRaw(model, dialect, scope, opts, rules)
 
 /**
  * 왕복 픽스처. PostgreSQL 로 돌린다 — 타입 매핑이 단사라 방언 충돌 5건
