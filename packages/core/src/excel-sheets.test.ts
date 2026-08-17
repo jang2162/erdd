@@ -2,11 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { buildSampleModel } from './testing/fixtures.js'
 import type { ProjectModel } from './model.js'
 import { createEmptyModel } from './model.js'
-import { DEFAULT_NAMING_RULES } from './naming.js'
+import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import {
-  buildChangeSheet, buildDictTemplateSheets, buildExcelSheets, CHANGE_HEADERS, EXCEL_SHEET_NAME,
+  buildChangeSheet, buildDictTemplateSheets, buildExcelSheets as buildExcelSheetsRaw,
+  CHANGE_HEADERS, EXCEL_SHEET_NAME, type ExcelSheetKey,
 } from './excel-sheets.js'
+import type { ExportScope } from './ddl.js'
 import { diffModelsForDisplay } from './model-diff.js'
+
+// 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적고
+// 호출부 15곳을 그대로 둔다.
+// ⚠️ `{ rules: DEFAULT_NAMING_RULES, ...opts }` 순서로 쓰지 마라 — opts.rules 가 명시적
+// undefined 면 기본값을 덮어 다시 깨진다.
+const buildExcelSheets = (
+  model: ProjectModel,
+  opts: { scope?: ExportScope; sheets?: readonly ExcelSheetKey[]; rules?: NamingRules } = {},
+) => buildExcelSheetsRaw(model, { ...opts, rules: opts.rules ?? DEFAULT_NAMING_RULES })
 
 /** 시트 key로 하나를 꺼낸다(없으면 테스트 실패를 유도하도록 undefined 반환). */
 function sheetOf(sheets: ReturnType<typeof buildExcelSheets>, key: string) {
@@ -274,5 +285,33 @@ describe('buildChangeSheet', () => {
     const sheet = buildChangeSheet(diffModelsForDisplay(base, target), meta)
     expect(sheet.rows).toHaveLength(1)
     expect(sheet.rows[0]).toEqual(['컬럼', 'MBR.MBR_NM', '삭제', '', '', ''])
+  })
+})
+
+describe('물리명 템플릿', () => {
+  const TPL: NamingRules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, alias: 'MBR' }
+    return x
+  }
+
+  it('테이블 목록 시트의 물리명 열이 조합 이름이다', () => {
+    const s = sheetOf(buildExcelSheetsRaw(m(), { rules: TPL }), 'tableList')!
+    const names = s.rows.map((r) => r[2])          // [그룹, 논리명, 물리명, 설명, …]
+    expect(names).toContain('TB_MBR_MBR')
+    expect(names).not.toContain('MBR')
+  })
+
+  it('테이블 정의서 시트의 물리명 열도 조합 이름이다', () => {
+    const s = sheetOf(buildExcelSheetsRaw(m(), { rules: TPL }), 'tableSpec')!
+    const names = new Set(s.rows.map((r) => r[2]))
+    expect(names.has('TB_MBR_MBR')).toBe(true)
+    expect(names.has('MBR')).toBe(false)
+  })
+
+  it('템플릿이 없으면 지금과 같다', () => {
+    const s = sheetOf(buildExcelSheets(m()), 'tableList')!
+    expect(s.rows.map((r) => r[2])).toContain('MBR')
   })
 })
