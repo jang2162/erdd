@@ -173,7 +173,10 @@ describe.skipIf(!url)('project', () => {
   it('명시된 logicalSeparator 는 그대로 내려준다', async () => {
     const projectId = await createProject()
     await app.db!.update(projects)
-      .set({ namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 } })
+      .set({ namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+      } })
       .where(eq(projects.id, projectId))
 
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
@@ -187,7 +190,10 @@ describe.skipIf(!url)('project', () => {
     const projectId = await createProject()
     const off = await post(app, 'project.update', ownerToken, {
       projectId,
-      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+      },
     })
     expect(off.statusCode).toBe(200)
 
@@ -205,7 +211,10 @@ describe.skipIf(!url)('project', () => {
     const projectId = await createProject()
     const res = await post(app, 'project.update', ownerToken, {
       projectId,
-      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+      },
     })
     expect(res.statusCode).toBe(200)
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
@@ -216,6 +225,7 @@ describe.skipIf(!url)('project', () => {
     const projectId = await createProject()
     const customRules = {
       case: 'lower_snake' as const, separator: '' as const, logicalSeparator: '_' as const, maxLengthBytes: 63,
+      tablePhysicalTemplate: '' as const,
     }
 
     const upd = await post(app, 'project.update', ownerToken, {

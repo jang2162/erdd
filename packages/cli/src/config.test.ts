@@ -16,7 +16,10 @@ const CONFIG: ErddConfig = {
   serverUrl: 'https://erdd.example.com',
   projectId: '018f6b0e-0000-7000-8000-000000000000',
   dialects: ['postgresql'],
-  namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
+  namingRules: {
+    case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+    tablePhysicalTemplate: '',
+  },
 }
 
 describe('config', () => {
@@ -68,7 +71,10 @@ describe('config', () => {
   it('명시된 빈 logicalSeparator 는 그대로 둔다', async () => {
     await writeConfig(dir, {
       ...CONFIG,
-      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+      },
     })
     expect((await readConfig(dir)).namingRules.logicalSeparator).toBe('')
   })

@@ -167,7 +167,7 @@ describe('nextTablePhysicalName', () => {
   })
 })
 
-const RULES: NamingRules = { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 }
+const RULES: NamingRules = { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '' }
 const CTX = { namingRules: RULES, activeGroupView: null }
 
 /**

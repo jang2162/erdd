@@ -124,7 +124,7 @@ describe('ExportDialog', () => {
     }
     useEditorStore.getState().setLoaded(m, 1, 'p1')
     useEditorStore.setState({
-      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30 },
+      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30, tablePhysicalTemplate: '' },
     })
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: 'Excel' }))

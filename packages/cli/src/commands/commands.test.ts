@@ -23,7 +23,10 @@ beforeEach(async () => {
     serverUrl: 'https://erdd.example.com',
     projectId: '018f6b0e-0000-7000-8000-000000000000',
     dialects: ['postgresql'],
-    namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
+    namingRules: {
+      case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+      tablePhysicalTemplate: '',
+    },
   })
 })
 afterEach(() => vi.restoreAllMocks())
@@ -48,7 +51,10 @@ function stubClient(overrides: Partial<Record<string, unknown>> = {}): ApiClient
       if (path === 'project.get') {
         return {
           id: 'p1', name: '커머스', dialects: ['postgresql'],
-          namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
+          namingRules: {
+      case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+      tablePhysicalTemplate: '',
+    },
           ...(overrides['project.get'] as object ?? {}),
         }
       }
