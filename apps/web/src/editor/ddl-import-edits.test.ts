@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createEmptyModel, generateDdl as generateDdlRaw, generateDbml, parseDdl, parseDbml, planDdlImport,
-  DEFAULT_NAMING_RULES,
+  createEmptyModel, generateDdl as generateDdlRaw, generateDbml as generateDbmlRaw,
+  parseDdl, parseDbml, planDdlImport, DEFAULT_NAMING_RULES,
 } from '@erdd/core'
 import type {
   DdlImportPlan, DdlScope, Dialect, NamingRules, ProjectModel,
@@ -13,6 +13,10 @@ const generateDdl = (
   model: ProjectModel, dialect: Dialect,
   scope: DdlScope = { kind: 'all' }, rules: NamingRules = DEFAULT_NAMING_RULES,
 ) => generateDdlRaw(model, dialect, scope, rules)
+const generateDbml = (
+  model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' },
+  opts: { projectName?: string } = {}, rules: NamingRules = DEFAULT_NAMING_RULES,
+) => generateDbmlRaw(model, dialect, scope, opts, rules)
 
 let seq = 0
 const newId = () => `id-${++seq}`

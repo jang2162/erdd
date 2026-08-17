@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type ProjectModel } from './model.js'
-import { generateDbml } from './dbml.js'
+import { generateDbml as generateDbmlRaw } from './dbml.js'
 import { parseDbml } from './dbml-parse.js'
+import { buildSampleModel } from './testing/fixtures.js'
+import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
+import type { DdlScope } from './ddl.js'
+import type { Dialect } from './dialect.js'
+
+// 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적고
+// 호출부 20곳을 그대로 둔다.
+const generateDbml = (
+  model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' },
+  opts: { projectName?: string } = {}, rules: NamingRules = DEFAULT_NAMING_RULES,
+) => generateDbmlRaw(model, dialect, scope, opts, rules)
 
 function baseModel(): ProjectModel {
   const m = createEmptyModel()
@@ -291,5 +302,41 @@ describe('generateDbml — 인덱스·그룹·관계', () => {
     const out = generateDbml(m, 'postgresql', { kind: 'tables', tableIds: ['t1'] })
     expect(out).not.toContain('Ref:')
     expect(out).toContain('TableGroup "회원 관리" [color: #0E7A6C] {\n  "MBR"\n}')
+  })
+})
+
+describe('물리명 템플릿', () => {
+  const tpl = (t: string): NamingRules => ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: t })
+  const TPL = 'TB_{그룹별칭}_{물리명}'
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, alias: 'MBR' }
+    return x
+  }
+
+  it('Table·Ref·그룹 멤버가 조합된 이름을 쓴다', () => {
+    const out = generateDbml(m(), 'postgresql', { kind: 'all' }, {}, tpl(TPL))
+    expect(out).toContain('Table "TB_MBR_MBR" ')
+    expect(out).toContain('Table "TB_MBR_MBR_GRD" ')
+    expect(out).toContain('Ref: "TB_MBR_MBR".')          // 자식(MBR) 쪽
+    expect(out).toContain('"TB_MBR_MBR_GRD".')           // 부모 쪽
+    expect(out).toMatch(/TableGroup [^\n]*\{\n\s+"TB_MBR_/)
+    expect(out).not.toMatch(/Table "MBR_GRD"/)
+    expect(out).not.toMatch(/Table "MBR"/)
+  })
+
+  // note 는 물리명을 **찍지 않는다** — `commentText(논리명, 물리명, 설명)` 의 「논리명==물리명이면
+  // 생략」 판정에만 쓴다(dbml-note.ts). 그 판정이 조합 이름과 비교돼야 한다.
+  it('note 의 논리명 생략 판정이 조합 이름 기준이다', () => {
+    const x = m()
+    // 논리명 == 부분 물리명 == 'ORD', 설명 없음 → 템플릿이 없으면 note 자체가 안 나온다.
+    x.tables['t2'] = { ...x.tables['t2']!, logicalName: 'ORD', physicalName: 'ORD', comment: null }
+    expect(generateDbml(x, 'postgresql')).not.toContain("note: 'ORD'")
+    // 조합하면 'TB_MBR_ORD' 라 논리명과 달라진다 → 논리명이 note 로 나온다.
+    expect(generateDbml(x, 'postgresql', { kind: 'all' }, {}, tpl(TPL))).toContain("note: 'ORD'")
+  })
+
+  it('템플릿이 없으면 지금과 같다', () => {
+    expect(generateDbml(m(), 'postgresql')).toContain('Table "MBR" ')
   })
 })
