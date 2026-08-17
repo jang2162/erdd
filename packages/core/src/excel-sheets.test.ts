@@ -314,4 +314,24 @@ describe('물리명 템플릿', () => {
     const s = sheetOf(buildExcelSheets(m()), 'tableList')!
     expect(s.rows.map((r) => r[2])).toContain('MBR')
   })
+
+  // ⚠️ 행 순서도 조합 기준이다 — 표시되는 물리명 열이 조합 이름인데 정렬만 부분 기준이면
+  // 열이 정렬돼 있지 않은 것처럼 보이고, 같은 모델의 DDL 순서와도 갈린다(DDL 정렬을 조합
+  // 기준으로 바꾼 근거가 여기에도 그대로 적용된다).
+  it('행 순서도 조합 이름 기준이다', () => {
+    // 같은 그룹 안에서 접두가 갈리는 템플릿을 쓴다 — 그래야 부분 기준과 조합 기준이 갈린다.
+    const x = m()
+    x.customFields['cf9'] = {
+      id: 'cf9', name: '서브시스템', target: 'table', type: 'text',
+      options: [], required: false, defaultValue: null, order: 0, origin: null,
+    }
+    // 부분 기준: MBR(t2) < MBR_GRD(t1). 조합 기준: AA_MBR_GRD(t1) < ZZ_MBR(t2) 로 뒤집힌다.
+    x.tables['t2'] = { ...x.tables['t2']!, custom: { cf9: 'ZZ' } }
+    x.tables['t1'] = { ...x.tables['t1']!, custom: { cf9: 'AA' } }
+    const rules: NamingRules = {
+      ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: '{커스텀:서브시스템}_{물리명}',
+    }
+    const names = sheetOf(buildExcelSheetsRaw(x, { rules }), 'tableList')!.rows.map((r) => r[2])
+    expect(names).toEqual(['AA_MBR_GRD', 'ZZ_MBR'])
+  })
 })

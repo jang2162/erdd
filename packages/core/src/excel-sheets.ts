@@ -57,8 +57,13 @@ function groupNameOf(model: ProjectModel, t: Table): string {
   return t.groupId ? text(model.tableGroups[t.groupId]?.name) : ''
 }
 
-/** 범위에 드는 테이블을 (그룹명, 물리명) 순으로 낸다. */
-function scopedTables(model: ProjectModel, scope: ExportScope): Table[] {
+/**
+ * 범위에 드는 테이블을 (그룹명, 조합된 물리명) 순으로 낸다.
+ * ⚠️ 두 번째 키는 **조합 이름**이다 — 물리명 열에 찍히는 값이 조합 이름이므로 부분으로 정렬하면
+ * 열이 정렬돼 있지 않은 것처럼 보이고, 같은 모델의 DDL 순서와도 갈린다(`ddl.ts` 의 `selectTables`
+ * 와 같은 근거).
+ */
+function scopedTables(model: ProjectModel, scope: ExportScope, rules: NamingRules): Table[] {
   const all = Object.values(model.tables)
   let picked: Table[]
   if (scope.kind === 'all') picked = all
@@ -67,9 +72,10 @@ function scopedTables(model: ProjectModel, scope: ExportScope): Table[] {
     const ids = new Set(scope.tableIds)
     picked = all.filter((t) => ids.has(t.id))
   }
+  const compose = (t: Table) => composeTablePhysicalName(t, model, rules)
   return picked.sort((a, b) =>
     groupNameOf(model, a).localeCompare(groupNameOf(model, b))
-    || a.physicalName.localeCompare(b.physicalName))
+    || compose(a).localeCompare(compose(b)))
 }
 
 function tableColumns(model: ProjectModel, tableId: string): Column[] {
@@ -107,7 +113,7 @@ export function buildExcelSheets(
   const scope = opts.scope ?? { kind: 'all' }
   const rules = opts.rules
   const wanted = new Set<ExcelSheetKey>(opts.sheets ?? EXCEL_SHEET_KEYS)
-  const tables = scopedTables(model, scope)
+  const tables = scopedTables(model, scope, rules)
   const tableFields = customFieldsFor(model, 'table')
   const columnFields = customFieldsFor(model, 'column')
 
