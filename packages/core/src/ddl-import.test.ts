@@ -548,6 +548,25 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
   })
 
+  // ⚠️ 조회 키 정규화(설계 3.1)를 잠근다. 저장소의 다른 케이스는 전부 UPPER_SNAKE 물리명이라
+  // `upper(raw) === raw` 가 항상 참이어서 `metaOf` 의 `upper()` 가 한 번도 시험되지 않는다.
+  // 머릿말은 조합 이름을 **원문 그대로**(소문자로) 적고 조회 키만 대문자로 색인하므로,
+  // 그 정규화가 빠지면 lower_snake 프로젝트의 자기 왕복이 조용히 복원에 실패한다.
+  it('lower_snake 프로젝트도 머릿말로 부분이 복원된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'mbr' }
+    m.tables['t1'] = { ...m.tables['t1']!, physicalName: 'mbr_grd' }
+    m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'mbr' }
+    const rules: NamingRules = {
+      ...DEFAULT_NAMING_RULES, case: 'lower_snake',
+      tablePhysicalTemplate: 'tb_{그룹별칭}_{물리명}',
+    }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    expect(ddl).toContain('"tb_mbr_mbr":')          // 머릿말의 키는 소문자 원문이다
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['mbr', 'mbr_grd'])
+  })
+
   // ⚠️ 관계·인덱스는 DDL 원문 이름으로 테이블을 가리킨다 — 복원된 부분 이름으로 다시 맞춰지지
   // 않으면 편집 적용부(`tableIdByName.get(...)!`)가 undefined 를 잡아 조용히 깨진다.
   it('복원된 뒤에도 관계·인덱스가 테이블에 붙는다', () => {
