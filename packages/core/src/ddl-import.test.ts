@@ -660,6 +660,36 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(imported.skippedTables).toEqual(['TB_MBR_ORD'])
   })
 
+  // ⚠️ **관찰을 고정하는 테스트다. 「이 동작이 옳다」는 뜻이 아니다.**
+  // 그룹이 다른 두 테이블은 부분이 같아도(`ORD`) 조합 이름이 갈려 원본 프로젝트에서는 중복이
+  // 아니다. 그런데 가져오기는 그룹을 복원하지 않으므로(설계 D2) 둘 다 부분 `ORD` 로 복원되고,
+  // 「만들어질 이름」 충돌 판정에 걸려 **뒤엣것이 통째로 빠진다**(컬럼·인덱스·관계까지).
+  // 관찰된 사실 셋을 그대로 못 박는다 — 동작을 바꾸면 여기가 빨개져 재검토를 강제한다.
+  it('다른 그룹의 두 테이블이 같은 부분으로 복원되면 뒤엣것이 빠진다', () => {
+    const ddl = [
+      '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"회원주문"},"TB_PRD_ORD":{"p":"ORD","l":"상품주문"}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE TB_PRD_ORD (ID BIGINT NOT NULL, QTY BIGINT, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p2 = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+
+    // (1) 앞엣것만 남는다. 뒤엣것의 QTY 컬럼은 계획에 없다.
+    expect(p2.tables.map((t) => t.physicalName)).toEqual(['ORD'])
+    expect(p2.tables[0]!.logicalName).toBe('회원주문')
+    expect(p2.tables[0]!.columns.map((c) => c.physicalName)).toEqual(['ID'])
+
+    // (2) 경고는 뜬다 — 다만 문구가 「같은 이름의 테이블이 두 번」이다. DDL 에 있는 두 이름은
+    //     서로 다르므로(TB_MBR_ORD · TB_PRD_ORD) 사용자가 원문에서 확인할 수 없는 문구다.
+    expect(p2.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'TB_PRD_ORD',
+      message: 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+    })
+
+    // (3) ⚠️ skippedTables 에는 안 들어간다(기존 테이블과 부딪히는 쪽만 들어간다). 미리보기의
+    //     「건너뜀 N개」 줄에 안 보이고 경고 목록에만 보인다.
+    expect(p2.skippedTables).toEqual([])
+  })
+
   // ⚠️ 설계 §4 가 요구한 나머지 한 짝 — DBML 도 머릿말이 없으면 옛 동작이다.
   it('DBML 도 머릿말이 없으면 조합된 이름이 통째로 부분이 된다', () => {
     const m = buildSampleModel()
