@@ -344,3 +344,69 @@ describe('물리명 템플릿', () => {
     expect(warns.some((w) => w.startsWith('MBR.CRT_TM:'))).toBe(false)
   })
 })
+
+describe('논리명 템플릿', () => {
+  const both = (physical: string, logical: string): NamingRules => ({
+    ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: physical, tableLogicalTemplate: logical,
+  })
+  /** buildSampleModel: g1 에 t1(회원등급/MBR_GRD)·t2(회원/MBR, 설명 '서비스 가입 회원'). */
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, name: 'SALES', alias: 'MBR' }
+    return x
+  }
+
+  it('COMMENT ON TABLE 이 조합된 논리명을 쓴다', () => {
+    const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, both('', '{그룹명}_{논리명}'))
+    expect(sql).toContain("COMMENT ON TABLE MBR IS 'SALES_회원 - 서비스 가입 회원'")
+  })
+
+  it('mysql 인라인 코멘트도 조합된 논리명을 쓴다', () => {
+    const sql = generateDdlRaw(m(), 'mysql', { kind: 'all' }, both('', '{그룹명}_{논리명}'))
+    expect(sql).toContain("COMMENT 'SALES_회원 - 서비스 가입 회원'")
+  })
+
+  // ⚠️ 설계 D5 의 갈리는 입력 그대로다. 논리명 == 물리명 == 'ORD' 이고 두 템플릿이 같은 결과를
+  // 내면 「같으면 생략」이 성립해 코멘트가 아예 안 나가야 한다.
+  it('생략 판정이 조합끼리 비교된다', () => {
+    const x = m()
+    x.tables['t2'] = { ...x.tables['t2']!, logicalName: 'ORD', physicalName: 'ORD', comment: null }
+    const rules = both('{그룹명}_{물리명}', '{그룹명}_{논리명}')
+    const sql = generateDdlRaw(x, 'postgresql', { kind: 'all' }, rules)
+    expect(sql).toContain('CREATE TABLE SALES_ORD')
+    expect(sql).not.toContain('COMMENT ON TABLE SALES_ORD')      // 둘 다 SALES_ORD → 생략
+  })
+
+  it('논리명만 부분으로 두면 생략되지 않는다(대조군)', () => {
+    const x = m()
+    x.tables['t2'] = { ...x.tables['t2']!, logicalName: 'ORD', physicalName: 'ORD', comment: null }
+    const rules = both('{그룹명}_{물리명}', '')                   // 논리 템플릿 없음 → 부분 'ORD'
+    expect(generateDdlRaw(x, 'postgresql', { kind: 'all' }, rules))
+      .toContain("COMMENT ON TABLE SALES_ORD IS 'ORD'")
+  })
+
+  // ⚠️ 물리명이 비어 조합 결과도 빌 때의 라벨 폴백(warningLabel).
+  it('경고 라벨 폴백이 조합된 논리명을 쓴다', () => {
+    const x = m()
+    x.tables['t3'] = {
+      ...x.tables['t2']!, id: 't3', physicalName: '', logicalName: '이력',
+    }
+    const warns = ddlWarningsRaw(x, 'postgresql', { kind: 'all' }, both('', '{그룹명}_{논리명}'))
+    expect(warns.some((w) => w.startsWith('SALES_이력:'))).toBe(true)
+    expect(warns.some((w) => w.startsWith('이력:'))).toBe(false)
+  })
+
+  // ⚠️ 설계 3.3 — 조합 논리명이 비면 코멘트에 논리명을 안 넣는다(설명만 남는다).
+  it('조합 논리명이 비면 설명만 코멘트로 나간다', () => {
+    const x = m()
+    x.tables['t2'] = { ...x.tables['t2']!, logicalName: '', comment: '서비스 가입 회원' }
+    const sql = generateDdlRaw(x, 'postgresql', { kind: 'all' }, both('', '{논리명}'))
+    expect(sql).toContain("COMMENT ON TABLE MBR IS '서비스 가입 회원'")
+    expect(sql).not.toContain("IS ' - 서비스 가입 회원'")
+  })
+
+  it('템플릿이 없으면 지금과 같다', () => {
+    expect(generateDdlRaw(m(), 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES))
+      .toContain("COMMENT ON TABLE MBR IS '회원 - 서비스 가입 회원'")
+  })
+})

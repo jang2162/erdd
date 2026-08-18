@@ -3,7 +3,7 @@ import { resolveColumnType, type Dialect } from './dialect.js'
 import { parseLogicalType } from './logical-type.js'
 import { quoteIdentifier } from './identifier.js'
 import { resolveColumn } from './domain-resolve.js'
-import { composeTablePhysicalName } from './name-template.js'
+import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
 import type { NamingRules } from './naming.js'
 
 export type DdlScope =
@@ -107,8 +107,8 @@ function createTableBlock(
   if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => quoteIdentifier(c.physicalName, dialect)).join(', ')})`)
   let block = `CREATE TABLE ${quoteIdentifier(tableName, dialect)} (\n${lines.join(',\n')}\n)`
   if (dialect === 'mysql') {
-    // 「논리명==물리명이면 생략」 판정은 최종 이름과 비교해야 한다.
-    const text = commentText(table.logicalName, tableName, table.comment)
+    // 「논리명==물리명이면 생략」 판정은 **양쪽 다 최종 이름**으로 한다(설계 D5).
+    const text = commentText(composeTableLogicalName(table, model, rules), tableName, table.comment)
     if (text !== null) block += ` COMMENT '${esc(text)}'`
   }
   return `${block};`
@@ -129,10 +129,11 @@ export function hasEmptyPhysicalName(
 /**
  * 경고 문구에 쓸 테이블 라벨. 물리명이 비어 있으면 논리명(없으면 id)으로 폴백한다 —
  * 그렇지 않으면 신규 테이블(물리명 '')의 경고가 ": ..." 형태로 이름 없이 뜬다.
+ * ⚠️ 폴백도 **최종 이름**이다(설계 D5) — 화면에 없는 부분을 가리키면 안 된다.
  */
 function warningLabel(t: Table, model: ProjectModel, rules: NamingRules): string {
   const name = composeTablePhysicalName(t, model, rules)
-  return name.trim() === '' ? (t.logicalName || t.id) : name
+  return name.trim() === '' ? (composeTableLogicalName(t, model, rules) || t.id) : name
 }
 
 function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): Relationship[] {
@@ -196,7 +197,8 @@ function commentStatements(
   const statements: string[] = []
   for (const table of tables) {
     const tableName = composeTablePhysicalName(table, model, rules)
-    const tableText = commentText(table.logicalName, tableName, table.comment)
+    // 「논리명==물리명이면 생략」 판정은 **양쪽 다 최종 이름**으로 한다(설계 D5).
+    const tableText = commentText(composeTableLogicalName(table, model, rules), tableName, table.comment)
     if (tableText !== null) statements.push(tableCommentStatement(dialect, tableName, tableText))
     const cols = tableColumns(model, table.id)
     for (const col of cols) {
