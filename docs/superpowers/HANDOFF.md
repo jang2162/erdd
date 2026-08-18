@@ -69,10 +69,10 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 802 · cli 145 · web 935 · server 209 · typecheck EXIT=0
+core 804 · cli 145 · web 935 · server 209 · typecheck EXIT=0
 ```
 
-덤프 머릿말 메타 왕복 사이클에서 **core +31** 이 붙었다(직전 기준선은 `core 771`). **cli·web·server 는
+덤프 머릿말 메타 왕복 사이클에서 **core +33** 이 붙었다(직전 기준선은 `core 771`). **cli·web·server 는
 무변경** — `packages/core` 안에서 끝난 사이클이다. ⚠️ **server 수치는 워크트리 격리
 DB(`erdd_test_e`)로 잰 값이다**(`209 passed`, skip 0 — `20 passed | 174 skipped` 로 끝나면 미실행이다).
 
@@ -82,6 +82,7 @@ DB(`erdd_test_e`)로 잰 값이다**(`209 passed`, skip 0 — `20 passed | 174 s
 | Task 2 파서 | +4 | `ddl-parse` +2 · `dbml-parse` +2 |
 | Task 3 내보내기 | +7 | `ddl` +4 · `dbml` +3 |
 | Task 4 가져오기 | +8 | `ddl-import` **+9 −1**(D2 고정 케이스 1건을 「머릿말 있음/없음」 두 짝으로 가르고 관계·인덱스 해소, 이름 충돌 케이스를 더했다) |
+| 수정 F-1·F-2 | +2 | `ddl-import` +2(**독립 리뷰 뒤 수정 라운드** — lower_snake 왕복으로 조회 키 정규화를 잠갔고, 다른 그룹의 같은 부분 이름이 복원될 때의 동작을 관찰대로 고정했다. **프로덕션 코드는 한 줄도 안 바꿨다**) |
 
 테이블 논리명 형식 템플릿 + 접기 규칙 변경 사이클에서 **core +31 · cli +2 · web +9 · server +3** 이
 붙었다(직전 기준선은 `core 740 · cli 143 · web 926 · server 206`). 뒤 **web +1** 은 독립 리뷰 뒤
