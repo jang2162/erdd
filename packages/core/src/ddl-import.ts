@@ -3,6 +3,7 @@ import type { ProjectModel } from './model.js'
 import { restoreLogicalName, type NamingRules } from './naming.js'
 import type { ParsedDdl, ParsedTable, ParsedConstraint } from './ddl-parse.js'
 import type { ParsedDbml } from './dbml-parse.js'
+import type { NameMetaEntry } from './name-meta.js'
 
 export type DdlImportWarning = {
   kind: 'ambiguous-type' | 'unknown-type' | 'unknown-word'
@@ -72,26 +73,57 @@ export function planDdlImport(
 ): DdlImportPlan {
   const warnings: DdlImportWarning[] = []
 
+  /** 머릿말이 실어 온 부분. 없거나 키가 안 맞으면 undefined 라 현행 동작으로 떨어진다(설계 D6). */
+  const metaOf = (raw: string): NameMetaEntry | undefined => parsed.nameMeta?.[upper(raw)]
+  /** 실제로 만들어질 물리명. 머릿말이 있으면 부분, 없으면 DDL 원문 이름 그대로다. */
+  const madeName = (raw: string): string => metaOf(raw)?.p ?? raw
+
   // 1) 이름 충돌 판정 — 살아남은 테이블만 alive에 남는다. 모델의 기존 테이블과 겹치는
   // 경우뿐 아니라(I-2c) DDL 안에서 같은 이름의 CREATE TABLE이 두 번 오는 경우도 뒤엣것을
   // 건너뛴다 — 그렇지 않으면 alive.set이 조용히 덮어써 앞 테이블의 컬럼이 소리 없이 사라진다.
   const existing = new Set(Object.values(model.tables).map((t) => upper(t.physicalName)))
   const skippedTables: string[] = []
   const alive = new Map<string, ParsedTable>()
+  // ⚠️ 충돌은 **만들어질 이름**으로 본다 — 머릿말이 TB_MBR_ORD 를 ORD 로 되돌리면 모델의
+  // 기존 ORD 와 부딪힌다. DDL 원문 이름으로 보면 그 충돌을 놓쳐 같은 물리명이 둘 생긴다.
+  const claimed = new Set<string>()
+  // ⚠️ 겹침 경고는 **머릿말이 이름을 되돌렸는가**로 문구가 갈린다. 되돌렸으면 DDL 원문에 있는
+  // 이름(TB_MBR_ORD)과 실제로 부딪힌 이름(ORD)이 **다르므로**, 원문 이름만 적으면 사용자가
+  // 사이드바에서 그 이름을 찾지 못하고 **경고가 거짓말처럼 보인다**(브라우저 스모크에서
+  // 「이미 있는 이름: TB_invitations」 로 실제 관측됐다 — 모델에 있는 것은 invitations 다).
+  // 두 이름을 함께 적어 무슨 일이 일어났는지 그대로 보이게 한다.
+  const seenRaw = new Set<string>()
   for (const t of parsed.tables) {
     const key = upper(t.name)
-    if (existing.has(key)) {
+    const made = madeName(t.name)
+    const madeKey = upper(made)
+    // 머릿말이 이름을 되돌렸는가. 되돌리지 않았으면(남의 DDL·템플릿 없는 프로젝트) 옛 문구 그대로다.
+    const restored = madeKey !== key
+    const dupRaw = seenRaw.has(key)
+    seenRaw.add(key)
+    if (existing.has(madeKey)) {
       skippedTables.push(t.name)
-      warnings.push({ kind: 'table-conflict', target: t.name, message: '같은 이름의 테이블이 이미 있어 건너뜁니다' })
-      continue
-    }
-    if (alive.has(key)) {
       warnings.push({
         kind: 'table-conflict', target: t.name,
-        message: 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+        message: restored
+          ? `머릿말이 ${t.name}을 ${made}로 되돌렸는데 그 이름의 테이블이 이미 있어 건너뜁니다`
+          : '같은 이름의 테이블이 이미 있어 건너뜁니다',
       })
       continue
     }
+    // ⚠️ 여기(아직 안 쓰인 이름)의 사유도 둘이다. 원문 이름까지 같으면 진짜 중복 CREATE TABLE
+    // 이고, 원문 이름이 다르면 머릿말이 **서로 다른 두 이름**을 같은 부분으로 되돌린 것이다
+    // (그룹이 갈라 원본에서는 중복이 아니었는데 가져오기가 그룹을 복원하지 않아 겹친다 — 설계 D2).
+    if (claimed.has(madeKey)) {
+      warnings.push({
+        kind: 'table-conflict', target: t.name,
+        message: dupRaw
+          ? 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다'
+          : `머릿말이 ${t.name}을 ${made}로 되돌렸는데 그 이름을 앞의 테이블이 이미 써서 건너뜁니다`,
+      })
+      continue
+    }
+    claimed.add(madeKey)
     alive.set(key, t)
   }
 
@@ -162,9 +194,13 @@ export function planDdlImport(
   // 관계가 DDL 원문 표기(대소문자·부모 PK 표기 등)를 실제 컬럼으로 해소하는 데 쓴다(I-3).
   const tables: DdlImportTable[] = []
   const colMapByTable = new Map<string, Map<string, string>>()
+  // ⚠️ 키는 **DDL 원문 이름**이다 — 인덱스·관계·그룹이 원문 표기로 테이블을 찾기 때문이다.
+  // 복원된 부분 이름으로 키를 잡으면 그 해소가 통째로 깨진다.
+  const tableByUpper = new Map<string, DdlImportTable>()
   for (const t of alive.values()) {
     const pkCols = new Set((pkOf.get(upper(t.name)) ?? []).map(upper))
     const named = resolveName(t.name, tableComment.get(upper(t.name)), t.name)
+    const meta = metaOf(t.name)
     const colMap = new Map<string, string>()
     const columns: DdlImportColumn[] = t.columns.map((c) => {
       colMap.set(upper(c.name), c.name)
@@ -201,13 +237,18 @@ export function planDdlImport(
     })
 
     colMapByTable.set(upper(t.name), colMap)
-    tables.push({
-      physicalName: t.name, logicalName: named.logicalName, comment: named.comment,
+    const entry: DdlImportTable = {
+      physicalName: meta?.p ?? t.name,
+      // ⚠️ 논리명은 메타가 코멘트를 이긴다(설계 D5) — 코멘트에는 **조합된** 논리명이 들어 있다.
+      // 설명(' - ' 뒤)은 코멘트에서 그대로 가져온다.
+      logicalName: meta?.l ?? named.logicalName,
+      comment: named.comment,
       columns, indexes: [],
       custom: resolveCustom(customIndex.get(upper(t.name)), 'table', t.name),
-    })
+    }
+    tables.push(entry)
+    tableByUpper.set(upper(t.name), entry)
   }
-  const tableByUpper = new Map(tables.map((t) => [upper(t.physicalName), t]))
 
   /** rawCols를 그 테이블의 실제 컬럼 물리명으로 정규화한다. 하나라도 없으면 첫 실패 컬럼명을 돌려준다. */
   const resolveIndexColumns = (
@@ -256,7 +297,8 @@ export function planDdlImport(
   // PK와 컬럼이 같은 UNIQUE는 앞의 인덱스와 같은 규칙으로 조용히 제외한다(PK를 뒷받침하는
   // UNIQUE가 함께 오는 것은 흔하다). 이름이 없으면 테이블 안에서 유일한 이름을 만든다.
   const usedIndexNames = new Map<string, Set<string>>()
-  for (const t of tables) usedIndexNames.set(upper(t.physicalName), new Set(t.indexes.map((ix) => ix.name)))
+  // 조회 키는 tableByUpper 와 같은 기준(DDL 원문 이름)이어야 한다.
+  for (const [key, t] of tableByUpper) usedIndexNames.set(key, new Set(t.indexes.map((ix) => ix.name)))
   for (const u of uniques) {
     const tableKey = upper(u.table)
     const table = tableByUpper.get(tableKey)
@@ -335,7 +377,9 @@ export function planDdlImport(
     }
     const childPk = pkOf.get(upper(fk.table)) ?? []
     relationships.push({
-      childPhysicalName: child.name, parentPhysicalName: parent.name,
+      // ⚠️ 테이블이 부분으로 복원되면 관계도 그 이름을 가리켜야 한다 — 편집 적용부가
+      // 물리명으로 테이블 id 를 찾으므로 어긋나면 관계가 통째로 깨진다.
+      childPhysicalName: madeName(child.name), parentPhysicalName: madeName(parent.name),
       columnPairs,
       identifying: childPk.length > 0 && isSubset(fk.columns, childPk),
       cardinality: fk.oneToOne === true ? '1:1' : '1:N',

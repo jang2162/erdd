@@ -6,6 +6,7 @@ import { customFieldsFor } from './custom-field.js'
 import { buildDbmlNote } from './dbml-note.js'
 import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
 import type { NamingRules } from './naming.js'
+import { serializeNameMeta, type NameMeta } from './name-meta.js'
 import {
   selectTables, tableColumns, hasEmptyPhysicalName, type ExportScope,
 } from './ddl.js'
@@ -189,6 +190,21 @@ function refLines(model: ProjectModel, selectedIds: Set<string>, rules: NamingRu
   return out
 }
 
+/**
+ * 내보내는 테이블 중 **조합 결과가 부분과 다른 것만** 메타에 싣는다(설계 D4).
+ * ddl.ts 의 같은 이름 헬퍼와 짝이다 — 내보내는 테이블 목록이 서로 달라 공유하지 않는다.
+ */
+function buildNameMeta(model: ProjectModel, tables: Table[], rules: NamingRules): NameMeta {
+  const meta: NameMeta = {}
+  for (const t of tables) {
+    const p = composeTablePhysicalName(t, model, rules)
+    const l = composeTableLogicalName(t, model, rules)
+    if (p === t.physicalName && l === t.logicalName) continue
+    meta[p] = { p: t.physicalName, l: t.logicalName }
+  }
+  return meta
+}
+
 // ⚠️ opts 를 `?:` 로 두면 뒤에 필수 인자를 못 붙인다(TS1016). 기본값 인자로 바꾼다.
 export function generateDbml(
   model: ProjectModel, dialect: Dialect, scope: ExportScope = { kind: 'all' },
@@ -207,5 +223,8 @@ export function generateDbml(
   const selectedIds = new Set(tables.map((t) => t.id))
   blocks.push(...groupBlocks(model, tables, rules))
   blocks.push(...refLines(model, selectedIds, rules))
-  return blocks.join('\n\n')
+  // ⚠️ 머릿말은 Project 블록보다 **앞**이어야 파싱이 줍는다(첫 비주석 줄에서 멈추므로).
+  const header = serializeNameMeta(buildNameMeta(model, tables, rules), '//')
+  const body = blocks.join('\n\n')
+  return header === null ? body : `${header}\n${body}`
 }

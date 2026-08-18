@@ -79,7 +79,7 @@
   export function parseNameMeta(raw: string): NameMeta | null
   ```
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 `packages/core/src/name-meta.test.ts` 신설.
 
@@ -155,14 +155,14 @@ describe('parseNameMeta', () => {
 })
 ```
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/name-meta.test.ts
 ```
 기대: 모듈이 없어 전 케이스 FAIL.
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 `packages/core/src/name-meta.ts` 신설:
 
@@ -235,7 +235,7 @@ export { serializeNameMeta, parseNameMeta } from './name-meta.js'
 export type { NameMeta, NameMetaEntry } from './name-meta.js'
 ```
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/name-meta.test.ts
@@ -244,7 +244,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 ```
 기대: 신규 케이스 PASS, `EXIT=0`, **기존 스위트 전부 그대로**(아직 아무도 이 모듈을 안 쓴다).
 
-- [ ] **Step 5: 「첫 비주석 줄에서 멈춘다」가 잠기는지 실증한다**
+- [x] **Step 5: 「첫 비주석 줄에서 멈춘다」가 잠기는지 실증한다**
 
 `parseNameMeta` 의 `if (!s.startsWith('--') && !s.startsWith('//')) return null` 을 `continue` 로 바꾼다
 (= 파일 전체를 훑게 만든다).
@@ -257,7 +257,7 @@ pnpm -C packages/core exec vitest run src/name-meta.test.ts -t '첫 문장 뒤�
 기대: **FAIL** — `null` 이어야 할 자리에 `META` 가 나온다. 되돌리고 초록을 확인한 뒤
 **양쪽 결과와 측정 범위를 보고에 적는다.**
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add packages/core/src/name-meta.ts packages/core/src/name-meta.test.ts packages/core/src/index.ts && \
@@ -284,7 +284,7 @@ Claude-Session: <세션 URL>"
 - Consumes: `parseNameMeta(raw)` (Task 1)
 - Produces: `ParsedDdl.nameMeta?: NameMeta` — **`ParsedDbml` 이 상속해서 자동으로 갖는다**
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 `ddl-parse.test.ts` 에 추가한다(그 파일의 기존 import·헬퍼를 먼저 읽어라).
 
@@ -329,14 +329,14 @@ describe('머릿말 메타', () => {
 ```
 ⚠️ 두 테스트의 **DBML/DDL 본문 문법은 그 파일의 기존 케이스를 보고 맞춰라**(컬럼 타입 표기·따옴표 관례).
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/ddl-parse.test.ts src/dbml-parse.test.ts
 ```
 기대: `nameMeta` 가 없어 TS 오류 또는 `undefined` 로 FAIL.
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 `ddl-parse.ts` 의 `ParsedDdl` 에 옵셔널 필드를 더한다:
 
@@ -380,7 +380,7 @@ export function parseDbml(text: string): ParsedDbml {
 ⚠️ `Out` 타입이 `ParsedDbml` 을 확장하는 로컬 타입이면 필드가 자동으로 붙는다. 반환 시 `nameMeta` 가
 빠지지 않는지 확인해라(반환부가 필드를 하나씩 나열하면 거기에도 더한다).
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/ddl-parse.test.ts src/dbml-parse.test.ts
@@ -389,7 +389,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 ```
 기대: `EXIT=0`, **기존 스위트 전부 그대로**(아직 아무도 `nameMeta` 를 읽지 않는다).
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add packages/core/src/ddl-parse.ts packages/core/src/ddl-parse.test.ts \
@@ -419,7 +419,7 @@ Claude-Session: <세션 URL>"
 `serializeNameMeta` 가 `null` 을 돌려주고 **머릿말이 아예 안 나간다.** 「템플릿이 비었는가」를 따로
 검사하지 마라 — 이쪽이 더 정확하다(템플릿이 `{물리명}` 이라 결과가 같은 테이블도 걸러진다).
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 `ddl.test.ts` 에 추가한다. 그 파일에는 `generateDdlRaw` 심이 이미 있다 — **새 심을 만들지 마라.**
 
@@ -498,14 +498,14 @@ describe('머릿말 메타', () => {
 ⚠️ 두 테스트 파일에 **`parseNameMeta` import 를 더해야 한다**(`./name-meta.js`). 단언을 문자열
 비교가 아니라 파싱으로 하는 이유는 JSON 키 순서에 기대지 않기 위해서다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/ddl.test.ts src/dbml.test.ts -t '머릿말 메타'
 ```
 기대: 머릿말이 없어 FAIL.
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 두 파일에 같은 형태의 헬퍼를 각자 둔다(내보내는 테이블 목록이 서로 다르므로 공유하지 않는다):
 
@@ -542,7 +542,7 @@ function buildNameMeta(model: ProjectModel, tables: Table[], rules: NamingRules)
   return header === null ? body : `${header}\n${body}`
 ```
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C packages/core test && pnpm -C apps/web test
@@ -552,7 +552,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 전체로 `toBe`** 비교한다 — 템플릿이 없는 그 케이스에 머릿말이 붙으면 즉시 깨진다. 깨졌다면 D4 구현이
 틀린 것이다.
 
-- [ ] **Step 5: D4 가 진짜 잠기는지 실증한다**
+- [x] **Step 5: D4 가 진짜 잠기는지 실증한다**
 
 `buildNameMeta` 의 `if (p === t.physicalName && l === t.logicalName) continue` 한 줄을 지운다
 (= 템플릿이 없어도 전 테이블을 싣게 만든다).
@@ -564,7 +564,7 @@ pnpm -C packages/core exec vitest run src/ddl.test.ts
 기대: **FAIL** — 「템플릿이 없으면 머릿말이 없다」와 함께 **`ddl.test.ts:27` 의 전체 문자열 비교**가
 깨진다. 되돌리고 초록을 확인한 뒤 **양쪽 결과와 측정 범위를 보고에 적는다.**
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add packages/core/src/ddl.ts packages/core/src/ddl.test.ts \
@@ -592,7 +592,7 @@ Claude-Session: <세션 URL>"
 
 ⚠️ **`planDdlImport` 는 DDL·DBML 공용 플래너다. 여기 한 번 배선하면 두 포맷이 함께 닫힌다.**
 
-- [ ] **Step 1: D2 고정 테스트를 둘로 가르고 새 케이스를 쓴다**
+- [x] **Step 1: D2 고정 테스트를 둘로 가르고 새 케이스를 쓴다**
 
 `ddl-import.test.ts:538-548` 의 기존 케이스를 **아래 두 개로 교체한다.** 기존 주석(「설계 D2 를
 고정하는 테스트다」)도 새 사실에 맞게 바꾼다.
@@ -685,7 +685,7 @@ DBML 왕복도 한 짝 더한다(`ddl-import.test.ts` 나 `dbml-roundtrip.test.t
 ⚠️ `generateDdlRaw`·`generateDbmlRaw`·`parseDbml` import 가 그 파일에 없으면 더한다. `buildSampleModel`
 의 t2 코멘트가 `'서비스 가입 회원'` 인 것은 확인된 사실이지만 **그 파일의 기존 케이스로 한 번 더 맞춰라.**
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/ddl-import.test.ts
@@ -693,7 +693,7 @@ pnpm -C packages/core exec vitest run src/ddl-import.test.ts
 기대: 부분 복원·D5 케이스가 FAIL(조합 이름이 그대로 나온다). 「머릿말이 없으면」과 「키가 안 맞으면」
 두 케이스는 **이미 통과한다** — 현행 동작을 지키는 회귀 방어라서다. **그 사실을 보고에 적어라.**
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 `ddl-import.ts` 의 테이블 변환부에서 메타를 먼저 꺼내고 두 자리에 쓴다:
 
@@ -718,7 +718,7 @@ pnpm -C packages/core exec vitest run src/ddl-import.test.ts
 ⚠️ **`colMapByTable`·`tableByUpper` 등 다른 색인은 `t.name`(DDL 원문 이름) 기준 그대로 둔다** —
 인덱스·관계가 DDL 원문 표기로 테이블을 찾기 때문이다. 부분 이름으로 바꾸면 그 해소가 깨진다.
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/ddl-import.test.ts src/dbml-roundtrip.test.ts
@@ -728,7 +728,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 ⚠️ **`dbml-roundtrip.test.ts` 가 깨지면 안 된다** — 그 픽스처는 템플릿이 없어 머릿말이 안 나가고
 메타도 없다. 깨졌다면 색인을 부분 이름으로 바꿔 관계·인덱스 해소를 망가뜨린 것이다.
 
-- [ ] **Step 5: 부분 복원과 D5 가 각각 잠기는지 실증한다**
+- [x] **Step 5: 부분 복원과 D5 가 각각 잠기는지 실증한다**
 
 **(a) 부분 복원** — `physicalName: meta?.p ?? t.name` 을 `t.name` 으로 되돌린다.
 ```bash
@@ -746,7 +746,7 @@ pnpm -C packages/core exec vitest run src/ddl-import.test.ts -t '논리명은 �
 
 둘 다 되돌리고 초록을 확인한 뒤 **네 결과와 측정 범위를 보고에 적는다.**
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add packages/core/src/ddl-import.ts packages/core/src/ddl-import.test.ts && \
@@ -768,7 +768,7 @@ Claude-Session: <세션 URL>"
 **Files:**
 - Modify: `docs/13-naming.md` · `docs/manual/user-guide.md` · `docs/superpowers/HANDOFF.md`
 
-- [ ] **Step 1: 문서를 쓴다**
+- [x] **Step 1: 문서를 쓴다**
 
 `docs/13-naming.md` — 「왕복」 절을 더한다: 내보낸 파일을 되읽으면 부분이 복원된다는 것, **조건은
 머릿말 주석이 함께 있는 것**, 템플릿을 안 쓰면 머릿말이 아예 안 나간다는 것.
@@ -791,7 +791,7 @@ Claude-Session: <세션 URL>"
   - 머릿말 없는 조각 붙여넣기(설계 D1 이 수용한 대가)
   - 컬럼 물리명 템플릿
 
-- [ ] **Step 2: 최종 검증**
+- [x] **Step 2: 최종 검증**
 
 ```bash
 pnpm -C packages/core test
@@ -803,7 +803,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 🔥 `. ./.env` 금지. 서버가 `20 passed | 174 skipped` 면 미실행이다.
 각 스위트의 **실측 통과 수를 보고에 적는다**(기준선 `core 771 · cli 145 · web 935 · server 209` 대비).
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add docs/13-naming.md docs/manual/user-guide.md docs/superpowers/HANDOFF.md && \

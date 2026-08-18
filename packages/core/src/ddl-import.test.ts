@@ -5,6 +5,8 @@ import { DEFAULT_NAMING_RULES } from './naming.js'
 import { parseDdl } from './ddl-parse.js'
 import { planDdlImport } from './ddl-import.js'
 import { generateDdl as generateDdlRaw, type DdlScope } from './ddl.js'
+import { generateDbml as generateDbmlRaw } from './dbml.js'
+import { parseDbml } from './dbml-parse.js'
 import { DIALECTS, type Dialect } from './dialect.js'
 import type { NamingRules } from './naming.js'
 import type { ProjectModel, Word } from './model.js'
@@ -99,7 +101,11 @@ describe('planDdlImport', () => {
     expect(p.skippedTables).toEqual(['MBR'])
     expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])
     expect(p.relationships).toEqual([])
-    expect(p.warnings.some((w) => w.kind === 'table-conflict' && w.target === 'MBR')).toBe(true)
+    // ⚠️ 문구까지 못 박는다 — 머릿말이 이름을 되돌린 경우와 갈라야 하는 자리다.
+    expect(p.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'MBR',
+      message: '같은 이름의 테이블이 이미 있어 건너뜁니다',
+    })
     expect(p.warnings.some((w) => w.kind === 'unresolved-fk')).toBe(true)
   })
 
@@ -256,13 +262,18 @@ describe('planDdlImport', () => {
   })
 
   // I-2(c): 같은 이름의 CREATE TABLE이 두 번 오면 뒤엣것을 버리고 경고한다.
+  // ⚠️ 문구까지 못 박는다 — 만들어질 이름이 겹치는 사유는 둘이고(진짜 중복 / 머릿말 복원이
+  // 겹침) 각자 다른 문구를 내야 한다. kind 만 보면 두 갈래가 뒤바뀌어도 초록이다.
   it('DDL에 같은 이름의 테이블이 두 번 오면 뒤엣것을 건너뛰고 경고한다', () => {
     const p = plan(`
       CREATE TABLE MBR (A bigint);
       CREATE TABLE MBR (B bigint);`)
     expect(p.tables).toHaveLength(1)
     expect(p.tables[0]!.columns.map((c) => c.physicalName)).toEqual(['A'])
-    expect(p.warnings.some((w) => w.kind === 'table-conflict')).toBe(true)
+    expect(p.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'MBR',
+      message: 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+    })
   })
 
   // I-4: 테이블 코멘트의 설명 부분이 계획에서 보존돼야 한다.
@@ -535,14 +546,181 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(p.tables[0]!.custom).toEqual({})
   })
 
-  // ⚠️ 설계 D2 를 **고정**하는 테스트다. 「깨진다」가 의도된 동작이라는 뜻이지 옳다는 뜻이 아니다.
-  // 역분해를 넣게 되면 이 테스트가 빨개진다 — 그때 설계 D2 를 다시 읽어라.
-  it('템플릿이 걸린 DDL 을 되읽으면 접두가 부분에 박힌다(역분해하지 않는다)', () => {
+  // ⚠️ 물리명 사이클의 D2(왕복이 깨진 채로 둔다)를 **뒤집은 자리**다. 역분해는 여전히 하지 않는다 —
+  // 내보낼 때 머릿말에 부분을 적어 두고 읽을 때 그대로 쓴다.
+  it('머릿말이 있으면 부분이 복원된다', () => {
     const m = buildSampleModel()
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
     const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
     const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
     const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
+  })
+
+  // ⚠️ 조회 키 정규화(설계 3.1)를 잠근다. 저장소의 다른 케이스는 전부 UPPER_SNAKE 물리명이라
+  // `upper(raw) === raw` 가 항상 참이어서 `metaOf` 의 `upper()` 가 한 번도 시험되지 않는다.
+  // 머릿말은 조합 이름을 **원문 그대로**(소문자로) 적고 조회 키만 대문자로 색인하므로,
+  // 그 정규화가 빠지면 lower_snake 프로젝트의 자기 왕복이 조용히 복원에 실패한다.
+  it('lower_snake 프로젝트도 머릿말로 부분이 복원된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'mbr' }
+    m.tables['t1'] = { ...m.tables['t1']!, physicalName: 'mbr_grd' }
+    m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'mbr' }
+    const rules: NamingRules = {
+      ...DEFAULT_NAMING_RULES, case: 'lower_snake',
+      tablePhysicalTemplate: 'tb_{그룹별칭}_{물리명}',
+    }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    expect(ddl).toContain('"tb_mbr_mbr":')          // 머릿말의 키는 소문자 원문이다
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['mbr', 'mbr_grd'])
+  })
+
+  // ⚠️ 관계·인덱스는 DDL 원문 이름으로 테이블을 가리킨다 — 복원된 부분 이름으로 다시 맞춰지지
+  // 않으면 편집 적용부(`tableIdByName.get(...)!`)가 undefined 를 잡아 조용히 깨진다.
+  it('복원된 뒤에도 관계·인덱스가 테이블에 붙는다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.relationships).toHaveLength(1)
+    expect(imported.relationships[0]).toMatchObject({
+      childPhysicalName: 'MBR', parentPhysicalName: 'MBR_GRD',
+    })
+    const mbr = imported.tables.find((t) => t.physicalName === 'MBR')!
+    expect(mbr.indexes.map((ix) => ix.name)).toEqual(['UX_MBR_01'])
+  })
+
+  // ⚠️ 남의 DDL(머릿말 없음)은 지금까지의 동작 그대로다 — 통째로 부분이 된다.
+  it('머릿말이 없으면 조합된 이름이 통째로 부분이 된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+      .split('\n').filter((l) => !l.startsWith('-- erdd:')).join('\n')   // 머릿말만 떼어낸다
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort())
+      .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
+  })
+
+  it('두 번 왕복해도 접두가 겹치지 않는다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const once = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    const back = planDdlImport(createEmptyModel(), parseDdl(once), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(back.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
+    expect(once).not.toContain('TB_MBR_TB_MBR_')
+  })
+
+  // ⚠️ 설계 D5 — 논리명은 메타가 코멘트를 이기고, 설명은 코멘트에서 온다.
+  it('논리명은 메타가 이기고 설명은 코멘트에서 온다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, name: 'SALES', alias: 'MBR' }
+    const rules = {
+      ...DEFAULT_NAMING_RULES,
+      tablePhysicalTemplate: 'TB_{물리명}',
+      tableLogicalTemplate: '{그룹명}_{논리명}',
+    }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    const mbr = imported.tables.find((t) => t.physicalName === 'MBR')!
+    expect(mbr.logicalName).toBe('회원')                 // 'SALES_회원' 이 아니다
+    expect(mbr.comment).toBe('서비스 가입 회원')          // 설명은 코멘트에서 그대로
+  })
+
+  // ⚠️ 설계 D6 — 사용자가 DDL 의 이름을 손으로 고치면 키가 안 맞아 현행 동작으로 떨어진다.
+  it('메타 키가 실제 이름과 안 맞으면 현행 동작으로 떨어진다', () => {
+    const ddl = [
+      '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"주문"}}',
+      'CREATE TABLE TB_MBR_ORDER (ID BIGINT NOT NULL);',
+    ].join('\n')
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables[0]!.physicalName).toBe('TB_MBR_ORDER')
+  })
+
+  it('DBML 도 머릿말로 부분이 복원된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const dbml = generateDbmlRaw(m, 'postgresql', { kind: 'all' }, {}, rules)
+    const imported = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
+    // 그룹 소속도 복원된 이름으로 맞춰진다.
+    expect(imported.groups[0]!.tablePhysicalNames.sort()).toEqual(['MBR', 'MBR_GRD'])
+  })
+
+  // ⚠️ 계획에 없던 자리다. 복원을 넣으면 **만들어질 이름**이 달라지므로 충돌 판정도 그것으로
+  // 봐야 한다 — DDL 원문 이름으로 보면 모델의 기존 ORD 와 부딪히는 것을 놓쳐 같은 물리명이
+  // 둘 생긴다.
+  it('복원된 이름이 기존 테이블과 부딪히면 건너뛴다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = {
+      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const ddl = [
+      '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"주문"}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL);',
+    ].join('\n')
+    const imported = planDdlImport(m, parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables).toEqual([])
+    expect(imported.skippedTables).toEqual(['TB_MBR_ORD'])
+    // ⚠️ 문구가 **두 이름을 함께** 적어야 한다. 모델에 있는 것은 ORD 이고 DDL 에 있는 것은
+    // TB_MBR_ORD 라, 「같은 이름의 테이블이 이미 있어」만 적으면 사용자가 사이드바에서
+    // TB_MBR_ORD 를 찾다 못 찾고 경고를 거짓으로 판단한다(브라우저 스모크에서 실제 관측).
+    expect(imported.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'TB_MBR_ORD',
+      message: '머릿말이 TB_MBR_ORD을 ORD로 되돌렸는데 그 이름의 테이블이 이미 있어 건너뜁니다',
+    })
+    expect(imported.warnings.map((w) => w.message)).not.toContain('같은 이름의 테이블이 이미 있어 건너뜁니다')
+  })
+
+  // ⚠️ **관찰을 고정하는 테스트다. 「이 동작이 옳다」는 뜻이 아니다.**
+  // 그룹이 다른 두 테이블은 부분이 같아도(`ORD`) 조합 이름이 갈려 원본 프로젝트에서는 중복이
+  // 아니다. 그런데 가져오기는 그룹을 복원하지 않으므로(설계 D2) 둘 다 부분 `ORD` 로 복원되고,
+  // 「만들어질 이름」 충돌 판정에 걸려 **뒤엣것이 통째로 빠진다**(컬럼·인덱스·관계까지).
+  // 관찰된 사실 셋을 그대로 못 박는다 — 동작을 바꾸면 여기가 빨개져 재검토를 강제한다.
+  it('다른 그룹의 두 테이블이 같은 부분으로 복원되면 뒤엣것이 빠진다', () => {
+    const ddl = [
+      '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"회원주문"},"TB_PRD_ORD":{"p":"ORD","l":"상품주문"}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE TB_PRD_ORD (ID BIGINT NOT NULL, QTY BIGINT, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p2 = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+
+    // (1) 앞엣것만 남는다. 뒤엣것의 QTY 컬럼은 계획에 없다.
+    expect(p2.tables.map((t) => t.physicalName)).toEqual(['ORD'])
+    expect(p2.tables[0]!.logicalName).toBe('회원주문')
+    expect(p2.tables[0]!.columns.map((c) => c.physicalName)).toEqual(['ID'])
+
+    // (2) 경고 문구가 **이 사유 전용**이다. DDL 의 두 이름은 서로 다르므로(TB_MBR_ORD ·
+    //     TB_PRD_ORD) 「같은 이름이 두 번」이라고 하면 원문을 열어 본 사용자가 문구가 틀렸다고
+    //     판단해 넘긴다. target 은 DDL 원문 이름이다 — 사용자가 입력에서 찾을 수 있는 이름은
+    //     그것뿐이고(ORD 는 머릿말 JSON 밖에 안 나온다) skippedTables·형제 분기와도 같은 기준이다.
+    expect(p2.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'TB_PRD_ORD',
+      message: '머릿말이 TB_PRD_ORD을 ORD로 되돌렸는데 그 이름을 앞의 테이블이 이미 써서 건너뜁니다',
+    })
+    // 진짜 중복 CREATE TABLE 의 문구가 새지 않는다.
+    expect(p2.warnings.map((w) => w.message)).not.toContain(
+      'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+    )
+
+    // (3) ⚠️ skippedTables 에는 안 들어간다(기존 테이블과 부딪히는 쪽만 들어간다). 미리보기의
+    //     「건너뜀 N개」 줄에 안 보이고 경고 목록에만 보인다.
+    expect(p2.skippedTables).toEqual([])
+  })
+
+  // ⚠️ 설계 §4 가 요구한 나머지 한 짝 — DBML 도 머릿말이 없으면 옛 동작이다.
+  it('DBML 도 머릿말이 없으면 조합된 이름이 통째로 부분이 된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const dbml = generateDbmlRaw(m, 'postgresql', { kind: 'all' }, {}, rules)
+      .split('\n').filter((l) => !l.startsWith('// erdd:')).join('\n')
+    const imported = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
     expect(imported.tables.map((t) => t.physicalName).sort())
       .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
   })

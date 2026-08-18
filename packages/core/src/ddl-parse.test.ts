@@ -692,3 +692,19 @@ describe('parseDdl — 비ASCII 식별자', () => {
     expect(r.skipped.map((s) => s.keyword)).toEqual(['CHECK'])
   })
 })
+
+describe('머릿말 메타', () => {
+  it('머릿말이 있으면 nameMeta 를 싣는다', () => {
+    const ddl = [
+      '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"주문"}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL);',
+    ].join('\n')
+    const parsed = parseDdl(ddl)
+    expect(parsed.nameMeta).toEqual({ TB_MBR_ORD: { p: 'ORD', l: '주문' } })
+    expect(parsed.tables).toHaveLength(1)          // ⚠️ 머릿말이 파싱을 방해하지 않는다
+  })
+
+  it('머릿말이 없으면 nameMeta 가 undefined 다', () => {
+    expect(parseDdl('CREATE TABLE X (ID BIGINT NOT NULL);').nameMeta).toBeUndefined()
+  })
+})

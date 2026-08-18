@@ -127,7 +127,9 @@ describe('DdlImportDialog', () => {
     renderDialog()
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
     await userEvent.paste('CREATE TABLE MBR (MBR_NO bigint);')
-    expect(await screen.findByText(/건너뜀 1개.*MBR/)).toBeInTheDocument()
+    // ⚠️ 문구까지 못 박는다 — 「이미 있는 이름」은 머릿말이 이름을 되돌리면 거짓이 된다
+    // (나열되는 것은 DDL 원문 이름이고 부딪힌 것은 되돌린 이름이다).
+    expect(await screen.findByText(/건너뜀 1개 \(이름이 겹침: MBR\)/)).toBeInTheDocument()
   })
 
   // 「편집 권한이 없으면 진입점이 없다」는 header-tools.test.tsx 로 옮겼다 — canEdit 가드가
