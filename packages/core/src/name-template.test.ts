@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildSampleModel } from './testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
-import { composeTablePhysicalName, parseTemplate } from './name-template.js'
+import { composeTableLogicalName, composeTablePhysicalName, parseTemplate } from './name-template.js'
 import type { ProjectModel } from './model.js'
 
 /** g1 에 별칭 MBR 을 주고 t2 를 ORD/주문으로 바꾼 모델. */
@@ -132,5 +132,94 @@ describe('빈 구간 접기', () => {
     const m = model()
     m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'A__B' }
     expect(compose('TB_{물리명}', m)).toBe('TB_A__B')
+  })
+
+  // ⚠️ 여기부터가 이 태스크에서 새로 잠그는 것이다(설계 D2).
+  it('변수 뒤 리터럴이 구분자 하나가 아니면 밑줄만 지운다', () => {
+    expect(compose('TB_{그룹별칭}_LOG', noGroup())).toBe('TB_LOG')
+  })
+
+  it('맨 앞 변수가 비어도 뒤 리터럴의 낱말은 남는다', () => {
+    expect(compose('{그룹별칭}_LOG_{물리명}', noGroup())).toBe('LOG_ORD')
+  })
+
+  // ⚠️ 급소. 앞 변수가 남긴 **빈 조각**을 건너뛰지 않으면 'TB_' 가 나온다.
+  it('연속으로 비고 뒤에 리터럴이 없으면 앞 리터럴의 말미 밑줄까지 지운다', () => {
+    expect(compose('TB_{그룹별칭}_{그룹명}', noGroup())).toBe('TB')
+  })
+
+  // ⚠️ 변수 값은 절대 건드리지 않는다 — 사용자가 넣은 말미 밑줄이 살아남아야 한다.
+  it('앞 조각이 변수 값이면 말미 밑줄을 지우지 않는다', () => {
+    const m = model()
+    m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'ORD_', groupId: null }
+    expect(composeTablePhysicalName(m.tables['t2']!, m, rulesWith('{물리명}{그룹별칭}'))).toBe('ORD_')
+  })
+
+  it('밑줄이 여럿이어도 선두 밑줄을 모두 지운다', () => {
+    expect(compose('TB_{그룹별칭}__LOG', noGroup())).toBe('TB_LOG')
+  })
+
+  // 별칭이 있으면 아무것도 안 지운다(대조군).
+  it('변수에 값이 있으면 리터럴이 그대로 남는다', () => {
+    expect(compose('TB_{그룹별칭}_LOG')).toBe('TB_MBR_LOG')
+  })
+})
+
+describe('composeTableLogicalName', () => {
+  const withLogical = (tableLogicalTemplate: string): NamingRules =>
+    ({ ...DEFAULT_NAMING_RULES, tableLogicalTemplate })
+  /** model(): g1 = 회원관리(별칭 MBR), t2 = 주문/ORD 소속. 파일 상단 헬퍼. */
+  const composeL = (tpl: string, m: ProjectModel = model()) =>
+    composeTableLogicalName(m.tables['t2']!, m, withLogical(tpl))
+
+  // ⚠️ 물리명과 같은 계약이다 — 소비처가 템플릿 유무를 몰라도 된다(설계 D4).
+  it('템플릿이 비면 논리명을 그대로 낸다', () => {
+    expect(composeL('')).toBe('주문')
+  })
+
+  it('변수 네 종을 해석한다', () => {
+    expect(composeL('{그룹별칭}')).toBe('MBR')
+    expect(composeL('{그룹명}')).toBe('회원관리')
+    expect(composeL('{물리명}')).toBe('ORD')
+    expect(composeL('{논리명}')).toBe('주문')
+  })
+
+  it('전체 조합', () => {
+    expect(composeL('{그룹명}_{논리명}')).toBe('회원관리_주문')
+  })
+
+  it('알 수 없는 변수는 빈 값이고 접기도 같다', () => {
+    expect(composeL('{그룹명}_{없는것}_{논리명}')).toBe('회원관리_주문')
+  })
+
+  it('접기 규칙을 물리명과 공유한다', () => {
+    const m = model()
+    m.tables['t2'] = { ...m.tables['t2']!, groupId: null }
+    expect(composeTableLogicalName(m.tables['t2']!, m, withLogical('{그룹명}_이력'))).toBe('이력')
+  })
+
+  // ⚠️ 이 사이클의 계약. 변수는 **저장된 부분**을 돌려주지 조합 결과를 돌려주지 않는다 —
+  // 그래서 재귀가 원리적으로 불가능하다(설계 D4).
+  it('{물리명} 은 조합 물리명이 아니라 부분을 돌려준다', () => {
+    const m = model()
+    const rules: NamingRules = {
+      ...DEFAULT_NAMING_RULES,
+      tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+      tableLogicalTemplate: '{물리명}',
+    }
+    expect(composeTablePhysicalName(m.tables['t2']!, m, rules)).toBe('TB_MBR_ORD')
+    expect(composeTableLogicalName(m.tables['t2']!, m, rules)).toBe('ORD')   // TB_MBR_ORD 가 아니다
+  })
+
+  // ⚠️ 두 템플릿이 서로를 침범하지 않는지.
+  it('두 템플릿이 동시에 걸려도 각자 자기 것을 쓴다', () => {
+    const m = model()
+    const rules: NamingRules = {
+      ...DEFAULT_NAMING_RULES,
+      tablePhysicalTemplate: 'TB_{물리명}',
+      tableLogicalTemplate: '{그룹명}_{논리명}',
+    }
+    expect(composeTablePhysicalName(m.tables['t2']!, m, rules)).toBe('TB_ORD')
+    expect(composeTableLogicalName(m.tables['t2']!, m, rules)).toBe('회원관리_주문')
   })
 })

@@ -67,10 +67,13 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   // 누락만 빈 문자열로 채운다(빈 문자열 = 템플릿을 쓰지 않음).
   const tpl = namingRules['tablePhysicalTemplate']
   const tablePhysicalTemplate = typeof tpl === 'string' ? tpl : ''
+  const ltpl = namingRules['tableLogicalTemplate']
+  const tableLogicalTemplate = typeof ltpl === 'string' ? ltpl : ''
   return {
     serverUrl, projectId, dialects,
     namingRules: {
-      ...(namingRules as unknown as NamingRules), logicalSeparator, tablePhysicalTemplate,
+      ...(namingRules as unknown as NamingRules),
+      logicalSeparator, tablePhysicalTemplate, tableLogicalTemplate,
     },
   }
 }

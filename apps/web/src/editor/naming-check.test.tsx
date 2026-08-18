@@ -21,7 +21,7 @@ function loadWith(physicalName: string) {
   }
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
   useEditorStore.getState().setProjectConfig(
-    { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '' }, ['postgresql'], null)
+    { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' }, ['postgresql'], null)
 }
 
 afterEach(() => { cleanup(); useEditorStore.getState().reset() })
@@ -56,7 +56,7 @@ describe('NamingCheck', () => {
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     useEditorStore.getState().setProjectConfig(
-      { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '' }, ['postgresql'], null)
+      { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' }, ['postgresql'], null)
     render(<NamingCheck projectId={PROJECT_ID} open onOpenChange={() => {}} />)
 
     expect(screen.getByText('필수 항목 미입력 (1)')).toBeInTheDocument()

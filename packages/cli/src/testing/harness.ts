@@ -9,7 +9,7 @@ export const TEST_CONFIG = {
   dialects: ['postgresql'] as const,
   namingRules: {
     case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-    tablePhysicalTemplate: '',
+    tablePhysicalTemplate: '', tableLogicalTemplate: '',
   } as const,
 }
 

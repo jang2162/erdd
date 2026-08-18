@@ -340,3 +340,38 @@ describe('물리명 템플릿', () => {
     expect(generateDbml(m(), 'postgresql')).toContain('Table "MBR" ')
   })
 })
+
+describe('논리명 템플릿', () => {
+  const both = (physical: string, logical: string): NamingRules => ({
+    ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: physical, tableLogicalTemplate: logical,
+  })
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, name: 'SALES', alias: 'MBR' }
+    return x
+  }
+
+  it('note 의 논리명이 조합된다', () => {
+    const out = generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, both('', '{그룹명}_{논리명}'))
+    expect(out).toContain("note: 'SALES_회원 - 서비스 가입 회원'")
+  })
+
+  // ⚠️ 생략 판정도 조합끼리다(설계 D5) — DDL 과 같은 성질이 note 에도 있다.
+  it('note 생략 판정이 조합끼리 비교된다', () => {
+    const x = m()
+    x.tables['t2'] = { ...x.tables['t2']!, logicalName: 'ORD', physicalName: 'ORD', comment: null }
+    const out = generateDbmlRaw(
+      x, 'postgresql', { kind: 'all' }, {}, both('{그룹명}_{물리명}', '{그룹명}_{논리명}'))
+    expect(out).toContain('Table "SALES_ORD"')
+    // ⚠️ `not.toContain("note: 'SALES_ORD'")` 만으로는 구분이 안 된다 — 고치기 전에는 note 가
+    // 부분('ORD')이라 그 단언이 그냥 통과한다. 그 테이블의 설정 목록에 note 가 **아예 없어야** 한다.
+    const settings = /Table "SALES_ORD" \[([^\]]*)\]/.exec(out)?.[1] ?? ''
+    expect(settings).not.toContain('note:')
+  })
+
+  it('템플릿이 없으면 지금과 같다', () => {
+    expect(generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES))
+      .toContain("note: '회원 - 서비스 가입 회원'")
+  })
+})
+

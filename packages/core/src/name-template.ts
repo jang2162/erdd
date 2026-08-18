@@ -44,29 +44,79 @@ function resolveVar(name: string, table: Table, model: ProjectModel): string {
 }
 
 /**
+ * 조합 중간 조각. `lit` 은 「리터럴 토큰에서 왔는가」다.
+ * ⚠️ 이 표시가 필요한 이유: 말미 밑줄을 지울 때 **변수 값은 건드리면 안 된다**(설계 D2).
+ * 사용자가 물리명을 'ORD_' 로 넣었으면 그대로 나가야 한다.
+ */
+type Piece = { text: string; lit: boolean }
+
+/**
+ * 조각 배열 말미의 밑줄을 정리한다.
+ *
+ * ⚠️ **뒤에서부터 훑는 것이 급소다.** 직전 조각 하나만 보면 `TB_{A}_{B}` 에서 A·B 가 둘 다 빌 때
+ * A 가 남긴 **빈 조각**에 막혀 `TB_` 가 나온다. 빈 조각을 버리며 계속 훑어야 `TB` 가 된다.
+ */
+function trimTrailingSeparator(out: Piece[]): void {
+  for (let k = out.length - 1; k >= 0; k -= 1) {
+    const p = out[k]!
+    if (p.text === '') { out.pop(); continue }
+    if (!p.lit) return                       // 변수 값 — 건드리지 않는다
+    p.text = p.text.replace(/_+$/, '')
+    if (p.text === '') out.pop()
+    return
+  }
+}
+
+/** 조합 몸통. 템플릿이 비었는지는 **호출자가 판단한다** — 여기 오면 비어 있지 않다. */
+function compose(template: string, table: Table, model: ProjectModel): string {
+  const tokens = parseTemplate(template)
+  const out: Piece[] = []
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = tokens[i]!
+    if (tok.kind === 'lit') { out.push({ text: tok.text, lit: true }); continue }
+    const value = resolveVar(tok.name, table, model)
+    if (value !== '') { out.push({ text: value, lit: false }); continue }
+    const next = tokens[i + 1]
+    if (next !== undefined && next.kind === 'lit') {
+      // 뒤 리터럴을 통째로 버리지 않는다 — 선두 밑줄만 지우고 낱말은 남긴다.
+      out.push({ text: next.text.replace(/^_+/, ''), lit: true })
+      i += 1
+      continue
+    }
+    trimTrailingSeparator(out)
+  }
+  return out.map((p) => p.text).join('')
+}
+
+/**
  * 테이블의 최종 물리명. 산출물(DDL·DBML·Excel)과 검사(중복·길이·예약어)가 이것을 쓴다.
  *
  * ⚠️ **템플릿이 비면 physicalName 을 그대로 돌려준다.** 소비처가 「템플릿이 있는가」를 몰라도 되게
  * 하는 계약이다 — 분기가 소비처로 새면 스무 곳이 각자 판단하게 된다(설계 3.1).
  *
- * ⚠️ 빈 변수 규칙(설계 3.2): **빈 변수는 자기 자신과 바로 뒤의 리터럴을 함께 지운다. 뒤에 리터럴이
- * 없으면 바로 앞의 리터럴을 지운다.** 정규식 후처리로 흉내내지 않는다 — 구분자가 '_' 가 아닐 수 있고
- * 부분 이름 안의 연속 밑줄까지 접힌다.
+ * ⚠️ 빈 변수 규칙(설계 D2): **빈 변수는 자기 자신과 바로 뒤 리터럴 선두의 밑줄들을 지운다. 뒤에
+ * 리터럴이 없으면 바로 앞 리터럴 말미의 밑줄들을 지운다. 변수 값은 절대 건드리지 않는다.**
+ * 정규식 후처리로 흉내내지 않는다 — 변수 값 안의 연속 밑줄(`A__B`)까지 접힌다.
  */
 export function composeTablePhysicalName(
   table: Table, model: ProjectModel, rules: NamingRules,
 ): string {
   if (rules.tablePhysicalTemplate === '') return table.physicalName
-  const tokens = parseTemplate(rules.tablePhysicalTemplate)
-  const out: string[] = []
-  for (let i = 0; i < tokens.length; i += 1) {
-    const tok = tokens[i]!
-    if (tok.kind === 'lit') { out.push(tok.text); continue }
-    const value = resolveVar(tok.name, table, model)
-    if (value !== '') { out.push(value); continue }
-    const next = tokens[i + 1]
-    if (next !== undefined && next.kind === 'lit') { i += 1; continue }  // 뒤 리터럴을 함께 건너뛴다
-    if (tokens[i - 1]?.kind === 'lit') out.pop()                          // 없으면 앞 리터럴을 지운다
-  }
-  return out.join('')
+  return compose(rules.tablePhysicalTemplate, table, model)
+}
+
+/**
+ * 테이블의 최종 논리명. **산출물 전용이다**(DDL 코멘트 · DBML note · Excel 논리명 열).
+ *
+ * ⚠️ 용어 사전·미등록 단어 검사·물리명 재생성은 이것을 쓰지 않는다 — 부분(`table.logicalName`)을
+ * 본다(설계 D1). `warnings.ts` 가 이 함수를 부르면 D1 위반이다.
+ *
+ * ⚠️ 변수는 **저장된 부분**을 돌려준다 — `{물리명}` 은 `table.physicalName` 이지 조합 물리명이
+ * 아니다. 그래서 재귀가 원리적으로 불가능하다.
+ */
+export function composeTableLogicalName(
+  table: Table, model: ProjectModel, rules: NamingRules,
+): string {
+  if (rules.tableLogicalTemplate === '') return table.logicalName
+  return compose(rules.tableLogicalTemplate, table, model)
 }

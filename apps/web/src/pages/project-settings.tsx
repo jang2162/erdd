@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  DEFAULT_NAMING_RULES, composeTablePhysicalName, createEmptyModel, type NamingRules,
+  DEFAULT_NAMING_RULES, composeTableLogicalName, composeTablePhysicalName, createEmptyModel,
+  type NamingRules,
   type ProjectModel,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
@@ -108,7 +109,9 @@ function ProjectMembers({ projectId, orgId }: { projectId: string; orgId: string
  * ⚠️ 여기의 `DEFAULT_NAMING_RULES` 는 **폴백이 아니라 「미리보기는 템플릿만 본다」**는 뜻이다 —
  * 조합은 case·separator·maxLengthBytes 를 쓰지 않는다. 다른 규칙을 섞으면 오해를 만든다.
  */
-function TemplatePreview({ template, model }: { template: string; model: ProjectModel | undefined }) {
+function TemplatePreview({ kind, template, model }: {
+  kind: 'physical' | 'logical'; template: string; model: ProjectModel | undefined
+}) {
   if (template === '') return null
   const table = model === undefined ? undefined : Object.values(model.tables)[0]
   const sample: ProjectModel = table !== undefined && model !== undefined ? model : {
@@ -120,8 +123,11 @@ function TemplatePreview({ template, model }: { template: string; model: Project
     } },
   }
   const target = table ?? sample.tables['t']!
-  const composed = composeTablePhysicalName(
-    target, sample, { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: template })
+  const composed = kind === 'physical'
+    ? composeTablePhysicalName(
+      target, sample, { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: template })
+    : composeTableLogicalName(
+      target, sample, { ...DEFAULT_NAMING_RULES, tableLogicalTemplate: template })
   return (
     <p className="text-xs text-muted-foreground">
       미리보기: <span className="font-mono text-foreground">{composed}</span>
@@ -151,10 +157,13 @@ function NamingRulesSection({
   const model = useQuery(trpc.model.get.queryOptions({ projectId }))
   // 매 글자마다 mutate 하지 않는다 — 로컬 draft 로 받고 blur 에 커밋한다.
   const [template, setTemplate] = useState(namingRules.tablePhysicalTemplate)
+  const [logicalTemplate, setLogicalTemplate] = useState(namingRules.tableLogicalTemplate)
   // 서버 값이 바뀌면 draft 를 맞춘다. ⚠️ projectId 를 deps 에 함께 넣는다 — 그룹 별칭 사이클에서
   // 값만 넣었다가 「같은 값을 가진 다른 대상」으로 옮길 때 draft 가 남는 버그를 만들었다.
   useEffect(() => { setTemplate(namingRules.tablePhysicalTemplate) },
     [projectId, namingRules.tablePhysicalTemplate])
+  useEffect(() => { setLogicalTemplate(namingRules.tableLogicalTemplate) },
+    [projectId, namingRules.tableLogicalTemplate])
 
   return (
     <section className="grid gap-2">
@@ -193,7 +202,27 @@ function NamingRulesSection({
           비우면 입력한 물리명을 그대로 씁니다. 쓸 수 있는 변수:
           <code className="font-mono"> {'{그룹별칭}'} {'{그룹명}'} {'{물리명}'} {'{논리명}'} {'{커스텀:항목이름}'}</code>
         </p>
-        <TemplatePreview template={template} model={model.data?.model} />
+        <TemplatePreview kind="physical" template={template} model={model.data?.model} />
+      </div>
+      <div className="grid gap-1">
+        <Label htmlFor="ltpl" className="text-xs">테이블 논리명 형식</Label>
+        <input
+          id="ltpl" className="h-9 rounded-md border bg-background px-2 font-mono text-sm"
+          value={logicalTemplate} disabled={update.isPending}
+          onChange={(e) => setLogicalTemplate(e.target.value)}
+          onBlur={() => {
+            if (logicalTemplate === namingRules.tableLogicalTemplate) return
+            update.mutate({
+              projectId, namingRules: { ...namingRules, tableLogicalTemplate: logicalTemplate },
+            })
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          비우면 입력한 논리명을 그대로 씁니다. 산출물(DDL 코멘트·DBML·Excel)에만 쓰이고
+          용어 사전·단어 검사·물리명 재생성은 입력한 논리명을 그대로 봅니다. 쓸 수 있는 변수:
+          <code className="font-mono"> {'{그룹별칭}'} {'{그룹명}'} {'{물리명}'} {'{논리명}'} {'{커스텀:항목이름}'}</code>
+        </p>
+        <TemplatePreview kind="logical" template={logicalTemplate} model={model.data?.model} />
       </div>
     </section>
   )

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, type Ref } from 'react'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  composeTablePhysicalName, computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
+  composeTableLogicalName, composeTablePhysicalName, computeWarnings, customFieldsFor, generatePhysicalName, setTableGroup,
   type Column, type CustomField, type Domain, type ProjectModel, type Warning,
 } from '@erdd/core'
 import { primaryTableId, useEditorStore } from './store.js'
@@ -108,10 +108,16 @@ export function EditPanel({ projectId }: { projectId: string }) {
           canEdit={canEdit}
           applyNames={(m, patch) => updateTable(m, tid, patch)}
         />
-        {/* ⚠️ NamePair **밖**에 둔다 — NamePair 는 컬럼과 공유하는데 컬럼에는 템플릿이 없다. */}
+        {/* ⚠️ NamePair **밖**에 둔다 — NamePair 는 컬럼과 공유하는데 컬럼에는 템플릿이 없다.
+            두 줄이 나란히 서므로 라벨로 구분한다(슬롯 prop 을 뚫는 것보다 싸다). */}
         {namingRules.tablePhysicalTemplate !== '' && (
           <p className="-mt-1 text-xs text-muted-foreground">
-            <span className="font-mono">→ {composeTablePhysicalName(table, model, namingRules)}</span>
+            <span className="font-mono">물리 → {composeTablePhysicalName(table, model, namingRules)}</span>
+          </p>
+        )}
+        {namingRules.tableLogicalTemplate !== '' && (
+          <p className="-mt-1 text-xs text-muted-foreground">
+            <span className="font-mono">논리 → {composeTableLogicalName(table, model, namingRules)}</span>
           </p>
         )}
         <div className="grid gap-1.5">

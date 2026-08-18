@@ -74,7 +74,7 @@ export {
 export type {
   NamingRules, GenResult, WordSegment, RestoreLogicalResult, Completion, CompletionResult,
 } from './naming.js'
-export { composeTablePhysicalName, parseTemplate } from './name-template.js'
+export { composeTableLogicalName, composeTablePhysicalName, parseTemplate } from './name-template.js'
 export type { TemplateToken } from './name-template.js'
 export {
   customFieldsFor, resolveCustomValue, customFieldUsageCount, customOptionUsageCount,

@@ -17,11 +17,19 @@ export type NamingRules = {
    * 예: 'TB_{그룹별칭}_{물리명}'
    */
   tablePhysicalTemplate: string
+  /**
+   * 테이블 논리명 조합 틀. 빈 문자열이면 조합하지 않고 logicalName 을 그대로 쓴다(기존 동작).
+   * ⚠️ **산출물 전용이다** — 용어 사전 조회·미등록 단어 검사·물리명 재생성은 전부 부분(logicalName)을
+   * 본다(설계 D1). 조합 이름으로 사전을 찾게 하면 사용자가 조합된 이름을 등록해야 하고, 재생성이
+   * 그룹 약어를 물리명에 넣어 물리명 템플릿과 이중 적용된다.
+   * 예: '{그룹명}_{논리명}'
+   */
+  tableLogicalTemplate: string
 }
 
 export const DEFAULT_NAMING_RULES: NamingRules = {
   case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-  tablePhysicalTemplate: '',
+  tablePhysicalTemplate: '', tableLogicalTemplate: '',
 }
 
 /**
@@ -34,6 +42,7 @@ export const NamingRulesSchema = z.object({
   logicalSeparator: z.enum(['_', '']).default('_'),
   maxLengthBytes: z.number().int().positive(),
   tablePhysicalTemplate: z.string().default(''),   // 읽기 시점 주입
+  tableLogicalTemplate: z.string().default(''),    // 읽기 시점 주입
 })
 
 /**
@@ -46,6 +55,7 @@ export const NamingRulesSchema = z.object({
 export const NamingRulesStrictSchema = NamingRulesSchema.extend({
   logicalSeparator: z.enum(['_', '']),
   tablePhysicalTemplate: z.string(),               // 쓰기: 기본값 주입 금지
+  tableLogicalTemplate: z.string(),                // 쓰기: 기본값 주입 금지
 })
 export type GenResult = {
   physicalName: string

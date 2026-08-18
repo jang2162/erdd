@@ -335,3 +335,45 @@ describe('물리명 템플릿', () => {
     expect(names).toEqual(['AA_MBR_GRD', 'ZZ_MBR'])
   })
 })
+
+describe('논리명 템플릿', () => {
+  const RULES: NamingRules = {
+    ...DEFAULT_NAMING_RULES, tableLogicalTemplate: '{그룹명}_{논리명}',
+  }
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, name: 'SALES', alias: 'MBR' }
+    return x
+  }
+
+  it('테이블 목록 시트의 논리명 열이 조합된다', () => {
+    const s = sheetOf(buildExcelSheetsRaw(m(), { rules: RULES }), 'tableList')!
+    const names = s.rows.map((r) => r[1])          // [그룹, 논리명, 물리명, 설명, …]
+    expect(names).toContain('SALES_회원')
+    expect(names).not.toContain('회원')
+  })
+
+  it('테이블정의서 시트의 「테이블 논리명」 열도 조합된다', () => {
+    const s = sheetOf(buildExcelSheetsRaw(m(), { rules: RULES }), 'tableSpec')!
+    const names = new Set(s.rows.map((r) => r[1]))
+    expect(names.has('SALES_회원')).toBe(true)
+    expect(names.has('회원')).toBe(false)
+  })
+
+  // ⚠️ 단어사전·용어사전 시트의 logicalName 은 Word·Term 이다. 건드리면 안 된다.
+  it('용어사전 시트의 논리명은 조합되지 않는다', () => {
+    const x = m()
+    x.terms['tm1'] = {
+      id: 'tm1', logicalName: '주문', physicalName: 'ORD',
+      domainId: null, description: null, origin: null,
+    }
+    const s = sheetOf(buildExcelSheetsRaw(x, { rules: RULES }), 'terms')!
+    expect(s.rows.map((r) => r[0])).toContain('주문')
+  })
+
+  it('템플릿이 없으면 지금과 같다', () => {
+    const s = sheetOf(buildExcelSheetsRaw(m(), { rules: DEFAULT_NAMING_RULES }), 'tableList')!
+    expect(s.rows.map((r) => r[1])).toContain('회원')
+  })
+})
+

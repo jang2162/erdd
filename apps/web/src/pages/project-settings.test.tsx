@@ -22,6 +22,7 @@ const ORG_ID = 'o1'
 function projectFixture(over: {
   logicalSeparator?: NamingRules['logicalSeparator']
   tablePhysicalTemplate?: string
+  tableLogicalTemplate?: string
   canManage?: boolean
   myRole?: string | null
   myOrgRole?: string | null
@@ -37,6 +38,7 @@ function projectFixture(over: {
       ...DEFAULT_NAMING_RULES,
       logicalSeparator: over.logicalSeparator ?? DEFAULT_NAMING_RULES.logicalSeparator,
       tablePhysicalTemplate: over.tablePhysicalTemplate ?? '',
+      tableLogicalTemplate: over.tableLogicalTemplate ?? '',
     },
     myRole: over.myRole === undefined ? 'admin' : over.myRole,
     myOrgRole: over.myOrgRole === undefined ? 'owner' : over.myOrgRole,
@@ -217,5 +219,69 @@ describe('ProjectSettingsPage — 테이블 물리명 형식', () => {
     })
     await screen.findByText('주문시스템')
     expect(screen.queryByLabelText(/테이블 물리명 형식/)).not.toBeInTheDocument()
+  })
+})
+
+describe('ProjectSettingsPage — 테이블 논리명 형식', () => {
+  it('현재 논리 템플릿을 입력란에 보여 준다', async () => {
+    renderSettings({
+      'project.get': () => ({ data: projectFixture({ tableLogicalTemplate: '{그룹명}_{논리명}' }) }),
+    })
+    expect(await screen.findByLabelText(/테이블 논리명 형식/)).toHaveValue('{그룹명}_{논리명}')
+  })
+
+  it('입력하고 포커스를 빼면 update 로 보낸다', async () => {
+    const calls: { namingRules: NamingRules }[] = []
+    renderSettings({
+      'project.get': () => ({ data: projectFixture() }),
+      'project.update': (input) => {
+        calls.push(input as { namingRules: NamingRules })
+        return { data: { ok: true } }
+      },
+    })
+    const input = await screen.findByLabelText(/테이블 논리명 형식/)
+    await userEvent.type(input, '{{그룹명}_{{논리명}')     // userEvent 에서 '{' 는 '{{' 로 이스케이프
+    await userEvent.tab()
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0]!.namingRules.tableLogicalTemplate).toBe('{그룹명}_{논리명}')
+    // 물리 템플릿은 그대로 실려 나간다(객체 통째다)
+    expect(calls[0]!.namingRules.tablePhysicalTemplate).toBe('')
+  })
+
+  // MODEL_FIXTURE 의 테이블은 그룹 '상품관리'(별칭 PRD) 소속 논리명 '품목'/물리명 'ITEM' 이다.
+  it('논리 미리보기가 현재 모델의 테이블로 나온다', async () => {
+    renderSettings({
+      'project.get': () => ({ data: projectFixture({ tableLogicalTemplate: '{그룹명}_{논리명}' }) }),
+    })
+    expect(await screen.findByText('상품관리_품목')).toBeInTheDocument()
+  })
+
+  it('두 미리보기가 서로를 침범하지 않는다', async () => {
+    renderSettings({
+      'project.get': () => ({ data: projectFixture({
+        tablePhysicalTemplate: 'TB_{물리명}', tableLogicalTemplate: '{그룹명}_{논리명}',
+      }) }),
+    })
+    expect(await screen.findByText('TB_ITEM')).toBeInTheDocument()      // 물리 미리보기
+    expect(screen.getByText('상품관리_품목')).toBeInTheDocument()        // 논리 미리보기
+  })
+
+  it('관리 권한이 없으면 논리 입력란도 없다', async () => {
+    renderSettings({
+      'project.get': () => ({
+        data: projectFixture({ canManage: false, myOrgRole: null, myRole: 'editor' }),
+      }),
+    })
+    await screen.findByText('주문시스템')
+    expect(screen.queryByLabelText(/테이블 논리명 형식/)).not.toBeInTheDocument()
+  })
+
+  // ⚠️ `TemplatePreview` 의 `template === '' → null` 가드를 잠근다(설계 3.4). 두 사이클 연속으로
+  // 이월돼 있던 자리다 — 가드를 지우면 빈 템플릿에서도 「미리보기: 」가 떠서 이 케이스가 빨개진다.
+  // 입력란을 먼저 기다려야 한다 — project.get 이 오기 전에는 절 자체가 없어 무조건 통과한다.
+  it('두 템플릿이 다 비면 미리보기가 없다', async () => {
+    renderSettings({ 'project.get': () => ({ data: projectFixture() }) })
+    await screen.findByLabelText(/테이블 논리명 형식/)
+    expect(screen.queryByText(/미리보기:/)).not.toBeInTheDocument()
   })
 })
