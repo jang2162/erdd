@@ -671,7 +671,7 @@ describe('EditPanel — 테이블 물리명 미리보기', () => {
     load(withAlias(), { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' })
     useEditorStore.getState().selectTables(['t2'])   // t2 = MBR
     renderPanel()
-    expect(await screen.findByText('→ TB_MBR_MBR')).toBeInTheDocument()
+    expect(await screen.findByText('물리 → TB_MBR_MBR')).toBeInTheDocument()
   })
 
   it('템플릿이 없으면 미리보기를 렌더하지 않는다', async () => {
@@ -679,7 +679,7 @@ describe('EditPanel — 테이블 물리명 미리보기', () => {
     useEditorStore.getState().selectTables(['t2'])
     renderPanel()
     await screen.findByLabelText(/테이블 물리명/)
-    expect(screen.queryByText(/^→ /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^(물리|논리) → /)).not.toBeInTheDocument()
   })
 
   // ⚠️ 컬럼에는 템플릿이 없다(범위 밖). NamePair 안에 넣으면 여기가 빨개진다.
@@ -689,6 +689,37 @@ describe('EditPanel — 테이블 물리명 미리보기', () => {
     renderPanel()
     // 컬럼마다 NamePair 가 있어 '물리명' 라벨은 여럿이다 — 존재만 확인한다.
     expect(await screen.findAllByLabelText(/^물리명$/)).not.toHaveLength(0)
-    expect(screen.getAllByText(/^→ /)).toHaveLength(1)               // 테이블 것 하나뿐
+    expect(screen.getAllByText(/^(물리|논리) → /)).toHaveLength(1)     // 테이블 것 하나뿐
+  })
+
+  it('논리 템플릿이 있으면 조합된 논리명을 보여 준다', async () => {
+    const m = withAlias()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, name: 'SALES' }
+    load(m, { ...DEFAULT_NAMING_RULES, tableLogicalTemplate: '{그룹명}_{논리명}' })
+    useEditorStore.getState().selectTables(['t2'])
+    renderPanel()
+    expect(await screen.findByText('논리 → SALES_회원')).toBeInTheDocument()
+  })
+
+  it('두 템플릿이 다 있으면 두 줄이 다 뜬다', async () => {
+    const m = withAlias()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, name: 'SALES' }
+    load(m, {
+      ...DEFAULT_NAMING_RULES,
+      tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+      tableLogicalTemplate: '{그룹명}_{논리명}',
+    })
+    useEditorStore.getState().selectTables(['t2'])
+    renderPanel()
+    expect(await screen.findByText('물리 → TB_MBR_MBR')).toBeInTheDocument()
+    expect(screen.getByText('논리 → SALES_회원')).toBeInTheDocument()
+  })
+
+  it('물리 템플릿만 있으면 논리 줄은 없다', async () => {
+    load(withAlias(), { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' })
+    useEditorStore.getState().selectTables(['t2'])
+    renderPanel()
+    await screen.findByText('물리 → TB_MBR_MBR')
+    expect(screen.queryByText(/^논리 → /)).not.toBeInTheDocument()
   })
 })
