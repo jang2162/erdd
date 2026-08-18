@@ -275,4 +275,13 @@ describe('ProjectSettingsPage — 테이블 논리명 형식', () => {
     await screen.findByText('주문시스템')
     expect(screen.queryByLabelText(/테이블 논리명 형식/)).not.toBeInTheDocument()
   })
+
+  // ⚠️ `TemplatePreview` 의 `template === '' → null` 가드를 잠근다(설계 3.4). 두 사이클 연속으로
+  // 이월돼 있던 자리다 — 가드를 지우면 빈 템플릿에서도 「미리보기: 」가 떠서 이 케이스가 빨개진다.
+  // 입력란을 먼저 기다려야 한다 — project.get 이 오기 전에는 절 자체가 없어 무조건 통과한다.
+  it('두 템플릿이 다 비면 미리보기가 없다', async () => {
+    renderSettings({ 'project.get': () => ({ data: projectFixture() }) })
+    await screen.findByLabelText(/테이블 논리명 형식/)
+    expect(screen.queryByText(/미리보기:/)).not.toBeInTheDocument()
+  })
 })
