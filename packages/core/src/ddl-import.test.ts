@@ -101,7 +101,11 @@ describe('planDdlImport', () => {
     expect(p.skippedTables).toEqual(['MBR'])
     expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])
     expect(p.relationships).toEqual([])
-    expect(p.warnings.some((w) => w.kind === 'table-conflict' && w.target === 'MBR')).toBe(true)
+    // ⚠️ 문구까지 못 박는다 — 머릿말이 이름을 되돌린 경우와 갈라야 하는 자리다.
+    expect(p.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'MBR',
+      message: '같은 이름의 테이블이 이미 있어 건너뜁니다',
+    })
     expect(p.warnings.some((w) => w.kind === 'unresolved-fk')).toBe(true)
   })
 
@@ -663,6 +667,14 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const imported = planDdlImport(m, parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
     expect(imported.tables).toEqual([])
     expect(imported.skippedTables).toEqual(['TB_MBR_ORD'])
+    // ⚠️ 문구가 **두 이름을 함께** 적어야 한다. 모델에 있는 것은 ORD 이고 DDL 에 있는 것은
+    // TB_MBR_ORD 라, 「같은 이름의 테이블이 이미 있어」만 적으면 사용자가 사이드바에서
+    // TB_MBR_ORD 를 찾다 못 찾고 경고를 거짓으로 판단한다(브라우저 스모크에서 실제 관측).
+    expect(imported.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'TB_MBR_ORD',
+      message: '머릿말이 TB_MBR_ORD을 ORD로 되돌렸는데 그 이름의 테이블이 이미 있어 건너뜁니다',
+    })
+    expect(imported.warnings.map((w) => w.message)).not.toContain('같은 이름의 테이블이 이미 있어 건너뜁니다')
   })
 
   // ⚠️ **관찰을 고정하는 테스트다. 「이 동작이 옳다」는 뜻이 아니다.**

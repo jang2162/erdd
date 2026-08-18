@@ -117,8 +117,12 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
               테이블 {plan.tables.length}개 · 컬럼 {columnCount}개 · 관계 {plan.relationships.length}개
               {' '}· 인덱스 {indexCount}개
               {plan.groups.length > 0 && ` · 그룹 ${plan.groups.length}개`}
+              {/* ⚠️ 여기 나열되는 것은 **DDL 원문 이름**이다. 머릿말이 이름을 되돌리면 실제로
+                  부딪힌 이름은 그것과 다르므로(TB_MBR_ORD → ORD) 「이미 있는 이름」이라고 적으면
+                  거짓이 된다 — 사용자가 사이드바에서 그 이름을 못 찾는다. 겹쳤다는 사실만 적고
+                  무엇과 겹쳤는지는 아래 경고 목록이 테이블마다 정확히 말한다. */}
               {plan.skippedTables.length > 0
-                && ` · 건너뜀 ${plan.skippedTables.length}개 (이미 있는 이름: ${plan.skippedTables.join(', ')})`}
+                && ` · 건너뜀 ${plan.skippedTables.length}개 (이름이 겹침: ${plan.skippedTables.join(', ')})`}
             </p>
             {plan.warnings.length > 0 && (
               <ul aria-label="가져오기 경고" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs text-key">
