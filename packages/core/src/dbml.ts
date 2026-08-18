@@ -4,7 +4,7 @@ import { parseLogicalType } from './logical-type.js'
 import { resolveColumn } from './domain-resolve.js'
 import { customFieldsFor } from './custom-field.js'
 import { buildDbmlNote } from './dbml-note.js'
-import { composeTablePhysicalName } from './name-template.js'
+import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
 import type { NamingRules } from './naming.js'
 import {
   selectTables, tableColumns, hasEmptyPhysicalName, type ExportScope,
@@ -125,9 +125,10 @@ function tableBlock(
   const settings: string[] = []
   const group = table.groupId === null ? undefined : model.tableGroups[table.groupId]
   if (group) settings.push(`headercolor: ${normalizeHexColor(group.color)}`)
-  // 「논리명==물리명이면 생략」 판정은 최종 이름과 비교해야 한다.
+  // 「논리명==물리명이면 생략」 판정은 **양쪽 다 최종 이름**으로 한다(설계 D5).
   const note = buildDbmlNote(
-    table.logicalName, tableName, table.comment, customOf(model, table, 'table'),
+    composeTableLogicalName(table, model, rules), tableName, table.comment,
+    customOf(model, table, 'table'),
   )
   if (note !== null) settings.push(`note: ${quoteDbmlString(note)}`)
   const head = settings.length > 0 ? ` [${settings.join(', ')}]` : ''

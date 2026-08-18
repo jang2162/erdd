@@ -441,3 +441,44 @@ describe('물리명 템플릿과 경고', () => {
     expect(computeWarnings(m, tpl(TPL)).filter((w) => w.kind === 'term-mismatch')).toEqual([])
   })
 })
+
+// ⚠️ 설계 D1 을 잠근다 — 논리명 조합은 **산출물 전용**이다. 사전·검사는 부분을 본다.
+// 이 케이스들은 「무언가를 바꾼다」가 아니라 「아무것도 안 바뀐다」를 지킨다.
+describe('논리명 템플릿과 경고', () => {
+  const withLogical: NamingRules = {
+    ...DEFAULT_NAMING_RULES, tableLogicalTemplate: '{그룹명}_{논리명}',
+  }
+  function m(): ProjectModel {
+    const x = createEmptyModel()
+    x.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#eee', comment: null, alias: 'MBR' }
+    x.tables['t1'] = tbl('t1', { groupId: 'g1', logicalName: '주문', physicalName: 'ORD' })
+    return x
+  }
+
+  it('용어 검사가 부분 논리명을 본다', () => {
+    const x = m()
+    x.terms['tm1'] = term('tm1', '주문', 'ORD')     // 부분과 정확히 일치 → 불일치 경고가 없어야 한다
+    expect(computeWarnings(x, withLogical).filter((w) => w.kind === 'term-mismatch')).toEqual([])
+  })
+
+  it('미등록 단어 검사가 부분 논리명을 본다', () => {
+    const x = m()
+    x.words['w1'] = word('w1', '주문', 'ORD')       // 부분은 전부 등록됨
+    const kinds = computeWarnings(x, withLogical).map((w) => w.kind)
+    expect(kinds).not.toContain('unknown-word')     // 조합('회원관리_주문')을 봤다면 '회원관리'가 미등록이다
+  })
+
+  it('논리 구분자 경고가 부분 논리명을 본다', () => {
+    const x = m()
+    x.words['w1'] = word('w1', '주문', 'ORD')
+    const kinds = computeWarnings(x, withLogical).map((w) => w.kind)
+    expect(kinds).not.toContain('missing-logical-separator')  // 부분은 단어 하나라 경고 없음
+  })
+
+  it('논리 템플릿을 걸어도 경고 목록이 통째로 같다', () => {
+    const x = m()
+    x.words['w1'] = word('w1', '주문', 'ORD')
+    expect(computeWarnings(x, withLogical)).toEqual(computeWarnings(x, DEFAULT_NAMING_RULES))
+  })
+})
+

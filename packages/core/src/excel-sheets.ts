@@ -2,7 +2,7 @@ import type { Column, ProjectModel, Table } from './model.js'
 import type { ExportScope } from './ddl.js'
 import { customFieldsFor, resolveCustomValue } from './custom-field.js'
 import { decomposeByWords, type NamingRules } from './naming.js'
-import { composeTablePhysicalName } from './name-template.js'
+import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
 import { CHANGE_KIND_LABEL, DIFF_KIND_LABEL, type ModelDiff } from './model-diff.js'
 
 export type ExcelSheetKey = 'tableList' | 'tableSpec' | 'words' | 'terms' | 'domains'
@@ -124,7 +124,8 @@ export function buildExcelSheets(
           key, name: EXCEL_SHEET_NAME[key],
           headers: [...TABLE_LIST_HEADERS, ...tableFields.map((f) => f.name)],
           rows: tables.map((t) => [
-            groupNameOf(model, t), t.logicalName, composeTablePhysicalName(t, model, rules),
+            groupNameOf(model, t), composeTableLogicalName(t, model, rules),
+            composeTablePhysicalName(t, model, rules),
             text(t.comment),
             ...tableFields.map((f) => resolveCustomValue(t, f)),
           ]),
@@ -135,7 +136,8 @@ export function buildExcelSheets(
           tableColumns(model, t.id).forEach((c, i) => {
             const r = resolveForSheet(model, c)
             rows.push([
-              groupNameOf(model, t), t.logicalName, composeTablePhysicalName(t, model, rules),
+              groupNameOf(model, t), composeTableLogicalName(t, model, rules),
+              composeTablePhysicalName(t, model, rules),
               String(i + 1),
               c.logicalName, c.physicalName, r.domainName, r.type,
               c.isPk ? 'Y' : '', c.nullable ? '' : 'Y', r.defaultValue, text(c.comment),
