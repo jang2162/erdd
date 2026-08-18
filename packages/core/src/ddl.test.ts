@@ -6,6 +6,7 @@ import { createEmptyModel, type ProjectModel, type Table, type Column } from './
 import { buildSampleModel } from './testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import type { Dialect } from './dialect.js'
+import { parseNameMeta } from './name-meta.js'
 
 // 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다. 심으로 그 전제를 한 줄에 적고
 // 호출부 30곳을 그대로 둔다. 템플릿을 쓰는 새 케이스는 rules 를 직접 넘긴다.
@@ -270,8 +271,10 @@ describe('물리명 템플릿', () => {
     expect(sql).toContain('COMMENT ON TABLE TB_MBR_MBR IS')
     expect(sql).toContain('COMMENT ON COLUMN TB_MBR_MBR.MBR_NO IS')
     // 조합 전 이름이 한 자리라도 남으면 안 된다(\b 는 밑줄을 단어 문자로 보므로 TB_MBR_MBR 안에서는 안 걸린다)
-    expect(sql).not.toMatch(/\bMBR\b/)
-    expect(sql).not.toMatch(/\bMBR_GRD\b/)
+    // ⚠️ 머릿말은 부분 이름을 **일부러** 싣는다 — 문장이 아니므로 본문만 본다.
+    const body = sql.split('\n').filter((l) => !l.startsWith('-- erdd:')).join('\n')
+    expect(body).not.toMatch(/\bMBR\b/)
+    expect(body).not.toMatch(/\bMBR_GRD\b/)
   })
 
   // 부분 기준 정렬이면 MBR(t2) < MBR_GRD(t1) 라 t2 가 앞이다. t1 을 별칭 AA 인 그룹으로 옮기면
@@ -408,5 +411,42 @@ describe('논리명 템플릿', () => {
   it('템플릿이 없으면 지금과 같다', () => {
     expect(generateDdlRaw(m(), 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES))
       .toContain("COMMENT ON TABLE MBR IS '회원 - 서비스 가입 회원'")
+  })
+})
+
+describe('머릿말 메타', () => {
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, alias: 'MBR' }
+    return x
+  }
+  const tpl = (t: string): NamingRules => ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: t })
+
+  it('템플릿이 걸리면 첫 줄에 머릿말이 나온다', () => {
+    const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, tpl('TB_{그룹별칭}_{물리명}'))
+    const first = sql.split('\n')[0]!
+    expect(first.startsWith('-- erdd:v1 ')).toBe(true)
+    const meta = parseNameMeta(sql)!
+    expect(meta['TB_MBR_MBR']).toEqual({ p: 'MBR', l: '회원' })
+  })
+
+  // ⚠️ 설계 D4 — 이것이 기존 산출물 무변경을 보장한다.
+  it('템플릿이 없으면 머릿말이 없다', () => {
+    const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES)
+    expect(sql.startsWith('--')).toBe(false)
+    expect(parseNameMeta(sql)).toBeNull()
+  })
+
+  // ⚠️ 조합해도 결과가 같은 테이블은 실을 것이 없다.
+  it('조합 결과가 부분과 같으면 머릿말이 없다', () => {
+    const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, tpl('{물리명}'))
+    expect(parseNameMeta(sql)).toBeNull()
+  })
+
+  it('내보내기에서 제외된 테이블은 메타에 없다', () => {
+    const x = m()
+    x.tables['t9'] = { ...x.tables['t2']!, id: 't9', physicalName: 'NOCOL' }   // 컬럼이 없다
+    const sql = generateDdlRaw(x, 'postgresql', { kind: 'all' }, tpl('TB_{그룹별칭}_{물리명}'))
+    expect(Object.keys(parseNameMeta(sql)!)).not.toContain('TB_MBR_NOCOL')
   })
 })

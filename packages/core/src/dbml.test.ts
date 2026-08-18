@@ -6,6 +6,7 @@ import { buildSampleModel } from './testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import type { DdlScope } from './ddl.js'
 import type { Dialect } from './dialect.js'
+import { parseNameMeta } from './name-meta.js'
 
 // 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적고
 // 호출부 20곳을 그대로 둔다.
@@ -375,3 +376,32 @@ describe('논리명 템플릿', () => {
   })
 })
 
+
+describe('머릿말 메타', () => {
+  function m(): ProjectModel {
+    const x = buildSampleModel()
+    x.tableGroups['g1'] = { ...x.tableGroups['g1']!, alias: 'MBR' }
+    return x
+  }
+  const tpl = (t: string): NamingRules => ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: t })
+
+  it('템플릿이 걸리면 첫 줄에 // 머릿말이 나온다', () => {
+    const out = generateDbmlRaw(
+      m(), 'postgresql', { kind: 'all' }, {}, tpl('TB_{그룹별칭}_{물리명}'))
+    expect(out.split('\n')[0]!.startsWith('// erdd:v1 ')).toBe(true)
+  })
+
+  // ⚠️ 머릿말은 Project 블록보다 **앞**이어야 파싱이 줍는다(설계 3.4).
+  it('머릿말이 Project 블록보다 앞에 온다', () => {
+    const out = generateDbmlRaw(
+      m(), 'postgresql', { kind: 'all' }, { projectName: '회원 시스템' },
+      tpl('TB_{그룹별칭}_{물리명}'))
+    expect(out.indexOf('// erdd:v1')).toBeLessThan(out.indexOf('Project '))
+    expect(parseNameMeta(out)).not.toBeNull()
+  })
+
+  it('템플릿이 없으면 머릿말이 없다', () => {
+    expect(parseNameMeta(generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES)))
+      .toBeNull()
+  })
+})
