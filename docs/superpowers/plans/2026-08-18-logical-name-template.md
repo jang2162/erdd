@@ -69,7 +69,7 @@
 **Interfaces:**
 - Produces: `composeTablePhysicalName` 의 시그니처는 그대로. **동작만 바뀐다.**
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 `name-template.test.ts` 의 `describe('빈 구간 접기')` **안에** 추가한다. 그 describe 에는 이미
 `model()`·`rulesWith()`·`compose()`·`noGroup()`·`noPhysical()` 헬퍼가 있다 — **먼저 읽고 그대로 쓴다.**
@@ -108,14 +108,14 @@
 
 ⚠️ **기존 케이스 6건을 고치지 마라.** 이 태스크의 성공 조건은 **그것들이 하나도 안 깨지는 것**이다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/name-template.test.ts -t '빈 구간 접기'
 ```
 기대: 새 케이스 중 최소 4건 FAIL(`'TB_'` vs `'TB_LOG'`, `'ORD'` vs `'LOG_ORD'` 등). 대조군 1건은 통과.
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 `name-template.ts` 에 조각 타입과 말미 정리 헬퍼를 더하고 루프를 바꾼다.
 
@@ -176,7 +176,7 @@ function trimTrailingSeparator(out: Piece[]): void {
  * 정규식 후처리로 흉내내지 않는다 — 변수 값 안의 연속 밑줄(`A__B`)까지 접힌다.
 ```
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/name-template.test.ts
@@ -187,7 +187,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 그 테스트들은 `TB_{그룹별칭}_{물리명}` 만 쓰고 그 형은 결과가 안 바뀐다. 깨졌다면 새 루프가 기존 6형을
 보존하지 못한 것이다.
 
-- [ ] **Step 5: 두 급소가 진짜 잠기는지 실증한다**
+- [x] **Step 5: 두 급소가 진짜 잠기는지 실증한다**
 
 **(a) 선두 밑줄만 지우기**
 `out.push({ text: next.text.replace(/^_+/, ''), lit: true })` 를 `i += 1; continue` (뒤 리터럴 통째
@@ -208,7 +208,7 @@ pnpm -C packages/core exec vitest run src/name-template.test.ts -t '연속으로
 
 둘 다 되돌리고 초록을 확인한 뒤 **네 결과(빨강 2·초록 2)를 보고에 적는다.**
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add packages/core/src/name-template.ts packages/core/src/name-template.test.ts && \
@@ -244,7 +244,7 @@ Claude-Session: <세션 URL>"
 ⚠️ **`NamingRules` 리터럴이 저장소 전역에서 깨진다**(직전 두 사이클과 같은 형태). Step 3 의 grep 으로
 전부 찾아 고치고 `pnpm -r typecheck` 로 확인한다.
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 `name-template.test.ts` 끝에 추가한다. 파일 상단 import 에 `composeTableLogicalName` 을 더한다.
 
@@ -309,14 +309,14 @@ describe('composeTableLogicalName', () => {
 })
 ```
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/name-template.test.ts
 ```
 기대: `composeTableLogicalName` 이 없어 TS 오류로 FAIL.
 
-- [ ] **Step 3: 구현하고 깨진 리터럴을 전부 고친다**
+- [x] **Step 3: 구현하고 깨진 리터럴을 전부 고친다**
 
 `naming.ts` 의 `NamingRules` 에 `tablePhysicalTemplate` 다음 줄로 더한다:
 
@@ -396,7 +396,7 @@ grep -rn "tablePhysicalTemplate:" packages apps --include='*.ts' --include='*.ts
 ⚠️ **`naming.test.ts` 의 `NamingRulesSchema.parse(legacy)` 기대값도 고쳐야 한다** — 런타임 단언이라
 typecheck 에 안 걸리는데 `.default('')` 때문에 깨진다(직전 사이클이 같은 자리에서 물렸다).
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/name-template.test.ts
@@ -405,7 +405,7 @@ pnpm -C packages/core test && pnpm -C apps/web test && pnpm -C packages/cli test
 ```
 기대: 신규 케이스 PASS, `EXIT=0`, **기존 스위트 전부 그대로**(아직 아무도 논리명 조합을 안 부른다).
 
-- [ ] **Step 5: 두 템플릿이 안 섞이는지 실증한다**
+- [x] **Step 5: 두 템플릿이 안 섞이는지 실증한다**
 
 `composeTableLogicalName` 안의 `rules.tableLogicalTemplate` 두 자리를 **둘 다** `rules.tablePhysicalTemplate`
 로 바꾼다.
@@ -416,7 +416,7 @@ pnpm -C packages/core exec vitest run src/name-template.test.ts -t 'composeTable
 기대: **FAIL** — 「두 템플릿이 동시에 걸려도 각자 자기 것을 쓴다」가 `회원관리_주문` 대신 `TB_ORD` 를
 낸다. 되돌리고 초록을 확인한 뒤 **양쪽 결과를 보고에 적는다.**
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add packages/core/src/name-template.ts packages/core/src/name-template.test.ts \
@@ -444,7 +444,7 @@ Claude-Session: <세션 URL>"
 **Interfaces:**
 - Consumes: `composeTableLogicalName(table, model, rules)` (Task 2)
 
-- [ ] **Step 1: 실패 테스트를 쓴다**
+- [x] **Step 1: 실패 테스트를 쓴다**
 
 `ddl.test.ts` 의 `describe('물리명 템플릿')` **아래에 새 describe** 로 추가한다. 그 파일에는
 `generateDdlRaw`·`ddlWarningsRaw` 심이 이미 있다 — **새 심을 만들지 말고 그것을 쓴다.**
@@ -523,14 +523,14 @@ describe('논리명 템플릿', () => {
 먼저 확인한다. `t3` 는 컬럼이 없어 「컬럼이 없어 내보내기에서 제외됨」 경고로 잡힐 수 있다 — 어느
 경고 문구든 **라벨이 `SALES_이력` 이면 통과**하도록 `startsWith` 로 썼다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/ddl.test.ts -t '논리명 템플릿'
 ```
 기대: 조합 전 논리명(`회원`)이 나와 FAIL.
 
-- [ ] **Step 3: 구현한다**
+- [x] **Step 3: 구현한다**
 
 세 자리를 바꾼다. 각 함수는 이미 `model`·`rules` 를 갖고 있다 — **새 인자를 뚫지 마라.**
 
@@ -543,7 +543,7 @@ pnpm -C packages/core exec vitest run src/ddl.test.ts -t '논리명 템플릿'
 각 자리의 기존 주석(`// 「논리명==물리명이면 생략」 판정은 최종 이름과 비교해야 한다.`)을
 **「양쪽 다 최종 이름이다(설계 D5)」**로 갱신한다.
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/ddl.test.ts
@@ -552,7 +552,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 ```
 ⚠️ **기존 DDL 테스트가 깨지면 안 된다** — 전부 논리 템플릿이 없어 조합 == 부분이다.
 
-- [ ] **Step 5: 생략 판정이 진짜 잠기는지 실증한다**
+- [x] **Step 5: 생략 판정이 진짜 잠기는지 실증한다**
 
 `ddl.ts:199` 의 첫 인자를 `table.logicalName`(부분)으로 되돌린다.
 ```bash
@@ -562,7 +562,7 @@ pnpm -C packages/core exec vitest run src/ddl.test.ts -t '생략 판정이 조�
 기대: **FAIL** — 생략돼야 할 `COMMENT ON TABLE SALES_ORD` 가 나온다. 되돌리고 초록을 확인한 뒤
 **양쪽 결과를 보고에 적는다.**
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add packages/core/src/ddl.ts packages/core/src/ddl.test.ts && \
@@ -590,7 +590,7 @@ Claude-Session: <세션 URL>"
 ⚠️ **`warnings.ts` 는 한 줄도 고치지 않는다.** 이 태스크가 추가하는 warnings 테스트는 **안 바뀌는
 것을 잠그는** 회귀 방어다(설계 D1).
 
-- [ ] **Step 1: 실패 테스트를 쓴다 (DBML)**
+- [x] **Step 1: 실패 테스트를 쓴다 (DBML)**
 
 `dbml.test.ts` 의 `describe('물리명 템플릿')` 아래에 추가한다. 그 파일에는 `generateDbmlRaw` 심이
 이미 있다.
@@ -629,7 +629,7 @@ describe('논리명 템플릿', () => {
 ```
 ⚠️ note 문자열 형식(`'논리명 - 설명'`)은 `dbml-note.ts` 의 `buildDbmlNote` 를 먼저 읽고 맞춰라.
 
-- [ ] **Step 2: 실패 테스트를 쓴다 (Excel)**
+- [x] **Step 2: 실패 테스트를 쓴다 (Excel)**
 
 `excel-sheets.test.ts` 의 `describe('물리명 템플릿')` 아래에 추가한다. `buildExcelSheetsRaw` 심이
 이미 있다.
@@ -679,7 +679,7 @@ describe('논리명 템플릿', () => {
 ⚠️ 열 인덱스 `1`(논리명)과 용어사전 시트의 열 순서는 `TABLE_LIST_HEADERS` 와 그 파일의 기존 케이스를
 보고 맞춰라.
 
-- [ ] **Step 3: 실패 테스트를 쓴다 (경고 무변경)**
+- [x] **Step 3: 실패 테스트를 쓴다 (경고 무변경)**
 
 `warnings.test.ts` 의 `describe('물리명 템플릿과 경고')` 아래에 추가한다.
 
@@ -727,7 +727,7 @@ describe('논리명 템플릿과 경고', () => {
 ⚠️ `tbl`·`word`·`term` 은 그 파일 상단의 기존 헬퍼다. `computeWarnings` 의 반환에 순서 의존이 있으면
 마지막 케이스가 흔들릴 수 있다 — 그러면 `.map((w) => w.kind).sort()` 비교로 낮춰라.
 
-- [ ] **Step 4: 실패를 확인한다**
+- [x] **Step 4: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/core exec vitest run src/dbml.test.ts src/excel-sheets.test.ts src/warnings.test.ts
@@ -736,7 +736,7 @@ pnpm -C packages/core exec vitest run src/dbml.test.ts src/excel-sheets.test.ts 
 `warnings.ts` 가 논리 템플릿을 아예 모르기 때문이다. **그 사실을 보고에 적어라**(빨강을 못 본 테스트이고,
 Step 6 이 그 대신 구분력을 실증한다).
 
-- [ ] **Step 5: 구현한다**
+- [x] **Step 5: 구현한다**
 
 `dbml.ts:130` — `buildDbmlNote` 의 첫 인자를 조합 논리명으로:
 ```ts
@@ -753,7 +753,7 @@ Step 6 이 그 대신 구분력을 실증한다).
 
 `warnings.ts` **는 고치지 않는다.**
 
-- [ ] **Step 6: 통과를 확인하고 D1 의 구분력을 실증한다**
+- [x] **Step 6: 통과를 확인하고 D1 의 구분력을 실증한다**
 
 ```bash
 pnpm -C packages/core test && pnpm -C apps/web test
@@ -770,7 +770,7 @@ pnpm -C packages/core exec vitest run src/warnings.test.ts -t '논리명 템플�
 기대: **FAIL** — 「미등록 단어 검사가 부분 논리명을 본다」가 `회원관리` 를 미등록으로 잡고,
 「통째로 같다」도 갈린다. 되돌리고 초록을 확인한 뒤 **양쪽 결과를 보고에 적는다.**
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 커밋**
 
 ```bash
 git add packages/core/src/dbml.ts packages/core/src/dbml.test.ts \
@@ -797,7 +797,7 @@ Claude-Session: <세션 URL>"
 서버 코드는 **고칠 것이 없다** — `project.ts` 가 이미 `NamingRulesSchema.parse`(읽기)와
 `NamingRulesStrictSchema`(쓰기)를 태운다. Task 2 가 두 스키마를 다르게 고쳤으므로 **동작 확인만** 한다.
 
-- [ ] **Step 1: 서버 실패 테스트를 쓴다**
+- [x] **Step 1: 서버 실패 테스트를 쓴다**
 
 `project.test.ts` 의 기존 `tablePhysicalTemplate` 케이스 바로 아래에 같은 형태로 추가한다.
 **그 케이스들의 `db.update(...).set({ namingRules })` 패턴을 그대로 따른다.**
@@ -851,7 +851,7 @@ Claude-Session: <세션 URL>"
 ```
 ⚠️ `db`·`caller`·`projectId`·`projects`·`eq` 는 그 파일이 이미 쓰는 것들이다. **기존 케이스를 먼저 읽어라.**
 
-- [ ] **Step 2: CLI 실패 테스트를 쓴다**
+- [x] **Step 2: CLI 실패 테스트를 쓴다**
 
 `config.test.ts` — 물리명 템플릿과 **같은 정책**이다(임의 문자열이라 「잘못 적은 값」이 없다).
 파일 상단 `CONFIG` 상수의 `namingRules` 에 `tableLogicalTemplate: ''` 를 더한다(Task 2 의 grep 에 이미
@@ -886,7 +886,7 @@ Claude-Session: <세션 URL>"
   })
 ```
 
-- [ ] **Step 3: 실패를 확인한다**
+- [x] **Step 3: 실패를 확인한다**
 
 ```bash
 pnpm -C packages/cli exec vitest run src/config.test.ts
@@ -897,7 +897,7 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_d' \
 그것이 「서버는 확인만」의 확인이다. **통과했다는 사실을 보고에 적어라.**
 🔥 `. ./.env` 로 돌리지 마라.
 
-- [ ] **Step 4: 구현한다**
+- [x] **Step 4: 구현한다**
 
 `config.ts` 의 반환부를 고친다. 물리명 템플릿 바로 아래에 같은 형태로 붙인다:
 ```ts
@@ -914,7 +914,7 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_d' \
   }
 ```
 
-- [ ] **Step 5: 통과를 확인하고 strict 스키마를 실증한다**
+- [x] **Step 5: 통과를 확인하고 strict 스키마를 실증한다**
 
 ```bash
 pnpm -C packages/cli test
@@ -931,7 +931,7 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test_d' \
 기대: **FAIL** — 키를 뺀 update 가 통과해 논리 템플릿이 `''` 로 덮인다. 되돌리고 초록을 확인한 뒤
 **양쪽 결과를 보고에 적는다.**
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add apps/server/src/routers/project.test.ts packages/cli/src/config.ts \
@@ -959,7 +959,7 @@ Claude-Session: <세션 URL>"
 ⚠️ **`NamePair` 에 prop 을 뚫지 마라.** 컬럼과 공유하는 컴포넌트이고 컬럼에는 템플릿이 없다.
 미리보기 두 줄을 `NamePair` **바깥**(지금 물리명 미리보기가 있는 자리)에 라벨과 함께 둔다.
 
-- [ ] **Step 1: 편집 패널 테스트를 고치고 더한다**
+- [x] **Step 1: 편집 패널 테스트를 고치고 더한다**
 
 `edit-panel.test.tsx:656-693` 의 기존 3건은 문구 변경으로 **함께 바뀐다.**
 
@@ -1009,7 +1009,7 @@ Claude-Session: <세션 URL>"
 ```
 ⚠️ `renderPanel` 은 그 파일의 실제 헬퍼 이름·시그니처에 맞춰라(먼저 읽는다).
 
-- [ ] **Step 2: 설정 화면 테스트를 더한다**
+- [x] **Step 2: 설정 화면 테스트를 더한다**
 
 `project-settings.test.tsx` — `projectFixture` 에 `tableLogicalTemplate` 를 받는 필드를 더한다
 (`over.tableLogicalTemplate ?? ''`). 기존 `MODEL_FIXTURE` 를 그대로 쓴다.
@@ -1076,14 +1076,14 @@ describe('ProjectSettingsPage — 테이블 논리명 형식', () => {
 ⚠️ `MODEL_FIXTURE` 의 실제 그룹명·논리명·물리명(`PRD`/`ITEM` 으로 바꿔 둔 값)을 **먼저 읽고** 위
 기대값을 맞춰라. `model.get` 이 `{ model, seq }` 로 감싸 돌려주는 것도 기존 픽스처를 따른 것이다.
 
-- [ ] **Step 3: 실패를 확인한다**
+- [x] **Step 3: 실패를 확인한다**
 
 ```bash
 pnpm -C apps/web exec vitest run src/pages/project-settings.test.tsx src/editor/edit-panel.test.tsx
 ```
 기대: 논리 입력란·논리 미리보기가 없어 FAIL. 문구를 바꾼 기존 3건도 FAIL(아직 `→ ` 접두다).
 
-- [ ] **Step 4: 구현한다**
+- [x] **Step 4: 구현한다**
 
 `project-settings.tsx` — `TemplatePreview` 에 `kind` 를 받는다:
 
@@ -1170,14 +1170,14 @@ function TemplatePreview({ kind, template, model }: {
 ```
 `@erdd/core` import 에 `composeTableLogicalName` 을 더한다.
 
-- [ ] **Step 5: 통과를 확인한다**
+- [x] **Step 5: 통과를 확인한다**
 
 ```bash
 pnpm -C apps/web test
 pnpm -r typecheck; echo "EXIT=$?"
 ```
 
-- [ ] **Step 6: 논리 줄 가드가 잠기는지 실증한다**
+- [x] **Step 6: 논리 줄 가드가 잠기는지 실증한다**
 
 `edit-panel.tsx` 의 `namingRules.tableLogicalTemplate !== ''` 가드를 지운다(항상 렌더).
 ```bash
@@ -1187,7 +1187,7 @@ pnpm -C apps/web exec vitest run src/editor/edit-panel.test.tsx -t '물리 템�
 기대: **FAIL** — 논리 줄이 떠서 `queryByText(/^논리 → /)` 가 잡힌다. 되돌리고 초록을 확인한 뒤
 **양쪽 결과를 보고에 적는다.**
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 커밋**
 
 ```bash
 git add apps/web/src/pages/project-settings.tsx apps/web/src/pages/project-settings.test.tsx \
@@ -1209,7 +1209,7 @@ Claude-Session: <세션 URL>"
 **Files:**
 - Modify: `docs/13-naming.md` · `docs/manual/user-guide.md` · `docs/superpowers/HANDOFF.md`
 
-- [ ] **Step 1: 문서를 쓴다**
+- [x] **Step 1: 문서를 쓴다**
 
 `docs/13-naming.md`:
 - **접기 규칙 표를 교체한다.** ⚠️ 지금 표의 마지막 두 줄(`TB_{그룹별칭}_LOG` → `TB_` ⚠️,
@@ -1246,7 +1246,7 @@ Claude-Session: <세션 URL>"
   >   프로젝트는 별칭이 빈 테이블의 이름이 `TB_` 에서 `TB_LOG` 로 달라진다. 사실상 버그 수정이지만
   >   **이미 내보낸 DDL 과 새로 내보낸 DDL 이 갈린다.** 사용자 매뉴얼에 안내를 적었다.
 
-- [ ] **Step 2: 최종 검증**
+- [x] **Step 2: 최종 검증**
 
 ```bash
 pnpm -C packages/core test
@@ -1258,7 +1258,7 @@ pnpm -r typecheck; echo "EXIT=$?"
 🔥 `. ./.env` 금지. 서버가 `20 passed | 174 skipped` 면 미실행이다.
 각 스위트의 **실측 통과 수를 보고에 적는다**(기준선 `core 740 · cli 143 · web 926 · server 206` 대비 증가분).
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add docs/13-naming.md docs/manual/user-guide.md docs/superpowers/HANDOFF.md && \
