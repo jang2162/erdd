@@ -458,6 +458,10 @@ describe('논리명 템플릿과 경고', () => {
   it('용어 검사가 부분 논리명을 본다', () => {
     const x = m()
     x.terms['tm1'] = term('tm1', '주문', 'ORD')     // 부분과 정확히 일치 → 불일치 경고가 없어야 한다
+    // ⚠️ 이 줄이 구분력을 만든다. 없으면 D1 을 위반해도 초록이다 — 조합 이름('회원관리_주문')으로
+    // 등록된 용어가 없어 「매칭 없음 → 경고 없음」이 되고 단언이 「경고가 없다」라서 통과한다.
+    // 물리명을 일부러 다르게 둔다(MBR_ORD ≠ ORD) — 조합을 보면 불일치 경고가 뜬다.
+    x.terms['tm2'] = term('tm2', '회원관리_주문', 'MBR_ORD')
     expect(computeWarnings(x, withLogical).filter((w) => w.kind === 'term-mismatch')).toEqual([])
   })
 
@@ -468,10 +472,14 @@ describe('논리명 템플릿과 경고', () => {
     expect(kinds).not.toContain('unknown-word')     // 조합('회원관리_주문')을 봤다면 '회원관리'가 미등록이다
   })
 
+  // ⚠️ 템플릿에 밑줄이 있으면(`{그룹명}_{논리명}`) 조합 결과에도 밑줄이 있어 이 검사가 **통째로
+  // 건너뛴다** — 그러면 D1 을 위반해도 초록이다. 밑줄 없는 템플릿을 써야 구분력이 생긴다.
   it('논리 구분자 경고가 부분 논리명을 본다', () => {
     const x = m()
     x.words['w1'] = word('w1', '주문', 'ORD')
-    const kinds = computeWarnings(x, withLogical).map((w) => w.kind)
+    x.words['w2'] = word('w2', '회원관리', 'MBR')   // 조합('회원관리주문')이 두 낱말로 분해되게 한다
+    const glued: NamingRules = { ...DEFAULT_NAMING_RULES, tableLogicalTemplate: '{그룹명}{논리명}' }
+    const kinds = computeWarnings(x, glued).map((w) => w.kind)
     expect(kinds).not.toContain('missing-logical-separator')  // 부분은 단어 하나라 경고 없음
   })
 
