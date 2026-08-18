@@ -5,6 +5,8 @@ import { DEFAULT_NAMING_RULES } from './naming.js'
 import { parseDdl } from './ddl-parse.js'
 import { planDdlImport } from './ddl-import.js'
 import { generateDdl as generateDdlRaw, type DdlScope } from './ddl.js'
+import { generateDbml as generateDbmlRaw } from './dbml.js'
+import { parseDbml } from './dbml-parse.js'
 import { DIALECTS, type Dialect } from './dialect.js'
 import type { NamingRules } from './naming.js'
 import type { ProjectModel, Word } from './model.js'
@@ -535,14 +537,118 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(p.tables[0]!.custom).toEqual({})
   })
 
-  // ⚠️ 설계 D2 를 **고정**하는 테스트다. 「깨진다」가 의도된 동작이라는 뜻이지 옳다는 뜻이 아니다.
-  // 역분해를 넣게 되면 이 테스트가 빨개진다 — 그때 설계 D2 를 다시 읽어라.
-  it('템플릿이 걸린 DDL 을 되읽으면 접두가 부분에 박힌다(역분해하지 않는다)', () => {
+  // ⚠️ 물리명 사이클의 D2(왕복이 깨진 채로 둔다)를 **뒤집은 자리**다. 역분해는 여전히 하지 않는다 —
+  // 내보낼 때 머릿말에 부분을 적어 두고 읽을 때 그대로 쓴다.
+  it('머릿말이 있으면 부분이 복원된다', () => {
     const m = buildSampleModel()
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
     const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
     const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
     const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
+  })
+
+  // ⚠️ 관계·인덱스는 DDL 원문 이름으로 테이블을 가리킨다 — 복원된 부분 이름으로 다시 맞춰지지
+  // 않으면 편집 적용부(`tableIdByName.get(...)!`)가 undefined 를 잡아 조용히 깨진다.
+  it('복원된 뒤에도 관계·인덱스가 테이블에 붙는다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.relationships).toHaveLength(1)
+    expect(imported.relationships[0]).toMatchObject({
+      childPhysicalName: 'MBR', parentPhysicalName: 'MBR_GRD',
+    })
+    const mbr = imported.tables.find((t) => t.physicalName === 'MBR')!
+    expect(mbr.indexes.map((ix) => ix.name)).toEqual(['UX_MBR_01'])
+  })
+
+  // ⚠️ 남의 DDL(머릿말 없음)은 지금까지의 동작 그대로다 — 통째로 부분이 된다.
+  it('머릿말이 없으면 조합된 이름이 통째로 부분이 된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+      .split('\n').filter((l) => !l.startsWith('-- erdd:')).join('\n')   // 머릿말만 떼어낸다
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort())
+      .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
+  })
+
+  it('두 번 왕복해도 접두가 겹치지 않는다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const once = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    const back = planDdlImport(createEmptyModel(), parseDdl(once), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(back.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
+    expect(once).not.toContain('TB_MBR_TB_MBR_')
+  })
+
+  // ⚠️ 설계 D5 — 논리명은 메타가 코멘트를 이기고, 설명은 코멘트에서 온다.
+  it('논리명은 메타가 이기고 설명은 코멘트에서 온다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, name: 'SALES', alias: 'MBR' }
+    const rules = {
+      ...DEFAULT_NAMING_RULES,
+      tablePhysicalTemplate: 'TB_{물리명}',
+      tableLogicalTemplate: '{그룹명}_{논리명}',
+    }
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    const mbr = imported.tables.find((t) => t.physicalName === 'MBR')!
+    expect(mbr.logicalName).toBe('회원')                 // 'SALES_회원' 이 아니다
+    expect(mbr.comment).toBe('서비스 가입 회원')          // 설명은 코멘트에서 그대로
+  })
+
+  // ⚠️ 설계 D6 — 사용자가 DDL 의 이름을 손으로 고치면 키가 안 맞아 현행 동작으로 떨어진다.
+  it('메타 키가 실제 이름과 안 맞으면 현행 동작으로 떨어진다', () => {
+    const ddl = [
+      '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"주문"}}',
+      'CREATE TABLE TB_MBR_ORDER (ID BIGINT NOT NULL);',
+    ].join('\n')
+    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables[0]!.physicalName).toBe('TB_MBR_ORDER')
+  })
+
+  it('DBML 도 머릿말로 부분이 복원된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const dbml = generateDbmlRaw(m, 'postgresql', { kind: 'all' }, {}, rules)
+    const imported = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
+    // 그룹 소속도 복원된 이름으로 맞춰진다.
+    expect(imported.groups[0]!.tablePhysicalNames.sort()).toEqual(['MBR', 'MBR_GRD'])
+  })
+
+  // ⚠️ 계획에 없던 자리다. 복원을 넣으면 **만들어질 이름**이 달라지므로 충돌 판정도 그것으로
+  // 봐야 한다 — DDL 원문 이름으로 보면 모델의 기존 ORD 와 부딪히는 것을 놓쳐 같은 물리명이
+  // 둘 생긴다.
+  it('복원된 이름이 기존 테이블과 부딪히면 건너뛴다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = {
+      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const ddl = [
+      '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"주문"}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL);',
+    ].join('\n')
+    const imported = planDdlImport(m, parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(imported.tables).toEqual([])
+    expect(imported.skippedTables).toEqual(['TB_MBR_ORD'])
+  })
+
+  // ⚠️ 설계 §4 가 요구한 나머지 한 짝 — DBML 도 머릿말이 없으면 옛 동작이다.
+  it('DBML 도 머릿말이 없으면 조합된 이름이 통째로 부분이 된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
+    const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+    const dbml = generateDbmlRaw(m, 'postgresql', { kind: 'all' }, {}, rules)
+      .split('\n').filter((l) => !l.startsWith('// erdd:')).join('\n')
+    const imported = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
     expect(imported.tables.map((t) => t.physicalName).sort())
       .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
   })
