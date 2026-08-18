@@ -87,9 +87,18 @@ export function planDdlImport(
   // ⚠️ 충돌은 **만들어질 이름**으로 본다 — 머릿말이 TB_MBR_ORD 를 ORD 로 되돌리면 모델의
   // 기존 ORD 와 부딪힌다. DDL 원문 이름으로 보면 그 충돌을 놓쳐 같은 물리명이 둘 생긴다.
   const claimed = new Set<string>()
+  // ⚠️ 만들어질 이름이 겹치는 사유는 **둘**이고 사용자가 할 일이 다르므로 문구를 가른다.
+  // 원문 이름까지 같으면 진짜 중복 CREATE TABLE 이고, 원문 이름이 다르면 머릿말이 서로 다른
+  // 두 이름을 같은 부분으로 되돌린 것이다(그룹이 갈라 원본에서는 중복이 아니었는데 가져오기가
+  // 그룹을 복원하지 않아 겹친다 — 설계 D2). 후자에 「같은 이름이 두 번」이라고 적으면 원문을
+  // 열어 본 사용자가 **문구가 틀렸다고 판단해 넘긴다** — 실제로는 테이블이 컬럼째 빠진 상황이다.
+  const seenRaw = new Set<string>()
   for (const t of parsed.tables) {
     const key = upper(t.name)
-    const madeKey = upper(madeName(t.name))
+    const made = madeName(t.name)
+    const madeKey = upper(made)
+    const dupRaw = seenRaw.has(key)
+    seenRaw.add(key)
     if (existing.has(madeKey)) {
       skippedTables.push(t.name)
       warnings.push({ kind: 'table-conflict', target: t.name, message: '같은 이름의 테이블이 이미 있어 건너뜁니다' })
@@ -98,7 +107,9 @@ export function planDdlImport(
     if (claimed.has(madeKey)) {
       warnings.push({
         kind: 'table-conflict', target: t.name,
-        message: 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+        message: dupRaw
+          ? 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다'
+          : `머릿말이 ${t.name}을 ${made}로 되돌렸는데 그 이름을 앞의 테이블이 이미 써서 건너뜁니다`,
       })
       continue
     }

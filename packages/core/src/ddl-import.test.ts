@@ -258,13 +258,18 @@ describe('planDdlImport', () => {
   })
 
   // I-2(c): 같은 이름의 CREATE TABLE이 두 번 오면 뒤엣것을 버리고 경고한다.
+  // ⚠️ 문구까지 못 박는다 — 만들어질 이름이 겹치는 사유는 둘이고(진짜 중복 / 머릿말 복원이
+  // 겹침) 각자 다른 문구를 내야 한다. kind 만 보면 두 갈래가 뒤바뀌어도 초록이다.
   it('DDL에 같은 이름의 테이블이 두 번 오면 뒤엣것을 건너뛰고 경고한다', () => {
     const p = plan(`
       CREATE TABLE MBR (A bigint);
       CREATE TABLE MBR (B bigint);`)
     expect(p.tables).toHaveLength(1)
     expect(p.tables[0]!.columns.map((c) => c.physicalName)).toEqual(['A'])
-    expect(p.warnings.some((w) => w.kind === 'table-conflict')).toBe(true)
+    expect(p.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'MBR',
+      message: 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+    })
   })
 
   // I-4: 테이블 코멘트의 설명 부분이 계획에서 보존돼야 한다.
@@ -678,12 +683,18 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(p2.tables[0]!.logicalName).toBe('회원주문')
     expect(p2.tables[0]!.columns.map((c) => c.physicalName)).toEqual(['ID'])
 
-    // (2) 경고는 뜬다 — 다만 문구가 「같은 이름의 테이블이 두 번」이다. DDL 에 있는 두 이름은
-    //     서로 다르므로(TB_MBR_ORD · TB_PRD_ORD) 사용자가 원문에서 확인할 수 없는 문구다.
+    // (2) 경고 문구가 **이 사유 전용**이다. DDL 의 두 이름은 서로 다르므로(TB_MBR_ORD ·
+    //     TB_PRD_ORD) 「같은 이름이 두 번」이라고 하면 원문을 열어 본 사용자가 문구가 틀렸다고
+    //     판단해 넘긴다. target 은 DDL 원문 이름이다 — 사용자가 입력에서 찾을 수 있는 이름은
+    //     그것뿐이고(ORD 는 머릿말 JSON 밖에 안 나온다) skippedTables·형제 분기와도 같은 기준이다.
     expect(p2.warnings).toContainEqual({
       kind: 'table-conflict', target: 'TB_PRD_ORD',
-      message: 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+      message: '머릿말이 TB_PRD_ORD을 ORD로 되돌렸는데 그 이름을 앞의 테이블이 이미 써서 건너뜁니다',
     })
+    // 진짜 중복 CREATE TABLE 의 문구가 새지 않는다.
+    expect(p2.warnings.map((w) => w.message)).not.toContain(
+      'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
+    )
 
     // (3) ⚠️ skippedTables 에는 안 들어간다(기존 테이블과 부딪히는 쪽만 들어간다). 미리보기의
     //     「건너뜀 N개」 줄에 안 보이고 경고 목록에만 보인다.
