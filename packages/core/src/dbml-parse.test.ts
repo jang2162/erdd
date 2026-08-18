@@ -240,3 +240,21 @@ describe('parseDbml — PK 정규화', () => {
     ])
   })
 })
+
+describe('parseDbml — 머릿말 메타', () => {
+  it('머릿말이 있으면 nameMeta 를 싣는다', () => {
+    const src = [
+      '// erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"주문"}}',
+      'Table "TB_MBR_ORD" {',
+      '  "ID" bigint [pk]',
+      '}',
+    ].join('\n')
+    const parsed = parseDbml(src)
+    expect(parsed.nameMeta).toEqual({ TB_MBR_ORD: { p: 'ORD', l: '주문' } })
+    expect(parsed.tables).toHaveLength(1)          // ⚠️ stripComments 가 머릿말을 지워도 테이블은 읽힌다
+  })
+
+  it('머릿말이 없으면 nameMeta 가 undefined 다', () => {
+    expect(parseDbml('Table "X" {\n  "ID" bigint [pk]\n}').nameMeta).toBeUndefined()
+  })
+})

@@ -4,6 +4,7 @@ import type {
 } from './ddl-parse.js'
 import type { Dialect } from './dialect.js'
 import { splitDbmlNote } from './dbml-note.js'
+import { parseNameMeta } from './name-meta.js'
 
 export type ParsedGroup = {
   name: string; color: string | null; comment: string | null; tables: string[]
@@ -501,6 +502,8 @@ function parseProjectBlock(out: Out, body: string, bodyLine: number): void {
  * 손으로 쓴 좁은 파서다 — core 는 IO·런타임 의존성 free 이므로 외부 파서를 쓰지 않는다.
  */
 export function parseDbml(text: string): ParsedDbml {
+  // ⚠️ stripComments 가 머릿말을 지우므로 **원문에서** 먼저 읽는다.
+  const nameMeta = parseNameMeta(text) ?? undefined
   const s = stripComments(text)
   const out: Out = {
     tables: [], constraints: [], indexes: [], comments: [], skipped: [],
@@ -597,7 +600,7 @@ export function parseDbml(text: string): ParsedDbml {
 
   return {
     tables: out.tables, constraints: out.constraints, indexes: out.indexes,
-    comments: out.comments, skipped: out.skipped,
+    comments: out.comments, skipped: out.skipped, nameMeta,
     groups: out.groups, customValues: out.customValues, databaseType: out.databaseType,
   }
 }

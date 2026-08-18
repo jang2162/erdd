@@ -1,4 +1,5 @@
 import type { Dialect } from './dialect.js'
+import { parseNameMeta, type NameMeta } from './name-meta.js'
 
 export type ParsedColumn = {
   name: string
@@ -26,6 +27,11 @@ export type ParsedDdl = {
   indexes: ParsedIndex[]
   comments: ParsedComment[]
   skipped: SkippedStatement[]
+  /**
+   * 덤프 머릿말이 실어 온 「조합된 이름 → 부분」. 없으면 undefined.
+   * ⚠️ 옵셔널이라 기존 테스트의 ParsedDdl 리터럴이 안 깨진다.
+   */
+  nameMeta?: NameMeta
 }
 
 /** 주석을 걷어낸 한 문장과 원문에서의 시작 줄 번호(1-based). */
@@ -636,7 +642,11 @@ function splitQualified(raw: string): string[] {
 }
 
 export function parseDdl(ddl: string): ParsedDdl {
-  const result: ParsedDdl = { tables: [], constraints: [], indexes: [], comments: [], skipped: [] }
+  // ⚠️ splitStatements 가 주석을 걷어내므로 머릿말은 **원문에서** 먼저 읽어야 한다.
+  const result: ParsedDdl = {
+    tables: [], constraints: [], indexes: [], comments: [], skipped: [],
+    nameMeta: parseNameMeta(ddl) ?? undefined,
+  }
   for (const stmt of splitStatements(ddl)) {
     if (parseCreateTable(stmt, result)) continue
     if (parseAlterTable(stmt, result)) continue
