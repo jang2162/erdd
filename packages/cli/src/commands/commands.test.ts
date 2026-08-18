@@ -25,7 +25,7 @@ beforeEach(async () => {
     dialects: ['postgresql'],
     namingRules: {
       case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-      tablePhysicalTemplate: '',
+      tablePhysicalTemplate: '', tableLogicalTemplate: '',
     },
   })
 })
@@ -53,7 +53,7 @@ function stubClient(overrides: Partial<Record<string, unknown>> = {}): ApiClient
           id: 'p1', name: '커머스', dialects: ['postgresql'],
           namingRules: {
       case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-      tablePhysicalTemplate: '',
+      tablePhysicalTemplate: '', tableLogicalTemplate: '',
     },
           ...(overrides['project.get'] as object ?? {}),
         }

@@ -175,7 +175,7 @@ describe.skipIf(!url)('project', () => {
     await app.db!.update(projects)
       .set({ namingRules: {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '',
+        tablePhysicalTemplate: '', tableLogicalTemplate: '',
       } })
       .where(eq(projects.id, projectId))
 
@@ -192,7 +192,7 @@ describe.skipIf(!url)('project', () => {
       projectId,
       namingRules: {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '',
+        tablePhysicalTemplate: '', tableLogicalTemplate: '',
       },
     })
     expect(off.statusCode).toBe(200)
@@ -224,7 +224,7 @@ describe.skipIf(!url)('project', () => {
     await app.db!.update(projects)
       .set({ namingRules: {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '',
       } })
       .where(eq(projects.id, projectId))
 
@@ -240,7 +240,7 @@ describe.skipIf(!url)('project', () => {
       projectId,
       namingRules: {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'TB_{물리명}',
+        tablePhysicalTemplate: 'TB_{물리명}', tableLogicalTemplate: '',
       },
     })
     expect(set.statusCode).toBe(200)
@@ -262,7 +262,7 @@ describe.skipIf(!url)('project', () => {
       projectId,
       namingRules: {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'PRE_{논리명}',
+        tablePhysicalTemplate: 'PRE_{논리명}', tableLogicalTemplate: '',
       },
     })
     expect(res.statusCode).toBe(200)
@@ -276,7 +276,7 @@ describe.skipIf(!url)('project', () => {
       projectId,
       namingRules: {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '',
+        tablePhysicalTemplate: '', tableLogicalTemplate: '',
       },
     })
     expect(res.statusCode).toBe(200)
@@ -288,7 +288,7 @@ describe.skipIf(!url)('project', () => {
     const projectId = await createProject()
     const customRules = {
       case: 'lower_snake' as const, separator: '' as const, logicalSeparator: '_' as const, maxLengthBytes: 63,
-      tablePhysicalTemplate: '' as const,
+      tablePhysicalTemplate: '' as const, tableLogicalTemplate: '' as const,
     }
 
     const upd = await post(app, 'project.update', ownerToken, {

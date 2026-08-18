@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildSampleModel } from './testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
-import { composeTablePhysicalName, parseTemplate } from './name-template.js'
+import { composeTableLogicalName, composeTablePhysicalName, parseTemplate } from './name-template.js'
 import type { ProjectModel } from './model.js'
 
 /** g1 에 별칭 MBR 을 주고 t2 를 ORD/주문으로 바꾼 모델. */
@@ -162,5 +162,64 @@ describe('빈 구간 접기', () => {
   // 별칭이 있으면 아무것도 안 지운다(대조군).
   it('변수에 값이 있으면 리터럴이 그대로 남는다', () => {
     expect(compose('TB_{그룹별칭}_LOG')).toBe('TB_MBR_LOG')
+  })
+})
+
+describe('composeTableLogicalName', () => {
+  const withLogical = (tableLogicalTemplate: string): NamingRules =>
+    ({ ...DEFAULT_NAMING_RULES, tableLogicalTemplate })
+  /** model(): g1 = 회원관리(별칭 MBR), t2 = 주문/ORD 소속. 파일 상단 헬퍼. */
+  const composeL = (tpl: string, m: ProjectModel = model()) =>
+    composeTableLogicalName(m.tables['t2']!, m, withLogical(tpl))
+
+  // ⚠️ 물리명과 같은 계약이다 — 소비처가 템플릿 유무를 몰라도 된다(설계 D4).
+  it('템플릿이 비면 논리명을 그대로 낸다', () => {
+    expect(composeL('')).toBe('주문')
+  })
+
+  it('변수 네 종을 해석한다', () => {
+    expect(composeL('{그룹별칭}')).toBe('MBR')
+    expect(composeL('{그룹명}')).toBe('회원관리')
+    expect(composeL('{물리명}')).toBe('ORD')
+    expect(composeL('{논리명}')).toBe('주문')
+  })
+
+  it('전체 조합', () => {
+    expect(composeL('{그룹명}_{논리명}')).toBe('회원관리_주문')
+  })
+
+  it('알 수 없는 변수는 빈 값이고 접기도 같다', () => {
+    expect(composeL('{그룹명}_{없는것}_{논리명}')).toBe('회원관리_주문')
+  })
+
+  it('접기 규칙을 물리명과 공유한다', () => {
+    const m = model()
+    m.tables['t2'] = { ...m.tables['t2']!, groupId: null }
+    expect(composeTableLogicalName(m.tables['t2']!, m, withLogical('{그룹명}_이력'))).toBe('이력')
+  })
+
+  // ⚠️ 이 사이클의 계약. 변수는 **저장된 부분**을 돌려주지 조합 결과를 돌려주지 않는다 —
+  // 그래서 재귀가 원리적으로 불가능하다(설계 D4).
+  it('{물리명} 은 조합 물리명이 아니라 부분을 돌려준다', () => {
+    const m = model()
+    const rules: NamingRules = {
+      ...DEFAULT_NAMING_RULES,
+      tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+      tableLogicalTemplate: '{물리명}',
+    }
+    expect(composeTablePhysicalName(m.tables['t2']!, m, rules)).toBe('TB_MBR_ORD')
+    expect(composeTableLogicalName(m.tables['t2']!, m, rules)).toBe('ORD')   // TB_MBR_ORD 가 아니다
+  })
+
+  // ⚠️ 두 템플릿이 서로를 침범하지 않는지.
+  it('두 템플릿이 동시에 걸려도 각자 자기 것을 쓴다', () => {
+    const m = model()
+    const rules: NamingRules = {
+      ...DEFAULT_NAMING_RULES,
+      tablePhysicalTemplate: 'TB_{물리명}',
+      tableLogicalTemplate: '{그룹명}_{논리명}',
+    }
+    expect(composeTablePhysicalName(m.tables['t2']!, m, rules)).toBe('TB_ORD')
+    expect(composeTableLogicalName(m.tables['t2']!, m, rules)).toBe('회원관리_주문')
   })
 })

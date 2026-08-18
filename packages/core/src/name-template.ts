@@ -67,21 +67,9 @@ function trimTrailingSeparator(out: Piece[]): void {
   }
 }
 
-/**
- * 테이블의 최종 물리명. 산출물(DDL·DBML·Excel)과 검사(중복·길이·예약어)가 이것을 쓴다.
- *
- * ⚠️ **템플릿이 비면 physicalName 을 그대로 돌려준다.** 소비처가 「템플릿이 있는가」를 몰라도 되게
- * 하는 계약이다 — 분기가 소비처로 새면 스무 곳이 각자 판단하게 된다(설계 3.1).
- *
- * ⚠️ 빈 변수 규칙(설계 D2): **빈 변수는 자기 자신과 바로 뒤 리터럴 선두의 밑줄들을 지운다. 뒤에
- * 리터럴이 없으면 바로 앞 리터럴 말미의 밑줄들을 지운다. 변수 값은 절대 건드리지 않는다.**
- * 정규식 후처리로 흉내내지 않는다 — 변수 값 안의 연속 밑줄(`A__B`)까지 접힌다.
- */
-export function composeTablePhysicalName(
-  table: Table, model: ProjectModel, rules: NamingRules,
-): string {
-  if (rules.tablePhysicalTemplate === '') return table.physicalName
-  const tokens = parseTemplate(rules.tablePhysicalTemplate)
+/** 조합 몸통. 템플릿이 비었는지는 **호출자가 판단한다** — 여기 오면 비어 있지 않다. */
+function compose(template: string, table: Table, model: ProjectModel): string {
+  const tokens = parseTemplate(template)
   const out: Piece[] = []
   for (let i = 0; i < tokens.length; i += 1) {
     const tok = tokens[i]!
@@ -98,4 +86,37 @@ export function composeTablePhysicalName(
     trimTrailingSeparator(out)
   }
   return out.map((p) => p.text).join('')
+}
+
+/**
+ * 테이블의 최종 물리명. 산출물(DDL·DBML·Excel)과 검사(중복·길이·예약어)가 이것을 쓴다.
+ *
+ * ⚠️ **템플릿이 비면 physicalName 을 그대로 돌려준다.** 소비처가 「템플릿이 있는가」를 몰라도 되게
+ * 하는 계약이다 — 분기가 소비처로 새면 스무 곳이 각자 판단하게 된다(설계 3.1).
+ *
+ * ⚠️ 빈 변수 규칙(설계 D2): **빈 변수는 자기 자신과 바로 뒤 리터럴 선두의 밑줄들을 지운다. 뒤에
+ * 리터럴이 없으면 바로 앞 리터럴 말미의 밑줄들을 지운다. 변수 값은 절대 건드리지 않는다.**
+ * 정규식 후처리로 흉내내지 않는다 — 변수 값 안의 연속 밑줄(`A__B`)까지 접힌다.
+ */
+export function composeTablePhysicalName(
+  table: Table, model: ProjectModel, rules: NamingRules,
+): string {
+  if (rules.tablePhysicalTemplate === '') return table.physicalName
+  return compose(rules.tablePhysicalTemplate, table, model)
+}
+
+/**
+ * 테이블의 최종 논리명. **산출물 전용이다**(DDL 코멘트 · DBML note · Excel 논리명 열).
+ *
+ * ⚠️ 용어 사전·미등록 단어 검사·물리명 재생성은 이것을 쓰지 않는다 — 부분(`table.logicalName`)을
+ * 본다(설계 D1). `warnings.ts` 가 이 함수를 부르면 D1 위반이다.
+ *
+ * ⚠️ 변수는 **저장된 부분**을 돌려준다 — `{물리명}` 은 `table.physicalName` 이지 조합 물리명이
+ * 아니다. 그래서 재귀가 원리적으로 불가능하다.
+ */
+export function composeTableLogicalName(
+  table: Table, model: ProjectModel, rules: NamingRules,
+): string {
+  if (rules.tableLogicalTemplate === '') return table.logicalName
+  return compose(rules.tableLogicalTemplate, table, model)
 }

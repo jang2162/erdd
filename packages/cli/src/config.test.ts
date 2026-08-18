@@ -18,7 +18,7 @@ const CONFIG: ErddConfig = {
   dialects: ['postgresql'],
   namingRules: {
     case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-    tablePhysicalTemplate: '',
+    tablePhysicalTemplate: '', tableLogicalTemplate: '',
   },
 }
 
@@ -100,7 +100,7 @@ describe('config', () => {
       ...CONFIG,
       namingRules: {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '',
+        tablePhysicalTemplate: '', tableLogicalTemplate: '',
       },
     })
     expect((await readConfig(dir)).namingRules.logicalSeparator).toBe('')

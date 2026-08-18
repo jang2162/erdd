@@ -334,7 +334,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     m = updateTable(m, 't2', { physicalName: 'MBRXXX' })
     m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
-    useEditorStore.setState({ namingRules: { case: 'UPPER_SNAKE', separator: '', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '' } })
+    useEditorStore.setState({ namingRules: { case: 'UPPER_SNAKE', separator: '', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' } })
     grantEditPermission()
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
