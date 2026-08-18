@@ -76,6 +76,34 @@ describe('config', () => {
     expect((await readConfig(dir)).namingRules.tablePhysicalTemplate).toBe('TB_{그룹별칭}_{물리명}')
   })
 
+  // 논리 템플릿도 물리 템플릿과 **같은 정책**이다 — 임의 문자열이라 「잘못 적은 값」이 없다.
+  it('tableLogicalTemplate 이 없는 옛 config 에 빈 문자열을 채운다', async () => {
+    const yaml = [
+      'serverUrl: https://erdd.example.com',
+      'projectId: 018f6b0e-0000-7000-8000-000000000000',
+      'dialects:',
+      '  - postgresql',
+      'namingRules:',
+      '  case: UPPER_SNAKE',
+      '  separator: "_"',
+      '  logicalSeparator: "_"',
+      '  maxLengthBytes: 30',
+      '  tablePhysicalTemplate: "TB_{물리명}"',
+    ].join('\n')
+    await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
+    const cfg = await readConfig(dir)
+    expect(cfg.namingRules.tableLogicalTemplate).toBe('')
+    expect(cfg.namingRules.tablePhysicalTemplate).toBe('TB_{물리명}')
+  })
+
+  it('적어 둔 논리 템플릿은 그대로 읽는다', async () => {
+    await writeConfig(dir, {
+      ...CONFIG,
+      namingRules: { ...CONFIG.namingRules, tableLogicalTemplate: '{그룹명}_{논리명}' },
+    })
+    expect((await readConfig(dir)).namingRules.tableLogicalTemplate).toBe('{그룹명}_{논리명}')
+  })
+
   // ⚠️ 누락은 기본값으로 채우되(하위호환), **잘못 적은 값은 삼키지 않는다.** 조용히 '_' 로
   // 돌면 erdd validate 결과가 웹의 「모델 검사」와 갈린다 — 사용자는 자기가 적은 값이
   // 무시된 줄 모른다.
