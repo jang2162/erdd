@@ -133,4 +133,34 @@ describe('빈 구간 접기', () => {
     m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'A__B' }
     expect(compose('TB_{물리명}', m)).toBe('TB_A__B')
   })
+
+  // ⚠️ 여기부터가 이 태스크에서 새로 잠그는 것이다(설계 D2).
+  it('변수 뒤 리터럴이 구분자 하나가 아니면 밑줄만 지운다', () => {
+    expect(compose('TB_{그룹별칭}_LOG', noGroup())).toBe('TB_LOG')
+  })
+
+  it('맨 앞 변수가 비어도 뒤 리터럴의 낱말은 남는다', () => {
+    expect(compose('{그룹별칭}_LOG_{물리명}', noGroup())).toBe('LOG_ORD')
+  })
+
+  // ⚠️ 급소. 앞 변수가 남긴 **빈 조각**을 건너뛰지 않으면 'TB_' 가 나온다.
+  it('연속으로 비고 뒤에 리터럴이 없으면 앞 리터럴의 말미 밑줄까지 지운다', () => {
+    expect(compose('TB_{그룹별칭}_{그룹명}', noGroup())).toBe('TB')
+  })
+
+  // ⚠️ 변수 값은 절대 건드리지 않는다 — 사용자가 넣은 말미 밑줄이 살아남아야 한다.
+  it('앞 조각이 변수 값이면 말미 밑줄을 지우지 않는다', () => {
+    const m = model()
+    m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'ORD_', groupId: null }
+    expect(composeTablePhysicalName(m.tables['t2']!, m, rulesWith('{물리명}{그룹별칭}'))).toBe('ORD_')
+  })
+
+  it('밑줄이 여럿이어도 선두 밑줄을 모두 지운다', () => {
+    expect(compose('TB_{그룹별칭}__LOG', noGroup())).toBe('TB_LOG')
+  })
+
+  // 별칭이 있으면 아무것도 안 지운다(대조군).
+  it('변수에 값이 있으면 리터럴이 그대로 남는다', () => {
+    expect(compose('TB_{그룹별칭}_LOG')).toBe('TB_MBR_LOG')
+  })
 })
