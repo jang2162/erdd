@@ -794,4 +794,39 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     expect(p.groups[0]!.color).toBe('#999999')
     expect(p.groups[0]!.alias).toBe('')
   })
+
+  // ⚠️ 그룹 이름의 **대소문자 원문**을 잠근다. 저장소의 다른 케이스는 그룹 이름이 한글이라
+  // 대소문자가 없어, 만드는 이름을 대문자 색인 키로 바꿔도 전부 초록이다 — 설계 3.1 이
+  // NameMetaGroup.name 을 따로 둔 이유가 바로 여기다(파싱은 대문자로 색인하고 표시용 원문은
+  // 값에 실어 나른다). 이 단언이 없으면 소문자 그룹 이름이 조용히 SALES 로 뭉개진다.
+  it('그룹 이름의 대소문자가 왕복에서 보존된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, name: 'Sales_Domain' }
+    const sql = generateDdlRaw(m, 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES)
+    expect(sql).toContain('"Sales_Domain"')            // 머릿말은 원문 그대로 적는다
+    const p = planDdlImport(createEmptyModel(), parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups.map((g) => g.name)).toEqual(['Sales_Domain'])   // 'SALES_DOMAIN' 이 아니다
+  })
+
+  // ⚠️ 머릿말 경로도 **살아남은 테이블만** 그룹에 담는다. 블록 경로의 「건너뛴 테이블은 그룹
+  // 목록에서도 빠진다」와 같은 성질인데, 이쪽은 멤버를 tableByUpper 에서 모으는 **구조로**
+  // 얻고 있어 잠금이 없으면 소리 없이 풀린다 — 건너뛴 이름이 멤버에 남으면 편집 적용부가
+  // 만들어지지도 않은 테이블에 groupId 를 꽂으려다 조용히 흘린다.
+  it('이름이 겹쳐 건너뛴 테이블은 머릿말 그룹의 멤버에서도 빠진다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = {
+      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const sql = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원관리"},'
+        + '"TB_MBR_MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL);',
+      'CREATE TABLE TB_MBR_MBR (ID BIGINT NOT NULL);',
+    ].join('\n')
+    const p = planDdlImport(m, parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.skippedTables).toEqual(['TB_MBR_ORD'])    // 모델의 기존 ORD 와 부딪힌다
+    expect(p.groups).toHaveLength(1)
+    expect(p.groups[0]!.tablePhysicalNames).toEqual(['MBR'])   // ORD 가 섞이지 않는다
+  })
 })
