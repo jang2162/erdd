@@ -132,6 +132,28 @@ describe('DdlImportDialog', () => {
     expect(await screen.findByText(/건너뜀 1개 \(이름이 겹침: MBR\)/)).toBeInTheDocument()
   })
 
+  // A-3: 요약 줄의 「건너뜀 N개」는 **사유를 가리지 않고** 건너뛴 테이블을 다 센다.
+  // 픽스처가 두 사유를 한 입력에 담는다 — MBR 은 모델의 기존 테이블과 겹치고(옛날부터 세던
+  // 갈래), ORD 는 DDL 안에서 두 번 나온다(새로 세는 갈래). 2개라야 뒤엣것이 포함된 것이고,
+  // 1개면 같은 자리에서 어떤 건너뜀은 세고 어떤 건너뜀은 안 센다는 뜻이다.
+  it('DDL 안에서 겹쳐 건너뛴 테이블도 「건너뜀 N개」에 포함해 센다', async () => {
+    const model = createEmptyModel()
+    model.tables['t1'] = {
+      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    grantEditPermission()
+    renderDialog()
+    await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await userEvent.paste([
+      'CREATE TABLE MBR (A bigint);',
+      'CREATE TABLE ORD (B bigint);',
+      'CREATE TABLE ORD (C bigint);',
+    ].join('\n'))
+    expect(await screen.findByText(/건너뜀 2개 \(이름이 겹침: MBR, ORD\)/)).toBeInTheDocument()
+  })
+
   // 「편집 권한이 없으면 진입점이 없다」는 header-tools.test.tsx 로 옮겼다 — canEdit 가드가
   // 컴포넌트에서 「파일 ▾」 메뉴 항목으로 이동했기 때문이다(설계 3.3).
 })

@@ -115,6 +115,10 @@ export function planDdlImport(
     // 이고, 원문 이름이 다르면 머릿말이 **서로 다른 두 이름**을 같은 부분으로 되돌린 것이다
     // (그룹이 갈라 원본에서는 중복이 아니었는데 가져오기가 그룹을 복원하지 않아 겹친다 — 설계 D2).
     if (claimed.has(madeKey)) {
+      // ⚠️ 두 사유 모두 담는다. skippedTables 라는 이름이 이미 「건너뛴 테이블」을 약속하므로
+      // 세는 자리와 담는 자리를 하나로 둔다 — 한쪽 사유만 담으면 같은 자리에서 어떤 건너뜀은
+      // 세고 어떤 건너뜀은 안 세게 된다. 담는 값은 경고 target 과 같은 기준인 DDL 원문 이름이다.
+      skippedTables.push(t.name)
       warnings.push({
         kind: 'table-conflict', target: t.name,
         message: dupRaw
