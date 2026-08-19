@@ -148,6 +148,15 @@ describe('buildNameMeta', () => {
     expect(meta.groups['회원관리']).toEqual({ name: '회원관리', c: '#4A90D9' })
   })
 
+  // ⚠️ 색은 따로 잰다 — 픽스처의 그룹은 색이 늘 차 있어(#4A90D9) 위 케이스가 「색이 차 있으면
+  // 싣는다」만 잠그고 **빈 색을 생략하는 쪽**은 잠그지 못한다. 색을 비운 그룹을 직접 세운다.
+  it('빈 색은 키를 생략한다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, color: '', alias: 'MBR', comment: '회원 도메인' }
+    const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
+    expect(meta.groups['회원관리']).toEqual({ name: '회원관리', a: 'MBR', n: '회원 도메인' })
+  })
+
   // ⚠️ 좁아진 보장 — 그룹도 템플릿도 없으면 여전히 빈 메타다.
   it('그룹도 템플릿도 없으면 빈 메타다', () => {
     const m = buildSampleModel()
