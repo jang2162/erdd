@@ -89,12 +89,24 @@ export function planDdlImport(
    * ⚠️ 구분자가 NUL 인 이유: 그룹 이름은 사용자가 자유롭게 쓰는 문자열이라 `.` `_` 같은 흔한
    * 문자를 쓰면 서로 다른 짝이 같은 키가 된다(`A_B`+`C` 와 `A`+`B_C`). NUL 은 어느 이름에도
    * 들어갈 수 없다.
-   * ⚠️ 그룹은 **머릿말에서만** 온다. 머릿말이 없거나 v1 이면 그룹 자리가 빈 문자열이라 옛 동작
-   * 그대로다 — 그리고 그것이 맞다(옛 덤프에는 그룹이 안 적혀 있다).
    */
   const scopedKey = (group: string, name: string) => `${upper(group)}\u0000${upper(name)}`
   const groupNameById = new Map(Object.values(model.tableGroups).map((g) => [g.id, g.name]))
-  const groupOf = (raw: string): string => metaOf(raw)?.g ?? ''
+  /**
+   * DBML `TableGroup` 블록이 말하는 그룹. 8번 절이 블록도 그룹 소스로 인정하므로(설계 D7)
+   * 그 테이블은 **실제로** 그 그룹에 들어간다.
+   * ⚠️ 키는 「머릿말이 말한 그룹」이 아니라 **「그 테이블이 실제로 들어갈 그룹」**을 봐야 한다.
+   * 블록을 안 보면 같은 실행 안에서 그룹 배정과 충돌 판정이 서로 다른 사실을 보게 되고, 머릿말
+   * 없는 DBML 에서 **모델의 같은 그룹에 같은 물리명이 하나 더** 들어간다(리뷰가 실증한 회귀).
+   */
+  const blockGroupOf = new Map<string, string>()
+  for (const g of parsed.groups ?? []) for (const n of g.tables) blockGroupOf.set(upper(n), g.name)
+  /**
+   * 그 테이블이 들어갈 그룹. **머릿말이 이긴다**(D7) — 없으면 블록이다.
+   * ⚠️ 둘 다 없으면(순수 DDL·블록 없는 DBML) 빈 문자열이라 옛 동작 그대로다. 그때는 들어온
+   * 테이블이 실제로도 그룹 없이 만들어지므로 키가 사실과 어긋나지 않는다.
+   */
+  const groupOf = (raw: string): string => metaOf(raw)?.g ?? blockGroupOf.get(upper(raw)) ?? ''
 
   const existing = new Set(Object.values(model.tables).map((t) => scopedKey(
     t.groupId === null ? '' : groupNameById.get(t.groupId) ?? '', t.physicalName)))
@@ -114,8 +126,9 @@ export function planDdlImport(
     const made = madeName(t.name)
     const madeKey = scopedKey(groupOf(t.name), made)
     // 머릿말이 이름을 되돌렸는가. 되돌리지 않았으면(남의 DDL·템플릿 없는 프로젝트) 옛 문구 그대로다.
-    // ⚠️ madeKey 와 비교하지 않는다 — 그것은 그룹이 섞인 충돌 키라 그룹만 실린 머릿말에서도
-    // 원문과 달라져, 이름을 되돌리지 않았는데 되돌렸다는 문구가 나간다.
+    // ⚠️ madeKey 와 비교하지 마라 — 그것은 NUL 을 품는 충돌 키라 NUL 이 들어갈 수 없는 key 와
+    // **결코 같을 수 없다.** 비교하면 restored 가 무조건 참이 되어 「같은 이름의 테이블이 이미
+    // 있어 건너뜁니다」 갈래가 영원히 도달 불가가 된다.
     const restored = upper(made) !== key
     const dupRaw = seenRaw.has(key)
     seenRaw.add(key)

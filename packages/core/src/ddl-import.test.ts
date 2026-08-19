@@ -481,7 +481,28 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(p.groups[0]!.existingId).toBe('g1')
   })
 
+  // ⚠️ 모델의 기존 MBR 을 **블록과 같은 이름의 그룹**에 넣어 둔 것은 설계 D6 때문이다 — 충돌
+  // 키가 (그룹, 부분 이름) 이고 블록 그룹도 그 소스이므로, 그룹을 안 맞추면 「한쪽만 그룹 있음
+  // → 둘 다 들어온다」에 걸려 애초에 안 부딪힌다. 그러면 이 테스트가 잠그려는 「건너뜀」 자체가
+  // 안 생긴다. 그룹까지 같으면 진짜 중복이라 건너뛰는 것이 맞다(아래 짝 테스트가 반대쪽을 잠근다).
   it('건너뛴 테이블은 그룹 목록에서도 빠진다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null, alias: '' }
+    m.tables['t1'] = {
+      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const p = planDdlImport(
+      m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.groups).toEqual([])
+  })
+
+  // ⚠️ 위 테스트의 짝이다 — **블록 그룹만 그룹을 말하고 모델 쪽은 그룹이 없으면** 조합 결과가
+  // 갈려 원본에서 공존하던 것이므로 둘 다 들어온다(설계 D6 표의 「한쪽만 그룹 있음」 행).
+  // 위 테스트가 그룹을 맞춰 두면서 잃은 기대를 여기서 못 박는다.
+  it('블록 그룹만 있고 모델의 같은 이름 테이블은 그룹이 없으면 둘 다 들어온다', () => {
     const m = createEmptyModel()
     m.tables['t1'] = {
       id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
@@ -491,7 +512,32 @@ describe('planDdlImport — DBML 확장 필드', () => {
       m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
       'postgresql', DEFAULT_NAMING_RULES,
     )
-    expect(p.groups).toEqual([])
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['MBR'])
+    expect(p.skippedTables).toEqual([])
+    expect(p.groups.map((g) => g.tablePhysicalNames)).toEqual([['MBR']])
+  })
+
+  // ⚠️ **충돌 키가 DBML 블록 그룹도 봐야 하는 이유를 잠근다.** 머릿말이 없어도 블록이 그룹을
+  // 말하면 그 테이블은 8번 절이 **실제로 그 그룹에 넣는다.** 키가 블록을 안 보면 모델의 같은
+  // 그룹에 같은 물리명이 하나 더 들어간다 — 리뷰가 실증한 회귀다(머릿말 도입 전에는 건너뛰었다).
+  it('머릿말이 없어도 블록 그룹까지 같으면 기존 테이블과 부딪혀 건너뛴다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null, alias: '' }
+    m.tables['t1'] = {
+      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const p = planDdlImport(
+      m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.tables).toEqual([])
+    expect(p.skippedTables).toEqual(['MBR'])
+    // 이름을 되돌린 것이 아니므로(머릿말이 없다) 옛 문구 그대로다.
+    expect(p.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'MBR',
+      message: '같은 이름의 테이블이 이미 있어 건너뜁니다',
+    })
   })
 
   it('그룹 수가 opCountEstimate 에 더해진다', () => {
@@ -732,6 +778,29 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])   // 그룹이 달라 안 부딪힌다
     expect(p.skippedTables).toEqual([])
   })
+
+  // ⚠️ **충돌 키의 구분자가 NUL 이어야 하는 이유를 잠근다.** 그룹 이름은 사용자가 자유롭게 쓰는
+  // 문자열이라 흔한 문자를 구분자로 쓰면 서로 다른 짝이 같은 키가 되어 **뒤엣것이 잘못
+  // 건너뛰어진다.** 픽스처가 두 실패 방식을 각각 겨냥한다.
+  //   T1(`A_B`+`C`) 과 T2(`A`+`B_C`)  → 구분자가 `_` 면 둘 다 `A_B_C`
+  //   T3(`A`+`BC`)  과 T4(`AB`+`C`)   → 구분자가 아예 없으면 둘 다 `ABC`
+  // NUL 은 그룹 이름에도 물리명에도 들어갈 수 없어 어느 쪽으로도 뭉개지지 않는다.
+  it('그룹 이름과 부분 이름의 경계가 구분자로 뭉개지지 않는다', () => {
+    const meta = '{"t":{"T1":{"p":"C","l":"가","g":"A_B"},"T2":{"p":"B_C","l":"나","g":"A"},'
+      + '"T3":{"p":"BC","l":"다","g":"A"},"T4":{"p":"C","l":"라","g":"AB"}},'
+      + '"g":{"A_B":{},"A":{},"AB":{}}}'
+    const ddl = [
+      `-- erdd:v2 ${meta}`,
+      'CREATE TABLE T1 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE T2 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE T3 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE T4 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['C', 'B_C', 'BC', 'C'])
+    expect(p.skippedTables).toEqual([])
+  })
+
   // ⚠️ **v1 머릿말의 하위호환 잠금이다.** 위 v2 짝과 반드시 함께 봐라.
   // 그룹이 다른 두 테이블은 부분이 같아도(`ORD`) 조합 이름이 갈려 원본 프로젝트에서는 중복이
   // 아니다. 그런데 **v1 머릿말에는 그룹 자리가 없어**(설계 D6 의 충돌 키에 그룹이 빈 문자열로
