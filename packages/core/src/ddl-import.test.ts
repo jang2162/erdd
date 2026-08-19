@@ -465,7 +465,8 @@ describe('planDdlImport — DBML 확장 필드', () => {
       'postgresql', DEFAULT_NAMING_RULES,
     )
     expect(p.groups).toEqual([{
-      name: '회원 관리', color: '#0E7A6C', comment: null,
+      // 블록만 있는 경로다 — 별칭은 머릿말에만 실려 오므로 빈 문자열이어야 한다.
+      name: '회원 관리', color: '#0E7A6C', comment: null, alias: '',
       tablePhysicalNames: ['MBR'], existingId: null,
     }])
   })
@@ -736,5 +737,61 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const imported = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
     expect(imported.tables.map((t) => t.physicalName).sort())
       .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
+  })
+})
+
+describe('planDdlImport — 머릿말 그룹 복원', () => {
+  /** 별칭·색·코멘트가 다 있는 그룹 하나에 테이블 둘이 든 모델. */
+  const source = (): ProjectModel => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR', comment: '회원 도메인' }
+    return m
+  }
+
+  it('DDL 왕복에서 그룹과 별칭이 살아난다', () => {
+    const sql = generateDdlRaw(source(), 'postgresql', { kind: 'all' },
+      { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' })
+    const p = planDdlImport(createEmptyModel(), parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
+
+    expect(p.groups).toHaveLength(1)
+    const g = p.groups[0]!
+    expect(g.name).toBe('회원관리')
+    expect(g.alias).toBe('MBR')
+    expect(g.comment).toBe('회원 도메인')
+    expect(g.color).toBe('#4A90D9')
+    expect(new Set(g.tablePhysicalNames)).toEqual(new Set(['MBR', 'MBR_GRD']))
+  })
+
+  // ⚠️ D7 — 블록과 머릿말이 같은 그룹을 말하면 머릿말이 이긴다(별칭은 머릿말에만 있다).
+  it('DBML 에서 블록과 머릿말이 겹치면 머릿말이 이긴다', () => {
+    const dbml = [
+      '// erdd:v2 {"t":{"MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR","c":"#4A90D9"}}}',
+      'Table "MBR" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'TableGroup "회원관리" [color: #999999] {',
+      '  MBR',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toHaveLength(1)
+    expect(p.groups[0]!.alias).toBe('MBR')
+    expect(p.groups[0]!.color).toBe('#4A90D9')       // 블록의 #999999 가 아니다
+  })
+
+  // ⚠️ 남이 준 DBML 은 머릿말이 없다 — 블록만으로 지금처럼 동작한다.
+  it('머릿말 없는 DBML 은 블록만으로 그룹을 만들고 별칭은 빈 문자열이다', () => {
+    const dbml = [
+      'Table "MBR" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'TableGroup "회원관리" [color: #999999] {',
+      '  MBR',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toHaveLength(1)
+    expect(p.groups[0]!.color).toBe('#999999')
+    expect(p.groups[0]!.alias).toBe('')
   })
 })

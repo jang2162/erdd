@@ -130,7 +130,8 @@ describe('DBML 왕복 — 내보낸 것을 다시 읽으면 같은 계획이 나
 
   it('그룹이 색·설명째 왕복한다', () => {
     expect(plan.groups).toEqual([{
-      name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인',
+      // 이 픽스처의 그룹은 별칭이 없다(alias: '') — 머릿말도 그것을 그대로 실어 온다.
+      name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인', alias: '',
       tablePhysicalNames: ['MBR', 'ORD'], existingId: null,
     }])
   })

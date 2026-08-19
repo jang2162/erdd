@@ -36,6 +36,8 @@ export type DdlImportRelationship = {
 }
 export type DdlImportGroup = {
   name: string; color: string | null; comment: string | null
+  /** 그룹 별칭. 머릿말에만 실려 온다 — DBML 블록에는 자리가 없어 빈 문자열이다. */
+  alias: string
   tablePhysicalNames: string[]; existingId: string | null
 }
 export type DdlImportPlan = {
@@ -402,17 +404,49 @@ export function planDdlImport(
     })
   }
 
-  // 8) 그룹(DBML 전용). 살아남은 테이블만 담고, 같은 이름의 그룹이 모델에 있으면 그것을 쓴다.
+  // 8) 그룹. 소스가 둘이다 — 머릿말(모든 형식)과 DBML 의 TableGroup 블록. 살아남은 테이블만
+  // 담고, 같은 이름의 그룹이 모델에 있으면 그것을 쓴다.
+  // ⚠️ 같은 이름이면 **머릿말이 이긴다**(설계 D7). 별칭은 머릿말에만 있고, 머릿말은 우리가 쓴 것이
+  // 확실한 반면 블록은 사람이 손댔을 수 있다. 블록에만 있는 그룹은 그대로 살린다 — 남이 준 DBML 은
+  // 머릿말이 없어 지금까지의 동작 그대로다.
   const groups: DdlImportGroup[] = []
   const groupIdByName = new Map(
     Object.values(model.tableGroups).map((g) => [upper(g.name), g.id]),
   )
+
+  // ⚠️ **tableByUpper 는 살아남은 테이블만 담는다** — 건너뛴 테이블이 그룹 멤버로 새지 않는다
+  // (아래 블록 경로의 filter 와 같은 보장을 구조로 얻는다).
+  const headerMembers = new Map<string, { name: string; members: string[] }>()
+  for (const [rawUpper, t] of tableByUpper) {
+    const gn = metaOf(rawUpper)?.g
+    if (gn === undefined || gn.trim() === '') continue
+    const k = upper(gn)
+    const e = headerMembers.get(k) ?? { name: gn, members: [] }
+    e.members.push(t.physicalName)
+    headerMembers.set(k, e)
+  }
+  for (const [k, e] of headerMembers) {
+    // 속성은 머릿말의 g 구획에서 온다. 그것이 없으면(테이블 항목만 그룹 이름을 실은 머릿말)
+    // 이름만 살리고 나머지는 비운다 — 웹이 색을 팔레트에서 고른다.
+    const attrs = parsed.nameMeta?.groups[k]
+    groups.push({
+      name: attrs?.name ?? e.name,
+      color: attrs?.c ?? null,
+      comment: attrs?.n ?? null,
+      alias: attrs?.a ?? '',
+      tablePhysicalNames: e.members,
+      existingId: groupIdByName.get(k) ?? null,
+    })
+  }
+
   for (const g of parsed.groups ?? []) {
+    if (headerMembers.has(upper(g.name))) continue          // D7 — 머릿말이 이겼다
     const members = g.tables.filter((n) => tableByUpper.has(upper(n)))
       .map((n) => tableByUpper.get(upper(n))!.physicalName)
     if (members.length === 0) continue
     groups.push({
-      name: g.name, color: g.color, comment: g.comment ?? null, tablePhysicalNames: members,
+      name: g.name, color: g.color, comment: g.comment ?? null, alias: '',
+      tablePhysicalNames: members,
       existingId: groupIdByName.get(upper(g.name)) ?? null,
     })
   }
