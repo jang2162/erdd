@@ -1,3 +1,7 @@
+import type { NamingRules } from './naming.js'
+import type { ProjectModel, Table } from './model.js'
+import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
+
 /** 한 테이블의 저장값(부분) + 그룹 배정. p=물리 부분, l=논리 부분, g=그룹 이름(속할 때만).
  * 키를 짧게 두어 머릿말이 길어지지 않게 한다. */
 export type NameMetaEntry = { p: string; l: string; g?: string }
@@ -19,6 +23,42 @@ export type NameMeta = {
   tables: Record<string, NameMetaEntry>
   /** 그룹 이름(대문자 색인) → 속성 */
   groups: Record<string, NameMetaGroup>
+}
+
+/**
+ * 머릿말에 실을 것을 고른다.
+ *
+ * ⚠️ **싣는 기준이 둘이다** — 조합 결과가 부분과 다르거나(템플릿), 그룹에 속하거나.
+ * 직전 사이클은 앞엣것만 봤고 그래서 「템플릿을 안 쓰는 프로젝트의 산출물이 한 글자도 안 바뀐다」를
+ * 보장했다. 그룹은 템플릿과 무관하므로 그 보장을 그대로 두면 그룹만 쓰는 프로젝트에 기능이 닿지
+ * 않는다(설계 D4). 보장은 **「그룹도 템플릿도 안 쓰는 프로젝트」**로 좁아졌다.
+ *
+ * ⚠️ ddl.ts · dbml.ts 가 **같은 몸통을 복제**하고 있었다. 내보내는 테이블 목록은 인자로 받으므로
+ * 공유하지 못할 이유가 없다 — 그룹 수집이 붙으며 커져 한 자리로 합쳤다.
+ *
+ * ⚠️ **빌드는 그룹 키를 원문 그대로 쓴다**(대문자 색인은 파싱만 한다). 직렬화가 `item.name` 을
+ * 키로 쓰므로 어느 쪽이든 JSON 에는 원문 이름이 나간다.
+ */
+export function buildNameMeta(
+  model: ProjectModel, tables: Table[], rules: NamingRules,
+): NameMeta {
+  const meta: NameMeta = { tables: {}, groups: {} }
+  for (const t of tables) {
+    const p = composeTablePhysicalName(t, model, rules)
+    const l = composeTableLogicalName(t, model, rules)
+    const group = t.groupId === null ? undefined : model.tableGroups[t.groupId]
+    if (p === t.physicalName && l === t.logicalName && group === undefined) continue
+    meta.tables[p] = group === undefined
+      ? { p: t.physicalName, l: t.logicalName }
+      : { p: t.physicalName, l: t.logicalName, g: group.name }
+    if (group === undefined || meta.groups[group.name] !== undefined) continue
+    const item: NameMetaGroup = { name: group.name }
+    if (group.alias !== '') item.a = group.alias
+    if (group.color !== '') item.c = group.color
+    if (group.comment !== null && group.comment !== '') item.n = group.comment
+    meta.groups[group.name] = item
+  }
+  return meta
 }
 
 const MARKER_V2 = 'erdd:v2'

@@ -422,25 +422,40 @@ describe('머릿말 메타', () => {
   }
   const tpl = (t: string): NamingRules => ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: t })
 
+  /** 그룹을 뗀 모델. D4 의 좁아진 보장(「그룹도 템플릿도 안 쓰는 프로젝트」)을 재는 자다. */
+  function ungrouped(): ProjectModel {
+    const x = m()
+    x.tables['t1'] = { ...x.tables['t1']!, groupId: null }
+    x.tables['t2'] = { ...x.tables['t2']!, groupId: null }
+    return x
+  }
+
   it('템플릿이 걸리면 첫 줄에 머릿말이 나온다', () => {
     const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, tpl('TB_{그룹별칭}_{물리명}'))
     const first = sql.split('\n')[0]!
     expect(first.startsWith('-- erdd:v2 ')).toBe(true)
     const meta = parseNameMeta(sql)!
-    expect(meta.tables['TB_MBR_MBR']).toEqual({ p: 'MBR', l: '회원' })
+    expect(meta.tables['TB_MBR_MBR']).toEqual({ p: 'MBR', l: '회원', g: '회원관리' })
   })
 
-  // ⚠️ 설계 D4 — 이것이 기존 산출물 무변경을 보장한다.
-  it('템플릿이 없으면 머릿말이 없다', () => {
-    const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES)
+  // ⚠️ 설계 D4(좁아짐) — 그룹도 템플릿도 없어야 기존 산출물 무변경이 보장된다.
+  it('그룹도 템플릿도 없으면 머릿말이 없다', () => {
+    const sql = generateDdlRaw(ungrouped(), 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES)
     expect(sql.startsWith('--')).toBe(false)
     expect(parseNameMeta(sql)).toBeNull()
   })
 
   // ⚠️ 조합해도 결과가 같은 테이블은 실을 것이 없다.
-  it('조합 결과가 부분과 같으면 머릿말이 없다', () => {
-    const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, tpl('{물리명}'))
+  it('그룹이 없으면 조합 결과가 부분과 같을 때 머릿말이 없다', () => {
+    const sql = generateDdlRaw(ungrouped(), 'postgresql', { kind: 'all' }, tpl('{물리명}'))
     expect(parseNameMeta(sql)).toBeNull()
+  })
+
+  // ⚠️ 이번 사이클이 넓힌 자리 — 템플릿이 없어도 그룹이 있으면 머릿말이 나간다.
+  it('템플릿이 없어도 그룹이 있으면 머릿말이 나온다', () => {
+    const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES)
+    expect(sql.split('\n')[0]!.startsWith('-- erdd:v2 ')).toBe(true)
+    expect(parseNameMeta(sql)!.groups['회원관리']!.a).toBe('MBR')
   })
 
   it('내보내기에서 제외된 테이블은 메타에 없다', () => {

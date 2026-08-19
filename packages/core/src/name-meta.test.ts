@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { parseNameMeta, serializeNameMeta, type NameMeta } from './name-meta.js'
+import { buildNameMeta, parseNameMeta, serializeNameMeta, type NameMeta } from './name-meta.js'
+import type { ProjectModel } from './model.js'
+import { buildSampleModel } from './testing/fixtures.js'
+import { DEFAULT_NAMING_RULES } from './naming.js'
 
 const META: NameMeta = {
   tables: { TB_MBR_ORD: { p: 'ORD', l: '주문', g: '회원관리' } },
@@ -119,5 +122,47 @@ describe('parseNameMeta — 스캔 규칙', () => {
   // ⚠️ 설계 D6 — 깨진 입력은 전부 null. 예외를 던지지 않는다.
   it('깨진 JSON 은 null 이다', () => {
     expect(parseNameMeta('-- erdd:v1 {"TB":{"p":"ORD"')).toBeNull()
+  })
+})
+
+describe('buildNameMeta', () => {
+  // buildSampleModel 은 테이블 둘(MBR_GRD·MBR)이 모두 그룹 g1(회원관리) 소속이다.
+  const grouped = (): ProjectModel => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR', comment: '회원 도메인' }
+    return m
+  }
+  const tables = (m: ProjectModel) => Object.values(m.tables)
+
+  // ⚠️ 설계 D4 가 좁아진 자리 — 템플릿이 없어도 그룹이 있으면 싣는다.
+  it('조합 결과가 부분과 같아도 그룹에 속하면 싣는다', () => {
+    const m = grouped()
+    const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
+    expect(meta.tables['MBR']).toEqual({ p: 'MBR', l: '회원', g: '회원관리' })
+    expect(meta.groups['회원관리']).toEqual({ name: '회원관리', a: 'MBR', c: '#4A90D9', n: '회원 도메인' })
+  })
+
+  it('빈 별칭·빈 코멘트는 키를 생략한다', () => {
+    const m = buildSampleModel()                       // alias '' · comment null
+    const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
+    expect(meta.groups['회원관리']).toEqual({ name: '회원관리', c: '#4A90D9' })
+  })
+
+  // ⚠️ 좁아진 보장 — 그룹도 템플릿도 없으면 여전히 빈 메타다.
+  it('그룹도 템플릿도 없으면 빈 메타다', () => {
+    const m = buildSampleModel()
+    m.tables['t1'] = { ...m.tables['t1']!, groupId: null }
+    m.tables['t2'] = { ...m.tables['t2']!, groupId: null }
+    const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
+    expect(meta).toEqual({ tables: {}, groups: {} })
+    expect(serializeNameMeta(meta, '--')).toBeNull()
+  })
+
+  it('내보내는 목록에 없는 테이블의 그룹은 싣지 않는다', () => {
+    const m = grouped()
+    m.tableGroups['g2'] = { id: 'g2', name: '상품', color: '#111', comment: null, alias: 'PRD' }
+    m.tables['t9'] = { ...m.tables['t2']!, id: 't9', physicalName: 'PRD', groupId: 'g2' }
+    const meta = buildNameMeta(m, [m.tables['t1']!, m.tables['t2']!], DEFAULT_NAMING_RULES)
+    expect(Object.keys(meta.groups)).toEqual(['회원관리'])
   })
 })
