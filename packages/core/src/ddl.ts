@@ -240,12 +240,12 @@ function columnCommentStatement(dialect: Dialect, tableName: string, columnName:
  * 안 바뀌게 하는 안전장치다.
  */
 function buildNameMeta(model: ProjectModel, tables: Table[], rules: NamingRules): NameMeta {
-  const meta: NameMeta = {}
+  const meta: NameMeta = { tables: {}, groups: {} }
   for (const t of tables) {
     const p = composeTablePhysicalName(t, model, rules)
     const l = composeTableLogicalName(t, model, rules)
     if (p === t.physicalName && l === t.logicalName) continue
-    meta[p] = { p: t.physicalName, l: t.logicalName }
+    meta.tables[p] = { p: t.physicalName, l: t.logicalName }
   }
   return meta
 }

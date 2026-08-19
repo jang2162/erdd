@@ -250,7 +250,7 @@ describe('parseDbml — 머릿말 메타', () => {
       '}',
     ].join('\n')
     const parsed = parseDbml(src)
-    expect(parsed.nameMeta).toEqual({ TB_MBR_ORD: { p: 'ORD', l: '주문' } })
+    expect(parsed.nameMeta).toEqual({ tables: { TB_MBR_ORD: { p: 'ORD', l: '주문' } }, groups: {} })
     expect(parsed.tables).toHaveLength(1)          // ⚠️ stripComments 가 머릿말을 지워도 테이블은 읽힌다
   })
 

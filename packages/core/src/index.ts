@@ -77,7 +77,7 @@ export type {
 export { composeTableLogicalName, composeTablePhysicalName, parseTemplate } from './name-template.js'
 export type { TemplateToken } from './name-template.js'
 export { serializeNameMeta, parseNameMeta } from './name-meta.js'
-export type { NameMeta, NameMetaEntry } from './name-meta.js'
+export type { NameMeta, NameMetaEntry, NameMetaGroup } from './name-meta.js'
 export {
   customFieldsFor, resolveCustomValue, customFieldUsageCount, customOptionUsageCount,
 } from './custom-field.js'

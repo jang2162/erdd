@@ -195,12 +195,12 @@ function refLines(model: ProjectModel, selectedIds: Set<string>, rules: NamingRu
  * ddl.ts 의 같은 이름 헬퍼와 짝이다 — 내보내는 테이블 목록이 서로 달라 공유하지 않는다.
  */
 function buildNameMeta(model: ProjectModel, tables: Table[], rules: NamingRules): NameMeta {
-  const meta: NameMeta = {}
+  const meta: NameMeta = { tables: {}, groups: {} }
   for (const t of tables) {
     const p = composeTablePhysicalName(t, model, rules)
     const l = composeTableLogicalName(t, model, rules)
     if (p === t.physicalName && l === t.logicalName) continue
-    meta[p] = { p: t.physicalName, l: t.logicalName }
+    meta.tables[p] = { p: t.physicalName, l: t.logicalName }
   }
   return meta
 }

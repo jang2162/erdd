@@ -425,9 +425,9 @@ describe('머릿말 메타', () => {
   it('템플릿이 걸리면 첫 줄에 머릿말이 나온다', () => {
     const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, tpl('TB_{그룹별칭}_{물리명}'))
     const first = sql.split('\n')[0]!
-    expect(first.startsWith('-- erdd:v1 ')).toBe(true)
+    expect(first.startsWith('-- erdd:v2 ')).toBe(true)
     const meta = parseNameMeta(sql)!
-    expect(meta['TB_MBR_MBR']).toEqual({ p: 'MBR', l: '회원' })
+    expect(meta.tables['TB_MBR_MBR']).toEqual({ p: 'MBR', l: '회원' })
   })
 
   // ⚠️ 설계 D4 — 이것이 기존 산출물 무변경을 보장한다.
@@ -447,6 +447,6 @@ describe('머릿말 메타', () => {
     const x = m()
     x.tables['t9'] = { ...x.tables['t2']!, id: 't9', physicalName: 'NOCOL' }   // 컬럼이 없다
     const sql = generateDdlRaw(x, 'postgresql', { kind: 'all' }, tpl('TB_{그룹별칭}_{물리명}'))
-    expect(Object.keys(parseNameMeta(sql)!)).not.toContain('TB_MBR_NOCOL')
+    expect(Object.keys(parseNameMeta(sql)!.tables)).not.toContain('TB_MBR_NOCOL')
   })
 })

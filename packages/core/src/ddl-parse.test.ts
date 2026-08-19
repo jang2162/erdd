@@ -700,7 +700,7 @@ describe('머릿말 메타', () => {
       'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL);',
     ].join('\n')
     const parsed = parseDdl(ddl)
-    expect(parsed.nameMeta).toEqual({ TB_MBR_ORD: { p: 'ORD', l: '주문' } })
+    expect(parsed.nameMeta).toEqual({ tables: { TB_MBR_ORD: { p: 'ORD', l: '주문' } }, groups: {} })
     expect(parsed.tables).toHaveLength(1)          // ⚠️ 머릿말이 파싱을 방해하지 않는다
   })
 

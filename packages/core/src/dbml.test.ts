@@ -388,7 +388,7 @@ describe('머릿말 메타', () => {
   it('템플릿이 걸리면 첫 줄에 // 머릿말이 나온다', () => {
     const out = generateDbmlRaw(
       m(), 'postgresql', { kind: 'all' }, {}, tpl('TB_{그룹별칭}_{물리명}'))
-    expect(out.split('\n')[0]!.startsWith('// erdd:v1 ')).toBe(true)
+    expect(out.split('\n')[0]!.startsWith('// erdd:v2 ')).toBe(true)
   })
 
   // ⚠️ 머릿말은 Project 블록보다 **앞**이어야 파싱이 줍는다(설계 3.4).
@@ -396,7 +396,7 @@ describe('머릿말 메타', () => {
     const out = generateDbmlRaw(
       m(), 'postgresql', { kind: 'all' }, { projectName: '회원 시스템' },
       tpl('TB_{그룹별칭}_{물리명}'))
-    expect(out.indexOf('// erdd:v1')).toBeLessThan(out.indexOf('Project '))
+    expect(out.indexOf('// erdd:v2')).toBeLessThan(out.indexOf('Project '))
     expect(parseNameMeta(out)).not.toBeNull()
   })
 

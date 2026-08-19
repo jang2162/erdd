@@ -74,7 +74,7 @@ export function planDdlImport(
   const warnings: DdlImportWarning[] = []
 
   /** 머릿말이 실어 온 부분. 없거나 키가 안 맞으면 undefined 라 현행 동작으로 떨어진다(설계 D6). */
-  const metaOf = (raw: string): NameMetaEntry | undefined => parsed.nameMeta?.[upper(raw)]
+  const metaOf = (raw: string): NameMetaEntry | undefined => parsed.nameMeta?.tables[upper(raw)]
   /** 실제로 만들어질 물리명. 머릿말이 있으면 부분, 없으면 DDL 원문 이름 그대로다. */
   const madeName = (raw: string): string => metaOf(raw)?.p ?? raw
 
