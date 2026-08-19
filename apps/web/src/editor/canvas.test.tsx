@@ -902,3 +902,31 @@ describe('Canvas — 앵커가 바뀌면 updateNodeInternals를 건다', () => {
     expect(updateNodeInternalsSpy).not.toHaveBeenCalled()
   })
 })
+
+/*
+ * B-2: 이름 템플릿 설계 D3 의 약속 — **캔버스 노드는 저장된 부분 이름을 그대로 보인다.**
+ * 조합된 최종 이름은 산출물(DDL·DBML·Excel)과 편집 패널 미리보기만 쓴다.
+ *
+ * 여기는 실제 `Canvas` 를 그리므로 store → buildNodes → TableNode 배선 전체를 지난다 —
+ * 그 사이 어느 자리에서 조합을 끼워 넣어도 여기가 빨개진다.
+ *
+ * ⚠️ 단언 둘이 한 짝이다. 「MBR 이 보인다」만 보면 템플릿이 안 걸린 픽스처에서도 초록이라
+ * 구분력이 없다 — 「TB_SLS_MBR 이 없다」를 함께 봐야 조합을 쓰기 시작한 순간 빨개진다.
+ */
+describe('Canvas — 노드 이름', () => {
+  it('노드는 조합된 최종 이름이 아니라 저장된 부분 이름을 보인다', () => {
+    const model = buildSampleModel()
+    model.tableGroups = { ...model.tableGroups, g1: { ...model.tableGroups.g1!, alias: 'SLS' } }
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    useEditorStore.getState().setProjectConfig(
+      {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '',
+      },
+      ['postgresql'], null,
+    )
+    renderCanvas()
+    expect(screen.getByText('MBR')).toBeInTheDocument()
+    expect(screen.queryByText('TB_SLS_MBR')).not.toBeInTheDocument()
+  })
+})
