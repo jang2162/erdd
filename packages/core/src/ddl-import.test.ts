@@ -718,22 +718,12 @@ describe('planDdlImport — DBML 확장 필드', () => {
     )
 
     // (3) skippedTables 에도 들어간다 — 사유가 무엇이든 건너뛴 테이블은 한 자리에서 센다.
-    //     미리보기의 「건너뜀 N개」 줄에 이 건이 함께 보인다.
+    //     미리보기의 「건너뜀 N개」 줄에 이 건이 함께 보인다. 담기는 값은 DDL 원문 이름이다
+    //     (되돌려진 ORD 를 담으면 사용자가 붙여넣은 원문에서 그 이름을 찾지 못한다).
+    //     ⚠️ **이 한 줄이 「머릿말 되돌림 충돌로 건너뛴 것도 skippedTables 에 담긴다」의 유일한
+    //     잠금이다.** 이 왕복 테이블을 재편하면서 부수적인 단언으로 보고 빼면 그 계약이 조용히
+    //     풀린다 — 형제 분기(진짜 중복 CREATE TABLE)는 위쪽 A-2 가 따로 잠그지만 이쪽은 여기뿐이다.
     expect(p2.skippedTables).toEqual(['TB_PRD_ORD'])
-  })
-
-  // A-1: 위 케이스의 skippedTables 만 따로 못 박는다 — 담기는 값은 **DDL 원문 이름**이다.
-  // 되돌려진 이름(ORD)을 담으면 사용자가 붙여넣은 원문에서 그 이름을 찾지 못한다.
-  it('머릿말이 두 이름을 같은 부분으로 되돌리면 뒤엣것의 원문 이름이 skippedTables 에 들어간다', () => {
-    const ddl = [
-      '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"회원주문"},"TB_PRD_ORD":{"p":"ORD","l":"상품주문"}}',
-      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
-      'CREATE TABLE TB_PRD_ORD (ID BIGINT NOT NULL, QTY BIGINT, PRIMARY KEY (ID));',
-    ].join('\n')
-    const p = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
-    expect(p.skippedTables).toEqual(['TB_PRD_ORD'])
-    // 되돌려진 이름이 아니다.
-    expect(p.skippedTables).not.toContain('ORD')
   })
 
   // ⚠️ 설계 §4 가 요구한 나머지 한 짝 — DBML 도 머릿말이 없으면 옛 동작이다.
