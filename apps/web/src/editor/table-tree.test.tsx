@@ -129,6 +129,28 @@ describe('TableTree', () => {
     const added = Object.values(useEditorStore.getState().model.tableGroups).find((g) => g.id !== 'g2')!
     expect(added.name).toBe('그룹1')
   })
+
+  // B-1: 이름 템플릿 설계 D3 의 약속 — **사이드바 트리는 저장된 부분 이름을 그대로 보인다.**
+  // 조합된 최종 이름은 산출물(DDL·DBML·Excel)과 편집 패널 미리보기만 쓴다. 트리는 store 에서
+  // namingRules 를 한 줄이면 읽을 수 있어 조용히 깨질 수 있는 자리라, 테스트로 못 박는다.
+  //
+  // ⚠️ 단언 둘이 한 짝이다. 「MBR 이 보인다」만 보면 템플릿이 안 걸린 픽스처에서도 초록이라
+  // 구분력이 없다 — 「TB_SLS_MBR 이 없다」를 함께 봐야 조합을 쓰기 시작한 순간 빨개진다.
+  it('트리는 조합된 최종 이름이 아니라 저장된 부분 이름을 보인다', () => {
+    const model = buildSampleModel()
+    model.tableGroups = { ...model.tableGroups, g1: { ...model.tableGroups.g1!, alias: 'SLS' } }
+    useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
+    useEditorStore.getState().setProjectConfig(
+      {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '',
+      },
+      ['postgresql'], null,
+    )
+    renderTree()
+    expect(screen.getByText('MBR')).toBeInTheDocument()
+    expect(screen.queryByText('TB_SLS_MBR')).not.toBeInTheDocument()
+  })
 })
 
 /** 트리 정렬은 physicalName.localeCompare 이므로 표시 순서는 MBR(t2) → MBR_GRD(t1) 이다. */

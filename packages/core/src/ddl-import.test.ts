@@ -276,6 +276,15 @@ describe('planDdlImport', () => {
     })
   })
 
+  // A-2: 이 사유도 skippedTables 에 담긴다 — 기존 테이블과 부딪히는 쪽만 세면 미리보기의
+  // 「건너뜀 N개」 가 같은 자리에서 어떤 건너뜀은 세고 어떤 건너뜀은 안 세게 된다.
+  it('DDL에 같은 이름의 테이블이 두 번 오면 뒤엣것의 이름이 skippedTables 에 들어간다', () => {
+    const p = plan(`
+      CREATE TABLE MBR (A bigint);
+      CREATE TABLE MBR (B bigint);`)
+    expect(p.skippedTables).toEqual(['MBR'])
+  })
+
   // I-4: 테이블 코멘트의 설명 부분이 계획에서 보존돼야 한다.
   it('테이블 코멘트의 설명 부분을 보존한다', () => {
     const p = plan("CREATE TABLE MBR (A bigint);\nCOMMENT ON TABLE MBR IS '회원 - 회원 기본 정보';")
@@ -708,9 +717,13 @@ describe('planDdlImport — DBML 확장 필드', () => {
       'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
     )
 
-    // (3) ⚠️ skippedTables 에는 안 들어간다(기존 테이블과 부딪히는 쪽만 들어간다). 미리보기의
-    //     「건너뜀 N개」 줄에 안 보이고 경고 목록에만 보인다.
-    expect(p2.skippedTables).toEqual([])
+    // (3) skippedTables 에도 들어간다 — 사유가 무엇이든 건너뛴 테이블은 한 자리에서 센다.
+    //     미리보기의 「건너뜀 N개」 줄에 이 건이 함께 보인다. 담기는 값은 DDL 원문 이름이다
+    //     (되돌려진 ORD 를 담으면 사용자가 붙여넣은 원문에서 그 이름을 찾지 못한다).
+    //     ⚠️ **이 한 줄이 「머릿말 되돌림 충돌로 건너뛴 것도 skippedTables 에 담긴다」의 유일한
+    //     잠금이다.** 이 왕복 테이블을 재편하면서 부수적인 단언으로 보고 빼면 그 계약이 조용히
+    //     풀린다 — 형제 분기(진짜 중복 CREATE TABLE)는 위쪽 A-2 가 따로 잠그지만 이쪽은 여기뿐이다.
+    expect(p2.skippedTables).toEqual(['TB_PRD_ORD'])
   })
 
   // ⚠️ 설계 §4 가 요구한 나머지 한 짝 — DBML 도 머릿말이 없으면 옛 동작이다.
