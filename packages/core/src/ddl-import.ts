@@ -83,7 +83,21 @@ export function planDdlImport(
   // 1) 이름 충돌 판정 — 살아남은 테이블만 alive에 남는다. 모델의 기존 테이블과 겹치는
   // 경우뿐 아니라(I-2c) DDL 안에서 같은 이름의 CREATE TABLE이 두 번 오는 경우도 뒤엣것을
   // 건너뛴다 — 그렇지 않으면 alive.set이 조용히 덮어써 앞 테이블의 컬럼이 소리 없이 사라진다.
-  const existing = new Set(Object.values(model.tables).map((t) => upper(t.physicalName)))
+  /**
+   * 이름 충돌은 **(그룹, 만들어질 부분 이름)** 으로 본다(설계 D6). 그룹이 갈라 원본에서 정상
+   * 공존하던 두 테이블은 부분 이름이 같아도 부딪히지 않는다.
+   * ⚠️ 구분자가 NUL 인 이유: 그룹 이름은 사용자가 자유롭게 쓰는 문자열이라 `.` `_` 같은 흔한
+   * 문자를 쓰면 서로 다른 짝이 같은 키가 된다(`A_B`+`C` 와 `A`+`B_C`). NUL 은 어느 이름에도
+   * 들어갈 수 없다.
+   * ⚠️ 그룹은 **머릿말에서만** 온다. 머릿말이 없거나 v1 이면 그룹 자리가 빈 문자열이라 옛 동작
+   * 그대로다 — 그리고 그것이 맞다(옛 덤프에는 그룹이 안 적혀 있다).
+   */
+  const scopedKey = (group: string, name: string) => `${upper(group)}\u0000${upper(name)}`
+  const groupNameById = new Map(Object.values(model.tableGroups).map((g) => [g.id, g.name]))
+  const groupOf = (raw: string): string => metaOf(raw)?.g ?? ''
+
+  const existing = new Set(Object.values(model.tables).map((t) => scopedKey(
+    t.groupId === null ? '' : groupNameById.get(t.groupId) ?? '', t.physicalName)))
   const skippedTables: string[] = []
   const alive = new Map<string, ParsedTable>()
   // ⚠️ 충돌은 **만들어질 이름**으로 본다 — 머릿말이 TB_MBR_ORD 를 ORD 로 되돌리면 모델의
@@ -98,9 +112,11 @@ export function planDdlImport(
   for (const t of parsed.tables) {
     const key = upper(t.name)
     const made = madeName(t.name)
-    const madeKey = upper(made)
+    const madeKey = scopedKey(groupOf(t.name), made)
     // 머릿말이 이름을 되돌렸는가. 되돌리지 않았으면(남의 DDL·템플릿 없는 프로젝트) 옛 문구 그대로다.
-    const restored = madeKey !== key
+    // ⚠️ madeKey 와 비교하지 않는다 — 그것은 그룹이 섞인 충돌 키라 그룹만 실린 머릿말에서도
+    // 원문과 달라져, 이름을 되돌리지 않았는데 되돌렸다는 문구가 나간다.
+    const restored = upper(made) !== key
     const dupRaw = seenRaw.has(key)
     seenRaw.add(key)
     if (existing.has(madeKey)) {

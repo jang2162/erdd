@@ -687,10 +687,56 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(imported.warnings.map((w) => w.message)).not.toContain('같은 이름의 테이블이 이미 있어 건너뜁니다')
   })
 
-  // ⚠️ **관찰을 고정하는 테스트다. 「이 동작이 옳다」는 뜻이 아니다.**
+  // ⚠️ 설계 D6 — 원본에서 그룹이 갈라 정상 공존하던 두 ORD 는 둘 다 들어와야 한다.
+  // 픽스처의 구분력은 **머릿말의 g** 에 있다. g 를 빼면 이 테스트는 옛 동작(뒤엣것 건너뜀)으로
+  // 돌아가므로, 아래 v1 짝(기존 테스트)과 함께 봐야 의미가 성립한다.
+  it('v2 머릿말이면 다른 그룹의 같은 부분 이름이 둘 다 들어온다', () => {
+    const ddl = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"회원주문","g":"회원"},"TB_PRD_ORD":{"p":"ORD","l":"상품주문","g":"상품"}},"g":{"회원":{"a":"MBR"},"상품":{"a":"PRD"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE TB_PRD_ORD (ID BIGINT NOT NULL, QTY BIGINT, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD', 'ORD'])
+    expect(p.tables.map((t) => t.logicalName)).toEqual(['회원주문', '상품주문'])
+    expect(p.skippedTables).toEqual([])
+    expect(p.warnings.filter((w) => w.kind === 'table-conflict')).toEqual([])
+    expect(p.groups.map((g) => g.name).sort()).toEqual(['상품', '회원'])
+  })
+
+  it('같은 그룹의 같은 부분 이름은 여전히 뒤엣것을 건너뛴다', () => {
+    const ddl = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문A","g":"회원"},"TB_MBR_ORD2":{"p":"ORD","l":"주문B","g":"회원"}},"g":{"회원":{"a":"MBR"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE TB_MBR_ORD2 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])
+    expect(p.skippedTables).toEqual(['TB_MBR_ORD2'])
+  })
+
+  // ⚠️ 모델 쪽 비교도 같은 키다 — 한쪽만 넓히면 「DDL 안에서는 공존하는데 모델과는 부딪힌다」가 된다.
+  it('모델의 기존 테이블과도 그룹까지 같아야 부딪힌다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원', color: '#111', comment: null, alias: 'MBR' }
+    m.tables['t1'] = {
+      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const ddl = [
+      '-- erdd:v2 {"t":{"TB_PRD_ORD":{"p":"ORD","l":"상품주문","g":"상품"}},"g":{"상품":{"a":"PRD"}}}',
+      'CREATE TABLE TB_PRD_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(m, parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])   // 그룹이 달라 안 부딪힌다
+    expect(p.skippedTables).toEqual([])
+  })
+  // ⚠️ **v1 머릿말의 하위호환 잠금이다.** 위 v2 짝과 반드시 함께 봐라.
   // 그룹이 다른 두 테이블은 부분이 같아도(`ORD`) 조합 이름이 갈려 원본 프로젝트에서는 중복이
-  // 아니다. 그런데 가져오기는 그룹을 복원하지 않으므로(설계 D2) 둘 다 부분 `ORD` 로 복원되고,
-  // 「만들어질 이름」 충돌 판정에 걸려 **뒤엣것이 통째로 빠진다**(컬럼·인덱스·관계까지).
+  // 아니다. 그런데 **v1 머릿말에는 그룹 자리가 없어**(설계 D6 의 충돌 키에 그룹이 빈 문자열로
+  // 들어간다) 둘 다 부분 `ORD` 로 복원되고, 「만들어질 이름」 충돌 판정에 걸려 **뒤엣것이 통째로
+  // 빠진다**(컬럼·인덱스·관계까지). 옛 덤프에는 그룹이 안 적혀 있으므로 이것이 맞는 동작이다.
   // 관찰된 사실 셋을 그대로 못 박는다 — 동작을 바꾸면 여기가 빨개져 재검토를 강제한다.
   it('다른 그룹의 두 테이블이 같은 부분으로 복원되면 뒤엣것이 빠진다', () => {
     const ddl = [
@@ -812,11 +858,15 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
   // 목록에서도 빠진다」와 같은 성질인데, 이쪽은 멤버를 tableByUpper 에서 모으는 **구조로**
   // 얻고 있어 잠금이 없으면 소리 없이 풀린다 — 건너뛴 이름이 멤버에 남으면 편집 적용부가
   // 만들어지지도 않은 테이블에 groupId 를 꽂으려다 조용히 흘린다.
+  // ⚠️ 모델의 기존 ORD 를 **머릿말과 같은 이름의 그룹**에 넣어 둔 것은 설계 D6 때문이다 —
+  // 충돌 키가 (그룹, 부분 이름) 이라 그룹을 안 맞추면 애초에 부딪히지 않아 이 테스트가 잠그려는
+  // 「건너뜀」 자체가 안 생긴다. 덕분에 「그룹까지 같으면 여전히 부딪힌다」도 함께 잠근다.
   it('이름이 겹쳐 건너뛴 테이블은 머릿말 그룹의 멤버에서도 빠진다', () => {
     const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#111', comment: null, alias: 'MBR' }
     m.tables['t1'] = {
       id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
     }
     const sql = [
       '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원관리"},'
