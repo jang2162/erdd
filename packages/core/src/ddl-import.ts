@@ -8,7 +8,7 @@ import type { NameMetaEntry } from './name-meta.js'
 export type DdlImportWarning = {
   kind: 'ambiguous-type' | 'unknown-type' | 'unknown-word'
       | 'table-conflict' | 'unresolved-fk' | 'unresolved-index' | 'skipped-statement'
-      | 'unknown-custom-field'
+      | 'unknown-custom-field' | 'group-conflict'
   target: string
   message: string
 }
@@ -36,6 +36,8 @@ export type DdlImportRelationship = {
 }
 export type DdlImportGroup = {
   name: string; color: string | null; comment: string | null
+  /** 그룹 별칭. 머릿말에만 실려 온다 — DBML 블록에는 자리가 없어 빈 문자열이다. */
+  alias: string
   tablePhysicalNames: string[]; existingId: string | null
 }
 export type DdlImportPlan = {
@@ -74,14 +76,40 @@ export function planDdlImport(
   const warnings: DdlImportWarning[] = []
 
   /** 머릿말이 실어 온 부분. 없거나 키가 안 맞으면 undefined 라 현행 동작으로 떨어진다(설계 D6). */
-  const metaOf = (raw: string): NameMetaEntry | undefined => parsed.nameMeta?.[upper(raw)]
+  const metaOf = (raw: string): NameMetaEntry | undefined => parsed.nameMeta?.tables[upper(raw)]
   /** 실제로 만들어질 물리명. 머릿말이 있으면 부분, 없으면 DDL 원문 이름 그대로다. */
   const madeName = (raw: string): string => metaOf(raw)?.p ?? raw
 
   // 1) 이름 충돌 판정 — 살아남은 테이블만 alive에 남는다. 모델의 기존 테이블과 겹치는
   // 경우뿐 아니라(I-2c) DDL 안에서 같은 이름의 CREATE TABLE이 두 번 오는 경우도 뒤엣것을
   // 건너뛴다 — 그렇지 않으면 alive.set이 조용히 덮어써 앞 테이블의 컬럼이 소리 없이 사라진다.
-  const existing = new Set(Object.values(model.tables).map((t) => upper(t.physicalName)))
+  /**
+   * 이름 충돌은 **(그룹, 만들어질 부분 이름)** 으로 본다(설계 D6). 그룹이 갈라 원본에서 정상
+   * 공존하던 두 테이블은 부분 이름이 같아도 부딪히지 않는다.
+   * ⚠️ 구분자가 NUL 인 이유: 그룹 이름은 사용자가 자유롭게 쓰는 문자열이라 `.` `_` 같은 흔한
+   * 문자를 쓰면 서로 다른 짝이 같은 키가 된다(`A_B`+`C` 와 `A`+`B_C`). NUL 은 어느 이름에도
+   * 들어갈 수 없다.
+   */
+  const scopedKey = (group: string, name: string) => `${upper(group)}\u0000${upper(name)}`
+  const groupNameById = new Map(Object.values(model.tableGroups).map((g) => [g.id, g.name]))
+  /**
+   * DBML `TableGroup` 블록이 말하는 그룹. 8번 절이 블록도 그룹 소스로 인정하므로(설계 D7)
+   * 그 테이블은 **실제로** 그 그룹에 들어간다.
+   * ⚠️ 키는 「머릿말이 말한 그룹」이 아니라 **「그 테이블이 실제로 들어갈 그룹」**을 봐야 한다.
+   * 블록을 안 보면 같은 실행 안에서 그룹 배정과 충돌 판정이 서로 다른 사실을 보게 되고, 머릿말
+   * 없는 DBML 에서 **모델의 같은 그룹에 같은 물리명이 하나 더** 들어간다(리뷰가 실증한 회귀).
+   */
+  const blockGroupOf = new Map<string, string>()
+  for (const g of parsed.groups ?? []) for (const n of g.tables) blockGroupOf.set(upper(n), g.name)
+  /**
+   * 그 테이블이 들어갈 그룹. **머릿말이 이긴다**(D7) — 없으면 블록이다.
+   * ⚠️ 둘 다 없으면(순수 DDL·블록 없는 DBML) 빈 문자열이라 옛 동작 그대로다. 그때는 들어온
+   * 테이블이 실제로도 그룹 없이 만들어지므로 키가 사실과 어긋나지 않는다.
+   */
+  const groupOf = (raw: string): string => metaOf(raw)?.g ?? blockGroupOf.get(upper(raw)) ?? ''
+
+  const existing = new Set(Object.values(model.tables).map((t) => scopedKey(
+    t.groupId === null ? '' : groupNameById.get(t.groupId) ?? '', t.physicalName)))
   const skippedTables: string[] = []
   const alive = new Map<string, ParsedTable>()
   // ⚠️ 충돌은 **만들어질 이름**으로 본다 — 머릿말이 TB_MBR_ORD 를 ORD 로 되돌리면 모델의
@@ -96,9 +124,12 @@ export function planDdlImport(
   for (const t of parsed.tables) {
     const key = upper(t.name)
     const made = madeName(t.name)
-    const madeKey = upper(made)
+    const madeKey = scopedKey(groupOf(t.name), made)
     // 머릿말이 이름을 되돌렸는가. 되돌리지 않았으면(남의 DDL·템플릿 없는 프로젝트) 옛 문구 그대로다.
-    const restored = madeKey !== key
+    // ⚠️ madeKey 와 비교하지 마라 — 그것은 NUL 을 품는 충돌 키라 NUL 이 들어갈 수 없는 key 와
+    // **결코 같을 수 없다.** 비교하면 restored 가 무조건 참이 되어 「같은 이름의 테이블이 이미
+    // 있어 건너뜁니다」 갈래가 영원히 도달 불가가 된다.
+    const restored = upper(made) !== key
     const dupRaw = seenRaw.has(key)
     seenRaw.add(key)
     if (existing.has(madeKey)) {
@@ -402,17 +433,71 @@ export function planDdlImport(
     })
   }
 
-  // 8) 그룹(DBML 전용). 살아남은 테이블만 담고, 같은 이름의 그룹이 모델에 있으면 그것을 쓴다.
+  // 8) 그룹. 소스가 둘이다 — 머릿말(모든 형식)과 DBML 의 TableGroup 블록. 살아남은 테이블만
+  // 담고, 같은 이름의 그룹이 모델에 있으면 그것을 쓴다.
+  // ⚠️ 같은 이름이면 **머릿말이 이긴다**(설계 D7). 별칭은 머릿말에만 있고, 머릿말은 우리가 쓴 것이
+  // 확실한 반면 블록은 사람이 손댔을 수 있다. 블록에만 있는 그룹은 그대로 살린다 — 남이 준 DBML 은
+  // 머릿말이 없어 지금까지의 동작 그대로다.
   const groups: DdlImportGroup[] = []
   const groupIdByName = new Map(
     Object.values(model.tableGroups).map((g) => [upper(g.name), g.id]),
   )
+
+  // ⚠️ **tableByUpper 는 살아남은 테이블만 담는다** — 건너뛴 테이블이 그룹 멤버로 새지 않는다
+  // (아래 블록 경로의 filter 와 같은 보장을 구조로 얻는다).
+  const headerMembers = new Map<string, { name: string; members: string[] }>()
+  for (const [rawUpper, t] of tableByUpper) {
+    const gn = metaOf(rawUpper)?.g
+    if (gn === undefined || gn.trim() === '') continue
+    const k = upper(gn)
+    const e = headerMembers.get(k) ?? { name: gn, members: [] }
+    e.members.push(t.physicalName)
+    headerMembers.set(k, e)
+  }
+  for (const [k, e] of headerMembers) {
+    // 속성은 머릿말의 g 구획에서 온다. 그것이 없으면(테이블 항목만 그룹 이름을 실은 머릿말)
+    // 이름만 살리고 나머지는 비운다 — 웹이 색을 팔레트에서 고른다.
+    const attrs = parsed.nameMeta?.groups[k]
+    const existingId = groupIdByName.get(k) ?? null
+    // ⚠️ 별칭에만 경고한다(설계 D3). 별칭은 {그룹별칭} 변수로 **물리명 조합에 들어가 최종 이름을
+    // 바꾸므로** 조용히 갈리면 사용자가 보는 이름이 원본과 달라지는데 이유를 알 길이 없다.
+    // 색·코멘트는 표시용이라 갈려도 이름이 안 바뀐다 — 전부 경고하면 시끄러워 진짜 신호가 묻힌다.
+    // ⚠️ 머릿말에 별칭이 **있을 때만** 본다. 없으면(빈 문자열도 없는 것이다 — 직렬화가 빈 별칭의
+    // 키를 생략한다) 「다르다」고 말할 근거가 없다.
+    const existingGroup = existingId === null ? undefined : model.tableGroups[existingId]
+    const a = attrs?.a
+    if (existingGroup !== undefined && a !== undefined && a !== '' && a !== existingGroup.alias) {
+      warnings.push({
+        // ⚠️ target 은 **모델에 있는 원문 이름**이다. k 는 조회용 대문자 색인 키라 ASCII 이름을
+        // SALES_DOMAIN 으로 뭉갠다 — 사용자가 사이드바에서 그 이름을 못 찾는다.
+        kind: 'group-conflict', target: existingGroup.name,
+        // ⚠️ 기존 별칭이 **빈 문자열인 갈래를 따로 둔다.** createGroup 이 새 그룹을 전부 alias:''
+        // 로 만들므로 드문 자리가 아닌데, 한 문구로 뭉치면 「기존 그룹의 별칭  가 달라」처럼
+        // 공백이 둘 붙어 말이 안 된다. 경고 자체는 그대로 낸다 — 머릿말이 말한 별칭이 안 붙으면
+        // 조합될 최종 이름이 원본과 달라지므로 알릴 값이 있다.
+        message: existingGroup.alias === ''
+          ? `머릿말의 별칭 ${a} 을 적용하지 않습니다 — 기존 그룹에는 별칭이 없습니다`
+          : `머릿말의 별칭 ${a} 과 기존 그룹의 별칭 ${existingGroup.alias} 가 달라 기존 값을 유지합니다`,
+      })
+    }
+    groups.push({
+      name: attrs?.name ?? e.name,
+      color: attrs?.c ?? null,
+      comment: attrs?.n ?? null,
+      alias: attrs?.a ?? '',
+      tablePhysicalNames: e.members,
+      existingId,
+    })
+  }
+
   for (const g of parsed.groups ?? []) {
+    if (headerMembers.has(upper(g.name))) continue          // D7 — 머릿말이 이겼다
     const members = g.tables.filter((n) => tableByUpper.has(upper(n)))
       .map((n) => tableByUpper.get(upper(n))!.physicalName)
     if (members.length === 0) continue
     groups.push({
-      name: g.name, color: g.color, comment: g.comment ?? null, tablePhysicalNames: members,
+      name: g.name, color: g.color, comment: g.comment ?? null, alias: '',
+      tablePhysicalNames: members,
       existingId: groupIdByName.get(upper(g.name)) ?? null,
     })
   }

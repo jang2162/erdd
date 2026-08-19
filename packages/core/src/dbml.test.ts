@@ -385,10 +385,18 @@ describe('머릿말 메타', () => {
   }
   const tpl = (t: string): NamingRules => ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: t })
 
+  /** 그룹을 뗀 모델. D4 의 좁아진 보장(「그룹도 템플릿도 안 쓰는 프로젝트」)을 재는 자다. */
+  function ungrouped(): ProjectModel {
+    const x = m()
+    x.tables['t1'] = { ...x.tables['t1']!, groupId: null }
+    x.tables['t2'] = { ...x.tables['t2']!, groupId: null }
+    return x
+  }
+
   it('템플릿이 걸리면 첫 줄에 // 머릿말이 나온다', () => {
     const out = generateDbmlRaw(
       m(), 'postgresql', { kind: 'all' }, {}, tpl('TB_{그룹별칭}_{물리명}'))
-    expect(out.split('\n')[0]!.startsWith('// erdd:v1 ')).toBe(true)
+    expect(out.split('\n')[0]!.startsWith('// erdd:v2 ')).toBe(true)
   })
 
   // ⚠️ 머릿말은 Project 블록보다 **앞**이어야 파싱이 줍는다(설계 3.4).
@@ -396,12 +404,19 @@ describe('머릿말 메타', () => {
     const out = generateDbmlRaw(
       m(), 'postgresql', { kind: 'all' }, { projectName: '회원 시스템' },
       tpl('TB_{그룹별칭}_{물리명}'))
-    expect(out.indexOf('// erdd:v1')).toBeLessThan(out.indexOf('Project '))
+    expect(out.indexOf('// erdd:v2')).toBeLessThan(out.indexOf('Project '))
     expect(parseNameMeta(out)).not.toBeNull()
   })
 
-  it('템플릿이 없으면 머릿말이 없다', () => {
-    expect(parseNameMeta(generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES)))
+  // ⚠️ 설계 D4(좁아짐) — 그룹도 템플릿도 없어야 기존 산출물 무변경이 보장된다.
+  it('그룹도 템플릿도 없으면 머릿말이 없다', () => {
+    expect(parseNameMeta(generateDbmlRaw(ungrouped(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES)))
       .toBeNull()
+  })
+
+  // ⚠️ 이번 사이클이 넓힌 자리 — 템플릿이 없어도 그룹이 있으면 머릿말이 나간다.
+  it('템플릿이 없어도 그룹이 있으면 // 머릿말이 나온다', () => {
+    const out = generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES)
+    expect(out.split('\n')[0]!.startsWith('// erdd:v2 ')).toBe(true)
   })
 })

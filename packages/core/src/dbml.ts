@@ -6,7 +6,7 @@ import { customFieldsFor } from './custom-field.js'
 import { buildDbmlNote } from './dbml-note.js'
 import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
 import type { NamingRules } from './naming.js'
-import { serializeNameMeta, type NameMeta } from './name-meta.js'
+import { buildNameMeta, serializeNameMeta } from './name-meta.js'
 import {
   selectTables, tableColumns, hasEmptyPhysicalName, type ExportScope,
 } from './ddl.js'
@@ -188,21 +188,6 @@ function refLines(model: ProjectModel, selectedIds: Set<string>, rules: NamingRu
     out.push(`Ref${label}: ${side(compose(child), childCols)} ${op} ${side(compose(parent), parentCols)}`)
   }
   return out
-}
-
-/**
- * 내보내는 테이블 중 **조합 결과가 부분과 다른 것만** 메타에 싣는다(설계 D4).
- * ddl.ts 의 같은 이름 헬퍼와 짝이다 — 내보내는 테이블 목록이 서로 달라 공유하지 않는다.
- */
-function buildNameMeta(model: ProjectModel, tables: Table[], rules: NamingRules): NameMeta {
-  const meta: NameMeta = {}
-  for (const t of tables) {
-    const p = composeTablePhysicalName(t, model, rules)
-    const l = composeTableLogicalName(t, model, rules)
-    if (p === t.physicalName && l === t.logicalName) continue
-    meta[p] = { p: t.physicalName, l: t.logicalName }
-  }
-  return meta
 }
 
 // ⚠️ opts 를 `?:` 로 두면 뒤에 필수 인자를 못 붙인다(TS1016). 기본값 인자로 바꾼다.

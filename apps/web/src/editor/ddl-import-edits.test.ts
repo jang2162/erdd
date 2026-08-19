@@ -214,7 +214,7 @@ describe('applyDdlImport — DBML 확장', () => {
   it('새 그룹을 만들고 테이블을 넣는다', () => {
     const next = applyDdlImport(createEmptyModel(), planWith({
       groups: [{
-        name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인',
+        name: '회원 관리', color: '#0E7A6C', comment: '회원 도메인', alias: '',
         tablePhysicalNames: ['MBR'], existingId: null,
       }],
     }), mkNewId())
@@ -226,10 +226,23 @@ describe('applyDdlImport — DBML 확장', () => {
   it('색이 null 이면 팔레트에서 고른다', () => {
     const next = applyDdlImport(createEmptyModel(), planWith({
       groups: [{
-        name: 'G', color: null, comment: null, tablePhysicalNames: ['MBR'], existingId: null,
+        name: 'G', color: null, comment: null, alias: '',
+        tablePhysicalNames: ['MBR'], existingId: null,
       }],
     }), mkNewId())
     expect(Object.values(next.tableGroups)[0]!.color).toMatch(/^#[0-9a-fA-F]{6}$/)
+  })
+
+  it('새로 만드는 그룹에 계획의 별칭을 꽂는다', () => {
+    const plan: DdlImportPlan = {
+      tables: [], relationships: [], skippedTables: [], warnings: [], opCountEstimate: 1,
+      groups: [{
+        name: '회원관리', color: '#4A90D9', comment: null, alias: 'MBR',
+        tablePhysicalNames: [], existingId: null,
+      }],
+    }
+    const out = applyDdlImport(createEmptyModel(), plan, mkNewId())
+    expect(Object.values(out.tableGroups)[0]!.alias).toBe('MBR')
   })
 
   it('existingId 가 있으면 새로 만들지 않고 색·설명도 덮어쓰지 않는다', () => {
@@ -237,12 +250,14 @@ describe('applyDdlImport — DBML 확장', () => {
     m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: '원래 설명', alias: '' }
     const next = applyDdlImport(m, planWith({
       groups: [{
-        name: '회원 관리', color: '#0E7A6C', comment: '가져온 설명',
+        name: '회원 관리', color: '#0E7A6C', comment: '가져온 설명', alias: '가져온별칭',
         tablePhysicalNames: ['MBR'], existingId: 'g1',
       }],
     }), mkNewId())
     expect(Object.keys(next.tableGroups)).toEqual(['g1'])
-    expect(next.tableGroups['g1']).toMatchObject({ color: '#111', comment: '원래 설명' })
+    // ⚠️ 별칭도 덮어쓰지 않는다 — 계획이 '가져온별칭' 을 실어 와도 기존 그룹의 빈 별칭이 남는다.
+    expect(next.tableGroups['g1'])
+      .toMatchObject({ color: '#111', comment: '원래 설명', alias: '' })
     expect(Object.values(next.tables)[0]!.groupId).toBe('g1')
   })
 

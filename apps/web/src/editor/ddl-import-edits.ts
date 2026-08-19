@@ -25,8 +25,9 @@ const rowHeight = (columnCount: number) => 40 + columnCount * 28
  * 관계의 `cardinality`·`name`은 계획이 정한다 — DDL 경로에서는 계획이 `'1:N'`·`null`을 주고,
  * DBML 경로에서는 `-` 연산자와 `Ref` 이름이 그대로 실려 온다.
  *
- * 그룹도 계획이 정한다(DBML의 `TableGroup`). `existingId`가 있으면 그 그룹에 넣고 **색·설명을
- * 덮어쓰지 않는다** — 가져오는 파일이 프로젝트의 기존 결정을 바꿔선 안 된다.
+ * 그룹도 계획이 정한다(머릿말 또는 DBML의 `TableGroup`). `existingId`가 있으면 그 그룹에 넣고
+ * **색·설명·별칭을 덮어쓰지 않는다** — 가져오는 파일이 프로젝트의 기존 결정을 바꿔선 안 된다.
+ * 별칭은 머릿말에만 실려 오므로 블록만 있는 DBML에서는 빈 문자열이다.
  * `groupPosition`은 `null`로 둔다 — 그룹 뷰 좌표는 그 뷰를 처음 열 때 계산된다.
  */
 export function applyDdlImport(
@@ -47,7 +48,9 @@ export function applyDdlImport(
       groupId = newId()
       const color = g.color ?? nextGroupColor(usedColors)
       usedColors.push(color)
-      tableGroups[groupId] = { id: groupId, name: g.name, color, comment: g.comment, alias: '' }
+      tableGroups[groupId] = {
+        id: groupId, name: g.name, color, comment: g.comment, alias: g.alias,
+      }
     }
     for (const name of g.tablePhysicalNames) groupIdByTable.set(name, groupId)
   }

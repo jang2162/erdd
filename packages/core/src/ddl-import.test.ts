@@ -465,7 +465,8 @@ describe('planDdlImport — DBML 확장 필드', () => {
       'postgresql', DEFAULT_NAMING_RULES,
     )
     expect(p.groups).toEqual([{
-      name: '회원 관리', color: '#0E7A6C', comment: null,
+      // 블록만 있는 경로다 — 별칭은 머릿말에만 실려 오므로 빈 문자열이어야 한다.
+      name: '회원 관리', color: '#0E7A6C', comment: null, alias: '',
       tablePhysicalNames: ['MBR'], existingId: null,
     }])
   })
@@ -480,7 +481,28 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(p.groups[0]!.existingId).toBe('g1')
   })
 
+  // ⚠️ 모델의 기존 MBR 을 **블록과 같은 이름의 그룹**에 넣어 둔 것은 설계 D6 때문이다 — 충돌
+  // 키가 (그룹, 부분 이름) 이고 블록 그룹도 그 소스이므로, 그룹을 안 맞추면 「한쪽만 그룹 있음
+  // → 둘 다 들어온다」에 걸려 애초에 안 부딪힌다. 그러면 이 테스트가 잠그려는 「건너뜀」 자체가
+  // 안 생긴다. 그룹까지 같으면 진짜 중복이라 건너뛰는 것이 맞다(아래 짝 테스트가 반대쪽을 잠근다).
   it('건너뛴 테이블은 그룹 목록에서도 빠진다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null, alias: '' }
+    m.tables['t1'] = {
+      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const p = planDdlImport(
+      m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.groups).toEqual([])
+  })
+
+  // ⚠️ 위 테스트의 짝이다 — **블록 그룹만 그룹을 말하고 모델 쪽은 그룹이 없으면** 조합 결과가
+  // 갈려 원본에서 공존하던 것이므로 둘 다 들어온다(설계 D6 표의 「한쪽만 그룹 있음」 행).
+  // 위 테스트가 그룹을 맞춰 두면서 잃은 기대를 여기서 못 박는다.
+  it('블록 그룹만 있고 모델의 같은 이름 테이블은 그룹이 없으면 둘 다 들어온다', () => {
     const m = createEmptyModel()
     m.tables['t1'] = {
       id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
@@ -490,7 +512,32 @@ describe('planDdlImport — DBML 확장 필드', () => {
       m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
       'postgresql', DEFAULT_NAMING_RULES,
     )
-    expect(p.groups).toEqual([])
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['MBR'])
+    expect(p.skippedTables).toEqual([])
+    expect(p.groups.map((g) => g.tablePhysicalNames)).toEqual([['MBR']])
+  })
+
+  // ⚠️ **충돌 키가 DBML 블록 그룹도 봐야 하는 이유를 잠근다.** 머릿말이 없어도 블록이 그룹을
+  // 말하면 그 테이블은 8번 절이 **실제로 그 그룹에 넣는다.** 키가 블록을 안 보면 모델의 같은
+  // 그룹에 같은 물리명이 하나 더 들어간다 — 리뷰가 실증한 회귀다(머릿말 도입 전에는 건너뛰었다).
+  it('머릿말이 없어도 블록 그룹까지 같으면 기존 테이블과 부딪혀 건너뛴다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null, alias: '' }
+    m.tables['t1'] = {
+      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const p = planDdlImport(
+      m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
+      'postgresql', DEFAULT_NAMING_RULES,
+    )
+    expect(p.tables).toEqual([])
+    expect(p.skippedTables).toEqual(['MBR'])
+    // 이름을 되돌린 것이 아니므로(머릿말이 없다) 옛 문구 그대로다.
+    expect(p.warnings).toContainEqual({
+      kind: 'table-conflict', target: 'MBR',
+      message: '같은 이름의 테이블이 이미 있어 건너뜁니다',
+    })
   })
 
   it('그룹 수가 opCountEstimate 에 더해진다', () => {
@@ -686,10 +733,79 @@ describe('planDdlImport — DBML 확장 필드', () => {
     expect(imported.warnings.map((w) => w.message)).not.toContain('같은 이름의 테이블이 이미 있어 건너뜁니다')
   })
 
-  // ⚠️ **관찰을 고정하는 테스트다. 「이 동작이 옳다」는 뜻이 아니다.**
+  // ⚠️ 설계 D6 — 원본에서 그룹이 갈라 정상 공존하던 두 ORD 는 둘 다 들어와야 한다.
+  // 픽스처의 구분력은 **머릿말의 g** 에 있다. g 를 빼면 이 테스트는 옛 동작(뒤엣것 건너뜀)으로
+  // 돌아가므로, 아래 v1 짝(기존 테스트)과 함께 봐야 의미가 성립한다.
+  it('v2 머릿말이면 다른 그룹의 같은 부분 이름이 둘 다 들어온다', () => {
+    const ddl = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"회원주문","g":"회원"},"TB_PRD_ORD":{"p":"ORD","l":"상품주문","g":"상품"}},"g":{"회원":{"a":"MBR"},"상품":{"a":"PRD"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE TB_PRD_ORD (ID BIGINT NOT NULL, QTY BIGINT, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD', 'ORD'])
+    expect(p.tables.map((t) => t.logicalName)).toEqual(['회원주문', '상품주문'])
+    expect(p.skippedTables).toEqual([])
+    expect(p.warnings.filter((w) => w.kind === 'table-conflict')).toEqual([])
+    expect(p.groups.map((g) => g.name).sort()).toEqual(['상품', '회원'])
+  })
+
+  it('같은 그룹의 같은 부분 이름은 여전히 뒤엣것을 건너뛴다', () => {
+    const ddl = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문A","g":"회원"},"TB_MBR_ORD2":{"p":"ORD","l":"주문B","g":"회원"}},"g":{"회원":{"a":"MBR"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE TB_MBR_ORD2 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])
+    expect(p.skippedTables).toEqual(['TB_MBR_ORD2'])
+  })
+
+  // ⚠️ 모델 쪽 비교도 같은 키다 — 한쪽만 넓히면 「DDL 안에서는 공존하는데 모델과는 부딪힌다」가 된다.
+  it('모델의 기존 테이블과도 그룹까지 같아야 부딪힌다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원', color: '#111', comment: null, alias: 'MBR' }
+    m.tables['t1'] = {
+      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const ddl = [
+      '-- erdd:v2 {"t":{"TB_PRD_ORD":{"p":"ORD","l":"상품주문","g":"상품"}},"g":{"상품":{"a":"PRD"}}}',
+      'CREATE TABLE TB_PRD_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(m, parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])   // 그룹이 달라 안 부딪힌다
+    expect(p.skippedTables).toEqual([])
+  })
+
+  // ⚠️ **충돌 키의 구분자가 NUL 이어야 하는 이유를 잠근다.** 그룹 이름은 사용자가 자유롭게 쓰는
+  // 문자열이라 흔한 문자를 구분자로 쓰면 서로 다른 짝이 같은 키가 되어 **뒤엣것이 잘못
+  // 건너뛰어진다.** 픽스처가 두 실패 방식을 각각 겨냥한다.
+  //   T1(`A_B`+`C`) 과 T2(`A`+`B_C`)  → 구분자가 `_` 면 둘 다 `A_B_C`
+  //   T3(`A`+`BC`)  과 T4(`AB`+`C`)   → 구분자가 아예 없으면 둘 다 `ABC`
+  // NUL 은 그룹 이름에도 물리명에도 들어갈 수 없어 어느 쪽으로도 뭉개지지 않는다.
+  it('그룹 이름과 부분 이름의 경계가 구분자로 뭉개지지 않는다', () => {
+    const meta = '{"t":{"T1":{"p":"C","l":"가","g":"A_B"},"T2":{"p":"B_C","l":"나","g":"A"},'
+      + '"T3":{"p":"BC","l":"다","g":"A"},"T4":{"p":"C","l":"라","g":"AB"}},'
+      + '"g":{"A_B":{},"A":{},"AB":{}}}'
+    const ddl = [
+      `-- erdd:v2 ${meta}`,
+      'CREATE TABLE T1 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE T2 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE T3 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+      'CREATE TABLE T4 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['C', 'B_C', 'BC', 'C'])
+    expect(p.skippedTables).toEqual([])
+  })
+
+  // ⚠️ **v1 머릿말의 하위호환 잠금이다.** 위 v2 짝과 반드시 함께 봐라.
   // 그룹이 다른 두 테이블은 부분이 같아도(`ORD`) 조합 이름이 갈려 원본 프로젝트에서는 중복이
-  // 아니다. 그런데 가져오기는 그룹을 복원하지 않으므로(설계 D2) 둘 다 부분 `ORD` 로 복원되고,
-  // 「만들어질 이름」 충돌 판정에 걸려 **뒤엣것이 통째로 빠진다**(컬럼·인덱스·관계까지).
+  // 아니다. 그런데 **v1 머릿말에는 그룹 자리가 없어**(설계 D6 의 충돌 키에 그룹이 빈 문자열로
+  // 들어간다) 둘 다 부분 `ORD` 로 복원되고, 「만들어질 이름」 충돌 판정에 걸려 **뒤엣것이 통째로
+  // 빠진다**(컬럼·인덱스·관계까지). 옛 덤프에는 그룹이 안 적혀 있으므로 이것이 맞는 동작이다.
   // 관찰된 사실 셋을 그대로 못 박는다 — 동작을 바꾸면 여기가 빨개져 재검토를 강제한다.
   it('다른 그룹의 두 테이블이 같은 부분으로 복원되면 뒤엣것이 빠진다', () => {
     const ddl = [
@@ -736,5 +852,187 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const imported = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
     expect(imported.tables.map((t) => t.physicalName).sort())
       .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
+  })
+})
+
+describe('planDdlImport — 머릿말 그룹 복원', () => {
+  /** 별칭·색·코멘트가 다 있는 그룹 하나에 테이블 둘이 든 모델. */
+  const source = (): ProjectModel => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR', comment: '회원 도메인' }
+    return m
+  }
+
+  it('DDL 왕복에서 그룹과 별칭이 살아난다', () => {
+    const sql = generateDdlRaw(source(), 'postgresql', { kind: 'all' },
+      { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' })
+    const p = planDdlImport(createEmptyModel(), parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
+
+    expect(p.groups).toHaveLength(1)
+    const g = p.groups[0]!
+    expect(g.name).toBe('회원관리')
+    expect(g.alias).toBe('MBR')
+    expect(g.comment).toBe('회원 도메인')
+    expect(g.color).toBe('#4A90D9')
+    expect(new Set(g.tablePhysicalNames)).toEqual(new Set(['MBR', 'MBR_GRD']))
+  })
+
+  // ⚠️ D7 — 블록과 머릿말이 같은 그룹을 말하면 머릿말이 이긴다(별칭은 머릿말에만 있다).
+  it('DBML 에서 블록과 머릿말이 겹치면 머릿말이 이긴다', () => {
+    const dbml = [
+      '// erdd:v2 {"t":{"MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR","c":"#4A90D9"}}}',
+      'Table "MBR" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'TableGroup "회원관리" [color: #999999] {',
+      '  MBR',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toHaveLength(1)
+    expect(p.groups[0]!.alias).toBe('MBR')
+    expect(p.groups[0]!.color).toBe('#4A90D9')       // 블록의 #999999 가 아니다
+  })
+
+  // ⚠️ 남이 준 DBML 은 머릿말이 없다 — 블록만으로 지금처럼 동작한다.
+  it('머릿말 없는 DBML 은 블록만으로 그룹을 만들고 별칭은 빈 문자열이다', () => {
+    const dbml = [
+      'Table "MBR" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'TableGroup "회원관리" [color: #999999] {',
+      '  MBR',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toHaveLength(1)
+    expect(p.groups[0]!.color).toBe('#999999')
+    expect(p.groups[0]!.alias).toBe('')
+  })
+
+  // ⚠️ 그룹 이름의 **대소문자 원문**을 잠근다. 저장소의 다른 케이스는 그룹 이름이 한글이라
+  // 대소문자가 없어, 만드는 이름을 대문자 색인 키로 바꿔도 전부 초록이다 — 설계 3.1 이
+  // NameMetaGroup.name 을 따로 둔 이유가 바로 여기다(파싱은 대문자로 색인하고 표시용 원문은
+  // 값에 실어 나른다). 이 단언이 없으면 소문자 그룹 이름이 조용히 SALES 로 뭉개진다.
+  it('그룹 이름의 대소문자가 왕복에서 보존된다', () => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, name: 'Sales_Domain' }
+    const sql = generateDdlRaw(m, 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES)
+    expect(sql).toContain('"Sales_Domain"')            // 머릿말은 원문 그대로 적는다
+    const p = planDdlImport(createEmptyModel(), parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups.map((g) => g.name)).toEqual(['Sales_Domain'])   // 'SALES_DOMAIN' 이 아니다
+  })
+
+  // ⚠️ 머릿말 경로도 **살아남은 테이블만** 그룹에 담는다. 블록 경로의 「건너뛴 테이블은 그룹
+  // 목록에서도 빠진다」와 같은 성질인데, 이쪽은 멤버를 tableByUpper 에서 모으는 **구조로**
+  // 얻고 있어 잠금이 없으면 소리 없이 풀린다 — 건너뛴 이름이 멤버에 남으면 편집 적용부가
+  // 만들어지지도 않은 테이블에 groupId 를 꽂으려다 조용히 흘린다.
+  // ⚠️ 모델의 기존 ORD 를 **머릿말과 같은 이름의 그룹**에 넣어 둔 것은 설계 D6 때문이다 —
+  // 충돌 키가 (그룹, 부분 이름) 이라 그룹을 안 맞추면 애초에 부딪히지 않아 이 테스트가 잠그려는
+  // 「건너뜀」 자체가 안 생긴다. 덕분에 「그룹까지 같으면 여전히 부딪힌다」도 함께 잠근다.
+  it('이름이 겹쳐 건너뛴 테이블은 머릿말 그룹의 멤버에서도 빠진다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#111', comment: null, alias: 'MBR' }
+    m.tables['t1'] = {
+      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const sql = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원관리"},'
+        + '"TB_MBR_MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL);',
+      'CREATE TABLE TB_MBR_MBR (ID BIGINT NOT NULL);',
+    ].join('\n')
+    const p = planDdlImport(m, parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.skippedTables).toEqual(['TB_MBR_ORD'])    // 모델의 기존 ORD 와 부딪힌다
+    expect(p.groups).toHaveLength(1)
+    expect(p.groups[0]!.tablePhysicalNames).toEqual(['MBR'])   // ORD 가 섞이지 않는다
+  })
+})
+
+describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
+  /** 이름이 같은 그룹이 이미 있는 모델. 별칭만 다르게/색만 다르게 두 갈래로 쓴다. */
+  const withGroup = (alias: string, color: string, comment: string | null): ProjectModel => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원', color, comment, alias }
+    return m
+  }
+  const incoming = [
+    '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원"}},"g":{"회원":{"a":"MBR","c":"#4A90D9","n":"회원 도메인"}}}',
+    'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+  ].join('\n')
+
+  it('별칭이 다르면 기존 값을 유지하고 경고한다', () => {
+    const p = planDdlImport(withGroup('MB', '#4A90D9', '회원 도메인'), parseDdl(incoming),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups[0]!.existingId).toBe('g1')
+    expect(p.warnings).toContainEqual({
+      kind: 'group-conflict', target: '회원',
+      message: '머릿말의 별칭 MBR 과 기존 그룹의 별칭 MB 가 달라 기존 값을 유지합니다',
+    })
+  })
+
+  // ⚠️ D3 의 반대편 — 색·코멘트는 갈려도 이름을 안 바꾸므로 조용히 유지한다.
+  it('색·코멘트만 다르면 경고가 없다', () => {
+    const p = planDdlImport(withGroup('MBR', '#999999', '다른 설명'), parseDdl(incoming),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
+  })
+
+  // ⚠️ 머릿말에 별칭이 없으면 「다르다」고 말할 근거가 없다 — 경고하지 않는다.
+  it('머릿말에 별칭이 없으면 경고하지 않는다', () => {
+    const noAlias = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원"}},"g":{"회원":{"c":"#4A90D9"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(withGroup('MB', '#4A90D9', null), parseDdl(noAlias),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
+  })
+
+  // ⚠️ 우리 직렬화는 빈 별칭의 키를 생략하지만, 손댄 머릿말·남이 만든 머릿말은 `"a":""` 를 실어
+  // 올 수 있고 파서가 그것을 그대로 받는다. 빈 별칭은 **별칭이 없다는 뜻**이므로 위와 같이
+  // 조용해야 한다 — 안 그러면 「머릿말의 별칭 (빈칸) 과 기존 그룹의 별칭 MB 가 달라」라는 말이
+  // 안 되는 경고가 나간다.
+  it('머릿말의 별칭이 빈 문자열이면 경고하지 않는다', () => {
+    const emptyAlias = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원"}},"g":{"회원":{"a":"","c":"#4A90D9"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(withGroup('MB', '#4A90D9', null), parseDdl(emptyAlias),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
+  })
+
+  // ⚠️ **기존 별칭이 빈 문자열인 거울 케이스.** 위(머릿말 쪽이 빈 경우)와 달리 여기서는 경고를
+  // 낸다 — 머릿말이 말한 MBR 이 안 붙으면 {그룹별칭} 이 빠져 조합될 최종 이름이 원본과 달라지기
+  // 때문이다. 다만 문구가 갈려야 한다: 한 문구로 뭉치면 「기존 그룹의 별칭  가 달라」처럼 공백이
+  // 둘 붙어 말이 안 된다. **createGroup 이 새 그룹을 전부 alias:'' 로 만들므로 드문 자리가 아니다.**
+  it('기존 그룹에 별칭이 없으면 경고는 내되 문구가 갈린다', () => {
+    const p = planDdlImport(withGroup('', '#4A90D9', '회원 도메인'), parseDdl(incoming),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings).toContainEqual({
+      kind: 'group-conflict', target: '회원',
+      message: '머릿말의 별칭 MBR 을 적용하지 않습니다 — 기존 그룹에는 별칭이 없습니다',
+    })
+  })
+
+  // ⚠️ **target 은 조회용 대문자 색인 키가 아니라 모델의 원문 이름**임을 잠근다. 이 파일의 다른
+  // 그룹 케이스는 이름이 한글이라 대문자화가 무연산이어서, target 을 색인 키로 바꿔도 전부
+  // 초록이다 — 혼합 대소문자 ASCII 이름이라야 갈린다(Task 3 이 같은 이유로 'Sales_Domain' 을
+  // 골랐다). 뭉개진 이름을 내보내면 사용자가 사이드바에서 그 그룹을 찾지 못한다.
+  it('경고의 target 은 대문자 색인 키가 아니라 기존 그룹의 원문 이름이다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: 'Sales_Domain', color: '#111', comment: null, alias: 'SLS' }
+    const sql = [
+      '-- erdd:v2 {"t":{"TB_SLS_ORD":{"p":"ORD","l":"주문","g":"Sales_Domain"}},'
+        + '"g":{"Sales_Domain":{"a":"SALES"}}}',
+      'CREATE TABLE TB_SLS_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(m, parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings).toContainEqual({
+      kind: 'group-conflict', target: 'Sales_Domain',        // 'SALES_DOMAIN' 이 아니다
+      message: '머릿말의 별칭 SALES 과 기존 그룹의 별칭 SLS 가 달라 기존 값을 유지합니다',
+    })
   })
 })

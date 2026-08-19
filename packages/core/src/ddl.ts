@@ -5,7 +5,7 @@ import { quoteIdentifier } from './identifier.js'
 import { resolveColumn } from './domain-resolve.js'
 import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
 import type { NamingRules } from './naming.js'
-import { serializeNameMeta, type NameMeta } from './name-meta.js'
+import { buildNameMeta, serializeNameMeta } from './name-meta.js'
 
 export type DdlScope =
   | { kind: 'all' }
@@ -232,22 +232,6 @@ function columnCommentStatement(dialect: Dialect, tableName: string, columnName:
     case 'mysql':
       throw new Error('MySQL uses inline comments')
   }
-}
-
-/**
- * 내보내는 테이블 중 **조합 결과가 부분과 다른 것만** 메타에 싣는다(설계 D4).
- * 템플릿이 하나도 안 걸리면 빈 맵이 되어 머릿말이 아예 안 나간다 — 기존 산출물이 한 글자도
- * 안 바뀌게 하는 안전장치다.
- */
-function buildNameMeta(model: ProjectModel, tables: Table[], rules: NamingRules): NameMeta {
-  const meta: NameMeta = {}
-  for (const t of tables) {
-    const p = composeTablePhysicalName(t, model, rules)
-    const l = composeTableLogicalName(t, model, rules)
-    if (p === t.physicalName && l === t.logicalName) continue
-    meta[p] = { p: t.physicalName, l: t.logicalName }
-  }
-  return meta
 }
 
 export function generateDdl(
