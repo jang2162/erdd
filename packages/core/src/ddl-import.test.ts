@@ -949,3 +949,58 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     expect(p.groups[0]!.tablePhysicalNames).toEqual(['MBR'])   // ORD 가 섞이지 않는다
   })
 })
+
+describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
+  /** 이름이 같은 그룹이 이미 있는 모델. 별칭만 다르게/색만 다르게 두 갈래로 쓴다. */
+  const withGroup = (alias: string, color: string, comment: string | null): ProjectModel => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: '회원', color, comment, alias }
+    return m
+  }
+  const incoming = [
+    '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원"}},"g":{"회원":{"a":"MBR","c":"#4A90D9","n":"회원 도메인"}}}',
+    'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+  ].join('\n')
+
+  it('별칭이 다르면 기존 값을 유지하고 경고한다', () => {
+    const p = planDdlImport(withGroup('MB', '#4A90D9', '회원 도메인'), parseDdl(incoming),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups[0]!.existingId).toBe('g1')
+    expect(p.warnings).toContainEqual({
+      kind: 'group-conflict', target: '회원',
+      message: '머릿말의 별칭 MBR 과 기존 그룹의 별칭 MB 가 달라 기존 값을 유지합니다',
+    })
+  })
+
+  // ⚠️ D3 의 반대편 — 색·코멘트는 갈려도 이름을 안 바꾸므로 조용히 유지한다.
+  it('색·코멘트만 다르면 경고가 없다', () => {
+    const p = planDdlImport(withGroup('MBR', '#999999', '다른 설명'), parseDdl(incoming),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
+  })
+
+  // ⚠️ 머릿말에 별칭이 없으면 「다르다」고 말할 근거가 없다 — 경고하지 않는다.
+  it('머릿말에 별칭이 없으면 경고하지 않는다', () => {
+    const noAlias = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원"}},"g":{"회원":{"c":"#4A90D9"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(withGroup('MB', '#4A90D9', null), parseDdl(noAlias),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
+  })
+
+  // ⚠️ 우리 직렬화는 빈 별칭의 키를 생략하지만, 손댄 머릿말·남이 만든 머릿말은 `"a":""` 를 실어
+  // 올 수 있고 파서가 그것을 그대로 받는다. 빈 별칭은 **별칭이 없다는 뜻**이므로 위와 같이
+  // 조용해야 한다 — 안 그러면 「머릿말의 별칭 (빈칸) 과 기존 그룹의 별칭 MB 가 달라」라는 말이
+  // 안 되는 경고가 나간다.
+  it('머릿말의 별칭이 빈 문자열이면 경고하지 않는다', () => {
+    const emptyAlias = [
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원"}},"g":{"회원":{"a":"","c":"#4A90D9"}}}',
+      'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(withGroup('MB', '#4A90D9', null), parseDdl(emptyAlias),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
+  })
+})

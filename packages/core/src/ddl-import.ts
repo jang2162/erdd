@@ -8,7 +8,7 @@ import type { NameMetaEntry } from './name-meta.js'
 export type DdlImportWarning = {
   kind: 'ambiguous-type' | 'unknown-type' | 'unknown-word'
       | 'table-conflict' | 'unresolved-fk' | 'unresolved-index' | 'skipped-statement'
-      | 'unknown-custom-field'
+      | 'unknown-custom-field' | 'group-conflict'
   target: string
   message: string
 }
@@ -458,13 +458,27 @@ export function planDdlImport(
     // 속성은 머릿말의 g 구획에서 온다. 그것이 없으면(테이블 항목만 그룹 이름을 실은 머릿말)
     // 이름만 살리고 나머지는 비운다 — 웹이 색을 팔레트에서 고른다.
     const attrs = parsed.nameMeta?.groups[k]
+    const existingId = groupIdByName.get(k) ?? null
+    // ⚠️ 별칭에만 경고한다(설계 D3). 별칭은 {그룹별칭} 변수로 **물리명 조합에 들어가 최종 이름을
+    // 바꾸므로** 조용히 갈리면 사용자가 보는 이름이 원본과 달라지는데 이유를 알 길이 없다.
+    // 색·코멘트는 표시용이라 갈려도 이름이 안 바뀐다 — 전부 경고하면 시끄러워 진짜 신호가 묻힌다.
+    // ⚠️ 머릿말에 별칭이 **있을 때만** 본다. 없으면(빈 문자열도 없는 것이다 — 직렬화가 빈 별칭의
+    // 키를 생략한다) 「다르다」고 말할 근거가 없다.
+    const existingGroup = existingId === null ? undefined : model.tableGroups[existingId]
+    const a = attrs?.a
+    if (existingGroup !== undefined && a !== undefined && a !== '' && a !== existingGroup.alias) {
+      warnings.push({
+        kind: 'group-conflict', target: existingGroup.name,
+        message: `머릿말의 별칭 ${a} 과 기존 그룹의 별칭 ${existingGroup.alias} 가 달라 기존 값을 유지합니다`,
+      })
+    }
     groups.push({
       name: attrs?.name ?? e.name,
       color: attrs?.c ?? null,
       comment: attrs?.n ?? null,
       alias: attrs?.a ?? '',
       tablePhysicalNames: e.members,
-      existingId: groupIdByName.get(k) ?? null,
+      existingId,
     })
   }
 
