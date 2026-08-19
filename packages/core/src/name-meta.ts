@@ -106,7 +106,14 @@ export function parseNameMeta(raw: string): NameMeta | null {
 
 /**
  * 마커 바로 뒤가 공백(또는 끝)일 때만 그 버전으로 본다.
- * ⚠️ 이 경계 검사가 없으면 `erdd:v11` 이 `erdd:v1` 로 읽힌다.
+ *
+ * ⚠️ **이 검사가 실제로 갈라 내는 것은 공백 없이 JSON 이 붙은 입력뿐이다** — `-- erdd:v1{…}`.
+ * `erdd:v11` 은 검사가 없어도 남는 문자열이 `1 {…}` 라 `JSON.parse` 가 대신 막는다(독립 리뷰가
+ * 실증했다 — 검사를 지워도 스위트가 전부 초록이었고, 판별력 있는 입력은 공백 없는 쪽뿐이다).
+ * 그래서 잠금 테스트도 그 입력을 쓴다.
+ *
+ * ⚠️ 이것은 **옛 v1 파서보다 엄격해진 동작 변경**이다(옛 파서는 `-- erdd:v1{…}` 를 읽었다).
+ * ERDD 가 낸 덤프는 늘 공백을 넣으므로 실사용 영향은 없다.
  */
 function afterMarker(body: string, marker: string): string | null {
   if (!body.startsWith(marker)) return null
