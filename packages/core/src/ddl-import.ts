@@ -468,8 +468,16 @@ export function planDdlImport(
     const a = attrs?.a
     if (existingGroup !== undefined && a !== undefined && a !== '' && a !== existingGroup.alias) {
       warnings.push({
+        // ⚠️ target 은 **모델에 있는 원문 이름**이다. k 는 조회용 대문자 색인 키라 ASCII 이름을
+        // SALES_DOMAIN 으로 뭉갠다 — 사용자가 사이드바에서 그 이름을 못 찾는다.
         kind: 'group-conflict', target: existingGroup.name,
-        message: `머릿말의 별칭 ${a} 과 기존 그룹의 별칭 ${existingGroup.alias} 가 달라 기존 값을 유지합니다`,
+        // ⚠️ 기존 별칭이 **빈 문자열인 갈래를 따로 둔다.** createGroup 이 새 그룹을 전부 alias:''
+        // 로 만들므로 드문 자리가 아닌데, 한 문구로 뭉치면 「기존 그룹의 별칭  가 달라」처럼
+        // 공백이 둘 붙어 말이 안 된다. 경고 자체는 그대로 낸다 — 머릿말이 말한 별칭이 안 붙으면
+        // 조합될 최종 이름이 원본과 달라지므로 알릴 값이 있다.
+        message: existingGroup.alias === ''
+          ? `머릿말의 별칭 ${a} 을 적용하지 않습니다 — 기존 그룹에는 별칭이 없습니다`
+          : `머릿말의 별칭 ${a} 과 기존 그룹의 별칭 ${existingGroup.alias} 가 달라 기존 값을 유지합니다`,
       })
     }
     groups.push({

@@ -1003,4 +1003,36 @@ describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
       'postgresql', DEFAULT_NAMING_RULES)
     expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
   })
+
+  // ⚠️ **기존 별칭이 빈 문자열인 거울 케이스.** 위(머릿말 쪽이 빈 경우)와 달리 여기서는 경고를
+  // 낸다 — 머릿말이 말한 MBR 이 안 붙으면 {그룹별칭} 이 빠져 조합될 최종 이름이 원본과 달라지기
+  // 때문이다. 다만 문구가 갈려야 한다: 한 문구로 뭉치면 「기존 그룹의 별칭  가 달라」처럼 공백이
+  // 둘 붙어 말이 안 된다. **createGroup 이 새 그룹을 전부 alias:'' 로 만들므로 드문 자리가 아니다.**
+  it('기존 그룹에 별칭이 없으면 경고는 내되 문구가 갈린다', () => {
+    const p = planDdlImport(withGroup('', '#4A90D9', '회원 도메인'), parseDdl(incoming),
+      'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings).toContainEqual({
+      kind: 'group-conflict', target: '회원',
+      message: '머릿말의 별칭 MBR 을 적용하지 않습니다 — 기존 그룹에는 별칭이 없습니다',
+    })
+  })
+
+  // ⚠️ **target 은 조회용 대문자 색인 키가 아니라 모델의 원문 이름**임을 잠근다. 이 파일의 다른
+  // 그룹 케이스는 이름이 한글이라 대문자화가 무연산이어서, target 을 색인 키로 바꿔도 전부
+  // 초록이다 — 혼합 대소문자 ASCII 이름이라야 갈린다(Task 3 이 같은 이유로 'Sales_Domain' 을
+  // 골랐다). 뭉개진 이름을 내보내면 사용자가 사이드바에서 그 그룹을 찾지 못한다.
+  it('경고의 target 은 대문자 색인 키가 아니라 기존 그룹의 원문 이름이다', () => {
+    const m = createEmptyModel()
+    m.tableGroups['g1'] = { id: 'g1', name: 'Sales_Domain', color: '#111', comment: null, alias: 'SLS' }
+    const sql = [
+      '-- erdd:v2 {"t":{"TB_SLS_ORD":{"p":"ORD","l":"주문","g":"Sales_Domain"}},'
+        + '"g":{"Sales_Domain":{"a":"SALES"}}}',
+      'CREATE TABLE TB_SLS_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
+    ].join('\n')
+    const p = planDdlImport(m, parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.warnings).toContainEqual({
+      kind: 'group-conflict', target: 'Sales_Domain',        // 'SALES_DOMAIN' 이 아니다
+      message: '머릿말의 별칭 SALES 과 기존 그룹의 별칭 SLS 가 달라 기존 값을 유지합니다',
+    })
+  })
 })
