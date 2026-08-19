@@ -56,6 +56,7 @@ describe('parseNameMeta — v2', () => {
     expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가","g":1}}}')).toBeNull() // g 가 문자열 아님
     expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가"}},"g":{"G":"x"}}')).toBeNull() // 그룹 값이 객체 아님
     expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가"}},"g":{"G":{"a":1}}}')).toBeNull()
+    expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가"}},"g":[]}')).toBeNull() // g 구획이 객체 아님
     expect(parseNameMeta('-- erdd:v2 {"g":{}}')).toBeNull()                          // t 없음
   })
 })
@@ -78,11 +79,18 @@ describe('parseNameMeta — v1 하위호환', () => {
     expect(parseNameMeta('-- erdd:v1 null')).toBeNull()
   })
 
-  // ⚠️ 마커 뒤에 공백이 와야 그 버전이다 — 안 그러면 erdd:v11 이 v1 로 읽힌다.
+  // ⚠️ 마커 **바로 뒤가 공백이거나 줄 끝**일 때만 그 버전으로 본다.
+  // 경계 검사가 실제로 갈라 내는 것은 **공백 없이 JSON 이 바로 붙은 입력**뿐이다 —
+  // erdd:v11 같은 것은 경계 검사가 없어도 마커 뒤에 남는 `1 {...}` 를 JSON.parse 가 못 읽어
+  // 어차피 null 이 된다. 그래서 마지막 줄이 이 규칙을 잠그는 유일한 단언이다.
+  // ⚠️ 이것은 옛 v1 파서보다 **엄격해진 동작 변경**이다 — 옛 파서는 `-- erdd:v1{...}` 를 읽었다.
+  // ERDD 가 내는 덤프는 마커 뒤에 늘 공백을 넣으므로 실사용 영향은 없고, 우리 산출물이 아닌
+  // 입력은 읽지 않는 쪽을 택했다.
   it('모르는 버전은 null 이다', () => {
     expect(parseNameMeta('-- erdd:v9 {"t":{}}')).toBeNull()
     expect(parseNameMeta('-- erdd:v11 {"TB":{"p":"ORD","l":"주문"}}')).toBeNull()
     expect(parseNameMeta('-- erdd:v21 {"t":{"X":{"p":"A","l":"가"}}}')).toBeNull()
+    expect(parseNameMeta('-- erdd:v1{"TB":{"p":"ORD","l":"주문"}}')).toBeNull()   // 공백이 없다
   })
 })
 
