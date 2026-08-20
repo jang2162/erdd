@@ -14,8 +14,8 @@ export function status(ctx: CommandCtx): Promise<number> {
     const total = changes.added.length + changes.modified.length + changes.deleted.length
 
     const human = [
-      `서버   ${config.serverUrl}`,
-      `프로젝트 ${config.projectId}`,
+      config.serverUrl === null ? '서버   (로컬 전용 — 연결 설정 없음)' : `서버   ${config.serverUrl}`,
+      config.projectId === null ? '프로젝트 (로컬 전용)' : `프로젝트 ${config.projectId}`,
       sync === null ? '아직 pull하지 않았습니다' : `마지막 pull 리비전 ${sync.revisionSeq} (${sync.pulledAt})`,
       total === 0 ? '로컬 변경 없음' : `로컬 변경 ${total}건`,
       ...changes.added.map((f) => `  + ${f}`),

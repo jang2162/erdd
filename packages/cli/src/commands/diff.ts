@@ -2,7 +2,7 @@ import {
   diffModelsForDisplay, DIFF_KIND_LABEL,
   type DiffChangeKind, type DiffEntry,
 } from '@erdd/core'
-import { readConfig } from '../config.js'
+import { readConfig, requireConnection } from '../config.js'
 import { buildPlan } from '../plan.js'
 import { emit } from '../output.js'
 import { renderConflicts } from './conflict-report.js'
@@ -25,6 +25,7 @@ function section(title: string, entries: readonly DiffEntry[]): string {
 export function diff(ctx: CommandCtx): Promise<number> {
   return run(ctx, async () => {
     const config = await readConfig(ctx.cwd)
+    requireConnection(config)
     const client = await clientFor(ctx)
     const plan = await buildPlan(ctx.cwd, config, client)
 

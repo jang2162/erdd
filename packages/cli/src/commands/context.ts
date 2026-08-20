@@ -1,5 +1,5 @@
 import { createClient, type ApiClient } from '../client.js'
-import { readConfig, resolveToken } from '../config.js'
+import { readConfig, requireConnection, resolveToken } from '../config.js'
 import { CliError, emitError, exitCodeFor } from '../output.js'
 
 export type CommandCtx = {
@@ -15,7 +15,8 @@ export type CommandCtx = {
 export async function clientFor(ctx: CommandCtx): Promise<ApiClient> {
   if (ctx.client !== undefined) return ctx.client
   const config = await readConfig(ctx.cwd)
-  return createClient(config.serverUrl, await resolveToken(ctx.cwd))
+  const { serverUrl } = requireConnection(config)
+  return createClient(serverUrl, await resolveToken(ctx.cwd))
 }
 
 export async function run(ctx: CommandCtx, body: () => Promise<number>): Promise<number> {

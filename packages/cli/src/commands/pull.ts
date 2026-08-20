@@ -1,4 +1,4 @@
-import { readBase, readConfig } from '../config.js'
+import { readBase, readConfig, requireConnection } from '../config.js'
 import { CliError, emit, note } from '../output.js'
 import { diffTrees, readTree } from '../tree.js'
 import { clientFor, run, type CommandCtx } from './context.js'
@@ -7,6 +7,7 @@ import { syncDown } from './sync-down.js'
 export function pull(ctx: CommandCtx): Promise<number> {
   return run(ctx, async () => {
     const config = await readConfig(ctx.cwd)
+    requireConnection(config)
     const client = await clientFor(ctx)
 
     // 로컬 변경 확인 — base가 없으면 최초 pull이므로 묻지 않는다.

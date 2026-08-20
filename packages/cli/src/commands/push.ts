@@ -2,7 +2,7 @@ import {
   COLLECTION_BY_KIND, DIFF_KIND_LABEL, MAX_OPS_PER_MUTATION, entityDisplayName,
   type EntityKind, type Op, type ProjectModel,
 } from '@erdd/core'
-import { readConfig } from '../config.js'
+import { readConfig, requireConnection } from '../config.js'
 import { buildPlan, type PushPlan } from '../plan.js'
 import { CliError, emit, note, type CliErrorCode } from '../output.js'
 import { renderConflicts } from './conflict-report.js'
@@ -83,6 +83,7 @@ async function confirmDeletes(ctx: PushCtx, plan: PushPlan): Promise<void> {
 export function push(ctx: PushCtx): Promise<number> {
   return run(ctx, async () => {
     const config = await readConfig(ctx.cwd)
+    const { projectId } = requireConnection(config)
     const client = await clientFor(ctx)
     let retried = false
     // 시도를 가로질러 누적한다. CONFLICT로 다시 계산하면 두 번째 reserveIds는 아무것도 쓸
@@ -145,7 +146,7 @@ export function push(ctx: PushCtx): Promise<number> {
       let seq: number
       try {
         const result = await client.mutate<{ seq: number }>('model.push', {
-          projectId: config.projectId,
+          projectId,
           expectedSeq: plan.seq,
           ops: plan.ops,
           // 빈 요약(`-m ""`)은 서버의 z.string().min(1)에 걸려 zod BAD_REQUEST가 된다.
