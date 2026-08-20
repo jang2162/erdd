@@ -234,11 +234,6 @@ function sameVisible(a: Entity, b: Entity, fields: Record<string, string>): bool
   return Object.keys(fields).every((f) => deepEqual(a[f], b[f]))
 }
 
-/**
- * base·local·server 3-way 병합. 세 인자 모두 파일 가시 공간이어야 한다.
- * merged는 server에서 출발해 로컬 변경만 얹은 것이고, 충돌 필드에는 서버 값이 남는다
- * (충돌이 있으면 호출자가 merged를 쓰지 않는다).
- */
 export type MergeOptions = {
   /**
    * 테이블 id → **로컬 디스크의 실제 파일 경로**(`filesToModel`의 `tableFiles`).
@@ -248,12 +243,21 @@ export type MergeOptions = {
   tableFiles?: Record<string, string>
 }
 
+/**
+ * base·local·server 3-way 병합. 세 인자 모두 파일 가시 공간이어야 한다.
+ * merged는 server에서 출발해 로컬 변경만 얹은 것이고, 충돌 필드에는 서버 값이 남는다
+ * (충돌이 있으면 호출자가 merged를 쓰지 않는다).
+ */
 export function mergeModels(
   base: ProjectModel, local: ProjectModel, server: ProjectModel, opts?: MergeOptions,
 ): MergeResult {
   const merged = fileVisibleModel(server)
   const conflicts: MergeConflict[] = []
   const models = [local, server, base] as const
+  // ⚠️ 프로토타입 오염을 막는 하드닝(`Object.create(null)`·`hasOwn`)을 **일부러 넣지 않는다.**
+  // 이 조회의 키는 테이블 id인데, id는 op-guard.ts의 UUID_RE(:10)가 `parseOps`(:42)에서
+  // 강제하므로 `__proto__`·`constructor` 같은 키가 모델에 들어올 수 없다. 도달할 수 없는
+  // 갈래에 방어를 넣으면 **어떤 테스트로도 빨갛게 만들 수 없는 코드**가 늘 뿐이다.
   const tableFiles = opts?.tableFiles ?? {}
 
   for (const kind of MERGE_KINDS) {
