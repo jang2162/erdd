@@ -305,6 +305,73 @@ describe('validate 경고 좌표', () => {
     expect(w?.label).toBe('MBR_REGISTRATION_HISTORY_DETAIL')
   })
 
+  it('경고 하나가 좌표로 부분 이름을, 메시지로 최종 이름을 함께 보인다', async () => {
+    // 🔥 다리의 **나머지 절반**. 위 테스트는 좌표가 부분 이름이라는 쪽만 잠근다 — 메시지가
+    // 조합된 최종 이름을 말한다는 쪽은 core 의 문구에 달려 있는데 그것을 잠그는 자리가
+    // 어디에도 없었다(core 의 too-long 문구를 부분 이름으로 되돌려도 core·cli 스위트가 전부
+    // 초록이었다). 그러면 한 줄에 같은 이름이 두 번 서서 다리가 사라지는데 아무도 모른다.
+    // 여기서 **같은 경고 객체**의 두 끝을 함께 못 박는다: 좌표는 파일에서 찾을 수 있는 이름,
+    // 메시지는 실제로 DB 에 나갈 이름, 그리고 둘은 서로 다르다.
+    // ⚠️ 위 테스트와 픽스처를 나눠 갖지 않는 것은 의도다. 「템플릿을 빼면 위 테스트가 초록으로
+    // 돌아온다」와 「core 문구를 되돌리면 이 테스트만 빨개진다」는 서로 다른 것을 겨냥하는
+    // 실증인데, 픽스처를 공유하면 한쪽 변형이 다른 쪽까지 흔들어 겨냥이 흐려진다.
+    await writeConfig(dir, {
+      ...CONFIG,
+      dialects: [...CONFIG.dialects],
+      namingRules: { ...CONFIG.namingRules, tablePhysicalTemplate: 'TB_{물리명}' },
+    })
+    const m = createEmptyModel()
+    m.tables['tb1'] = {
+      id: 'tb1', logicalName: '회원_가입_이력_상세', physicalName: 'MBR_REGISTRATION_HISTORY_DETAIL',
+      comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    await seedPulled(dir, m)
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const w = warningsOf().find((x) => x.kind === 'too-long' && x.scope === 'table')
+    const quoted = /물리명 "([^"]+)"/.exec(w?.message ?? '')?.[1]
+    expect(w?.label).toBe('MBR_REGISTRATION_HISTORY_DETAIL')    // 파일에서 찾을 수 있는 부분 이름
+    expect(quoted).toBe('TB_MBR_REGISTRATION_HISTORY_DETAIL')   // 실제로 DB 에 나갈 최종 이름
+    expect(quoted).not.toBe(w?.label)                           // 다리가 필요한 이유 그 자체
+  })
+
+  it('파일로 나가지 않는 테이블은 없는 경로를 가리키지 않는다', async () => {
+    // 물리명이 빈 테이블은 modelToFiles가 건너뛴다(unsafeFileName) — pull이 그 파일을 쓴 적이
+    // 없으므로 좌표로 쓸 경로가 없다. tableFileName은 그래도 문자열을 만들어 내서 그대로
+    // 찍으면 'erdd/tables/.yaml'이라는 **없는 파일**을 가리킨다. 손편집으로만 닿는 상태라
+    // 파일을 직접 고쳐 재현한다. 라벨은 그대로 둔다 — 파일에 그렇게 적혀 있는 것이 사실이다.
+    const m = createEmptyModel()
+    m.tables['tb1'] = {
+      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    await seedPulled(dir, m)
+    const tree = await readTree(dir)
+    ;(tree['erdd/tables/MBR.yaml'] as Record<string, unknown>)['name'] = ''
+    await writeTree(dir, tree)
+
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const warnings = warningsOf()
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings.every((w) => w.path === null)).toBe(true)
+    expect(warnings.some((w) => w.label === '.MBR_NO')).toBe(true)
+
+    out.length = 0
+    await validate({ cwd: dir, json: false, yes: false, strict: false })
+    expect(out.join('')).not.toContain('erdd/tables/.yaml')
+  })
+
   it('--json의 경고 객체에 path·label이 실린다', async () => {
     await seedPulled(dir, locatedModel())
     out.length = 0
