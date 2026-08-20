@@ -130,17 +130,31 @@ export class FileStore {
     }
 
     // 발급한 id 를 파일에 되쓴다. 안 쓰면 다음 로드가 또 새 id 를 발급해 같은 테이블이
-    // 매번 다른 객체가 된다(CLI push 의 reserve-ids 와 같은 문제).
+    // 매번 다른 객체가 된다(CLI push 의 reserve-ids 와 같은 문제). 되쓰기가 실패했는데
+    // 성공한 척 진행하면 메모리 모델은 새 id 를 갖고 디스크는 갖지 않아 다음 로드에서
+    // 또 다른 id 가 발급된다 — IO 실패는 던지지 말고 fail() 로 보내 읽기 전용으로 잠근다.
     if (result.assignedTree !== undefined) {
       for (const [rel, content] of Object.entries(result.assignedTree)) {
         if (canonical(tree[rel], rel) === canonical(content, rel)) continue
         const abs = join(this.#cwd, rel)
-        await mkdir(dirname(abs), { recursive: true })
-        await writeFile(abs, stringifyYaml(content), 'utf8')
+        try {
+          await mkdir(dirname(abs), { recursive: true })
+          await writeFile(abs, stringifyYaml(content), 'utf8')
+        } catch (err) {
+          return fail([{ path: rel, message: (err as Error).message }])
+        }
       }
     }
 
-    const layout = await readLayout(this.#cwd)
+    // layout.yaml 을 읽지 못한 IO 오류(권한 없음 등)도 load() 를 던지게 두면 안 된다 —
+    // 파싱 실패(깨진 YAML)와 달리 이건 fail() 로 보낸다. 파싱 실패는 readLayout 내부에서
+    // 이미 좌표만 잃고 넘어가므로 여기 닿지 않는다.
+    let layout: LayoutData
+    try {
+      layout = await readLayout(this.#cwd)
+    } catch (err) {
+      return fail([{ path: LAYOUT_FILE, message: (err as Error).message }])
+    }
     // **읽은 것**의 서명을 **쓴 것**과 비교한다. 같으면 이 감시 이벤트는 자기 쓰기다.
     this.#selfWrite = signatureOf(tree, layout) === this.#written
     const model = applyLayout(result.model, layout)

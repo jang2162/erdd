@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -161,5 +161,33 @@ describe('FileStore.load', () => {
     expect((await store.load()).ok).toBe(false)
     await writeFile(join(dir, 'erdd/tables/MBR.yaml'), MBR, 'utf8')
     expect((await store.load()).ok).toBe(true)
+  })
+
+  it('layout.yaml 을 읽지 못하는 IO 오류(디렉터리 등)는 던지지 않고 ok:false 로 알린다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    // layout.yaml 자리에 파일이 아니라 디렉터리를 둔다 — readFile 이 ENOENT 가 아닌
+    // EISDIR 로 던진다. readLayout 의 재던짐이 fail() 을 거치지 않으면 load() 자체가 reject 된다.
+    await mkdir(join(dir, 'erdd/layout.yaml'), { recursive: true })
+    const store = new FileStore(dir)
+    // reject 됐다면 이 await 가 던져 테스트가 실패한다 — load() 가 resolve 하는 것 자체가 증거다.
+    const s = await store.load()
+    expect(s.ok).toBe(false)
+    expect(store.isSelfWrite).toBe(false)
+  })
+
+  it('신규 id 되쓰기의 쓰기 실패는 던지지 않고 ok:false 로 알린다', async () => {
+    const dir = await project({
+      'erdd/tables/ORD.yaml': ['name: ORD', 'logicalName: 주문', 'columns: []', ''].join('\n'),
+    })
+    // 대상 파일을 읽기 전용으로 만든다 — id 를 발급한 뒤 되쓰려는 writeFile 이 EACCES 로 던진다.
+    await chmod(join(dir, 'erdd/tables/ORD.yaml'), 0o444)
+    const store = new FileStore(dir)
+    try {
+      const s = await store.load()
+      expect(s.ok).toBe(false)
+      expect(store.isSelfWrite).toBe(false)
+    } finally {
+      await chmod(join(dir, 'erdd/tables/ORD.yaml'), 0o644)
+    }
   })
 })
