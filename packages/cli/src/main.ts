@@ -124,11 +124,16 @@ export async function main(argv: string[], cwd: string): Promise<number> {
     case 'status': return status(ctx)
     case 'validate': return validate(ctx)
     case 'serve': {
-      const rawPort = flagValue(argv, 'port')
+      // flagValue는 값이 빠지면(다음 토큰이 없거나 다른 --플래그면) undefined를 돌려주는데,
+      // 이는 "플래그를 아예 안 줬다"와 구분되지 않는다 — argv.includes로 존재 여부를 따로
+      // 봐야 "--port"만 쓰고 값을 빠뜨린 경우를 조용히 기본 포트로 흘리지 않는다.
       let port: number | undefined
-      if (rawPort !== undefined) {
-        port = Number(rawPort)
-        if (!Number.isInteger(port) || port <= 0) return usageError(json, `--port 값이 올바르지 않습니다: ${rawPort}`)
+      if (argv.includes('--port')) {
+        const rawPort = flagValue(argv, 'port')
+        port = rawPort === undefined ? NaN : Number(rawPort)
+        if (!Number.isInteger(port) || port <= 0) {
+          return usageError(json, `--port 값이 올바르지 않습니다: ${rawPort ?? '(값 없음)'}`)
+        }
       }
       return serve({ ...ctx, port, open: !argv.includes('--no-open') })
     }

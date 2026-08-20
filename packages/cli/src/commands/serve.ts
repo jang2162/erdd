@@ -40,13 +40,18 @@ export function serve(ctx: CommandCtx): Promise<number> {
 }
 
 /** 실패해도 서버는 계속 돈다 — 브라우저를 못 여는 것은 치명적이지 않다. */
-async function openBrowser(url: string): Promise<void> {
+export async function openBrowser(url: string): Promise<void> {
   const cmd = process.platform === 'darwin' ? 'open'
     : process.platform === 'win32' ? 'start'
       : 'xdg-open'
   try {
     const { spawn } = await import('node:child_process')
-    spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref()
+    const child = spawn(cmd, [url], { stdio: 'ignore', detached: true })
+    // spawn() 자체의 동기 예외는 위 catch가 잡지만, 실행 파일이 PATH에 없는 경우(ENOENT 등)는
+    // 비동기 'error' 이벤트로 온다 — 리스너가 없으면 리스너 없는 EventEmitter 특성상 uncaught
+    // exception이 되어 서버 프로세스 전체가 죽는다. try/catch는 이 경로를 잡지 못한다.
+    child.on('error', () => { note(`브라우저를 열지 못했습니다. 직접 ${url} 을 여세요`) })
+    child.unref()
   } catch {
     note(`브라우저를 열지 못했습니다. 직접 ${url} 을 여세요`)
   }
