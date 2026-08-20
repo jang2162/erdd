@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -89,14 +89,27 @@ describe('HeaderTools — 트리거와 다이얼로그의 배선', () => {
    * 대신 **잠글 수 있는 각도**가 이것이다: 다이얼로그가 닫혀 있으면 화면에 아무 버튼도 없어야 한다.
    * 자체 `<DialogTrigger>` 가 남아 있으면 그 버튼이 보이므로 실제로 빨개진다.
    */
+  // VersionDialog는 useIsLocal(→ useMe)을 쓰므로 RequireAuth 안에서 렌더해야 한다. RequireAuth의
+  // auth.me 가 pending인 「불러오는 중…」 상태에서는 버튼이 0개인 것이 당연해 그 시점을 단언하면
+  // 이 케이스가 이빨을 잃는다(리뷰 I-2) — 실제로 로드된 뒤를 기다려야 한다.
+  it('VersionDialog 은 닫혀 있으면 자체 트리거를 렌더하지 않는다', async () => {
+    mockTrpcFetch({
+      'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' } }),
+    })
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    render(
+      <RequireAuth><VersionDialog projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /></RequireAuth>,
+      { wrapper: wrapper() },
+    )
+    await waitFor(() => expect(screen.queryByText('불러오는 중…')).toBeNull())
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  // 나머지는 useIsLocal 을 쓰지 않아 RequireAuth 도 auth.me 목도 필요 없다 — 걸어 두면
+  // "이 컴포넌트도 인증이 필요하다"는 잘못된 신호가 된다(리뷰 M-4).
   const CLOSED: { name: string; render: () => ReactNode }[] = [
-    // VersionDialog는 useIsLocal(→ useMe)을 쓰므로 RequireAuth 안에서 렌더해야 한다.
-    {
-      name: 'VersionDialog',
-      render: () => (
-        <RequireAuth><VersionDialog projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /></RequireAuth>
-      ),
-    },
     { name: 'DomainPanel', render: () => <DomainPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
     { name: 'DictPanel', render: () => <DictPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
     { name: 'CustomFieldPanel', render: () => <CustomFieldPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
@@ -108,9 +121,6 @@ describe('HeaderTools — 트리거와 다이얼로그의 배선', () => {
 
   for (const { name, render: renderClosed } of CLOSED) {
     it(`${name} 은 닫혀 있으면 자체 트리거를 렌더하지 않는다`, () => {
-      mockTrpcFetch({
-        'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' } }),
-      })
       useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
       grantEditPermission()
       render(<>{renderClosed()}</>, { wrapper: wrapper() })

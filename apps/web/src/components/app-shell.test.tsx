@@ -16,7 +16,7 @@ function renderShell(handlers: Parameters<typeof mockTrpcFetch>[0]) {
     <MemoryRouter>
       <QueryClientProvider client={queryClient}>
         <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
-          <AppShell userMenu={<span>내 메뉴</span>}>
+          <AppShell userMenu={<span>내 메뉴</span>} isLocal={false}>
             <p>본문</p>
           </AppShell>
         </TRPCProvider>

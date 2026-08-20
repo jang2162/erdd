@@ -3,12 +3,19 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import { DEFAULT_NAMING_RULES, LOCAL_PROJECT_ID, createEmptyModel } from '@erdd/core'
+import { DEFAULT_NAMING_RULES } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { useEditorStore } from '@/editor/store'
+import { assignLocation } from '@/lib/browser-nav'
 import { routes } from './routes.js'
+
+// HomeOrEditor는 로컬 모드에서 project id 를 클라이언트로 계산하지 않는다(리뷰 I-3) — 로컬
+// 서버가 실제로 여는 프로젝트(config.projectId ?? LOCAL_PROJECT_ID)를 웹은 알 방법이 없어,
+// 전체 이동으로 `/`를 다시 요청해 서버의 판정을 태운다. window.location.assign 은 jsdom 에서
+// 실제 이동을 일으키지 않으므로, "이동이 요청됐다"만 목으로 잠근다.
+vi.mock('@/lib/browser-nav', () => ({ assignLocation: vi.fn() }))
 
 /**
  * **실제 라우트 표를 그대로 렌더한다.** 페이지 컴포넌트를 직접 스텁에 꽂으면
@@ -37,6 +44,7 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   useEditorStore.getState().reset()
+  vi.mocked(assignLocation).mockClear()
 })
 
 describe('routes', () => {
@@ -63,23 +71,50 @@ describe('routes', () => {
   })
 
   // 서버 쪽 `/` 리다이렉트(Task 8)는 주소창으로 들어올 때만 걸린다 — AppShell의 브랜드 링크는
-  // react-router가 클라이언트에서 처리해 서버에 닿지 않으므로, 이 라우트 분기가 없으면
-  // 로컬 모드에서 홈 화면(HomePage)이 뜬다. HomePage에는 「설정」 링크가 없다.
-  it('로컬 모드에서 / 는 프로젝트로 리다이렉트한다', async () => {
+  // react-router가 클라이언트에서 처리해 서버에 닿지 않는다. 그렇다고 클라이언트가 project id 를
+  // 계산해서는 안 된다 — 로컬 서버가 실제로 여는 프로젝트는 `config.projectId ?? LOCAL_PROJECT_ID`
+  // 라 연결형 설정에서는 상수와 다를 수 있다(리뷰 I-3). 그래서 전체 이동으로 `/`를 다시 요청해
+  // 서버의 판정(server.ts:121)을 그대로 태운다.
+  it('로컬 모드에서 / 는 project id 를 계산하지 않고 서버로 전체 이동한다', async () => {
     renderAt('/', {
+      'auth.me': () => ({
+        data: { id: 'u1', email: 'local@erdd', name: '로컬', role: 'user', mode: 'local' },
+      }),
+    })
+    await waitFor(() => expect(assignLocation).toHaveBeenCalledWith('/'))
+  })
+
+  // 대조군 — I-3 의 ⚠️("서버 모드 경로가 바뀌면 안 된다")를 직접 잠근다.
+  it('서버 모드에서는 / 가 그대로 HomePage 다(전체 이동을 하지 않는다)', async () => {
+    renderAt('/', {
+      'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user' } }),
+      'org.list': () => ({ data: [] }),
+      'promotion.pendingCount': () => ({ data: { total: 0, byOrg: [] } }),
+    })
+    expect(await screen.findByRole('button', { name: '팀 조직 만들기' })).toBeInTheDocument()
+    expect(assignLocation).not.toHaveBeenCalled()
+  })
+
+  // 리뷰 I-1 — 로컬 모드에서 실제로 닿는 비-bare 라우트(에디터 헤더의 「설정」에서 한 번의
+  // 클릭)에 사용자 메뉴가 남아 있으면 「로그아웃」(auth.logout, 로컬 라우터에 없어 조용히
+  // 실패)·「설정」(→ auth.tokens.list 를 부르는 화면)으로 데려간다. 승격 배지(app-shell.tsx)도
+  // 같은 배선(ShellForCurrentUser → AppShell)이라 함께 잠근다(리뷰 M-3).
+  it('로컬 모드의 /p/<id>/settings 에는 사용자 메뉴도 승격 배지도 없다', async () => {
+    renderAt('/p/proj1/settings', {
       'auth.me': () => ({
         data: { id: 'u1', email: 'local@erdd', name: '로컬', role: 'user', mode: 'local' },
       }),
       'project.get': () => ({
         data: {
-          id: LOCAL_PROJECT_ID, orgId: 'local', name: '로컬 프로젝트', description: '',
+          id: 'proj1', orgId: 'local', name: '로컬 프로젝트', description: '',
           dialects: ['postgresql'], createdAt: '2026-01-01T00:00:00.000Z',
           namingRules: DEFAULT_NAMING_RULES, myRole: 'admin', myOrgRole: 'owner',
-          canEdit: true, canManage: true,
+          canEdit: true, canManage: false,
         },
       }),
-      'model.get': () => ({ data: { model: createEmptyModel(), seq: 1 } }),
     })
-    expect(await screen.findByRole('link', { name: /설정/ })).toBeInTheDocument()
+    await screen.findByText('로컬 프로젝트')
+    expect(screen.queryByRole('button', { name: '로컬' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /승격 요청/ })).not.toBeInTheDocument()
   })
 })

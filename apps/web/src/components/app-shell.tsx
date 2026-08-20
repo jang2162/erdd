@@ -8,10 +8,11 @@ import { PendingPromotionsBadge } from '@/components/pending-promotions-badge'
  *
  * `isLocal`은 prop 으로 받는다 — `useIsLocal`은 `MeContext`(=RequireAuth 안)를 요구하는데
  * `AppShell` 자신은 단독으로도 렌더된다(`app-shell.test.tsx`). 계산은 `routes.tsx`의
- * `Protected`(RequireAuth 안)가 하고 여기로 내린다.
+ * `Protected`(RequireAuth 안)가 하고 여기로 내린다. **필수 prop 이다** — 옵셔널이면 호출부가
+ * 빠뜨려도 타입 오류 없이 서버 동작(배지 폴링)으로 조용히 열린다(리뷰 M-1).
  */
 export function AppShell({ children, userMenu, isLocal }: {
-  children: ReactNode; userMenu?: ReactNode; isLocal?: boolean
+  children: ReactNode; userMenu?: ReactNode; isLocal: boolean
 }) {
   return (
     <div className="min-h-dvh">
