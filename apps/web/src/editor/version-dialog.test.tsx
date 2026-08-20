@@ -8,6 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
+import { RequireAuth } from '@/components/require-auth'
 import { useEditorStore } from './store.js'
 import { VersionDialog } from './version-dialog.js'
 
@@ -30,7 +31,12 @@ const REVISION_ITEM = {
   actorName: '오너',
 }
 
-function renderDialog() {
+// VersionDialog는 useIsLocal(→ useMe)을 쓴다 — RequireAuth 안에서만 렌더할 수 있다.
+function renderDialog(handlers: Parameters<typeof mockTrpcFetch>[0] = {}) {
+  const fetchMock = mockTrpcFetch({
+    'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' } }),
+    ...handlers,
+  })
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
@@ -38,15 +44,18 @@ function renderDialog() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<VersionDialog projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
+  render(
+    <RequireAuth><VersionDialog projectId={PROJECT_ID} open onOpenChange={() => {}} /></RequireAuth>,
+    { wrapper: w },
+  )
+  return fetchMock
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
 
 describe('VersionDialog', () => {
   it('opening the dialog renders the snapshot.list result', async () => {
-    mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
-    renderDialog()
+    renderDialog({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
     expect(await screen.findByText('배포 전 백업')).toBeInTheDocument()
     expect(screen.getByText(/rev 3/)).toBeInTheDocument()
     expect(screen.getByText(/릴리즈 직전 상태/)).toBeInTheDocument()
@@ -54,14 +63,13 @@ describe('VersionDialog', () => {
 
   it('creates a snapshot with the entered name and refreshes the list', async () => {
     grantEditPermission()
-    const fetchMock = mockTrpcFetch({
+    const fetchMock = renderDialog({
       'snapshot.list': () => ({ data: { items: [] } }),
       'snapshot.create': (input) => {
         expect(input).toMatchObject({ projectId: PROJECT_ID, name: '새 스냅샷' })
         return { data: { id: 'new-snap' } }
       },
     })
-    renderDialog()
     await screen.findByText('아직 스냅샷이 없습니다')
     await userEvent.type(screen.getByLabelText('이름'), '새 스냅샷')
     await userEvent.click(screen.getByRole('button', { name: '스냅샷 만들기' }))
@@ -80,7 +88,7 @@ describe('VersionDialog', () => {
   it('confirms and calls snapshot.restore when 복원 is clicked', async () => {
     grantEditPermission()
     vi.stubGlobal('confirm', vi.fn(() => true))
-    const fetchMock = mockTrpcFetch({
+    const fetchMock = renderDialog({
       'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }),
       'snapshot.restore': (input) => {
         expect(input).toMatchObject({ projectId: PROJECT_ID, snapshotId: SNAPSHOT_ITEM.id })
@@ -88,7 +96,6 @@ describe('VersionDialog', () => {
       },
       'model.get': () => ({ data: { model: { tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {} }, seq: 4 } }),
     })
-    renderDialog()
     await screen.findByText('배포 전 백업')
     await userEvent.click(screen.getByRole('button', { name: '복원' }))
 
@@ -101,20 +108,18 @@ describe('VersionDialog', () => {
   })
 
   it('switching to 이력 renders the revision.list result', async () => {
-    mockTrpcFetch({
+    renderDialog({
       'snapshot.list': () => ({ data: { items: [] } }),
       'revision.list': () => ({ data: { items: [REVISION_ITEM], nextCursor: null } }),
     })
-    renderDialog()
-    await userEvent.click(screen.getByRole('button', { name: '이력' }))
+    await userEvent.click(await screen.findByRole('button', { name: '이력' }))
     expect(await screen.findByText(/메모 생성/)).toBeInTheDocument()
     expect(screen.getByText(/오너/)).toBeInTheDocument()
   })
 
   it('Viewer는 스냅샷을 만들 수도 복원할 수도 없다', async () => {
     // grantEditPermission을 부르지 않는다 — canEdit=false, canManage=false.
-    mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
-    renderDialog()
+    renderDialog({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
     await screen.findByText('배포 전 백업')
 
     expect(screen.queryByRole('button', { name: '스냅샷 만들기' })).toBeNull()
@@ -124,8 +129,7 @@ describe('VersionDialog', () => {
 
   it('Editor는 스냅샷을 만들 수 있지만 복원·삭제는 못 한다', async () => {
     grantEditPermission({ canEdit: true, canManage: false })
-    mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
-    renderDialog()
+    renderDialog({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
     await screen.findByText('배포 전 백업')
 
     expect(screen.getByRole('button', { name: '스냅샷 만들기' })).toBeInTheDocument()
@@ -135,8 +139,7 @@ describe('VersionDialog', () => {
 
   it('Project Admin은 복원·삭제까지 할 수 있다', async () => {
     grantEditPermission({ canEdit: true, canManage: true })
-    mockTrpcFetch({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
-    renderDialog()
+    renderDialog({ 'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }) })
     await screen.findByText('배포 전 백업')
 
     expect(screen.getByRole('button', { name: '스냅샷 만들기' })).toBeInTheDocument()

@@ -3,9 +3,11 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
+import { DEFAULT_NAMING_RULES, LOCAL_PROJECT_ID, createEmptyModel } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { useEditorStore } from '@/editor/store'
 import { routes } from './routes.js'
 
 /**
@@ -34,6 +36,7 @@ function renderAt(path: string, handlers: Parameters<typeof mockTrpcFetch>[0]) {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
 })
 
 describe('routes', () => {
@@ -57,5 +60,26 @@ describe('routes', () => {
     renderAt('/settings', {})
     await waitFor(() => expect(screen.queryByText('불러오는 중…')).toBeNull())
     expect(screen.queryByText('비밀번호 변경')).toBeNull()
+  })
+
+  // 서버 쪽 `/` 리다이렉트(Task 8)는 주소창으로 들어올 때만 걸린다 — AppShell의 브랜드 링크는
+  // react-router가 클라이언트에서 처리해 서버에 닿지 않으므로, 이 라우트 분기가 없으면
+  // 로컬 모드에서 홈 화면(HomePage)이 뜬다. HomePage에는 「설정」 링크가 없다.
+  it('로컬 모드에서 / 는 프로젝트로 리다이렉트한다', async () => {
+    renderAt('/', {
+      'auth.me': () => ({
+        data: { id: 'u1', email: 'local@erdd', name: '로컬', role: 'user', mode: 'local' },
+      }),
+      'project.get': () => ({
+        data: {
+          id: LOCAL_PROJECT_ID, orgId: 'local', name: '로컬 프로젝트', description: '',
+          dialects: ['postgresql'], createdAt: '2026-01-01T00:00:00.000Z',
+          namingRules: DEFAULT_NAMING_RULES, myRole: 'admin', myOrgRole: 'owner',
+          canEdit: true, canManage: true,
+        },
+      }),
+      'model.get': () => ({ data: { model: createEmptyModel(), seq: 1 } }),
+    })
+    expect(await screen.findByRole('link', { name: /설정/ })).toBeInTheDocument()
   })
 })

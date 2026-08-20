@@ -13,15 +13,18 @@ import { HeaderTools } from '@/editor/header-tools'
 import { TableTree } from '@/editor/table-tree'
 import { BrandWordmark } from '@/components/brand-mark'
 import { UserMenu } from '@/components/user-menu'
-import { useMe } from '@/components/require-auth'
+import { useIsLocal, useMe } from '@/components/require-auth'
 import { Button } from '@/components/ui/button'
 
 export function ProjectPage() {
   const { projectId = '' } = useParams()
   const me = useMe()
+  const isLocal = useIsLocal()
   const load = useModelLoader(projectId)
   const loaded = useEditorStore((s) => s.loaded)
-  useRealtime(projectId)
+  // 로컬은 협업자가 없다 — 빈 projectId 면 useRealtime의 ready 가드(loadedProjectId === projectId)가
+  // 절대 참이 되지 않아 소켓을 열지 않는다.
+  useRealtime(isLocal ? '' : projectId)
 
   if (load.isError) {
     return <p role="alert" className="p-8 text-destructive">{load.error.message}</p>
@@ -33,12 +36,12 @@ export function ProjectPage() {
         <header className="flex h-12 shrink-0 items-center justify-between border-b bg-card px-4">
           <Link to="/" aria-label="홈으로"><BrandWordmark /></Link>
           <div className="flex items-center gap-2">
-            {loaded && <PresenceBar selfUserId={me.id} />}
+            {loaded && !isLocal && <PresenceBar selfUserId={me.id} />}
             {loaded && <HeaderTools projectId={projectId} />}
             <Button variant="ghost" size="sm" asChild>
               <Link to={`/p/${projectId}/settings`}><Settings /> 설정</Link>
             </Button>
-            <UserMenu />
+            {!isLocal && <UserMenu />}
           </div>
         </header>
         <div className="flex min-h-0 flex-1">

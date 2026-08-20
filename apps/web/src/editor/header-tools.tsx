@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useIsLocal } from '@/components/require-auth'
 
 /** 상단 우측에서 열 수 있는 관리 도구. 한 번에 하나만 열린다. */
 type ToolId =
@@ -34,6 +35,8 @@ export function HeaderTools({ projectId }: { projectId: string }) {
   const close = (open: boolean) => { if (!open) setTool(null) }
   const warnings = useWarnings()
   const canEdit = useEditorStore((s) => s.canEdit)
+  // 공용 리소스는 서버의 라이브러리 테이블에 얹혀 있다 — 로컬 서버에는 그 프로시저가 없다.
+  const isLocal = useIsLocal()
 
   return (
     <>
@@ -54,7 +57,9 @@ export function HeaderTools({ projectId }: { projectId: string }) {
           <DropdownMenuItem onSelect={() => setTool('domain')}>도메인</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setTool('dict')}>단어·용어 사전</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setTool('customField')}>커스텀 항목</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setTool('resource')}>공용 리소스</DropdownMenuItem>
+          {!isLocal && (
+            <DropdownMenuItem onSelect={() => setTool('resource')}>공용 리소스</DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -87,7 +92,11 @@ export function HeaderTools({ projectId }: { projectId: string }) {
       <DomainPanel projectId={projectId} open={tool === 'domain'} onOpenChange={close} />
       <DictPanel projectId={projectId} open={tool === 'dict'} onOpenChange={close} />
       <CustomFieldPanel projectId={projectId} open={tool === 'customField'} onOpenChange={close} />
-      <ResourcePanel projectId={projectId} open={tool === 'resource'} onOpenChange={close} />
+      {/*
+        닫아 두는 것으로는 부족하다 — ResourcePanel 은 enabled 가드 없이 마운트 즉시
+        resource.library.listForProject 를 부른다. 로컬 라우터에 없는 프로시저다.
+      */}
+      {!isLocal && <ResourcePanel projectId={projectId} open={tool === 'resource'} onOpenChange={close} />}
       <NamingCheck projectId={projectId} open={tool === 'namingCheck'} onOpenChange={close} />
       <DdlImportDialog projectId={projectId} open={tool === 'ddlImport'} onOpenChange={close} />
       <ExportDialog open={tool === 'export'} onOpenChange={close} />

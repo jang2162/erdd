@@ -8,6 +8,7 @@ import { DEFAULT_NAMING_RULES, createEmptyModel, type NamingRules } from '@erdd/
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { RequireAuth } from '@/components/require-auth'
 import { ProjectSettingsPage } from './project-settings.js'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
@@ -67,8 +68,10 @@ const MODEL_FIXTURE = {
   seq: 1,
 }
 
+// ProjectSettingsPage는 useIsLocal(→ useMe)을 쓴다 — RequireAuth 안에서만 렌더할 수 있다.
 function renderSettings(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   mockTrpcFetch({
+    'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' } }),
     'project.members.list': () => ({ data: [] }),
     'org.members.list': () => ({ data: [] }),
     'model.get': () => ({ data: MODEL_FIXTURE }),
@@ -76,7 +79,10 @@ function renderSettings(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   })
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
-  const Stub = createRoutesStub([{ path: '/p/:projectId/settings', Component: ProjectSettingsPage }])
+  const Stub = createRoutesStub([{
+    path: '/p/:projectId/settings',
+    Component: () => <RequireAuth><ProjectSettingsPage /></RequireAuth>,
+  }])
   render(
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
