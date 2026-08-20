@@ -19,9 +19,14 @@ export type NameMetaGroup = { name: string; a?: string; c?: string; n?: string }
  * lower_snake 프로젝트의 머릿말이 실제 이름과 달라 보인다 — 파싱할 때 대문자로 다시 색인한다.
  */
 export type NameMeta = {
-  /** 조합된 물리명(대문자 색인) → 부분 + 그룹 이름 */
+  /**
+   * 조합된 물리명 → 부분 + 그룹 이름.
+   * ⚠️ **여기만 빌드와 파싱의 키 규약이 갈린다** — 파싱은 대문자로 색인하지만 빌드는 원문 그대로다.
+   * 직렬화가 이 키를 JSON 키로 **그대로** 쓰므로 대문자로 모으면 머릿말의 이름이 뭉개진다(설계 3.1).
+   * 그룹 쪽은 값의 `name` 이 원문을 나르므로 양쪽 다 대문자로 맞춰 두었다.
+   */
   tables: Record<string, NameMetaEntry>
-  /** 그룹 이름(대문자 색인) → 속성 */
+  /** 그룹 이름(대문자 색인) → 속성. 표시용 원문 이름은 `NameMetaGroup.name` 이 나른다. */
   groups: Record<string, NameMetaGroup>
 }
 
@@ -36,8 +41,19 @@ export type NameMeta = {
  * ⚠️ ddl.ts · dbml.ts 가 **같은 몸통을 복제**하고 있었다. 내보내는 테이블 목록은 인자로 받으므로
  * 공유하지 못할 이유가 없다 — 그룹 수집이 붙으며 커져 한 자리로 합쳤다.
  *
- * ⚠️ **빌드는 그룹 키를 원문 그대로 쓴다**(대문자 색인은 파싱만 한다). 직렬화가 `item.name` 을
- * 키로 쓰므로 어느 쪽이든 JSON 에는 원문 이름이 나간다.
+ * ⚠️ **그룹은 대문자 키로 모은다 — 파싱과 같은 색인이다.** 원문 키로 모으면 대소문자만 다른 동명
+ * 그룹(`Sales`/`SALES`)이 **둘 다 실리고** 파서가 대문자로 색인하며 뒤엣것이 앞엣것을 덮는다.
+ * 이름이 완전히 같을 때는 앞엣것이 이기므로 **같은 결함의 두 경우가 반대로 동작**했다. 어느 쪽이
+ * 이기느냐보다 두 경우가 같은 규칙을 쓰는 것이 핵심이다. 직렬화는 값의 `name`(원문)을 키로 쓰므로
+ * 대문자로 모아도 **머릿말에는 원문 이름이 나간다**(설계 3.1).
+ *
+ * ⚠️ 테이블 항목의 `g` 도 **이긴 쪽의 원문 이름**으로 맞춘다 — 그러지 않으면 `g:"SALES"` 가 `g`
+ * 구획에 없는 키를 가리켜 우리가 낸 머릿말이 스스로 말이 안 된다.
+ *
+ * ⚠️ **동명 그룹이 뭉개지는 것 자체는 여기서 고칠 일이 아니다.** 파일 형식은 이미 그룹 이름의
+ * 유일성을 요구하고(`filesToModel` 이 「이름으로 참조되므로 유일해야 합니다」를 낸다) 머릿말도
+ * 이름을 좌표로 삼는다 — 프로젝트를 넘으면 id 가 무의미하기 때문이다. 뿌리는 **모델이 그 상태를
+ * 허용하고 웹의 그룹 이름 변경에 중복 검사가 없다**는 데 있다.
  */
 export function buildNameMeta(
   model: ProjectModel, tables: Table[], rules: NamingRules,
@@ -48,15 +64,19 @@ export function buildNameMeta(
     const l = composeTableLogicalName(t, model, rules)
     const group = t.groupId === null ? undefined : model.tableGroups[t.groupId]
     if (p === t.physicalName && l === t.logicalName && group === undefined) continue
-    meta.tables[p] = group === undefined
-      ? { p: t.physicalName, l: t.logicalName }
-      : { p: t.physicalName, l: t.logicalName, g: group.name }
-    if (group === undefined || meta.groups[group.name] !== undefined) continue
+    if (group === undefined) {
+      meta.tables[p] = { p: t.physicalName, l: t.logicalName }
+      continue
+    }
+    const key = group.name.trim().toUpperCase()
+    const won = meta.groups[key]
+    meta.tables[p] = { p: t.physicalName, l: t.logicalName, g: won?.name ?? group.name }
+    if (won !== undefined) continue
     const item: NameMetaGroup = { name: group.name }
     if (group.alias !== '') item.a = group.alias
     if (group.color !== '') item.c = group.color
     if (group.comment !== null && group.comment !== '') item.n = group.comment
-    meta.groups[group.name] = item
+    meta.groups[key] = item
   }
   return meta
 }
