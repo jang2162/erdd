@@ -1,9 +1,9 @@
-import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
-import { FileStore } from './store.js'
+import { FileStore, LocalStoreError } from './store.js'
 
 async function project(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-local-'))
@@ -261,7 +261,9 @@ describe('FileStore.mutate', () => {
         comment: null, domainId: null, custom: {},
       },
     }
-    await expect(store.mutate([bad])).rejects.toThrow()
+    // applyOps 가 던지는 OpApplyError 를 LocalStoreError 로 바꿔 던지는 경로를 잠근다 —
+    // 다음 태스크의 라우터가 LocalStoreError 만 400 으로 매핑하므로 타입이 바뀌면 500 이 된다.
+    await expect(store.mutate([bad])).rejects.toThrow(LocalStoreError)
     expect(store.state.model.columns).toEqual({})
   })
 
@@ -274,5 +276,34 @@ describe('FileStore.mutate', () => {
     const { seq } = await store.setModel(snap)
     expect(seq).toBe(3)
     expect(Object.keys(store.state.model.tables)).toEqual(['t1'])
+  })
+
+  it('flush() 가 #chain 을 지난다 — 뒤에 온 mutate 는 flush 의 디스크 쓰기가 끝난 뒤에야 실행된다', async () => {
+    const dir = await project({})
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([createTable('t1', 'A')])
+    const flush1 = store.flush()
+    await store.mutate([createTable('t2', 'B')])
+    // flush1 이 #chain 을 우회했다면 이 mutate 는 flush1 의 writeTree 를 기다리지 않고 먼저
+    // 끝나 A.yaml 이 아직 없을 수 있다. #chain 을 지난다면 이 시점엔 이미 다 쓰여 있어야 한다.
+    expect(await readFile(join(dir, 'erdd/tables/A.yaml'), 'utf8')).toContain('name: A')
+    const flush2 = store.flush()
+    await Promise.all([flush1, flush2])
+    expect(await readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).toContain('name: B')
+  })
+
+  it('flush() 가 쓰기에 실패하면 dirty 를 유지해 다음 flush 가 재시도한다', async () => {
+    const dir = await project({})
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([createTable('t1', 'A')])
+    // layout.yaml 자리에 디렉터리를 둔다 — writeFile 이 EISDIR 로 던져 flush() 가 실패한다.
+    await mkdir(join(dir, 'erdd/layout.yaml'), { recursive: true })
+    await expect(store.flush()).rejects.toThrow()
+    // 실패했으니 dirty 가 꺼지면 안 된다 — 장애물을 치우면 다음 flush 가 실제로 써야 한다.
+    await rm(join(dir, 'erdd/layout.yaml'), { recursive: true, force: true })
+    await store.flush()
+    expect(await readFile(join(dir, 'erdd/layout.yaml'), 'utf8')).toContain('t1')
   })
 })

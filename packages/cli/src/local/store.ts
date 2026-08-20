@@ -5,7 +5,7 @@ import { uuidv7 } from 'uuidv7'
 import {
   MAX_OPS_PER_MUTATION,
   applyLayout, applyOps, createEmptyModel, filesToModel, layoutFromModel, modelToFiles,
-  validateModelIntegrity,
+  OpApplyError, validateModelIntegrity,
   type FileTree, type LayoutData, type Note, type Op, type Position, type ProjectModel,
   type TableLayout,
 } from '@erdd/core'
@@ -189,9 +189,16 @@ export class FileStore {
           `변경이 ${ops.length}건으로 한 번에 반영할 수 있는 ${MAX_OPS_PER_MUTATION}건을 넘습니다`,
         )
       }
-      const next = applyOps(this.#state.model, ops)
-      const issues = validateModelIntegrity(next)
-      if (issues.length > 0) throw new LocalStoreError(issues[0]!.message)
+      // applyOps 는 내부에서 이미 무결성을 검사하고 위반이면 OpApplyError 를 던진다 — 여기서
+      // 다시 검사하면 언제나 빈 배열만 본다(죽은 코드). LocalStoreError 로 바꿔 던져 다음 태스크의
+      // 라우터가 무결성 위반을 400 으로 매핑하는 관례를 유지한다.
+      let next: ProjectModel
+      try {
+        next = applyOps(this.#state.model, ops)
+      } catch (err) {
+        if (err instanceof OpApplyError) throw new LocalStoreError(err.message)
+        throw err
+      }
       return this.#commit(next)
     })
   }
@@ -214,24 +221,36 @@ export class FileStore {
     this.#dirty = true
     if (this.#timer !== null) clearTimeout(this.#timer)
     // 드래그 한 번이 초당 수십 건의 mutate 를 낸다 — 매번 파일을 쓰면 감시 루프와 함께 요동친다.
-    this.#timer = setTimeout(() => { void this.flush() }, WRITE_DEBOUNCE_MS)
+    // 타이머發 호출은 아무도 반환값을 보지 않으므로 실패를 삼킨다 — #dirty 는 flush() 가 실패
+    // 시 참으로 남기므로 다음 편집이나 명시적 flush() 가 재시도한다.
+    this.#timer = setTimeout(() => { this.flush().catch(() => {}) }, WRITE_DEBOUNCE_MS)
     return { seq }
   }
 
-  /** 대기 중인 쓰기를 지금 끝낸다. 프로세스 종료 전에 반드시 부른다. */
+  /**
+   * 대기 중인 쓰기를 지금 끝낸다. 프로세스 종료 전에 반드시 부른다.
+   *
+   * `#serialize` 를 지난다 — 타이머發 호출과 명시적 호출(예: 다음 태스크의 서버 종료 훅)이
+   * 동시에 들어와도 `writeTree` 두 개가 겹쳐 돌지 않는다(`writeTree` 는 삭제·쓰기 패스가 나뉘어
+   * 있어 원자적이지 않다). ⚠️ 체인 안에서 이 메서드를 await 하면 자기 자신을 기다려 교착된다 —
+   * `mutate`/`setModel` 은 절대 `flush()` 를 부르지 않는다.
+   */
   async flush(): Promise<void> {
-    if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
-    if (!this.#dirty) return
-    this.#dirty = false
-    const model = this.#state.model
-    const { tree } = modelToFiles(model)
-    await writeTree(this.#cwd, tree)
-    const layout = layoutFromModel(model)
-    const abs = join(this.#cwd, LAYOUT_FILE)
-    await mkdir(dirname(abs), { recursive: true })
-    await writeFile(abs, stringifyYaml(layout), 'utf8')
-    // 다음 load 가 이 서명과 같은 것을 읽으면 그 감시 이벤트는 자기 쓰기다.
-    this.#written = signatureOf(tree, layout)
-    this.#selfWrite = true
+    return this.#serialize(async () => {
+      if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
+      if (!this.#dirty) return
+      const model = this.#state.model
+      const { tree } = modelToFiles(model)
+      await writeTree(this.#cwd, tree)
+      const layout = layoutFromModel(model)
+      const abs = join(this.#cwd, LAYOUT_FILE)
+      await mkdir(dirname(abs), { recursive: true })
+      await writeFile(abs, stringifyYaml(layout), 'utf8')
+      // 쓰기가 전부 성공한 뒤에만 dirty 를 내린다 — 실패하면 참으로 남아 다음 flush 가 재시도한다.
+      this.#dirty = false
+      // 다음 load 가 이 서명과 같은 것을 읽으면 그 감시 이벤트는 자기 쓰기다.
+      this.#written = signatureOf(tree, layout)
+      this.#selfWrite = true
+    })
   }
 }
