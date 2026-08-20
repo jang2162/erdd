@@ -2,13 +2,12 @@ import { initTRPC, TRPCError } from '@trpc/server'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  createEmptyModel, parseOps, DIALECTS, NamingRulesStrictSchema, OpParseError,
-  type ProjectModel, type RunMode,
+  parseOps, DIALECTS, NamingRulesStrictSchema, OpParseError, type RunMode,
 } from '@erdd/core'
 import { writeConfig, type ErddConfig } from '../config.js'
 import { FileStore, LocalStoreError } from './store.js'
 import {
-  isIntactSnapshot, readSnapshots, updateSnapshots, type SnapshotRecord,
+  readSnapshots, snapshotModel, updateSnapshots, type SnapshotRecord,
 } from './snapshots.js'
 
 export type LocalContext = {
@@ -59,10 +58,12 @@ function toRecord(store: FileStore, name: string, description: string): Snapshot
 async function requireSnapshot(cwd: string, snapshotId: string): Promise<SnapshotRecord> {
   const s = (await readSnapshots(cwd)).find((x) => x.id === snapshotId)
   if (!s) throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
-  if (!isIntactSnapshot(s)) {
+  const model = snapshotModel(s)
+  if (model === null) {
     throw new TRPCError({ code: 'BAD_REQUEST', message: '스냅샷이 손상됐습니다' })
   }
-  return s
+  // 누락 컬렉션이 보충된 **파싱 결과**를 싣는다 — 원본을 그대로 두면 그 보충이 사라진다.
+  return { ...s, model }
 }
 
 /** 저장소의 도메인 오류(읽기 전용·op 상한·무결성)를 한자리에서 400 으로 바꾼다. */
@@ -217,9 +218,8 @@ export function createLocalRouter() {
         .input(z.object({ projectId: z.string(), snapshotId: z.string() }))
         .mutation(({ ctx, input }) => wrap(async () => {
           const s = await requireSnapshot(ctx.cwd, input.snapshotId)
-          // 옛 스냅샷에는 신규 컬렉션 키가 없을 수 있다 — 서버 restore 와 같은 정규화를 한다.
-          const model: ProjectModel = { ...createEmptyModel(), ...s.model }
-          return await ctx.store.setModel(model)
+          // 옛 스냅샷의 누락 컬렉션 보충은 requireSnapshot 의 스키마 파싱이 이미 했다.
+          return await ctx.store.setModel(s.model)
         })),
     }),
   })

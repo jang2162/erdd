@@ -64,6 +64,13 @@ const createOrphanColumn = (): Op => ({
 
 const MISSING_SNAPSHOT = '00000000-0000-7000-8000-0000000000aa'
 
+/** 손상된 `.erdd/snapshots.json` 을 직접 만든다 — 라우터를 거치지 않아야 담을 수 있는 모양이다. */
+async function writeSnapshotsFile(cwd: string, snapshots: unknown[]): Promise<void> {
+  const abs = join(cwd, SNAPSHOTS_FILE)
+  await mkdir(dirname(abs), { recursive: true })
+  await writeFile(abs, JSON.stringify({ snapshots }), 'utf8')
+}
+
 describe('로컬 라우터', () => {
   it('auth.me 가 로컬 모드를 알린다', async () => {
     expect(await (await caller()).auth.me()).toMatchObject({ mode: 'local' })
@@ -206,34 +213,85 @@ describe('로컬 라우터', () => {
   })
 
   /**
-   * ③ `.erdd/snapshots.json` 은 사용자가 손으로 열 수 있는 평범한 파일이다. `model` 키가 없는
-   * 레코드를 그대로 복원하면 `{ ...createEmptyModel(), ...s.model }` 이 **「유효한 빈 모델」**이
-   * 되고, 무결성 검사에 걸릴 것이 없어 통과한 뒤 flush 가 사용자의 `erdd/` 를 통째로 비운다.
+   * ③ `.erdd/snapshots.json` 은 사용자가 손으로 열 수 있는 평범한 파일이다. 반쪽짜리 `model` 을
+   * 그대로 복원하면 `{ ...createEmptyModel(), ...s.model }` 정규화가 **「유효한 빈 모델」**을 만들고,
+   * 그것은 무결성 검사에 걸릴 것이 없어 통과한 뒤 flush 가 사용자의 `erdd/` 를 통째로 비운다.
    * 오류도 로그도 없는 조용한 데이터 손실이라 반드시 막아야 한다.
+   *
+   * ⚠️ **`model` 키가 없는 것과 `{}` 인 것은 손상 모양만 한 끗 다를 뿐 결과가 같다** — 둘 다 잠근다.
    */
-  it('model 이 없는 손상 스냅샷은 거절하고 사용자 모델을 지킨다', async () => {
+  const BROKEN_MODELS: [name: string, model: unknown][] = [
+    ['model 키가 아예 없다', undefined],
+    ['model 이 빈 객체다', {}],
+    ['model 에 필수 컬렉션이 모자란다', { tables: {}, columns: {} }],
+  ]
+
+  for (const [label, model] of BROKEN_MODELS) {
+    it(`손상 스냅샷을 거절하고 사용자 모델을 지킨다 — ${label}`, async () => {
+      const c = await ctx()
+      const call = createLocalRouter().createCaller(c)
+      await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
+
+      await writeSnapshotsFile(c.cwd, [{
+        id: MISSING_SNAPSHOT, name: '깨진 것', description: '',
+        revisionSeq: 0, createdAt: new Date(0).toISOString(),
+        ...(model === undefined ? {} : { model }),
+      }])
+
+      await expect(call.snapshot.restore({
+        projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
+      })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+      await expect(call.snapshot.get({
+        projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
+      })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+
+      // 요점은 이것이다 — 사용자 모델이 그대로 남아 있어야 한다.
+      expect((await call.model.get({ projectId: LOCAL_PROJECT_ID })).model.tables[T1]).toBeDefined()
+    })
+  }
+
+  /**
+   * ⚠️ 옛 스냅샷에는 나중에 생긴 컬렉션 키가 아예 없을 수 있다. 그 보충은 이제
+   * `ProjectModelSchema` 의 `.default({})` 가 **파싱하며** 한다 — 판정만 하고 원본을 그대로
+   * 넘기면 보충이 사라진다. 그래서 파싱 **결과**를 쓰는지를 여기서 잠근다.
+   */
+  it('신규 컬렉션 키가 없는 옛 스냅샷도 보충해서 복원한다', async () => {
     const c = await ctx()
     const call = createLocalRouter().createCaller(c)
     await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
 
-    const abs = join(c.cwd, SNAPSHOTS_FILE)
-    await mkdir(dirname(abs), { recursive: true })
-    await writeFile(abs, JSON.stringify({
-      snapshots: [{
-        id: MISSING_SNAPSHOT, name: '깨진 것', description: '',
-        revisionSeq: 0, createdAt: new Date(0).toISOString(),
-      }],
-    }), 'utf8')
+    // words·terms·customFields 가 없는 옛 모양이다(나머지 일곱 컬렉션은 있다).
+    await writeSnapshotsFile(c.cwd, [{
+      id: MISSING_SNAPSHOT, name: '옛 것', description: '',
+      revisionSeq: 0, createdAt: new Date(0).toISOString(),
+      model: {
+        tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {},
+        tableGroups: {}, domains: {},
+      },
+    }])
 
-    await expect(call.snapshot.restore({
-      projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
-    })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
-    await expect(call.snapshot.get({
-      projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
-    })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    await call.snapshot.restore({ projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT })
+    const { model } = await call.model.get({ projectId: LOCAL_PROJECT_ID })
+    expect(model.tables[T1]).toBeUndefined()
+    expect(model.words).toEqual({})
+    expect(model.terms).toEqual({})
+    expect(model.customFields).toEqual({})
+  })
 
-    // 요점은 이것이다 — 사용자 모델이 그대로 남아 있어야 한다.
+  /**
+   * ⚠️ 손상 판정이 **정상 경로를 막지 않는다**는 증거다. 빈 프로젝트에서 만든 스냅샷은
+   * 「비어 있음」이 아니라 **열 컬렉션 키가 전부 있는 온전한 모델**이므로 통과해야 한다.
+   * 이것이 없으면 위 잠금은 「빈 모델을 전부 거절」로 과하게 조여도 초록으로 남는다.
+   */
+  it('정당하게 비어 있는 스냅샷은 그대로 복원된다', async () => {
+    const call = await caller()
+    const { id } = await call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '빈 상태' })
+
+    await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
     expect((await call.model.get({ projectId: LOCAL_PROJECT_ID })).model.tables[T1]).toBeDefined()
+
+    await call.snapshot.restore({ projectId: LOCAL_PROJECT_ID, snapshotId: id })
+    expect((await call.model.get({ projectId: LOCAL_PROJECT_ID })).model.tables[T1]).toBeUndefined()
   })
 })
 

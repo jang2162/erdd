@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { ProjectModel } from '@erdd/core'
+import { ProjectModelSchema, type ProjectModel } from '@erdd/core'
 
 export const SNAPSHOTS_FILE = '.erdd/snapshots.json'
 
@@ -35,18 +35,27 @@ export async function writeSnapshots(cwd: string, items: SnapshotRecord[]): Prom
 }
 
 /**
- * 레코드가 **복원에 쓸 수 있는 모양인가.**
+ * 레코드에서 **복원에 쓸 수 있는 모델**을 꺼낸다. 못 꺼내면 `null`.
  *
- * ⚠️ `model` 이 없는 레코드를 그대로 쓰면 `{ ...createEmptyModel(), ...s.model }` 정규화가
- * 아무것도 덮지 않아 **「유효한 빈 모델」**이 된다. 그것은 무결성 검사에 걸릴 것이 없어 통과하고,
- * `setModel` 뒤의 flush 가 사용자의 `erdd/` 파일을 통째로 비운다 — 오류도 로그도 없는 조용한
- * 데이터 손실이다. `.erdd/snapshots.json` 은 사용자가 손으로 열 수 있는 평범한 파일이라
- * 그런 레코드가 실제로 생길 수 있다(최상위 JSON 모양만 막던 방어를 원소 단위까지 내린다).
+ * ⚠️ 반쪽짜리 `model` 을 그대로 쓰면 `{ ...createEmptyModel(), ...s.model }` 정규화가
+ * **「유효한 빈 모델」**을 만든다. 그것은 무결성 검사에 걸릴 것이 없어 통과하고, `setModel` 뒤의
+ * flush 가 사용자의 `erdd/` 파일을 통째로 비운다 — 오류도 로그도 없는 조용한 데이터 손실이다.
+ * `.erdd/snapshots.json` 은 사용자가 손으로 열 수 있는 평범한 파일이라 그런 레코드가 실제로
+ * 생길 수 있다(최상위 JSON 모양만 막던 방어를 원소 단위까지 내린다).
  *
- * 누락된 **컬렉션**을 보충하는 정규화는 그대로 둔다 — 옛 스냅샷을 여는 데 필요하고 옳다.
+ * **손으로 만든 모양 검사로는 부족하다** — `model` 키가 **없는** 것만 막으면 `{}` 는 그대로
+ * 통과해 같은 유실이 난다. 그래서 `ProjectModelSchema` 로 판정한다.
+ * - `{}` 는 걸린다 — `tables`·`columns` 등 일곱 컬렉션은 기본값이 없는 필수 키다.
+ * - **정당하게 비어 있는 스냅샷은 통과한다** — 빈 프로젝트를 스냅샷해도 열 컬렉션 키가 전부 있는
+ *   온전한 모델이 저장되기 때문이다.
+ *
+ * ⚠️ 반환값은 원본이 아니라 **파싱 결과**다. `words`·`terms`·`customFields` 는 `.default({})` 라
+ * **누락 컬렉션 보충이 파싱 안에서 일어난다**(옛 스냅샷을 여는 데 필요하다) — 원본을 그대로
+ * 넘기면 그 보충이 사라진다.
  */
-export function isIntactSnapshot(rec: SnapshotRecord): boolean {
-  return typeof rec.model === 'object' && rec.model !== null && !Array.isArray(rec.model)
+export function snapshotModel(rec: SnapshotRecord): ProjectModel | null {
+  const parsed = ProjectModelSchema.safeParse(rec.model)
+  return parsed.success ? parsed.data : null
 }
 
 /** 모든 읽기-수정-쓰기가 지나는 체인. `FileStore` 의 것과 별개다 — 파일이 다르다. */
