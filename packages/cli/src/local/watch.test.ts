@@ -72,6 +72,35 @@ describe('watchProject', () => {
     w.close()
   })
 
+  it('erdd/ 가 없는 상태에서 시작해도, 나중에 생기면 그 안의 변경을 잡는다', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'erdd-watch-'))
+    let hits = 0
+    const w = watchProject(dir, () => { hits += 1 }, { debounceMs: 20 })
+    try {
+      await sleep(50)
+      await mkdir(join(dir, 'erdd/tables'), { recursive: true })
+      await sleep(100)
+      const hitsAfterCreate = hits
+      await writeFile(join(dir, 'erdd/tables/MBR.yaml'), 'name: MBR\n', 'utf8')
+      await sleep(200)
+      expect(hits).toBeGreaterThan(hitsAfterCreate)
+    } finally { w.close() }
+  })
+
+  it('erdd/ 가 나중에 생겨도 close() 뒤에는 알리지 않는다', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'erdd-watch-'))
+    let hits = 0
+    const w = watchProject(dir, () => { hits += 1 }, { debounceMs: 20 })
+    await sleep(50)
+    await mkdir(join(dir, 'erdd/tables'), { recursive: true })
+    await sleep(100)
+    const hitsBeforeClose = hits
+    w.close()
+    await writeFile(join(dir, 'erdd/tables/MBR.yaml'), 'name: MBR\n', 'utf8')
+    await sleep(200)
+    expect(hits).toBe(hitsBeforeClose)
+  })
+
   it('close 뒤에는 알리지 않는다', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'erdd-watch-'))
     await mkdir(join(dir, 'erdd/tables'), { recursive: true })

@@ -88,6 +88,35 @@ describe('startLocalServer', () => {
     await reader.cancel()
   }, 10_000)
 
+  it('erdd/ 가 기동 시점에 없어도, 나중에 생기면 그 안의 변경을 SSE 로 알린다', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'erdd-server-'))
+    await writeFile(join(cwd, 'erdd.config.yaml'), [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'), 'utf8')
+    // erdd/ 는 일부러 만들지 않는다 — `init --local` 직후 첫 `serve` 상태를 그대로 재현한다.
+    const s = await start(cwd)
+    const res = await fetch(`${s.url}/local/events`)
+    const reader = res.body!.getReader()
+
+    // 접속 시점의(정상) 상태 스냅샷이 먼저 온다 — 그것부터 소비한다.
+    const initial = await reader.read()
+    expect(new TextDecoder().decode(initial.value)).toContain('reload')
+
+    const chunk = (async () => {
+      const { value } = await reader.read()
+      return new TextDecoder().decode(value)
+    })()
+
+    await sleep(100)
+    await mkdir(join(cwd, 'erdd/tables'), { recursive: true })
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
+
+    expect(await chunk).toContain('reload')
+    await reader.cancel()
+  }, 10_000)
+
   it('자기 쓰기는 SSE 로 알리지 않는다', async () => {
     const cwd = await project()
     const s = await start(cwd)
