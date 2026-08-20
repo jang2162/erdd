@@ -9,12 +9,15 @@ import {
   type FileTree, type LayoutData, type Note, type Op, type Position, type ProjectModel,
   type TableLayout,
 } from '@erdd/core'
-import { canonical, readTree, writeTree } from '../tree.js'
+import { canonical, readTree, writeTreeChanges } from '../tree.js'
 
 export const LAYOUT_FILE = 'erdd/layout.yaml'
 const WRITE_DEBOUNCE_MS = 300
 
 export class LocalStoreError extends Error {}
+
+/** layout.yaml 을 파일 단위로 파싱하지 못했다. `load()` 가 이것을 `fail()` 로 옮긴다. */
+class LayoutParseError extends Error {}
 
 export type LoadFailure = { path: string; message: string }
 
@@ -24,12 +27,36 @@ export type StoreState =
 
 const EMPTY_LAYOUT: LayoutData = { tables: [], notes: [] }
 
+/**
+ * 겹친 편집 때문에 확정하지 못한 로드를 몇 번까지 다시 읽을지. 한 번이면 대개 충분하다
+ * (다시 읽을 때는 편집이 이미 커밋·flush 돼 있다). 상한이 있어야 편집이 쉼 없이 들어오는
+ * 동안 무한히 도는 일이 없다.
+ */
+const MAX_LOAD_ATTEMPTS = 4
+
+/** `#loadOnce` 의 결과. `stale` 이면 겹친 편집 때문에 확정하지 못했다는 뜻이다. */
+type LoadAttempt = { state: StoreState; stale: boolean }
+
 /** 자기 쓰기 판정용 정규화 서명. 키 순서·표현 차이를 지운다. */
 function signatureOf(tree: FileTree, layout: LayoutData): string {
   return canonical({ ...tree, [LAYOUT_FILE]: layout }, LAYOUT_FILE) ?? ''
 }
 
-/** layout.yaml 은 스키마 파일이 아니다 — 깨져 있으면 배치만 잃고 모델은 연다. */
+/**
+ * layout.yaml 을 읽는다. **파싱에 실패하면 던진다** — 호출자가 `fail()` 퍼널로 보내 편집을 잠근다.
+ *
+ * ⚠️ 「layout = 배치라서 잃어도 된다」가 아니다. 이 파일에는 **메모 본문**(`notes[].content`)이
+ * 함께 들어 있고 그것은 사용자가 쓴 콘텐츠다. 파싱 실패를 삼켜 빈 layout 으로 열면 메모가
+ * 화면에서 조용히 사라지고, 편집이 잠기지 않으므로 다음 `flush()` 가 `notes: []` 로 그 손실을
+ * 파일에 확정한다(설계 §6 은 그 경우 읽기 전용으로 전환하라고 적었고, 같은 이유로
+ * `snapshots.json` 에는 이미 같은 방어가 있다).
+ *
+ * 파일이 **아예 없는 것**은 손상이 아니다 — 빈 layout 으로 연다(`pull` 로 받아 온 프로젝트의
+ * 정상 상태다). 빈 문서(주석만 있는 파일)도 마찬가지다.
+ *
+ * **항목 단위 방어는 관대한 채로 둔다** — 좌표가 숫자가 아닌 항목 하나 때문에 파일 전체를
+ * 거절하면 복구가 더 어렵다(아래 `isTableLayout` 주석 참조).
+ */
 async function readLayout(cwd: string): Promise<LayoutData> {
   let raw: string
   try {
@@ -38,16 +65,21 @@ async function readLayout(cwd: string): Promise<LayoutData> {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return EMPTY_LAYOUT
     throw err
   }
+  let parsed: unknown
   try {
-    const parsed: unknown = parseYaml(raw)
-    if (typeof parsed !== 'object' || parsed === null) return EMPTY_LAYOUT
-    const rec = parsed as Record<string, unknown>
-    return {
-      tables: asArray(rec['tables']).filter(isTableLayout),
-      notes: asArray(rec['notes']).filter(isNote),
-    }
-  } catch {
-    return EMPTY_LAYOUT
+    parsed = parseYaml(raw)
+  } catch (err) {
+    throw new LayoutParseError(`YAML 을 파싱하지 못했습니다: ${(err as Error).message}`)
+  }
+  // 빈 문서(`null`)는 빈 layout 이다. 스칼라·배열이 최상위에 온 것은 이 파일 형식이 아니다.
+  if (parsed === null || parsed === undefined) return EMPTY_LAYOUT
+  if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new LayoutParseError('최상위가 tables·notes 를 담은 매핑이 아닙니다')
+  }
+  const rec = parsed as Record<string, unknown>
+  return {
+    tables: asArray(rec['tables']).filter(isTableLayout),
+    notes: asArray(rec['notes']).filter(isNote),
   }
 }
 
@@ -85,6 +117,12 @@ export class FileStore {
   #written = ''
   /** 마지막 load 가 읽은 것이 그 서명과 같았는가. */
   #selfWrite = false
+  /**
+   * 디스크와 맞춰 둔 것으로 아는 마지막 트리·layout. `flush` 는 **이것과 달라진 것만** 쓴다
+   * (`writeTreeChanges`). 성공한 load 와 성공한 flush 만 이 값을 옮긴다.
+   */
+  #tree: FileTree = {}
+  #layout: LayoutData = EMPTY_LAYOUT
 
   constructor(cwd: string) {
     this.#cwd = cwd
@@ -107,14 +145,44 @@ export class FileStore {
    * 파일에서 모델을 다시 읽는다. **실패해도 마지막 정상 모델을 버리지 않는다** — 호출자가
    * `ok:false` 인 동안 쓰기를 막으므로, 성한 메모리 모델로 깨진 파일을 덮어쓰는 일이 생기지 않는다.
    *
-   * 파일 IO 는 `#serialize` 체인 **밖**에서 한다(감시 콜백·서버 기동이 체인 밖에서 이 메서드를
-   * 부르므로, 체인 안에서 이 메서드를 기다리는 경로를 만들면 교착된다). 다만 **읽은 결과로
-   * `#state` 를 확정하는 순간**은 `#commitLoad` 를 거쳐 체인 안에서 돈다 — 그래야 이 메서드가
-   * 여러 번 `await` 로 양보하는 동안 끼어든 `mutate`/`setModel` 의 편집을 덮어쓰지 않는다.
+   * 읽는 사이에 편집이 커밋되면 그 결과는 낡은 것이라 확정할 수 없다(`#commitLoad` 참조).
+   * **그렇다고 버리기만 하면 그 로드가 들고 온 「밖의 변경」이 통째로 사라진다** — 그 사이
+   * 에이전트가 만든 `erdd/tables/*.yaml` 이 메모리 모델에 영영 못 들어오고, 화면에도 안 뜬다
+   * (옛 flush 는 그 파일을 지우기까지 했다 — 최종 리뷰 I-2). 그래서 **버린 뒤 다시 읽는다.**
+   *
+   * 다시 읽기 전에 **대기 중인 편집을 먼저 flush 한다.** 안 그러면 디바운스 때문에 아직 디스크에
+   * 없는 그 편집을 「파일에 없다」로 읽어 방금 커밋된 편집을 되돌린다 — seq 가드가 막으려던 바로
+   * 그 사고다. flush 가 **바뀐 파일만** 쓰므로(`writeTreeChanges`) 이 flush 가 밖에서 온 파일을
+   * 건드리는 일도 없다. 그렇게 디스크가 「편집 + 밖의 변경」을 모두 담은 뒤 다시 읽으면 둘 다 산다.
    */
   async load(): Promise<StoreState> {
+    for (let attempt = 1; ; attempt += 1) {
+      const { state, stale } = await this.#loadOnce()
+      if (!stale) return state
+      // 재시도 상한. 편집이 끊임없이 들어오면(드래그) 언제까지고 겹칠 수 있다 — 그때는 지금
+      // 상태를 그대로 두고 물러난다. **아무것도 지워지지 않는다**(flush 는 자기가 아는 트리와의
+      // 차이만 쓴다). 이 flush 가 낸 쓰기가 다시 감시를 깨워 다음 load 가 밖의 변경을 데려온다.
+      if (attempt >= MAX_LOAD_ATTEMPTS) return state
+      try {
+        await this.flush()
+      } catch {
+        // 쓰기가 막힌 상태(권한·EISDIR 등)에서 다시 읽으면 편집을 되돌린다 — 물러난다.
+        // #dirty 는 참으로 남아 다음 flush 가 재시도하고, load() 는 여전히 던지지 않는다.
+        return state
+      }
+    }
+  }
+
+  /**
+   * `load()` 의 한 번 시도. 파일 IO 는 `#serialize` 체인 **밖**에서 한다(감시 콜백·서버 기동이
+   * 체인 밖에서 이 메서드를 부르므로, 체인 안에서 이 메서드를 기다리는 경로를 만들면 교착된다).
+   * 다만 **읽은 결과로 `#state` 를 확정하는 순간**은 `#commitLoad` 를 거쳐 체인 안에서 돈다 —
+   * 그래야 이 메서드가 여러 번 `await` 로 양보하는 동안 끼어든 `mutate`/`setModel` 의 편집을
+   * 덮어쓰지 않는다.
+   */
+  async #loadOnce(): Promise<LoadAttempt> {
     const seqAtStart = this.#state.seq
-    const fail = (failures: LoadFailure[]): Promise<StoreState> =>
+    const fail = (failures: LoadFailure[]): Promise<LoadAttempt> =>
       this.#commitLoad(seqAtStart, { ok: false, failures })
 
     let tree: FileTree
@@ -153,9 +221,10 @@ export class FileStore {
       }
     }
 
-    // layout.yaml 을 읽지 못한 IO 오류(권한 없음 등)도 load() 를 던지게 두면 안 된다 —
-    // 파싱 실패(깨진 YAML)와 달리 이건 fail() 로 보낸다. 파싱 실패는 readLayout 내부에서
-    // 이미 좌표만 잃고 넘어가므로 여기 닿지 않는다.
+    // layout.yaml 을 읽지 못한 IO 오류(권한 없음 등)도, 파일 전체의 파싱 실패도 여기서
+    // fail() 로 보낸다 — load() 는 던지지 않고 ok:false 로 알리고, 호출자가 그 동안 쓰기를
+    // 막는다. **메모 본문이 이 파일에 있으므로** 깨진 채로 열어 두면 다음 flush 가 그것을
+    // 지운다(readLayout 주석 참조).
     let layout: LayoutData
     try {
       layout = await readLayout(this.#cwd)
@@ -172,9 +241,10 @@ export class FileStore {
    *
    * `seqAtStart` 는 `load()` 진입 시점의 `seq` 다 — 지금(커밋 시점) `#state.seq` 가 그것과
    * 다르면, 이 사이에 `mutate`/`setModel` 이 커밋됐다는 뜻이다. **성공** 결과는 그러면 이미 낡은
-   * 것이므로 버리고 현재 상태를 그대로 돌려준다. 안 이러면 늦게 끝난 `load()` 가 방금 커밋된
+   * 것이므로 확정하지 않고 `stale` 로 알린다. 안 이러면 늦게 끝난 `load()` 가 방금 커밋된
    * 편집을 조용히 되돌리고, `#dirty` 는 참으로 남아 다음 `flush()` 가 그 되돌아간 모델을
-   * 디스크에 쓴다 — 편집 한 건이 오류도 로그도 없이 증발한다.
+   * 디스크에 쓴다 — 편집 한 건이 오류도 로그도 없이 증발한다. **`stale` 은 끝이 아니다** —
+   * `load()` 가 편집을 flush 한 뒤 다시 읽어, 이 로드가 들고 왔던 밖의 변경도 함께 살린다.
    *
    * ⚠️ **이 seq 가드는 실패(`!outcome.ok`) 결과에는 적용하지 않는다.** 실패는 모델을 덮지 않고
    * `ok:false` + `failures` 만 세우므로(마지막 정상 모델은 그대로 `this.#state.model` 을 쓴다)
@@ -190,19 +260,22 @@ export class FileStore {
     outcome:
       | { ok: true; tree: FileTree; layout: LayoutData; model: ProjectModel }
       | { ok: false; failures: LoadFailure[] },
-  ): Promise<StoreState> {
+  ): Promise<LoadAttempt> {
     return this.#serialize(async () => {
       if (!outcome.ok) {
         // 깨진 파일은 자기 쓰기로 설명되지 않는다 — 반드시 알려야 하므로 언제나 false 다.
         this.#selfWrite = false
         this.#state = { ok: false, model: this.#state.model, seq: this.#state.seq, failures: outcome.failures }
-        return this.#state
+        return { state: this.#state, stale: false }
       }
-      if (this.#state.seq !== seqAtStart) return this.#state
+      if (this.#state.seq !== seqAtStart) return { state: this.#state, stale: true }
       // **읽은 것**의 서명을 **쓴 것**과 비교한다. 같으면 이 감시 이벤트는 자기 쓰기다.
       this.#selfWrite = signatureOf(outcome.tree, outcome.layout) === this.#written
+      // 방금 읽은 것이 디스크의 현재 모습이다 — 다음 flush 의 비교 기준을 여기로 옮긴다.
+      this.#tree = outcome.tree
+      this.#layout = outcome.layout
       this.#state = { ok: true, model: outcome.model, seq: seqAtStart }
-      return this.#state
+      return { state: this.#state, stale: false }
     })
   }
 
@@ -278,14 +351,22 @@ export class FileStore {
       if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
       if (!this.#dirty) return
       const model = this.#state.model
+      // **바뀐 파일만** 쓴다(설계 §4). 매번 전체를 다시 쓰면 손으로 다듬어 둔 YAML 포맷이
+      // 무관한 편집 한 번에 전부 정규화된다 — 로컬 모드는 에이전트가 파일을 직접 쓰는 것이
+      // 전제라 비정규 포맷이 예외가 아니다. 삭제는 그대로 산다(#tree 에 있었는데 모델에서
+      // 사라진 파일은 지워진다).
       const { tree } = modelToFiles(model)
-      await writeTree(this.#cwd, tree)
+      await writeTreeChanges(this.#cwd, this.#tree, tree)
       const layout = layoutFromModel(model)
-      const abs = join(this.#cwd, LAYOUT_FILE)
-      await mkdir(dirname(abs), { recursive: true })
-      await writeFile(abs, stringifyYaml(layout), 'utf8')
+      if (canonical(layout, LAYOUT_FILE) !== canonical(this.#layout, LAYOUT_FILE)) {
+        const abs = join(this.#cwd, LAYOUT_FILE)
+        await mkdir(dirname(abs), { recursive: true })
+        await writeFile(abs, stringifyYaml(layout), 'utf8')
+      }
       // 쓰기가 전부 성공한 뒤에만 dirty 를 내린다 — 실패하면 참으로 남아 다음 flush 가 재시도한다.
       this.#dirty = false
+      this.#tree = tree
+      this.#layout = layout
       // 다음 load 가 이 서명과 같은 것을 읽으면 그 감시 이벤트는 자기 쓰기다.
       this.#written = signatureOf(tree, layout)
       this.#selfWrite = true

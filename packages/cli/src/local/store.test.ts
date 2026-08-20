@@ -1,9 +1,10 @@
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { parse as parseYaml } from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
-import { FileStore, LocalStoreError } from './store.js'
+import { FileStore, LAYOUT_FILE, LocalStoreError } from './store.js'
 
 async function project(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-local-'))
@@ -112,10 +113,41 @@ describe('FileStore.load', () => {
     expect(s.model.notes).toEqual({})
   })
 
-  it('layout.yaml 자체가 깨져도 모델은 연다', async () => {
+  /**
+   * layout.yaml 에는 **메모 본문**이 들어 있다 — 잃어도 되는 배치가 아니라 사용자 콘텐츠다.
+   * 파싱 실패를 삼켜 빈 layout 으로 열면 메모가 화면에서 사라지고, 편집이 잠기지 않으므로
+   * 다음 flush 가 `notes: []` 로 그 손실을 파일에 확정한다(최종 리뷰 C-1, 실증됨).
+   */
+  it('layout.yaml 을 파싱하지 못하면 편집을 잠그고, 메모가 파일에서 사라지지 않는다', async () => {
+    const dir = await project({
+      'erdd/tables/MBR.yaml': MBR,
+      'erdd/layout.yaml': [
+        'notes:',
+        '  - id: 018f6b0e-0000-7000-8000-000000000009',
+        '    content: 정산 배치는 매일 02:00 — 잃으면 안 되는 사용자 메모',
+        '    position: { x: 5, y: 6 }',
+        "    color: '#fde68a'",
+        'tables: [불완전',   // 닫히지 않은 flow 시퀀스 — 파일 전체가 파싱되지 않는다
+        '',
+      ].join('\n'),
+    })
+    const store = new FileStore(dir)
+    const s = await store.load()
+    expect(s.ok).toBe(false)
+    // 유니온 좁히기가 안 되는 자리라 ok 갈래를 빈 배열로 접어 비교한다.
+    expect(s.ok ? [] : s.failures.map((f) => f.path)).toContain(LAYOUT_FILE)
+
+    // 잠겼으므로 편집이 통과하면 안 된다 — 통과하면 300ms 뒤 flush 가 파일을 덮는다.
+    await expect(store.mutate([createTable('t1', 'ORD')])).rejects.toThrow(LocalStoreError)
+    await store.flush()
+    expect(await readFile(join(dir, LAYOUT_FILE), 'utf8'))
+      .toContain('잃으면 안 되는 사용자 메모')
+  })
+
+  it('빈 layout.yaml 은 손상이 아니다 — 빈 layout 으로 연다', async () => {
     const store = new FileStore(await project({
       'erdd/tables/MBR.yaml': MBR,
-      'erdd/layout.yaml': 'tables: [불완전\n',
+      'erdd/layout.yaml': '# 주석만 있는 파일\n',
     }))
     const s = await store.load()
     expect(s.ok).toBe(true)
@@ -335,6 +367,44 @@ describe('FileStore.mutate', () => {
     expect(store.isSelfWrite).toBe(false)
   })
 
+  /**
+   * 이 트랙의 **네 번째** 경합이다. 겹친 편집 때문에 로드를 통째로 버리면, 그 사이 밖에서
+   * 생긴 `erdd/tables/*.yaml` 이 메모리 모델에 영영 들어오지 못한다 — 화면에 안 보이는 것은
+   * 물론이고, 트리 전체를 다시 쓰던 옛 flush 는 그 파일을 **지웠다**(최종 리뷰 I-2).
+   * 버리지 말고 다시 읽어 **편집과 밖의 변경이 둘 다** 살아남아야 한다.
+   */
+  it('편집과 겹쳐 버려진 로드의 외부 변경이 사라지지 않는다(경합)', async () => {
+    const dir = await project({})
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([createTable('t1', 'A')])
+    await store.flush()
+
+    // 에이전트가 밖에서 새 테이블 파일을 쓴다.
+    await writeFile(join(dir, 'erdd/tables/ORD.yaml'), [
+      'id: 018f6b0e-0000-7000-8000-0000000000aa',
+      'name: ORD',
+      'logicalName: 주문',
+      'columns: []',
+      '',
+    ].join('\n'), 'utf8')
+
+    // 감시가 그것을 잡아 load() 를 시작한다 — readTree 의 IO 로 곧장 양보한다.
+    const loadPromise = store.load()
+    // 그 사이 사용자가 드래그하듯 편집을 커밋한다(디스크 IO 가 없어 먼저 체인을 탄다).
+    await store.mutate([createTable('t2', 'B')])
+    await loadPromise
+
+    // 메모리 모델이 셋을 전부 알아야 한다 — 밖의 ORD 도, 겹친 편집 B 도.
+    expect(Object.values(store.state.model.tables).map((t) => t.physicalName).sort())
+      .toEqual(['A', 'B', 'ORD'])
+
+    await store.flush()
+    // 디스크에서도 둘 다 살아 있어야 한다.
+    expect(await readFile(join(dir, 'erdd/tables/ORD.yaml'), 'utf8')).toContain('name: ORD')
+    expect(await readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).toContain('name: B')
+  })
+
   it('flush() 가 쓰기에 실패하면 dirty 를 유지해 다음 flush 가 재시도한다', async () => {
     const dir = await project({})
     const store = new FileStore(dir)
@@ -347,5 +417,56 @@ describe('FileStore.mutate', () => {
     await rm(join(dir, 'erdd/layout.yaml'), { recursive: true, force: true })
     await store.flush()
     expect(await readFile(join(dir, 'erdd/layout.yaml'), 'utf8')).toContain('t1')
+  })
+})
+
+describe('FileStore.flush', () => {
+  /**
+   * 로컬 모드는 **에이전트·사람이 파일을 직접 쓰는 것**이 전제라 비정규 포맷이 예외가 아니라
+   * 기본이다. flush 가 매번 트리 전체를 다시 쓰면 무관한 편집 한 번에 저장소가 통째로
+   * 정규화돼 git diff 가 요란해진다(설계 §4 는 `diffTrees` 재사용을 지정했다 — 최종 리뷰 I-3).
+   */
+  it('바뀐 파일만 쓴다 — 손대지 않은 파일의 내용·mtime 이 그대로다', async () => {
+    const dir = await project({})
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([createTable('t1', 'A'), createTable('t2', 'B')])
+    await store.flush()
+
+    // B.yaml 을 사람이 손으로 다듬은 형태로 바꾼다 — **값은 그대로**고 포맷과 주석만 다르다.
+    // 정규화 재작성이 돌면 주석이 사라지고 들여쓰기가 바뀌므로 바이트 비교로 잡힌다.
+    const bPath = join(dir, 'erdd/tables/B.yaml')
+    const handwritten = `# 손으로 붙인 주석 — 재작성되면 사라진다\n${
+      JSON.stringify(parseYaml(await readFile(bPath, 'utf8')), null, 4)}\n`
+    await writeFile(bPath, handwritten, 'utf8')
+    await store.load()
+    const before = await stat(bPath)
+
+    // A 만 고친다.
+    await store.mutate([{
+      action: 'update', entity: 'table', entityId: 't1',
+      changes: { logicalName: { from: 'A', to: '가나' } },
+    }])
+    await store.flush()
+
+    expect(await readFile(bPath, 'utf8')).toBe(handwritten)
+    expect((await stat(bPath)).mtimeMs).toBe(before.mtimeMs)
+    // 대조군 — 실제로 바뀐 파일은 쓰인다.
+    expect(await readFile(join(dir, 'erdd/tables/A.yaml'), 'utf8')).toContain('가나')
+  })
+
+  it('모델에서 사라진 테이블의 파일은 여전히 지운다', async () => {
+    const dir = await project({})
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([createTable('t1', 'A'), createTable('t2', 'B')])
+    await store.flush()
+    expect(await readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).toContain('name: B')
+
+    await store.mutate([{
+      action: 'delete', entity: 'table', entityId: 't2', before: store.state.model.tables['t2'],
+    }])
+    await store.flush()
+    await expect(readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).rejects.toThrow()
   })
 })
