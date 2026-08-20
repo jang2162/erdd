@@ -3,12 +3,13 @@ import { TRPCError } from '@trpc/server'
 import { and, eq, isNull, ne } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
+import type { RunMode } from '@erdd/core'
 import { accessTokens, passwordResetTokens, sessions, users } from '../db/schema.js'
 import { hashPassword, verifyPassword } from '../auth/password.js'
 import { generateToken, hashToken } from '../auth/token.js'
 import { normalizeEmail } from '../services/accounts.js'
 import { LinkDeadError, assertLive } from '../services/one-time-token.js'
-import { SESSION_COOKIE } from '../context.js'
+import { SESSION_COOKIE, type SessionUser } from '../context.js'
 import { apiProcedure, authedProcedure, dbProcedure, router } from '../trpc.js'
 
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000
@@ -46,7 +47,12 @@ export const authRouter = router({
     return { ok: true as const }
   }),
 
-  me: apiProcedure.query(({ ctx }) => ctx.user),
+  // mode 는 클라이언트가 "지금 붙어 있는 것이 운영 서버인가 로컬 서버인가"를 판정하는 값이다.
+  // 운영 서버는 언제나 'server'다 — 로컬 서버(packages/cli/src/local)가 'local'을 돌려준다.
+  // ⚠️ 반환 타입을 RunMode 로 명시해야 한다 — 명시하지 않으면 tRPC 의 출력 타입 추론이 리터럴
+  // "server"로 좁혀, 로컬 라우터가 내는 'local'과 서로를 만족하지 못해 계약 잠금 테스트
+  // (`packages/cli/src/local/router.test.ts`)가 깨진다.
+  me: apiProcedure.query(({ ctx }): SessionUser & { mode: RunMode } => ({ ...ctx.user, mode: 'server' })),
 
   changePassword: authedProcedure
     .input(z.object({ currentPassword: z.string(), newPassword: z.string().min(8) }))
