@@ -112,6 +112,10 @@ describe('routes', () => {
           canEdit: true, canManage: false,
         },
       }),
+      // ⚠️ 이 목이 없으면 배지 단언이 **죽은 단언**이다 — 건수가 0이라 게이트를 지워도
+      // 배지가 렌더되지 않아 언제나 통과한다(리뷰 이월 항목). 0보다 큰 건수를 줘서,
+      // `isLocal` 게이트가 사라지면 실제로 링크가 생겨 빨개지게 만든다.
+      'promotion.pendingCount': () => ({ data: { total: 2, byOrg: [{ orgId: 'o1', count: 2 }] } }),
     })
     await screen.findByText('로컬 프로젝트')
     expect(screen.queryByRole('button', { name: '로컬' })).not.toBeInTheDocument()
