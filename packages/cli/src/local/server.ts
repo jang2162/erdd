@@ -40,6 +40,26 @@ export async function startLocalServer(opts: {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024 * 1024 })
   const router = createLocalRouter()
 
+  // ── Host 검사: DNS 리바인딩 차단 ──
+  // 127.0.0.1 바인딩(설계 D8)은 **네트워크 경로**만 막고 **브라우저 경유**는 못 막는다.
+  // 공격자 도메인이 짧은 TTL 로 DNS 를 127.0.0.1 로 다시 풀면, 그 페이지는 브라우저가 보기에
+  // 이 서버와 동일 출처가 되어 preflight 없이 GET·POST 를 보낸다 — 인증이 없으므로 모델 전문을
+  // 읽고 `model.mutate`(= 파일 쓰기 프리미티브)까지 그대로 실행된다. 그때 오는 요청의 `Host` 는
+  // **공격자 도메인**이므로, 우리가 실제로 듣고 있는 루프백 주소가 아니면 여기서 끊는다.
+  // (평범한 크로스 오리진은 preflight 415 로 이미 막혀 있다 — 남은 구멍이 이것뿐이었다.)
+  // 403: 인증으로 풀 수 있는 문제가 아니라 "이 주소로는 이 서버에 말을 걸 수 없다"이다.
+  // `listen` 뒤에는 훅을 더 붙일 수 없어서(그리고 --port 0 이면 실제 포트를 그때야 안다)
+  // 훅은 지금 붙이고, 허용 목록만 listen 뒤에 채운다.
+  let allowedHosts: ReadonlySet<string> = new Set()
+  app.addHook('onRequest', (req, reply, done) => {
+    const host = req.headers.host
+    if (host === undefined || !allowedHosts.has(host.toLowerCase())) {
+      void reply.code(403).send({ error: '허용되지 않은 Host 헤더입니다' })
+      return
+    }
+    done()
+  })
+
   app.register(fastifyTRPCPlugin, {
     prefix: '/trpc',
     trpcOptions: {
@@ -139,6 +159,12 @@ export async function startLocalServer(opts: {
   }
   const address = app.server.address()
   const actualPort = typeof address === 'object' && address !== null ? address.port : port
+  const loopback = ['127.0.0.1', 'localhost', '[::1]']
+  allowedHosts = new Set([
+    ...loopback.map((h) => `${h}:${actualPort}`),
+    // 80 포트에서는 브라우저가 Host 에서 포트를 생략한다.
+    ...(actualPort === 80 ? loopback : []),
+  ])
 
   return {
     url: `http://127.0.0.1:${actualPort}`,

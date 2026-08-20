@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -34,6 +35,26 @@ async function start(cwd: string, webDist?: string): Promise<LocalServer> {
   return running
 }
 
+/**
+ * Host 헤더를 마음대로 주는 요청. `fetch`(undici)는 `host` 를 **금지 헤더로 지워** 버려서
+ * DNS 리바인딩 요청을 흉내 낼 수 없다 — 그래서 node:http 로 직접 만든다.
+ */
+function rawGet(url: string, host: string): Promise<{ status: number; body: string }> {
+  const u = new URL(url)
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: u.hostname, port: u.port, path: `${u.pathname}${u.search}`, method: 'GET', headers: { Host: host } },
+      (res) => {
+        let body = ''
+        res.on('data', (c: Buffer) => { body += c.toString('utf8') })
+        res.on('end', () => { resolve({ status: res.statusCode ?? 0, body }) })
+      },
+    )
+    req.on('error', reject)
+    req.end()
+  })
+}
+
 describe('startLocalServer', () => {
   it('tRPC 로 모델을 읽을 수 있다', async () => {
     const s = await start(await project())
@@ -54,6 +75,46 @@ describe('startLocalServer', () => {
   it('127.0.0.1 에만 바인딩한다', async () => {
     const s = await start(await project())
     expect(s.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+  })
+
+  /**
+   * 127.0.0.1 바인딩(설계 D8)은 **네트워크 경로**만 막는다. 공격자 도메인이 DNS 를 127.0.0.1 로
+   * 리바인딩하면 그 페이지는 브라우저가 보기에 이 서버와 동일 출처가 되어 preflight 없이
+   * 읽고 쓴다 — 인증이 없으므로 `model.mutate`(파일 쓰기 프리미티브)까지 그대로 열린다
+   * (최종 리뷰 I-1, 실제로 200 + 디스크에 파일 생성까지 실증됨).
+   */
+  it('낯선 Host 헤더는 거절한다(DNS 리바인딩) — 정상 Host 는 그대로 통과한다', async () => {
+    const s = await start(await project())
+    const path = `/trpc/model.get?input=${encodeURIComponent(JSON.stringify({ projectId: LOCAL_PROJECT_ID }))}`
+
+    const evil = await rawGet(`${s.url}${path}`, 'evil.example.com')
+    expect(evil.status).toBe(403)
+    // 모델이 새어 나가면 안 된다 — 상태 코드만이 아니라 본문도 본다.
+    expect(evil.body).not.toContain('"seq"')
+
+    // 대조군: 이 검사가 정상 사용을 막지 않는다.
+    const port = new URL(s.url).port
+    expect((await rawGet(`${s.url}${path}`, `127.0.0.1:${port}`)).status).toBe(200)
+    expect((await rawGet(`${s.url}${path}`, `localhost:${port}`)).status).toBe(200)
+    // 브라우저가 실제로 보내는 형태(= fetch 가 스스로 채우는 Host)도 통과해야 한다.
+    expect((await fetch(`${s.url}${path}`)).status).toBe(200)
+  })
+
+  it('낯선 Host 로는 쓰기(model.mutate)도 닿지 않는다', async () => {
+    const s = await start(await project())
+    const res = await new Promise<number>((resolve, reject) => {
+      const u = new URL(`${s.url}/trpc/model.mutate`)
+      const req = httpRequest(
+        {
+          host: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+          headers: { Host: 'evil.example.com', 'content-type': 'application/json' },
+        },
+        (r) => { r.resume(); r.on('end', () => { resolve(r.statusCode ?? 0) }) },
+      )
+      req.on('error', reject)
+      req.end(JSON.stringify({ projectId: LOCAL_PROJECT_ID, ops: [] }))
+    })
+    expect(res).toBe(403)
   })
 
   it('web/dist 가 있으면 SPA 경로를 index.html 로 돌린다', async () => {
