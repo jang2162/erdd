@@ -108,4 +108,24 @@ describe('useLocalWatch', () => {
     useEditorStore.getState().setPermissions({ canEdit: true, canManage: true })
     expect(useEditorStore.getState().canEdit).toBe(false)
   })
+
+  it('reload 재조회가 진행 중일 때 도착한 blocked 를 늦게 끝난 reload 가 덮어쓰지 않는다', async () => {
+    // 경합 재현: reload 의 재조회(await 구간)가 아직 안 끝난 사이 파일이 다시 깨져 blocked 가
+    // 온다. 두 emit 을 await 없이 연달아 호출해 reload 의 serializeMutation 이 아직 스케줄만
+    // 된 채(fetchQuery 가 진행되기 전) blocked 가 동기로 먼저 처리되게 한다.
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    mockTrpcFetch({
+      'model.get': () => ({ data: { model: createEmptyModel(), seq: 5 } }),
+    })
+    renderHook(() => useLocalWatch(PROJECT_ID, true), { wrapper: wrapper() })
+    FakeEventSource.last!.emit({ type: 'reload' })
+    FakeEventSource.last!.emit({ type: 'blocked', failures: [{ path: 'x', message: 'y' }] })
+    // reload 의 재조회는 끝나 seq 는 갱신되지만(모델은 낡지 않았다는 뜻), 그 사이 도착한
+    // blocked 가 더 최신 판단이므로 늦게 끝난 reload 가 잠금을 풀면 안 된다.
+    await waitFor(() => {
+      expect(useEditorStore.getState().seq).toBe(5)
+    })
+    expect(useEditorStore.getState().blocked).not.toBeNull()
+    expect(useEditorStore.getState().canEdit).toBe(false)
+  })
 })
