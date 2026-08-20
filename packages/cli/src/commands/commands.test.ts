@@ -340,11 +340,84 @@ describe('validate 경고 좌표', () => {
     expect(quoted).not.toBe(w?.label)                           // 다리가 필요한 이유 그 자체
   })
 
-  it('파일로 나가지 않는 테이블은 없는 경로를 가리키지 않는다', async () => {
-    // 물리명이 빈 테이블은 modelToFiles가 건너뛴다(unsafeFileName) — pull이 그 파일을 쓴 적이
-    // 없으므로 좌표로 쓸 경로가 없다. tableFileName은 그래도 문자열을 만들어 내서 그대로
-    // 찍으면 'erdd/tables/.yaml'이라는 **없는 파일**을 가리킨다. 손편집으로만 닿는 상태라
-    // 파일을 직접 고쳐 재현한다. 라벨은 그대로 둔다 — 파일에 그렇게 적혀 있는 것이 사실이다.
+  it('개명 직후에도 좌표가 디스크의 실제 파일을 가리킨다', async () => {
+    // 🔥 이것은 손편집 일탈이 아니라 **정규 동선**이다. SKILL.md 가 "테이블 파일 이름을 직접
+    // 바꾸지 않는다 … 이름을 바꾸려면 파일 안의 name을 고친다"고 시킨다 — 파일명은 다음
+    // pull이 따라온다. 그래서 개명 직후에는 파일이 MBR.yaml 인데 물리명은 MEMBER 다.
+    // 물리명에서 경로를 재조립하면 erdd/tables/MEMBER.yaml — **없는 파일**을 가리킨다.
+    // validate 는 push 전 검사라 바로 이 창에서 돌아간다. 수렴(pull)은 그 뒤에나 온다.
+    // ⚠️ 구분력은 픽스처의 이 어긋남이 진다 — name 을 MBR 로 두면 재조립과 실제 경로가
+    // 같은 값이 되어 아무것도 잠기지 않는다.
+    const m = createEmptyModel()
+    m.tables['tb1'] = {
+      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    await seedPulled(dir, m)
+    const tree = await readTree(dir)
+    ;(tree['erdd/tables/MBR.yaml'] as Record<string, unknown>)['name'] = 'MEMBER'
+    await writeTree(dir, tree)
+
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const warnings = warningsOf()
+    expect(warnings.length).toBeGreaterThan(0)
+    // 열면 그 경고가 실제로 들어 있는 파일이라야 한다.
+    expect(warnings.every((w) => w.path === 'erdd/tables/MBR.yaml')).toBe(true)
+    // 라벨은 파일에 적힌 이름 그대로다 — 개명 뒤 파일에는 MEMBER 라고 적혀 있다.
+    expect(warnings.some((w) => w.label === 'MEMBER.MBR_NO')).toBe(true)
+
+    out.length = 0
+    await validate({ cwd: dir, json: false, yes: false, strict: false })
+    expect(out.join('')).not.toContain('erdd/tables/MEMBER.yaml')
+  })
+
+  it('이름을 맞바꾼 두 테이블이 서로의 파일을 가리키지 않는다', async () => {
+    // 🔥 개명의 **최악 형태**다. 재조립은 여기서 없는 경로가 아니라 **있는 남의 파일**을
+    // 낸다 — 없는 경로는 열다가 알아채지만 있는 남의 경로는 조용히 틀린 파일을 고치게 만든다.
+    // ⚠️ 구분력은 픽스처의 맞바꿈이 진다. 한쪽만 바꾸면 물리명이 중복돼 파싱 오류로 끝나고,
+    // 아무것도 안 바꾸면 재조립과 실제 경로가 같아져 잠기지 않는다.
+    // 관계가 없는 두 테이블을 쓰는 것은 의도다 — 관계는 부모를 물리명으로 참조하므로
+    // 맞바꿈이 그 참조를 흔들어 이 테스트가 겨냥하지 않은 오류를 부른다.
+    const m = createEmptyModel()
+    m.tables['tb1'] = {
+      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.tables['tb2'] = {
+      id: 'tb2', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    await seedPulled(dir, m)
+    const tree = await readTree(dir)
+    ;(tree['erdd/tables/MBR.yaml'] as Record<string, unknown>)['name'] = 'ORD'
+    ;(tree['erdd/tables/ORD.yaml'] as Record<string, unknown>)['name'] = 'MBR'
+    await writeTree(dir, tree)
+
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const byLabel = new Map(
+      warningsOf().filter((w) => w.scope === 'table').map((w) => [w.label, w.path]))
+    // 파일에 ORD 라고 적힌 테이블은 MBR.yaml 에 들어 있다 — 재조립하면 정확히 뒤바뀐다.
+    expect(byLabel.get('ORD')).toBe('erdd/tables/MBR.yaml')
+    expect(byLabel.get('MBR')).toBe('erdd/tables/ORD.yaml')
+  })
+
+  it('물리명이 비어도 좌표가 그 테이블이 들어 있는 실제 파일을 가리킨다', async () => {
+    // ⚠️ 이 테스트는 **의미가 바뀌었다.** 예전에는 「없는 경로를 가리키지 않는다」였다 —
+    // 좌표를 물리명에서 재조립하던 시절에는 물리명이 비면 'erdd/tables/.yaml'이라는 없는
+    // 파일이 나와서, 좌표를 아예 내지 않는 것(path: null)이 할 수 있는 최선이었다.
+    // 이제 좌표는 filesToModel이 실제로 읽어 온 경로다. 만들 거짓 경로 자체가 없으므로
+    // 좌표를 버릴 이유도 없다 — 물리명이 빈 테이블도 자기가 들어 있는 파일을 올바로
+    // 가리킨다. **막던 것이 고쳐졌다.**
+    // 라벨은 그대로 둔다 — 파일에 그렇게 적혀 있는 것이 사실이다.
+    // 🔥 구분력은 픽스처의 빈 물리명이 진다. 그것을 되돌리면 재조립과 실제 경로가 같은 값이
+    // 되어(둘 다 erdd/tables/MBR.yaml) 이 테스트는 아무것도 잠그지 못한다.
     const m = createEmptyModel()
     m.tables['tb1'] = {
       id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
@@ -364,11 +437,14 @@ describe('validate 경고 좌표', () => {
     await validate({ cwd: dir, json: true, yes: false, strict: false })
     const warnings = warningsOf()
     expect(warnings.length).toBeGreaterThan(0)
-    expect(warnings.every((w) => w.path === null)).toBe(true)
+    expect(warnings.every((w) => w.path === 'erdd/tables/MBR.yaml')).toBe(true)
     expect(warnings.some((w) => w.label === '.MBR_NO')).toBe(true)
 
     out.length = 0
     await validate({ cwd: dir, json: false, yes: false, strict: false })
+    // ⚠️ 이 줄은 **잠금이 아니다.** 재조립으로 되돌려도 바로 위 경로 단언이 먼저 잡고,
+    // 커밋 전 원형(가드가 좌표를 버리던 시절)에서도 통과했다 — 검출력이 0 이다.
+    // 옛 거짓 경로의 모양을 기록으로 남기는 줄이니 여기에 기대지 마라.
     expect(out.join('')).not.toContain('erdd/tables/.yaml')
   })
 

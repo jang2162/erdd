@@ -101,5 +101,5 @@ export {
   applyMerge, pruneDangling, gridPositions, entityDisplayName,
 } from './file-merge.js'
 export type {
-  MergeKind, MergeConflict, MergeResult, ConflictReason, PrunedRef,
+  MergeKind, MergeConflict, MergeResult, MergeOptions, ConflictReason, PrunedRef,
 } from './file-merge.js'

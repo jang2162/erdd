@@ -63,7 +63,13 @@ export async function buildPlan(
     'model.get', { projectId: config.projectId },
   )
   const serverVisible = fileVisibleModel(server)
-  const { merged, conflicts } = mergeModels(baseResult.model, localResult.model, serverVisible)
+  // 충돌 좌표는 **로컬 트리에서 읽은 실제 경로**로 낸다 — 재조립하면 개명 직후 없는 파일을
+  // 가리킨다(file-merge.ts pathOf 주석). base가 아니라 local 인 것이 요점이다: base는 마지막
+  // pull 때 서버가 쓴 정규 경로라 지금 디스크와 어긋날 수 있고, localResult는 방금
+  // readTree 가 읽은 키 그대로다.
+  const { merged, conflicts } = mergeModels(
+    baseResult.model, localResult.model, serverVisible, { tableFiles: localResult.tableFiles },
+  )
   const { model: applied, pruned } = applyMerge(server, merged)
 
   return {

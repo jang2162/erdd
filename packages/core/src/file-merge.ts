@@ -147,10 +147,31 @@ function ownerTableId(kind: MergeKind, e: Entity): string {
   return e['tableId'] as string
 }
 
-function pathOf(kind: MergeKind, e: Entity, models: readonly ProjectModel[]): string {
+/**
+ * 충돌이 실린 파일. **실제 경로를 알면 그것을 쓰고, 모르면 물리명에서 재조립한다.**
+ *
+ * ⚠️ 재조립(`erdd/tables/<물리명>.yaml`)이 뒤로 밀린 이유: 파일명과 물리명은 정규 동선에서
+ * 어긋난다. SKILL.md 가 "테이블 파일 이름을 직접 바꾸지 않는다 … 이름을 바꾸려면 파일 안의
+ * `name`을 고친다"고 시키고 파일명은 다음 `pull`이 따라오기 때문이다. 개명 직후 local 의
+ * 물리명은 `MEMBER`인데 디스크의 파일은 `MBR.yaml`이라, 재조립한 경로는 **없는 파일**이 된다.
+ * 충돌 리포트는 사용자가 파일을 열어야 하는 바로 그 화면이라(conflict-report.ts가 이 경로를
+ * 그룹 헤더로 찍고 "pull 뒤 다시 정리해 push하세요"로 끝난다) 거짓 좌표의 값이 특히 비싸다.
+ *
+ * ⚠️ **폴백은 지워지지 않는다 — 여기서는 실제로 도달한다.** validate 쪽 좌표는 모든 테이블이
+ * 방금 읽은 파일에서 오므로 못 구할 수가 없지만(cli/commands/validate.ts 주석 참조), 병합은
+ * base·server 에만 있는 테이블도 다룬다. 로컬이 파일을 지웠고 서버가 그 테이블을 고친
+ * `local-delete` 충돌이 그 자리다 — 그때는 「pull 하면 생길 경로」를 내는 것이 리포트의
+ * 안내와 앞뒤가 맞는다.
+ */
+function pathOf(
+  kind: MergeKind, e: Entity, models: readonly ProjectModel[],
+  tableFiles: Record<string, string>,
+): string {
   const top = TOP_LEVEL_PATH[kind]
   if (top !== undefined) return top
   const tableId = ownerTableId(kind, e)
+  const real = tableFiles[tableId]
+  if (real !== undefined) return real
   for (const m of models) {
     if (m.tables[tableId] !== undefined) return `${TREE_ROOT}/tables/${tableFileName(m, tableId)}`
   }
@@ -213,17 +234,31 @@ function sameVisible(a: Entity, b: Entity, fields: Record<string, string>): bool
   return Object.keys(fields).every((f) => deepEqual(a[f], b[f]))
 }
 
+export type MergeOptions = {
+  /**
+   * 테이블 id → **로컬 디스크의 실제 파일 경로**(`filesToModel`의 `tableFiles`).
+   * 충돌 좌표를 물리명에서 재조립하지 않기 위한 것이다 — 없는 id는 재조립으로 떨어진다.
+   * 생략하면 전부 재조립이라 이 인자를 주기 전과 동작이 같다.
+   */
+  tableFiles?: Record<string, string>
+}
+
 /**
  * base·local·server 3-way 병합. 세 인자 모두 파일 가시 공간이어야 한다.
  * merged는 server에서 출발해 로컬 변경만 얹은 것이고, 충돌 필드에는 서버 값이 남는다
  * (충돌이 있으면 호출자가 merged를 쓰지 않는다).
  */
 export function mergeModels(
-  base: ProjectModel, local: ProjectModel, server: ProjectModel,
+  base: ProjectModel, local: ProjectModel, server: ProjectModel, opts?: MergeOptions,
 ): MergeResult {
   const merged = fileVisibleModel(server)
   const conflicts: MergeConflict[] = []
   const models = [local, server, base] as const
+  // ⚠️ 프로토타입 오염을 막는 하드닝(`Object.create(null)`·`hasOwn`)을 **일부러 넣지 않는다.**
+  // 이 조회의 키는 테이블 id인데, id는 op-guard.ts의 UUID_RE(:10)가 `parseOps`(:42)에서
+  // 강제하므로 `__proto__`·`constructor` 같은 키가 모델에 들어올 수 없다. 도달할 수 없는
+  // 갈래에 방어를 넣으면 **어떤 테스트로도 빨갛게 만들 수 없는 코드**가 늘 뿐이다.
+  const tableFiles = opts?.tableFiles ?? {}
 
   for (const kind of MERGE_KINDS) {
     const fields = FILE_FIELDS[kind]
@@ -243,7 +278,7 @@ export function mergeModels(
         field: string, reason: ConflictReason, modelField: string | null, changed: string[],
       ): void => {
         conflicts.push({
-          path: pathOf(kind, any, models),
+          path: pathOf(kind, any, models, tableFiles),
           kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, any, models)}`,
           field, reason, changedFields: changed,
           base: modelField === null
