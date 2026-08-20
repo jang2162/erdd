@@ -34,6 +34,21 @@ export async function writeSnapshots(cwd: string, items: SnapshotRecord[]): Prom
   await writeFile(abs, `${JSON.stringify({ snapshots: items }, null, 2)}\n`, 'utf8')
 }
 
+/**
+ * 레코드가 **복원에 쓸 수 있는 모양인가.**
+ *
+ * ⚠️ `model` 이 없는 레코드를 그대로 쓰면 `{ ...createEmptyModel(), ...s.model }` 정규화가
+ * 아무것도 덮지 않아 **「유효한 빈 모델」**이 된다. 그것은 무결성 검사에 걸릴 것이 없어 통과하고,
+ * `setModel` 뒤의 flush 가 사용자의 `erdd/` 파일을 통째로 비운다 — 오류도 로그도 없는 조용한
+ * 데이터 손실이다. `.erdd/snapshots.json` 은 사용자가 손으로 열 수 있는 평범한 파일이라
+ * 그런 레코드가 실제로 생길 수 있다(최상위 JSON 모양만 막던 방어를 원소 단위까지 내린다).
+ *
+ * 누락된 **컬렉션**을 보충하는 정규화는 그대로 둔다 — 옛 스냅샷을 여는 데 필요하고 옳다.
+ */
+export function isIntactSnapshot(rec: SnapshotRecord): boolean {
+  return typeof rec.model === 'object' && rec.model !== null && !Array.isArray(rec.model)
+}
+
 /** 모든 읽기-수정-쓰기가 지나는 체인. `FileStore` 의 것과 별개다 — 파일이 다르다. */
 let chain: Promise<unknown> = Promise.resolve()
 

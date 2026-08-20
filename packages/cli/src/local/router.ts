@@ -7,7 +7,9 @@ import {
 } from '@erdd/core'
 import { writeConfig, type ErddConfig } from '../config.js'
 import { FileStore, LocalStoreError } from './store.js'
-import { readSnapshots, updateSnapshots, type SnapshotRecord } from './snapshots.js'
+import {
+  isIntactSnapshot, readSnapshots, updateSnapshots, type SnapshotRecord,
+} from './snapshots.js'
 
 export type LocalContext = {
   store: FileStore
@@ -47,6 +49,20 @@ function toRecord(store: FileStore, name: string, description: string): Snapshot
     model: store.state.model,
     createdAt: new Date().toISOString(),
   }
+}
+
+/**
+ * 스냅샷 하나를 꺼낸다. **손상된 레코드는 여기서 막는다** — 「없다」가 아니라 「깨졌다」로
+ * 알리는 것이 의도다. NOT_FOUND 로 뭉개면 사용자는 파일에 그 항목이 보이는데 없다는 말을 듣고
+ * 무엇을 고쳐야 하는지 알 수 없다.
+ */
+async function requireSnapshot(cwd: string, snapshotId: string): Promise<SnapshotRecord> {
+  const s = (await readSnapshots(cwd)).find((x) => x.id === snapshotId)
+  if (!s) throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
+  if (!isIntactSnapshot(s)) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: '스냅샷이 손상됐습니다' })
+  }
+  return s
 }
 
 /** 저장소의 도메인 오류(읽기 전용·op 상한·무결성)를 한자리에서 400 으로 바꾼다. */
@@ -172,8 +188,7 @@ export function createLocalRouter() {
       get: scoped
         .input(z.object({ projectId: z.string(), snapshotId: z.string() }))
         .query(async ({ ctx, input }) => {
-          const s = (await readSnapshots(ctx.cwd)).find((x) => x.id === input.snapshotId)
-          if (!s) throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
+          const s = await requireSnapshot(ctx.cwd, input.snapshotId)
           return {
             id: s.id,
             projectId: ctx.projectId,
@@ -201,8 +216,7 @@ export function createLocalRouter() {
       restore: scoped
         .input(z.object({ projectId: z.string(), snapshotId: z.string() }))
         .mutation(({ ctx, input }) => wrap(async () => {
-          const s = (await readSnapshots(ctx.cwd)).find((x) => x.id === input.snapshotId)
-          if (!s) throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
+          const s = await requireSnapshot(ctx.cwd, input.snapshotId)
           // 옛 스냅샷에는 신규 컬렉션 키가 없을 수 있다 — 서버 restore 와 같은 정규화를 한다.
           const model: ProjectModel = { ...createEmptyModel(), ...s.model }
           return await ctx.store.setModel(model)

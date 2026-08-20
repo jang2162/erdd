@@ -1,11 +1,12 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { inferRouterInputs, inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@erdd/server/src/router.js'
-import type { Op } from '@erdd/core'
+import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
 import { FileStore } from './store.js'
+import { SNAPSHOTS_FILE } from './snapshots.js'
 import { createLocalRouter, type LocalContext, type LocalRouter } from './router.js'
 import { LOCAL_PROJECT_ID, readConfig } from '../config.js'
 
@@ -45,6 +46,23 @@ const createTable = (entityId: string): Op => ({
     position: { x: 0, y: 0 }, groupPosition: null, custom: {},
   },
 })
+
+/** 존재하지 않는 테이블을 가리키는 컬럼 — `applyOps` 의 무결성 검사에 걸린다. */
+const ORPHAN_COLUMN = '018f6b0e-0000-7000-8000-0000000000c1'
+const MISSING_TABLE = '018f6b0e-0000-7000-8000-0000000000cf'
+
+const createOrphanColumn = (): Op => ({
+  action: 'create',
+  entity: 'column',
+  entityId: ORPHAN_COLUMN,
+  data: {
+    id: ORPHAN_COLUMN, tableId: MISSING_TABLE, logicalName: '이름', physicalName: 'NM',
+    type: 'VARCHAR(10)', isPk: false, autoIncrement: false, nullable: true,
+    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+  },
+})
+
+const MISSING_SNAPSHOT = '00000000-0000-7000-8000-0000000000aa'
 
 describe('로컬 라우터', () => {
   it('auth.me 가 로컬 모드를 알린다', async () => {
@@ -109,10 +127,10 @@ describe('로컬 라우터', () => {
     expect(after.model.tables[T1]!.physicalName).toBe('MBR')
   })
 
-  it('다른 projectId 는 거절한다', async () => {
+  it('다른 projectId 는 NOT_FOUND 로 거절한다', async () => {
     const call = await caller()
     await expect(call.model.get({ projectId: '00000000-0000-7000-8000-0000000000ff' }))
-      .rejects.toThrow()
+      .rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
   it('스냅샷을 만들고 목록·조회·복원·삭제한다', async () => {
@@ -154,11 +172,68 @@ describe('로컬 라우터', () => {
     expect(list.items.map((i) => i.name).sort()).toEqual(['가', '나'])
   })
 
-  it('없는 스냅샷은 NOT_FOUND 로 던진다', async () => {
+  it('없는 스냅샷은 조회·삭제 모두 NOT_FOUND 로 던진다', async () => {
     const call = await caller()
     await expect(call.snapshot.get({
-      projectId: LOCAL_PROJECT_ID, snapshotId: '00000000-0000-7000-8000-0000000000aa',
-    })).rejects.toThrow()
+      projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
+    })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(call.snapshot.delete({
+      projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
+    })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  /**
+   * ⚠️ 오류 **코드**는 계약의 일부다 — 웹은 400(사용자 오류 표시)과 500(장애)을 다르게 다룬다.
+   * 저장소의 도메인 오류가 500 이 되면 「잘못된 op」이 「서버가 죽었다」로 보인다.
+   * 아래 둘은 `wrap()` 이 없으면 곧바로 빨개진다(`LocalStoreError` 가 그대로 새어 나가 500 이 된다).
+   */
+  it('무결성을 깨는 op 은 BAD_REQUEST 로 거절하고 모델을 바꾸지 않는다', async () => {
+    const call = await caller()
+    // applyOps 의 OpApplyError → LocalStoreError(Task 5) → wrap() → BAD_REQUEST 경로다.
+    await expect(call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createOrphanColumn()] }))
+      .rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    const after = await call.model.get({ projectId: LOCAL_PROJECT_ID })
+    expect(after.seq).toBe(0)
+    expect(after.model.columns[ORPHAN_COLUMN]).toBeUndefined()
+  })
+
+  it('op 상한을 넘는 mutate 는 BAD_REQUEST 로 거절한다', async () => {
+    const call = await caller()
+    // 상한 검사는 저장소가 한다(라우터 입력 스키마에는 없다) — 그 LocalStoreError 가 400 이 돼야 한다.
+    const tooMany = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, () => createTable(T1))
+    await expect(call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: tooMany }))
+      .rejects.toMatchObject({ code: 'BAD_REQUEST' })
+  })
+
+  /**
+   * ③ `.erdd/snapshots.json` 은 사용자가 손으로 열 수 있는 평범한 파일이다. `model` 키가 없는
+   * 레코드를 그대로 복원하면 `{ ...createEmptyModel(), ...s.model }` 이 **「유효한 빈 모델」**이
+   * 되고, 무결성 검사에 걸릴 것이 없어 통과한 뒤 flush 가 사용자의 `erdd/` 를 통째로 비운다.
+   * 오류도 로그도 없는 조용한 데이터 손실이라 반드시 막아야 한다.
+   */
+  it('model 이 없는 손상 스냅샷은 거절하고 사용자 모델을 지킨다', async () => {
+    const c = await ctx()
+    const call = createLocalRouter().createCaller(c)
+    await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
+
+    const abs = join(c.cwd, SNAPSHOTS_FILE)
+    await mkdir(dirname(abs), { recursive: true })
+    await writeFile(abs, JSON.stringify({
+      snapshots: [{
+        id: MISSING_SNAPSHOT, name: '깨진 것', description: '',
+        revisionSeq: 0, createdAt: new Date(0).toISOString(),
+      }],
+    }), 'utf8')
+
+    await expect(call.snapshot.restore({
+      projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    await expect(call.snapshot.get({
+      projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+
+    // 요점은 이것이다 — 사용자 모델이 그대로 남아 있어야 한다.
+    expect((await call.model.get({ projectId: LOCAL_PROJECT_ID })).model.tables[T1]).toBeDefined()
   })
 })
 
@@ -172,23 +247,72 @@ describe('서버 라우터와의 계약', () => {
   type LocalIn = inferRouterInputs<LocalRouter>
   type LocalOut = inferRouterOutputs<LocalRouter>
 
-  it('입력 타입이 서버와 호환된다', () => {
+  /** 입력은 **서버가 받는 것을 로컬도 받아야** 한다 — 로컬이 좁히면 웹이 보내는 값이 거절된다. */
+  it('입력 타입이 서버와 호환된다 — 10개 전부', () => {
+    expectTypeOf<ServerIn['auth']['me']>().toExtend<LocalIn['auth']['me']>()
     expectTypeOf<ServerIn['model']['get']>().toExtend<LocalIn['model']['get']>()
     expectTypeOf<ServerIn['model']['mutate']>().toExtend<LocalIn['model']['mutate']>()
     expectTypeOf<ServerIn['project']['get']>().toExtend<LocalIn['project']['get']>()
     expectTypeOf<ServerIn['project']['update']>().toExtend<LocalIn['project']['update']>()
     expectTypeOf<ServerIn['snapshot']['create']>().toExtend<LocalIn['snapshot']['create']>()
+    expectTypeOf<ServerIn['snapshot']['list']>().toExtend<LocalIn['snapshot']['list']>()
+    expectTypeOf<ServerIn['snapshot']['get']>().toExtend<LocalIn['snapshot']['get']>()
+    expectTypeOf<ServerIn['snapshot']['delete']>().toExtend<LocalIn['snapshot']['delete']>()
     expectTypeOf<ServerIn['snapshot']['restore']>().toExtend<LocalIn['snapshot']['restore']>()
   })
 
-  it('출력 타입이 서버와 호환된다 — 웹이 서버 타입으로 읽는다', () => {
+  /** 출력은 **로컬이 서버 모양을 채워야** 한다 — 웹이 서버 타입으로 읽는다. */
+  it('출력 타입이 서버와 호환된다 — 10개 전부', () => {
     expectTypeOf<LocalOut['auth']['me']>().toExtend<ServerOut['auth']['me']>()
     expectTypeOf<LocalOut['model']['get']>().toExtend<ServerOut['model']['get']>()
     expectTypeOf<LocalOut['model']['mutate']>().toExtend<ServerOut['model']['mutate']>()
     expectTypeOf<LocalOut['project']['get']>().toExtend<ServerOut['project']['get']>()
+    expectTypeOf<LocalOut['project']['update']>().toExtend<ServerOut['project']['update']>()
+    expectTypeOf<LocalOut['snapshot']['create']>().toExtend<ServerOut['snapshot']['create']>()
     expectTypeOf<LocalOut['snapshot']['list']>().toExtend<ServerOut['snapshot']['list']>()
     expectTypeOf<LocalOut['snapshot']['get']>().toExtend<ServerOut['snapshot']['get']>()
+    expectTypeOf<LocalOut['snapshot']['delete']>().toExtend<ServerOut['snapshot']['delete']>()
     expectTypeOf<LocalOut['snapshot']['restore']>().toExtend<ServerOut['snapshot']['restore']>()
+  })
+
+  /**
+   * ⚠️ 위 두 목록은 **손으로 관리한다** — 그래서 실제로 두 번 빠뜨렸다(`project.update` 의 입력,
+   * `snapshot.delete` 의 양축). 아래 세 타입은 로컬이 구현한 프로시저를 **전부 훑어** 어긋난 것의
+   * 이름을 뱉는다. 목록에 없는 프로시저가 생겨도 자동으로 걸리므로 같은 누락이 되풀이되지 않는다.
+   *
+   * 서버에 있는데 로컬에 없는 것은 여기서 보지 않는다 — 로컬은 의도적으로 축소된 라우터다.
+   */
+  type InputGaps = {
+    [R in keyof LocalIn & keyof ServerIn]: {
+      [P in keyof LocalIn[R] & keyof ServerIn[R]]:
+        ServerIn[R][P] extends LocalIn[R][P] ? never : `${R & string}.${P & string}`
+    }[keyof LocalIn[R] & keyof ServerIn[R]]
+  }[keyof LocalIn & keyof ServerIn]
+
+  type OutputGaps = {
+    [R in keyof LocalOut & keyof ServerOut]: {
+      [P in keyof LocalOut[R] & keyof ServerOut[R]]:
+        LocalOut[R][P] extends ServerOut[R][P] ? never : `${R & string}.${P & string}`
+    }[keyof LocalOut[R] & keyof ServerOut[R]]
+  }[keyof LocalOut & keyof ServerOut]
+
+  /** 서버에 **없는** 로컬 전용 프로시저. 있으면 웹은 그 이름을 부를 수조차 없다. */
+  type LocalOnly = {
+    [R in keyof LocalIn]: R extends keyof ServerIn
+      ? `${R & string}.${Exclude<keyof LocalIn[R], keyof ServerIn[R]> & string}`
+      : `${R & string}.*`
+  }[keyof LocalIn]
+
+  /**
+   * 어긋난 것이 있으면 `T` 가 그 **이름**이 되어 제약을 어긴다 — 오류 메시지가 어느 프로시저인지
+   * 그대로 말해 준다(`expectTypeOf(...).toEqualTypeOf<never>()` 는 이름을 잃는다).
+   */
+  const noGaps = <_T extends never>(): void => {}
+
+  it('빠진 축 없이 로컬의 모든 프로시저가 서버와 대조된다', () => {
+    noGaps<InputGaps>()
+    noGaps<OutputGaps>()
+    noGaps<LocalOnly>()
   })
 
   it('로컬이 구현한 프로시저는 전부 서버에도 있다', () => {
