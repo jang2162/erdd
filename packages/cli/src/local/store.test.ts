@@ -310,6 +310,31 @@ describe('FileStore.mutate', () => {
     expect(store.state.model.tables['t1']).toBeDefined()
   })
 
+  it('load() 진행 중에 mutate 가 커밋돼도, 그 load() 가 찾은 파일 손상은 버려지지 않는다(경합)', async () => {
+    const dir = await project({})
+    const store = new FileStore(dir)
+    await store.load()
+    // 자기 쓰기 서명을 남긴다 — 이 시점 isSelfWrite 는 true 다.
+    await store.mutate([createTable('t1', 'A')])
+    await store.flush()
+    expect(store.isSelfWrite).toBe(true)
+
+    // 외부 편집기가 파일을 깨뜨린다.
+    await writeFile(join(dir, 'erdd/tables/A.yaml'), 'name: [불완전\n', 'utf8')
+
+    // load() 를 시작만 하고(readTree 의 실제 파일 IO 로 곧장 양보한다) 기다리지 않는다.
+    const loadPromise = store.load()
+    // 그 사이에 또 다른 mutate 가 커밋된다 — seq 가 올라간다. load() 진입 시점의 seq 와
+    // 지금 seq 가 달라지므로, "낡은 성공 결과를 버리는" 가드가 이 손상 발견까지 함께
+    // 버리면 안 된다 — 실패는 모델을 덮지 않으므로 경합과 무관하게 언제나 반영돼야 한다.
+    await store.mutate([createTable('t2', 'B')])
+    await loadPromise
+
+    // 손상이 "낡았다"고 버려지면 안 된다 — 파일이 깨졌으면 반드시 알리고 편집을 잠가야 한다.
+    expect(store.state.ok).toBe(false)
+    expect(store.isSelfWrite).toBe(false)
+  })
+
   it('flush() 가 쓰기에 실패하면 dirty 를 유지해 다음 flush 가 재시도한다', async () => {
     const dir = await project({})
     const store = new FileStore(dir)

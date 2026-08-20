@@ -171,10 +171,19 @@ export class FileStore {
    * `load()` 가 IO 로 양보하는 사이 끼어든 편집과 순서가 뒤섞이지 않는다.
    *
    * `seqAtStart` 는 `load()` 진입 시점의 `seq` 다 — 지금(커밋 시점) `#state.seq` 가 그것과
-   * 다르면, 이 사이에 `mutate`/`setModel` 이 커밋됐다는 뜻이다. 그러면 지금 든 결과는 이미 낡은
-   * 것이므로 버리고 **현재 상태를 그대로** 돌려준다. 안 이러면 늦게 끝난 `load()` 가 방금 커밋된
+   * 다르면, 이 사이에 `mutate`/`setModel` 이 커밋됐다는 뜻이다. **성공** 결과는 그러면 이미 낡은
+   * 것이므로 버리고 현재 상태를 그대로 돌려준다. 안 이러면 늦게 끝난 `load()` 가 방금 커밋된
    * 편집을 조용히 되돌리고, `#dirty` 는 참으로 남아 다음 `flush()` 가 그 되돌아간 모델을
    * 디스크에 쓴다 — 편집 한 건이 오류도 로그도 없이 증발한다.
+   *
+   * ⚠️ **이 seq 가드는 실패(`!outcome.ok`) 결과에는 적용하지 않는다.** 실패는 모델을 덮지 않고
+   * `ok:false` + `failures` 만 세우므로(마지막 정상 모델은 그대로 `this.#state.model` 을 쓴다)
+   * 경합과 무관하게 언제나 반영돼야 한다 — 안 그러면 「파일이 깨지면 쓰기를 멈추고 알린다」는
+   * 안전망이 경합 창에서 조용히 사라진다(`isSelfWrite` 가 직전 `flush()` 의 `true` 를 그대로
+   * 물고 있어 자기 쓰기로 오인되고, `blocked` 도 나가지 않고, 뒤이은 `flush()` 가 그 손상된
+   * 파일을 메모리 모델로 덮어쓴다). `seq` 는 `seqAtStart`(진입 시점 캡처값)가 아니라
+   * `this.#state.seq`(지금 값)를 쓴다 — `seqAtStart` 를 쓰면 성공 경로에서 고친 seq 되돌림이
+   * 실패 경로로 되돌아온다.
    */
   #commitLoad(
     seqAtStart: number,
@@ -183,13 +192,13 @@ export class FileStore {
       | { ok: false; failures: LoadFailure[] },
   ): Promise<StoreState> {
     return this.#serialize(async () => {
-      if (this.#state.seq !== seqAtStart) return this.#state
       if (!outcome.ok) {
         // 깨진 파일은 자기 쓰기로 설명되지 않는다 — 반드시 알려야 하므로 언제나 false 다.
         this.#selfWrite = false
-        this.#state = { ok: false, model: this.#state.model, seq: seqAtStart, failures: outcome.failures }
+        this.#state = { ok: false, model: this.#state.model, seq: this.#state.seq, failures: outcome.failures }
         return this.#state
       }
+      if (this.#state.seq !== seqAtStart) return this.#state
       // **읽은 것**의 서명을 **쓴 것**과 비교한다. 같으면 이 감시 이벤트는 자기 쓰기다.
       this.#selfWrite = signatureOf(outcome.tree, outcome.layout) === this.#written
       this.#state = { ok: true, model: outcome.model, seq: seqAtStart }
