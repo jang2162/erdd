@@ -910,6 +910,90 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     expect(p.groups[0]!.alias).toBe('')
   })
 
+  /**
+   * ⚠️ **머릿말의 침묵은 부정이 아니다.** `buildNameMeta` 는 그룹도 템플릿도 없는 테이블을 아예
+   * 안 싣는다 — 머릿말에 없다는 것은 「그룹이 없다」가 아니라 「말한 적이 없다」다. 그래서 같은
+   * 이름의 그룹이 머릿말에 있어도 블록이 더 말하는 멤버는 살아야 한다. D7(속성·소속은 머릿말이
+   * 이긴다)은 그대로다 — 머릿말이 **말한** 자리에서만 이긴다.
+   */
+  it('머릿말이 이긴 그룹도 블록에만 있는 멤버를 받는다', () => {
+    const dbml = [
+      '// erdd:v2 {"t":{"MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR","c":"#4A90D9"}}}',
+      'Table "MBR" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'Table "ORD" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'TableGroup "회원관리" [color: #999999] {',
+      '  MBR',
+      '  ORD',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toHaveLength(1)
+    expect([...p.groups[0]!.tablePhysicalNames].sort()).toEqual(['MBR', 'ORD'])
+    expect(p.groups[0]!.color).toBe('#4A90D9')      // 속성은 여전히 머릿말이 이긴다(블록의 #999999 가 아니다)
+  })
+
+  /**
+   * ⚠️ **35a1684 이 남긴 비대칭의 뒤집기.** 그 커밋은 충돌 키(`groupOf`)에 블록 폴백을 넣었지만
+   * 8번 절의 D7 폐기 로직은 그대로 뒀다. 그래서 키는 「ORD 는 회원관리에 들어가니 모델의 **그룹
+   * 없는** ORD 와 안 부딪힌다」로 판정해 들여보내는데, 정작 배정은 블록을 버려 ORD 가 **그룹 없이**
+   * 만들어졌다 — 모델에 그룹 없는 ORD 가 둘이 됐다. 설계 3.3 이 금지한 「같은 실행 안에서 그룹
+   * 배정과 충돌 판정이 서로 다른 사실을 본다」가 정확히 반대 방향으로 남아 있던 것이다.
+   * ⚠️ 픽스처의 구분력은 **모델의 ORD 가 그룹이 없다**는 데 있다. 회원관리에 넣으면 애초에
+   * 부딪혀 건너뛰므로 「들여보낸 것이 어디로 갔는가」를 물을 수 없다.
+   */
+  it('충돌 판정이 블록 그룹을 보고 들여보낸 테이블은 실제로 그 그룹에 들어간다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = {
+      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    const dbml = [
+      '// erdd:v2 {"t":{"MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR"}}}',
+      'Table "MBR" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'Table "ORD" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'TableGroup "회원관리" {',
+      '  MBR',
+      '  ORD',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(m, parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.skippedTables).toEqual([])                       // 키가 (회원관리, ORD) 라 부딪히지 않는다
+    expect(p.groups).toHaveLength(1)
+    // 그 판정대로 실제로 회원관리에 들어간다 — 그룹 없이 만들어지면 모델의 ORD 와 중복이 된다.
+    expect([...p.groups[0]!.tablePhysicalNames].sort()).toEqual(['MBR', 'ORD'])
+  })
+
+  /**
+   * ⚠️ **소속은 테이블마다 하나다.** 머릿말과 블록이 같은 테이블을 서로 다른 그룹으로 말하면
+   * 머릿말이 이기고(D7), 블록 그룹은 그 멤버를 갖지 못한다. 멤버가 그것뿐이면 그룹 자체가 안 생긴다
+   * (블록 경로가 원래 「살아남은 멤버가 없으면 만들지 않는다」였던 것과 같은 성질이다).
+   * ⚠️ 이 단언이 없으면 **멤버를 두 소스의 합집합으로 모으는 순진한 구현**이 통과한다 — 그러면
+   * ORD 가 두 그룹에 실려 나가고, 웹의 적용부(`groupIdByTable.set`)가 나중에 쓴 쪽을 이겨
+   * **블록이 머릿말을 이기는** 정반대 결과가 된다.
+   */
+  it('머릿말과 블록이 같은 테이블을 다른 그룹으로 말하면 블록 그룹은 비어 사라진다', () => {
+    const dbml = [
+      '// erdd:v2 {"t":{"ORD":{"p":"ORD","l":"주문","g":"상품"}},"g":{"상품":{"a":"PRD"}}}',
+      'Table "ORD" {',
+      '  "ID" bigint [pk]',
+      '}',
+      'TableGroup "물류" [color: #999999] {',
+      '  ORD',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups.map((g) => g.name)).toEqual(['상품'])
+    expect(p.groups[0]!.tablePhysicalNames).toEqual(['ORD'])
+  })
+
   // ⚠️ 그룹 이름의 **대소문자 원문**을 잠근다. 저장소의 다른 케이스는 그룹 이름이 한글이라
   // 대소문자가 없어, 만드는 이름을 대문자 색인 키로 바꿔도 전부 초록이다 — 설계 3.1 이
   // NameMetaGroup.name 을 따로 둔 이유가 바로 여기다(파싱은 대문자로 색인하고 표시용 원문은

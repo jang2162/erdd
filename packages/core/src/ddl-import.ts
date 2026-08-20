@@ -435,29 +435,44 @@ export function planDdlImport(
 
   // 8) 그룹. 소스가 둘이다 — 머릿말(모든 형식)과 DBML 의 TableGroup 블록. 살아남은 테이블만
   // 담고, 같은 이름의 그룹이 모델에 있으면 그것을 쓴다.
-  // ⚠️ 같은 이름이면 **머릿말이 이긴다**(설계 D7). 별칭은 머릿말에만 있고, 머릿말은 우리가 쓴 것이
-  // 확실한 반면 블록은 사람이 손댔을 수 있다. 블록에만 있는 그룹은 그대로 살린다 — 남이 준 DBML 은
-  // 머릿말이 없어 지금까지의 동작 그대로다.
+  //
+  // ⚠️ **소속을 정하는 것은 `groupOf` 하나다 — 충돌 판정이 쓰는 바로 그 함수다.** 예전에는 이 절이
+  // 머릿말 멤버와 블록 멤버를 **각각 다른 규칙으로** 모았다(같은 이름이면 블록을 통째로 버렸다).
+  // 그래서 35a1684 가 충돌 키에 블록 폴백을 넣은 뒤로 **키와 배정이 서로 다른 사실을 봤다** —
+  // 키는 「ORD 는 블록이 말한 그룹에 들어가니 모델의 그룹 없는 ORD 와 안 부딪힌다」로 들여보내는데
+  // 배정은 그 블록을 버려 ORD 를 그룹 없이 만들었고, 모델에 그룹 없는 ORD 가 둘이 됐다. 설계 3.3 이
+  // 금지한 비대칭이 정확히 반대 방향으로 남아 있던 것이다. **소스를 하나로 두면 그 어긋남이
+  // 구조적으로 성립할 수 없다** — 규약을 손으로 지키는 대신 한 함수만 보게 한다.
+  //
+  // ⚠️ **D7 은 그대로다.** 우선순위는 `groupOf` 안에 있고(머릿말 → 블록) 속성도 머릿말이 이긴다.
+  // 바뀌는 것은 **머릿말이 말한 적 없는 테이블**뿐인데, `buildNameMeta` 는 그룹도 템플릿도 없는
+  // 테이블을 아예 안 싣는다 — 머릿말의 침묵은 「그룹이 없다」가 아니라 「말한 적이 없다」다.
   const groups: DdlImportGroup[] = []
   const groupIdByName = new Map(
     Object.values(model.tableGroups).map((g) => [upper(g.name), g.id]),
   )
+  // 블록 속성은 **머릿말이 그 그룹을 아예 말하지 않았을 때만** 본다(아래 attrs 참조).
+  const blockByName = new Map((parsed.groups ?? []).map((g) => [upper(g.name), g]))
 
-  // ⚠️ **tableByUpper 는 살아남은 테이블만 담는다** — 건너뛴 테이블이 그룹 멤버로 새지 않는다
-  // (아래 블록 경로의 filter 와 같은 보장을 구조로 얻는다).
-  const headerMembers = new Map<string, { name: string; members: string[] }>()
+  // ⚠️ **tableByUpper 는 살아남은 테이블만 담는다** — 건너뛴 테이블이 그룹 멤버로 새지 않는다.
+  const memberOf = new Map<string, { name: string; members: string[] }>()
   for (const [rawUpper, t] of tableByUpper) {
-    const gn = metaOf(rawUpper)?.g
-    if (gn === undefined || gn.trim() === '') continue
+    const gn = groupOf(rawUpper)
+    if (gn.trim() === '') continue
     const k = upper(gn)
-    const e = headerMembers.get(k) ?? { name: gn, members: [] }
+    const e = memberOf.get(k) ?? { name: gn, members: [] }
     e.members.push(t.physicalName)
-    headerMembers.set(k, e)
+    memberOf.set(k, e)
   }
-  for (const [k, e] of headerMembers) {
-    // 속성은 머릿말의 g 구획에서 온다. 그것이 없으면(테이블 항목만 그룹 이름을 실은 머릿말)
-    // 이름만 살리고 나머지는 비운다 — 웹이 색을 팔레트에서 고른다.
+
+  for (const [k, e] of memberOf) {
+    // 속성은 머릿말의 g 구획에서 온다. 그것이 없으면(테이블 항목만 그룹 이름을 실은 머릿말, 또는
+    // 머릿말이 아예 모르는 그룹) 블록이 말한 것을 쓰고, 그것도 없으면 이름만 살리고 나머지는
+    // 비운다 — 웹이 색을 팔레트에서 고른다.
+    // ⚠️ **둘을 필드 단위로 섞지 않는다.** 머릿말이 그 그룹을 말했으면 머릿말만 본다 — 빈 색·빈
+    // 코멘트는 키를 생략하는 형식이라(3.17) 필드 단위로 폴백하면 **일부러 비운 값을 블록이 되살린다.**
     const attrs = parsed.nameMeta?.groups[k]
+    const block = attrs === undefined ? blockByName.get(k) : undefined
     const existingId = groupIdByName.get(k) ?? null
     // ⚠️ 별칭에만 경고한다(설계 D3). 별칭은 {그룹별칭} 변수로 **물리명 조합에 들어가 최종 이름을
     // 바꾸므로** 조용히 갈리면 사용자가 보는 이름이 원본과 달라지는데 이유를 알 길이 없다.
@@ -481,24 +496,12 @@ export function planDdlImport(
       })
     }
     groups.push({
-      name: attrs?.name ?? e.name,
-      color: attrs?.c ?? null,
-      comment: attrs?.n ?? null,
+      name: attrs?.name ?? block?.name ?? e.name,
+      color: attrs?.c ?? block?.color ?? null,
+      comment: attrs?.n ?? block?.comment ?? null,
       alias: attrs?.a ?? '',
       tablePhysicalNames: e.members,
       existingId,
-    })
-  }
-
-  for (const g of parsed.groups ?? []) {
-    if (headerMembers.has(upper(g.name))) continue          // D7 — 머릿말이 이겼다
-    const members = g.tables.filter((n) => tableByUpper.has(upper(n)))
-      .map((n) => tableByUpper.get(upper(n))!.physicalName)
-    if (members.length === 0) continue
-    groups.push({
-      name: g.name, color: g.color, comment: g.comment ?? null, alias: '',
-      tablePhysicalNames: members,
-      existingId: groupIdByName.get(upper(g.name)) ?? null,
     })
   }
 
