@@ -2,11 +2,12 @@ import { initTRPC, TRPCError } from '@trpc/server'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  createEmptyModel, parseOps, OpParseError, type ProjectModel, type RunMode,
+  createEmptyModel, parseOps, DIALECTS, NamingRulesStrictSchema, OpParseError,
+  type ProjectModel, type RunMode,
 } from '@erdd/core'
 import { writeConfig, type ErddConfig } from '../config.js'
 import { FileStore, LocalStoreError } from './store.js'
-import { readSnapshots, writeSnapshots, type SnapshotRecord } from './snapshots.js'
+import { readSnapshots, updateSnapshots, type SnapshotRecord } from './snapshots.js'
 
 export type LocalContext = {
   store: FileStore
@@ -85,22 +86,29 @@ export function createLocalRouter() {
         canManage: true,
       })),
 
+      /**
+       * ⚠️ 서버와 **같은** core 스키마로 검증한다. 이 경로가 쓰는 대상은 `erdd.config.yaml` 이고,
+       * 그것이 오염되면 `readConfig` 가 거절해 **프로젝트가 아예 열리지 않는다** — 화면 하나가
+       * 잘못 보내는 것으로 그 자리까지 가게 두면 안 된다. 검증 실패는 zod 가 BAD_REQUEST 로 낸다.
+       *
+       * `NamingRulesStrictSchema` 를 쓰는 이유는 서버 주석과 같다 — 읽기용 스키마의 기본값이
+       * 걸리면 키 누락이 곧 「기본값으로 되쓰기」가 되어 꺼 둔 구분자가 조용히 켜진다.
+       */
       update: scoped
         .input(z.object({
           projectId: z.string(),
           name: z.string().min(1).optional(),
           description: z.string().optional(),
-          dialects: z.array(z.string()).optional(),
-          namingRules: z.unknown().optional(),
+          dialects: z.array(z.enum(DIALECTS)).min(1).optional(),
+          namingRules: NamingRulesStrictSchema.optional(),
         }))
         .mutation(async ({ ctx, input }) => {
           // 이름·설명은 config 에 담을 자리가 없다(로컬 프로젝트에는 이름이 없다).
           // 방언·명명 규칙만 되쓴다.
           const next: ErddConfig = {
             ...ctx.config,
-            dialects: (input.dialects as ErddConfig['dialects'] | undefined) ?? ctx.config.dialects,
-            namingRules: (input.namingRules as ErddConfig['namingRules'] | undefined)
-              ?? ctx.config.namingRules,
+            dialects: input.dialects ?? ctx.config.dialects,
+            namingRules: input.namingRules ?? ctx.config.namingRules,
           }
           await writeConfig(ctx.cwd, next)
           // ⚠️ 파일만 되쓰면 안 된다 — 컨텍스트가 들고 있는 config 는 서버가 뜰 때 읽은 것이라
@@ -147,7 +155,7 @@ export function createLocalRouter() {
         }))
         .mutation(async ({ ctx, input }) => {
           const rec = toRecord(ctx.store, input.name, input.description ?? '')
-          await writeSnapshots(ctx.cwd, [rec, ...await readSnapshots(ctx.cwd)])
+          await updateSnapshots(ctx.cwd, (all) => [rec, ...all])
           return { id: rec.id }
         }),
 
@@ -180,11 +188,13 @@ export function createLocalRouter() {
       delete: scoped
         .input(z.object({ projectId: z.string(), snapshotId: z.string() }))
         .mutation(async ({ ctx, input }) => {
-          const all = await readSnapshots(ctx.cwd)
-          if (!all.some((x) => x.id === input.snapshotId)) {
-            throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
-          }
-          await writeSnapshots(ctx.cwd, all.filter((x) => x.id !== input.snapshotId))
+          // 존재 검사도 체인 안에서 한다 — 밖에서 하면 그 사이에 남이 지운 것을 못 본다.
+          await updateSnapshots(ctx.cwd, (all) => {
+            if (!all.some((x) => x.id === input.snapshotId)) {
+              throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
+            }
+            return all.filter((x) => x.id !== input.snapshotId)
+          })
           return { ok: true as const }
         }),
 

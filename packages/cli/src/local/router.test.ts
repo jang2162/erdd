@@ -30,6 +30,12 @@ const caller = async () => createLocalRouter().createCaller(await ctx())
  */
 const T1 = '018f6b0e-0000-7000-8000-000000000001'
 
+/** `NamingRulesStrictSchema` 는 모든 키를 요구한다 — 부분 페이로드는 통과하지 못한다. */
+const LOWER_SNAKE = {
+  case: 'lower_snake', separator: '_', logicalSeparator: '', maxLengthBytes: 64,
+  tablePhysicalTemplate: '', tableLogicalTemplate: '',
+} as const
+
 const createTable = (entityId: string): Op => ({
   action: 'create',
   entity: 'table',
@@ -55,11 +61,32 @@ describe('로컬 라우터', () => {
   it('project.update 가 erdd.config.yaml 에 되쓴다', async () => {
     const c = await ctx()
     const call = createLocalRouter().createCaller(c)
-    await call.project.update({
-      projectId: LOCAL_PROJECT_ID,
-      namingRules: { case: 'lower_snake', separator: '_', maxLengthBytes: 64, logicalSeparator: '' },
-    })
+    await call.project.update({ projectId: LOCAL_PROJECT_ID, namingRules: LOWER_SNAKE })
     expect((await readConfig(c.cwd)).namingRules.case).toBe('lower_snake')
+  })
+
+  /**
+   * 이 경로가 쓰는 대상은 `erdd.config.yaml` 이다 — 오염되면 `readConfig` 가 거절해 프로젝트가
+   * 아예 열리지 않는다. 서버와 **같은** core 스키마로 막는지 확인한다.
+   */
+  it('없는 방언·모자란 명명 규칙은 거절하고 config 를 건드리지 않는다', async () => {
+    const c = await ctx()
+    const call = createLocalRouter().createCaller(c)
+
+    await expect(call.project.update({
+      projectId: LOCAL_PROJECT_ID, dialects: ['nosuchdb'],
+    } as never)).rejects.toThrow()
+
+    // ⚠️ 키 누락을 통과시키면 그것이 곧 「기본값으로 되쓰기」가 되어 꺼 둔 구분자가 조용히 켜진다
+    // (서버가 읽기용이 아니라 strict 스키마를 쓰는 이유다).
+    await expect(call.project.update({
+      projectId: LOCAL_PROJECT_ID,
+      namingRules: { case: 'lower_snake', separator: '_', maxLengthBytes: 64 },
+    } as never)).rejects.toThrow()
+
+    const after = await readConfig(c.cwd)
+    expect(after.dialects).toEqual(['postgresql'])
+    expect(after.namingRules.case).toBe('UPPER_SNAKE')
   })
 
   /**
@@ -113,6 +140,20 @@ describe('로컬 라우터', () => {
     expect((await call.snapshot.list({ projectId: LOCAL_PROJECT_ID })).items).toEqual([])
   })
 
+  /**
+   * 읽기-수정-쓰기가 겹치면 한쪽이 읽은 목록 위에 다른 쪽이 덮어써 스냅샷 하나가 조용히 사라진다.
+   * 탭 둘이나 빠른 연속 클릭으로 충분히 만들어진다.
+   */
+  it('동시에 만든 스냅샷 두 개가 둘 다 남는다', async () => {
+    const call = await caller()
+    await Promise.all([
+      call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '가' }),
+      call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '나' }),
+    ])
+    const list = await call.snapshot.list({ projectId: LOCAL_PROJECT_ID })
+    expect(list.items.map((i) => i.name).sort()).toEqual(['가', '나'])
+  })
+
   it('없는 스냅샷은 NOT_FOUND 로 던진다', async () => {
     const call = await caller()
     await expect(call.snapshot.get({
@@ -135,6 +176,7 @@ describe('서버 라우터와의 계약', () => {
     expectTypeOf<ServerIn['model']['get']>().toExtend<LocalIn['model']['get']>()
     expectTypeOf<ServerIn['model']['mutate']>().toExtend<LocalIn['model']['mutate']>()
     expectTypeOf<ServerIn['project']['get']>().toExtend<LocalIn['project']['get']>()
+    expectTypeOf<ServerIn['project']['update']>().toExtend<LocalIn['project']['update']>()
     expectTypeOf<ServerIn['snapshot']['create']>().toExtend<LocalIn['snapshot']['create']>()
     expectTypeOf<ServerIn['snapshot']['restore']>().toExtend<LocalIn['snapshot']['restore']>()
   })
