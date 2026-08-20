@@ -103,3 +103,8 @@ export {
 export type {
   MergeKind, MergeConflict, MergeResult, MergeOptions, ConflictReason, PrunedRef,
 } from './file-merge.js'
+export {
+  applyLayout, layoutFromModel,
+} from './layout.js'
+export type { LayoutData, TableLayout } from './layout.js'
+export { LOCAL_PROJECT_ID, type RunMode } from './local.js'
