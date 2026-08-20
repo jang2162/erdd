@@ -937,6 +937,29 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
   })
 
   /**
+   * ⚠️ **속성은 그룹 단위로 갈린다 — 필드 단위로 섞지 않는다.** 머릿말이 그 그룹을 말했으면
+   * 머릿말만 본다. 빈 색·빈 코멘트는 **키를 생략하는** 형식이라(3.17), 필드 단위로 블록에
+   * 폴백하면 **원본에서 일부러 비워 둔 값을 블록이 되살린다** — 머릿말이 이긴다는 D7 이
+   * 조용히 반쪽이 된다.
+   */
+  it('머릿말이 말한 그룹의 빈 색·빈 코멘트를 블록이 되살리지 않는다', () => {
+    const dbml = [
+      '// erdd:v2 {"t":{"MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR"}}}',
+      'Table "MBR" {',
+      '  "ID" bigint [pk]',
+      '}',
+      "TableGroup \"회원관리\" [color: #999999, note: '블록이 쓴 설명'] {",
+      '  MBR',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toHaveLength(1)
+    expect(p.groups[0]!.color).toBeNull()            // 웹이 팔레트에서 고른다
+    expect(p.groups[0]!.comment).toBeNull()
+    expect(p.groups[0]!.alias).toBe('MBR')
+  })
+
+  /**
    * ⚠️ **35a1684 이 남긴 비대칭의 뒤집기.** 그 커밋은 충돌 키(`groupOf`)에 블록 폴백을 넣었지만
    * 8번 절의 D7 폐기 로직은 그대로 뒀다. 그래서 키는 「ORD 는 회원관리에 들어가니 모델의 **그룹
    * 없는** ORD 와 안 부딪힌다」로 판정해 들여보내는데, 정작 배정은 블록을 버려 ORD 가 **그룹 없이**
