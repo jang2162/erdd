@@ -95,6 +95,42 @@ export async function writeTree(
   return { written: written.sort(), deleted: deleted.sort() }
 }
 
+/**
+ * `base` 와 달라진 파일만 쓴다 — 로컬 서버의 `flush` 가 쓰는 경로다.
+ *
+ * `writeTree` 와 다른 점이 둘이다.
+ * 1. **내용이 같은 파일은 건드리지 않는다.** 비교는 `diffTrees` 의 `canonical` 값 비교라
+ *    **포맷만 다른 파일은 「변경 없음」**이다. 로컬 모드는 에이전트·사람이 YAML 을 직접 쓰는
+ *    것이 전제라, 매번 전체를 다시 쓰면 무관한 편집 한 번에 손으로 다듬은 포맷이 전부
+ *    정규화된다(설계 §4 "변경된 파일만 쓰기").
+ * 2. **디렉터리를 훑어 「트리에 없는 파일」을 지우지 않는다.** `base` 에 있었는데 사라진 것만
+ *    지운다. 그래서 우리가 모르는 사이 밖에서 생긴 `erdd/tables/*.yaml` 이 이 경로로 삭제되는
+ *    일이 없다(최종 리뷰 I-2 의 조용한 삭제가 여기로 흘러들었다).
+ *
+ * 삭제를 쓰기보다 먼저 하는 이유는 `writeTree` 와 같다(대소문자 무시 파일시스템의 개명).
+ * 이미 없는 파일의 삭제는 성공으로 본다 — 앞선 flush 가 중간에 실패해 `base` 가 디스크보다
+ * 앞서 있을 수 있다.
+ */
+export async function writeTreeChanges(
+  cwd: string, base: FileTree, next: FileTree,
+): Promise<{ written: string[]; deleted: string[] }> {
+  const { added, modified, deleted } = diffTrees(base, next)
+  for (const rel of deleted) {
+    try {
+      await rm(join(cwd, rel))
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+    }
+  }
+  const written = [...added, ...modified].sort()
+  for (const rel of written) {
+    const abs = join(cwd, rel)
+    await mkdir(dirname(abs), { recursive: true })
+    await writeFile(abs, stringifyYaml(next[rel]), 'utf8')
+  }
+  return { written, deleted }
+}
+
 export async function readTree(cwd: string): Promise<FileTree> {
   const tree: FileTree = {}
   const load = async (rel: string): Promise<void> => {

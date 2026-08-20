@@ -20,6 +20,8 @@ type EditorState = {
   canEdit: boolean
   /** 프로젝트를 관리할 수 있는가(스냅샷 복원·삭제). 로드 전 기본값 false. */
   canManage: boolean
+  /** 로컬 모드에서 파일이 깨져 편집이 잠긴 상태. null 이면 정상. */
+  blocked: { path: string; message: string }[] | null
   viewMode: ViewMode
   /**
    * 선택된 테이블들. 순서 = 선택한 순서이고 **`[0]`이 주 선택**(presence·사이드바의 기준)이다.
@@ -51,6 +53,8 @@ type EditorState = {
     namingRules: NamingRules, dialects: Dialect[], projectName: string | null,
   ) => void
   setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
+  /** 로컬 모드 파일 손상으로 편집을 잠그거나(failures) 푼다(null). canEdit 을 함께 내린다. */
+  setBlocked: (failures: { path: string; message: string }[] | null) => void
   setModel: (model: ProjectModel) => void
   setSeq: (seq: number) => void
   setPeers: (peers: Peer[]) => void
@@ -141,6 +145,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   projectName: null,
   canEdit: false,
   canManage: false,
+  blocked: null,
   viewMode: 'physical',
   ...CLEARED_SELECTION,
   focusTableId: null,
@@ -162,7 +167,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
   setProjectConfig: (namingRules, dialects, projectName) =>
     set({ namingRules, dialects, projectName }),
-  setPermissions: ({ canEdit, canManage }) => set({ canEdit, canManage }),
+  // blocked(파일 손상) 상태에서는 project.get이 다시 도착해도 편집을 열지 않는다 — 두 곳이
+  // canEdit을 다투지 않도록 setBlocked가 내린 잠금을 여기서 존중한다.
+  setPermissions: ({ canEdit, canManage }) =>
+    set((s) => ({ canEdit: s.blocked !== null ? false : canEdit, canManage })),
+  setBlocked: (failures) => set({ blocked: failures, canEdit: failures === null }),
   setModel: (model) => set({ model }),
   setSeq: (seq) => set((s) => ({ seq: Math.max(s.seq, seq) })),
   setPeers: (peers) => set({ peers }),
@@ -244,7 +253,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   reset: () => set({
     model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
     namingRules: DEFAULT_NAMING_RULES, dialects: [], projectName: null, peers: [],
-    canEdit: false, canManage: false,
+    canEdit: false, canManage: false, blocked: null,
     ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],
   }),
 }))

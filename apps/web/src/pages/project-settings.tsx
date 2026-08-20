@@ -9,6 +9,7 @@ import {
   type ProjectModel,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
+import { useIsLocal } from '@/components/require-auth'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -232,6 +233,8 @@ export function ProjectSettingsPage() {
   const { projectId = '' } = useParams()
   const trpc = useTRPC()
   const project = useQuery(trpc.project.get.queryOptions({ projectId }))
+  // 프로젝트 멤버는 org.members.list 를 부른다 — 로컬 서버에는 조직이 없다.
+  const isLocal = useIsLocal()
 
   if (project.isPending) return <p className="text-muted-foreground">불러오는 중…</p>
   if (project.isError) return <p role="alert" className="text-destructive">{project.error.message}</p>
@@ -259,7 +262,7 @@ export function ProjectSettingsPage() {
       </div>
 
       {canManage && <NamingRulesSection projectId={projectId} namingRules={p.namingRules} />}
-      {canManage && <ProjectMembers projectId={projectId} orgId={p.orgId} />}
+      {canManage && !isLocal && <ProjectMembers projectId={projectId} orgId={p.orgId} />}
     </div>
   )
 }

@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { useIsLocal } from '@/components/require-auth'
 
 type Section = 'snapshot' | 'history' | 'diff'
 
@@ -181,6 +182,8 @@ export function VersionDialog({ projectId, open, onOpenChange }: {
   onOpenChange: (open: boolean) => void
 }) {
   const [section, setSection] = useState<Section>('snapshot')
+  // 이력은 revision.list 를 부른다 — 로컬 서버에는 그 프로시저가 없다.
+  const isLocal = useIsLocal()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -193,12 +196,14 @@ export function VersionDialog({ projectId, open, onOpenChange }: {
           >
             스냅샷
           </Button>
-          <Button
-            type="button" size="sm" variant={section === 'history' ? 'default' : 'outline'}
-            onClick={() => setSection('history')}
-          >
-            이력
-          </Button>
+          {!isLocal && (
+            <Button
+              type="button" size="sm" variant={section === 'history' ? 'default' : 'outline'}
+              onClick={() => setSection('history')}
+            >
+              이력
+            </Button>
+          )}
           <Button
             type="button" size="sm" variant={section === 'diff' ? 'default' : 'outline'}
             onClick={() => setSection('diff')}
@@ -209,7 +214,7 @@ export function VersionDialog({ projectId, open, onOpenChange }: {
         {section === 'snapshot' && (
           <SnapshotSection projectId={projectId} onRestored={() => onOpenChange(false)} />
         )}
-        {section === 'history' && <HistoryView projectId={projectId} />}
+        {!isLocal && section === 'history' && <HistoryView projectId={projectId} />}
         {section === 'diff' && (
           <SnapshotDiff projectId={projectId} onNavigate={() => onOpenChange(false)} />
         )}

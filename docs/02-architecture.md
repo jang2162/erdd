@@ -24,7 +24,7 @@ erdd/
 │  └─ server/     # Fastify + tRPC + Drizzle ORM + PostgreSQL
 └─ packages/
    ├─ core/       # 순수 TS 도메인 로직 — IO 없음
-   └─ cli/        # Phase 4 (core 재사용)
+   └─ cli/        # Phase 4 (core 재사용) + 로컬 모드 서버(src/local/)
 ```
 
 ### packages/core — 도메인 로직의 단일 저장소
@@ -61,6 +61,24 @@ IO 없는 순수 TypeScript 패키지에 도메인 로직을 모두 모은다.
 ### 배포 구성
 
 단일 Docker 이미지(server가 web 정적 파일 서빙 + API + Phase 3의 WebSocket) + 관리형 PostgreSQL. 1인 운영 최소형으로 시작하고, 트래픽이 늘면 web 분리·다중 인스턴스(Redis pub/sub)로 확장한다. 운영 배포는 HTTPS를 전제로 한다(세션 쿠키가 production에서 secure 플래그를 사용하므로 TLS 종료가 없는 환경에서는 로그인이 동작하지 않는다 — 리버스 프록시에서 TLS를 종료할 것).
+
+### 실행 형태 둘 — 서버 배포와 로컬 모드
+
+같은 웹 에디터가 백엔드 둘 위에서 돈다. ②는 `erdd serve`가 띄우는 로컬 서버다(→ [16-cli](16-cli.md)).
+
+| | ① 서버 배포 | ② 로컬 모드(`erdd serve`) |
+|---|---|---|
+| 백엔드 | `apps/server` — Fastify + tRPC + Drizzle | `packages/cli/src/local` — Fastify + 축소 tRPC 라우터 |
+| 진실 원천 | PostgreSQL | 저장소 안의 `erdd/*.yaml` 파일 |
+| 계정·조직·권한 | 있다 | 없다 — 고정 사용자, 127.0.0.1 바인딩 |
+| 변경 이력 | `revisions` 테이블(이력 화면·undo 재제출) | git이 파일을 버전 관리한다(Revision 이력 없음) |
+| 스냅샷 | `snapshots` 테이블 | `.erdd/snapshots.json` 단일 파일 |
+| 외부 변경 전파 | WebSocket op 브로드캐스트 + presence | SSE 한 줄(파일 감시 → 재로드) |
+| 범위 | 조직·프로젝트 여러 개 | 디렉터리 하나 = 프로젝트 하나 |
+
+- **웹과 core는 한 벌이다.** 모드 분기는 `auth.me`가 돌려주는 `mode: 'server' | 'local'` 한 값이고, 웹은 그 값으로 로컬에 없는 화면(공용 리소스·참여자·사용자 메뉴·버전 이력)을 렌더에서 뺀다. 운영 서버는 언제나 `'server'`를 돌려준다.
+- ⚠️ **웹 클라이언트는 서버 라우터의 `AppRouter` 타입으로 만들어진다.** 로컬 라우터가 그 계약에서 어긋나면 컴파일이 아니라 런타임에 깨지므로, 입출력 타입 일치와 프로시저 이름 집합을 테스트로 잠근다(→ [HANDOFF 3.18](superpowers/HANDOFF.md)).
+- **둘은 배타가 아니다.** 연결 설정(`serverUrl`+`projectId`)이 있는 프로젝트에서도 `erdd serve`가 뜨고, 로컬 서버는 어느 경우든 **파일만** 본다. 서버와의 왕래는 `pull`/`push`가 맡는다.
 
 ## 데이터 계층
 
@@ -106,6 +124,8 @@ type Op =
 ```
 
 정규화된 상태 테이블이 진실 원천이고, revisions는 append-only 로그다. 상태↔로그 정합성은 **"이 파이프라인 밖에서는 상태를 절대 변경하지 않는다"**는 규율로 지킨다.
+
+**로컬 모드에는 이 파이프라인이 없다.** op 배치는 core의 `applyOps`로 메모리 모델에 적용되고 디바운스 뒤 파일로 쓰인다 — 권한 확인·트랜잭션·revisions 기록이 전부 빠진다. 다만 **op 검증(`parseOps`·배치당 상한)은 core의 같은 함수를 그대로 쓴다**(규칙이 두 벌이 되지 않게 한다).
 
 ### Revision
 

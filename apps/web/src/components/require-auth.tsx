@@ -4,7 +4,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useTRPC } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 
-export type Me = { id: string; email: string; name: string; role: 'admin' | 'user' }
+export type Me = {
+  id: string; email: string; name: string
+  role: 'admin' | 'user'
+  /** 'local'이면 백엔드 없이 파일 위에서 도는 로컬 서버다 — 계정·조직·협업 기능이 없다. */
+  mode: 'server' | 'local'
+}
 
 const MeContext = createContext<Me | null>(null)
 
@@ -32,4 +37,9 @@ export function RequireAuth({ children, adminOnly }: { children: ReactNode; admi
   }
   if (adminOnly && me.data.role !== 'admin') return <Navigate to="/" replace />
   return <MeContext.Provider value={me.data}>{children}</MeContext.Provider>
+}
+
+/** 로컬 모드 분기의 단일 진입점. 컴포넌트마다 me.mode를 직접 비교하지 않는다. */
+export function useIsLocal(): boolean {
+  return useMe().mode === 'local'
 }

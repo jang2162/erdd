@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   readConfig, writeConfig, readSync, writeSync, readBase, writeBase,
-  resolveToken, writeToken, ensureGitignore,
+  resolveToken, writeToken, ensureGitignore, requireConnection, LOCAL_PROJECT_ID, CONFIG_FILE,
 } from './config.js'
 import type { ErddConfig } from './config.js'
 
@@ -219,5 +219,53 @@ describe('config', () => {
     const raw = await readFile(join(dir, '.gitignore'), 'utf8')
     expect(raw).toContain('node_modules')
     expect(raw).toContain('.erdd/')
+  })
+})
+
+describe('연결 설정이 없는 config', () => {
+  const localYaml = [
+    'dialects: [postgresql]',
+    'namingRules:',
+    '  case: UPPER_SNAKE',
+    '  separator: _',
+    '  maxLengthBytes: 30',
+    '',
+  ].join('\n')
+
+  it('serverUrl·projectId 가 없어도 읽힌다', async () => {
+    await writeFile(join(dir, CONFIG_FILE), localYaml, 'utf8')
+    const config = await readConfig(dir)
+    expect(config.serverUrl).toBeNull()
+    expect(config.projectId).toBeNull()
+    expect(config.dialects).toEqual(['postgresql'])
+  })
+
+  it('둘 중 하나만 있으면 거절한다 — 오타를 로컬 모드로 삼키지 않는다', async () => {
+    await writeFile(join(dir, CONFIG_FILE), `serverUrl: https://e.example.com\n${localYaml}`, 'utf8')
+    await expect(readConfig(dir)).rejects.toThrow(/serverUrl.*projectId|projectId.*serverUrl/)
+  })
+
+  it('requireConnection 이 연결 설정 없음을 NO_CONFIG 로 알린다', () => {
+    expect(() => requireConnection({
+      serverUrl: null, projectId: null, dialects: ['postgresql'],
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '', tableLogicalTemplate: '',
+      },
+    })).toThrow(/erdd init/)
+  })
+
+  it('requireConnection 은 값이 있으면 그대로 돌려준다', () => {
+    expect(requireConnection({
+      serverUrl: 'https://e.example.com', projectId: 'p1', dialects: ['postgresql'],
+      namingRules: {
+        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
+        tablePhysicalTemplate: '', tableLogicalTemplate: '',
+      },
+    })).toEqual({ serverUrl: 'https://e.example.com', projectId: 'p1' })
+  })
+
+  it('config 모듈이 LOCAL_PROJECT_ID 를 넘겨준다', () => {
+    expect(LOCAL_PROJECT_ID).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
   })
 })

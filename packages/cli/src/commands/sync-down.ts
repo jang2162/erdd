@@ -1,6 +1,6 @@
 import { modelToFiles, type Dialect, type FileIssue, type NamingRules, type ProjectModel } from '@erdd/core'
 import type { ApiClient } from '../client.js'
-import { writeBase, writeConfig, writeSync, type ErddConfig } from '../config.js'
+import { writeBase, writeConfig, writeSync, type Connection } from '../config.js'
 import { writeTree } from '../tree.js'
 
 export type SyncDownResult = {
@@ -14,13 +14,13 @@ export type SyncDownResult = {
 
 /** 서버에서 받아 트리·base·sync·config를 쓴다. pull과 push(성공 후)가 공유한다. */
 export async function syncDown(
-  cwd: string, config: ErddConfig, client: ApiClient,
+  cwd: string, connection: Connection, client: ApiClient,
 ): Promise<SyncDownResult> {
   const project = await client.query<{ name: string; dialects: Dialect[]; namingRules: NamingRules }>(
-    'project.get', { projectId: config.projectId },
+    'project.get', { projectId: connection.projectId },
   )
   const { model, seq } = await client.query<{ model: ProjectModel; seq: number }>(
-    'model.get', { projectId: config.projectId },
+    'model.get', { projectId: connection.projectId },
   )
 
   const { tree, issues } = modelToFiles(model)
@@ -33,7 +33,7 @@ export async function syncDown(
   await writeBase(cwd, tree)
   await writeSync(cwd, { revisionSeq: seq, pulledAt: new Date().toISOString() })
   // 서버가 진실 원천이다 — 방언·명명 규칙을 매번 갱신한다.
-  await writeConfig(cwd, { ...config, dialects: project.dialects, namingRules: project.namingRules })
+  await writeConfig(cwd, { ...connection, dialects: project.dialects, namingRules: project.namingRules })
 
   return { projectName: project.name, seq, model, written, deleted, issues }
 }

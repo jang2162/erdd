@@ -7,6 +7,7 @@ import { diff } from './commands/diff.js'
 import { init } from './commands/init.js'
 import { pull } from './commands/pull.js'
 import { push } from './commands/push.js'
+import { serve } from './commands/serve.js'
 import { skill } from './commands/skill.js'
 import { status } from './commands/status.js'
 import { validate } from './commands/validate.js'
@@ -21,6 +22,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   diff         로컬 파일과 서버의 차이를 미리 본다
   status       연결 정보와 로컬 변경을 보여준다
   validate     서버 없이 파일을 검사한다
+  serve        로컬 서버를 띄워 브라우저에서 편집한다(서버 연결 불필요)
   skill install 에이전트 스킬 문서를 프로젝트에 설치한다
 
 옵션
@@ -33,6 +35,9 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --server <url>        init 전용
   --token <token>       init 전용
   --project <id>        init 전용
+  --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
+  --port <번호>          serve 전용 — 기본 4300
+  --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
   --help                이 도움말`
 
 export function flagValue(argv: string[], name: string): string | undefined {
@@ -111,12 +116,27 @@ export async function main(argv: string[], cwd: string): Promise<number> {
       serverUrl: flagValue(argv, 'server'),
       token: flagValue(argv, 'token'),
       projectId: flagValue(argv, 'project'),
+      local: argv.includes('--local'),
     })
     case 'pull': return pull(ctx)
     case 'push': return push({ ...ctx, message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm') })
     case 'diff': return diff(ctx)
     case 'status': return status(ctx)
     case 'validate': return validate(ctx)
+    case 'serve': {
+      // flagValue는 값이 빠지면(다음 토큰이 없거나 다른 --플래그면) undefined를 돌려주는데,
+      // 이는 "플래그를 아예 안 줬다"와 구분되지 않는다 — argv.includes로 존재 여부를 따로
+      // 봐야 "--port"만 쓰고 값을 빠뜨린 경우를 조용히 기본 포트로 흘리지 않는다.
+      let port: number | undefined
+      if (argv.includes('--port')) {
+        const rawPort = flagValue(argv, 'port')
+        port = rawPort === undefined ? NaN : Number(rawPort)
+        if (!Number.isInteger(port) || port <= 0) {
+          return usageError(json, `--port 값이 올바르지 않습니다: ${rawPort ?? '(값 없음)'}`)
+        }
+      }
+      return serve({ ...ctx, port, open: !argv.includes('--no-open') })
+    }
     case 'skill': return skill({
       ...ctx, sub: argv[1], dir: flagValue(argv, 'dir'), force: argv.includes('--force'),
     })

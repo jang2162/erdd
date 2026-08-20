@@ -1,6 +1,6 @@
 # CLI 로컬 모드 — 백엔드 없이 파일 기반 단일 프로젝트로 실행 설계
 
-**작성:** 2026-08-20 / **상태:** 사용자 확정 / **마이그레이션:** 없음 / **서버 변경:** 1줄(`auth.me`의 `mode`)
+**작성:** 2026-08-20 / **상태:** 사용자 확정 / **마이그레이션:** 없음 / **서버 변경:** `auth.me` 한 곳(`mode` 필드)
 
 ---
 
@@ -100,21 +100,30 @@ git-ignore 하지 않고 커밋 대상으로 두는 이유는, 배치가 **팀�
 ### D7. 모드 감지는 `auth.me` 의 `mode` 필드 하나로 한다
 
 `auth.me` 의 반환에 `mode: 'server' | 'local'` 을 더한다. 운영 서버는 항상 `'server'` 를 돌려준다 —
-**`apps/server` 변경은 이 한 줄이 전부다.**
+**`apps/server` 변경은 `auth.me` 한 곳이 전부다.**
+
+> ⚠️ **구현에서 한 줄로는 끝나지 않았다.** 반환 타입을 core 의 `RunMode` 로 **명시**해야 한다 —
+> 명시하지 않으면 tRPC 의 출력 타입 추론이 리터럴 `'server'` 로 좁혀, 로컬 라우터의 `'local'` 과
+> 서로를 만족하지 못해 계약 잠금(§4)이 깨진다. 고친 자리는 여전히 `auth.me` **한 곳**이다.
 
 `RequireAuth` 가 이미 부르는 쿼리라 왕복이 늘지 않고, `useMe()` 가 컨텍스트로 내려 주므로 분기가
 자연스럽다. 로컬 서버는 고정 사용자를 돌려주므로 로그인 화면이 뜨지 않는다.
 
-### D8. 127.0.0.1 에만 바인딩한다
+### D8. 127.0.0.1 에만 바인딩하고, `Host` 를 검사한다
 
 인증이 없는 서버다. LAN 노출은 **옵션으로도 열지 않는다.**
+
+⚠️ **바인딩만으로는 부족하다.** `127.0.0.1` 바인딩은 네트워크 경로만 막고 **브라우저 경유**는 막지
+못한다 — 공격자 도메인이 DNS 를 `127.0.0.1` 로 리바인딩하면 그 페이지는 이 서버와 동일 출처가 되어
+preflight 없이 읽고 쓴다(`model.mutate` 는 파일 쓰기 프리미티브다). 그래서 `onRequest` 에서 `Host` 가
+우리가 듣고 있는 루프백 주소가 아니면 **403** 으로 끊는다.
 
 ---
 
 ## 3. 파일 레이아웃과 포맷
 
 ```
-erdd.config.yaml          # serverUrl·projectId 는 optional 이 된다
+erdd.config.yaml          # serverUrl·projectId 는 optional 이 된다 — init --local 이 만드는 것은 이것뿐이다
 erdd/                     # 커밋 대상
 ├─ tables/*.yaml          #   변경 없음 — 스키마만 담아 diff 를 조용하게 유지
 ├─ groups.yaml · words.yaml · terms.yaml · domains.yaml · custom-fields.yaml
@@ -286,9 +295,9 @@ presence 를 나르는데 둘 다 로컬에 없다.
 | 상황 | 처리 |
 |---|---|
 | 포트 사용 중 | 자동 증가시키지 않고 명확히 실패 + `--port` 안내(에이전트가 엉뚱한 포트에 붙는 것을 막는다) |
-| 브라우저 탭 여러 개 | 같은 서버를 보므로 SSE `reload` 로 함께 갱신된다 |
+| 브라우저 탭 여러 개 | **밖에서 온 파일 변경**은 SSE `reload` 로 모든 탭이 함께 받는다. **한 탭의 편집은 다른 탭에 즉시 반영되지 않는다** — 자기 쓰기는 브로드캐스트하지 않기 때문이다(§4 의 필터. 없애면 편집 중인 탭이 자기 편집마다 resync 해 드래그가 튀고, SSE 에 탭 identity 가 없어 「보낸 탭만 빼기」도 안 된다). 낡은 탭은 **다음 외부 변경에서 맞춰지고**, 그 전에 맞추려면 새로고침한다. 로컬 모드는 단일 사용자 전제다(§8) |
 | GUI 가 떠 있는 채로 `erdd pull` | pull 이 파일을 덮어쓰고 감시가 그것을 잡아 에디터가 resync 한다. 기존 pull 의 "로컬 변경 덮어씀 — 확인 프롬프트" 동작 그대로 |
-| `erdd/` 가 아예 없음 | 빈 모델로 시작하고 첫 편집에서 파일을 만든다 |
+| `erdd/` 가 아예 없음 | 빈 모델로 시작하고 첫 편집에서 파일을 만든다. **`erdd init --local` 은 `erdd.config.yaml` 과 `.gitignore` 한 줄만 쓰고 `erdd/` 를 만들지 않으므로, 새 로컬 프로젝트는 언제나 이 경로로 시작한다** |
 | 서버 종료(Ctrl+C) | 디바운스 대기 중인 쓰기를 flush 한 뒤 종료 |
 
 ---
@@ -316,8 +325,12 @@ presence 를 나르는데 둘 다 로컬에 없다.
 - **로컬 인증** — 127.0.0.1 바인딩으로 대신한다.
 - **공용 리소스의 로컬 라이브러리** — 라이브러리는 서버 테이블이다.
 - **Revision 이력** — D3.
-- **로컬 → 서버 프로젝트 승격** — `erdd.config.yaml` 에 `serverUrl` + `projectId` 를 적고 `push` 하면
-  된다. 별도 명령을 만들지 않는다.
+- **로컬 → 서버 프로젝트 승격** — 별도 명령을 만들지 않는다. ⚠️ **다만 `erdd.config.yaml` 에
+  `serverUrl` + `projectId` 를 적는 것만으로는 `push` 가 되지 않는다**(2026-08-20 실측):
+  `buildPlan` 이 기준선 `.erdd/base.json` 을 요구해 `기준 시점이 없습니다. 먼저 erdd pull을
+  실행하세요` 로 멈춘다. 실제 경로는 「서버에 프로젝트를 만들고 `pull` 로 기준선을 받은 뒤(그 pull 이
+  로컬 파일을 서버 상태로 덮어쓰므로 커밋해 둔 `erdd/` 를 git 에서 되살려 얹는다) `push`」다.
+  `docs/manual/cli-guide.md` 3.4 에 그렇게 적었다.
 
 ---
 
@@ -335,9 +348,10 @@ presence 를 나르는데 둘 다 로컬에 없다.
 - `packages/cli/src/main.ts` — `serve` 명령, `init --local`, USAGE
 - `packages/cli/src/commands/init.ts` — 로컬 초기화 경로
 - `packages/cli/src/commands/{pull,push,diff,status}.ts` — 연결 설정 없을 때의 실패 메시지
-- `apps/server/src/routers/auth.ts` — `mode: 'server'` **1줄**
+- `apps/server/src/routers/auth.ts` — `mode: 'server'` (**`auth.me` 한 곳**, 반환 타입을 `RunMode` 로 명시)
 - `apps/web/src/components/require-auth.tsx` — `Me` 에 `mode`
-- `apps/web/src/editor/header-tools.tsx` — 로컬 모드에서 「버전」·「공용 리소스」 제외
+- `apps/web/src/editor/header-tools.tsx` — 로컬 모드에서 「공용 리소스」 제외(§5 대로 **「버전」은
+  남는다** — 그 안의 「이력」 탭만 `apps/web/src/editor/version-dialog.tsx` 에서 빠진다)
 - `apps/web/src/pages/project.tsx` — presence·사용자 메뉴 제외, 감시 훅 교체
 - `apps/web/src/routes.tsx` — 로컬 모드의 `/` 리다이렉트
 - `apps/web/src/pages/project-settings.tsx` — 로컬 모드에서 방언·명명 규칙만

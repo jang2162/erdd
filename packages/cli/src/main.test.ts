@@ -82,6 +82,17 @@ describe('main', () => {
     }
   })
 
+  it('serve --port 에 값이 빠지면 조용히 기본 포트로 떨어지지 않고 USAGE로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    // --port 뒤에 다른 플래그가 와서 flagValue가 undefined를 돌려주는 경우 —
+    // "플래그를 안 줬다"와 구분하지 못하면 기본 4300으로 조용히 떨어진다.
+    const code = await main(['serve', '--port', '--no-open', '--json'], '/tmp/erdd-none')
+    expect(code).toBe(2)
+    expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+  })
+
   it('skill install이 배선돼 있고 -m이 push의 요약으로 전달된다', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'erdd-main-'))
     vi.spyOn(process.stdout, 'write').mockReturnValue(true)

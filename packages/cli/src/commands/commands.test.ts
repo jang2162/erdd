@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createEmptyModel, type ProjectModel } from '@erdd/core'
-import { writeConfig } from '../config.js'
+import { writeConfig, CONFIG_FILE } from '../config.js'
 import { seedPulled, TEST_CONFIG as CONFIG } from '../testing/harness.js'
 import { readTree, writeTree } from '../tree.js'
 import type { ApiClient } from '../client.js'
@@ -115,6 +115,16 @@ describe('pull', () => {
     const code = await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient(), confirm })
     expect(confirm).not.toHaveBeenCalled()
     expect(code).toBe(0)
+  })
+
+  it('연결 설정이 없으면 pull이 NO_CONFIG로 실패한다', async () => {
+    await writeFile(join(dir, CONFIG_FILE), [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'), 'utf8')
+    const code = await pull({ cwd: dir, json: true, yes: true, strict: false })
+    expect(code).toBe(1)
   })
 })
 
