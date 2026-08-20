@@ -1159,15 +1159,16 @@ Claude-Session: https://claude.ai/code/session_01XKzabonBh9kvNDPZK6Fk5c" -- pack
 ```ts
 import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
 
+// ⚠️ Op 의 실제 형태다 — `{ action, entity, entityId, data }`. `kind`/`type`/`id`/`payload` 가 아니다.
 const createTable = (id: string, name: string): Op => ({
-  kind: 'table',
-  type: 'create',
-  id,
-  payload: {
+  action: 'create',
+  entity: 'table',
+  entityId: id,
+  data: {
     id, logicalName: name, physicalName: name, comment: null, groupId: null,
     position: { x: 0, y: 0 }, groupPosition: null, custom: {},
   },
-} as Op)
+})
 
 describe('FileStore.mutate', () => {
   it('op 을 적용하고 seq 를 올린다', async () => {
@@ -1219,14 +1220,14 @@ describe('FileStore.mutate', () => {
   it('무결성을 깨는 op 은 거절하고 모델을 되돌린다', async () => {
     const store = new FileStore(await project({}))
     await store.load()
-    const bad = {
-      kind: 'column', type: 'create', id: 'c1',
-      payload: {
+    const bad: Op = {
+      action: 'create', entity: 'column', entityId: 'c1',
+      data: {
         id: 'c1', tableId: '없는테이블', logicalName: 'x', physicalName: 'X', type: 'TEXT',
         isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0,
         comment: null, domainId: null, custom: {},
       },
-    } as Op
+    }
     await expect(store.mutate([bad])).rejects.toThrow()
     expect(store.state.model.columns).toEqual({})
   })
@@ -1444,7 +1445,7 @@ import { join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { inferRouterInputs, inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@erdd/server/src/router.js'
-import { createEmptyModel, type Op } from '@erdd/core'
+import type { Op } from '@erdd/core'
 import { FileStore } from './store.js'
 import { createLocalRouter, type LocalContext, type LocalRouter } from './router.js'
 import { LOCAL_PROJECT_ID, readConfig } from '../config.js'
@@ -1462,6 +1463,23 @@ async function ctx(): Promise<LocalContext> {
 }
 
 const caller = async () => createLocalRouter().createCaller(await ctx())
+
+/**
+ * ⚠️ `entityId` 는 **UUID 여야 한다** — `model.mutate` 가 `parseOps` 를 타고, 그것이
+ * `UUID_RE.test(entityId)` 로 거절한다(`packages/core/src/op-guard.ts`). `'t1'` 같은 짧은 id 는
+ * 저장소 단위 테스트(Task 5)에서만 통하고 라우터를 통과하지 못한다.
+ */
+const T1 = '018f6b0e-0000-7000-8000-000000000001'
+
+const createTable = (entityId: string): Op => ({
+  action: 'create',
+  entity: 'table',
+  entityId,
+  data: {
+    id: entityId, logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null,
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+  },
+})
 
 describe('로컬 라우터', () => {
   it('auth.me 가 로컬 모드를 알린다', async () => {
@@ -1488,17 +1506,10 @@ describe('로컬 라우터', () => {
   it('model.get → model.mutate → model.get 이 이어진다', async () => {
     const call = await caller()
     expect((await call.model.get({ projectId: LOCAL_PROJECT_ID })).seq).toBe(0)
-    const op: Op = {
-      kind: 'table', type: 'create', id: 't1',
-      payload: {
-        id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null,
-        position: { x: 0, y: 0 }, groupPosition: null, custom: {},
-      },
-    } as Op
-    const { seq } = await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [op] })
+    const { seq } = await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
     expect(seq).toBe(1)
     const after = await call.model.get({ projectId: LOCAL_PROJECT_ID })
-    expect(after.model.tables['t1']!.physicalName).toBe('MBR')
+    expect(after.model.tables[T1]!.physicalName).toBe('MBR')
   })
 
   it('다른 projectId 는 거절한다', async () => {
@@ -1509,29 +1520,24 @@ describe('로컬 라우터', () => {
 
   it('스냅샷을 만들고 목록·조회·복원·삭제한다', async () => {
     const call = await caller()
-    const op: Op = {
-      kind: 'table', type: 'create', id: 't1',
-      payload: {
-        id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null,
-        position: { x: 0, y: 0 }, groupPosition: null, custom: {},
-      },
-    } as Op
-    await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [op] })
+    await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
     const { id } = await call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' })
 
     const list = await call.snapshot.list({ projectId: LOCAL_PROJECT_ID })
     expect(list.items.map((i) => i.name)).toEqual(['1차'])
 
     const got = await call.snapshot.get({ projectId: LOCAL_PROJECT_ID, snapshotId: id })
-    expect(got.model.tables['t1']).toBeDefined()
+    expect(got.model.tables[T1]).toBeDefined()
 
-    // 스냅샷 이후 지운 테이블이 복원으로 되살아난다
+    // 스냅샷 이후 지운 테이블이 복원으로 되살아난다.
+    // ⚠️ delete op 은 `before` 가 **반드시 있어야** 한다(parseOps 가 존재 여부를 검사한다).
+    const table = got.model.tables[T1]!
     await call.model.mutate({
       projectId: LOCAL_PROJECT_ID,
-      ops: [{ kind: 'table', type: 'delete', id: 't1' } as Op],
+      ops: [{ action: 'delete', entity: 'table', entityId: T1, before: table }],
     })
     await call.snapshot.restore({ projectId: LOCAL_PROJECT_ID, snapshotId: id })
-    expect((await call.model.get({ projectId: LOCAL_PROJECT_ID })).model.tables['t1']).toBeDefined()
+    expect((await call.model.get({ projectId: LOCAL_PROJECT_ID })).model.tables[T1]).toBeDefined()
 
     await call.snapshot.delete({ projectId: LOCAL_PROJECT_ID, snapshotId: id })
     expect((await call.snapshot.list({ projectId: LOCAL_PROJECT_ID })).items).toEqual([])
@@ -2185,8 +2191,8 @@ describe('startLocalServer', () => {
       body: JSON.stringify({
         projectId: LOCAL_PROJECT_ID,
         ops: [{
-          kind: 'table', type: 'create', id: '018f6b0e-0000-7000-8000-000000000001',
-          payload: {
+          action: 'create', entity: 'table', entityId: '018f6b0e-0000-7000-8000-000000000001',
+          data: {
             id: '018f6b0e-0000-7000-8000-000000000001', logicalName: '회원', physicalName: 'MBR',
             comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
           },
