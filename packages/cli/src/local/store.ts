@@ -106,17 +106,18 @@ export class FileStore {
   /**
    * 파일에서 모델을 다시 읽는다. **실패해도 마지막 정상 모델을 버리지 않는다** — 호출자가
    * `ok:false` 인 동안 쓰기를 막으므로, 성한 메모리 모델로 깨진 파일을 덮어쓰는 일이 생기지 않는다.
+   *
+   * 파일 IO 는 `#serialize` 체인 **밖**에서 한다(감시 콜백·서버 기동이 체인 밖에서 이 메서드를
+   * 부르므로, 체인 안에서 이 메서드를 기다리는 경로를 만들면 교착된다). 다만 **읽은 결과로
+   * `#state` 를 확정하는 순간**은 `#commitLoad` 를 거쳐 체인 안에서 돈다 — 그래야 이 메서드가
+   * 여러 번 `await` 로 양보하는 동안 끼어든 `mutate`/`setModel` 의 편집을 덮어쓰지 않는다.
    */
   async load(): Promise<StoreState> {
-    const seq = this.#state.seq
-    const fail = (failures: LoadFailure[]): StoreState => {
-      // 깨진 파일은 자기 쓰기로 설명되지 않는다 — 반드시 알려야 하므로 언제나 false 다.
-      this.#selfWrite = false
-      this.#state = { ok: false, model: this.#state.model, seq, failures }
-      return this.#state
-    }
+    const seqAtStart = this.#state.seq
+    const fail = (failures: LoadFailure[]): Promise<StoreState> =>
+      this.#commitLoad(seqAtStart, { ok: false, failures })
 
-    let tree
+    let tree: FileTree
     try {
       tree = await readTree(this.#cwd)
     } catch (err) {
@@ -161,11 +162,39 @@ export class FileStore {
     } catch (err) {
       return fail([{ path: LAYOUT_FILE, message: (err as Error).message }])
     }
-    // **읽은 것**의 서명을 **쓴 것**과 비교한다. 같으면 이 감시 이벤트는 자기 쓰기다.
-    this.#selfWrite = signatureOf(tree, layout) === this.#written
     const model = applyLayout(result.model, layout)
-    this.#state = { ok: true, model, seq }
-    return this.#state
+    return this.#commitLoad(seqAtStart, { ok: true, tree, layout, model })
+  }
+
+  /**
+   * `load()` 가 읽어 온 결과를 확정한다. `mutate`/`setModel`/`flush` 와 같은 `#chain` 을 타므로,
+   * `load()` 가 IO 로 양보하는 사이 끼어든 편집과 순서가 뒤섞이지 않는다.
+   *
+   * `seqAtStart` 는 `load()` 진입 시점의 `seq` 다 — 지금(커밋 시점) `#state.seq` 가 그것과
+   * 다르면, 이 사이에 `mutate`/`setModel` 이 커밋됐다는 뜻이다. 그러면 지금 든 결과는 이미 낡은
+   * 것이므로 버리고 **현재 상태를 그대로** 돌려준다. 안 이러면 늦게 끝난 `load()` 가 방금 커밋된
+   * 편집을 조용히 되돌리고, `#dirty` 는 참으로 남아 다음 `flush()` 가 그 되돌아간 모델을
+   * 디스크에 쓴다 — 편집 한 건이 오류도 로그도 없이 증발한다.
+   */
+  #commitLoad(
+    seqAtStart: number,
+    outcome:
+      | { ok: true; tree: FileTree; layout: LayoutData; model: ProjectModel }
+      | { ok: false; failures: LoadFailure[] },
+  ): Promise<StoreState> {
+    return this.#serialize(async () => {
+      if (this.#state.seq !== seqAtStart) return this.#state
+      if (!outcome.ok) {
+        // 깨진 파일은 자기 쓰기로 설명되지 않는다 — 반드시 알려야 하므로 언제나 false 다.
+        this.#selfWrite = false
+        this.#state = { ok: false, model: this.#state.model, seq: seqAtStart, failures: outcome.failures }
+        return this.#state
+      }
+      // **읽은 것**의 서명을 **쓴 것**과 비교한다. 같으면 이 감시 이벤트는 자기 쓰기다.
+      this.#selfWrite = signatureOf(outcome.tree, outcome.layout) === this.#written
+      this.#state = { ok: true, model: outcome.model, seq: seqAtStart }
+      return this.#state
+    })
   }
 
   #chain: Promise<unknown> = Promise.resolve()

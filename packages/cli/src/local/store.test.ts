@@ -293,6 +293,23 @@ describe('FileStore.mutate', () => {
     expect(await readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).toContain('name: B')
   })
 
+  it('load() 진행 중에 커밋된 mutate 의 편집을 되돌리지 않는다(경합)', async () => {
+    const store = new FileStore(await project({}))
+    await store.load()
+
+    // load() 를 시작만 하고 기다리지 않는다 — readTree 의 실제 파일 IO 로 곧장 양보한다.
+    const loadPromise = store.load()
+    // 그 사이에 mutate 를 끼워 넣는다. mutate 는 disk IO 가 없는 동기 계산이라 #chain 을
+    // load() 보다 먼저 탄다 — 그래서 이 await 는 load() 의 IO 가 끝나기 한참 전에 이미 끝난다.
+    const { seq: mutateSeq } = await store.mutate([createTable('t1', 'A')])
+    await loadPromise
+
+    // load() 가 늦게 끝났다고 그 사이 커밋된 편집이 사라지면 안 된다.
+    expect(mutateSeq).toBe(1)
+    expect(store.state.seq).toBe(1)
+    expect(store.state.model.tables['t1']).toBeDefined()
+  })
+
   it('flush() 가 쓰기에 실패하면 dirty 를 유지해 다음 flush 가 재시도한다', async () => {
     const dir = await project({})
     const store = new FileStore(dir)

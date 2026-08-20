@@ -20,6 +20,14 @@ async function project(): Promise<string> {
   return dir
 }
 
+const MBR_TABLE = [
+  'id: 018f6b0e-0000-7000-8000-000000000001',
+  'name: MBR',
+  'logicalName: 회원',
+  'columns: []',
+  '',
+].join('\n')
+
 async function start(cwd: string, webDist?: string): Promise<LocalServer> {
   // port 0 = 커널이 빈 포트를 준다. 테스트끼리 포트를 다투지 않는다.
   running = await startLocalServer({ cwd, port: 0, webDist })
@@ -58,24 +66,23 @@ describe('startLocalServer', () => {
     expect(await res.text()).toContain('erdd')
   })
 
-  it('외부 파일 변경을 SSE 로 알린다', async () => {
+  it('접속 시 현재 상태 스냅샷을 한 번 보내고, 그 뒤 외부 파일 변경을 SSE 로 알린다', async () => {
     const cwd = await project()
     const s = await start(cwd)
     const res = await fetch(`${s.url}/local/events`)
     const reader = res.body!.getReader()
+
+    // 접속 시점의(정상) 상태 스냅샷이 먼저 온다 — 그것부터 소비한다.
+    const initial = await reader.read()
+    expect(new TextDecoder().decode(initial.value)).toContain('reload')
+
     const chunk = (async () => {
       const { value } = await reader.read()
       return new TextDecoder().decode(value)
     })()
 
     await sleep(100)
-    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), [
-      'id: 018f6b0e-0000-7000-8000-000000000001',
-      'name: MBR',
-      'logicalName: 회원',
-      'columns: []',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
 
     expect(await chunk).toContain('reload')
     await reader.cancel()
@@ -86,6 +93,10 @@ describe('startLocalServer', () => {
     const s = await start(cwd)
     const res = await fetch(`${s.url}/local/events`)
     const reader = res.body!.getReader()
+
+    // 접속 시 스냅샷 1건을 먼저 소비한다.
+    const initial = await reader.read()
+    expect(new TextDecoder().decode(initial.value)).toContain('reload')
 
     let got = ''
     void (async () => {
@@ -120,6 +131,11 @@ describe('startLocalServer', () => {
     const s = await start(cwd)
     const res = await fetch(`${s.url}/local/events`)
     const reader = res.body!.getReader()
+
+    // 접속 시 스냅샷(정상) 1건을 먼저 소비한다.
+    const initial = await reader.read()
+    expect(new TextDecoder().decode(initial.value)).toContain('reload')
+
     const chunk = (async () => {
       const { value } = await reader.read()
       return new TextDecoder().decode(value)
@@ -132,22 +148,76 @@ describe('startLocalServer', () => {
     await reader.cancel()
   }, 10_000)
 
+  it('이미 blocked 인 상태로 접속해도 즉시 blocked 를 받는다', async () => {
+    const cwd = await project()
+    // 기동 전에 미리 깨뜨려 둔다 — 기동 로드 자체가 실패한 채로 뜬다.
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), 'name: [불완전\n', 'utf8')
+    const s = await start(cwd)
+    const res = await fetch(`${s.url}/local/events`)
+    const reader = res.body!.getReader()
+    const { value } = await reader.read()
+    // 새 변경이 없어도, 접속 자체가 현재(잠긴) 상태를 즉시 흘려보낸다.
+    expect(new TextDecoder().decode(value)).toContain('blocked')
+    await reader.cancel()
+  }, 10_000)
+
   it('감시가 잡은 변경이 모델에 반영된다', async () => {
     const cwd = await project()
     const s = await start(cwd)
     await sleep(100)
-    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), [
-      'id: 018f6b0e-0000-7000-8000-000000000001',
-      'name: MBR',
-      'logicalName: 회원',
-      'columns: []',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
     await sleep(500)
     const url = `${s.url}/trpc/model.get?input=${encodeURIComponent(JSON.stringify({ projectId: LOCAL_PROJECT_ID }))}`
     const body = await (await fetch(url)).json() as {
       result: { data: { model: { tables: Record<string, { physicalName: string }> } } }
     }
     expect(Object.values(body.result.data.model.tables)[0]!.physicalName).toBe('MBR')
+  }, 10_000)
+
+  it('외부 erdd.config.yaml 편집이 project.get 에 반영된다', async () => {
+    const cwd = await project()
+    const s = await start(cwd)
+    await sleep(100)
+    await writeFile(join(cwd, 'erdd.config.yaml'), [
+      'dialects: [mysql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'), 'utf8')
+    await sleep(500)
+    const url = `${s.url}/trpc/project.get?input=${encodeURIComponent(JSON.stringify({ projectId: LOCAL_PROJECT_ID }))}`
+    const body = await (await fetch(url)).json() as { result: { data: { dialects: string[] } } }
+    expect(body.result.data.dialects).toEqual(['mysql'])
+  }, 10_000)
+
+  it('같은 내용의 외부 변경이 반복돼도 reload 가 중복해서 나가지 않는다 — changed 필터', async () => {
+    const cwd = await project()
+    const s = await start(cwd)
+    const res = await fetch(`${s.url}/local/events`)
+    const reader = res.body!.getReader()
+
+    const messages: string[] = []
+    void (async () => {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        messages.push(new TextDecoder().decode(value))
+      }
+    })()
+
+    // 접속 시 스냅샷 1건.
+    await sleep(100)
+    expect(messages.length).toBe(1)
+
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
+    await sleep(500)
+    expect(messages.length).toBe(2)
+
+    // 같은 내용을 그대로 다시 쓴다 — 모델은 바뀌지 않는다. 감시는 다시 발화해도(플랫폼에
+    // 따라 다름) 필터가 걸러 reload 가 늘지 않아야 한다.
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
+    await sleep(500)
+    expect(messages.length).toBe(2)
+
+    await reader.cancel()
   }, 10_000)
 })
