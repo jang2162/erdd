@@ -90,8 +90,12 @@ git-ignore 하지 않고 커밋 대상으로 두는 이유는, 배치가 **팀�
 ### D6. 프로젝트 설정은 GUI 에서 고치고 `erdd.config.yaml` 에 되쓴다
 
 방언·명명 규칙은 모델이 아니라 프로젝트 설정이다(HANDOFF 3.4). 로컬 모드에서는 그 값이
-`erdd.config.yaml` 에 있으므로, 기존 프로젝트 설정 화면을 **방언·명명 규칙만 남기고** 줄여 쓰고
-저장 시 config 파일에 쓴다.
+`erdd.config.yaml` 에 있으므로, 기존 프로젝트 설정 화면에서 **프로젝트 멤버 섹션을 빼고** 명명 규칙
+편집만 남기며, 저장 시 `project.update` 가 config 파일에 쓴다.
+
+⚠️ **방언 편집 UI 는 만들지 않는다** — 웹에 원래 없다(설정 화면은 방언을 배지로 **보여 주기만** 하고
+값은 프로젝트 생성 때 정해진다). 로컬 모드에는 프로젝트 생성 화면이 없으므로 방언은
+`erdd.config.yaml` 을 직접 고쳐 정하고, 파일 감시가 그것을 반영한다.
 
 ### D7. 모드 감지는 `auth.me` 의 `mode` 필드 하나로 한다
 
@@ -139,8 +143,10 @@ notes:
 - 모델 필드와 **1:1 로 대응**시킨다(`position`·`groupPosition`). 변환 코드가 얇을수록 어긋날 자리가 없다.
 - 테이블 식별은 `id` 다. `name` 은 사람이 읽기 위한 값이고, 물리명이 바뀌어도 매칭에 쓰이지 않는다 —
   기존 파일 포맷의 "이름으로 읽고 id 로 식별" 관례와 같다.
-- **항목이 없거나 파일 자체가 없으면 자동 배치로 떨어진다.** 그래야 `erdd pull` 로 받아 온 프로젝트가
-  좌표 파일 없이도 바로 열린다.
+- **항목이 없거나 파일 자체가 없으면 결정적 격자 배치로 떨어진다.** `filesToModel` 은 모든 테이블에
+  `position: {x:0, y:0}` 을 주므로(`file-format.ts:435`) 그대로 두면 전부 한 점에 겹친다. 물리명
+  오름차순으로 격자에 놓아 `erdd pull` 로 받아 온 프로젝트가 좌표 파일 없이도 읽을 수 있게 연다.
+  더 나은 배치는 에디터의 「자동 정렬」(dagre)이 하고, **dagre 를 core 에 들이지 않는다**(HANDOFF 3.5).
 - 모델에 없는 id 가 layout 에 남아 있으면 조용히 버린다(테이블이 지워진 뒤의 잔재).
 
 ### `.erdd/snapshots.json`
@@ -169,9 +175,19 @@ YAML 인코딩/디코딩은 로컬 서버가 한다 — core 는 IO free 라는 
 
 ### 위치
 
-새 워크스페이스 패키지 **`packages/local-server`**. `erdd serve` 가 이것을 **동적 `import()`** 한다 —
-그래야 `pull`·`validate` 같은 기존 명령의 부팅에 Fastify 가 얹히지 않는다(core 가 `exceljs` 를 다루는
-방식과 같은 정신).
+**`packages/cli/src/local/`**. `erdd serve` 가 이것을 **동적 `import()`** 한다 — 그래야 `pull`·
+`validate` 같은 기존 명령의 부팅에 Fastify 가 얹히지 않는다(core 가 `exceljs` 를 다루는 방식과 같은
+정신).
+
+> ⚠️ **별도 패키지(`packages/local-server`)로 가르지 않는다 — 순환 의존이 된다.** 로컬 서버는
+> `readTree`/`writeTree`(대소문자 무시 파일시스템의 삭제 순서 같은 급소가 들어 있다)를 써야 하는데
+> 그것은 `packages/cli/src/tree.ts` 에 있고, CLI 는 `serve` 에서 로컬 서버를 부른다. 패키지를 가르면
+> 둘이 서로를 의존한다. 패키지 경계의 목적(다른 명령의 부팅 비용)은 동적 `import()` 가 이미
+> 달성하므로 가를 이유가 없다.
+
+`fastify`·`@trpc/server` 는 `@erdd/cli` 의 런타임 의존성으로, `@erdd/server` 는 **타입 전용
+devDependency** 로 붙는다(계약 잠금에 `AppRouter` 타입이 필요하다 — `apps/web` 이 이미 같은 형태로
+의존한다).
 
 ### FileStore — 로컬 서버의 유일한 상태
 
@@ -235,7 +251,13 @@ presence 를 나르는데 둘 다 로컬에 없다.
 
 - `Me` 타입에 `mode` 를 더하고, `useMe()` 로 내려온 값으로 분기한다.
 - **다이얼로그 트리거는 `header-tools.tsx` 한 곳만 렌더한다**는 기존 불변식(HANDOFF 3.4) 덕에,
-  「버전」·「공용 리소스」를 빼는 것이 **그 파일 한 곳**에서 끝난다.
+  「공용 리소스」를 빼는 것이 **그 파일 한 곳**에서 끝난다.
+- **「버전」 버튼은 남는다.** 그 다이얼로그는 탭 셋(스냅샷·이력·비교)이고, 제거 대상은 `revision.list`
+  를 부르는 **「이력」 탭 하나**다. 스냅샷과 비교는 `snapshot.*` 만 쓰므로 그대로 동작한다.
+- ⚠️ **닫힌 다이얼로그로는 부족하다 — 렌더 자체를 막아야 한다.** `ResourcePanel` 은 `enabled` 가드
+  없이 `resource.library.listForProject` 를 마운트 즉시 부르고, `PendingPromotionsBadge`(`AppShell`)
+  는 `promotion.pendingCount` 를 60초마다 폴링한다. 로컬 라우터에 없는 프로시저라 조건부 렌더가
+  아니면 화면에 오류가 뜬다.
 - `project.tsx` 에서 `PresenceBar`·`UserMenu` 를 빼고, `useRealtime` 대신 `useLocalWatch`(SSE)를 쓴다.
 - `/` 는 에디터로 리다이렉트한다. 프로젝트 설정 화면은 방언·명명 규칙만 남긴다.
 - 파일이 깨져 읽기 전용으로 전환된 동안에는 배너를 띄우고 편집 진입점을 막는다(§6).
@@ -303,7 +325,7 @@ presence 를 나르는데 둘 다 로컬에 없다.
 
 **신규**
 
-- `packages/local-server/**` — Fastify + 축소 tRPC 라우터 + FileStore + 감시 + SSE
+- `packages/cli/src/local/**` — Fastify + 축소 tRPC 라우터 + FileStore + 감시 + SSE
 - `packages/core/src/layout.ts` (+ 테스트)
 - `apps/web/src/editor/use-local-watch.ts`
 
