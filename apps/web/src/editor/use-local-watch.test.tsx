@@ -52,16 +52,22 @@ describe('useLocalWatch', () => {
     expect(FakeEventSource.last?.url).toContain('/local/events')
   })
 
-  it('reload 를 받으면 모델을 다시 가져와 resync 한다', async () => {
+  it('reload 를 받으면 모델을 다시 가져와 resync 한다(setLoaded 가 아니다)', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    // 그룹 뷰는 resync 만 살려 둔다 — setLoaded 는 null 로 튕긴다(use-model.ts 의 주석 참조).
+    // 이 값이 살아남는지가 구현이 setLoaded 로 뒤바뀌는 회귀를 잡는 유일한 각도다.
+    useEditorStore.getState().enterGroupView('g1')
     mockTrpcFetch({
       'model.get': () => ({ data: { model: createEmptyModel(), seq: 5 } }),
     })
     renderHook(() => useLocalWatch(PROJECT_ID, true), { wrapper: wrapper() })
     FakeEventSource.last!.emit({ type: 'reload' })
+    // 심어 둔 seq(1)와 다른 값(5)을 정확히 단언한다 — toBeGreaterThan(0)은 seq:1을 미리 심어
+    // 두면 즉시 참이 되어 resync가 실제로 불렸는지 가르지 못한다.
     await waitFor(() => {
-      expect(useEditorStore.getState().seq).toBeGreaterThan(0)
+      expect(useEditorStore.getState().seq).toBe(5)
     })
+    expect(useEditorStore.getState().activeGroupView).toBe('g1')
   })
 
   it('언마운트하면 소켓을 닫는다', () => {
