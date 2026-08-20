@@ -2,7 +2,7 @@ import { fromDialectType, type Dialect } from './dialect.js'
 import type { ProjectModel } from './model.js'
 import { restoreLogicalName, type NamingRules } from './naming.js'
 import type { ParsedDdl, ParsedTable, ParsedConstraint } from './ddl-parse.js'
-import type { ParsedDbml } from './dbml-parse.js'
+import type { ParsedDbml, ParsedGroup } from './dbml-parse.js'
 import type { NameMetaEntry } from './name-meta.js'
 
 export type DdlImportWarning = {
@@ -452,7 +452,17 @@ export function planDdlImport(
     Object.values(model.tableGroups).map((g) => [upper(g.name), g.id]),
   )
   // 블록 속성은 **머릿말이 그 그룹을 아예 말하지 않았을 때만** 본다(아래 attrs 참조).
-  const blockByName = new Map((parsed.groups ?? []).map((g) => [upper(g.name), g]))
+  // ⚠️ **동명 블록이 둘이면 먼저 나온 것이 이긴다 — `buildNameMeta` 가 동명 그룹에 세운 규칙과
+  // 같다.** 「동명 둘 중 어느 쪽 속성을 쓸 것인가」는 머릿말에서든 블록에서든 같은 질문이고, 한
+  // 실행 안에서 반대로 답하면 이 절이 방금 고친 병(두 자리가 서로 다른 사실을 본다)이 규칙 층위에서
+  // 되살아난다. `new Map(...map(...))` 로 만들면 **뒤엣것이 조용히 덮으므로** 손으로 막는다.
+  // ⚠️ 아래 `memberOf` 의 `e.name` 도 먼저 나온 이름을 잡는다 — 그래야
+  // `attrs?.name ?? block?.name ?? e.name` 이 어느 갈래를 타든 같은 이름을 낸다.
+  const blockByName = new Map<string, ParsedGroup>()
+  for (const g of parsed.groups ?? []) {
+    const k = upper(g.name)
+    if (!blockByName.has(k)) blockByName.set(k, g)
+  }
 
   // ⚠️ **tableByUpper 는 살아남은 테이블만 담는다** — 건너뛴 테이블이 그룹 멤버로 새지 않는다.
   const memberOf = new Map<string, { name: string; members: string[] }>()
@@ -466,10 +476,14 @@ export function planDdlImport(
   }
 
   for (const [k, e] of memberOf) {
-    // 속성은 머릿말의 g 구획에서 온다. 그것이 없으면(테이블 항목만 그룹 이름을 실은 머릿말, 또는
-    // 머릿말이 아예 모르는 그룹) 블록이 말한 것을 쓰고, 그것도 없으면 이름만 살리고 나머지는
-    // 비운다 — 웹이 색을 팔레트에서 고른다.
-    // ⚠️ **둘을 필드 단위로 섞지 않는다.** 머릿말이 그 그룹을 말했으면 머릿말만 본다 — 빈 색·빈
+    // 속성의 소스는 **그룹 단위로 하나**다. 갈래가 셋이다:
+    //   1) 머릿말의 g 구획이 그 그룹을 말했다        → 머릿말만 본다(블록은 안 본다)
+    //   2) 말하지 않았고 같은 이름의 블록이 있다      → **블록이 유일한 소스다**
+    //   3) 둘 다 없다                                → 이름만 살리고 비운다(웹이 색을 팔레트에서 고른다)
+    // ⚠️ **2번은 이 사이클이 만든 동작 변경이다.** 예전에는 머릿말이 그 이름을 말한 이상 블록을
+    // 통째로 버려 색·코멘트가 늘 null 이었다. 우리 산출물은 그룹이 있으면 g 구획을 늘 실으므로
+    // **손으로 쓴 머릿말에서만 닿는다.**
+    // ⚠️ **셋을 필드 단위로 섞지 않는다.** 머릿말이 그 그룹을 말했으면 머릿말만 본다 — 빈 색·빈
     // 코멘트는 키를 생략하는 형식이라(3.17) 필드 단위로 폴백하면 **일부러 비운 값을 블록이 되살린다.**
     const attrs = parsed.nameMeta?.groups[k]
     const block = attrs === undefined ? blockByName.get(k) : undefined

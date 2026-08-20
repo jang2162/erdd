@@ -960,6 +960,82 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
   })
 
   /**
+   * ⚠️ **머릿말이 그룹 이름만 말하고 `g` 구획이 없으면 블록이 속성의 유일한 소스다.**
+   * 손으로 쓴 v2 머릿말에서만 닿는 경로다(우리 산출물은 그룹이 있으면 `g` 구획을 늘 싣는다).
+   * `attrs === undefined` 게이트가 「머릿말이 그 그룹을 **말한 적 없다**」로 읽히는 갈래이고,
+   * 바로 위 케이스(머릿말이 말했으므로 블록을 안 본다)와 **짝을 이룬다** — 둘을 함께 봐야
+   * 게이트가 「그룹 단위」라는 것이 드러난다.
+   * ⚠️ 이것은 이 사이클이 만든 **동작 변경**이다. 예전에는 머릿말이 그 이름을 말한 이상 블록을
+   * 통째로 버려 색·코멘트가 `null` 이었다.
+   */
+  it('머릿말이 g 구획 없이 그룹 이름만 말하면 블록의 색·코멘트를 쓴다', () => {
+    const dbml = [
+      '// erdd:v2 {"t":{"MBR":{"p":"MBR","l":"회원","g":"회원관리"}}}',
+      'Table "MBR" {',
+      '  "ID" bigint [pk]',
+      '}',
+      "TableGroup \"회원관리\" [color: #999999, note: '블록이 쓴 설명'] {",
+      '  MBR',
+      '}',
+    ].join('\n')
+    const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toHaveLength(1)
+    expect(p.groups[0]!.color).toBe('#999999')
+    expect(p.groups[0]!.comment).toBe('블록이 쓴 설명')
+    expect(p.groups[0]!.alias).toBe('')              // 별칭은 머릿말에만 있다
+  })
+
+  /**
+   * 이름이 같은 `TableGroup` 블록이 둘인 DBML. 대소문자만 다르게 두어 **이름 색인이 대문자**라는
+   * 것과 **어느 쪽이 이기는가**를 함께 볼 수 있게 한다.
+   * ⚠️ 이 픽스처가 아래 두 테스트의 구분력을 진다 — 이름을 완전히 같게 만들면 「먼저 나온 것이
+   * 이긴다」가 이름 자리에서 관측 불가능해진다(색·코멘트만 남는다).
+   */
+  const twinBlocks = [
+    'Table "MBR" {',
+    '  "ID" bigint [pk]',
+    '}',
+    'Table "ORD" {',
+    '  "ID" bigint [pk]',
+    '}',
+    "TableGroup \"Sales\" [color: #111111, note: '앞'] {",
+    '  MBR',
+    '}',
+    "TableGroup \"SALES\" [color: #999999, note: '뒤'] {",
+    '  ORD',
+    '}',
+  ].join('\n')
+
+  /**
+   * ⚠️ **동명 블록 둘은 한 그룹으로 합쳐진다.** 이 사이클이 소속을 `groupOf` 하나로 통일하면서
+   * 생긴 귀결이다 — 예전에는 블록마다 `DdlImportGroup` 이 하나씩 나가 웹이 **같은 이름의 그룹을
+   * 둘** 만들었다. 파일 형식이 금지하는 상태다(`filesToModel` 이 「이름으로 참조되므로 유일해야
+   * 합니다」를 낸다) — 가져오기가 그것을 애초에 안 만드는 쪽이 맞다.
+   */
+  it('머릿말 없는 DBML 의 동명 블록 둘은 한 그룹으로 합쳐진다', () => {
+    const p = planDdlImport(
+      createEmptyModel(), parseDbml(twinBlocks), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups).toHaveLength(1)
+    expect([...p.groups[0]!.tablePhysicalNames].sort()).toEqual(['MBR', 'ORD'])
+  })
+
+  /**
+   * ⚠️ **합쳐질 때는 먼저 나온 블록이 이긴다 — `buildNameMeta` 가 동명 그룹에 세운 규칙과 같다.**
+   * 「동명 둘 중 어느 쪽 속성을 쓸 것인가」는 머릿말에서든 블록에서든 **같은 질문**이고, 한 실행
+   * 안에서 그 질문에 반대로 답하면 이 사이클이 (c) 에서 고친 병(두 자리가 서로 다른 사실을 본다)이
+   * 규칙 층위에서 되살아난다. 어느 쪽이 이기느냐보다 **두 자리가 같은 규칙을 쓰는 것**이 핵심이다.
+   * ⚠️ `memberOf` 의 `e.name` 도 먼저 나온 이름을 잡으므로, 이래야 `attrs?.name ?? block?.name ??
+   * e.name` 이 **어느 갈래를 타든 같은 이름**을 낸다.
+   */
+  it('동명 블록이 합쳐질 때 먼저 나온 블록의 이름·색·코멘트가 이긴다', () => {
+    const p = planDdlImport(
+      createEmptyModel(), parseDbml(twinBlocks), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(p.groups[0]!.name).toBe('Sales')          // 'SALES'(뒤엣것)가 아니다
+    expect(p.groups[0]!.color).toBe('#111111')
+    expect(p.groups[0]!.comment).toBe('앞')
+  })
+
+  /**
    * ⚠️ **35a1684 이 남긴 비대칭의 뒤집기.** 그 커밋은 충돌 키(`groupOf`)에 블록 폴백을 넣었지만
    * 8번 절의 D7 폐기 로직은 그대로 뒀다. 그래서 키는 「ORD 는 회원관리에 들어가니 모델의 **그룹
    * 없는** ORD 와 안 부딪힌다」로 판정해 들여보내는데, 정작 배정은 블록을 버려 ORD 가 **그룹 없이**
