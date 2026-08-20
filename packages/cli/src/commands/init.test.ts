@@ -1,15 +1,20 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest'
 import { mkdtemp, readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { tmpdir as osTmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ApiClient } from '../client.js'
+import { readConfig } from '../config.js'
 import { CliError } from '../output.js'
 import { init } from './init.js'
+
+async function tmpdir(): Promise<string> {
+  return mkdtemp(join(osTmpdir(), 'erdd-init-'))
+}
 
 let dir: string
 let out: string[]
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'erdd-init-'))
+  dir = await tmpdir()
   out = []
   vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
@@ -91,5 +96,30 @@ describe('init', () => {
     })
     expect(code).toBe(1)
     expect(JSON.parse(out.join('')).error.code).toBe('UNAUTHORIZED')
+  })
+})
+
+describe('init --local', () => {
+  it('서버 호출 없이 연결 설정 없는 config 를 만든다', async () => {
+    const dir = await tmpdir()
+    const code = await init({ cwd: dir, json: true, yes: true, strict: false, local: true })
+    expect(code).toBe(0)
+    const config = await readConfig(dir)
+    expect(config.serverUrl).toBeNull()
+    expect(config.projectId).toBeNull()
+    expect(config.dialects.length).toBeGreaterThan(0)
+  })
+
+  it('.gitignore 에 .erdd/ 를 넣는다', async () => {
+    const dir = await tmpdir()
+    await init({ cwd: dir, json: true, yes: true, strict: false, local: true })
+    expect(await readFile(join(dir, '.gitignore'), 'utf8')).toContain('.erdd/')
+  })
+
+  it('이미 config 가 있으면 덮어쓰지 않고 실패한다', async () => {
+    const dir = await tmpdir()
+    await init({ cwd: dir, json: true, yes: true, strict: false, local: true })
+    const code = await init({ cwd: dir, json: true, yes: true, strict: false, local: true })
+    expect(code).toBe(1)
   })
 })

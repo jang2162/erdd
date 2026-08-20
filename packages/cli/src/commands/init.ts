@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Dialect, NamingRules } from '@erdd/core'
+import { DEFAULT_NAMING_RULES, type Dialect, type NamingRules } from '@erdd/core'
 import { createClient, type ApiClient } from '../client.js'
 import { CONFIG_FILE, ensureGitignore, writeConfig, writeToken } from '../config.js'
 import { CliError, emit, note } from '../output.js'
@@ -21,10 +21,30 @@ async function ask(ctx: InitCtx, question: string): Promise<string> {
 
 export function init(ctx: InitCtx): Promise<number> {
   return run(ctx, async () => {
-    if (existsSync(join(ctx.cwd, CONFIG_FILE)) && !ctx.yes) {
+    const configExists = existsSync(join(ctx.cwd, CONFIG_FILE))
+    // --local 은 --yes 로도 덮어쓰지 않는다 — 연결된 초기화와 달리 재확인할 서버 프로젝트가
+    // 없어서, 뒤덮으면 기존 로컬 config(방언·명명 규칙)를 조용히 잃는다.
+    if (configExists && ctx.local === true) {
+      throw new CliError('CANCELLED', `${CONFIG_FILE}이 이미 있습니다. 지우고 다시 실행하세요`)
+    }
+    if (configExists && !ctx.yes) {
       note(`${CONFIG_FILE}이 이미 있습니다.`)
       const ok = ctx.confirm === undefined ? false : await ctx.confirm('덮어쓸까요?')
       if (!ok) throw new CliError('CANCELLED', '사용자가 취소했습니다')
+    }
+
+    if (ctx.local === true) {
+      // 서버 왕복이 전부 없다. 방언·명명 규칙은 기본값으로 시작하고, 이후 GUI 의 설정 화면이나
+      // erdd.config.yaml 직접 편집으로 바꾼다.
+      await writeConfig(ctx.cwd, {
+        serverUrl: null,
+        projectId: null,
+        dialects: ['postgresql'],
+        namingRules: DEFAULT_NAMING_RULES,
+      })
+      await ensureGitignore(ctx.cwd)
+      emit(ctx.json, '로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요', { local: true })
+      return 0
     }
 
     const serverUrl = ctx.serverUrl ?? await ask(ctx, '서버 URL을 입력하세요')

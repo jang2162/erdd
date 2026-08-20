@@ -10,6 +10,10 @@ export type CommandCtx = {
   /** 테스트가 주입한다. 없으면 config와 토큰으로 만든다. */
   client?: ApiClient
   confirm?: (question: string) => Promise<boolean>
+  /** init --local: 서버 연결 없이 로컬 전용 프로젝트를 만든다. serve: 브라우저를 열지 않는다 등. */
+  local?: boolean
+  port?: number
+  open?: boolean
 }
 
 export async function clientFor(ctx: CommandCtx): Promise<ApiClient> {

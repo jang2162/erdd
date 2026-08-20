@@ -33,6 +33,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --server <url>        init 전용
   --token <token>       init 전용
   --project <id>        init 전용
+  --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
   --help                이 도움말`
 
 export function flagValue(argv: string[], name: string): string | undefined {
@@ -111,6 +112,7 @@ export async function main(argv: string[], cwd: string): Promise<number> {
       serverUrl: flagValue(argv, 'server'),
       token: flagValue(argv, 'token'),
       projectId: flagValue(argv, 'project'),
+      local: argv.includes('--local'),
     })
     case 'pull': return pull(ctx)
     case 'push': return push({ ...ctx, message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm') })
