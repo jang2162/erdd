@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fullModel } from '@erdd/core/src/testing/fixtures.js'
-import { readConfig, writeConfig } from './config.js'
+import { readConfig, requireConnection, writeConfig } from './config.js'
 import { buildPlan } from './plan.js'
 import { seedPulled, stubClient as stub, TEST_CONFIG as CONFIG } from './testing/harness.js'
 
@@ -40,8 +40,8 @@ describe('buildPlan', () => {
     // c1.comment는 서버가 건드리지 않는다 — base와 같아 로컬 변경이 충돌 없이 병합된다.
 
     const { client } = stub(moved)
-    const config = await readConfig(dir)
-    const plan = await buildPlan(dir, config, client)
+    const connection = requireConnection(await readConfig(dir))
+    const plan = await buildPlan(dir, connection, client)
 
     expect(plan.conflicts.length).toBeGreaterThan(0)
     // 회귀 확인: 이 단언은 충돌 게이트(`conflicts.length > 0 ? [] : ...`)가 없으면

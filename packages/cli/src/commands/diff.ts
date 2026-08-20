@@ -25,9 +25,9 @@ function section(title: string, entries: readonly DiffEntry[]): string {
 export function diff(ctx: CommandCtx): Promise<number> {
   return run(ctx, async () => {
     const config = await readConfig(ctx.cwd)
-    requireConnection(config)
+    const connection = requireConnection(config)
     const client = await clientFor(ctx)
-    const plan = await buildPlan(ctx.cwd, config, client)
+    const plan = await buildPlan(ctx.cwd, connection, client)
 
     // push와 같은 엔진을 쓴다 — 여기서 본 것과 실제 반영이 갈라질 수 없다.
     const up = diffModelsForDisplay(plan.base, plan.local)

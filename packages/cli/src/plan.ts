@@ -4,7 +4,7 @@ import {
   type FileTree, type MergeConflict, type Op, type PrunedRef, type ProjectModel,
 } from '@erdd/core'
 import type { ApiClient } from './client.js'
-import { readBase, type ErddConfig } from './config.js'
+import { readBase, type Connection } from './config.js'
 import { CliError } from './output.js'
 import { readTree } from './tree.js'
 
@@ -31,7 +31,7 @@ export type PushPlan = {
 }
 
 export async function buildPlan(
-  cwd: string, config: ErddConfig, client: ApiClient,
+  cwd: string, connection: Connection, client: ApiClient,
 ): Promise<PushPlan> {
   const baseTree = await readBase(cwd)
   if (baseTree === null) {
@@ -60,7 +60,7 @@ export async function buildPlan(
   }
 
   const { model: server, seq } = await client.query<{ model: ProjectModel; seq: number }>(
-    'model.get', { projectId: config.projectId },
+    'model.get', { projectId: connection.projectId },
   )
   const serverVisible = fileVisibleModel(server)
   // 충돌 좌표는 **로컬 트리에서 읽은 실제 경로**로 낸다 — 재조립하면 개명 직후 없는 파일을

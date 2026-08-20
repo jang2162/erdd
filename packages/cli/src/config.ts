@@ -146,8 +146,14 @@ export async function ensureGitignore(cwd: string): Promise<void> {
   await writeFile(path, `${prefix}${STATE_DIR}/\n`, 'utf8')
 }
 
+/**
+ * 서버 호출에 필요한 값만 좁힌 모양. requireConnection 을 지난 코드만 만들 수 있다 — buildPlan·
+ * syncDown 이 이 타입을 받게 하면, null 이 새어 들어갈 자리 자체가 컴파일에서 막힌다.
+ */
+export type Connection = { serverUrl: string; projectId: string }
+
 /** 서버가 필요한 명령의 단일 관문. 여기 하나면 pull·push·diff 가 같은 문구로 실패한다. */
-export function requireConnection(config: ErddConfig): { serverUrl: string; projectId: string } {
+export function requireConnection(config: ErddConfig): Connection {
   if (config.serverUrl === null || config.projectId === null) {
     throw new CliError(
       'NO_CONFIG',
