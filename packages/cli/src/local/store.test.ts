@@ -2,6 +2,7 @@ import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
 import { FileStore } from './store.js'
 
 async function project(files: Record<string, string>): Promise<string> {
@@ -189,5 +190,89 @@ describe('FileStore.load', () => {
     } finally {
       await chmod(join(dir, 'erdd/tables/ORD.yaml'), 0o644)
     }
+  })
+})
+
+const createTable = (id: string, name: string): Op => ({
+  entity: 'table',
+  action: 'create',
+  entityId: id,
+  data: {
+    id, logicalName: name, physicalName: name, comment: null, groupId: null,
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+  },
+})
+
+describe('FileStore.mutate', () => {
+  it('op 을 적용하고 seq 를 올린다', async () => {
+    const store = new FileStore(await project({}))
+    await store.load()
+    const { seq } = await store.mutate([createTable('t1', 'MBR')])
+    expect(seq).toBe(1)
+    expect(store.state.model.tables['t1']!.physicalName).toBe('MBR')
+  })
+
+  it('flush 하면 파일에 쓴다', async () => {
+    const dir = await project({})
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([createTable('t1', 'MBR')])
+    await store.flush()
+    expect(await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')).toContain('name: MBR')
+    expect(await readFile(join(dir, 'erdd/layout.yaml'), 'utf8')).toContain('t1')
+  })
+
+  it('연속 mutate 가 순서대로 적용된다', async () => {
+    const store = new FileStore(await project({}))
+    await store.load()
+    const results = await Promise.all([
+      store.mutate([createTable('t1', 'A')]),
+      store.mutate([createTable('t2', 'B')]),
+      store.mutate([createTable('t3', 'C')]),
+    ])
+    expect(results.map((r) => r.seq)).toEqual([1, 2, 3])
+    expect(Object.keys(store.state.model.tables).sort()).toEqual(['t1', 't2', 't3'])
+  })
+
+  it('읽기 전용 상태에서는 mutate 를 거절한다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await writeFile(join(dir, 'erdd/tables/MBR.yaml'), 'name: [불완전\n', 'utf8')
+    await store.load()
+    await expect(store.mutate([createTable('t9', 'X')])).rejects.toThrow()
+  })
+
+  it('op 상한을 넘기면 거절한다', async () => {
+    const store = new FileStore(await project({}))
+    await store.load()
+    const many = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, (_, i) => createTable(`t${i}`, `T${i}`))
+    await expect(store.mutate(many)).rejects.toThrow()
+  })
+
+  it('무결성을 깨는 op 은 거절하고 모델을 되돌린다', async () => {
+    const store = new FileStore(await project({}))
+    await store.load()
+    const bad: Op = {
+      entity: 'column', action: 'create', entityId: 'c1',
+      data: {
+        id: 'c1', tableId: '없는테이블', logicalName: 'x', physicalName: 'X', type: 'TEXT',
+        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0,
+        comment: null, domainId: null, custom: {},
+      },
+    }
+    await expect(store.mutate([bad])).rejects.toThrow()
+    expect(store.state.model.columns).toEqual({})
+  })
+
+  it('setModel 이 모델을 통째로 갈아끼운다(스냅샷 복원)', async () => {
+    const store = new FileStore(await project({}))
+    await store.load()
+    await store.mutate([createTable('t1', 'MBR')])
+    const snap = store.state.model
+    await store.mutate([createTable('t2', 'ORD')])
+    const { seq } = await store.setModel(snap)
+    expect(seq).toBe(3)
+    expect(Object.keys(store.state.model.tables)).toEqual(['t1'])
   })
 })

@@ -3,12 +3,18 @@ import { dirname, join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { uuidv7 } from 'uuidv7'
 import {
-  applyLayout, createEmptyModel, filesToModel, validateModelIntegrity,
-  type FileTree, type LayoutData, type Note, type Position, type ProjectModel, type TableLayout,
+  MAX_OPS_PER_MUTATION,
+  applyLayout, applyOps, createEmptyModel, filesToModel, layoutFromModel, modelToFiles,
+  validateModelIntegrity,
+  type FileTree, type LayoutData, type Note, type Op, type Position, type ProjectModel,
+  type TableLayout,
 } from '@erdd/core'
-import { canonical, readTree } from '../tree.js'
+import { canonical, readTree, writeTree } from '../tree.js'
 
 export const LAYOUT_FILE = 'erdd/layout.yaml'
+const WRITE_DEBOUNCE_MS = 300
+
+export class LocalStoreError extends Error {}
 
 export type LoadFailure = { path: string; message: string }
 
@@ -160,5 +166,72 @@ export class FileStore {
     const model = applyLayout(result.model, layout)
     this.#state = { ok: true, model, seq }
     return this.#state
+  }
+
+  #chain: Promise<unknown> = Promise.resolve()
+  #timer: NodeJS.Timeout | null = null
+  #dirty = false
+
+  /** 서버의 프로젝트 행 FOR UPDATE 락에 대응하는 자리. 모든 쓰기가 이 체인을 지난다. */
+  #serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.#chain.then(fn, fn)
+    this.#chain = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  async mutate(ops: Op[]): Promise<{ seq: number }> {
+    return this.#serialize(async () => {
+      if (!this.#state.ok) {
+        throw new LocalStoreError('파일을 읽을 수 없어 편집이 잠겨 있습니다')
+      }
+      if (ops.length > MAX_OPS_PER_MUTATION) {
+        throw new LocalStoreError(
+          `변경이 ${ops.length}건으로 한 번에 반영할 수 있는 ${MAX_OPS_PER_MUTATION}건을 넘습니다`,
+        )
+      }
+      const next = applyOps(this.#state.model, ops)
+      const issues = validateModelIntegrity(next)
+      if (issues.length > 0) throw new LocalStoreError(issues[0]!.message)
+      return this.#commit(next)
+    })
+  }
+
+  /** 스냅샷 복원처럼 모델을 통째로 갈아끼우는 경로. */
+  async setModel(model: ProjectModel): Promise<{ seq: number }> {
+    return this.#serialize(async () => {
+      if (!this.#state.ok) {
+        throw new LocalStoreError('파일을 읽을 수 없어 편집이 잠겨 있습니다')
+      }
+      const issues = validateModelIntegrity(model)
+      if (issues.length > 0) throw new LocalStoreError(issues[0]!.message)
+      return this.#commit(model)
+    })
+  }
+
+  #commit(model: ProjectModel): { seq: number } {
+    const seq = this.#state.seq + 1
+    this.#state = { ok: true, model, seq }
+    this.#dirty = true
+    if (this.#timer !== null) clearTimeout(this.#timer)
+    // 드래그 한 번이 초당 수십 건의 mutate 를 낸다 — 매번 파일을 쓰면 감시 루프와 함께 요동친다.
+    this.#timer = setTimeout(() => { void this.flush() }, WRITE_DEBOUNCE_MS)
+    return { seq }
+  }
+
+  /** 대기 중인 쓰기를 지금 끝낸다. 프로세스 종료 전에 반드시 부른다. */
+  async flush(): Promise<void> {
+    if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
+    if (!this.#dirty) return
+    this.#dirty = false
+    const model = this.#state.model
+    const { tree } = modelToFiles(model)
+    await writeTree(this.#cwd, tree)
+    const layout = layoutFromModel(model)
+    const abs = join(this.#cwd, LAYOUT_FILE)
+    await mkdir(dirname(abs), { recursive: true })
+    await writeFile(abs, stringifyYaml(layout), 'utf8')
+    // 다음 load 가 이 서명과 같은 것을 읽으면 그 감시 이벤트는 자기 쓰기다.
+    this.#written = signatureOf(tree, layout)
+    this.#selfWrite = true
   }
 }
