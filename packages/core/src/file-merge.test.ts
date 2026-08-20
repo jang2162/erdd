@@ -251,6 +251,57 @@ describe('mergeModels — 필드 단위', () => {
     expect(conflicts[0]).toMatchObject({ kind, path: `erdd/${file}` })
   })
 
+  /**
+   * 🔥 구분력은 픽스처의 **개명**이 진다 — local 의 물리명(MBR_DETAIL)과 디스크의 파일명
+   * (MBR_DTL.yaml)이 달라야 한다. 같으면 재조립과 실제 경로가 같은 값이 되어 아무것도 잠기지
+   * 않는다. 이 어긋남은 예외가 아니라 SKILL.md 가 시키는 정규 동선이 만든다(파일명은 그대로
+   * 두고 파일 안의 name 을 고친다).
+   *
+   * ⚠️ tb3(MBR_DTL)을 고르는 것은 의도다 — 아무도 부모로 참조하지 않아, 개명이 다른 파일의
+   * 관계 참조를 깨뜨려 이 테스트가 겨냥하지 않은 오류를 부르지 않는다.
+   */
+  it('개명 직후에는 좌표가 재조립이 아니라 디스크의 실제 파일이다', () => {
+    const { base, local, server } = trio()
+    local.tables['tb3']!.physicalName = 'MBR_DETAIL'      // 파일 안의 name 만 고친 상태
+    local.columns['c6']!.logicalName = '비고사항'
+    server.columns['c6']!.logicalName = '메모'
+
+    // 실제 경로를 안 주면 지금까지처럼 재조립한다 — 그것이 이 픽스처가 겨냥하는 거짓 경로다.
+    expect(mergeModels(base, local, server).conflicts[0]!.path).toBe('erdd/tables/MBR_DETAIL.yaml')
+
+    const { conflicts } = mergeModels(base, local, server, {
+      tableFiles: { tb3: 'erdd/tables/MBR_DTL.yaml' },
+    })
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({
+      kind: 'column', entityId: 'c6', path: 'erdd/tables/MBR_DTL.yaml',
+    })
+  })
+
+  /**
+   * ⚠️ **여기서는 폴백이 도달한다** — validate(`cli/commands/validate.ts`)와 갈리는 지점이다.
+   * 그쪽은 모든 테이블이 방금 읽은 파일에서 오므로 좌표를 못 구할 수가 없다. 병합은 base·
+   * server 에만 있는 테이블도 다루므로 로컬 파일이 아예 없는 충돌이 생긴다 — 파일을 지운
+   * 쪽이 그것이다. 그때 재조립은 「pull 하면 생길 경로」라 리포트의 안내(pull 뒤 다시 정리)와
+   * 앞뒤가 맞는다.
+   */
+  it('로컬 파일이 없는 테이블의 충돌은 재조립 경로로 떨어진다', () => {
+    const { base, local, server } = trio()
+    delete local.tables['tb3']                            // MBR_DTL.yaml 을 지웠다
+    delete local.columns['c5']; delete local.columns['c6']
+    delete local.relationships['r2']
+    server.columns['c6']!.logicalName = '메모'            // 서버는 그 테이블을 고쳤다
+
+    // 지운 파일은 tableFiles 에 없다. 다른 테이블 것이 들어 있어도 이 조회는 빗나간다.
+    const { conflicts } = mergeModels(base, local, server, {
+      tableFiles: { tb1: 'erdd/tables/MBR.yaml' },
+    })
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({
+      kind: 'column', entityId: 'c6', reason: 'local-delete', path: 'erdd/tables/MBR_DTL.yaml',
+    })
+  })
+
   it('관계 충돌의 path는 부모가 아니라 자식 테이블 파일이다', () => {
     const { base, local, server } = trio()
     // r1은 부모 tb1(MBR) → 자식 tb2(ORD). 관계는 자식 테이블 파일에만 적히므로

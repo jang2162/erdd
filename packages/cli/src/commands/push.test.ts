@@ -93,6 +93,43 @@ describe('push', () => {
     expect(payload.conflicts[0]).toMatchObject({ field: 'logicalName' })
   })
 
+  /**
+   * 🔥 충돌 리포트의 경로도 물리명에서 **재조립**하고 있었다(file-merge.ts의 pathOf) —
+   * validate 좌표와 같은 결함이 형제 경로에 남아 있던 것이다. 노출은 오히려 이쪽이 크다:
+   * 충돌은 사용자가 파일을 편집한 직후에만 나고, 개명은 그 편집의 흔한 형태이며,
+   * renderConflicts는 그 경로를 그룹 헤더로 찍고 "pull 뒤 다시 정리해 push하세요"로 끝난다 —
+   * 열라고 지시받은 파일이 없는 파일이 된다.
+   *
+   * ⚠️ 구분력은 픽스처의 개명이 진다. `name: MBR_DTL`을 그대로 두면 재조립과 실제 경로가
+   * 같은 값이 되어 아무것도 잠기지 않는다. tb3(MBR_DTL)을 고르는 것은 의도다 — 아무도
+   * 부모로 참조하지 않아 개명이 다른 파일의 관계 참조를 깨뜨리지 않는다.
+   */
+  it('개명 직후 충돌 리포트가 디스크의 실제 파일을 가리킨다', async () => {
+    const server = fullModel()
+    await seed(server)
+    // SKILL.md가 시키는 개명 — 파일명은 그대로 두고 파일 안의 name만 고친다.
+    const path = join(dir, 'erdd/tables/MBR_DTL.yaml')
+    await writeFile(path, (await readFile(path, 'utf8'))
+      .replace('name: MBR_DTL', 'name: MBR_DETAIL')
+      .replace('logicalName: 비고', 'logicalName: 비고 사항'))
+    // 서버도 같은 필드를 다르게 고쳤다 → 충돌.
+    const moved = fullModel()
+    moved.columns['c6']!.logicalName = '메모'
+
+    const { client, pushCalls } = stub(moved)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
+    expect(pushCalls).toHaveLength(0)
+    const payload = JSON.parse(out.join('')) as { conflicts: Array<{ entityId: string; path: string }> }
+    expect(payload.conflicts).toHaveLength(1)
+    expect(payload.conflicts[0]).toMatchObject({ entityId: 'c6', path: 'erdd/tables/MBR_DTL.yaml' })
+
+    // 사람용 리포트의 그룹 헤더도 같은 것을 찍어야 한다 — 여기가 사용자가 파일을 여는 자리다.
+    out.length = 0
+    expect(await push({ cwd: dir, json: false, yes: true, strict: false, client })).toBe(1)
+    expect(out.join('')).toContain('erdd/tables/MBR_DTL.yaml')
+    expect(out.join('')).not.toContain('erdd/tables/MBR_DETAIL.yaml')   // 재조립이 내던 거짓 경로
+  })
+
   it('삭제가 있으면 확인을 받고, 거절하면 CANCELLED로 끝난다', async () => {
     const server = fullModel()
     await seed(server)
