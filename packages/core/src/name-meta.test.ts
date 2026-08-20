@@ -174,4 +174,44 @@ describe('buildNameMeta', () => {
     const meta = buildNameMeta(m, [m.tables['t1']!, m.tables['t2']!], DEFAULT_NAMING_RULES)
     expect(Object.keys(meta.groups)).toEqual(['회원관리'])
   })
+
+  /**
+   * 대소문자만 다른 동명 그룹을 세운 모델. 모델에는 그룹 이름 유일성 제약이 없어 만들 수 있다
+   * (⚠️ **파일 형식은 이미 금지한다** — `filesToModel` 이 「그룹 이름 X이 중복됩니다 — 이름으로
+   * 참조되므로 유일해야 합니다」를 내고 `erdd validate` 가 파싱 오류로 잡는다. 그런데 웹의 그룹
+   * 이름 변경에는 중복 검사가 없어 만들어진다).
+   */
+  const caseTwins = (): ProjectModel => {
+    const m = buildSampleModel()
+    m.tableGroups['g1'] = { id: 'g1', name: 'Sales', color: '#4A90D9', comment: null, alias: 'AAA' }
+    m.tableGroups['g2'] = { id: 'g2', name: 'SALES', color: '#222222', comment: '뒤', alias: 'BBB' }
+    m.tables['t2'] = { ...m.tables['t2']!, groupId: 'g2' }
+    return m
+  }
+
+  /**
+   * ⚠️ **같은 결함의 두 경우가 반대로 동작하던 자리다.** 이름이 완전히 같으면 빌드가 앞엣것만
+   * 실어 앞엣것이 이겼는데, 대소문자만 다르면 빌드가 `g` 구획을 **원문 키로** 모아 **둘 다** 싣고
+   * 파서가 `toUpperCase` 로 색인하며 **뒤엣것이 앞엣것을 덮었다.** 빌드도 대문자로 모아 「먼저
+   * 나온 것이 이긴다」로 통일한다 — 어느 쪽이 이기느냐보다 **두 경우가 같은 규칙을 쓰는 것**이
+   * 핵심이다.
+   */
+  it('대소문자만 다른 동명 그룹은 한 번만 싣고 먼저 나온 것이 이긴다', () => {
+    const m = caseTwins()
+    const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
+    expect(Object.keys(meta.groups)).toEqual(['SALES'])
+    expect(meta.groups['SALES']).toEqual({ name: 'Sales', a: 'AAA', c: '#4A90D9' })
+  })
+
+  /**
+   * ⚠️ **머릿말이 자기모순이 되지 않아야 한다.** 이긴 그룹은 하나인데 테이블 항목의 `g` 가
+   * 원문 이름을 그대로 실으면 `g:"SALES"` 가 `g` 구획에 없는 키를 가리킨다. 파서가 대문자로
+   * 색인해 결과는 같지만, **우리가 낸 산출물이 스스로 말이 안 되는 상태**가 된다.
+   */
+  it('이긴 그룹의 원문 이름으로 테이블 항목의 g 를 맞춘다', () => {
+    const m = caseTwins()
+    const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
+    expect(Object.values(meta.tables).map((e) => e.g)).toEqual(['Sales', 'Sales'])
+    expect(serializeNameMeta(meta, '--')).not.toContain('"SALES"')
+  })
 })
