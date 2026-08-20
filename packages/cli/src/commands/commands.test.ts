@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createEmptyModel, type ProjectModel } from '@erdd/core'
 import { writeConfig } from '../config.js'
+import { seedPulled, TEST_CONFIG as CONFIG } from '../testing/harness.js'
 import { readTree, writeTree } from '../tree.js'
 import type { ApiClient } from '../client.js'
 import { pull } from './pull.js'
@@ -213,5 +214,176 @@ describe('validate', () => {
     const client = stubClient()
     await validate({ cwd: dir, json: true, yes: false, strict: false, client })
     expect(client.query).not.toHaveBeenCalled()
+  })
+})
+
+describe('validate 경고 좌표', () => {
+  /** 컬럼 경고·관계 경고가 함께 나는 최소 모델. 관계는 부모(MBR)와 자식(ORD)이 갈린다. */
+  function locatedModel(): ProjectModel {
+    const m = createEmptyModel()
+    m.tables['tb1'] = {
+      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.tables['tb2'] = {
+      id: 'tb2', logicalName: '주문', physicalName: 'ORD', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    m.columns['c2'] = {
+      id: 'c2', tableId: 'tb2', logicalName: '주문번호', physicalName: 'ORD_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    // 부모 PK(BIGINT)와 타입이 달라 관계 경고(type-mismatch)가 난다.
+    m.columns['c3'] = {
+      id: 'c3', tableId: 'tb2', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'VARCHAR(20)',
+      isPk: false, autoIncrement: false, nullable: false, defaultValue: null, order: 1,
+      comment: null, domainId: null, custom: {},
+    }
+    m.relationships['r1'] = {
+      id: 'r1', parentTableId: 'tb1', childTableId: 'tb2',
+      columnMappings: [{ childColumnId: 'c3', parentColumnId: 'c1' }],
+      cardinality: '1:N', identifying: false, name: null,
+    }
+    return m
+  }
+
+  type Located = { kind: string; scope: string; entityId: string; message: string; path: string | null; label: string | null }
+  const warningsOf = (): Located[] => JSON.parse(out.join('')).warnings as Located[]
+
+  it('컬럼 경고는 파일 경로와 "테이블.컬럼"을 함께 낸다', async () => {
+    await seedPulled(dir, locatedModel())
+    out.length = 0
+    await validate({ cwd: dir, json: false, yes: false, strict: false })
+    // 경로가 줄 머리에 오고 뒤에 라벨·메시지가 붙는다 — 경로를 그대로 복사해 열 수 있어야 한다.
+    expect(out.join('')).toMatch(
+      /\n {2}erdd\/tables\/MBR\.yaml {2}MBR\.MBR_NO {2}등록되지 않은 단어가 있습니다: 회원번호(\n|$)/,
+    )
+  })
+
+  it('관계 경고는 부모가 아니라 자식 테이블 파일을 가리킨다', async () => {
+    await seedPulled(dir, locatedModel())
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const w = warningsOf().find((x) => x.kind === 'type-mismatch')
+    // 관계는 자식 테이블 파일에 실린다(FILE_FIELDS의 childTableId: '(소속 테이블)').
+    // 부모 파일을 가리키면 사용자가 연 파일에 그 관계가 없다.
+    expect(w).toMatchObject({ scope: 'relationship', entityId: 'r1', path: 'erdd/tables/ORD.yaml' })
+    expect(w?.label).toBe('→ MBR')
+  })
+
+  it('템플릿이 걸려도 좌표는 파일에 든 부분 이름을 적는다', async () => {
+    // 🔥 구분력은 이 픽스처의 템플릿에 있다. 템플릿이 있으면 too-long 메시지는 조합된 최종
+    // 이름("TB_MBR_...")을, 좌표는 파일에 든 부분 이름("MBR_...")을 말해 둘이 갈린다.
+    // 템플릿을 빼면 둘이 같아져 이 테스트는 아무것도 잠그지 못한다.
+    // (부분 이름 자체가 이미 31바이트라, 템플릿이 없어도 too-long 경고는 그대로 난다.)
+    await writeConfig(dir, {
+      ...CONFIG,
+      dialects: [...CONFIG.dialects],
+      namingRules: { ...CONFIG.namingRules, tablePhysicalTemplate: 'TB_{물리명}' },
+    })
+    const m = createEmptyModel()
+    m.tables['tb1'] = {
+      id: 'tb1', logicalName: '회원_가입_이력_상세', physicalName: 'MBR_REGISTRATION_HISTORY_DETAIL',
+      comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    await seedPulled(dir, m)
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const w = warningsOf().find((x) => x.kind === 'too-long' && x.scope === 'table')
+    expect(w?.path).toBe('erdd/tables/MBR_REGISTRATION_HISTORY_DETAIL.yaml')
+    expect(w?.label).toBe('MBR_REGISTRATION_HISTORY_DETAIL')
+  })
+
+  it('경고 하나가 좌표로 부분 이름을, 메시지로 최종 이름을 함께 보인다', async () => {
+    // 🔥 다리의 **나머지 절반**. 위 테스트는 좌표가 부분 이름이라는 쪽만 잠근다 — 메시지가
+    // 조합된 최종 이름을 말한다는 쪽은 core 의 문구에 달려 있는데 그것을 잠그는 자리가
+    // 어디에도 없었다(core 의 too-long 문구를 부분 이름으로 되돌려도 core·cli 스위트가 전부
+    // 초록이었다). 그러면 한 줄에 같은 이름이 두 번 서서 다리가 사라지는데 아무도 모른다.
+    // 여기서 **같은 경고 객체**의 두 끝을 함께 못 박는다: 좌표는 파일에서 찾을 수 있는 이름,
+    // 메시지는 실제로 DB 에 나갈 이름, 그리고 둘은 서로 다르다.
+    // ⚠️ 위 테스트와 픽스처를 나눠 갖지 않는 것은 의도다. 「템플릿을 빼면 위 테스트가 초록으로
+    // 돌아온다」와 「core 문구를 되돌리면 이 테스트만 빨개진다」는 서로 다른 것을 겨냥하는
+    // 실증인데, 픽스처를 공유하면 한쪽 변형이 다른 쪽까지 흔들어 겨냥이 흐려진다.
+    await writeConfig(dir, {
+      ...CONFIG,
+      dialects: [...CONFIG.dialects],
+      namingRules: { ...CONFIG.namingRules, tablePhysicalTemplate: 'TB_{물리명}' },
+    })
+    const m = createEmptyModel()
+    m.tables['tb1'] = {
+      id: 'tb1', logicalName: '회원_가입_이력_상세', physicalName: 'MBR_REGISTRATION_HISTORY_DETAIL',
+      comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    await seedPulled(dir, m)
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const w = warningsOf().find((x) => x.kind === 'too-long' && x.scope === 'table')
+    const quoted = /물리명 "([^"]+)"/.exec(w?.message ?? '')?.[1]
+    expect(w?.label).toBe('MBR_REGISTRATION_HISTORY_DETAIL')    // 파일에서 찾을 수 있는 부분 이름
+    expect(quoted).toBe('TB_MBR_REGISTRATION_HISTORY_DETAIL')   // 실제로 DB 에 나갈 최종 이름
+    expect(quoted).not.toBe(w?.label)                           // 다리가 필요한 이유 그 자체
+  })
+
+  it('파일로 나가지 않는 테이블은 없는 경로를 가리키지 않는다', async () => {
+    // 물리명이 빈 테이블은 modelToFiles가 건너뛴다(unsafeFileName) — pull이 그 파일을 쓴 적이
+    // 없으므로 좌표로 쓸 경로가 없다. tableFileName은 그래도 문자열을 만들어 내서 그대로
+    // 찍으면 'erdd/tables/.yaml'이라는 **없는 파일**을 가리킨다. 손편집으로만 닿는 상태라
+    // 파일을 직접 고쳐 재현한다. 라벨은 그대로 둔다 — 파일에 그렇게 적혀 있는 것이 사실이다.
+    const m = createEmptyModel()
+    m.tables['tb1'] = {
+      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    await seedPulled(dir, m)
+    const tree = await readTree(dir)
+    ;(tree['erdd/tables/MBR.yaml'] as Record<string, unknown>)['name'] = ''
+    await writeTree(dir, tree)
+
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const warnings = warningsOf()
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings.every((w) => w.path === null)).toBe(true)
+    expect(warnings.some((w) => w.label === '.MBR_NO')).toBe(true)
+
+    out.length = 0
+    await validate({ cwd: dir, json: false, yes: false, strict: false })
+    expect(out.join('')).not.toContain('erdd/tables/.yaml')
+  })
+
+  it('--json의 경고 객체에 path·label이 실린다', async () => {
+    await seedPulled(dir, locatedModel())
+    out.length = 0
+    await validate({ cwd: dir, json: true, yes: false, strict: false })
+    const warnings = warningsOf()
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings.every((w) => 'path' in w && 'label' in w)).toBe(true)
+    // 가산 변경이다 — 기존 필드는 그대로 있어야 한다.
+    expect(warnings.find((w) => w.kind === 'unknown-word' && w.entityId === 'c1')).toMatchObject({
+      kind: 'unknown-word', scope: 'column', entityId: 'c1', tableId: 'tb1',
+      message: '등록되지 않은 단어가 있습니다: 회원번호',
+      path: 'erdd/tables/MBR.yaml', label: 'MBR.MBR_NO',
+    })
   })
 })
