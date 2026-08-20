@@ -206,7 +206,24 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
 }
 
 export type FilesToModelResult =
-  | { ok: true; model: ProjectModel; warnings: FileIssue[]; assignedTree?: FileTree }
+  | {
+      ok: true
+      model: ProjectModel
+      warnings: FileIssue[]
+      /**
+       * 테이블 id → **그 테이블을 읽어 온 실제 파일 경로.**
+       *
+       * ⚠️ 소비처가 `erdd/tables/${physicalName}.yaml`로 **재조립하면 안 되는** 이유가
+       * 여기 있다. 파일명과 물리명은 정규 동선에서 어긋난다 — 개명은 파일 안의 `name`을
+       * 고치는 것이고(SKILL.md), 파일명은 다음 `pull`이 따라온다. 그 사이에 재조립하면
+       * 없는 파일을, 두 테이블이 이름을 맞바꿨다면 **있는 남의 파일**을 가리킨다.
+       *
+       * `ok: true`에서는 모든 테이블이 정확히 한 파일에서 오므로 전사(全射)다 — 파일이
+       * 객체가 아니면 테이블이 모델에 들어오지 않고, 같은 id가 두 파일에 있으면 `ok: false`다.
+       */
+      tableFiles: Record<string, string>
+      assignedTree?: FileTree
+    }
   | { ok: false; issues: FileIssue[] }
 
 type Rec = Record<string, unknown>
@@ -495,5 +512,10 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
 
   if (issues.length > 0) return { ok: false, issues }
   // 파싱에 실패한 트리에 id를 기록할 이유가 없다 — ok:false에는 싣지 않는다.
-  return { ok: true, model, warnings, ...(newId === undefined ? {} : { assignedTree: src }) }
+  return {
+    ok: true, model, warnings,
+    // pending은 테이블 파일 루프가 실제로 읽은 것만 담는다 — 여기서 다시 훑을 필요가 없다.
+    tableFiles: Object.fromEntries(pending.map(({ tableId, path }) => [tableId, path])),
+    ...(newId === undefined ? {} : { assignedTree: src }),
+  }
 }

@@ -1,5 +1,5 @@
 import {
-  TREE_ROOT, computeWarnings, filesToModel, tableFileName, unsafeFileName, validateModelIntegrity,
+  computeWarnings, filesToModel, validateModelIntegrity,
   type ProjectModel, type Warning,
 } from '@erdd/core'
 import { readConfig } from '../config.js'
@@ -22,25 +22,29 @@ const NO_LOCATION: WarningLocation = { path: null, label: null }
  * ⚠️ 관계 경고에는 tableId가 없다. 관계는 **자식 테이블** 파일에 실린다
  * (file-merge.ts의 FILE_FIELDS에서 relationship.childTableId가 '(소속 테이블)'이다).
  */
-function locate(model: ProjectModel, w: Warning): WarningLocation {
+function locate(
+  model: ProjectModel, tableFiles: Record<string, string>, w: Warning,
+): WarningLocation {
   /**
-   * 좌표로 쓸 파일 경로. **파일로 나가지 않는 테이블에는 경로가 없다** — modelToFiles가
-   * unsafeFileName(빈 물리명·`.`·`..`·경로 구분자)인 테이블을 건너뛰므로 pull은 그런 파일을
-   * 쓴 적이 없다. 그런데 tableFileName은 그 이름으로도 문자열을 만들어 내서(빈 물리명이면
-   * `erdd/tables/.yaml`), 그대로 찍으면 좌표가 **없는 파일을 가리키는 거짓말**이 된다.
-   * 사양의 「좌표를 못 구하면 메시지만 낸다」 폴백이 그대로 닿는 자리다. 판정은 core의
-   * 술어를 그대로 쓴다 — 규칙을 여기 복제하면 core가 그 집합을 넓힐 때 이쪽만 낡는다.
+   * 좌표로 쓸 파일 경로. **filesToModel이 실제로 읽어 온 경로를 그대로 쓴다.**
    *
-   * ⚠️ 이것은 **막은 것이지 고친 것이 아니다.** 뿌리는 좌표가 디스크의 실제 파일이 아니라
-   * physicalName에서 정규 경로를 **재조립**한다는 데 있다 — 사용자가 파일명을 손으로 바꿔 두면
-   * 멀쩡한 이름에서도 못 여는 경로가 나온다(이월 C와 같은 원인이고 빈 물리명은 그 극단이다).
-   * 제대로 고치려면 읽은 파일의 실제 경로를 모델에 실어 와야 하고, 그것은 core 변경이다.
+   * 예전에는 `erdd/tables/${physicalName}.yaml`로 **재조립**했는데, 파일명과 물리명은
+   * 정규 동선에서 어긋난다 — SKILL.md가 "테이블 파일 이름을 직접 바꾸지 않는다 … 이름을
+   * 바꾸려면 파일 안의 `name`을 고친다"고 시키고 파일명은 다음 `pull`이 따라오기 때문이다.
+   * 개명 직후 파일은 `MBR.yaml`인데 물리명은 `MEMBER`라 재조립은 없는 파일을 가리켰고,
+   * 두 테이블이 이름을 맞바꾼 상태에서는 **있는 남의 파일**을 가리켰다. validate는 push 전
+   * 검사라 정확히 그 창에서 돌고, 수렴(pull)은 그 뒤에나 온다.
+   *
+   * 그래서 `unsafeFileName` 가드도 함께 걷어냈다. 그것은 빈 물리명이 `erdd/tables/.yaml`이라는
+   * 없는 경로를 만드는 것을 **막던** 방어인데, 재조립이 사라지면 만들 거짓 경로 자체가 없다.
+   * 이제 그런 테이블도 자기가 실제로 들어 있는 파일을 **올바로** 가리킨다(막던 것이 고쳐졌다).
+   *
+   * ⚠️ 폴백(`?? null`)은 **지금은 도달하지 않는다.** `ok: true`에서 tableFiles는 모든
+   * 테이블을 덮는다(파일이 객체가 아니면 테이블이 모델에 안 들어오고, 같은 id가 두 파일에
+   * 있으면 `ok: false`다). 사양의 「좌표를 못 구하면 메시지만 낸다」 계약을 코드로 남겨 두는
+   * 자리이지 관측된 갈래가 아니다.
    */
-  const fileOf = (tableId: string): string | null => {
-    const table = model.tables[tableId]
-    if (table === undefined || unsafeFileName(table.physicalName)) return null
-    return `${TREE_ROOT}/tables/${tableFileName(model, tableId)}`
-  }
+  const fileOf = (tableId: string): string | null => tableFiles[tableId] ?? null
   // 좌표는 부가 정보다. 무엇이 어긋나 못 풀든 validate가 경고 하나 때문에 죽으면 안 된다.
   try {
     if (w.scope === 'table') {
@@ -91,7 +95,7 @@ export function validate(ctx: CommandCtx): Promise<number> {
     const integrityIssues = validateModelIntegrity(result.model)
     // 좌표는 기존 필드에 얹기만 한다 — --json 소비자가 보던 모양은 그대로다.
     const warnings = computeWarnings(result.model, config.namingRules, config.dialects)
-      .map((w) => ({ ...w, ...locate(result.model, w) }))
+      .map((w) => ({ ...w, ...locate(result.model, result.tableFiles, w) }))
     const ok = integrityIssues.length === 0 && (!ctx.strict || warnings.length === 0)
 
     const human = [

@@ -358,6 +358,29 @@ describe('filesToModel', () => {
     })
     expect(result.ok).toBe(true)
   })
+
+  /**
+   * 🔥 구분력은 픽스처가 진다 — **파일명과 물리명이 달라야** 한다. 같으면 재조립
+   * (`erdd/tables/${name}.yaml`)과 실제 경로가 같은 값이 되어 아무것도 잠기지 않는다.
+   *
+   * 이 상태는 예외가 아니라 **정규 동선이 만든다.** SKILL.md 가 "테이블 파일 이름을 직접
+   * 바꾸지 않는다 … 이름을 바꾸려면 파일 안의 name을 고친다"고 시키므로, 개명 직후 파일은
+   * MBR.yaml 인데 물리명은 MEMBER 다.
+   */
+  it('테이블마다 읽어 온 실제 파일 경로를 함께 돌려준다', () => {
+    const result = filesToModel({
+      // 물리명은 MEMBER 로 개명됐는데 파일명은 아직 MBR.yaml 이다.
+      'erdd/tables/MBR.yaml': { id: 'tb1', name: 'MEMBER', logicalName: '회원', columns: [] },
+      'erdd/tables/ORD.yaml': { id: 'tb2', name: 'ORD', logicalName: '주문', columns: [] },
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.model.tables['tb1']!.physicalName).toBe('MEMBER')
+    expect(result.tableFiles).toEqual({
+      tb1: 'erdd/tables/MBR.yaml',      // 물리명에서 재조립하면 MEMBER.yaml — 없는 파일이다
+      tb2: 'erdd/tables/ORD.yaml',
+    })
+  })
 })
 
 /**
