@@ -411,6 +411,22 @@ describe('물리명 템플릿과 경고', () => {
     expect(kindsTpl).toContain('too-long')
   })
 
+  // 🔥 검사 기준(위)과 **문구**는 별개다. 문구를 부분 이름으로 되돌려도 위 테스트는 초록이다 —
+  // 경고는 그대로 나고 kind 만 보기 때문이다. 그러면 사용자는 30바이트를 안 넘는 이름을 들고
+  // "길이를 초과합니다"를 읽게 되어 무엇을 줄여야 하는지 알 수 없다. 여기서 문구를 못 박는다.
+  // ⚠️ 구분력은 픽스처의 템플릿이 진다 — 템플릿을 빼면 조합 이름과 부분 이름이 같아져
+  // 아무것도 잠기지 않는다(그때는 35바이트가 안 되어 경고 자체가 사라진다).
+  it('길이 경고 문구가 부분이 아니라 조합 이름을 말한다', () => {
+    const partial = 'A'.repeat(25)
+    const m = createEmptyModel()
+    m.tables['t1'] = tbl('t1', { physicalName: partial, logicalName: '긴이름' })
+    const w = computeWarnings(m, tpl('TB_PREFIX_{물리명}'))
+      .find((x) => x.kind === 'too-long' && x.entityId === 't1')
+    const quoted = /물리명 "([^"]+)"/.exec(w?.message ?? '')?.[1]
+    expect(quoted).toBe(`TB_PREFIX_${partial}`)   // 실제로 DB 에 나갈 이름
+    expect(quoted).not.toBe(partial)              // 부분 이름으로 말하면 고칠 곳을 못 찾는다
+  })
+
   // 'user' 는 네 방언 공통 예약어다(identifier.ts BASE). 'ER' 은 예약어가 아니다.
   it('예약어 검사가 조합 기준이다', () => {
     const m = createEmptyModel()
@@ -422,6 +438,20 @@ describe('물리명 템플릿과 경고', () => {
     const composed = computeWarnings(m, tpl('US{물리명}'), ['postgresql'])   // → 'USER'
       .filter((w) => w.entityId === 't1').map((w) => w.kind)
     expect(composed).toContain('reserved')
+  })
+
+  // 🔥 too-long 과 같은 이유로 문구를 잠근다. 예약어 쪽은 더 심하다 — 부분 이름('ER')은
+  // 어느 방언에서도 예약어가 아니라, 문구가 부분을 말하면 "예약어가 아닌 이름이 예약어라고
+  // 경고받는" 자기모순이 된다.
+  // ⚠️ 여기서도 구분력은 템플릿이 진다 — 빼면 'ER' 뿐이라 경고 자체가 나지 않는다.
+  it('예약어 경고 문구가 부분이 아니라 조합 이름을 말한다', () => {
+    const m = createEmptyModel()
+    m.tables['t1'] = tbl('t1', { physicalName: 'ER', logicalName: '사용자' })
+    const w = computeWarnings(m, tpl('US{물리명}'), ['postgresql'])
+      .find((x) => x.kind === 'reserved' && x.entityId === 't1')
+    const quoted = /물리명 "([^"]+)"/.exec(w?.message ?? '')?.[1]
+    expect(quoted).toBe('USER')
+    expect(quoted).not.toBe('ER')
   })
 
   it('부분이 예약어라도 조합 결과가 예약어가 아니면 경고하지 않는다', () => {
