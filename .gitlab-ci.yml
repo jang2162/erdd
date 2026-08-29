@@ -1,0 +1,120 @@
+# ERDD — `@erdd/cli` 게시 파이프라인
+#
+# 이 저장소에는 지금까지 CI 가 하나도 없었다. 그래서 **게시에 필요한 최소한**만 둔다 —
+# 평소 push·MR 마다 파이프라인이 도는 것은 이 파일의 범위가 아니다(그 결정은 따로 한다).
+#
+# 트리거는 `cli-v<SemVer>` 태그 하나뿐이다. 예: `cli-v0.1.0`
+#   git tag cli-v0.1.0 && git push origin cli-v0.1.0
+#
+# 게시 대상은 사내 GitLab 패키지 레지스트리의 **프로젝트 엔드포인트**다.
+# 그룹 엔드포인트는 읽기 전용이라 게시가 거절된다 — 그래서 `package.json` 에는
+# `publishConfig.registry` 를 두지 않는다(형제 저장소가 그 사고를 겪었다).
+# 레지스트리는 잡 안에서 만드는 `.npmrc` 로만 지정한다.
+
+workflow:
+  rules:
+    # `cli-v<SemVer>` 태그에서만 파이프라인이 뜬다. 그 외(브랜치 push, MR)는 아예 만들지 않는다.
+    - if: '$CI_COMMIT_TAG =~ /^cli-v\d+\.\d+\.\d+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/'
+    - when: never
+
+stages:
+  - verify
+  - publish
+
+# Node 는 `.nvmrc`(22)와 맞춘다. pnpm 은 루트 `package.json` 의 `packageManager`
+# (pnpm@10.4.1)를 corepack 이 그대로 읽어 활성화한다 — 버전을 여기에 또 적으면 두 곳이 갈린다.
+.node:
+  image: node:22
+  before_script:
+    - corepack enable
+    - corepack prepare --activate
+    - pnpm --version
+    - node --version
+
+verify:
+  extends: .node
+  stage: verify
+  script:
+    - pnpm install --frozen-lockfile
+    - pnpm -r typecheck
+    - pnpm -C packages/core test
+    - pnpm -C packages/cli test
+    # ⚠️ `apps/server` 테스트는 일부러 돌리지 않는다 — DATABASE_URL(실제 PostgreSQL)이 필요한데
+    #    이 파이프라인에는 DB 서비스가 없다. 게시에 필요한 것도 아니다(server 는 게시 대상이 아니다).
+    #    server 까지 검증하려면 `services:` 로 postgres 를 띄우고 마이그레이션을 적용해야 한다.
+    - pnpm -C apps/web build
+    # 빌드한 번들을 `packages/cli/web/` 로 복사한다. 설치본에는 `apps/web` 이 없어서
+    # 이 복사본이 없으면 `erdd serve` 의 정적 서빙이 통째로 빠진다(= `/p/<id>` 가 404).
+    - pnpm -C packages/cli run bundle:web
+  artifacts:
+    # publish 잡이 이 번들을 그대로 받아 tarball 에 넣는다. 재빌드하지 않는다 —
+    # 검증한 것과 게시하는 것이 같은 산출물이어야 한다.
+    paths:
+      - packages/cli/web/
+    expire_in: 1 day
+
+publish:
+  extends: .node
+  stage: publish
+  needs: [verify]
+  script:
+    # ── 가드 1: 태그 버전과 매니페스트 버전이 같아야 한다 ──
+    # 태그만 올리고 `package.json` 을 잊는 것이 가장 흔한 사고다. 그대로 게시되면
+    # 레지스트리에는 태그와 다른 버전이 올라간다.
+    - |
+      VERSION="${CI_COMMIT_TAG#cli-v}"
+      PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+      if [ "$VERSION" != "$PKG_VERSION" ]; then
+        echo "태그 버전($VERSION)과 packages/cli/package.json 의 version($PKG_VERSION)이 다릅니다." >&2
+        exit 1
+      fi
+      echo "버전 확인: $VERSION"
+    # ── 가드 2: 스코프가 @erdd/ 여야 한다 ──
+    # `.npmrc` 는 `@erdd:` 스코프에만 레지스트리와 토큰을 매단다. 이름이 스코프를 벗어나면
+    # 그 설정이 통째로 적용되지 않아 공개 npm 으로 나갈 수 있다.
+    - |
+      PKG_NAME="$(node -p "require('./packages/cli/package.json').name")"
+      case "$PKG_NAME" in
+        @erdd/*) echo "패키지 이름 확인: $PKG_NAME" ;;
+        *) echo "패키지 이름($PKG_NAME)이 @erdd/ 스코프가 아닙니다." >&2; exit 1 ;;
+      esac
+    # ── 가드 3: web 번들이 실제로 들어 있어야 한다 ──
+    # 번들 없이 게시하면 설치한 쪽에서 `erdd serve` 가 서버는 뜨는데 `/p/<id>` 만 404 를 내는,
+    # 원인을 짚기 어려운 상태가 된다(게시 전 실측으로 겪은 그대로다). 여기서 끊는다.
+    - |
+      if [ ! -f packages/cli/web/index.html ]; then
+        echo "packages/cli/web/index.html 이 없습니다. verify 잡의 artifact 가 전달되지 않았습니다." >&2
+        exit 1
+      fi
+      echo "web 번들 확인: $(find packages/cli/web -type f | wc -l) 개 파일"
+    # `pnpm publish` 는 `workspace:^` 를 실제 버전으로 바꿔 쓰기 위해 의존성이 설치돼 있어야 한다
+    # (설치 전에는 ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL 로 죽는다 — 실측).
+    # `.npmrc` 를 쓰기 **전에** 설치한다. 순서가 바뀌어도 `workspace:` 는 로컬로 풀리지만,
+    # 설치 단계가 사내 레지스트리를 볼 이유 자체를 만들지 않는 편이 낫다.
+    - pnpm install --frozen-lockfile
+    # ── .npmrc ── 잡 안에서만 만든다. 토큰이 저장소에 남지 않는다.
+    # `${CI_API_V4_URL#https:}` = `//gitlab.../api/v4` — npm 의 인증 키는 스킴 없는 URL 이다.
+    - |
+      cat > .npmrc <<EOF
+      @erdd:registry=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/
+      ${CI_API_V4_URL#https:}/projects/${CI_PROJECT_ID}/packages/npm/:_authToken=${CI_JOB_TOKEN}
+      EOF
+    # ── @erdd/core 를 먼저 ── cli 가 core 를 의존하므로 순서를 뒤집으면 설치한 쪽에서
+    # 잠깐이나마 core 를 찾지 못하는 창이 생긴다.
+    # core 는 cli 만 고친 릴리스에서는 버전이 그대로일 수 있다. 이미 있는 버전을 다시 올리면
+    # 레지스트리가 409 로 거절하고 잡이 죽는데, 그건 실패가 아니라 정상이다 — 건너뛰고 로그만 남긴다.
+    - |
+      CORE_VERSION="$(node -p "require('./packages/core/package.json').version")"
+      if npm view "@erdd/core@${CORE_VERSION}" version > /dev/null 2>&1; then
+        echo "@erdd/core@${CORE_VERSION} 는 레지스트리에 이미 있습니다 — 게시를 건너뜁니다."
+      else
+        echo "@erdd/core@${CORE_VERSION} 를 게시합니다."
+        pnpm --filter @erdd/core publish --no-git-checks
+      fi
+    # cli 는 건너뛰지 않는다. 태그가 가리키는 버전이 이미 있다면 그것은 태그를 잘못 단 것이고,
+    # 조용히 넘어가면 "게시됐다"는 초록 파이프라인만 남는다.
+    #
+    # `--no-git-checks`: 태그 위 detached HEAD 라 pnpm 의 브랜치 검사가 무조건 걸린다.
+    # `--ignore-scripts`: 쓰지 않는다. 두 패키지 모두 lifecycle 스크립트가 없어 지금은 무의미하고,
+    #   나중에 `prepack` 같은 것이 생기면 그때는 **돌아야** 하는 쪽이 맞다.
+    - pnpm --filter @erdd/cli publish --no-git-checks
