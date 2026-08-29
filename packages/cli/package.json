@@ -1,14 +1,25 @@
 {
   "name": "@erdd/cli",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "main": "./src/main.ts",
   "types": "./src/main.ts",
   "bin": { "erdd": "./src/main.ts" },
-  "files": ["src", "skill"],
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "skill",
+    "web"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.develma.com/app/erdd.git",
+    "directory": "packages/cli"
+  },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bundle:web": "node scripts/bundle-web.mjs"
   },
   "dependencies": {
     "@erdd/core": "workspace:^",

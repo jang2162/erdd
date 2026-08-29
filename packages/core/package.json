@@ -1,9 +1,18 @@
 {
   "name": "@erdd/core",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "files": [
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.develma.com/app/erdd.git",
+    "directory": "packages/core"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
