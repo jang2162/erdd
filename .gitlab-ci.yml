@@ -116,8 +116,13 @@ publish:
     # ⚠️ **다만 "건너뛴다"에는 조건이 붙는다.** core 를 고쳐 놓고 version 을 안 올린 채 태그를 밀면
     # 파이프라인은 초록으로 끝나고 레지스트리에는 **새 cli + 옛 core** 가 남는다. cli 의 의존성이
     # `@erdd/core: ^<옛 버전>` 이라 소비처는 옛 core 를 받는다 — 조용히 잘못되는 유일한 경로다.
-    # 그래서 **건너뛰기 직전에** 직전 `cli-v*` 태그와 이번 태그 사이에 `packages/core` 가 바뀌었는지
-    # 보고, 바뀌었으면 실패시킨다.
+    # 그래서 **건너뛰기 직전에** 직전 `cli-v*` 태그와 이번 태그를 비교해, **core 의 version 이 그대로인데**
+    # `packages/core` 파일이 바뀌었으면 실패시킨다.
+    #
+    # ⚠️ **version 비교가 조건에 반드시 들어가야 한다.** "파일이 바뀌었나"만 보면 core 를 고치고
+    # version 도 **올바로 올린** 릴리스에서 오탐한다 — 그 core 가 이미 게시된 상태(= publish 잡
+    # **재시도**: 첫 실행이 core 게시까지 성공하고 cli 게시에서 죽은 경우)에서 가드가 발동해
+    # **그 태그로는 영원히 성공할 수 없게** 된다.
     #
     # 이 판정의 실패 모드(알고 쓰는 것이다):
     #  - **첫 태그라 직전 태그가 없을 때**: `git describe` 가 비어 `PREV_TAG` 가 빈 문자열이 되고
@@ -126,22 +131,31 @@ publish:
     #  - **얕은 클론(`GIT_DEPTH`)이라 직전 태그가 안 잡힐 때**: 역시 `PREV_TAG` 가 비어 검사를
     #    건너뛴다. 즉 이 가드는 **거짓 실패를 내지 않는 대신 조용히 통과할 수 있다.** 그래서
     #    아래에서 `GIT_DEPTH: 0`(전체 히스토리)을 명시해 그 경우를 없앤다.
+    #  - **직전 태그의 `packages/core/package.json` 을 못 읽을 때**(태그는 있는데 그 시점에 파일이
+    #    없거나 JSON 이 깨진 경우): `PREV_CORE_VERSION` 이 빈 문자열이 되어 `$CORE_VERSION` 과
+    #    같지 않으므로 **검사를 건너뛴다 — 통과 쪽으로 기운다.** 이쪽을 고른 이유는, 못 읽는 것이
+    #    "버전을 안 올렸다"의 증거가 전혀 아니어서 거짓 실패로 릴리스를 막는 쪽이 더 나쁘기 때문이다.
+    #    (core 가 아직 없던 옛 태그가 정확히 이 경우다.)
     #  - **태그는 있는데 `git diff` 가 실패할 때**(객체 없음 등): `git diff --quiet` 가 비영으로
-    #    끝나 "바뀌었다"로 읽혀 **실패 쪽으로 기운다.** 안전한 방향이다.
+    #    끝나 "바뀌었다"로 읽힌다. 다만 앞의 version 비교를 먼저 통과해야 하므로, 버전이 그대로일
+    #    때만 **실패 쪽으로 기운다.** 안전한 방향이다.
     - |
       CORE_VERSION="$(node -p "require('./packages/core/package.json').version")"
       if npm view "@erdd/core@${CORE_VERSION}" version > /dev/null 2>&1; then
         PREV_TAG="$(git describe --tags --abbrev=0 --match 'cli-v*' "${CI_COMMIT_TAG}^" 2>/dev/null || true)"
-        if [ -n "$PREV_TAG" ] && ! git diff --quiet "$PREV_TAG" "$CI_COMMIT_TAG" -- packages/core; then
+        PREV_CORE_VERSION="$(git show "$PREV_TAG:packages/core/package.json" 2>/dev/null | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || true)"
+        if [ -n "$PREV_TAG" ] && [ "$PREV_CORE_VERSION" = "$CORE_VERSION" ] && ! git diff --quiet "$PREV_TAG" "$CI_COMMIT_TAG" -- packages/core; then
           echo "packages/core 가 $PREV_TAG 이후 바뀌었는데 version($CORE_VERSION)이 그대로입니다." >&2
           echo "packages/core/package.json 의 version 을 올리고 태그를 다시 미세요." >&2
           exit 1
         fi
-        if [ -n "$PREV_TAG" ]; then
-          echo "@erdd/core@${CORE_VERSION} 는 레지스트리에 이미 있고 $PREV_TAG 이후 packages/core 변경이 없습니다 — 게시를 건너뜁니다."
-        else
+        if [ -z "$PREV_TAG" ]; then
           echo "직전 cli-v* 태그를 찾지 못해 core 변경 검사를 건너뜁니다(첫 태그이거나 얕은 클론)." >&2
           echo "@erdd/core@${CORE_VERSION} 는 레지스트리에 이미 있습니다 — 게시를 건너뜁니다."
+        elif [ "$PREV_CORE_VERSION" != "$CORE_VERSION" ]; then
+          echo "@erdd/core 의 version 이 $PREV_TAG 의 ${PREV_CORE_VERSION:-알 수 없음} 에서 ${CORE_VERSION} 으로 올랐고 그 버전은 레지스트리에 이미 있습니다 — 게시를 건너뜁니다."
+        else
+          echo "@erdd/core@${CORE_VERSION} 는 레지스트리에 이미 있고 $PREV_TAG 이후 packages/core 변경이 없습니다 — 게시를 건너뜁니다."
         fi
       else
         echo "@erdd/core@${CORE_VERSION} 를 게시합니다."
