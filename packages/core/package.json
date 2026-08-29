@@ -13,6 +13,9 @@
     "url": "https://gitlab.develma.com/app/erdd.git",
     "directory": "packages/core"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
