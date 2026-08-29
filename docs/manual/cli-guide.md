@@ -43,20 +43,85 @@ ERDD 서버의 스키마를 **코드베이스 안의 YAML 파일**로 내려받�
 
 ## 2. 설치와 실행
 
+**세 가지 방법이 있고 첫째가 기본이다.** 아래 표에서 자기 상황을 고르면 된다.
+
+| 방법 | 언제 쓰나 | ERDD 저장소 체크아웃 |
+|---|---|---|
+| [A. 사내 레지스트리에서 설치](#22-방법-a-사내-레지스트리에서-설치-권장) | **보통 이것이다** — 스키마를 둘 프로젝트에서 그냥 쓴다 | **필요 없다** |
+| [B. 저장소에서 직접 실행](#23-방법-b-저장소에서-직접-실행-설치-없음) | 레지스트리에 닿지 않거나(권한 대기·오프라인), CLI 자체를 고치는 중이다 | 필요하다 |
+| [C. 프로젝트에 의존성으로 링크](#24-방법-c-프로젝트에-의존성으로-링크) | CLI 를 고치면서 소비처 프로젝트에서 바로 확인한다 | 필요하다 |
+
 ### 2.1 요구 사항
 
 | 항목 | 값 | 근거 |
 |---|---|---|
 | Node.js | 22 | `.nvmrc` |
-| 패키지 | `@erdd/cli`(바이너리 `erdd`) | `packages/cli/package.json` |
-| 실행기 | `tsx` | 소스를 빌드 없이 실행한다(`#!/usr/bin/env -S npx tsx`) |
+| 패키지 | `@erdd/cli`(바이너리 `erdd`) · 의존 패키지 `@erdd/core` | `packages/cli/package.json` |
+| 실행기 | `tsx` | **세 방법 모두에서 필요하다**(아래 ⚠️) |
+| 사내 GitLab 접근 | 방법 A 에만 — `gitlab.develma.com` 의 패키지 레지스트리를 읽을 수 있는 개인 액세스 토큰 | 게시 위치가 사내 레지스트리다 |
+| ERDD 저장소 체크아웃 | **방법 B·C 에만.** 방법 A 에는 필요 없다 | |
 
-⚠️ **`@erdd/cli` 는 아직 npm 레지스트리에 공개되지 않았다**(`"private": true`). `npm i -g @erdd/cli`
-는 동작하지 않는다. 아래 두 방법 중 하나로 ERDD 저장소 체크아웃에서 실행한다.
+⚠️ **`tsx` 는 레지스트리에서 설치해도 여전히 필요하다.** 패키지에는 빌드 산출물이 아니라 **원본
+TypeScript 가 그대로** 들어 있고, 바이너리의 shebang 이 `#!/usr/bin/env -S npx tsx` 다. 프로젝트에
+`tsx` 가 없으면 CLI 가 아니라 셸이 이렇게 끝낸다.
 
-### 2.2 방법 A: 저장소에서 직접 실행 (설치 없음)
+```
+sh: tsx: command not found
+# 종료 코드 127 — CLI 가 아니라 셸이 낸 오류다
+```
 
-가장 단순하다. **작업할 프로젝트 디렉터리에서** ERDD 체크아웃의 진입점을 가리켜 실행한다.
+### 2.2 방법 A: 사내 레지스트리에서 설치 (권장)
+
+`@erdd/cli` 와 `@erdd/core` 는 **사내 GitLab(`gitlab.develma.com`)의 패키지 레지스트리**에 올라간다.
+공개 npm 에는 없다 — `npm i -g @erdd/cli` 는 동작하지 않는다. 그래서 스코프 `@erdd` 만 그 레지스트리로
+보내는 설정을 한 번 해 준다.
+
+**① 머신마다 한 번 — 토큰을 등록한다.**
+
+```bash
+pnpm config set "//gitlab.develma.com/:_authToken" "<GitLab 개인 액세스 토큰>"
+```
+
+사용자 홈의 `~/.npmrc` 에 들어간다. 머신 한 대에 한 번이면 프로젝트가 여럿이어도 다시 하지 않는다.
+
+⚠️ **토큰을 프로젝트의 `.npmrc` 에 적지 마라.** 그 파일은 커밋 대상이라 토큰이 저장소에 남는다.
+**레지스트리 주소는 프로젝트에, 토큰은 홈에** — 두 곳을 갈라 두는 것이 이 규칙의 전부다.
+
+**② 프로젝트마다 한 번 — 스코프를 레지스트리로 보낸다.** 프로젝트 루트의 `.npmrc` 에 한 줄을 적고
+커밋한다(토큰은 여기 없다).
+
+```
+@erdd:registry=https://gitlab.develma.com/api/v4/projects/<프로젝트-ID>/packages/npm/
+```
+
+`<프로젝트-ID>` 는 GitLab 의 ERDD 프로젝트 홈(`https://gitlab.develma.com/app/erdd`) 상단
+「Project ID」에 있는 숫자다. 프로젝트 이름이 아니라 숫자를 그대로 넣는다.
+
+**③ 설치한다.**
+
+```bash
+cd /path/to/my-project
+pnpm add -D @erdd/cli tsx
+pnpm exec erdd --help
+```
+
+`node_modules/.bin/erdd` 가 생겨 `pnpm exec erdd …` 로 부를 수 있다. `@erdd/core` 는 의존성으로 따라
+들어오므로 따로 설치하지 않는다.
+
+**웹 번들이 패키지 안에 들어 있다.** `erdd serve` 가 브라우저에 띄우는 에디터 화면(`apps/web` 의 빌드
+산출물)이 tarball 에 통째로 동봉돼 나간다 — **레지스트리에서 설치한 쪽은 웹을 따로 빌드하지 않아도
+`erdd serve` 가 그대로 뜬다**(→ [로컬 모드 매뉴얼 2.2](local-guide.md#22-경로-a-사내-레지스트리에서-설치한다-권장)).
+
+⚠️ **아직 첫 게시 전이다(2026-08-29 기준).** 게시는 `cli-v<SemVer>` 태그(예: `cli-v0.1.0`)를 push 할 때
+파이프라인이 하는데, **그 첫 태그가 아직 올라가지 않았다.** 그때까지 위 `pnpm add` 는 패키지를 찾지
+못하고 404 로 끝나므로 [방법 B](#23-방법-b-저장소에서-직접-실행-설치-없음) 나
+[방법 C](#24-방법-c-프로젝트에-의존성으로-링크) 를 쓴다. **게시가 끝나면 이 문단을 지운다.**
+
+### 2.3 방법 B: 저장소에서 직접 실행 (설치 없음)
+
+**언제** — 레지스트리에 아직 닿지 않거나(권한 대기·오프라인), CLI 소스를 고치면서 바로 돌려 볼 때.
+
+설치가 전혀 없다. **작업할 프로젝트 디렉터리에서** ERDD 체크아웃의 진입점을 가리켜 실행한다.
 
 ```bash
 cd /path/to/my-project
@@ -73,7 +138,13 @@ alias erdd='npx tsx /path/to/ERDD/packages/cli/src/main.ts'
 ⚠️ **현재 디렉터리가 대상 프로젝트여야 한다.** CLI 는 `erdd.config.yaml`·`erdd/`·`.erdd/` 를 전부
 `process.cwd()` 기준으로 찾는다. ERDD 저장소 안에서 실행하면 엉뚱한 곳을 본다.
 
-### 2.3 방법 B: 프로젝트에 의존성으로 링크
+⚠️ **이 방법에서는 `erdd serve` 를 쓰기 전에 웹을 한 번 빌드해야 한다** — 체크아웃에는 번들이 없다.
+`pnpm -C apps/web build`(→ [로컬 모드 매뉴얼 2.3](local-guide.md#23-경로-b-erdd-저장소-체크아웃--웹-번들을-한-번-빌드한다)).
+
+### 2.4 방법 C: 프로젝트에 의존성으로 링크
+
+**언제** — CLI 를 고치면서 소비처 프로젝트에서 `pnpm exec erdd …` 형태 그대로 확인할 때. 레지스트리
+설치와 같은 호출 형태를 쓰면서 코드만 로컬 체크아웃을 본다.
 
 `node_modules/.bin/erdd` 가 생겨 `pnpm exec erdd …` 로 부를 수 있다. **`tsx` 를 함께 넣어야 한다.**
 
@@ -83,20 +154,15 @@ pnpm add -D /path/to/ERDD/packages/cli tsx
 pnpm exec erdd --help
 ```
 
-⚠️ **`tsx` 를 빼면 실행 자체가 안 된다.** 패키지 관리자가 만드는 bin 셸 심(shim)은 shebang 의
-`npx tsx` 를 `tsx` 로 풀어 실행하므로, 프로젝트에 `tsx` 가 없으면 이렇게 끝난다.
-
-```
-sh: tsx: command not found
-# 종료 코드 127 — CLI 가 아니라 셸이 낸 오류다
-```
+⚠️ **`tsx` 를 빼면 실행 자체가 안 된다** — 증상은 [2.1](#21-요구-사항) 의 `sh: tsx: command not found`
+(종료 코드 127)다.
 
 ⚠️ **이 설치는 ERDD 저장소의 원본 파일 권한을 바꾼다.** 패키지 관리자가 bin 진입점에 실행 비트를
 붙이므로, 설치 뒤 ERDD 체크아웃에서 `git status` 를 보면 `packages/cli/src/main.ts` 가
 `old mode 100644 / new mode 100755` 로 뜬다. 커밋하지 말고 `chmod 644 packages/cli/src/main.ts` 로
-되돌린다. 이 부작용이 싫으면 [방법 A](#22-방법-a-저장소에서-직접-실행-설치-없음) 를 쓴다.
+되돌린다. 이 부작용이 싫으면 [방법 B](#23-방법-b-저장소에서-직접-실행-설치-없음) 를 쓴다.
 
-### 2.4 실행 확인
+### 2.5 실행 확인
 
 ```bash
 $ erdd --help
@@ -234,9 +300,12 @@ namingRules:
 `erdd.config.yaml이 이미 있습니다. 지우고 다시 실행하세요` 로 멈춘다(종료 코드 `1`) — 되물을 서버
 프로젝트가 없어서, 덮어쓰면 방언·명명 규칙을 조용히 잃는다.
 
-⚠️ **`erdd serve` 는 미리 빌드된 웹 번들(`apps/web/dist`)을 내보낸다.** 없으면 서버는 평소처럼 뜨는데
-브라우저에 에디터 대신 JSON 404 가 나온다. ERDD 체크아웃에서 `pnpm -C apps/web build` 를 한 번
-돌려 둔다(→ [로컬 모드 매뉴얼 2.2](local-guide.md#22-웹-번들을-한-번-빌드한다--빠뜨리면-화면이-뜨지-않는다)).
+⚠️ **`erdd serve` 는 미리 빌드된 웹 번들을 정적으로 내보낸다 — 저장소 배치에서는 그 번들을 한 번
+만들어 둬야 한다.** [레지스트리에서 설치](#22-방법-a-사내-레지스트리에서-설치-권장)한 쪽은 번들이
+패키지에 동봉돼 있어 할 일이 없다. 저장소 체크아웃(방법 B·C)에서는 `apps/web/dist` 가 없으면 서버는
+평소처럼 뜨는데 브라우저에 에디터 대신 JSON 404 가 나오므로, ERDD 체크아웃에서
+`pnpm -C apps/web build` 를 한 번 돌려 둔다
+(→ [로컬 모드 매뉴얼 2.3](local-guide.md#23-경로-b-erdd-저장소-체크아웃--웹-번들을-한-번-빌드한다)).
 
 **편집이 곧 파일이다.** 화면에서 바꾼 것은 잠깐의 디바운스 뒤 `erdd/` 에 쓰이고, 터미널·에이전트·
 `git pull` 이 파일을 고치면 **새로고침 없이** 화면이 따라온다. 테이블을 옮기거나 메모를 만든 것은
@@ -738,7 +807,7 @@ http://127.0.0.1:4399 에서 실행 중 (프로젝트: /path/to/my-project)
 | 전용 옵션 | `--port <번호>`(기본 `4300`) · `--no-open`(브라우저를 자동으로 열지 않는다) |
 | 바인딩 | **`127.0.0.1` 고정.** 인증이 없는 서버라 LAN 노출은 옵션으로도 열지 않는다 |
 | Host 검사 | `Host` 가 `127.0.0.1:<포트>`·`localhost:<포트>` 계열이 아니면 **403** 이다. 다른 이름(사설 DNS·`/etc/hosts` 별칭·리버스 프록시)으로는 닿지 않는다 — 바인딩만으로는 **DNS 리바인딩**(공격자 페이지가 브라우저를 통해 이 서버에 읽고 쓰는 것)을 막지 못한다 |
-| 웹 번들 | **미리 빌드된 `apps/web/dist` 를 내보낸다.** 없으면 서버는 뜨는데 브라우저에 JSON 404 만 나온다 — `pnpm -C apps/web build` (→ [로컬 모드 매뉴얼 2.2](local-guide.md#22-웹-번들을-한-번-빌드한다--빠뜨리면-화면이-뜨지-않는다)) |
+| 웹 번들 | **미리 빌드된 번들을 정적으로 내보낸다.** 레지스트리 설치본은 패키지 안의 `web/` 를, 저장소 배치는 `apps/web/dist` 를 쓴다(설치본 쪽이 우선). 저장소 배치에서 번들이 없으면 서버는 뜨는데 브라우저에 JSON 404 만 나온다 — `pnpm -C apps/web build` (→ [로컬 모드 매뉴얼 2.3](local-guide.md#23-경로-b-erdd-저장소-체크아웃--웹-번들을-한-번-빌드한다)) |
 | 서버 호출 | 없다. `erdd.config.yaml` 과 `erdd/` 파일만 읽고 쓴다 |
 | 쓰는 파일 | `erdd/**`(편집 반영) · `erdd/layout.yaml` · `.erdd/snapshots.json` · `erdd.config.yaml`(설정 저장 시) |
 
@@ -957,7 +1026,7 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `sh: tsx: command not found` (종료 코드 127) | 프로젝트에 `tsx` 가 없다 | `pnpm add -D tsx` (→ [2.3](#23-방법-b-프로젝트에-의존성으로-링크)) |
+| `sh: tsx: command not found` (종료 코드 127) | 프로젝트에 `tsx` 가 없다 | `pnpm add -D tsx`. 레지스트리에서 설치해도 필요하다 (→ [2.1](#21-요구-사항)) |
 | ERDD 저장소에서 `packages/cli/src/main.ts` 가 `old mode 100644 / new mode 100755` 로 뜬다 | 방법 B 설치가 bin 진입점에 실행 비트를 붙였다 | `chmod 644 packages/cli/src/main.ts`. 커밋하지 않는다 |
 | `erdd.config.yaml이 없습니다. erdd init을 먼저 실행하세요` | 프로젝트 루트가 아닌 곳에서 실행했거나 아직 연결하지 않았다 | 프로젝트 루트로 이동하거나 `erdd init` |
 | `토큰이 없습니다. ERDD_TOKEN을 설정하거나 erdd init을 실행하세요` | 환경 변수도 `.erdd/credentials.json` 도 없다 | 둘 중 하나를 채운다 |
@@ -978,7 +1047,7 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 | `erdd.config.yaml에 연결 설정이 없습니다 …` | 로컬 전용 프로젝트에서 `pull`·`push`·`diff` 를 돌렸다 | 서버에 붙이려면 `erdd init`, 로컬로 쓰려면 `erdd serve` (→ [3.4](#34-로컬-모드--서버-없이-쓰기)) |
 | `erdd.config.yaml에 serverUrl과 projectId는 함께 있어야 합니다 …` | 둘 중 하나만 적혀 있다 | 둘을 함께 적거나 둘 다 지운다(둘 다 없으면 로컬 전용이다) |
 | `erdd.config.yaml이 이미 있습니다. 지우고 다시 실행하세요` | `init --local` 인데 config 가 이미 있다 | 기존 파일을 지우고 다시 실행한다. `--yes` 로는 덮이지 않는다 |
-| `erdd serve` 는 떴는데 브라우저에 `{"message":"Route GET:/p/… not found"…}` 만 나온다 | 웹 번들(`apps/web/dist`)이 없다 | ERDD 체크아웃에서 `pnpm -C apps/web build` |
+| `erdd serve` 는 떴는데 브라우저에 `{"message":"Route GET:/p/… not found"…}` 만 나온다 | 웹 번들이 없다(저장소 배치에서 쓸 때만 나는 증상이다 — 레지스트리 설치본에는 번들이 동봉돼 있다) | ERDD 체크아웃에서 `pnpm -C apps/web build` |
 | `포트 4300이 이미 사용 중입니다 …` | 다른 `erdd serve` 나 다른 프로그램이 그 포트를 물고 있다 | `--port` 로 다른 포트를 준다 |
 | 브라우저 상단에 「파일을 읽을 수 없어 편집이 잠겼습니다」 배너가 뜨고 편집이 안 된다 | `erdd/` 안의 YAML 이 깨졌다 | 배너가 가리키는 파일을 고친다. 고치면 자동으로 풀린다 |
 | 로컬 모드에서 테이블이 격자로 나란히 놓여 있다 | `erdd/layout.yaml` 이 없거나 그 테이블 항목이 없다 | 정상이다. 옮기거나 「자동 정렬」을 하면 좌표가 그 파일에 저장된다 |
@@ -1036,3 +1105,20 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 `config.ts`, `output.ts`), `packages/core/src/{file-format,layout,local}.ts`,
 `apps/server/src/routers/*`(토큰 허용 프로시저), `apps/web` 의 로컬 모드 분기.
 기능이 바뀌면 이 문서도 함께 고쳐야 한다.
+
+### 레지스트리 게시 (2026-08-29)
+
+**패키지 형태로 확인한 것.** `pnpm pack` 으로 만든 tarball 을 별도의 소비처 프로젝트에 설치해 돌렸다.
+
+- tarball 에 **원본 TypeScript 와 웹 번들이 함께 들어가는 것** — `@erdd/cli` 127개 파일(그중
+  `web/` 101개, `*.test.ts` 0개), `@erdd/core` 39개 파일. `workspace:^` 가 실제 버전(`^0.1.0`)으로
+  치환되는 것.
+- 설치본에서 `erdd --help`·`erdd init --local`·`erdd validate` 가 정상 동작하는 것(종료 코드 `0`).
+- 설치본에서 `erdd serve` 가 뜨고 **`/p/<id>` 가 200 + HTML** 을, `/assets/*.js` 가 200 + 실제 바이트를
+  내는 것 — **웹을 따로 빌드하지 않은 프로젝트에서다.**
+- 저장소 배치도 그대로 동작하는 것 — `packages/cli/web` 이 있을 때와 치웠을 때 각각 `/p/<id>` 200.
+
+⚠️ **확인하지 않은 것.** **사내 레지스트리에 실제로 게시된 적이 아직 없다.** 2.2 의
+`pnpm config set …`·`.npmrc`·`pnpm add -D @erdd/cli` 는 GitLab 패키지 레지스트리의 표준 절차를 적은
+것이고, 첫 태그(`cli-v0.1.0`)를 push 해 파이프라인이 돈 뒤에 실제로 확인해야 한다. 위 스모크는
+레지스트리 대신 로컬 tarball 을 가리켜 설치한 것이다.
