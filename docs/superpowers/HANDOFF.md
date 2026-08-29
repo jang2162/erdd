@@ -1177,14 +1177,14 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm -C apps/se
 게시 대상은 **사내 GitLab(`gitlab.develma.com`) 패키지 레지스트리의 프로젝트 엔드포인트**다. 공개
 npm 에는 올리지 않는다. 배포 형태는 **원본 TypeScript 그대로**이고(빌드 산출물이 아니다 — 소비처에
 `tsx` 가 필요하다), `apps/web` 의 빌드 산출물을 `packages/cli/web/` 로 복사해 **tarball 에 동봉**한다.
-그래야 설치본에서도 `erdd serve` 가 화면을 낸다.
+그래야 설치본에서도 `erdd serve` 가 화면을 낸다. 두 패키지 모두 `engines.node: ">=22"` 를 선언한다.
 
 **절차.**
 
 ```bash
-# 1) 버전을 올린다 — cli 는 항상, core 를 고쳤으면 core 도
-#    packages/cli/package.json  의 "version"
-#    packages/core/package.json 의 "version"
+# 1) 버전을 올린다
+#    packages/cli/package.json  의 "version"  — 항상
+#    packages/core/package.json 의 "version"  — packages/core 를 고쳤으면 반드시(아래 가드가 죽인다)
 
 # 2) 커밋하고 태그를 push 한다. 파이프라인은 이 태그에서만 돈다
 git tag cli-v0.1.0 && git push origin cli-v0.1.0
@@ -1192,44 +1192,95 @@ git tag cli-v0.1.0 && git push origin cli-v0.1.0
 
 `.gitlab-ci.yml` 의 `workflow.rules` 가 `^cli-v\d+\.\d+\.\d+(-…)?$` 태그에만 파이프라인을 만든다 —
 브랜치 push·MR 로는 아무것도 돌지 않는다(이 저장소의 유일한 CI 다). `verify` → `publish` 두 단계이고,
-`verify` 가 `pnpm install --frozen-lockfile` · `pnpm -r typecheck` · core·cli 테스트 · `apps/web build` ·
-`pnpm -C packages/cli run bundle:web` 을 돌려 `packages/cli/web/` 를 artifact 로 넘긴다. `publish` 는
-그것을 그대로 받아 게시한다 — **재빌드하지 않는다**(검증한 것과 게시하는 것이 같아야 한다).
+`verify` 가 `pnpm install --frozen-lockfile` · `pnpm -r typecheck` · **core·cli·web 테스트** ·
+`apps/web build` · `pnpm -C packages/cli run bundle:web` 을 돌려 `packages/cli/web/` 를 artifact 로
+넘긴다. `publish` 는 그것을 그대로 받아 게시한다 — **재빌드하지 않는다**(검증한 것과 게시하는 것이
+같아야 한다).
 
-**publish 가 막는 것(가드 3개).**
+⚠️ **`pnpm -C apps/web test` 는 빼지 마라.** 그 빌드 산출물 101개가 그대로 tarball 의 `web/` 이 되어
+소비처에서 서빙된다 — **게시물의 대부분이 web 이다.** 그 줄이 없으면 어떤 테스트도 거치지 않은 것이
+게시되는 경로가 열린다. `build` 앞에 둔 것도 의도다(깨졌으면 빌드에 시간을 쓰기 전에 죽는다).
 
-| 가드 | 무엇을 막나 |
-|---|---|
-| 태그 버전 == `packages/cli/package.json` 의 `version` | 태그만 올리고 매니페스트를 잊는 것. 그대로 나가면 레지스트리에 태그와 다른 버전이 올라간다 |
-| 패키지 이름이 `@erdd/` 스코프 | `.npmrc` 는 `@erdd:` 에만 레지스트리·토큰을 매단다. 스코프를 벗어나면 그 설정이 통째로 안 먹어 **공개 npm 으로 나갈 수 있다** |
-| `packages/cli/web/index.html` 존재 | 번들 없는 게시. 설치한 쪽에서 서버는 뜨는데 `/p/<id>` 만 404 를 내는, 원인을 짚기 어려운 상태가 된다 |
+**게시를 막는 가드 5개.**
 
-⚠️ **core 를 고쳤는데 core 의 `version` 을 안 올리면 CI 가 core 게시를 조용히 건너뛴다.** publish 잡은
-`npm view "@erdd/core@<버전>"` 으로 「이미 있으면 건너뛴다」를 하므로(cli 만 고친 릴리스에서 409 로
-죽지 않게 하려는 의도된 동작이다), 버전을 그대로 두면 **cli 만 새로 나가고 core 는 옛 코드가 남는다.**
-**이 사고를 막는 가드는 없다** — core 를 건드렸으면 두 매니페스트를 함께 올려라.
+| 가드 | 어디서 | 무엇을 막나 |
+|---|---|---|
+| 태그 버전 == `packages/cli/package.json` 의 `version` | CI publish | 태그만 올리고 매니페스트를 잊는 것. 그대로 나가면 레지스트리에 태그와 다른 버전이 올라간다 |
+| 패키지 이름이 `@erdd/` 스코프 | CI publish | `.npmrc` 는 `@erdd:` 에만 레지스트리·토큰을 매단다. 스코프를 벗어나면 그 설정이 통째로 안 먹어 **공개 npm 으로 나갈 수 있다** |
+| `packages/cli/web/index.html` 존재 | CI publish | 번들 없는 게시. 설치한 쪽에서 서버는 뜨는데 `/p/<id>` 만 404 를 내는, 원인을 짚기 어려운 상태가 된다 |
+| **core 버전 누락** | CI publish | 직전 `cli-v*` 태그 이후 `packages/core` 가 바뀌었는데 그 `version` 이 이미 게시돼 있으면 **잡이 죽는다.** 「새 cli + 옛 core」가 조용히 나가는 것을 막는다 |
+| **`prepack`**(`packages/cli/scripts/check-web-bundle.mjs`) | pack·publish 어디서나 | 웹 번들 없이 팩하는 것. CI 가드와 겹치지만 **CI 밖의 손 게시까지** 덮는다. CI 가 `--ignore-scripts` 를 쓰지 않는 것이 이 훅을 거기서도 돌게 하려는 것이다 |
+
+⚠️ **core 를 고쳤으면 `packages/core/package.json` 의 `version` 을 반드시 올려라.** publish 잡은
+`npm view "@erdd/core@<버전>"` 으로 「이미 있으면 건너뛴다」를 하는데(cli 만 고친 릴리스에서 409 로
+죽지 않게 하려는 의도된 동작이다), **건너뛰기 직전에 직전 `cli-v*` 태그와 이번 태그 사이의
+`packages/core` diff 를 본다.** 바뀌었으면 이렇게 죽는다.
+
+```
+packages/core 가 cli-v0.1.1 이후 바뀌었는데 version(0.1.0)이 그대로입니다.
+packages/core/package.json 의 version 을 올리고 태그를 다시 미세요.
+```
+
+이 판정에는 **알고 쓰는 실패 모드**가 있다. **직전 태그를 못 찾으면 검사를 조용히 건너뛴다** —
+첫 태그이거나 얕은 클론일 때다. 첫 태그에서는 core 도 미게시라 애초에 게시 분기로 가서 이 검사에
+닿지 않고, 얕은 클론은 publish 잡의 `GIT_DEPTH: "0"` 으로 없앴다. 반대로 `git diff` 자체가 실패하면
+「바뀌었다」로 읽혀 **실패 쪽으로 기운다**(안전한 방향).
+
+⚠️ **손 게시(CI 밖의 `pnpm pack`·`pnpm publish`)에는 선행 조건이 있다.** 번들이 없으면 `prepack` 이
+종료 코드 `1` 로 막는다. 먼저 이 둘을 돌려라.
+
+```bash
+pnpm -C apps/web build && pnpm -C packages/cli run bundle:web
+```
 
 ⚠️ **`apps/server` 테스트는 이 파이프라인이 돌리지 않는다** — `DATABASE_URL`(실제 PostgreSQL)이
 필요한데 CI 에 DB 서비스가 없다. 게시 대상도 아니다. 서버까지 검증하려면 `services:` 로 postgres 를
 띄우고 마이그레이션을 적용해야 한다.
 
-⚠️ **파이프라인은 아직 한 번도 돌지 않았다(2026-08-29).** 첫 태그에서 깨질 수 있는 지점은
-`corepack` 활성화(사내 러너의 네트워크 정책을 탄다 — 막히면 `.node.before_script` 를
-`npm i -g pnpm@10.4.1` 로 바꾼다), verify → publish 의 artifact 전달, `CI_JOB_TOKEN` 으로의 실제 게시,
-`npm view` 가 「없음」을 404 로 돌려주는지(401/403 이면 오판해 게시를 시도하고 409 로 죽는다)다.
+⚠️ **파이프라인은 아직 한 번도 돌지 않았다(2026-08-29).** 첫 태그에서 깨질 수 있는 지점.
+
+- `corepack` 활성화 — 사내 러너의 네트워크 정책을 탄다. 막히면 `COREPACK_NPM_REGISTRY` 로 사내 미러를
+  가리킨다(`npm i -g pnpm@10.4.1` 은 **같은 네트워크를 타므로 대안이 아니다**). 프롬프트 때문에 막히는
+  것은 아님이 확인됐다.
+- verify → publish 의 실제 artifact 전달, `CI_JOB_TOKEN` 으로의 실제 게시.
+- `npm view` 가 「없음」을 404 로 돌려주는지 — 401/403 이면 「없음」으로 오판해 게시를 시도하고 409 로
+  죽는다.
+- **`GIT_DEPTH: "0"` 이 러너에서 실제로 전체 히스토리를 받는지** — 로컬 `git clone` 으로 대신 확인했다.
+- **`git describe --match 'cli-v*'` 가 러너의 detached HEAD 태그 체크아웃에서 같게 도는지.**
+- **verify 의 `pnpm -C apps/web test` 가 러너에서 jsdom·타임아웃 없이 끝나는지**(로컬 14.7초).
 
 **소비처 설치**(사용자 매뉴얼과 같은 내용) — 머신마다 한 번
 `pnpm config set "//gitlab.develma.com/:_authToken" "<토큰>"`, 프로젝트 `.npmrc` 에
 `@erdd:registry=https://gitlab.develma.com/api/v4/projects/<프로젝트-ID>/packages/npm/`, 그다음
 `pnpm add -D @erdd/cli tsx`. **토큰은 프로젝트 `.npmrc` 에 적지 않는다.**
+⚠️ **`tsx` 를 함께 적는 것을 빼지 마라** — `@erdd/cli` 의 `dependencies` 에 있어도 **pnpm 격리 배치는
+고쳐지지 않는다**(pnpm 은 남의 의존성을 소비처 루트 `.bin` 에 걸지 않고 shebang 의 `npx` 는 소비처
+cwd 기준이다). npm·yarn 평면 배치만 호이스팅 덕에 없어도 동작한다. 둘 다 실측이다.
 
 ⚠️ **`packages/cli/web/` 는 커밋하지 않는다**(gitignore). 로컬에서 저장소 배치로 `erdd serve` 를 쓰던
-사람은 지금까지처럼 `pnpm -C apps/web build` 만 하면 된다. 다만 **한 번 `bundle:web` 을 돌리고 나면
-그 복사본이 우선**하므로(`webDistCandidates` 의 첫 후보), web 을 고쳤는데 화면이 안 바뀌면
-`packages/cli/web` 이 남아 있는지 의심하라.
+사람은 지금까지처럼 `pnpm -C apps/web build` 만 하면 된다. **후보 순서는 저장소 우선이다** —
+`webDistCandidates` 가 `apps/web/dist` 를 먼저 보고 없을 때만 `<패키지 루트>/web` 으로 떨어진다.
+게시 준비로 `bundle:web` 을 돌려 복사본이 남아 있어도 **로컬 `serve` 는 계속 최신 빌드를 본다**
+(`packages/cli/web/` 은 gitignore 라 `git clean -fd` 로도 안 지워져서, 반대 순서였을 때 그 잔재가 최신
+빌드를 가리는 함정이 실제로 재현됐다 — 뒤집어서 없앴다). 설치본에서 저장소 후보가 잡히는 일은 없다:
+`<소비처>/node_modules/apps/web/dist` 로 풀려 `node_modules` 안이라 구조적으로 성립하지 않는다.
 
 ⚠️ **`publishConfig.registry` 를 매니페스트에 두지 않는다.** 그룹 엔드포인트는 읽기 전용이라 게시가
 거절된다(형제 저장소가 그 사고를 겪었다). 레지스트리는 잡 안에서 만드는 `.npmrc` 로만 지정한다.
+
+#### 4.1b 게시 관련 이월 항목 (일부러 고치지 않은 것)
+
+리뷰·수정 라운드에서 **알고 남긴 것들**이다. 다시 발견하느라 시간을 쓰지 마라.
+
+| # | 내용 |
+|---|---|
+| **pnpm 소비처의 `tsx` 직접 설치** | `bin` 셰방을 `#!/usr/bin/env node` + 얇은 `.mjs` 런처로 바꾸고 런타임에서 tsx 를 로드하면 pnpm 소비처도 `tsx` 를 직접 넣을 필요가 없어진다. **방법은 실증됐다** — `createRequire(realpathSync(런처 경로))` 로 pnpm 심볼릭을 실경로로 풀면 `tsx` 가 해석된다. 비용은 진입점 교체와 두 배치(pnpm 격리·npm 평면)·전역 설치·`npx @erdd/cli` 재검증, 그리고 `tsx/esm/api` 라는 프로그램적 API 에 묶이는 것. **회귀 위험 때문에 이번에 하지 않았다.** |
+| **루트 `.npmrc` 가 없다** | 저장소에 `@erdd:registry` 가 없어 로컬 `pnpm publish` 는 **기본값인 공개 npm 을 향한다**(dry-run 로그에 그대로 찍힌다). `@erdd` 스코프 소유가 아니라 실제로 나가지는 않지만, **GitLab 프로젝트 ID 가 정해지면 루트 `.npmrc` 에 넣기로 했다.** |
+| **`npm view` 의 401/403** | core 게시 판정이 401/403·네트워크 오류를 「없음」으로 읽어 게시를 시도한다. 그때는 409 로 시끄럽게 죽으므로 조용히 잘못되지는 않는다. 로그를 보고 GitLab Packages API 조회로 바꾸는 편이 낫다. |
+| **게시본의 죽은 항목** | tarball 의 `package.json` 에 `scripts.bundle:web` 이 남는데 `scripts/` 는 동봉되지 않는다. `devDependencies` 의 `@erdd/server: ^0.0.0` 도 어느 레지스트리에도 없는 버전이다. 둘 다 소비처에 실질 피해는 없다(`prepack` 은 팩할 때 떨어져 나가 남지 않는다). |
+| **`image: node:22` 가 떠 있는 태그** | 재현 가능한 파이프라인을 원하면 digest 나 `node:22.x.y` 로 고정한다. |
+| **태그 정규식과 빌드 메타데이터** | `cli-v0.1.0+build.1` 형태는 잡히지 않는다. 의도라면 그대로 둬도 된다. |
+| **`erdd --version` 이 없다** | 게시되는 CLI 인데 버전을 물을 방법이 없다(`--version` 은 `알 수 없는 명령` 이다). |
 
 ---
 
@@ -1426,6 +1477,10 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 ---
 
 ## 6. 이월 항목 (모두 non-blocking)
+
+> **패키지 게시(`@erdd/cli`·`@erdd/core`) 관련 이월은 [4.1b](#41b-게시-관련-이월-항목-일부러-고치지-않은-것)에
+> 따로 모아 두었다** — pnpm 소비처의 `tsx` 직접 설치, 루트 `.npmrc` 부재, `npm view` 의 401/403,
+> 게시본의 죽은 항목, `image: node:22` 태그 고정, 태그 정규식의 빌드 메타데이터, `erdd --version` 부재.
 
 **테이블 물리명 형식 템플릿 (구현 완료, 잔여 — 설계 6절)**
 
