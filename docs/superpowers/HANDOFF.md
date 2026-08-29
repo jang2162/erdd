@@ -513,7 +513,7 @@ pnpm db:migrate` 는 조용히 `.env` 의 **dev** DB에 적용된다(실측: 존
 3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
 4. 직전 sub-project의 설계·계획(패턴 참고용) — `docs/superpowers/specs/2026-07-28-phase3-snapshot-diff-design.md`와 `plans/2026-07-28-phase3-snapshot-diff.md`
 5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 1~4 전 항목 확정 완료. 다음 Phase 착수 시 이 문서에 새 항목을 추가한다)
-6. **사용자용 매뉴얼** — `docs/manual/install.md`(사내 서버 설치·운영), `docs/manual/user-guide.md`(웹 UI 기능별 레퍼런스 19절), `docs/manual/cli-guide.md`(`erdd` CLI 11절 — 설치·연결, 워크플로, 파일 포맷, 명령 레퍼런스, 3-way 병합·충돌, 에이전트 연동, `--json` 규약), `docs/manual/local-guide.md`(로컬 모드 8절 — 준비·시작, 되는 것과 없는 것, 파일과 git, 스냅샷, 서버 이관). 개발자용이 아니라 **제품 사용자용**이다. 기능을 바꾸면 여기도 함께 고쳐야 한다 — 특히 화면 문구를 바꾸면 user-guide 의 「」 인용이 어긋나고, 환경변수·compose·마이그레이션을 건드리면 install 의 표와 절차가 어긋나며, **CLI 의 명령·옵션·출력 문구·종료 코드·파일 포맷을 바꾸면 cli-guide 가 어긋난다**(그 문서는 실물 출력을 그대로 인용한다). **로컬 모드 분기(`useIsLocal`)를 늘리거나 줄이면 local-guide 4.2 의 장별 대조표와 user-guide 각 장 머리의 「로컬 모드에는 없다」 표시가 함께 어긋난다** — 둘은 같은 사실을 두 곳에서 말한다.
+6. **사용자용 매뉴얼** — `docs/manual/install.md`(사내 서버 설치·운영), `docs/manual/user-guide.md`(웹 UI 기능별 레퍼런스 19절), `docs/manual/cli-guide.md`(`erdd` CLI 11절 — 설치·연결, 워크플로, 파일 포맷, 명령 레퍼런스, 3-way 병합·충돌, 에이전트 연동, `--json` 규약), `docs/manual/local-guide.md`(로컬 모드 8절 — 준비·시작, 되는 것과 없는 것, 파일과 git, 스냅샷, 서버 이관). 개발자용이 아니라 **제품 사용자용**이다. 기능을 바꾸면 여기도 함께 고쳐야 한다 — 특히 화면 문구를 바꾸면 user-guide 의 「」 인용이 어긋나고, 환경변수·compose·마이그레이션을 건드리면 install 의 표와 절차가 어긋나며, **CLI 의 명령·옵션·출력 문구·종료 코드·파일 포맷을 바꾸면 cli-guide 가 어긋난다**(그 문서는 실물 출력을 그대로 인용한다). **로컬 모드 분기(`useIsLocal`)를 늘리거나 줄이면 local-guide 4.2 의 장별 대조표와 user-guide 각 장 머리의 「로컬 모드에는 없다」 표시가 함께 어긋난다** — 둘은 같은 사실을 두 곳에서 말한다. **게시 형태가 바뀌면 두 매뉴얼의 설치 절이 함께 어긋난다** — cli-guide 2절과 local-guide 2절이 사내 레지스트리 설치(`.npmrc`·토큰·`pnpm add -D @erdd/cli tsx`)와 「웹 번들이 패키지에 동봉된다」를 각자 적고 있어서, 배포 형태·레지스트리 주소·번들 동봉 여부를 바꾸면 두 곳을 함께 고쳐야 한다(절차 자체는 → [4.1](#41-릴리스--사내-레지스트리에-cli-패키지를-게시한다)).
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
 
@@ -1171,6 +1171,65 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm -C apps/se
 - `psql`이 PATH에 없다. DB를 직접 봐야 하면 `apps/server`에서 `node` 스크립트로 `pg`를 import한다(pnpm 엄격 모드라 리포 루트에서는 `pg`·`ws`가 해석되지 않는다).
 
 **다중 사용자 스모크(실시간 등)**: 브라우저 2개를 띄우는 것보다 **연결된 Chrome 1개(A) + 헤드리스 WS 클라이언트(B)** 조합이 낫다. Claude 확장은 프로필 하나에만 있어서 새 프로필 창은 조작할 수 없고, 무엇보다 **경합 조건은 손으로 재현이 안 된다.** 실시간 사이클의 Critical 회귀 검증은 `SELECT ... FOR UPDATE`로 프로젝트 행 락을 12초 잡아 "B 먼저 커밋 / A는 대기 중" 순서를 강제해서 결정적으로 재현했다. 헤드리스 B는 `ws`를 pnpm 스토어 경로(`node_modules/.pnpm/ws@*/node_modules/ws`)에서 직접 import하면 된다.
+
+### 4.1 릴리스 — 사내 레지스트리에 CLI 패키지를 게시한다
+
+게시 대상은 **사내 GitLab(`gitlab.develma.com`) 패키지 레지스트리의 프로젝트 엔드포인트**다. 공개
+npm 에는 올리지 않는다. 배포 형태는 **원본 TypeScript 그대로**이고(빌드 산출물이 아니다 — 소비처에
+`tsx` 가 필요하다), `apps/web` 의 빌드 산출물을 `packages/cli/web/` 로 복사해 **tarball 에 동봉**한다.
+그래야 설치본에서도 `erdd serve` 가 화면을 낸다.
+
+**절차.**
+
+```bash
+# 1) 버전을 올린다 — cli 는 항상, core 를 고쳤으면 core 도
+#    packages/cli/package.json  의 "version"
+#    packages/core/package.json 의 "version"
+
+# 2) 커밋하고 태그를 push 한다. 파이프라인은 이 태그에서만 돈다
+git tag cli-v0.1.0 && git push origin cli-v0.1.0
+```
+
+`.gitlab-ci.yml` 의 `workflow.rules` 가 `^cli-v\d+\.\d+\.\d+(-…)?$` 태그에만 파이프라인을 만든다 —
+브랜치 push·MR 로는 아무것도 돌지 않는다(이 저장소의 유일한 CI 다). `verify` → `publish` 두 단계이고,
+`verify` 가 `pnpm install --frozen-lockfile` · `pnpm -r typecheck` · core·cli 테스트 · `apps/web build` ·
+`pnpm -C packages/cli run bundle:web` 을 돌려 `packages/cli/web/` 를 artifact 로 넘긴다. `publish` 는
+그것을 그대로 받아 게시한다 — **재빌드하지 않는다**(검증한 것과 게시하는 것이 같아야 한다).
+
+**publish 가 막는 것(가드 3개).**
+
+| 가드 | 무엇을 막나 |
+|---|---|
+| 태그 버전 == `packages/cli/package.json` 의 `version` | 태그만 올리고 매니페스트를 잊는 것. 그대로 나가면 레지스트리에 태그와 다른 버전이 올라간다 |
+| 패키지 이름이 `@erdd/` 스코프 | `.npmrc` 는 `@erdd:` 에만 레지스트리·토큰을 매단다. 스코프를 벗어나면 그 설정이 통째로 안 먹어 **공개 npm 으로 나갈 수 있다** |
+| `packages/cli/web/index.html` 존재 | 번들 없는 게시. 설치한 쪽에서 서버는 뜨는데 `/p/<id>` 만 404 를 내는, 원인을 짚기 어려운 상태가 된다 |
+
+⚠️ **core 를 고쳤는데 core 의 `version` 을 안 올리면 CI 가 core 게시를 조용히 건너뛴다.** publish 잡은
+`npm view "@erdd/core@<버전>"` 으로 「이미 있으면 건너뛴다」를 하므로(cli 만 고친 릴리스에서 409 로
+죽지 않게 하려는 의도된 동작이다), 버전을 그대로 두면 **cli 만 새로 나가고 core 는 옛 코드가 남는다.**
+**이 사고를 막는 가드는 없다** — core 를 건드렸으면 두 매니페스트를 함께 올려라.
+
+⚠️ **`apps/server` 테스트는 이 파이프라인이 돌리지 않는다** — `DATABASE_URL`(실제 PostgreSQL)이
+필요한데 CI 에 DB 서비스가 없다. 게시 대상도 아니다. 서버까지 검증하려면 `services:` 로 postgres 를
+띄우고 마이그레이션을 적용해야 한다.
+
+⚠️ **파이프라인은 아직 한 번도 돌지 않았다(2026-08-29).** 첫 태그에서 깨질 수 있는 지점은
+`corepack` 활성화(사내 러너의 네트워크 정책을 탄다 — 막히면 `.node.before_script` 를
+`npm i -g pnpm@10.4.1` 로 바꾼다), verify → publish 의 artifact 전달, `CI_JOB_TOKEN` 으로의 실제 게시,
+`npm view` 가 「없음」을 404 로 돌려주는지(401/403 이면 오판해 게시를 시도하고 409 로 죽는다)다.
+
+**소비처 설치**(사용자 매뉴얼과 같은 내용) — 머신마다 한 번
+`pnpm config set "//gitlab.develma.com/:_authToken" "<토큰>"`, 프로젝트 `.npmrc` 에
+`@erdd:registry=https://gitlab.develma.com/api/v4/projects/<프로젝트-ID>/packages/npm/`, 그다음
+`pnpm add -D @erdd/cli tsx`. **토큰은 프로젝트 `.npmrc` 에 적지 않는다.**
+
+⚠️ **`packages/cli/web/` 는 커밋하지 않는다**(gitignore). 로컬에서 저장소 배치로 `erdd serve` 를 쓰던
+사람은 지금까지처럼 `pnpm -C apps/web build` 만 하면 된다. 다만 **한 번 `bundle:web` 을 돌리고 나면
+그 복사본이 우선**하므로(`webDistCandidates` 의 첫 후보), web 을 고쳤는데 화면이 안 바뀌면
+`packages/cli/web` 이 남아 있는지 의심하라.
+
+⚠️ **`publishConfig.registry` 를 매니페스트에 두지 않는다.** 그룹 엔드포인트는 읽기 전용이라 게시가
+거절된다(형제 저장소가 그 사고를 겪었다). 레지스트리는 잡 안에서 만드는 `.npmrc` 로만 지정한다.
 
 ---
 
