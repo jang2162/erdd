@@ -57,29 +57,22 @@ ERDD 서버의 스키마를 **코드베이스 안의 YAML 파일**로 내려받�
 |---|---|---|
 | Node.js | **22 이상** | `.nvmrc` 이자 **패키지가 강제한다** — 두 패키지 모두 `engines.node: ">=22"` 라 맞지 않는 Node 로 설치하면 패키지 관리자가 경고하거나 막는다 |
 | 패키지 | `@erdd/cli`(바이너리 `erdd`) · 의존 패키지 `@erdd/core` | `packages/cli/package.json` |
-| 실행기 | `tsx` — **pnpm 소비처는 직접 넣어야 한다** | `@erdd/cli` 의 `dependencies` 에 있지만 pnpm 격리 배치에서는 그것만으로 부족하다(아래 ⚠️) |
+| 실행기 | `tsx` — **소비처가 직접 설치한다** | 패키지가 원본 TypeScript 를 그대로 담고 바이너리의 shebang 이 `npx tsx` 다(아래 ⚠️) |
 | 사내 GitLab 접근 | 방법 A 에만 — `gitlab.develma.com` 의 패키지 레지스트리를 읽을 수 있는 개인 액세스 토큰 | 게시 위치가 사내 레지스트리다 |
 | ERDD 저장소 체크아웃 | **방법 B·C 에만.** 방법 A 에는 필요 없다 | |
 
-⚠️ **`tsx` 를 프로젝트에 함께 넣어라 — pnpm 에서는 그러지 않으면 실행이 안 된다.** 패키지에는 빌드
+⚠️ **`tsx` 를 프로젝트에 함께 넣어라 — 패키지 관리자가 무엇이든 마찬가지다.** 패키지에는 빌드
 산출물이 아니라 **원본 TypeScript 가 그대로** 들어 있고 바이너리의 shebang 이
-`#!/usr/bin/env -S npx tsx` 다. `tsx` 는 `@erdd/cli` 의 `dependencies` 에 선언돼 있지만, 그 선언이
-실제로 통하는지는 **패키지 관리자의 배치 방식에 달렸다**(실측).
-
-| 소비처 | `tsx` 를 따로 설치하지 않으면 |
-|---|---|
-| npm · yarn (평면 배치) | **동작한다** — `tsx` 가 소비처 루트로 호이스팅돼 `npx tsx` 가 찾는다 |
-| **pnpm (격리 배치)** | **동작하지 않는다** — pnpm 은 남의 의존성을 루트 `.bin` 에 걸지 않고, shebang 의 `npx` 는 **소비처의 현재 디렉터리 기준**으로 찾는다 |
-
-pnpm 에서 빠뜨리면 CLI 가 아니라 셸이 이렇게 끝낸다.
+`#!/usr/bin/env -S npx tsx` 다. **`@erdd/cli` 가 `tsx` 를 대신 끌어오지 않는다** — 소비처가 자기
+프로젝트에 선언해야 한다. 빠뜨리면 CLI 가 아니라 셸이 이렇게 끝낸다.
 
 ```
 sh: tsx: command not found
 # 종료 코드 127 — CLI 가 아니라 셸이 낸 오류다
 ```
 
-**그래서 이 문서의 설치 명령은 어느 경로에서나 `tsx` 를 함께 적는다.** npm·yarn 을 쓴다면 없어도
-동작하지만, 함께 넣어도 해가 없다.
+**그래서 이 문서의 설치 명령은 어느 경로에서나 `tsx` 를 함께 적는다.** 그것이 **유일하게 보증된
+경로**다.
 
 ### 2.2 방법 A: 사내 레지스트리에서 설치 (권장)
 
@@ -1040,7 +1033,7 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `sh: tsx: command not found` (종료 코드 127) | 프로젝트에 `tsx` 가 없다. **pnpm 소비처에서 나는 증상이다** — `tsx` 가 `@erdd/cli` 의 의존성이어도 pnpm 은 그것을 소비처 루트 `.bin` 에 걸지 않는다 | `pnpm add -D tsx` (→ [2.1](#21-요구-사항)) |
+| `sh: tsx: command not found` (종료 코드 127) | 프로젝트에 `tsx` 가 없다. **빠뜨렸을 때의 증상이 패키지 관리자마다 다르다** — pnpm 은 `npx` 가 그때그때 받아 와 **대개는 돌지만** 네트워크가 없으면 죽고, npm 평면 배치는 캐시가 없으면 `ENOTCACHED` 로 죽는다 | `pnpm add -D tsx` (→ [2.1](#21-요구-사항)) |
 | ERDD 저장소에서 `packages/cli/src/main.ts` 가 `old mode 100644 / new mode 100755` 로 뜬다 | 방법 B 설치가 bin 진입점에 실행 비트를 붙였다 | `chmod 644 packages/cli/src/main.ts`. 커밋하지 않는다 |
 | `erdd.config.yaml이 없습니다. erdd init을 먼저 실행하세요` | 프로젝트 루트가 아닌 곳에서 실행했거나 아직 연결하지 않았다 | 프로젝트 루트로 이동하거나 `erdd init` |
 | `토큰이 없습니다. ERDD_TOKEN을 설정하거나 erdd init을 실행하세요` | 환경 변수도 `.erdd/credentials.json` 도 없다 | 둘 중 하나를 채운다 |
@@ -1127,16 +1120,15 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 
 - tarball 에 **원본 TypeScript 와 웹 번들이 함께 들어가는 것** — `@erdd/cli` 127개 파일(그중
   `web/` 101개, `*.test.ts` 0개), `@erdd/core` 39개 파일. `workspace:^` 가 실제 버전(`^0.1.0`)으로
-  치환되는 것.
-  `engines.node` 가 `>=22` 로 들어가는 것, `dependencies` 에 `tsx@^4.23.1` 이 들어가는 것.
+  치환되는 것, `engines.node` 가 `>=22` 로 들어가는 것.
 - 설치본에서 `erdd --help`·`erdd init --local`·`erdd validate` 가 정상 동작하는 것(종료 코드 `0`).
 - 설치본에서 `erdd serve` 가 뜨고 **`/p/<id>` 가 200 + HTML**, `/assets/index-*.js` 가 200 +
   1,162,100 바이트, `/trpc/model.get` 이 200 인 것 — **웹을 따로 빌드하지 않은 프로젝트에서다.**
 - **저장소 배치에서는 방금 빌드한 `apps/web/dist` 가 이기는 것** — 두 후보에 서로 다른 표식 파일을
   두고 갈랐다. 저장소 배치의 `/p/<id>` 도 200 이다.
-- **`tsx` 를 `dependencies` 에 선언해도 pnpm 소비처는 여전히 직접 넣어야 하는 것**(2.1 의 표) —
-  깨끗한 캐시 + 오프라인으로 npm 평면 배치는 종료 코드 `0`, pnpm 격리 배치는
-  `sh: tsx: command not found`(127)를 냈다.
+- **`tsx` 는 소비처가 직접 선언해야 하는 것**(2.1) — 문서가 안내하는 경로(pnpm + `tsx` 선언)는
+  깨끗한 캐시 + 오프라인에서도 종료 코드 `0` 이다. `tsx` 를 `@erdd/cli` 의 `dependencies` 에 넣어
+  대신 해결하려던 시도는 **pnpm 소비처를 오히려 회귀시켜**(되던 것이 `127` 로) 되돌렸다.
 - **웹 번들 없이 팩하면 `prepack` 가드가 종료 코드 `1` 로 막는 것**(`pnpm pack`·`npm pack` 양쪽).
 
 ⚠️ **확인하지 않은 것.** **사내 레지스트리에 실제로 게시된 적이 아직 없다.** 2.2 의
