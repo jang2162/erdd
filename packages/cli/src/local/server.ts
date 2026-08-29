@@ -23,17 +23,28 @@ export type LocalServer = { url: string; close: () => Promise<void> }
  * web 빌드 산출물의 후보 경로. `from` 은 이 모듈이 놓인 디렉터리(= `<패키지 루트>/src/local/`).
  *
  * 후보가 둘인 이유는 **설치본과 저장소의 배치가 다르기 때문**이다.
+ * - 저장소: 워크스페이스의 `apps/web/dist` 를 본다. 여기엔 `packages/cli/web` 이 없을 수도, 있을 수도 있다
+ *   (빌드 산출물이라 커밋하지 않지만 `bundle:web` 을 한 번 돌리면 남는다).
  * - 게시된 패키지: 번들이 패키지 안에 동봉된다(`<패키지 루트>/web`, `scripts/bundle-web.mjs` 가 만든다).
- *   설치본에는 `apps/web` 자체가 없으므로 저장소 경로는 `node_modules/apps/web/dist` 라는
- *   존재하지 않는 곳을 가리킨다.
- * - 저장소: 워크스페이스의 `apps/web/dist` 를 그대로 본다. 여기엔 `packages/cli/web` 이 없을 수 있다
- *   (빌드 산출물이라 커밋하지 않는다).
- * 그래서 한쪽으로 고정하지 않고 **실제로 존재하는 첫 후보**를 고른다. 순서는 설치본 우선 —
- * 게시된 패키지에서 상위 디렉터리를 훑다가 남의 `apps/web/dist` 를 잡는 일이 없어야 한다.
+ *   설치본에는 `apps/web` 자체가 없다.
+ * 한쪽으로 고정하지 않고 **실제로 존재하는 첫 후보**를 고른다.
+ *
+ * **순서는 저장소 우선이다.** `bundle:web` 은 gitignore 된 `packages/cli/web/` 에 복사본을 남기는데,
+ * 그것은 `git clean -fd` 로도 지워지지 않는다(`-x` 가 있어야 한다). 설치본을 먼저 보면 한 번 게시
+ * 준비를 해 본 개발자는 그 뒤로 `apps/web` 을 아무리 다시 빌드해도 **계속 그 잔재를 본다** —
+ * 실제로 표식 파일로 재현된 함정이다. 저장소를 먼저 보면 최신 빌드가 항상 이긴다.
+ *
+ * **설치본에서 저장소 후보가 잡히는 일은 없다.** 설치본의 `from` 은
+ * `<소비처>/node_modules/@erdd/cli/src/local` 이라 저장소 후보는 `<소비처>/node_modules/apps/web/dist`
+ * 로 풀린다 — `node_modules` **안**이다. 소비처 루트의 `apps/web/dist` 는 절대 닿지 않는다. 잡히려면
+ * `node_modules` 바로 밑에 `apps` 라는 스코프 없는 패키지가 있고 그것이 `web/dist/` 를 동봉해야 하는데,
+ * npm 의 `apps` 패키지에는 `web/` 이 없고, pnpm 소비처에서는 실제 위치가
+ * `node_modules/.pnpm/@erdd+cli@<ver>/node_modules/@erdd/cli` 라 4단계 위가 cli 자신의 의존성 디렉터리다 —
+ * 구조적으로 성립하지 않는다.
  */
 export const webDistCandidates = (from: string): readonly string[] => [
+  path.resolve(from, '../../../../apps/web/dist'), // 저장소 배치 — 항상 최신 빌드가 이긴다
   path.resolve(from, '../../web'),                 // 게시된 패키지 배치
-  path.resolve(from, '../../../../apps/web/dist'), // 저장소 배치
 ]
 
 /** 존재하는 첫 후보. 둘 다 없으면 undefined — 그때는 정적 서빙을 등록하지 않는다. */

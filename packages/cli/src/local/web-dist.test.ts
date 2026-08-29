@@ -9,6 +9,9 @@ import { LOCAL_PROJECT_ID } from '../config.js'
  * `erdd serve` 의 web 번들 경로 해석. 설치본(`<패키지 루트>/web`)과 저장소(`apps/web/dist`)의
  * 배치가 다르다 — 한쪽으로 고정하면 다른 한쪽에서 정적 서빙이 통째로 빠지고 `/p/<id>` 가
  * 404 를 낸다(게시 전 실측으로 확인된 사고다).
+ *
+ * 순서는 **저장소 우선**이다. 설치본을 먼저 보면 gitignore 된 `packages/cli/web/` 잔재가
+ * 최신 `apps/web/dist` 빌드를 계속 가린다(리뷰에서 표식 파일로 재현됐다).
  */
 
 const dirs: string[] = []
@@ -33,11 +36,11 @@ async function layout(opts: { pkgWeb?: boolean; repoDist?: boolean }): Promise<{
 }
 
 describe('web 번들 경로 해석', () => {
-  it('후보는 설치본 배치와 저장소 배치 둘뿐이고, 설치본이 앞선다', async () => {
+  it('후보는 저장소 배치와 설치본 배치 둘뿐이고, 저장소가 앞선다', async () => {
     const { root, from } = await layout({})
     expect(webDistCandidates(from)).toEqual([
-      join(root, 'packages/cli/web'),
       join(root, 'apps/web/dist'),
+      join(root, 'packages/cli/web'),
     ])
   })
 
@@ -51,9 +54,10 @@ describe('web 번들 경로 해석', () => {
     expect(resolveWebDist(from)).toBe(join(root, 'apps/web/dist'))
   })
 
-  it('둘 다 있으면 설치본 배치가 이긴다', async () => {
+  // `bundle:web` 잔재가 최신 빌드를 가리는 함정을 막는 것이 이 순서의 존재 이유다.
+  it('둘 다 있으면 저장소 배치가 이긴다 — 게시 준비 때 남은 잔재가 최신 빌드를 가리면 안 된다', async () => {
     const { root, from } = await layout({ pkgWeb: true, repoDist: true })
-    expect(resolveWebDist(from)).toBe(join(root, 'packages/cli/web'))
+    expect(resolveWebDist(from)).toBe(join(root, 'apps/web/dist'))
   })
 
   it('둘 다 없으면 undefined 다', async () => {
