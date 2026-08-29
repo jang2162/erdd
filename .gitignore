@@ -3,3 +3,4 @@ dist/
 .env
 *.local
 .worktrees/
+packages/cli/web/

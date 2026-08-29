@@ -19,10 +19,27 @@ const eventPayload = (state: StoreState) =>
 
 export type LocalServer = { url: string; close: () => Promise<void> }
 
-/** 워크스페이스 안에서 실행될 때의 web 빌드 산출물 위치. */
-const defaultWebDist = path.resolve(
-  fileURLToPath(new URL('.', import.meta.url)), '../../../../apps/web/dist',
-)
+/**
+ * web 빌드 산출물의 후보 경로. `from` 은 이 모듈이 놓인 디렉터리(= `<패키지 루트>/src/local/`).
+ *
+ * 후보가 둘인 이유는 **설치본과 저장소의 배치가 다르기 때문**이다.
+ * - 게시된 패키지: 번들이 패키지 안에 동봉된다(`<패키지 루트>/web`, `scripts/bundle-web.mjs` 가 만든다).
+ *   설치본에는 `apps/web` 자체가 없으므로 저장소 경로는 `node_modules/apps/web/dist` 라는
+ *   존재하지 않는 곳을 가리킨다.
+ * - 저장소: 워크스페이스의 `apps/web/dist` 를 그대로 본다. 여기엔 `packages/cli/web` 이 없을 수 있다
+ *   (빌드 산출물이라 커밋하지 않는다).
+ * 그래서 한쪽으로 고정하지 않고 **실제로 존재하는 첫 후보**를 고른다. 순서는 설치본 우선 —
+ * 게시된 패키지에서 상위 디렉터리를 훑다가 남의 `apps/web/dist` 를 잡는 일이 없어야 한다.
+ */
+export const webDistCandidates = (from: string): readonly string[] => [
+  path.resolve(from, '../../web'),                 // 게시된 패키지 배치
+  path.resolve(from, '../../../../apps/web/dist'), // 저장소 배치
+]
+
+/** 존재하는 첫 후보. 둘 다 없으면 undefined — 그때는 정적 서빙을 등록하지 않는다. */
+export const resolveWebDist = (
+  from: string = fileURLToPath(new URL('.', import.meta.url)),
+): string | undefined => webDistCandidates(from).find((c) => existsSync(c))
 
 export async function startLocalServer(opts: {
   cwd: string
@@ -30,7 +47,8 @@ export async function startLocalServer(opts: {
   webDist?: string
 }): Promise<LocalServer> {
   const { cwd, port } = opts
-  const webDist = opts.webDist ?? defaultWebDist
+  // 명시 override 가 최우선이다 — 있으면 후보 탐색을 아예 하지 않는다.
+  const webDist = opts.webDist ?? resolveWebDist()
 
   const config = await readConfig(cwd)
   const projectId = config.projectId ?? LOCAL_PROJECT_ID
@@ -139,7 +157,7 @@ export async function startLocalServer(opts: {
 
   // ── 정적 서빙 ──
   app.get('/', (_req, reply) => reply.redirect(`/p/${projectId}`, 302))
-  if (existsSync(webDist)) {
+  if (webDist !== undefined && existsSync(webDist)) {
     app.register(fastifyStatic, { root: webDist })
     app.setNotFoundHandler((req, reply) => {
       if (req.url === '/trpc' || req.url.startsWith('/trpc/')) {
