@@ -119,7 +119,17 @@ describe('watchProject', () => {
   })
 
   // root 로 도는 환경(CI 컨테이너 등)은 권한 검사를 우회해 EACCES 가 나지 않는다.
-  it.skipIf(process.getuid?.() === 0)('감시 등록이 그 밖의 이유로 실패해도 던지지 않는다', async () => {
+  //
+  // ⚠️ 그리고 **Linux 는 비-root 여도 나지 않는다.** `fs.watch(dir, { recursive: true })` 는
+  // 퍼미션 0o000 인 디렉터리에도 던지지 않고, 2초를 기다려도 `'error'` 이벤트조차 오지 않는다
+  // (같은 디렉터리에 **비재귀** watch 는 EACCES 로 던지고 `readdirSync` 도 EACCES 다 — 재귀만
+  // 다르다). `watchProject` 는 항상 재귀부터 걸므로 Linux 에서는 catch 분기에 닿지 못하고,
+  // 그래서 이 테스트가 기다리는 `console.warn` 이 나오지 않는다 — 전제 자체가 깨진다.
+  // 이 유도가 통하는 것은 macOS(FSEvents) 뿐이라, 조건에 플랫폼을 함께 둔다.
+  //
+  // 「Linux 에서 재귀 감시가 조용히 실패한다」는 것은 이 테스트만의 사정이 아니라 제품의 사실이다
+  // (권한을 되돌려도 그 감시는 이벤트를 내지 않는다). 이월로 `docs/superpowers/HANDOFF.md` 4.1b 에 있다.
+  it.skipIf(process.getuid?.() === 0 || process.platform !== 'darwin')('감시 등록이 그 밖의 이유로 실패해도 던지지 않는다', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'erdd-watch-'))
     const target = join(dir, 'erdd')
     await mkdir(target, { recursive: true })

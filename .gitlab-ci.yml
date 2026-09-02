@@ -25,6 +25,12 @@ stages:
 # (pnpm@10.4.1)를 corepack 이 그대로 읽어 활성화한다 — 버전을 여기에 또 적으면 두 곳이 갈린다.
 .node:
   image: node:22
+  variables:
+    # corepack 이 내려받아 두는 pnpm 본체의 위치. 기본값은 `$HOME/.cache/node/corepack` 이라
+    # **사용자마다 갈린다** — verify 는 준비를 root 로 하고 테스트를 `node` 사용자로 돌리므로
+    # (아래 verify 잡의 주석 참조) 기본값이면 `node` 가 pnpm 을 처음부터 다시 내려받는다.
+    # 한곳에 두고 root 가 채운 것을 `node` 가 그대로 읽는다.
+    COREPACK_HOME: /usr/local/corepack
   before_script:
     - corepack enable
     - corepack prepare --activate
@@ -34,11 +40,45 @@ stages:
 verify:
   extends: .node
   stage: verify
+  # ── 왜 이 잡의 단계들을 `node`(uid 1000) 사용자로 돌리는가 ──
+  # `node:22` 컨테이너는 root 로 돈다. **root 는 파일 퍼미션을 무시하고 쓴다** — 그래서
+  # `chmod 444` 로 EACCES 를 유도하는 cli 테스트 2개가 root 아래에서는 검증력을 잃는다.
+  #   - `src/commands/push.test.ts` 「기록에 실패하면 model.push를 보내지 않고 …」
+  #   - `src/local/store.test.ts`    「신규 id 되쓰기의 쓰기 실패는 … ok:false 로 알린다」
+  # 앞의 것은 그 상황을 스스로 감지해 **일부러 실패한다**(조용히 통과하느니 죽는 쪽을 작성자가
+  # 골랐다). 첫 파이프라인(#84)의 verify 가 정확히 이 둘로 죽었다. 테스트를 무르게 고치는 대신
+  # **CI 를 비-root 로** 돌려 그 의도를 그대로 둔 채 통과시킨다.
+  #
+  # 대가와 실패 모드(알고 쓰는 것이다):
+  #  - `su` 는 PATH 를 `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` 으로
+  #    **재설정한다.** node·pnpm 은 `/usr/local/bin` 에 있어 문제없지만, 러너가 PATH 에 무언가
+  #    더해 두었다면 그것은 이 단계들 안에서 보이지 않는다.
+  #  - `su` 는 cwd 와 (HOME·USER·LOGNAME·SHELL·PATH 를 뺀) 환경변수는 그대로 넘긴다 —
+  #    `CI_*` 변수는 살아 있다. 종료 코드도 그대로 전파한다(실측: `exit 7` → 7).
+  #    ⚠️ 다만 HOME 이 `/home/node` 로 바뀐다. pnpm store 와 vite/vitest 캐시가 그쪽에 잡히므로
+  #    root 로 준비한 무언가를 HOME 기준으로 물려주려면 반드시 명시적으로 넘겨야 한다
+  #    (그래서 corepack 캐시를 `.node` 앵커에서 `COREPACK_HOME` 으로 못 박았다).
+  #  - `chown -R` 가 빌드 디렉터리 전체를 한 번 훑는다. 이 저장소 크기에서는 무시할 만하다.
+  #  - 산출물 `packages/cli/web/` 이 uid 1000 소유가 된다. artifact 를 모으는 것은 러너(root)라
+  #    읽기에 문제가 없고, publish 잡은 그것을 **내려받아** 자기 소유로 푼다(publish 는 root 그대로다).
+  #  - **택하지 않은 방법**: `image.docker.user: node` 로 컨테이너 사용자를 지정하는 것.
+  #    러너 executor·버전에 의존하는 데다, 그러면 `corepack enable`(→ `/usr/local` 쓰기)이
+  #    먼저 막혀 before_script 를 통째로 다시 짜야 한다.
+  #  - **CI 에서 실측되지 않음**: 아래는 로컬 `node:22` 컨테이너 재현으로만 확인했다.
+  #    러너가 빌드 디렉터리에 거는 마운트 옵션·소유권이 다르면 `chown` 이 듣지 않을 수 있다.
   script:
-    - pnpm install --frozen-lockfile
-    - pnpm -r typecheck
-    - pnpm -C packages/core test
-    - pnpm -C packages/cli test
+    # root 가 받아 둔 corepack 캐시를 `node` 가 읽을 수 있어야 한다. 이미지의 umask 로도 0755 가
+    # 나오지만(실측) 기대지 않고 못 박는다 — 읽기·탐색만 준다. publish 잡은 root 하나로 돌아
+    # 필요가 없으므로 `.node` 앵커가 아니라 여기에 둔다.
+    # 실패 모드: `COREPACK_HOME` 이 비면 `chmod` 가 오류로 죽는다 — 조용히 넘어가지는 않는다.
+    - chmod -R a+rX "$COREPACK_HOME"
+    # 러너가 만든 빌드 디렉터리는 root 소유다. 이후 단계가 `node` 로 도니 먼저 넘긴다.
+    # (`node_modules` 도 여기서 함께 넘어가야 `pnpm install` 이 그 위에 쓸 수 있다.)
+    - chown -R node:node "$CI_PROJECT_DIR"
+    - su node -s /bin/sh -c 'pnpm install --frozen-lockfile'
+    - su node -s /bin/sh -c 'pnpm -r typecheck'
+    - su node -s /bin/sh -c 'pnpm -C packages/core test'
+    - su node -s /bin/sh -c 'pnpm -C packages/cli test'
     # ⚠️ `apps/server` 테스트는 일부러 돌리지 않는다 — DATABASE_URL(실제 PostgreSQL)이 필요한데
     #    이 파이프라인에는 DB 서비스가 없다. 게시에 필요한 것도 아니다(server 는 게시 대상이 아니다).
     #    server 까지 검증하려면 `services:` 로 postgres 를 띄우고 마이그레이션을 적용해야 한다.
@@ -46,11 +86,11 @@ verify:
     # `web/` 로 들어가 소비처에서 서빙된다 — 게시물의 대부분이 web 이다. 이 줄이 없으면
     # **어떤 테스트도 거치지 않은 것이 게시되는 경로**가 열린다(리뷰 중요-2).
     # 빌드보다 앞에 둔다. 깨졌다면 빌드에 시간을 쓰기 전에 죽는 편이 낫다.
-    - pnpm -C apps/web test
-    - pnpm -C apps/web build
+    - su node -s /bin/sh -c 'pnpm -C apps/web test'
+    - su node -s /bin/sh -c 'pnpm -C apps/web build'
     # 빌드한 번들을 `packages/cli/web/` 로 복사한다. 설치본에는 `apps/web` 이 없어서
     # 이 복사본이 없으면 `erdd serve` 의 정적 서빙이 통째로 빠진다(= `/p/<id>` 가 404).
-    - pnpm -C packages/cli run bundle:web
+    - su node -s /bin/sh -c 'pnpm -C packages/cli run bundle:web'
   artifacts:
     # publish 잡이 이 번들을 그대로 받아 tarball 에 넣는다. 재빌드하지 않는다 —
     # 검증한 것과 게시하는 것이 같은 산출물이어야 한다.
