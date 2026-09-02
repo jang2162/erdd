@@ -118,11 +118,6 @@ pnpm exec erdd --help
 `erdd serve` 가 그대로 뜬다**(→ [로컬 모드 매뉴얼 2.2](local-guide.md#22-경로-a-사내-레지스트리에서-설치한다-권장)).
 설치본에는 저장소 배치(`apps/web/dist`)가 애초에 존재할 수 없으므로 언제나 이 동봉본이 쓰인다.
 
-⚠️ **아직 첫 게시 전이다(2026-08-29 기준).** 게시는 `cli-v<SemVer>` 태그(예: `cli-v0.1.0`)를 push 할 때
-파이프라인이 하는데, **그 첫 태그가 아직 올라가지 않았다.** 그때까지 위 `pnpm add` 는 패키지를 찾지
-못하고 404 로 끝나므로 [방법 B](#23-방법-b-저장소에서-직접-실행-설치-없음) 나
-[방법 C](#24-방법-c-프로젝트에-의존성으로-링크) 를 쓴다. **게시가 끝나면 이 문단을 지운다.**
-
 ### 2.3 방법 B: 저장소에서 직접 실행 (설치 없음)
 
 **언제** — 레지스트리에 아직 닿지 않거나(권한 대기·오프라인), CLI 소스를 고치면서 바로 돌려 볼 때.
@@ -1035,6 +1030,7 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 | 증상 | 원인 | 해결 |
 |---|---|---|
 | `sh: tsx: command not found` (종료 코드 127) | 프로젝트에 `tsx` 가 없다. **빠뜨렸을 때의 증상이 패키지 관리자마다 다르다** — pnpm 은 `npx` 가 그때그때 받아 와 **대개는 돌지만** 네트워크가 없으면 죽고, npm 평면 배치는 캐시가 없으면 `ENOTCACHED` 로 죽는다 | `pnpm add -D tsx` (→ [2.1](#21-요구-사항)) |
+| `pnpm exec erdd …` 가 `ERR_PNPM_IGNORED_BUILDS`(`esbuild`)로 죽는다 | **pnpm 11 의 동작이다.** `pnpm exec` 이 먼저 의존성 상태를 확인하며 `pnpm install` 을 돌리는데, 빌드 스크립트가 승인되지 않은 패키지(`tsx` 가 끌어오는 `esbuild`)가 있으면 그 install 이 실패한다. `@erdd/cli` 와 무관하고 pnpm 10 에서는 나지 않는다 | pnpm 이 안내하는 `pnpm approve-builds` 로 `esbuild` 를 승인한다. 그 전에도 **`./node_modules/.bin/erdd` 를 직접 부르면 그대로 동작한다**(실측) |
 | ERDD 저장소에서 `packages/cli/src/main.ts` 가 `old mode 100644 / new mode 100755` 로 뜬다 | 방법 B 설치가 bin 진입점에 실행 비트를 붙였다 | `chmod 644 packages/cli/src/main.ts`. 커밋하지 않는다 |
 | `erdd.config.yaml이 없습니다. erdd init을 먼저 실행하세요` | 프로젝트 루트가 아닌 곳에서 실행했거나 아직 연결하지 않았다 | 프로젝트 루트로 이동하거나 `erdd init` |
 | `토큰이 없습니다. ERDD_TOKEN을 설정하거나 erdd init을 실행하세요` | 환경 변수도 `.erdd/credentials.json` 도 없다 | 둘 중 하나를 채운다 |
@@ -1132,7 +1128,8 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
   대신 해결하려던 시도는 **pnpm 소비처를 오히려 회귀시켜**(되던 것이 `127` 로) 되돌렸다.
 - **웹 번들 없이 팩하면 `prepack` 가드가 종료 코드 `1` 로 막는 것**(`pnpm pack`·`npm pack` 양쪽).
 
-⚠️ **확인하지 않은 것.** **사내 레지스트리에 실제로 게시된 적이 아직 없다.** 2.2 의
-`pnpm config set …`·`.npmrc`·`pnpm add -D @erdd/cli` 는 GitLab 패키지 레지스트리의 표준 절차를 적은
-것이고, 첫 태그(`cli-v0.1.0`)를 push 해 파이프라인이 돈 뒤에 실제로 확인해야 한다. 위 스모크는
-레지스트리 대신 로컬 tarball 을 가리켜 설치한 것이다.
+**사내 레지스트리에서 확인한 것(2026-09-02).** `cli-v0.1.0` 태그로 파이프라인(#85)이 통과해
+`@erdd/core@0.1.0`·`@erdd/cli@0.1.0` 이 프로젝트 45 의 레지스트리에 게시됐다. 빈 프로젝트에 2.2 의
+절차를 그대로 밟아(`.npmrc` + `pnpm add -D @erdd/cli tsx`) 설치했고, `erdd --help`·`init --local`·
+`validate` 가 종료 코드 `0`, `erdd serve` 의 `/p/<id>` 가 **200 + HTML**(`/assets/*.js` 200,
+`/trpc/model.get` 200)이었다.
