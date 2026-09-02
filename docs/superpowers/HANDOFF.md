@@ -1271,7 +1271,7 @@ pnpm -C apps/web build && pnpm -C packages/cli run bundle:web
 
 **소비처 설치**(사용자 매뉴얼과 같은 내용) — 머신마다 한 번
 `pnpm config set "//gitlab.develma.com/:_authToken" "<토큰>"`, 프로젝트 `.npmrc` 에
-`@erdd:registry=https://gitlab.develma.com/api/v4/projects/<프로젝트-ID>/packages/npm/`, 그다음
+`@erdd:registry=https://gitlab.develma.com/api/v4/projects/45/packages/npm/`(45 = ERDD 의 Project ID), 그다음
 `pnpm add -D @erdd/cli tsx`. **토큰은 프로젝트 `.npmrc` 에 적지 않는다.**
 ⚠️ **`tsx` 를 함께 적는 것을 빼지 마라 — 패키지 관리자가 무엇이든 소비처가 직접 선언해야 한다.**
 `@erdd/cli` 는 `tsx` 를 끌어오지 않는다. **`dependencies` 에 넣어 대신 해결하려는 시도는 하지 마라** —

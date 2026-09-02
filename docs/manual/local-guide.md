@@ -64,14 +64,14 @@ DB 도, 도커도, 계정도 필요 없다. 둘 다 마찬가지다.
 pnpm config set "//gitlab.develma.com/:_authToken" "<GitLab 개인 액세스 토큰>"
 
 # ② 프로젝트마다 한 번 — 프로젝트 루트의 .npmrc 에 한 줄. 커밋한다(토큰은 여기 없다)
-echo '@erdd:registry=https://gitlab.develma.com/api/v4/projects/<프로젝트-ID>/packages/npm/' >> .npmrc
+echo '@erdd:registry=https://gitlab.develma.com/api/v4/projects/45/packages/npm/' >> .npmrc
 
 # ③ 설치
 pnpm add -D @erdd/cli tsx
 ```
 
-- `<프로젝트-ID>` 는 GitLab 의 ERDD 프로젝트 홈(`https://gitlab.develma.com/app/erdd`) 상단
-  「Project ID」에 있는 숫자다.
+- `45` 는 ERDD 프로젝트의 **Project ID** 다. 프로젝트 홈(`https://gitlab.develma.com/app/erdd`)
+  상단의 「Project ID」에서 확인할 수 있고, 사내 GitLab 을 옮기면 바뀐다.
 - ⚠️ **토큰을 프로젝트 `.npmrc` 에 적지 마라.** 그 파일은 커밋 대상이다 — 레지스트리 주소는
   프로젝트에, 토큰은 홈에 둔다.
 - ⚠️ **`tsx` 는 빼면 안 된다.** 패키지에는 빌드 산출물이 아니라 원본 TypeScript 가 들어 있고,

@@ -95,11 +95,12 @@ pnpm config set "//gitlab.develma.com/:_authToken" "<GitLab 개인 액세스 토
 커밋한다(토큰은 여기 없다).
 
 ```
-@erdd:registry=https://gitlab.develma.com/api/v4/projects/<프로젝트-ID>/packages/npm/
+@erdd:registry=https://gitlab.develma.com/api/v4/projects/45/packages/npm/
 ```
 
-`<프로젝트-ID>` 는 GitLab 의 ERDD 프로젝트 홈(`https://gitlab.develma.com/app/erdd`) 상단
-「Project ID」에 있는 숫자다. 프로젝트 이름이 아니라 숫자를 그대로 넣는다.
+`45` 는 ERDD 프로젝트의 **Project ID** 다 — 프로젝트 이름이 아니라 숫자를 쓴다. 사내 GitLab 을
+옮기거나 프로젝트를 다시 만들면 바뀌므로, 그때는 프로젝트 홈(`https://gitlab.develma.com/app/erdd`)
+상단의 「Project ID」에서 다시 읽는다.
 
 **③ 설치한다.**
 
