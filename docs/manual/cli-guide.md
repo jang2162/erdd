@@ -996,12 +996,16 @@ mssql 대괄호 식별자 시그니처를 **항상** 때려서, 그대로 태우
 (2026-09-03 실측). 무엇을 왜 골랐는지는 출력 첫 줄과 `--json` 의 `dialectSource` 에 나온다.
 
 ```bash
-$ erdd import ../proj/schema.sql --dry-run
-ddl · 방언 mysql(erdd.config.yaml의 dialects[0]) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
+$ erdd import ../a/schema.sql --dry-run
+ddl · 방언 mysql(본문에서 감지) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
 --dry-run이라 파일을 쓰지 않았습니다
 
-$ erdd import ../proj/schema.sql --yes
-ddl · 방언 mysql(erdd.config.yaml의 dialects[0]) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
+$ erdd import ../a/schema.sql --yes
+ddl · 방언 mysql(본문에서 감지) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
+파일 7개를 썼습니다. erdd push로 서버에 반영하세요
+
+$ erdd import ../a/schema.dbml --yes     # DBML — Project 블록이 없어 config 로 떨어진다
+dbml · 방언 mysql(erdd.config.yaml의 dialects[0]) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
 파일 7개를 썼습니다. erdd push로 서버에 반영하세요
 ```
 
@@ -1013,7 +1017,7 @@ ddl · 방언 mysql(erdd.config.yaml의 dialects[0]) · 추가 2개 테이블(�
 - 새 엔티티의 `id` 는 그 자리에서 `uuidv7` 로 발급해 **파일에 바로 박는다**(`push` 의 관례와 같다).
 
 ```bash
-$ erdd import ../proj/schema.sql --yes --json | jq '{added, skipped, warnings}'
+$ erdd import ../a/schema.sql --yes --json | jq '{added, skipped, warnings}'   # 같은 DDL 을 두 번째로
 {
   "added": 0,
   "skipped": ["mbr", "ord"],
@@ -1036,7 +1040,7 @@ $ erdd import ../proj/schema.sql --yes --json | jq '{added, skipped, warnings}'
 에서는 물을 수 없으므로 무엇을 하면 되는지 말하고 멈춘다.
 
 ```bash
-$ erdd import ../proj/schema.sql --json
+$ erdd import ../a/schema.sql --json
 ddl · 방언 mysql(본문에서 감지) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
 {"error":{"code":"CANCELLED","message":"파일을 덮어씁니다 — 비대화형(--json)에서는 --yes를 함께 주세요"}}
 $ echo $?
@@ -1252,12 +1256,12 @@ $ erdd export --json -o out.sql
 **`import` 의 JSON.**
 
 ```bash
-$ erdd import ../proj/schema.sql --dry-run --json
-{"ok":true,"format":"ddl","dialect":"mysql","dialectSource":"erdd.config.yaml의 dialects[0]",
+$ erdd import ../a/schema.sql --dry-run --json
+{"ok":true,"format":"ddl","dialect":"mysql","dialectSource":"본문에서 감지",
  "dryRun":true,"added":2,"columns":5,"indexes":1,"relationships":1,"groups":0,
  "skipped":[],"warnings":[],"written":[],"deleted":[]}
 
-$ erdd import ../proj/schema.sql --yes --json
+$ erdd import ../a/schema.sql --yes --json
 {"ok":true,"format":"ddl","dialect":"mysql","dialectSource":"본문에서 감지",
  "dryRun":false,"added":2,"columns":5,"indexes":1,"relationships":1,"groups":0,
  "skipped":[],"warnings":[],
