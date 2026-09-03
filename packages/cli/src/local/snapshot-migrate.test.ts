@@ -36,7 +36,8 @@ describe('migrateSnapshots', () => {
 
     const r = await migrateSnapshots(cwd)
     expect(r!.moved).toEqual([ID_A, ID_B])
-    expect((await listSnapshots(cwd)).map((s) => s.name)).toEqual(['1차', '2차'])
+    // 목록은 최신이 위다(서버 모드와 같은 순서) — B 가 A 보다 나중 id 다.
+    expect((await listSnapshots(cwd)).map((s) => s.name)).toEqual(['2차', '1차'])
     expect((await readSnapshot(cwd, ID_A))!.model).toEqual(createEmptyModel())
 
     // ⚠️ 지우지 않는다 — gitignore 된 파일이라 남겨도 저장소가 더러워지지 않고,

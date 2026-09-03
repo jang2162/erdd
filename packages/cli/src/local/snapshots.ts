@@ -1,5 +1,5 @@
 import { gunzipSync, gzipSync } from 'node:zlib'
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { ProjectModelSchema, type ProjectModel } from '@erdd/core'
@@ -75,20 +75,24 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
  * (`readLayout` 의 항목 단위 관대함과 같은 정신이다. 다만 여기서는 편집을 잠그지 않는다 —
  * 인덱스에는 사용자 콘텐츠가 아니라 **라벨**만 들어 있고, 원본은 `.gz` 안에 그대로 있다).
  */
-async function readIndex(cwd: string): Promise<Map<string, SnapshotMeta>> {
+type IndexRead = { ok: boolean; labels: Map<string, SnapshotMeta> }
+
+async function readIndex(cwd: string): Promise<IndexRead> {
   const out = new Map<string, SnapshotMeta>()
   let raw: string
   try {
     raw = await readFile(join(cwd, SNAPSHOTS_INDEX), 'utf8')
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return out
+    // 파일이 **없는 것은 손상이 아니다** — 라벨이 0개일 뿐이다. 이 둘을 구별해야 쓰기 경로가
+    // 「덮어써도 되는 상태」와 「덮어쓰면 사용자가 쓴 이름이 사라지는 상태」를 가른다.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, labels: out }
     throw err
   }
   let parsed: unknown
-  try { parsed = parseYaml(raw) } catch { return out }
-  if (!isRecord(parsed)) return out
+  try { parsed = parseYaml(raw) } catch { return { ok: false, labels: out } }
+  if (!isRecord(parsed)) return { ok: false, labels: out }
   const items = parsed['snapshots']
-  if (!Array.isArray(items)) return out
+  if (!Array.isArray(items)) return { ok: false, labels: out }
   for (const item of items) {
     if (!isRecord(item) || typeof item['id'] !== 'string' || item['id'] === '') continue
     out.set(item['id'], {
@@ -100,10 +104,34 @@ async function readIndex(cwd: string): Promise<Map<string, SnapshotMeta>> {
         : item['createdAt'] instanceof Date ? item['createdAt'].toISOString() : '',
     })
   }
-  return out
+  return { ok: true, labels: out }
 }
 
-async function writeIndex(cwd: string, metas: SnapshotMeta[]): Promise<void> {
+/**
+ * 인덱스를 갱신한다. **디스크에 실제로 있는 id 의 「진짜 라벨」만 쓴다.**
+ *
+ * 🔥 `listSnapshots` 의 결과를 그대로 쓰면 안 된다 — 그 함수는 라벨이 없는 id 에
+ * `(이름 없음) …` 을 **만들어 낸다**(표시용 대체값이다). 그것을 파일에 쓰면 인덱스가 한 번
+ * 읽히지 않은 순간(머지 충돌 마커가 남은 `index.yaml` — 커밋 대상이 되면서 생긴 정상 동선이다)
+ * **모든 스냅샷의 이름·설명·시각이 영구 치환된다.** 표시용 대체는 `listSnapshots` 안에만 둔다.
+ *
+ * 인덱스를 읽지 못했으면 **덮어쓰지 않고 옮겨 둔다** — 사용자가 쓴 이름이 든 유일한 사본이다.
+ */
+async function updateIndex(
+  cwd: string, mutate: (labels: Map<string, SnapshotMeta>) => void,
+): Promise<void> {
+  const read = await readIndex(cwd)
+  if (!read.ok) {
+    await rename(
+      join(cwd, SNAPSHOTS_INDEX),
+      join(cwd, `${SNAPSHOTS_DIR}/index.corrupt-${Date.now()}.yaml`),
+    )
+  }
+  mutate(read.labels)
+  const onDisk = new Set(await idsOnDisk(cwd))
+  const metas = [...read.labels.values()]
+    .filter((m) => onDisk.has(m.id))
+    .sort((a, b) => (a.id < b.id ? -1 : 1))
   await mkdir(join(cwd, SNAPSHOTS_DIR), { recursive: true })
   await writeFile(join(cwd, SNAPSHOTS_INDEX), stringifyYaml({ snapshots: metas }), 'utf8')
 }
@@ -117,10 +145,14 @@ async function writeIndex(cwd: string, metas: SnapshotMeta[]): Promise<void> {
  */
 export async function listSnapshots(cwd: string): Promise<SnapshotMeta[]> {
   const ids = await idsOnDisk(cwd)
-  const labels = await readIndex(cwd)
-  return ids.map((id) => labels.get(id) ?? {
+  const { labels } = await readIndex(cwd)
+  // ⚠️ 여기서 만드는 `(이름 없음)` 은 **표시용 대체값이다.** 파일에 쓰지 마라(`updateIndex` 주석).
+  const metas = ids.map((id) => labels.get(id) ?? {
     id, name: `(이름 없음) ${id.slice(0, 8)}`, description: '', revisionSeq: 0, createdAt: '',
   })
+  // **최신이 위다** — 서버 모드의 `snapshot.list`(`orderBy(desc(createdAt))`)와 같은 순서여야
+  // 같은 화면이 모드에 따라 뒤집히지 않는다. uuidv7 은 사전순이 곧 시간순이라 뒤집기만 하면 된다.
+  return metas.reverse()
 }
 
 /**
@@ -179,8 +211,7 @@ export async function writeSnapshot(cwd: string, rec: SnapshotRecord): Promise<v
     await mkdir(join(cwd, SNAPSHOTS_DIR), { recursive: true })
     await writeFile(join(cwd, rel), gzipSync(Buffer.from(JSON.stringify(rec), 'utf8')))
     const { model: _model, ...meta } = rec
-    const rest = (await listSnapshots(cwd)).filter((m) => m.id !== rec.id)
-    await writeIndex(cwd, [...rest, meta].sort((a, b) => (a.id < b.id ? -1 : 1)))
+    await updateIndex(cwd, (labels) => { labels.set(meta.id, meta) })
   })
 }
 
@@ -197,7 +228,7 @@ export async function deleteSnapshot(cwd: string, id: string): Promise<boolean> 
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
       return
     }
-    await writeIndex(cwd, await listSnapshots(cwd))
+    await updateIndex(cwd, (labels) => { labels.delete(id) })
   })
   return removed
 }

@@ -1,5 +1,5 @@
 import { gzipSync } from 'node:zlib'
-import { mkdtemp, mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -49,11 +49,15 @@ describe('snapshots', () => {
     expect((await stat(join(cwd, SNAPSHOTS_DIR, `${ID_A}.json.gz`))).mtimeMs).toBe(mtimeMs)
   })
 
-  it('목록은 uuidv7 순서라 시간순이다', async () => {
+  /**
+   * **최신이 위다** — 서버 모드의 `snapshot.list` 가 `orderBy(desc(createdAt))` 이므로 같은
+   * 화면이 모드에 따라 뒤집히면 안 된다. uuidv7 은 사전순이 곧 시간순이라 뒤집기만 하면 된다.
+   */
+  it('목록은 최신이 위다 — 서버 모드와 같은 순서', async () => {
     const cwd = await dir()
-    await writeSnapshot(cwd, rec(ID_B, '2차'))
     await writeSnapshot(cwd, rec(ID_A, '1차'))
-    expect((await listSnapshots(cwd)).map((s) => s.name)).toEqual(['1차', '2차'])
+    await writeSnapshot(cwd, rec(ID_B, '2차'))
+    expect((await listSnapshots(cwd)).map((s) => s.name)).toEqual(['2차', '1차'])
   })
 
   /**
@@ -66,8 +70,8 @@ describe('snapshots', () => {
     await writeRawGz(cwd, ID_B, JSON.stringify(rec(ID_B, '인덱스에 없음')))
 
     const list = await listSnapshots(cwd)
-    expect(list.map((s) => s.id)).toEqual([ID_A, ID_B])
-    expect(list[1]!.name).toContain(ID_B.slice(0, 8))
+    expect(list.map((s) => s.id)).toEqual([ID_B, ID_A])
+    expect(list[0]!.name).toContain(ID_B.slice(0, 8))
     // 라벨이 없어도 복원·삭제는 된다.
     expect(await readSnapshot(cwd, ID_B)).toMatchObject({ id: ID_B })
     expect(await deleteSnapshot(cwd, ID_B)).toBe(true)
@@ -101,6 +105,39 @@ describe('snapshots', () => {
     await writeSnapshot(cwd, rec(ID_A, '1차'))
     await writeFile(join(cwd, SNAPSHOTS_INDEX), ': : 깨진 YAML :', 'utf8')
     expect((await listSnapshots(cwd)).map((s) => s.id)).toEqual([ID_A])
+  })
+
+  /**
+   * 🔥 **표시용 대체 라벨(`(이름 없음) …`)이 파일에 기록되면 안 된다.** 인덱스가 한 번 읽히지
+   * 않은 순간 — 머지 충돌 마커가 남은 `index.yaml` 은 **스냅샷을 커밋 대상으로 만들면서 생긴
+   * 정상 동선이다** — 다음 쓰기가 모든 스냅샷의 이름·설명·시각을 영구 치환한다. `.gz` 는 살아
+   * 있어도 사용자가 쓴 라벨은 git 에서 되살리는 것 말고 복구 수단이 없다.
+   */
+  it('인덱스가 깨진 채로 스냅샷을 더해도 옛 라벨을 파괴하지 않는다', async () => {
+    const cwd = await dir()
+    await writeSnapshot(cwd, rec(ID_A, '아주 중요한 1차 정리'))
+    // 실제 머지 충돌의 모양 — **양쪽 내용이 그대로 남고** 마커 때문에 YAML 이 아니게 된다.
+    await writeFile(join(cwd, SNAPSHOTS_INDEX), [
+      '<<<<<<< HEAD',
+      'snapshots:',
+      `  - id: ${ID_A}`,
+      '    name: 아주 중요한 1차 정리',
+      '=======',
+      'snapshots: []',
+      '>>>>>>> other',
+      '',
+    ].join('\n'), 'utf8')
+
+    await writeSnapshot(cwd, rec(ID_B, '2차'))
+
+    // 새 인덱스에 대체 라벨이 들어가 있으면 안 된다.
+    const written = await readFile(join(cwd, SNAPSHOTS_INDEX), 'utf8')
+    expect(written).not.toContain('이름 없음')
+    expect(written).toContain('2차')
+    // 그리고 깨진 원본은 **지우지 않고 옮겨 둔다** — 사용자가 쓴 이름이 든 유일한 사본이다.
+    const backups = (await readdir(join(cwd, SNAPSHOTS_DIR))).filter((n) => n.startsWith('index.corrupt-'))
+    expect(backups).toHaveLength(1)
+    expect(await readFile(join(cwd, SNAPSHOTS_DIR, backups[0]!), 'utf8')).toContain('아주 중요한 1차 정리')
   })
 
   /**
