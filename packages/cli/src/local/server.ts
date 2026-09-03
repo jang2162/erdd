@@ -8,9 +8,12 @@ import {
   LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, type LocalEvent,
 } from '@erdd/core'
 import { LOCAL_PROJECT_ID, readConfig } from '../config.js'
+import { note } from '../output.js'
 import { FileStore, type StoreState } from './store.js'
 import { createLocalRouter, type LocalContext } from './router.js'
 import { watchProject } from './watch.js'
+import { migrateSnapshots } from './snapshot-migrate.js'
+import { SNAPSHOTS_DIR } from './snapshots.js'
 
 /** SSE 로 내보낼 페이로드. 정상이면 reload, 파일이 깨져 편집이 잠겼으면 blocked. */
 const eventPayload = (state: StoreState): LocalEvent =>
@@ -66,6 +69,19 @@ export async function startLocalServer(opts: {
   const { cwd, port } = opts
   // 명시 override 가 최우선이다 — 있으면 후보 탐색을 아예 하지 않는다.
   const webDist = opts.webDist ?? resolveWebDist()
+
+  // 옛 `.erdd/snapshots.json` 을 커밋 대상으로 한 번 옮긴다. `store.load()` **앞**에서 끝내야
+  // 기동 직후의 첫 감시 이벤트가 조용하다(스냅샷 파일은 `readTree` 가 보지 않으므로 모델에는
+  // 영향이 없다).
+  const migrated = await migrateSnapshots(cwd)
+  if (migrated !== null) {
+    if (migrated.moved.length > 0) {
+      note(`스냅샷 ${migrated.moved.length}개를 ${SNAPSHOTS_DIR}/ 로 옮겼습니다 — 이제 커밋 대상입니다. git add ${SNAPSHOTS_DIR}`)
+    }
+    for (const s of migrated.skipped) {
+      note(`⚠️ 손상된 스냅샷을 옮기지 않았습니다: ${s.name || '(이름 없음)'} (${s.id})`)
+    }
+  }
 
   const config = await readConfig(cwd)
   const projectId = config.projectId ?? LOCAL_PROJECT_ID

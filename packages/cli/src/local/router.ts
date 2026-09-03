@@ -175,6 +175,14 @@ export function createLocalRouter() {
           description: z.string().max(1000).optional(),
         }))
         .mutation(async ({ ctx, input }) => {
+          // 저장된 상태만 스냅샷 대상이다(설계 D4) — 미저장 편집으로 버전을 만들 수 없다.
+          // 만들 수 있게 두면 「스냅샷이 가리키는 상태가 파일 어디에도 없는」 것이 생긴다.
+          if (ctx.store.dirty) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: '저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 스냅샷을 만드세요',
+            })
+          }
           const rec = toRecord(ctx.store, input.name, input.description ?? '')
           await writeSnapshot(ctx.cwd, rec)
           return { id: rec.id }

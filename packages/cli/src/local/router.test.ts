@@ -303,6 +303,37 @@ describe('로컬 라우터', () => {
   })
 })
 
+describe('미저장 상태의 스냅샷', () => {
+  /**
+   * 저장된 상태만 스냅샷 대상이다(설계 D4). 미저장 편집으로 버전을 만들 수 있게 두면
+   * 「스냅샷이 가리키는 상태가 파일 어디에도 없는」 것이 생긴다.
+   */
+  it('드래프트가 있으면 snapshot.create 를 BAD_REQUEST 로 거절한다', async () => {
+    const c = await ctx()
+    const call = createLocalRouter().createCaller(c)
+    await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
+    await c.store.flush()          // 드래프트가 생긴다
+    expect(c.store.dirty).toBe(true)
+
+    await expect(call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' }))
+      .rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    expect((await call.snapshot.list({ projectId: LOCAL_PROJECT_ID })).items).toEqual([])
+  })
+
+  /** 대조군 — 저장하면 막히던 것이 풀린다(「전부 거절」로 과하게 조인 것이 아니다). */
+  it('저장한 뒤에는 스냅샷을 만들 수 있다', async () => {
+    const c = await ctx()
+    const call = createLocalRouter().createCaller(c)
+    await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
+    await c.store.flush()
+    expect((await c.store.save()).ok).toBe(true)
+
+    const { id } = await call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' })
+    const got = await call.snapshot.get({ projectId: LOCAL_PROJECT_ID, snapshotId: id })
+    expect(got.model.tables[T1]).toBeDefined()
+  })
+})
+
 /**
  * 계약 잠금. 웹은 AppRouter **타입**으로 클라이언트를 만들므로, 여기서 어긋나면
  * 컴파일에 안 잡히고 런타임에 깨진다.
