@@ -847,8 +847,9 @@ describe('FileStore 상태 전이', () => {
     await store.load()
     await store.adoptDraft()
     expect(store.dirty).toBe(false)
-    // 예약된 flush 가 남은 드래프트 파일을 치운다.
-    await store.flush()
+    // ⚠️ **여기서 `flush()` 를 직접 부르면 안 된다** — 예약이 빠져도 통과해 구분력이 사라진다.
+    // 실제 동선대로 디바운스가 스스로 도는 것을 기다린다.
+    await new Promise((r) => { setTimeout(r, 500) })
     expect(await hasDraft(dir)).toBe(false)
 
     // 그리고 밖에서 온 변경이 정상적으로 채택된다(배너가 뜨지 않는다).
@@ -877,7 +878,8 @@ describe('FileStore 상태 전이', () => {
     expect(store.external).toBe(true)
 
     await store.keep()
-    await store.flush()
+    // 같은 이유로 예약이 스스로 돌기를 기다린다.
+    await new Promise((r) => { setTimeout(r, 500) })
     expect(store.dirty).toBe(false)
   })
 })
