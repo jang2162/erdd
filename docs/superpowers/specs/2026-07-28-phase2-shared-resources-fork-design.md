@@ -2,7 +2,7 @@
 
 **작성일:** 2026-07-28
 **상태:** 승인됨 (brainstorming 5문항 모두 권장안 채택)
-**원 기획:** [docs/01-concepts.md](../../01-concepts.md) "공용 리소스 패턴: 복사(fork) + 재동기화"
+**원 기획:** docs/01-concepts.md "공용 리소스 패턴: 복사(fork) + 재동기화"
 
 ## 목표
 

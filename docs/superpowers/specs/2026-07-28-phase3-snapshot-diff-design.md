@@ -2,7 +2,7 @@
 
 **작성일:** 2026-07-28
 **상태:** 승인됨 (사용자 "맞아")
-**원 기획:** [docs/11-collaboration.md](../../11-collaboration.md) "diff" 절, [docs/17-import-export.md](../../17-import-export.md)의 "변경분 정의서" 시트
+**원 기획:** docs/11-collaboration.md "diff" 절, docs/17-import-export.md의 "변경분 정의서" 시트
 
 ## 목표
 

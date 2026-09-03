@@ -2,7 +2,7 @@
 
 **작성일:** 2026-08-04
 **상태:** 승인됨 (brainstorming 6문항 모두 권장안 채택)
-**원 기획:** [docs/01-concepts.md](../../01-concepts.md) "공용 리소스 패턴" 4항 — "반대 방향(프로젝트 → 조직 리소스로 승격)"
+**원 기획:** docs/01-concepts.md "공용 리소스 패턴" 4항 — "반대 방향(프로젝트 → 조직 리소스로 승격)"
 **선행 설계:** [Phase 2 #4 공용 리소스 fork](2026-07-28-phase2-shared-resources-fork-design.md)
 
 ## 1. 목적과 범위
