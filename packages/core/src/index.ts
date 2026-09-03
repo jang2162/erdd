@@ -18,6 +18,10 @@ export { deepEqual } from './equal.js'
 export { diffModels } from './diff.js'
 export { diffModelsForDisplay, DIFF_KIND_LABEL, CHANGE_KIND_LABEL } from './model-diff.js'
 export type { ModelDiff, DiffEntry, DiffFieldChange, DiffChangeKind } from './model-diff.js'
+export {
+  DEFAULT_TABLE_OPTIONS, TableOptionsSchema, TableOptionsStrictSchema,
+} from './table-options.js'
+export type { TableOptions } from './table-options.js'
 export { DIALECTS, toDialectType, fromDialectType, resolveColumnType, unsignedWarning } from './dialect.js'
 export type { Dialect, FromDialectResult } from './dialect.js'
 export { quoteIdentifier, isReservedWord } from './identifier.js'

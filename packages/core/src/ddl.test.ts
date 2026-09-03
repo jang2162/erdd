@@ -465,3 +465,132 @@ describe('머릿말 메타', () => {
     expect(Object.keys(parseNameMeta(sql)!.tables)).not.toContain('TB_MBR_NOCOL')
   })
 })
+
+// ── 부호 없음·테이블 옵션 ────────────────────────────────────────────────────
+
+function unsignedModel(type = 'INT UNSIGNED'): ProjectModel {
+  const m = createEmptyModel()
+  m.tables['t'] = tbl('t', 'ORD')
+  m.columns['c1'] = col('c1', 't', 'ORD_NO', type, { isPk: true, nullable: false, autoIncrement: true, order: 0 })
+  return m
+}
+
+function domainModel(logicalType: string, dialectTypes: Partial<Record<Dialect, string>> = {}): ProjectModel {
+  const m = createEmptyModel()
+  m.domains['d'] = {
+    id: 'd', name: '수량', category: null, logicalType,
+    dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null, ...dialectTypes },
+    defaultValue: null, allowedValues: [], description: null, origin: null,
+  }
+  m.tables['t'] = tbl('t', 'ORD')
+  m.columns['c1'] = col('c1', 't', 'QTY', '', { domainId: 'd', nullable: false, order: 0 })
+  return m
+}
+
+/**
+ * 방언 간 이동(설계 §4.5). mysql 은 접미로, 나머지 셋은 **기본 타입 + `CHECK (col >= 0)`** 로
+ * 나간다 — 「이 컬럼은 음수가 될 수 없다」가 대상 DB 에서 실제로 강제되게 한다.
+ *
+ * ⚠️ **mysql 만 보면 CHECK 경로가 무테스트다** — 네 방언 전부의 출력을 고정한다.
+ */
+describe('generateDdl — 부호 없음', () => {
+  const line = (d: Dialect, m = unsignedModel()) =>
+    generateDdl(m, d).split('\n').find((l) => l.trim().startsWith('ORD_NO') || l.trim().startsWith('"ORD_NO"')
+      || l.trim().startsWith('[ORD_NO]') || l.trim().startsWith('QTY'))?.trim()
+
+  it('mysql 은 접미를 내고 CHECK 를 내지 않는다', () => {
+    expect(generateDdl(unsignedModel(), 'mysql')).toContain('ORD_NO INT UNSIGNED AUTO_INCREMENT NOT NULL')
+    expect(generateDdl(unsignedModel(), 'mysql')).not.toContain('>= 0')
+  })
+  it('나머지 세 방언은 기본 타입 + CHECK 를 낸다', () => {
+    // 인용은 `quoteIdentifier` 규칙 그대로다 — 안전 패턴이고 예약어가 아니면 인용하지 않는다.
+    expect(line('postgresql')).toContain('CHECK (ORD_NO >= 0)')
+    expect(line('postgresql')).toContain('integer')
+    expect(line('mssql')).toContain('CHECK (ORD_NO >= 0)')
+    expect(line('mssql')).toContain('INT ')
+    expect(line('oracle')).toContain('CHECK (ORD_NO >= 0)')
+    expect(line('oracle')).toContain('NUMBER(10)')
+  })
+  it('예약어 컬럼명은 방언 규칙으로 인용된다', () => {
+    const m = unsignedModel()
+    m.columns['c1']!.physicalName = 'ORDER'
+    expect(generateDdl(m, 'postgresql')).toContain('CHECK ("ORDER" >= 0)')
+    expect(generateDdl(m, 'mssql')).toContain('CHECK ([ORDER] >= 0)')
+  })
+  it('부호 있는 정수에는 CHECK 가 없다', () => {
+    for (const d of ['postgresql', 'mysql', 'oracle', 'mssql'] as const) {
+      expect(generateDdl(unsignedModel('INT'), d)).not.toContain('>= 0')
+    }
+  })
+
+  /**
+   * ⚠️ 판정 기준은 **해석된 논리 타입**이다 — `ddlWarnings` 의 기존 결함(설계 §3.4 다)을
+   * 답습하면 도메인을 지정한 컬럼은 CHECK 도 경고도 못 받는다.
+   */
+  it('도메인의 논리 타입이 부호 없음이면 그 컬럼도 CHECK 를 받는다', () => {
+    expect(generateDdl(domainModel('INT UNSIGNED'), 'postgresql')).toContain('CHECK (QTY >= 0)')
+    expect(generateDdl(domainModel('INT UNSIGNED'), 'mysql')).toContain('QTY INT UNSIGNED NOT NULL')
+  })
+  it('방언별 물리 타입 오버라이드가 있어도 CHECK 는 나간다 — 저장 형태와 값 제약은 배타적이지 않다', () => {
+    const ddl = generateDdl(domainModel('INT UNSIGNED', { postgresql: 'int8' }), 'postgresql')
+    expect(ddl).toContain('int8')
+    expect(ddl).toContain('CHECK (QTY >= 0)')
+  })
+  it('도메인 허용값 CHECK 와 함께 두 개가 나간다', () => {
+    const m = domainModel('INT UNSIGNED')
+    m.domains['d']!.allowedValues = ['1', '2']
+    const ddl = generateDdl(m, 'postgresql')
+    expect(ddl).toContain("CHECK (QTY IN ('1', '2'))")
+    expect(ddl).toContain('CHECK (QTY >= 0)')
+  })
+
+  it('ddlWarnings 가 상한 손실을 알린다 — 도메인 지정 컬럼도(설계 §3.4 다)', () => {
+    expect(ddlWarnings(unsignedModel(), 'postgresql').join('\n')).toContain('ORD.ORD_NO')
+    expect(ddlWarnings(unsignedModel(), 'postgresql').join('\n')).toContain('CHECK (컬럼 >= 0)')
+    expect(ddlWarnings(domainModel('INT UNSIGNED'), 'postgresql').join('\n')).toContain('ORD.QTY')
+    expect(ddlWarnings(unsignedModel(), 'mysql')).toEqual([])
+  })
+})
+
+/**
+ * 테이블 옵션(설계 §5.4). `)` 뒤, **`COMMENT` 앞**에 붙는다 — 파서의 테이블 코멘트 추출이
+ * `group.tail` 에서 첫 `COMMENT` 키워드를 찾으므로 옵션이 앞이어야 그 스캔이 맞는다.
+ */
+describe('generateDdl — 테이블 옵션', () => {
+  const OPTS = { postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', oracle: 'TABLESPACE users', mssql: '' }
+
+  it('그 방언의 문자열을 닫는 괄호 뒤에 붙인다', () => {
+    const m = usersModel()
+    expect(generateDdlRaw(m, 'mysql', { kind: 'all' }, DEFAULT_NAMING_RULES, OPTS))
+      .toContain(') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;')
+    expect(generateDdlRaw(m, 'oracle', { kind: 'all' }, DEFAULT_NAMING_RULES, OPTS))
+      .toContain(') TABLESPACE users;')
+  })
+
+  it('COMMENT 앞에 온다 — 파서의 코멘트 스캔이 그대로 맞는다', () => {
+    const m = usersModel()
+    m.tables['t']!.logicalName = '사용자'
+    expect(generateDdlRaw(m, 'mysql', { kind: 'all' }, DEFAULT_NAMING_RULES, OPTS))
+      .toContain(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT '사용자';")
+  })
+
+  /**
+   * ⚠️ **짝 구조**(HANDOFF 3.17). 위 케이스만 있으면 배선을 끊어도 「빈 값일 때 같다」가
+   * 안 걸리고, 아래만 있으면 빈 문자열이라 배선을 끊어도 결과가 같다. 둘이 함께 갈린다.
+   */
+  it('빈 문자열이면 한 글자도 달라지지 않는다', () => {
+    const m = usersModel()
+    const empty = { postgresql: '', mysql: '', oracle: '', mssql: '' }
+    for (const d of ['postgresql', 'mysql', 'oracle', 'mssql'] as const) {
+      expect(generateDdlRaw(m, d, { kind: 'all' }, DEFAULT_NAMING_RULES, empty))
+        .toBe(generateDdlRaw(m, d, { kind: 'all' }, DEFAULT_NAMING_RULES))
+    }
+  })
+
+  it('그 방언의 칸만 나간다 — 다른 방언의 문법이 새지 않는다', () => {
+    const m = usersModel()
+    const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES, OPTS)
+    expect(ddl).not.toContain('ENGINE')
+    expect(ddl).not.toContain('TABLESPACE')
+  })
+})

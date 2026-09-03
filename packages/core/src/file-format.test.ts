@@ -573,3 +573,33 @@ describe('filesToModel — assignedTree (push 멱등성)', () => {
     expect(result).not.toHaveProperty('assignedTree')
   })
 })
+
+/**
+ * 모델의 `type` 은 자유 문자열이라 부호 없음 표기는 파일 왕복을 **저절로** 견딘다(설계 §3.3).
+ * 「저절로 된다」는 판단이 맞는지를 여기서 실제로 확인해 둔다 — 표기가 바뀌면 저장된 값 전체가
+ * 어긋나므로 이 자리가 가장 싼 경보다.
+ */
+describe('파일 왕복 — 부호 없음 표기', () => {
+  it('컬럼 타입과 도메인 논리 타입이 yaml 왕복을 견딘다', () => {
+    const m = createEmptyModel()
+    m.domains['d'] = {
+      id: 'd', name: '수량', category: null, logicalType: 'BIGINT UNSIGNED',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null, origin: null,
+    }
+    m.tables['t'] = {
+      id: 't', logicalName: 'ORD', physicalName: 'ORD', comment: null, groupId: null,
+      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c'] = {
+      id: 'c', tableId: 't', logicalName: 'ORD_NO', physicalName: 'ORD_NO', type: 'INT UNSIGNED',
+      isPk: true, autoIncrement: true, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    const r = filesToModel(modelToFiles(m).tree)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(Object.values(r.model.columns)[0]!.type).toBe('INT UNSIGNED')
+    expect(Object.values(r.model.domains)[0]!.logicalType).toBe('BIGINT UNSIGNED')
+  })
+})
