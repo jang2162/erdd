@@ -44,8 +44,11 @@ const isFailure = (v: unknown): v is LocalLoadFailure =>
 /**
  * 반환 `null` = 형식 오류이거나 **모르는 `type`** 이다.
  *
- * 모르는 것을 던지지 않고 `null` 로 돌려주는 것이 요점이다 — 설치본의 웹 번들은 CLI 버전과 따로
- * 움직이므로(패키지 동봉본 vs 저장소 빌드), 새 이벤트가 옛 웹에 도착하는 일이 정상 동선이다.
+ * 모르는 것을 던지지 않고 `null` 로 돌려주는 것이 요점이다 — 설치본의 웹 번들과 CLI 는 따로
+ * 움직이므로(패키지 동봉본 vs 저장소 빌드) **버전이 어긋난 짝**이 정상 동선이다. 이 함수가
+ * 지키는 것은 「지금 웹이 **나중** CLI 의 새 이벤트를 만나는」 방향이다(반대 방향, 즉 옛 웹은
+ * 이 함수를 갖고 있지 않으므로 여기서 지킬 수 없다 — 다행히 옛 인라인 파서도 모르는 `type` 을
+ * 무시했다).
  */
 export function parseLocalEvent(raw: string): LocalEvent | null {
   let v: unknown

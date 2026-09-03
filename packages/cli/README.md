@@ -69,7 +69,7 @@ pnpm add -D @erdd/cli tsx
 erdd init --local          # erdd.config.yaml 을 만든다 (serverUrl·projectId 는 null)
 erdd serve                 # http://127.0.0.1:4300 에 에디터가 뜬다 — 로그인 화면은 없다
                            # 화면의 편집은 「저장」(Cmd+S)을 눌러야 erdd/ 파일이 된다
-# ... 브라우저에서 편집하면 그대로 erdd/ 파일이 된다 ...
+# ... 브라우저에서 편집하고 Cmd+S 로 저장한다 ...
 erdd validate              # 참조 무결성·명명 규칙 검사
 git add erdd erdd.config.yaml && git commit -m "스키마: 회원 등급 컬럼 추가"
 ```
