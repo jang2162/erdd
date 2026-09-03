@@ -137,3 +137,34 @@ describe('export', () => {
     expect(JSON.stringify(parsed.parseErrors)).toContain('없는그룹')
   })
 })
+
+/**
+ * ⚠️ **`generateDdl` 의 5번째 인자는 옵셔널이라 빠뜨려도 조용히 동작한다.** 이 배선은
+ * core 테스트로는 절대 안 잡힌다 — 그래서 호출처마다 「설정한 옵션이 산출물에 있다」를
+ * 따로 단언한다(설계 §5.4·§8.2). 웹 `export-dialog` 에도 짝이 되는 단언이 있다.
+ */
+describe('export — 테이블 옵션 배선', () => {
+  it('erdd.config.yaml 의 테이블 옵션이 DDL 에 나간다', async () => {
+    await writeConfig(dir, {
+      ...TEST_CONFIG, dialects: ['mysql'], namingRules: { ...TEST_CONFIG.namingRules },
+      tableOptions: { postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', oracle: '', mssql: '' },
+    })
+    await seedPulled(dir, model())
+    const file = join(dir, 'out.sql')
+    expect(await exportCommand({ cwd: dir, json: false, yes: true, strict: false, format: 'ddl', out: file })).toBe(0)
+    // 옵션은 `)` 뒤, `COMMENT` **앞**이다(설계 §5.4 — 파서의 코멘트 스캔이 그대로 맞게).
+    expect(await readFile(file, 'utf8'))
+      .toContain(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT '회원';")
+  })
+
+  it('그 방언의 칸이 비면 붙지 않는다', async () => {
+    await writeConfig(dir, {
+      ...TEST_CONFIG, dialects: ['postgresql'], namingRules: { ...TEST_CONFIG.namingRules },
+      tableOptions: { postgresql: '', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '' },
+    })
+    await seedPulled(dir, model())
+    const file = join(dir, 'out.sql')
+    expect(await exportCommand({ cwd: dir, json: false, yes: true, strict: false, format: 'ddl', out: file })).toBe(0)
+    expect(await readFile(file, 'utf8')).not.toContain('ENGINE')
+  })
+})

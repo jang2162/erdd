@@ -2,7 +2,8 @@ import {
   boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid,
 } from 'drizzle-orm/pg-core'
 import {
-  DEFAULT_NAMING_RULES, type Dialect, type NamingRules, type Op, type Origin, type ProjectModel,
+  DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS,
+  type Dialect, type NamingRules, type Op, type Origin, type ProjectModel, type TableOptions,
 } from '@erdd/core'
 
 export const users = pgTable('users', {
@@ -41,6 +42,8 @@ export const projects = pgTable('projects', {
   description: text('description').notNull().default(''),
   dialects: jsonb('dialects').$type<Dialect[]>().notNull(),
   namingRules: jsonb('naming_rules').$type<NamingRules>().notNull().default(DEFAULT_NAMING_RULES),
+  // 프로젝트 수준 테이블 옵션(방언 4키 × 자유 문자열). naming_rules(0005)와 같은 모양이다.
+  tableOptions: jsonb('table_options').$type<TableOptions>().notNull().default(DEFAULT_TABLE_OPTIONS),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

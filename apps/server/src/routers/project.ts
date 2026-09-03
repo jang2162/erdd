@@ -3,7 +3,8 @@ import { and, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  DEFAULT_NAMING_RULES, DIALECTS, NamingRulesSchema, NamingRulesStrictSchema,
+  DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS, DIALECTS,
+  NamingRulesSchema, NamingRulesStrictSchema, TableOptionsSchema, TableOptionsStrictSchema,
 } from '@erdd/core'
 import { members, projectMembers, projects, users } from '../db/schema.js'
 import { getOrgMember, requireProjectAccess } from '../services/perm.js'
@@ -67,6 +68,9 @@ export const projectRouter = router({
         // ⚠️ DB jsonb 를 스키마로 파싱해야 키가 없는 기존 행에 기본값이 주입된다(설계 3.6).
         // 파싱 없이 넘기면 logicalSeparator 가 undefined 인 채로 클라이언트에 도착한다.
         namingRules: NamingRulesSchema.parse(access.project.namingRules ?? DEFAULT_NAMING_RULES),
+        // 같은 이유로 테이블 옵션도 읽기 스키마로 파싱한다 — 키가 넷이라 옛 행에서 일부만
+        // 있을 수 있고, 파싱 없이 넘기면 화면이 undefined 를 만난다.
+        tableOptions: TableOptionsSchema.parse(access.project.tableOptions ?? DEFAULT_TABLE_OPTIONS),
         myRole: access.projectRole ?? null,
         myOrgRole: access.orgRole ?? null,
         // 판정은 서버가 한다. 클라가 역할 조합식을 재현하면 perm.ts가 바뀔 때 조용히 어긋난다.
@@ -84,6 +88,9 @@ export const projectRouter = router({
       // ⚠️ 쓰기에는 **strict** 를 쓴다 — 읽기용 스키마의 기본값이 걸리면 키 누락이 곧
       // 「기본값으로 되쓰기」가 되어 꺼 둔 구분자가 조용히 켜진다.
       namingRules: NamingRulesStrictSchema.optional(),
+      // ⚠️ 여기도 **strict** 다 — 읽기용 스키마를 걸면 `{mysql:'…'}` 만 보낸 화면이 나머지 세
+      // 방언의 값을 조용히 지운다. 키가 넷이라 함정이 `namingRules` 보다 크다.
+      tableOptions: TableOptionsStrictSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'manage')

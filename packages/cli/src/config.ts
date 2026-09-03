@@ -1,7 +1,10 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { DIALECTS, type Dialect, type FileTree, type NamingRules } from '@erdd/core'
+import {
+  DIALECTS, TableOptionsSchema,
+  type Dialect, type FileTree, type NamingRules, type TableOptions,
+} from '@erdd/core'
 import { CliError } from './output.js'
 
 export type ErddConfig = {
@@ -10,6 +13,14 @@ export type ErddConfig = {
   projectId: string | null
   dialects: Dialect[]
   namingRules: NamingRules
+  /**
+   * 프로젝트 수준 테이블 옵션(방언 4키).
+   *
+   * ⚠️ **연결된 프로젝트에서는 서버 값의 거울이다** — `sync-down`(=`pull`)이 서버 값으로 config
+   * 를 통째로 덮어쓰고, `push` 는 모델만 보내므로 로컬에서 고쳐도 올라가지 않는다.
+   * `namingRules` 가 이미 갖고 있는 성질이라 이 사이클이 새로 만드는 문제가 아니다.
+   */
+  tableOptions: TableOptions
 }
 export type SyncState = { revisionSeq: number; pulledAt: string }
 
@@ -43,7 +54,7 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   }
   const parsed: unknown = parseYaml(raw)
   if (!isRec(parsed)) throw new CliError('VALIDATION', `${CONFIG_FILE}의 최상위가 객체가 아닙니다`)
-  const { serverUrl, projectId, dialects, namingRules } = parsed
+  const { serverUrl, projectId, dialects, namingRules, tableOptions } = parsed
   const hasServer = typeof serverUrl === 'string'
   const hasProject = typeof projectId === 'string'
   // 둘 다 없으면 로컬 전용이다. **하나만 있는 것은 오타로 본다** — 삼키면 사용자는 서버에 붙은
@@ -80,6 +91,12 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   const tablePhysicalTemplate = typeof tpl === 'string' ? tpl : ''
   const ltpl = namingRules['tableLogicalTemplate']
   const tableLogicalTemplate = typeof ltpl === 'string' ? ltpl : ''
+  // 테이블 옵션도 템플릿과 같은 정책이다 — 방언별 자유 문자열이라 「잘못 적은 값」이 없고,
+  // 필수로 요구하면 옛 사용자의 pull 이 깨진다. 읽기 스키마가 **누락된 키만** 채운다.
+  const parsedOptions = TableOptionsSchema.safeParse(isRec(tableOptions) ? tableOptions : {})
+  if (!parsedOptions.success) {
+    throw new CliError('VALIDATION', `${CONFIG_FILE}의 tableOptions 는 방언별 문자열이어야 합니다`)
+  }
   return {
     serverUrl: hasServer ? serverUrl : null,
     projectId: hasProject ? projectId : null,
@@ -88,6 +105,7 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
       ...(namingRules as unknown as NamingRules),
       logicalSeparator, tablePhysicalTemplate, tableLogicalTemplate,
     },
+    tableOptions: parsedOptions.data,
   }
 }
 

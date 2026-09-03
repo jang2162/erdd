@@ -28,6 +28,7 @@ beforeEach(async () => {
       case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
       tablePhysicalTemplate: '', tableLogicalTemplate: '',
     },
+    tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
   })
 })
 afterEach(() => vi.restoreAllMocks())

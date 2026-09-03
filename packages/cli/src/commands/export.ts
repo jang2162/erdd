@@ -69,7 +69,7 @@ export function exportCommand(ctx: ExportCtx): Promise<number> {
 
     const rules = config.namingRules
     const content = ctx.format === 'ddl'
-      ? generateDdl(result.model, dialect, { kind: 'all' }, rules)
+      ? generateDdl(result.model, dialect, { kind: 'all' }, rules, config.tableOptions)
       : generateDbml(result.model, dialect, { kind: 'all' }, { projectName: dbmlProjectName(ctx.cwd) }, rules)
     const warnings = ddlWarnings(result.model, dialect, { kind: 'all' }, rules)
     for (const w of warnings) note(`경고: ${w}`)

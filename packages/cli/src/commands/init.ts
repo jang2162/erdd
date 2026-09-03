@@ -1,6 +1,9 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { DEFAULT_NAMING_RULES, type Dialect, type NamingRules } from '@erdd/core'
+import {
+  DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS,
+  type Dialect, type NamingRules, type TableOptions,
+} from '@erdd/core'
 import { createClient, type ApiClient } from '../client.js'
 import { CONFIG_FILE, ensureGitignore, writeConfig, writeToken } from '../config.js'
 import { CliError, emit, note } from '../output.js'
@@ -48,6 +51,7 @@ export function init(ctx: InitCtx): Promise<number> {
         projectId: null,
         dialects: [ctx.dialect ?? 'postgresql'],
         namingRules: { ...DEFAULT_NAMING_RULES, case: ctx.namingCase ?? DEFAULT_NAMING_RULES.case },
+        tableOptions: { ...DEFAULT_TABLE_OPTIONS },
       })
       await ensureGitignore(ctx.cwd)
       emit(ctx.json, '로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요', { local: true })
@@ -73,11 +77,12 @@ export function init(ctx: InitCtx): Promise<number> {
     }
 
     const project = await client.query<{
-      name: string; dialects: Dialect[]; namingRules: NamingRules
+      name: string; dialects: Dialect[]; namingRules: NamingRules; tableOptions?: TableOptions
     }>('project.get', { projectId })
 
     await writeConfig(ctx.cwd, {
       serverUrl, projectId, dialects: project.dialects, namingRules: project.namingRules,
+      tableOptions: project.tableOptions ?? { ...DEFAULT_TABLE_OPTIONS },
     })
     await writeToken(ctx.cwd, token)
     await ensureGitignore(ctx.cwd)

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
-import { DEFAULT_NAMING_RULES } from '@erdd/core'
+import { DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS } from '@erdd/core'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
@@ -354,6 +354,79 @@ describe.skipIf(!url)('project', () => {
     const got = await get(app, 'project.get', ownerToken, { projectId })
     expect(got.statusCode).toBe(200)
     expect(got.json().result.data.namingRules).toEqual(customRules)
+  })
+
+  // ── 테이블 옵션(설계 §5.2·§5.3) ────────────────────────────────────────────
+
+  it('테이블 옵션 기본값은 네 방언 모두 빈 문자열이다', async () => {
+    const projectId = await createProject()
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.tableOptions).toEqual(DEFAULT_TABLE_OPTIONS)
+  })
+
+  it('키가 없는 옛 행에 기본값을 주입해 내려준다', async () => {
+    const projectId = await createProject()
+    await app.db!.update(projects)
+      .set({ tableOptions: { mysql: 'ENGINE=InnoDB' } as never })
+      .where(eq(projects.id, projectId))
+
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.tableOptions).toEqual({ postgresql: '', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '' })
+  })
+
+  it('update 가 네 키를 쓴다', async () => {
+    const projectId = await createProject()
+    const res = await post(app, 'project.update', ownerToken, {
+      projectId,
+      tableOptions: {
+        postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+        oracle: 'TABLESPACE users', mssql: '',
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.tableOptions).toEqual({
+      postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+      oracle: 'TABLESPACE users', mssql: '',
+    })
+  })
+
+  /**
+   * ⚠️ 급소(HANDOFF 3.16). 읽기 스키마의 `.default('')` 가 쓰기 입력에도 걸리면 한 키만 보낸
+   * 화면이 나머지 세 방언의 값을 조용히 지운다 — 키가 넷이라 `namingRules` 보다 함정이 크다.
+   * **이 단언을 지우면 `TableOptionsStrictSchema` 를 읽기 스키마로 바꿔도 초록이 된다.**
+   */
+  it('키가 빠진 tableOptions 는 update 가 거절하고 설정값을 지킨다', async () => {
+    const projectId = await createProject()
+    const set = await post(app, 'project.update', ownerToken, {
+      projectId,
+      tableOptions: { postgresql: 'TABLESPACE pg', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '' },
+    })
+    expect(set.statusCode).toBe(200)
+
+    const partial = await post(app, 'project.update', ownerToken, {
+      projectId, tableOptions: { mysql: 'ENGINE=MyISAM' },
+    })
+    expect(partial.statusCode).toBe(400)
+
+    const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
+    expect(got.tableOptions).toEqual({
+      postgresql: 'TABLESPACE pg', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '',
+    })
+  })
+
+  it('manage 권한이 없으면 테이블 옵션을 바꿀 수 없다', async () => {
+    const projectId = await createProject()
+    const members = (await get(app, 'org.members.list', ownerToken, { orgId }))
+      .json().result.data as Array<{ id: string; email: string }>
+    const memberId = members.find((m) => m.email === 'm@test.dev')!.id
+    await post(app, 'project.members.add', ownerToken, { projectId, memberId, role: 'editor' })
+
+    const res = await post(app, 'project.update', memberToken, {
+      projectId,
+      tableOptions: { postgresql: '', mysql: 'ENGINE=MyISAM', oracle: '', mssql: '' },
+    })
+    expect(res.statusCode).toBe(403)
   })
 
   it('rejects a memberId that belongs to a different organization', async () => {
