@@ -1,8 +1,7 @@
-import { createGroup, setTableGroup } from '@erdd/core'
+import { createGroup, nextGroupColor, setTableGroup } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { clearTableGroupPosition } from './model-edits.js'
 import { newId } from './uid.js'
-import { nextGroupColor } from './group-palette.js'
 import type { Mutate } from './use-model.js'
 
 /**
