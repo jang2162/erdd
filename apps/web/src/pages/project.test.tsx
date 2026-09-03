@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
-import { createEmptyModel } from '@erdd/core'
+import { createEmptyModel, DEFAULT_TABLE_OPTIONS } from '@erdd/core'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { RequireAuth } from '@/components/require-auth'
 import { useEditorStore } from '@/editor/store'
@@ -46,6 +46,7 @@ function renderProject(mode: 'server' | 'local') {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
         tablePhysicalTemplate: '', tableLogicalTemplate: '',
       },
+      tableOptions: DEFAULT_TABLE_OPTIONS,
       createdAt: new Date(0).toISOString(), myRole: 'admin', myOrgRole: 'owner',
       canEdit: true, canManage: true,
     } }),

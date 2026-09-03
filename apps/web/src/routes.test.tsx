@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import { DEFAULT_NAMING_RULES } from '@erdd/core'
+import { DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
@@ -108,7 +108,8 @@ describe('routes', () => {
         data: {
           id: 'proj1', orgId: 'local', name: '로컬 프로젝트', description: '',
           dialects: ['postgresql'], createdAt: '2026-01-01T00:00:00.000Z',
-          namingRules: DEFAULT_NAMING_RULES, myRole: 'admin', myOrgRole: 'owner',
+          namingRules: DEFAULT_NAMING_RULES, tableOptions: DEFAULT_TABLE_OPTIONS,
+          myRole: 'admin', myOrgRole: 'owner',
           canEdit: true, canManage: false,
         },
       }),

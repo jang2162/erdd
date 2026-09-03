@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import { createEmptyModel, DEFAULT_NAMING_RULES } from '@erdd/core'
+import { createEmptyModel, DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
@@ -217,6 +217,7 @@ describe('useModelLoader', () => {
         data: {
           name: '회원 시스템',
           namingRules: DEFAULT_NAMING_RULES,
+          tableOptions: DEFAULT_TABLE_OPTIONS,
           dialects: ['postgresql'],
           canEdit: true,
           canManage: false,
