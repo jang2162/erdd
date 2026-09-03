@@ -536,6 +536,26 @@ describe('generateDdl — 부호 없음', () => {
     expect(ddl).toContain('int8')
     expect(ddl).toContain('CHECK (QTY >= 0)')
   })
+  /**
+   * ⚠️ **CHECK 와 경고의 판정이 갈리는 유일한 자리다.** 오버라이드가 있으면 사용자가 고른 물리
+   * 타입의 값 범위를 우리가 알 수 없으므로 **경고는 내지 않는다**(`resolveColumn` 의 기존 동작).
+   * 반면 `CHECK` 는 낸다 — 저장 형태와 값 제약은 배타적이지 않다(위 케이스).
+   *
+   * 이 사이클이 `ddlWarnings` 를 `resolveColumnType(c.type, …)` 에서 `resolveColumn(c, …)` 으로
+   * 옮기면서 **기존 `ORACLE_WARN` 의 빈도도 함께 바뀌었다**: 도메인 지정 컬럼에는 이제 뜨고
+   * (설계 §3.4 다 해소), **오버라이드가 있으면 안 뜬다.** 뒤쪽 갈래를 여기서 잠근다 — 위
+   * 케이스만 있으면 오버라이드에도 경고를 내도록 되돌려도 전건 초록이다(실증).
+   */
+  it('오버라이드가 있으면 경고는 내지 않는다 — CHECK 와 판정이 갈린다', () => {
+    const withOverride = domainModel('BIGINT UNSIGNED', { oracle: 'NUMBER(20)' })
+    expect(ddlWarnings(withOverride, 'oracle')).toEqual([])
+    // 짝: 오버라이드가 없으면 같은 도메인이 경고를 낸다.
+    expect(ddlWarnings(domainModel('BIGINT UNSIGNED'), 'oracle').join('\n')).toContain('ORD.QTY')
+
+    // ORACLE_WARN(부호 없음과 무관한 기존 표)도 같은 규칙을 탄다.
+    expect(ddlWarnings(domainModel('JSON', { oracle: 'CLOB' }), 'oracle')).toEqual([])
+    expect(ddlWarnings(domainModel('JSON'), 'oracle').join('\n')).toContain('CLOB으로 변환됩니다')
+  })
   it('도메인 허용값 CHECK 와 함께 두 개가 나간다', () => {
     const m = domainModel('INT UNSIGNED')
     m.domains['d']!.allowedValues = ['1', '2']
