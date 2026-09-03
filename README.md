@@ -2,29 +2,15 @@
 
 웹에서 ERD를 실시간 협업으로 설계하고, 한국 실무의 명명 체계(단어·용어·도메인 사전)와 산출물까지 관리하며, CLI로 코드베이스와 AI agent에 연결되는 상용 SaaS.
 
-Phase 1~4(에디터·실시간 협업·명명 체계·CLI·가져오기/내보내기)가 구현되어 동작하며, 설계 문서는 계속 함께 갱신한다.
+에디터·실시간 협업·명명 체계·CLI·가져오기/내보내기가 구현되어 동작한다.
 
 ## 문서
 
 | 문서 | 내용 |
 |---|---|
-| [00-vision](docs/00-vision.md) | 비전, 타깃 사용자, 경쟁 분석, 차별화 포인트 |
-| [01-concepts](docs/01-concepts.md) | 개념 도메인 모델 — 계층 구조, 엔티티, 공용 리소스 패턴 (허브 문서) |
-| [02-architecture](docs/02-architecture.md) | 기술 스택, 시스템 구성, 데이터 계층(op 로그, 스냅샷, diff) |
-| [10-editor](docs/10-editor.md) | ERD 에디터 (캔버스, 편집 패널, 보기 모드) |
-| [11-collaboration](docs/11-collaboration.md) | 실시간 협업, 이력/스냅샷/diff, 권한 |
-| [12-grouping](docs/12-grouping.md) | 테이블 그룹핑, 그룹 뷰와 독립 배치 |
-| [13-naming](docs/13-naming.md) | 단어/용어 사전, 물리명 자동생성, 공용 사전 fork/재동기화 |
-| [14-domain](docs/14-domain.md) | 논리 타입 체계, 도메인 정의, DB 방언별 타입 매핑 |
-| [15-custom-fields](docs/15-custom-fields.md) | 커스텀 항목 정의와 활용 범위 |
-| [16-cli](docs/16-cli.md) | 패키지 게시(사내 GitLab 레지스트리), 스키마 파일 포맷, pull/push/diff, 에이전트 스킬 |
-| [17-import-export](docs/17-import-export.md) | DDL/Excel/이미지 내보내기, DDL 역설계, Excel 업로드 |
-| [18-account](docs/18-account.md) | 계정(관리자 생성), 개인/팀 조직, 멤버 관리, 온보딩 |
-| [90-roadmap](docs/90-roadmap.md) | 단계별 로드맵 |
-| [91-checklist](docs/91-checklist.md) | 구현 전 구체화 체크리스트 |
 | [manual/install](docs/manual/install.md) | 설치·운영 매뉴얼 — Docker Compose·소스 설치, 환경 변수, 리버스 프록시, 백업, 문제 해결 |
 | [manual/user-guide](docs/manual/user-guide.md) | 사용자 가이드 — 로그인부터 ERD 설계·협업·산출물까지 화면 사용법 |
 | [manual/cli-guide](docs/manual/cli-guide.md) | CLI 매뉴얼 — 설치(사내 레지스트리·저장소)·토큰 연결, pull/push 워크플로, 파일 포맷, 충돌 해결, 에이전트 연동 |
 | [manual/local-guide](docs/manual/local-guide.md) | 로컬 모드 매뉴얼 — 서버 없이 `erdd serve`로 파일만 가지고 쓰는 길. 준비·시작·되는 것과 없는 것·git·스냅샷·서버 이관 |
+| [superpowers/specs](docs/superpowers/specs/) | 기능별 설계 문서 모음 — 각 기능을 왜 그렇게 만들었는지의 근거와 결정 기록 |
 
-기능 문서(10~18)는 공통 템플릿을 따른다: **목적 → 사용자 시나리오 → 기능 상세 → 다른 영역과의 연계 → 단계별 범위**.
