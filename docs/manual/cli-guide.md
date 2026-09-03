@@ -1106,6 +1106,9 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 
 - `pnpm add <경로>/packages/cli` 로 `node_modules/.bin/erdd` 링크가 생기는 것, **`tsx` 없이는
   `sh: tsx: command not found`(종료 코드 127)로 죽고 `pnpm add -D tsx` 후 정상 동작**하는 것.
+  ⚠️ **2026-09-03 재실측에서는 같은 자리에서 `npx` 가 `tsx` 를 그때그때 받아 와 정상 동작했다**
+  (종료 코드 `0`). 어느 한쪽이 틀린 것이 아니라 **네트워크·캐시·패키지 관리자에 따라 갈린다** —
+  위 줄은 2026-08-14 의 환경 그대로이고, 지금 정확한 서술은 [2.1](#21-요구-사항) 에 있다.
 - 그 설치가 **ERDD 저장소의 `packages/cli/src/main.ts` 모드를 100644 → 100755 로 바꾸는 것**
   (`git status` 에 잡힌다. 검증 후 되돌렸다).
 - `--help` 출력 전문(본문 2.4 는 실제 출력 그대로다).
