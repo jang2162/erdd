@@ -10,7 +10,19 @@ export type ParsedColumn = {
   inlinePk: boolean
   comment: string | null       // MySQL 인라인 COMMENT
 }
-export type ParsedTable = { name: string; columns: ParsedColumn[] }
+export type ParsedTable = {
+  name: string
+  columns: ParsedColumn[]
+  /**
+   * `)` 뒤 꼬리 절에서 **코멘트 절을 걷어낸 나머지**를 공백 정규화한 원문
+   * (`'ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4'`). 없으면 필드를 두지 않는다.
+   *
+   * ⚠️ **파서는 해석하지 않는다.** 무엇이 프로젝트 수준 옵션인지 고르는 것은 정책이고,
+   * 정책은 `ddl-import.ts` 에 둔다(`skipped` 와 같은 층 분리). `AUTO_INCREMENT=3` 처럼
+   * 버려야 할 것도 여기에는 그대로 있다.
+   */
+  options?: string
+}
 export type ParsedConstraint =
   | { kind: 'pk'; table: string; columns: string[] }
   | { kind: 'unique'; table: string; name: string | null; columns: string[] }
@@ -351,8 +363,14 @@ function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | 
   const rest = nameMatch[2]!.trim()
   if (rest === '') return null
 
-  // 타입 = 첫 토큰(공백 허용 조합 포함) + 선택적 괄호
-  const typeMatch = /^((?:DOUBLE\s+PRECISION|CHARACTER\s+VARYING|TIMESTAMP\s+WITH(?:OUT)?\s+TIME\s+ZONE|[A-Za-z_][\w$]*)\s*(?:\([^)]*\))?)/i
+  // 타입 = 첫 토큰(공백 허용 조합 포함) + 선택적 괄호 + 선택적 수치 접미(UNSIGNED·ZEROFILL)
+  // ⚠️ 접미를 여기서 함께 집어야 `dialect.ts` 의 `splitSqlType` 에 닿는다 — 예전에는 `attrs`
+  // 로 흘러가 **아무도 줍지 않았다**(설계 §3.1). 바뀌는 것은 `attrs` 의 시작 경계뿐이라
+  // 3.11 의 마스킹 길이 보존 계약은 그대로다(attrsScan 을 잘린 뒤 문자열에서 만든다).
+  // ⚠️ 괄호 앞 공백은 `(?:\s*\(…\))?` 로 **괄호와 한 묶음**이어야 한다. 바깥에 `\s*` 로 두면
+  // 그것이 `int unsigned` 의 공백을 먼저 먹어 뒤의 `\s+UNSIGNED` 가 못 맞고, 앵커가 없어
+  // 역추적도 일어나지 않아 조용히 `int` 만 집는다(실측).
+  const typeMatch = /^((?:DOUBLE\s+PRECISION|CHARACTER\s+VARYING|TIMESTAMP\s+WITH(?:OUT)?\s+TIME\s+ZONE|[A-Za-z_][\w$]*)(?:\s*\([^)]*\))?(?:\s+(?:UNSIGNED|ZEROFILL))*)/i
     .exec(rest)
   if (!typeMatch) return null
   const rawType = typeMatch[1]!.replace(/\s+/g, ' ').trim()
@@ -544,12 +562,20 @@ function parseCreateTable(
   // 참고) 따옴표를 포함해 찾으면 안 된다 — 키워드까지만 마스킹본에서 찾고 값은 원본에서 잘라낸다.
   const tailScan = maskQuoted(group.tail)
   const cIdx = tailScan.search(/\bCOMMENT\b/i)
+  // 코멘트 절을 뺀 나머지가 테이블 옵션이다 — 같은 사실의 진실 원본이 둘이 되지 않게 한다.
+  let optionsSource = group.tail
   if (cIdx >= 0) {
     const m = /^COMMENT\s*=?\s*'((?:[^']|'')*)'/is.exec(group.tail.slice(cIdx))
-    if (m) out.comments.push({ table, column: null, text: m[1]!.replace(/''/g, "'") })
+    if (m) {
+      out.comments.push({ table, column: null, text: m[1]!.replace(/''/g, "'") })
+      optionsSource = group.tail.slice(0, cIdx) + group.tail.slice(cIdx + m[0].length)
+    }
   }
+  const options = optionsSource.replace(/\s+/g, ' ').trim()
 
-  out.tables.push({ name: table, columns })
+  // ⚠️ 옵셔널로 두는 이유는 3.17 의 `nameMeta?` 와 같다 — 기존 테스트의 `ParsedDdl` 리터럴이
+  // 안 깨진다. 빈 꼬리에 `''` 를 넣으면 「옵션 없음」이 값으로 승격돼 다수결이 오염된다.
+  out.tables.push(options === '' ? { name: table, columns } : { name: table, columns, options })
   return true
 }
 

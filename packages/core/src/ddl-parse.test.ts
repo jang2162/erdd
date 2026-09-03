@@ -708,3 +708,71 @@ describe('머릿말 메타', () => {
     expect(parseDdl('CREATE TABLE X (ID BIGINT NOT NULL);').nameMeta).toBeUndefined()
   })
 })
+
+/**
+ * 부호 없음은 **타입의 일부로 넘긴다**(설계 §4.4-1). 오늘까지는 타입 정규식이 첫 토큰 + 괄호만
+ * 집어 `unsigned` 가 `attrs` 로 흘러가 아무도 줍지 않았다.
+ *
+ * ⚠️ 바뀌는 것은 `attrs` 의 **시작 경계**뿐이다 — `attrsScan = maskQuoted(attrs)` 는 잘린 뒤의
+ * 같은 문자열에서 만들어지므로 3.11 의 마스킹 길이 보존 계약은 그대로 성립한다.
+ */
+describe('parseDdl — 부호 없음 접미', () => {
+  it('rawType 이 UNSIGNED 를 물고 오고, attrs 판정이 깨지지 않는다', () => {
+    const r = parseDdl('CREATE TABLE ORD (ORD_NO int unsigned NOT NULL AUTO_INCREMENT);')
+    const c = r.tables[0]!.columns[0]!
+    expect(c.rawType).toBe('int unsigned')
+    expect(c.notNull).toBe(true)
+    expect(c.autoIncrement).toBe(true)
+  })
+  it('표시폭과 함께 와도 집는다', () => {
+    const r = parseDdl('CREATE TABLE T (A int(10) unsigned NOT NULL, B bigint(20) UNSIGNED);')
+    expect(r.tables[0]!.columns.map((c) => c.rawType)).toEqual(['int(10) unsigned', 'bigint(20) UNSIGNED'])
+  })
+  it('ZEROFILL 도 타입에 함께 집힌다', () => {
+    const r = parseDdl('CREATE TABLE T (A int unsigned zerofill NOT NULL);')
+    expect(r.tables[0]!.columns[0]!.rawType).toBe('int unsigned zerofill')
+    expect(r.tables[0]!.columns[0]!.notNull).toBe(true)
+  })
+  it('UNSIGNED 가 없으면 rawType 이 그대로다', () => {
+    const r = parseDdl('CREATE TABLE T (A int NOT NULL);')
+    expect(r.tables[0]!.columns[0]!.rawType).toBe('int')
+  })
+  it('컬럼 이름이 unsigned 여도 컬럼으로 산다', () => {
+    const r = parseDdl('CREATE TABLE T ("unsigned" boolean not null);')
+    expect(r.tables[0]!.columns[0]).toMatchObject({ name: 'unsigned', rawType: 'boolean', notNull: true })
+  })
+})
+
+/**
+ * 테이블 꼬리 절은 **파서가 이미 손에 쥐고 있는데 버리고 있었다**(설계 §3.2).
+ * 파서는 **해석하지 않는다** — 무엇이 프로젝트 수준 옵션인지 고르는 것은 `ddl-import.ts` 의 일이다.
+ */
+describe('parseDdl — 테이블 옵션(꼬리 절)', () => {
+  it('코멘트를 걷어낸 나머지를 공백 정규화해 담는다', () => {
+    const r = parseDdl(
+      "CREATE TABLE ORD (A INT)\n  ENGINE=InnoDB   AUTO_INCREMENT=3\n  DEFAULT CHARSET=utf8mb4 COMMENT='주문';",
+    )
+    // AUTO_INCREMENT 는 여기 그대로 있다 — 거르는 것은 다음 층의 일이다.
+    expect(r.tables[0]!.options).toBe('ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4')
+    expect(r.comments).toContainEqual({ table: 'ORD', column: null, text: '주문' })
+  })
+  it('COMMENT 가 앞에 와도 뒤의 옵션이 남는다', () => {
+    const r = parseDdl("CREATE TABLE T (A INT) COMMENT='설명' ENGINE=MyISAM;")
+    expect(r.tables[0]!.options).toBe('ENGINE=MyISAM')
+  })
+  it('꼬리가 없으면 필드를 두지 않는다', () => {
+    const r = parseDdl('CREATE TABLE T (A INT);')
+    expect(r.tables[0]!.options).toBeUndefined()
+    expect('options' in r.tables[0]!).toBe(false)
+  })
+  it('꼬리가 코멘트뿐이면 필드를 두지 않는다', () => {
+    const r = parseDdl("CREATE TABLE T (A INT) COMMENT='설명';")
+    expect(r.tables[0]!.options).toBeUndefined()
+  })
+  it('COLLATE 도 그대로 담는다', () => {
+    const r = parseDdl(
+      'CREATE TABLE T (A INT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;',
+    )
+    expect(r.tables[0]!.options).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci')
+  })
+})
