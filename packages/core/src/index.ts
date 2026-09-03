@@ -111,3 +111,7 @@ export {
 } from './layout.js'
 export type { LayoutData, TableLayout } from './layout.js'
 export { LOCAL_PROJECT_ID, type RunMode } from './local.js'
+export {
+  LOCAL_EVENTS_PATH, LOCAL_SAVE_PATH, LOCAL_DISCARD_PATH, LOCAL_KEEP_PATH, parseLocalEvent,
+} from './local-protocol.js'
+export type { LocalEvent, LocalLoadFailure, LocalSaveResult } from './local-protocol.js'
