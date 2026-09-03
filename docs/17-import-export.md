@@ -75,5 +75,4 @@
 
 - **Phase 1**: DDL 내보내기, 이미지 내보내기.
 - **Phase 2**: Excel 산출물 내보내기, Excel 사전 업로드, 변경분 정의서(diff는 Phase 3이므로 이 시트만 Phase 3).
-- **Phase 4**: DDL 가져오기(역설계).
-- **Phase 4 이후**: DBML 내보내기·가져오기.
+- **Phase 4**: DDL 가져오기(역설계). DBML 내보내기·가져오기(2026-08-10 완료 → [90-roadmap](90-roadmap.md)).

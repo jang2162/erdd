@@ -49,7 +49,7 @@ Organization은 `종류(개인/팀)`를 가진다.
 ### 온보딩
 
 - 로그인 → 개인 공간 → 첫 프로젝트 생성 유도(이름 + 대상 DB 방언 선택).
-- ApiToken 발급 UI는 CLI와 함께 Phase 4(→ [16-cli](16-cli.md)).
+- AccessToken(개인 액세스 토큰) 발급 UI는 CLI와 함께 Phase 4(→ [16-cli](16-cli.md)).
 
 ## 다른 영역과의 연계
 
