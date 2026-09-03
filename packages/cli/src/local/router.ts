@@ -7,7 +7,8 @@ import {
 import { writeConfig, type ErddConfig } from '../config.js'
 import { FileStore, LocalStoreError } from './store.js'
 import {
-  readSnapshots, snapshotModel, updateSnapshots, type SnapshotRecord,
+  SnapshotCorruptError, deleteSnapshot, listSnapshots, readSnapshot, writeSnapshot,
+  type SnapshotRecord,
 } from './snapshots.js'
 
 export type LocalContext = {
@@ -56,14 +57,17 @@ function toRecord(store: FileStore, name: string, description: string): Snapshot
  * 무엇을 고쳐야 하는지 알 수 없다.
  */
 async function requireSnapshot(cwd: string, snapshotId: string): Promise<SnapshotRecord> {
-  const s = (await readSnapshots(cwd)).find((x) => x.id === snapshotId)
-  if (!s) throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
-  const model = snapshotModel(s)
-  if (model === null) {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: '스냅샷이 손상됐습니다' })
+  let s: SnapshotRecord | null
+  try {
+    s = await readSnapshot(cwd, snapshotId)
+  } catch (err) {
+    if (err instanceof SnapshotCorruptError) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: '스냅샷이 손상됐습니다' })
+    }
+    throw err
   }
-  // 누락 컬렉션이 보충된 **파싱 결과**를 싣는다 — 원본을 그대로 두면 그 보충이 사라진다.
-  return { ...s, model }
+  if (s === null) throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
+  return s
 }
 
 /** 저장소의 도메인 오류(읽기 전용·op 상한·무결성)를 한자리에서 400 으로 바꾼다. */
@@ -172,12 +176,12 @@ export function createLocalRouter() {
         }))
         .mutation(async ({ ctx, input }) => {
           const rec = toRecord(ctx.store, input.name, input.description ?? '')
-          await updateSnapshots(ctx.cwd, (all) => [rec, ...all])
+          await writeSnapshot(ctx.cwd, rec)
           return { id: rec.id }
         }),
 
       list: scoped.query(async ({ ctx }) => ({
-        items: (await readSnapshots(ctx.cwd)).map((s) => ({
+        items: (await listSnapshots(ctx.cwd)).map((s) => ({
           id: s.id,
           name: s.name,
           description: s.description,
@@ -205,12 +209,10 @@ export function createLocalRouter() {
         .input(z.object({ projectId: z.string(), snapshotId: z.string() }))
         .mutation(async ({ ctx, input }) => {
           // 존재 검사도 체인 안에서 한다 — 밖에서 하면 그 사이에 남이 지운 것을 못 본다.
-          await updateSnapshots(ctx.cwd, (all) => {
-            if (!all.some((x) => x.id === input.snapshotId)) {
-              throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
-            }
-            return all.filter((x) => x.id !== input.snapshotId)
-          })
+          // `deleteSnapshot` 이 파일 삭제 결과로 그것을 판정해 돌려준다.
+          if (!await deleteSnapshot(ctx.cwd, input.snapshotId)) {
+            throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
+          }
           return { ok: true as const }
         }),
 

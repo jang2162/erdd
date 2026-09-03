@@ -1,12 +1,13 @@
+import { gzipSync } from 'node:zlib'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { inferRouterInputs, inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
 import { FileStore } from './store.js'
-import { SNAPSHOTS_FILE } from './snapshots.js'
+import { SNAPSHOTS_DIR } from './snapshots.js'
 import { createLocalRouter, type LocalContext, type LocalRouter } from './router.js'
 import { LOCAL_PROJECT_ID, readConfig } from '../config.js'
 
@@ -64,11 +65,18 @@ const createOrphanColumn = (): Op => ({
 
 const MISSING_SNAPSHOT = '00000000-0000-7000-8000-0000000000aa'
 
-/** 손상된 `.erdd/snapshots.json` 을 직접 만든다 — 라우터를 거치지 않아야 담을 수 있는 모양이다. */
-async function writeSnapshotsFile(cwd: string, snapshots: unknown[]): Promise<void> {
-  const abs = join(cwd, SNAPSHOTS_FILE)
-  await mkdir(dirname(abs), { recursive: true })
-  await writeFile(abs, JSON.stringify({ snapshots }), 'utf8')
+/**
+ * 손상된 스냅샷 파일을 직접 만든다 — 라우터를 거치지 않아야 담을 수 있는 모양이다.
+ * 새 포맷은 **하나당 파일 하나**(`erdd/snapshots/<id>.json.gz`)라 레코드마다 파일을 쓴다.
+ */
+async function writeSnapshotsFile(cwd: string, snapshots: Record<string, unknown>[]): Promise<void> {
+  await mkdir(join(cwd, SNAPSHOTS_DIR), { recursive: true })
+  for (const rec of snapshots) {
+    await writeFile(
+      join(cwd, SNAPSHOTS_DIR, `${String(rec['id'])}.json.gz`),
+      gzipSync(Buffer.from(JSON.stringify(rec), 'utf8')),
+    )
+  }
 }
 
 describe('로컬 라우터', () => {

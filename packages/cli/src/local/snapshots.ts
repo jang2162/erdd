@@ -1,8 +1,24 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { gunzipSync, gzipSync } from 'node:zlib'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { ProjectModelSchema, type ProjectModel } from '@erdd/core'
 
-export const SNAPSHOTS_FILE = '.erdd/snapshots.json'
+/**
+ * 스냅샷은 **커밋 대상**이다(`erdd/` 아래). 하나당 파일 하나라 새 스냅샷이 새 blob 하나만 더하고
+ * 기존 blob 을 재사용한다 — 단일 파일이면 만들 때마다 전체가 새 blob 이 되어 저장소가 빠르게 부푼다.
+ *
+ * ⚠️ **`readTree`/`writeTree` 는 이 디렉터리를 보지 않는다** — `TOP_LEVEL_FILES`(5개)와
+ * `erdd/tables/*.yaml` 만 훑기 때문이다. 그래서 모델 파싱에 섞이지 않고 `erdd pull` 의
+ * `writeTree` 가 지우지도 않는다. 다만 `watchProject` 는 `erdd/` 를 재귀 감시하므로 스냅샷을 쓸
+ * 때마다 감시가 깨어난다 — 읽어 봐야 `readTree` 결과가 그대로라 기준선이 움직이지 않아 아무것도
+ * 브로드캐스트되지 않는다(무해).
+ */
+export const SNAPSHOTS_DIR = 'erdd/snapshots'
+export const SNAPSHOTS_INDEX = `${SNAPSHOTS_DIR}/index.yaml`
+
+/** 파일은 있는데 내용을 복원에 쓸 수 없다. 「없다」와 **반드시 구별해서** 알린다. */
+export class SnapshotCorruptError extends Error {}
 
 export type SnapshotRecord = {
   id: string
@@ -14,71 +30,177 @@ export type SnapshotRecord = {
   createdAt: string
 }
 
-export async function readSnapshots(cwd: string): Promise<SnapshotRecord[]> {
-  let raw: string
+export type SnapshotMeta = Omit<SnapshotRecord, 'model'>
+
+/**
+ * 파일명은 **id 뿐이다.** 스냅샷 이름을 넣지 않는 이유 둘.
+ * 1. `unsafeFileName`(core)이 이미 푼 문제 — 경로 구분자·`.`·`..`·빈 문자열 — 를 다시 만난다.
+ * 2. 이 프로젝트의 스냅샷 이름은 **한국어**가 정상인데, macOS 는 파일명을 NFD 로 git 인덱스는
+ *    NFC 로 들고 있어 같은 파일이 플랫폼마다 다른 이름으로 보인다.
+ *
+ * 시각 접두도 붙이지 않는다 — uuidv7 은 앞 48비트가 밀리초 타임스탬프라 **사전순 = 시간순**이다.
+ * 사람이 읽을 이름은 파일명이 아니라 `index.yaml` 이 맡는다.
+ */
+const fileOf = (id: string) => join(SNAPSHOTS_DIR, `${id}.json.gz`)
+const FILE_RE = /^([0-9a-fA-F-]{36})\.json\.gz$/
+
+/** 디렉터리에 실제로 있는 스냅샷 id. **이것이 진실이다.** */
+async function idsOnDisk(cwd: string): Promise<string[]> {
+  let names: string[] = []
   try {
-    raw = await readFile(join(cwd, SNAPSHOTS_FILE), 'utf8')
+    names = await readdir(join(cwd, SNAPSHOTS_DIR))
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
-    throw err
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
   }
-  const parsed: unknown = JSON.parse(raw)
-  if (typeof parsed !== 'object' || parsed === null) return []
-  const items = (parsed as { snapshots?: unknown }).snapshots
-  return Array.isArray(items) ? (items as SnapshotRecord[]) : []
+  return names
+    .map((n) => FILE_RE.exec(n)?.[1])
+    .filter((v): v is string => v !== undefined)
+    .sort()
 }
 
-export async function writeSnapshots(cwd: string, items: SnapshotRecord[]): Promise<void> {
-  const abs = join(cwd, SNAPSHOTS_FILE)
-  await mkdir(dirname(abs), { recursive: true })
-  await writeFile(abs, `${JSON.stringify({ snapshots: items }, null, 2)}\n`, 'utf8')
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/**
+ * 인덱스의 라벨. **깨져 있으면 빈 라벨로 본다** — 목록이 통째로 죽는 것보다 이름을 잃는 편이 낫다
+ * (`readLayout` 의 항목 단위 관대함과 같은 정신이다. 다만 여기서는 편집을 잠그지 않는다 —
+ * 인덱스에는 사용자 콘텐츠가 아니라 **라벨**만 들어 있고, 원본은 `.gz` 안에 그대로 있다).
+ */
+async function readIndex(cwd: string): Promise<Map<string, SnapshotMeta>> {
+  const out = new Map<string, SnapshotMeta>()
+  let raw: string
+  try {
+    raw = await readFile(join(cwd, SNAPSHOTS_INDEX), 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return out
+    throw err
+  }
+  let parsed: unknown
+  try { parsed = parseYaml(raw) } catch { return out }
+  if (!isRecord(parsed)) return out
+  const items = parsed['snapshots']
+  if (!Array.isArray(items)) return out
+  for (const item of items) {
+    if (!isRecord(item) || typeof item['id'] !== 'string' || item['id'] === '') continue
+    out.set(item['id'], {
+      id: item['id'],
+      name: typeof item['name'] === 'string' ? item['name'] : '',
+      description: typeof item['description'] === 'string' ? item['description'] : '',
+      revisionSeq: typeof item['revisionSeq'] === 'number' ? item['revisionSeq'] : 0,
+      createdAt: typeof item['createdAt'] === 'string' ? item['createdAt']
+        : item['createdAt'] instanceof Date ? item['createdAt'].toISOString() : '',
+    })
+  }
+  return out
+}
+
+async function writeIndex(cwd: string, metas: SnapshotMeta[]): Promise<void> {
+  await mkdir(join(cwd, SNAPSHOTS_DIR), { recursive: true })
+  await writeFile(join(cwd, SNAPSHOTS_INDEX), stringifyYaml({ snapshots: metas }), 'utf8')
 }
 
 /**
- * 레코드에서 **복원에 쓸 수 있는 모델**을 꺼낸다. 못 꺼내면 `null`.
+ * **디렉터리 스캔 ∩ 인덱스 라벨.** 라벨이 없으면 id 로 표시한다 — **보이지 않는 스냅샷은 없다.**
  *
- * ⚠️ 반쪽짜리 `model` 을 그대로 쓰면 `{ ...createEmptyModel(), ...s.model }` 정규화가
- * **「유효한 빈 모델」**을 만든다. 그것은 무결성 검사에 걸릴 것이 없어 통과하고, `setModel` 뒤의
- * flush 가 사용자의 `erdd/` 파일을 통째로 비운다 — 오류도 로그도 없는 조용한 데이터 손실이다.
- * `.erdd/snapshots.json` 은 사용자가 손으로 열 수 있는 평범한 파일이라 그런 레코드가 실제로
- * 생길 수 있다(최상위 JSON 모양만 막던 방어를 원소 단위까지 내린다).
- *
- * **손으로 만든 모양 검사로는 부족하다** — `model` 키가 **없는** 것만 막으면 `{}` 는 그대로
- * 통과해 같은 유실이 난다. 그래서 `ProjectModelSchema` 로 판정한다.
- * - `{}` 는 걸린다 — `tables`·`columns` 등 일곱 컬렉션은 기본값이 없는 필수 키다.
- * - **정당하게 비어 있는 스냅샷은 통과한다** — 빈 프로젝트를 스냅샷해도 열 컬렉션 키가 전부 있는
- *   온전한 모델이 저장되기 때문이다.
- *
- * ⚠️ 반환값은 원본이 아니라 **파싱 결과**다. `words`·`terms`·`customFields` 는 `.default({})` 라
- * **누락 컬렉션 보충이 파싱 안에서 일어난다**(옛 스냅샷을 여는 데 필요하다) — 원본을 그대로
- * 넘기면 그 보충이 사라진다.
+ * 인덱스와 디렉터리는 갈릴 수 있다(머지 충돌을 잘못 풀거나 `.gz` 를 손으로 지우거나). 그래서
+ * 어느 방향으로도 조용히 사라지지 않게 규칙을 못 박는다 — 라벨을 잃은 스냅샷도 복원·삭제할 수
+ * 있고, 파일 없는 인덱스 항목이 「있다」고 거짓말하지 않는다.
  */
-export function snapshotModel(rec: SnapshotRecord): ProjectModel | null {
-  const parsed = ProjectModelSchema.safeParse(rec.model)
-  return parsed.success ? parsed.data : null
+export async function listSnapshots(cwd: string): Promise<SnapshotMeta[]> {
+  const ids = await idsOnDisk(cwd)
+  const labels = await readIndex(cwd)
+  return ids.map((id) => labels.get(id) ?? {
+    id, name: `(이름 없음) ${id.slice(0, 8)}`, description: '', revisionSeq: 0, createdAt: '',
+  })
+}
+
+/**
+ * 스냅샷 하나를 꺼낸다. 없으면 `null`, **못 쓰는 내용이면 던진다**(`SnapshotCorruptError`).
+ *
+ * 🔥 판정은 `ProjectModelSchema` 로 한다 — 손으로 만든 모양 검사(`model` 키 유무)로는 `{}` 가
+ * 통과해 `{ ...createEmptyModel(), ...model }` 정규화에서 「유효한 빈 모델」이 되고, 무결성 검사에
+ * 걸릴 것이 없어 통과한 뒤 **복원 후 저장이 사용자의 `erdd/` 를 통째로 비운다.** 이 방어는
+ * 새 포맷에서 오히려 더 필요하다 — 스냅샷이 커밋 대상이 되면서 머지 충돌·부분 체크아웃처럼
+ * 「손으로 열지 않아도 반쪽이 되는」 경로가 생겼고, `.gz` 는 눈으로 손상을 못 본다.
+ *
+ * ⚠️ 반환하는 `model` 은 원본이 아니라 **파싱 결과**다 — `words`·`terms`·`customFields` 는
+ * `.default({})` 라 누락 컬렉션 보충이 파싱 안에서 일어난다(옛 스냅샷을 여는 데 필요하다).
+ */
+export async function readSnapshot(cwd: string, id: string): Promise<SnapshotRecord | null> {
+  let raw: Buffer
+  try {
+    raw = await readFile(join(cwd, fileOf(id)))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(gunzipSync(raw).toString('utf8'))
+  } catch (err) {
+    throw new SnapshotCorruptError((err as Error).message)
+  }
+  const rec = isRecord(parsed) ? parsed : {}
+  const model = ProjectModelSchema.safeParse(rec['model'])
+  if (!model.success) throw new SnapshotCorruptError('모델이 온전하지 않습니다')
+  return {
+    id,
+    name: typeof rec['name'] === 'string' ? rec['name'] : '',
+    description: typeof rec['description'] === 'string' ? rec['description'] : '',
+    revisionSeq: typeof rec['revisionSeq'] === 'number' ? rec['revisionSeq'] : 0,
+    createdAt: typeof rec['createdAt'] === 'string' ? rec['createdAt'] : '',
+    model: model.data,
+  }
+}
+
+/**
+ * ⚠️ **`.gz` 를 먼저 쓰고 인덱스를 나중에 쓴다.** 중간에 죽으면 「라벨 없는 **복원 가능한**
+ * 스냅샷」이 남는다 — 반대 순서면 「가리키는 파일이 없는 항목」이 남는다.
+ *
+ * 같은 내용이면 같은 바이트다(Node 는 gzip 헤더의 mtime 을 0 으로 쓴다 — 실측). 다만 OS 바이트는
+ * 플랫폼차가 있으므로 「다른 머신에서 재생성하면 같은 blob」에 기대지 않는다 — 스냅샷은 한 번 쓰고
+ * 다시 쓰지 않는 파일이라 기댈 자리도 없다.
+ */
+export async function writeSnapshot(cwd: string, rec: SnapshotRecord): Promise<void> {
+  return updateSnapshots(cwd, async () => {
+    await mkdir(join(cwd, SNAPSHOTS_DIR), { recursive: true })
+    await writeFile(join(cwd, fileOf(rec.id)), gzipSync(Buffer.from(JSON.stringify(rec), 'utf8')))
+    const { model: _model, ...meta } = rec
+    const rest = (await listSnapshots(cwd)).filter((m) => m.id !== rec.id)
+    await writeIndex(cwd, [...rest, meta].sort((a, b) => (a.id < b.id ? -1 : 1)))
+  })
+}
+
+/** 없던 것은 `false`. 파일을 먼저 지우고 인덱스를 정리한다. */
+export async function deleteSnapshot(cwd: string, id: string): Promise<boolean> {
+  let removed = false
+  await updateSnapshots(cwd, async () => {
+    try {
+      await rm(join(cwd, fileOf(id)))
+      removed = true
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      return
+    }
+    await writeIndex(cwd, await listSnapshots(cwd))
+  })
+  return removed
 }
 
 /** 모든 읽기-수정-쓰기가 지나는 체인. `FileStore` 의 것과 별개다 — 파일이 다르다. */
 let chain: Promise<unknown> = Promise.resolve()
 
 /**
- * 스냅샷 목록의 읽기-수정-쓰기를 한 줄로 세운다.
+ * 인덱스의 읽기-수정-쓰기를 한 줄로 세운다.
  *
- * 두 요청이 겹치면 한쪽이 읽은 목록 위에 다른 쪽이 덮어써 **스냅샷 하나가 조용히 사라진다.**
- * 로컬은 단일 사용자지만 탭 둘이나 빠른 연속 클릭으로 충분히 만들어진다(모델 쓰기를
- * `FileStore` 에서 직렬화한 것과 같은 이유다).
+ * 두 요청이 겹치면 한쪽이 읽은 목록 위에 다른 쪽이 덮어써 **인덱스 항목 하나가 조용히 사라진다**
+ * (`.gz` 는 남으므로 「라벨 없는 스냅샷」이 되어 목록에는 뜬다 — 그래도 이름을 잃는다).
+ * 로컬은 단일 사용자지만 탭 둘이나 빠른 연속 클릭으로 충분히 만들어진다.
  *
- * `update` 가 던지면 파일은 그대로 두고 그 오류만 호출자에게 간다 — 체인은 이어진다.
- * 프로젝트 하나만 여는 서버라 체인을 cwd 별로 나누지 않는다.
+ * `update` 가 던지면 그 오류만 호출자에게 가고 체인은 이어진다.
  */
-export function updateSnapshots(
-  cwd: string,
-  update: (items: SnapshotRecord[]) => SnapshotRecord[],
-): Promise<void> {
-  const run = async (): Promise<void> => {
-    await writeSnapshots(cwd, update(await readSnapshots(cwd)))
-  }
-  const next = chain.then(run, run)
+function updateSnapshots(_cwd: string, update: () => Promise<void>): Promise<void> {
+  const next = chain.then(update, update)
   chain = next.then(() => undefined, () => undefined)
   return next
 }
