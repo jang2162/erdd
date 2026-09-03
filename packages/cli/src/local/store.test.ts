@@ -5,7 +5,7 @@ import { parse as parseYaml } from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
 import { FileStore, LAYOUT_FILE, LocalStoreError } from './store.js'
-import { hasDraft, readDraft } from './draft.js'
+import { hasDraft, readDraft, writeDraft } from './draft.js'
 
 async function project(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-local-'))
@@ -785,5 +785,99 @@ describe('FileStore.save', () => {
     // 되쓰기가 깨운 감시 이벤트가 이제 도착한다 — 우리가 쓴 것이므로 배너가 뜨면 안 된다.
     await store.load()
     expect(store.external).toBe(false)
+  })
+})
+
+describe('FileStore 상태 전이', () => {
+  /**
+   * 🔥 **`#external` 은 채택으로 내려가야 한다.** 안 내리면 「편집 → 밖의 변경 → 편집을 되돌림
+   * → 감시가 디스크를 채택」한 뒤 디스크·기준선·모델이 완전히 일치하는데도 플래그가 남아,
+   * `save()` 가 **영구히** external 로 거절한다. 배너를 눌러 keep/discard 하기 전까지 저장
+   * 기능 자체가 죽는다.
+   */
+  it('디스크를 채택하면 external 이 내려간다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+    await writeFile(
+      join(dir, 'erdd/tables/MBR.yaml'), MBR.replace('logicalName: 회원', 'logicalName: 멤버'), 'utf8',
+    )
+    await store.load()
+    expect(store.external).toBe(true)
+
+    // 사용자가 편집을 되돌린다(Cmd+Z) → 미저장이 사라진다.
+    await store.mutate([{
+      action: 'update', entity: 'table', entityId: MBR_ID,
+      changes: { physicalName: { from: 'MBR2', to: 'MBR' } },
+    }])
+    await store.flush()
+    expect(store.dirty).toBe(false)
+
+    // 감시가 한 번 더 돌아 디스크를 채택한다 — 고를 것이 남아 있지 않다.
+    await store.load()
+    expect(store.external).toBe(false)
+    expect((await store.save()).ok).toBe(true)
+  })
+
+  /**
+   * 🔥 **드래프트가 파일과 같은 내용일 때 그 파일이 영원히 남으면 안 된다.** 남으면
+   * `hasDraft()` 가 계속 참이라 CLI 는 「미저장」이라 하고 화면은 「저장됨」이라 하며, 무엇보다
+   * `unsaved` 가 참이라 **밖에서 온 변경이 채택되지 않아 「파일 → 화면」 자동 반영이 죽는다.**
+   */
+  it('드래프트가 파일과 같으면 그 파일을 치우고 외부 변경을 계속 반영한다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const first = new FileStore(dir)
+    await first.load()
+    await first.mutate([renameMbr('MBR2')])
+    await first.flush()
+    // 사용자가 파일을 손으로 드래프트와 같게 맞춰 놓은 상황(크래시 뒤 정리 등).
+    expect((await first.save()).ok).toBe(true)
+    await writeDraft(dir, {
+      formatVersion: 1,
+      baseSignature: 'stale',
+      seq: 1,
+      updatedAt: '2026-09-03T00:00:00.000Z',
+      model: first.state.model,
+    })
+
+    const store = new FileStore(dir)
+    await store.load()
+    await store.adoptDraft()
+    expect(store.dirty).toBe(false)
+    // 예약된 flush 가 남은 드래프트 파일을 치운다.
+    await store.flush()
+    expect(await hasDraft(dir)).toBe(false)
+
+    // 그리고 밖에서 온 변경이 정상적으로 채택된다(배너가 뜨지 않는다).
+    await writeFile(join(dir, 'erdd/tables/ORD.yaml'), [
+      'id: 018f6b0e-0000-7000-8000-0000000000aa',
+      'name: ORD', 'logicalName: 주문', 'columns: []', '',
+    ].join('\n'), 'utf8')
+    await store.load()
+    expect(store.external).toBe(false)
+    expect(Object.values(store.state.model.tables).map((t) => t.physicalName).sort())
+      .toEqual(['MBR2', 'ORD'])
+  })
+
+  /** `keep()` 뒤에 「저장할 것이 남았는가」가 실제로 다시 계산돼야 헤더가 거짓말하지 않는다. */
+  it('keep 뒤에 dirty 가 다시 계산된다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+
+    // 밖의 변경이 **화면과 같은 내용**이다 — keep 뒤에는 저장할 것이 없어야 한다.
+    await writeFile(join(dir, 'erdd/tables/MBR2.yaml'), MBR.replace('name: MBR', 'name: MBR2'), 'utf8')
+    await rm(join(dir, 'erdd/tables/MBR.yaml'))
+    await store.load()
+    expect(store.external).toBe(true)
+
+    await store.keep()
+    await store.flush()
+    expect(store.dirty).toBe(false)
   })
 })

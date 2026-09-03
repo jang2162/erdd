@@ -177,7 +177,10 @@ export function createLocalRouter() {
         .mutation(async ({ ctx, input }) => {
           // 저장된 상태만 스냅샷 대상이다(설계 D4) — 미저장 편집으로 버전을 만들 수 없다.
           // 만들 수 있게 두면 「스냅샷이 가리키는 상태가 파일 어디에도 없는」 것이 생긴다.
-          if (ctx.store.dirty) {
+          // ⚠️ `dirty` 가 아니라 `unsaved` 다 — `dirty` 는 디바운스 뒤에야 갱신되므로 편집
+          // 직후 300ms 동안 이 가드가 샌다(그 창에서 만든 스냅샷은 파일 어디에도 없는 상태를
+          // 가리킨다).
+          if (ctx.store.unsaved) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: '저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 스냅샷을 만드세요',

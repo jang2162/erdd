@@ -149,8 +149,12 @@ describe('로컬 라우터', () => {
   })
 
   it('스냅샷을 만들고 목록·조회·복원·삭제한다', async () => {
-    const call = await caller()
+    const c = await ctx()
+    const call = createLocalRouter().createCaller(c)
     await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
+    // 스냅샷은 **저장된 상태**만 담는다(설계 D4) — 편집 뒤에는 저장을 거쳐야 만들 수 있다.
+    await c.store.flush()
+    expect((await c.store.save()).ok).toBe(true)
     const { id } = await call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' })
 
     const list = await call.snapshot.list({ projectId: LOCAL_PROJECT_ID })
@@ -178,6 +182,7 @@ describe('로컬 라우터', () => {
    * 탭 둘이나 빠른 연속 클릭으로 충분히 만들어진다.
    */
   it('동시에 만든 스냅샷 두 개가 둘 다 남는다', async () => {
+    // 편집이 없으므로 미저장이 아니다 — 곧바로 만들 수 있다.
     const call = await caller()
     await Promise.all([
       call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '가' }),
@@ -319,6 +324,22 @@ describe('미저장 상태의 스냅샷', () => {
     await expect(call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' }))
       .rejects.toMatchObject({ code: 'BAD_REQUEST' })
     expect((await call.snapshot.list({ projectId: LOCAL_PROJECT_ID })).items).toEqual([])
+  })
+
+  /**
+   * 🔥 **디바운스 창에서 새면 안 된다.** `#dirty` 는 `flush()` 에서만 갱신되므로 편집 직후
+   * 300ms 동안 거짓이다 — 가드가 `dirty` 만 보면 그 창에서 만든 스냅샷이 **파일 어디에도 없는
+   * 상태**를 가리키게 된다(주석이 막겠다고 적은 바로 그것이다).
+   */
+  it('flush 전(디바운스 창)에도 거절한다', async () => {
+    const c = await ctx()
+    const call = createLocalRouter().createCaller(c)
+    await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
+    // flush 를 부르지 않는다 — dirty 는 아직 false 다.
+    expect(c.store.dirty).toBe(false)
+
+    await expect(call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' }))
+      .rejects.toMatchObject({ code: 'BAD_REQUEST' })
   })
 
   /** 대조군 — 저장하면 막히던 것이 풀린다(「전부 거절」로 과하게 조인 것이 아니다). */

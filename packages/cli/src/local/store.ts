@@ -200,6 +200,13 @@ export class FileStore {
    */
   get dirty(): boolean { return this.#dirty }
 
+  /**
+   * 저장하지 않은 것이 **조금이라도** 있는가. `#dirty` 는 디바운스된 `flush()` 에서만 갱신되므로
+   * 편집 직후 300ms 동안은 거짓이다 — 「미저장이면 막는다」류의 **가드는 이것을 써야** 그 창에서
+   * 새지 않는다.
+   */
+  get unsaved(): boolean { return this.#dirty || this.#draftPending }
+
   /** 디스크가 밖에서 바뀌었는데 사용자가 아직 「유지/다시 읽기」를 고르지 않았는가. */
   get external(): boolean { return this.#external }
 
@@ -347,9 +354,16 @@ export class FileStore {
         // 미저장 편집이 있는데 밖이 바뀌었다 — **채택하지 않고** 사용자가 고르게 한다
         // (설계 D2, 자동 병합 없음). 모델도 기준선도 그대로 두고 플래그만 세운다.
         this.#external = true
-      } else if (changed) {
-        // 미저장이 없으니 디스크가 진실이다 — 모델과 기준선을 함께 옮긴다.
-        this.#base = { ...baseOf(outcome), signature }
+      } else {
+        if (changed) {
+          // 미저장이 없으니 디스크가 진실이다 — 모델과 기준선을 함께 옮긴다.
+          this.#base = { ...baseOf(outcome), signature }
+        }
+        // ⚠️ **여기서 반드시 내린다.** 디스크와 기준선이 일치하므로(또는 방금 맞췄으므로)
+        // 사용자가 고를 것이 남아 있지 않다. 안 내리면 「편집 → 밖의 변경 → 편집을 되돌림 →
+        // 감시가 디스크를 채택」한 뒤에도 플래그가 남아 `save()` 가 **영구히** external 로
+        // 거절한다 — 배너를 눌러 keep/discard 하기 전까지 저장 기능 자체가 죽는다.
+        this.#external = false
       }
 
       // ⚠️ **`changed` 가 거짓이어도 여기까지 와야 한다.** 깨졌던 파일이 **원래 내용 그대로**
@@ -415,13 +429,24 @@ export class FileStore {
   #commit(model: ProjectModel): { seq: number } {
     const seq = this.#state.seq + 1
     this.#state = { ok: true, model, seq }
+    this.#scheduleFlush()
+    return { seq }
+  }
+
+  /**
+   * 드래프트 쓰기를 예약한다. **`#draftPending` 을 세우는 모든 자리가 이것을 쓴다** — 타이머
+   * 없이 플래그만 세우면 다음 편집·저장·종료 전까지 그 상태가 그대로 남아, `hasDraft()` 가
+   * 참인 채로 CLI 는 「미저장」이라 하고 화면은 「저장됨」이라 하며, 그 사이 밖에서 온 변경이
+   * `unsaved` 로 읽혀 **자동 반영이 죽는다.**
+   *
+   * 드래그 한 번이 초당 수십 건의 mutate 를 낸다 — 매번 드래프트를 쓰면 디스크가 요동치므로
+   * 디바운스한다. 타이머發 호출은 아무도 반환값을 보지 않으므로 실패를 삼킨다(`#draftPending`
+   * 이 참으로 남아 다음 편집이나 명시적 `flush()` 가 재시도한다).
+   */
+  #scheduleFlush(): void {
     this.#draftPending = true
     if (this.#timer !== null) clearTimeout(this.#timer)
-    // 드래그 한 번이 초당 수십 건의 mutate 를 낸다 — 매번 드래프트를 쓰면 디스크가 요동친다.
-    // 타이머發 호출은 아무도 반환값을 보지 않으므로 실패를 삼킨다 — #draftPending 은 flush() 가
-    // 실패 시 참으로 남기므로 다음 편집이나 명시적 flush() 가 재시도한다.
     this.#timer = setTimeout(() => { this.flush().catch(() => {}) }, WRITE_DEBOUNCE_MS)
-    return { seq }
   }
 
   /**
@@ -572,8 +597,9 @@ export class FileStore {
         modelSignature: modelSignatureOf(applyLayout(result.model, layout)),
       }
       this.#external = false
-      // 기준선이 움직였으므로 「저장할 것이 남았는가」를 다시 계산해야 한다.
-      this.#draftPending = true
+      // 기준선이 움직였으므로 「저장할 것이 남았는가」를 다시 계산해야 한다. **예약까지 해야**
+      // 그 계산이 실제로 돈다 — 플래그만 세우면 헤더가 옛 `dirty` 를 계속 말한다.
+      this.#scheduleFlush()
     })
   }
 
@@ -586,13 +612,17 @@ export class FileStore {
    *
    * 손상 드래프트는 `readDraft` 가 이미 격리했다 — 여기서는 조용히 넘어간다(파일만 열린다).
    */
-  async adoptDraft(): Promise<void> {
+  async adoptDraft(): Promise<{ corruptBackupPath: string } | null> {
     const read = await readDraft(this.#cwd)
-    if (read.kind !== 'ok') return
+    // ⚠️ 손상 드래프트를 격리하고 **말없이 넘어가면 조용한 손실과 구별되지 않는다.** 사용자는
+    // 한 시간치 작업이 날아간 줄 아는데 실제로는 백업에 원본이 있다 — 그 사실이 닿아야 한다.
+    if (read.kind === 'corrupt') return { corruptBackupPath: read.backupPath }
+    if (read.kind !== 'ok') return null
     await this.#serialize(async () => {
       if (!this.#state.ok) { this.#pendingDraft = read.draft; return }
       this.#applyDraft(read.draft)
     })
+    return null
   }
 
   /** 로드가 성공한 순간 밀린 드래프트를 얹는다. 이미 `#serialize` 안이다. */
@@ -605,8 +635,11 @@ export class FileStore {
 
   #applyDraft(draft: Draft): void {
     if (modelSignatureOf(draft.model) === this.#base.modelSignature) {
-      // 드래프트 내용이 파일과 같다 — 얹을 것도 알릴 것도 없다. 파일 삭제는 다음 flush 가 한다.
-      this.#draftPending = true
+      // 드래프트 내용이 파일과 같다 — 얹을 것도 알릴 것도 없다. 남은 파일은 예약된 flush 가
+      // 지운다. ⚠️ **예약 없이 플래그만 세우면** 그 파일이 영원히 남아 `hasDraft()` 가 계속
+      // 참이고(CLI 가 미저장이라 거짓말한다), `unsaved` 가 참이라 밖에서 온 변경이 채택되지
+      // 않아 「파일 → 화면」 자동 반영이 죽는다.
+      this.#scheduleFlush()
       return
     }
     this.#dirty = true

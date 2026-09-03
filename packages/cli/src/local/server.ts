@@ -89,7 +89,10 @@ export async function startLocalServer(opts: {
   await store.load()
   // 미저장 편집이 있으면 그것을 얹어 연다(설계 D1) — 첫 load 가 실패했으면 들고 있다가
   // 파일이 고쳐지는 순간 얹힌다.
-  await store.adoptDraft()
+  const corrupt = await store.adoptDraft()
+  if (corrupt !== null) {
+    note(`⚠️ 저장하지 않은 편집을 읽지 못해 파일 상태로 열었습니다. 원본은 ${corrupt.corruptBackupPath} 에 있습니다`)
+  }
 
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024 * 1024 })
   const router = createLocalRouter()
