@@ -161,7 +161,8 @@ describe.skipIf(!url)('project', () => {
 
   it('logicalSeparator 키가 없는 기존 행에 기본값을 주입해 내려준다', async () => {
     const projectId = await createProject()
-    // 마이그레이션 이전 모양으로 되돌린다(DB 컬럼 기본값은 여전히 이 3키다).
+    // 마이그레이션 이전 모양으로 되돌린다. ⚠️ DB 컬럼 기본값은 이 3키가 아니다 — 0014 가
+    // 코드의 DEFAULT_NAMING_RULES(6키)로 맞췄다. 이 테스트는 값을 명시적으로 .set 하므로 무관하다.
     await app.db!.update(projects)
       .set({ namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 } as never })
       .where(eq(projects.id, projectId))
