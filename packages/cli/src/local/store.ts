@@ -176,6 +176,16 @@ export class FileStore {
   /** 아직 얹지 못한 드래프트(첫 `load()` 가 실패했을 때). 로드가 성공하는 순간 얹는다. */
   #pendingDraft: Draft | null = null
 
+  /**
+   * 미저장 여부가 **바뀔 때** 부른다. 서버가 SSE `status` 를 내보내는 자리다.
+   *
+   * 편집마다 부르지 않고 **전이에서만** 부른다 — 드래그 한 번이 초당 수십 건의 mutate 를 내는데
+   * 그때마다 내보내면 SSE 가 요동친다. `flush()` 가 디바운스된 자리라 여기가 자연스럽다.
+   */
+  #onStatusChange: (() => void) | null = null
+
+  onStatusChange(fn: () => void): void { this.#onStatusChange = fn }
+
   constructor(cwd: string) {
     this.#cwd = cwd
   }
@@ -192,6 +202,14 @@ export class FileStore {
 
   /** 디스크가 밖에서 바뀌었는데 사용자가 아직 「유지/다시 읽기」를 고르지 않았는가. */
   get external(): boolean { return this.#external }
+
+  /**
+   * 지금 아는 디스크 상태의 서명. **이 값이 움직였다 = 디스크 내용을 실제로 채택했다.**
+   *
+   * 서버가 「브라우저에 reload 를 보낼까」를 판정하는 근거다. 메모리 모델의 변화로 판정하면
+   * **내 편집도 「바뀌었다」가 되어** 자기 편집을 되돌려 받아 드래그가 튄다.
+   */
+  get baseSignature(): string { return this.#base.signature }
 
   /**
    * 파일에서 모델을 다시 읽는다. **실패해도 마지막 정상 모델을 버리지 않는다** — 호출자가
@@ -439,7 +457,9 @@ export class FileStore {
       }
       // 쓰기가 성공한 뒤에만 내린다 — 실패하면 참으로 남아 다음 flush 가 재시도한다.
       this.#draftPending = false
+      const changed = this.#dirty !== dirty
       this.#dirty = dirty
+      if (changed) this.#onStatusChange?.()
     })
   }
 

@@ -1,8 +1,11 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import {
+  LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH,
+} from '@erdd/core'
 import { startLocalServer, type LocalServer } from './server.js'
 import { LOCAL_PROJECT_ID } from '../config.js'
 
@@ -54,6 +57,43 @@ function rawGet(url: string, host: string): Promise<{ status: number; body: stri
     req.end()
   })
 }
+
+/** `rawGet` 과 같은 이유로 node:http 를 쓴다 — fetch 는 Host 를 지운다. */
+function rawPost(url: string, host: string): Promise<{ status: number }> {
+  const u = new URL(url)
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: u.hostname, port: u.port, path: u.pathname, method: 'POST', headers: { Host: host } },
+      (res) => { res.resume(); res.on('end', () => { resolve({ status: res.statusCode ?? 0 }) }) },
+    )
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+/** 본문 없는 POST — 드래프트는 서버가 들고 있다. */
+async function post(url: string, path: string): Promise<unknown> {
+  const res = await fetch(`${url}${path}`, { method: 'POST' })
+  return res.json()
+}
+
+/** tRPC 로 op 을 보낸다. `entityId` 는 UUID 여야 `parseOps` 를 통과한다. */
+async function mutate(url: string, ops: unknown[]): Promise<void> {
+  await fetch(`${url}/trpc/model.mutate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ projectId: LOCAL_PROJECT_ID, ops }),
+  })
+}
+
+const T1 = '018f6b0e-0000-7000-8000-000000000001'
+const createMbr = () => ({
+  action: 'create', entity: 'table', entityId: T1,
+  data: {
+    id: T1, logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null,
+    position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+  },
+})
 
 describe('startLocalServer', () => {
   it('tRPC 로 모델을 읽을 수 있다', async () => {
@@ -178,23 +218,32 @@ describe('startLocalServer', () => {
     await reader.cancel()
   }, 10_000)
 
-  it('자기 쓰기는 SSE 로 알리지 않는다', async () => {
+  /**
+   * ⚠️ **계약이 좁아졌다.** 옛 계약은 「자기 편집은 SSE 를 아예 흔들지 않는다」였는데, 이제
+   * 편집이 미저장 상태를 만들면 `status` 가 나간다(다른 탭의 표시를 맞춰야 한다). 지켜야 할
+   * 것은 **`reload` 가 나가지 않는 것**이다 — `reload` 만 모델 재조회를 일으켜 드래그를 튀게
+   * 한다. `status` 는 모델을 나르지 않는다.
+   */
+  it('자기 편집은 reload 를 내지 않는다 (status 는 낸다)', async () => {
     const cwd = await project()
     const s = await start(cwd)
     const res = await fetch(`${s.url}/local/events`)
     const reader = res.body!.getReader()
 
-    // 접속 시 스냅샷 1건을 먼저 소비한다.
-    const initial = await reader.read()
-    expect(new TextDecoder().decode(initial.value)).toContain('reload')
-
-    let got = ''
+    const messages: string[] = []
     void (async () => {
-      const { value } = await reader.read()
-      got = new TextDecoder().decode(value ?? new Uint8Array())
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        messages.push(new TextDecoder().decode(value))
+      }
     })()
 
-    await sleep(100)
+    // 버퍼를 비우지 않고 **reload 의 등장 횟수**를 센다 — 청크가 합쳐지거나 늦게 도착해도
+    // 흔들리지 않고, 접속 스냅샷이 두 번 나가는 회귀도 함께 드러난다.
+    const reloads = () => messages.join('').split('"reload"').length - 1
+    for (let i = 0; i < 50 && reloads() === 0; i += 1) await sleep(20)
+    expect(reloads()).toBe(1)
     // 라우터를 통한 편집 = 자기 쓰기. 디바운스(300ms) + 감시 디바운스를 넉넉히 기다린다.
     const url = `${s.url}/trpc/model.mutate`
     await fetch(url, {
@@ -212,7 +261,10 @@ describe('startLocalServer', () => {
       }),
     })
     await sleep(1500)
-    expect(got).toBe('')
+    // 미저장 표시는 나가야 한다 — 다른 탭이 그것을 알 다른 경로가 없다.
+    expect(messages.join('')).toContain('"dirty":true')
+    // 그러나 reload 는 **늘지 않는다** — 자기 편집으로 화면을 다시 그릴 이유가 없다.
+    expect(reloads()).toBe(1)
     await reader.cancel()
   }, 10_000)
 
@@ -294,20 +346,143 @@ describe('startLocalServer', () => {
       }
     })()
 
-    // 접속 시 스냅샷 1건.
+    // 접속 시 스냅샷(reload + status). 청크가 합쳐질 수 있으므로 개수가 아니라
+    // **reload 의 등장 횟수**를 센다.
     await sleep(100)
-    expect(messages.length).toBe(1)
+    const reloads = () => messages.join('').split('"reload"').length - 1
+    expect(reloads()).toBe(1)
 
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
     await sleep(500)
-    expect(messages.length).toBe(2)
+    expect(reloads()).toBe(2)
 
     // 같은 내용을 그대로 다시 쓴다 — 모델은 바뀌지 않는다. 감시는 다시 발화해도(플랫폼에
     // 따라 다름) 필터가 걸러 reload 가 늘지 않아야 한다.
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
     await sleep(500)
-    expect(messages.length).toBe(2)
+    expect(reloads()).toBe(2)
 
     await reader.cancel()
+  }, 10_000)
+})
+
+describe('로컬 저장 라우트', () => {
+  it('편집 뒤 저장하면 파일이 생기고, 저장 전에는 없다', async () => {
+    const cwd = await project()
+    const s = await start(cwd)
+
+    await mutate(s.url, [createMbr()])
+    await sleep(500)                              // 드래프트 디바운스 통과
+    // 저장 전 — erdd/tables 가 비어 있다.
+    expect(await readdir(join(cwd, 'erdd/tables'))).toEqual([])
+
+    expect(await post(s.url, LOCAL_SAVE_PATH)).toMatchObject({ ok: true })
+    expect(await readdir(join(cwd, 'erdd/tables'))).toEqual(['MBR.yaml'])
+  }, 10_000)
+
+  it('저장은 status 를 SSE 로 알린다 — 다른 탭의 표시가 함께 내려간다', async () => {
+    const cwd = await project()
+    const s = await start(cwd)
+    const res = await fetch(`${s.url}${LOCAL_EVENTS_PATH}`)
+    const reader = res.body!.getReader()
+    const messages: string[] = []
+    void (async () => {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        messages.push(new TextDecoder().decode(value))
+      }
+    })()
+
+    await mutate(s.url, [createMbr()])
+    for (let i = 0; i < 50 && !messages.join('').includes('"dirty":true'); i += 1) await sleep(20)
+    expect(messages.join('')).toContain('"dirty":true')
+
+    await post(s.url, LOCAL_SAVE_PATH)
+    for (let i = 0; i < 50 && !messages.join('').includes('"dirty":false'); i += 1) await sleep(20)
+    expect(messages.join('')).toContain('"dirty":false')
+    await reader.cancel()
+  }, 10_000)
+
+  it('밖에서 파일이 바뀌면 저장이 거절되고, discard 가 그것을 푼다', async () => {
+    const cwd = await project()
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
+    const s = await start(cwd)
+
+    await mutate(s.url, [{
+      action: 'update', entity: 'table', entityId: T1,
+      changes: { logicalName: { from: '회원', to: '멤버' } },
+    }])
+    await sleep(500)
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE.replace('회원', '고객'), 'utf8')
+    await sleep(500)
+
+    expect(await post(s.url, LOCAL_SAVE_PATH)).toMatchObject({ ok: false, reason: 'external' })
+    expect(await post(s.url, LOCAL_DISCARD_PATH)).toMatchObject({ ok: true })
+    expect(await post(s.url, LOCAL_SAVE_PATH)).toMatchObject({ ok: true })
+  }, 10_000)
+
+  it('keep 은 external 을 풀고 저장을 통과시킨다', async () => {
+    const cwd = await project()
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
+    const s = await start(cwd)
+
+    await mutate(s.url, [{
+      action: 'update', entity: 'table', entityId: T1,
+      changes: { logicalName: { from: '회원', to: '멤버' } },
+    }])
+    await sleep(500)
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE.replace('회원', '고객'), 'utf8')
+    await sleep(500)
+    expect(await post(s.url, LOCAL_SAVE_PATH)).toMatchObject({ ok: false })
+
+    expect(await post(s.url, LOCAL_KEEP_PATH)).toMatchObject({ ok: true })
+    expect(await post(s.url, LOCAL_SAVE_PATH)).toMatchObject({ ok: true })
+    // 「내 편집 유지」를 골랐으므로 화면의 내용이 파일이 된다.
+    expect(await readFile(join(cwd, 'erdd/tables/MBR.yaml'), 'utf8')).toContain('멤버')
+  }, 10_000)
+
+  /**
+   * ⚠️ **POST 여야 한다.** GET 이면 공격자 페이지의 `<img src>` 한 줄로 저장이 불린다.
+   * Host 검사(onRequest 훅)는 라우트 전체에 걸리므로 새 라우트도 자동으로 그 아래 들어온다.
+   */
+  it('낯선 Host 로는 저장에 닿지 않는다', async () => {
+    const s = await start(await project())
+    expect((await rawPost(`${s.url}${LOCAL_SAVE_PATH}`, 'evil.example.com')).status).toBe(403)
+  }, 10_000)
+
+  it('접속하자마자 현재 status 를 한 번 받는다', async () => {
+    const cwd = await project()
+    const s = await start(cwd)
+    await mutate(s.url, [createMbr()])
+    await sleep(500)
+
+    // 늦게 붙은 탭도 미저장 상태를 즉시 안다.
+    const res = await fetch(`${s.url}${LOCAL_EVENTS_PATH}`)
+    const reader = res.body!.getReader()
+    let seen = ''
+    for (let i = 0; i < 3 && !seen.includes('"dirty":true'); i += 1) {
+      const { value } = await reader.read()
+      seen += new TextDecoder().decode(value ?? new Uint8Array())
+    }
+    expect(seen).toContain('"dirty":true')
+    await reader.cancel()
+  }, 10_000)
+
+  it('미저장 편집은 serve 를 다시 띄워도 살아 있다', async () => {
+    const cwd = await project()
+    const s = await start(cwd)
+    await mutate(s.url, [createMbr()])
+    await sleep(500)
+    await s.close()
+
+    const again = await start(cwd)
+    const url = `${again.url}/trpc/model.get?input=${encodeURIComponent(JSON.stringify({ projectId: LOCAL_PROJECT_ID }))}`
+    const body = await (await fetch(url)).json() as {
+      result: { data: { model: { tables: Record<string, { physicalName: string }> } } }
+    }
+    expect(Object.values(body.result.data.model.tables)[0]!.physicalName).toBe('MBR')
+    // 파일에는 여전히 없다 — 저장하지 않았으므로.
+    expect(await readdir(join(cwd, 'erdd/tables'))).toEqual([])
   }, 10_000)
 })

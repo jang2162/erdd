@@ -4,18 +4,24 @@ import path from 'node:path'
 import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
 import { fastifyTRPCPlugin, type CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
+import {
+  LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, type LocalEvent,
+} from '@erdd/core'
 import { LOCAL_PROJECT_ID, readConfig } from '../config.js'
 import { FileStore, type StoreState } from './store.js'
 import { createLocalRouter, type LocalContext } from './router.js'
 import { watchProject } from './watch.js'
 
-/** load() 결과가 실제로 달라졌는지 비교하는 서명. ok 상태의 판정 근거(model/failures)만 담는다. */
-const stateSignature = (state: StoreState): string =>
-  state.ok ? JSON.stringify(state.model) : JSON.stringify(state.failures)
-
 /** SSE 로 내보낼 페이로드. 정상이면 reload, 파일이 깨져 편집이 잠겼으면 blocked. */
-const eventPayload = (state: StoreState) =>
-  state.ok ? { type: 'reload' as const } : { type: 'blocked' as const, failures: state.failures }
+const eventPayload = (state: StoreState): LocalEvent =>
+  state.ok ? { type: 'reload' } : { type: 'blocked', failures: state.failures }
+
+/**
+ * 미저장·외부 변경 표시. **모델을 나르지 않는다** — 드래그 중에 도착해도 화면이 튀지 않는다.
+ * 이것이 다른 탭의 표시까지 함께 맞춰 주는 유일한 경로다.
+ */
+const statusPayload = (store: FileStore): LocalEvent =>
+  ({ type: 'status', dirty: store.dirty, external: store.external })
 
 export type LocalServer = { url: string; close: () => Promise<void> }
 
@@ -65,6 +71,9 @@ export async function startLocalServer(opts: {
   const projectId = config.projectId ?? LOCAL_PROJECT_ID
   const store = new FileStore(cwd)
   await store.load()
+  // 미저장 편집이 있으면 그것을 얹어 연다(설계 D1) — 첫 load 가 실패했으면 들고 있다가
+  // 파일이 고쳐지는 순간 얹힌다.
+  await store.adoptDraft()
 
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024 * 1024 })
   const router = createLocalRouter()
@@ -98,13 +107,26 @@ export async function startLocalServer(opts: {
     },
   })
 
+  // fs.watch 등록 직전에 생긴 변경(예: 프로젝트 디렉터리 생성)을 macOS 재귀 감시가 등록
+  // 직후 뒤늦게 한 번 더 흘려보내는 경우가 있다 — 그 이벤트로 다시 읽어도 디스크는 이미 알던
+  // 것과 같다. 실제로 달라진 것이 없으면 거른다(안 거르면 아무 이유 없이 브라우저가 리로드된다).
+  //
+  // ⚠️ **메모리 모델이 아니라 기준선(= 채택한 디스크)의 서명을 본다.** 모델로 판정하면 내
+  // 편집도 「바뀌었다」가 되어 자기 편집을 되돌려 받고 드래그가 튄다. 기준선은 `#commitLoad` 가
+  // **디스크를 실제로 채택했을 때만** 움직인다.
+  let lastBaseSignature = store.baseSignature
+
   // ── SSE: 외부 파일 변경을 브라우저에 알린다 ──
   const clients = new Set<{ write: (s: string) => void; end: () => void }>()
-  const broadcast = () => {
-    const payload = eventPayload(store.state)
+  const send = (payload: LocalEvent) => {
     for (const c of clients) c.write(`data: ${JSON.stringify(payload)}\n\n`)
   }
-  app.get('/local/events', (req, reply) => {
+  const broadcast = () => { send(eventPayload(store.state)) }
+  const broadcastStatus = () => { send(statusPayload(store)) }
+  // 편집이 미저장 상태를 만들거나 없앨 때 다른 탭의 표시도 함께 맞춘다. **모델을 나르지
+  // 않으므로** 편집 중인 탭이 이것을 받아도 화면이 튀지 않는다(reload 와 다른 점이다).
+  store.onStatusChange(broadcastStatus)
+  app.get(LOCAL_EVENTS_PATH, (req, reply) => {
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
@@ -119,12 +141,41 @@ export async function startLocalServer(opts: {
     // 접속 시점의 현재 상태를 한 번 보낸다 — 이미 blocked 인 상태로 늦게 접속한 탭도
     // 재저장 없이 즉시 옳은 상태가 된다(그 전에는 알 다른 경로가 없다).
     client.write(`data: ${JSON.stringify(eventPayload(store.state))}\n\n`)
+    // 미저장·충돌 상태도 함께 보낸다 — 늦게 붙은 탭이 그것을 알 다른 경로가 없다.
+    client.write(`data: ${JSON.stringify(statusPayload(store))}\n\n`)
   })
 
-  // fs.watch 등록 직전에 생긴 변경(예: 프로젝트 디렉터리 생성)을 macOS 재귀 감시가 등록
-  // 직후 뒤늦게 한 번 더 흘려보내는 경우가 있다 — 그 이벤트로 다시 읽어도 모델은 이미 알던
-  // 것과 같다. 실제로 달라진 것이 없으면 거른다(안 거르면 아무 이유 없이 브라우저가 리로드된다).
-  let lastModelSignature = stateSignature(store.state)
+  /**
+   * ── 로컬 전용 라우트 ──
+   * tRPC 밖인 이유는 `local-protocol.ts` 의 주석과 같다 — 서버 라우터에 없는 프로시저를 만들면
+   * `router.test.ts` 의 `LocalOnly` 잠금이 깨지고, 웹은 `AppRouter` 타입으로 클라이언트를 만들어
+   * 그 이름을 부를 수조차 없다.
+   *
+   * ⚠️ **전부 POST 다.** GET 이면 공격자 페이지의 `<img src>` 한 줄로 저장·버리기가 불린다.
+   * Host 검사(onRequest 훅)는 라우트 전체에 걸리므로 여기도 자동으로 그 아래 들어온다.
+   *
+   * **한자리에 모아 둔다** — 다음 사이클의 `POST /local/apply`(에이전트의 op 주입)가 여기 붙는다.
+   */
+  app.post(LOCAL_SAVE_PATH, async () => {
+    const result = await store.save()
+    // 모델은 그대로다 — reload 를 보내면 브라우저가 헛되이 다시 읽는다. 표시만 맞춘다.
+    broadcastStatus()
+    return result
+  })
+  app.post(LOCAL_DISCARD_PATH, async () => {
+    await store.discard()
+    // 모델이 디스크로 되돌아갔다 — 이때는 브라우저가 다시 읽어야 한다.
+    lastBaseSignature = store.baseSignature
+    broadcast()
+    broadcastStatus()
+    return { ok: true as const }
+  })
+  app.post(LOCAL_KEEP_PATH, async () => {
+    await store.keep()
+    broadcastStatus()
+    return { ok: true as const }
+  })
+
   let configSignature = JSON.stringify(config)
 
   const watcher = watchProject(cwd, () => {
@@ -149,9 +200,8 @@ export async function startLocalServer(opts: {
 
       await store.load()
       const state = store.state
-      const modelSignature = stateSignature(state)
-      const modelChanged = modelSignature !== lastModelSignature
-      lastModelSignature = modelSignature
+      const adopted = store.baseSignature !== lastBaseSignature
+      lastBaseSignature = store.baseSignature
 
       // blocked(파일 손상)는 위의 "달라진 것 없으면 거른다" 필터를 타지 않는다 — 그 필터는
       // 기동 창의 메아리만 막으려던 것이지, 이미 잠긴 상태의 재발화까지 삼키면 그 사이
@@ -160,7 +210,11 @@ export async function startLocalServer(opts: {
       // config 만 바뀐 경우도 모델 서명은 그대로라 위 modelChanged 필터에 걸리지 않는다 —
       // 자기 쓰기 판정과 무관하게(그 판정은 모델/레이아웃 서명만 본다) 여기서 직접 내보낸다.
       if (configChanged) { broadcast(); return }
-      if (modelChanged) broadcast()
+      // 미저장 편집이 있는데 밖이 바뀌었다 — 모델을 채택하지 않았으므로 reload 가 아니라
+      // 배너를 띄우는 status 다(설계 D2).
+      if (store.external) { broadcastStatus(); return }
+      // 디스크를 실제로 채택했을 때만 브라우저가 다시 읽는다.
+      if (adopted) broadcast()
     })().catch((err) => { console.warn('[local server] 감시 처리 중 오류:', err) })
   })
 
