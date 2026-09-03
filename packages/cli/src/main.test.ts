@@ -102,4 +102,35 @@ describe('main', () => {
     // -m은 config가 없어 NO_CONFIG로 끝나지만, 플래그 파싱이 깨지면 USAGE(2)가 된다.
     expect(await main(['push', '-m', '요약', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
   })
+  it('export 가 명령으로 배선돼 있다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['export', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+  })
+
+  it('export 의 --format·--dialect 는 값이 틀리면 config 를 읽기 전에 USAGE 로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    for (const argv of [
+      ['export', '--format', 'xml', '--json'],
+      ['export', '--dialect', 'nope', '--json'],
+      ['export', '--format', '--json'],       // 값이 빠졌다
+      ['export', '--dialect', '--json'],
+    ]) {
+      out.length = 0
+      expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+  })
+
+  it('export -o 에 값이 빠지면 조용히 stdout 으로 떨어지지 않고 USAGE 로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['export', '-o', '--json'], '/tmp/erdd-none')).toBe(2)
+    expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+  })
 })

@@ -3,7 +3,9 @@ import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
+import { DIALECTS, type Dialect } from '@erdd/core'
 import { diff } from './commands/diff.js'
+import { exportCommand, type ExportFormat } from './commands/export.js'
 import { init } from './commands/init.js'
 import { pull } from './commands/pull.js'
 import { push } from './commands/push.js'
@@ -22,6 +24,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   diff         로컬 파일과 서버의 차이를 미리 본다
   status       연결 정보와 로컬 변경을 보여준다
   validate     서버 없이 파일을 검사한다
+  export       로컬 파일을 DDL·DBML로 내보낸다(stdout 또는 -o 파일)
   serve        로컬 서버를 띄워 브라우저에서 편집한다(서버 연결 불필요)
   skill install 에이전트 스킬 문서를 프로젝트에 설치한다
 
@@ -36,6 +39,9 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --token <token>       init 전용
   --project <id>        init 전용
   --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
+  --format <ddl|dbml>   export 전용 — 기본 ddl
+  --dialect <방언>       export 전용 — 기본 erdd.config.yaml의 dialects[0]
+  -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
   --port <번호>          serve 전용 — 기본 4300
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
   --help                이 도움말`
@@ -123,6 +129,33 @@ export async function main(argv: string[], cwd: string): Promise<number> {
     case 'diff': return diff(ctx)
     case 'status': return status(ctx)
     case 'validate': return validate(ctx)
+    case 'export': {
+      // --port와 같은 이유로 argv.includes를 함께 본다 — flagValue의 undefined는 "플래그를
+      // 안 줬다"와 "값이 빠졌다"를 구분하지 못해서, 값을 빠뜨린 --format이 조용히 기본값
+      // ddl로 흘러가면 사용자는 자기가 적은 것이 무시된 줄 모른다.
+      let format: ExportFormat = 'ddl'
+      if (argv.includes('--format')) {
+        const raw = flagValue(argv, 'format')
+        if (raw !== 'ddl' && raw !== 'dbml') {
+          return usageError(json, `--format 값이 올바르지 않습니다: ${raw ?? '(값 없음)'} — ddl 또는 dbml`)
+        }
+        format = raw
+      }
+      let dialect: Dialect | undefined
+      if (argv.includes('--dialect')) {
+        const raw = flagValue(argv, 'dialect')
+        if (raw === undefined || !(DIALECTS as readonly string[]).includes(raw)) {
+          return usageError(json, `--dialect 값이 올바르지 않습니다: ${raw ?? '(값 없음)'} — ${DIALECTS.join(' | ')}`)
+        }
+        dialect = raw as Dialect
+      }
+      let out: string | undefined
+      if (argv.includes('-o')) {
+        out = shortFlagValue(argv, 'o')
+        if (out === undefined) return usageError(json, '-o 값이 올바르지 않습니다: (값 없음)')
+      }
+      return exportCommand({ ...ctx, format, dialect, out })
+    }
     case 'serve': {
       // flagValue는 값이 빠지면(다음 토큰이 없거나 다른 --플래그면) undefined를 돌려주는데,
       // 이는 "플래그를 아예 안 줬다"와 구분되지 않는다 — argv.includes로 존재 여부를 따로
