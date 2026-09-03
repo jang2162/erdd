@@ -3,7 +3,7 @@ import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
-import { DIALECTS, type Dialect } from '@erdd/core'
+import { DIALECTS, type Dialect, type NamingRules } from '@erdd/core'
 import { diff } from './commands/diff.js'
 import { exportCommand, type ExportFormat } from './commands/export.js'
 import { importCommand } from './commands/import.js'
@@ -41,8 +41,10 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --token <token>       init 전용
   --project <id>        init 전용
   --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
+  --case <대소문자>      init --local 전용 — UPPER_SNAKE(기본) 또는 lower_snake
   --format <ddl|dbml>   export·import 전용 — export 기본 ddl, import 기본 확장자 판별
-  --dialect <방언>       export·import 전용 — 기본 erdd.config.yaml의 dialects[0]
+  --dialect <방언>       export·import·init --local 전용
+                        export·import는 기본이 erdd.config.yaml의 dialects[0], init --local은 postgresql
   -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
   --dry-run             import 전용 — 계획만 보고 파일을 쓰지 않는다
   --port <번호>          serve 전용 — 기본 4300
@@ -121,6 +123,7 @@ function enumFlag<T extends string>(
 }
 
 const EXPORT_FORMATS = ['ddl', 'dbml'] as const
+const NAMING_CASES = ['UPPER_SNAKE', 'lower_snake'] as const
 
 /** --json이면 stdout에 오류 봉투를, 아니면 stderr에 사용법을 낸다. */
 function usageError(json: boolean, message: string): number {
@@ -142,13 +145,27 @@ export async function main(argv: string[], cwd: string): Promise<number> {
     ...interactive(json),
   }
   switch (command) {
-    case 'init': return init({
-      ...ctx,
-      serverUrl: flagValue(argv, 'server'),
-      token: flagValue(argv, 'token'),
-      projectId: flagValue(argv, 'project'),
-      local: argv.includes('--local'),
-    })
+    case 'init': {
+      const local = argv.includes('--local')
+      const dialect = enumFlag<Dialect>(argv, 'dialect', DIALECTS)
+      if (!dialect.ok) return usageError(json, dialect.message)
+      const namingCase = enumFlag<NamingRules['case']>(argv, 'case', NAMING_CASES)
+      if (!namingCase.ok) return usageError(json, namingCase.message)
+      // 연결 모드에서는 서버 프로젝트 설정이 진실이다 — 그 둘을 여기서 받으면 init이 만든
+      // config가 첫 pull에 곧바로 덮여, 사용자는 자기가 준 값이 왜 사라졌는지 알 수 없다.
+      if (!local && (dialect.value !== undefined || namingCase.value !== undefined)) {
+        return usageError(json, '--dialect·--case는 init --local 전용입니다 — 연결 모드에서는 서버 프로젝트 설정을 따릅니다')
+      }
+      return init({
+        ...ctx,
+        serverUrl: flagValue(argv, 'server'),
+        token: flagValue(argv, 'token'),
+        projectId: flagValue(argv, 'project'),
+        local,
+        dialect: dialect.value,
+        namingCase: namingCase.value,
+      })
+    }
     case 'pull': return pull(ctx)
     case 'push': return push({ ...ctx, message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm') })
     case 'diff': return diff(ctx)

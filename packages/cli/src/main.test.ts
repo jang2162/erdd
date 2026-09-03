@@ -164,4 +164,32 @@ describe('main', () => {
     expect(await main(['import', 'x.sql', '--format', 'xml', '--json'], '/tmp/erdd-none')).toBe(2)
     expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
   })
+  it('init --local 의 --dialect·--case 가 config 까지 간다', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'erdd-main-init-'))
+    vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['init', '--local', '--dialect', 'mysql', '--case', 'lower_snake', '--json'], dir)).toBe(0)
+    const yaml = await readFile(join(dir, 'erdd.config.yaml'), 'utf8')
+    expect(yaml).toContain('mysql')
+    expect(yaml).toContain('lower_snake')
+  })
+
+  it('init 의 --dialect·--case 는 값이 틀리거나 --local 없이 오면 USAGE 로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const dir = await mkdtemp(join(tmpdir(), 'erdd-main-init2-'))
+    for (const argv of [
+      ['init', '--local', '--dialect', 'nope', '--json'],
+      ['init', '--local', '--case', 'Camel', '--json'],
+      ['init', '--local', '--case', '--json'],             // 값이 빠졌다
+      // --local 없이 주면 USAGE 다 — 연결 모드는 서버 프로젝트 설정이 진실이다.
+      ['init', '--dialect', 'mysql', '--json'],
+      ['init', '--case', 'lower_snake', '--json'],
+    ]) {
+      out.length = 0
+      expect(await main(argv, dir)).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+  })
 })
