@@ -183,9 +183,19 @@ describe('main', () => {
       ['init', '--local', '--dialect', 'nope', '--json'],
       ['init', '--local', '--case', 'Camel', '--json'],
       ['init', '--local', '--case', '--json'],             // 값이 빠졌다
-      // --local 없이 주면 USAGE 다 — 연결 모드는 서버 프로젝트 설정이 진실이다.
-      ['init', '--dialect', 'mysql', '--json'],
-      ['init', '--case', 'lower_snake', '--json'],
+    ]) {
+      out.length = 0
+      expect(await main(argv, dir)).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+
+    // --local 없이 주면 USAGE 다 — 연결 모드는 서버 프로젝트 설정이 진실이다.
+    // ⚠️ 연결 인자를 **전부** 함께 줘야 이 가드에 구분력이 생긴다. 인자를 빼면 대화형
+    //   입력이 없어 어차피 USAGE(2)로 떨어져, 가드를 통째로 지워도 테스트가 통과한다
+    //   (실측으로 확인했다). 여기서는 가드가 없으면 서버에 붙으러 가 NETWORK(1)가 된다.
+    for (const argv of [
+      ['init', '--server', 'http://127.0.0.1:1', '--token', 't', '--project', 'p1', '--dialect', 'mysql', '--json'],
+      ['init', '--server', 'http://127.0.0.1:1', '--token', 't', '--project', 'p1', '--case', 'lower_snake', '--json'],
     ]) {
       out.length = 0
       expect(await main(argv, dir)).toBe(2)
