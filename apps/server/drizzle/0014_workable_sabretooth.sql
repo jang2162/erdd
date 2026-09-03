@@ -1,0 +1,2 @@
+ALTER TABLE "projects" ALTER COLUMN "naming_rules" SET DEFAULT '{"case":"UPPER_SNAKE","separator":"_","logicalSeparator":"_","maxLengthBytes":30,"tablePhysicalTemplate":"","tableLogicalTemplate":""}'::jsonb;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN "table_options" jsonb DEFAULT '{"postgresql":"","mysql":"","oracle":"","mssql":""}'::jsonb NOT NULL;

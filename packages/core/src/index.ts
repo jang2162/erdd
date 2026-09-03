@@ -1,5 +1,5 @@
-export { parseLogicalType } from './logical-type.js'
-export type { LogicalType, LogicalTypeKind, ParseResult } from './logical-type.js'
+export { parseLogicalType, canonicalOf, isUnsignedCapable } from './logical-type.js'
+export type { LogicalType, LogicalTypeKind, ParseResult, UnsignedCapableKind } from './logical-type.js'
 export {
   PositionSchema, TableSchema, ColumnSchema, RelationshipSchema,
   IndexSchema, NoteSchema, TableGroupSchema, DomainSchema, WordSchema, TermSchema,
@@ -18,7 +18,11 @@ export { deepEqual } from './equal.js'
 export { diffModels } from './diff.js'
 export { diffModelsForDisplay, DIFF_KIND_LABEL, CHANGE_KIND_LABEL } from './model-diff.js'
 export type { ModelDiff, DiffEntry, DiffFieldChange, DiffChangeKind } from './model-diff.js'
-export { DIALECTS, toDialectType, fromDialectType, resolveColumnType } from './dialect.js'
+export {
+  DEFAULT_TABLE_OPTIONS, TableOptionsSchema, TableOptionsStrictSchema,
+} from './table-options.js'
+export type { TableOptions } from './table-options.js'
+export { DIALECTS, toDialectType, fromDialectType, resolveColumnType, unsignedWarning } from './dialect.js'
 export type { Dialect, FromDialectResult } from './dialect.js'
 export { quoteIdentifier, isReservedWord } from './identifier.js'
 export { generateDdl, ddlWarnings } from './ddl.js'

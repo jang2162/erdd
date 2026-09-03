@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, renderHook } from '@testing-library/react'
-import { createEmptyModel } from '@erdd/core'
+import { createEmptyModel, DEFAULT_TABLE_OPTIONS } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useWarnings } from './use-warnings.js'
 
@@ -22,7 +22,7 @@ describe('useWarnings', () => {
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     // 예약어 경고는 dialect가 있어야 계산된다(core warnings.ts).
     useEditorStore.getState().setProjectConfig(
-      { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' }, ['postgresql'], null)
+      { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' }, ['postgresql'], null, DEFAULT_TABLE_OPTIONS)
 
     const { result } = renderHook(() => useWarnings())
 

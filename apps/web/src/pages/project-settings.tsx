@@ -4,9 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  DEFAULT_NAMING_RULES, composeTableLogicalName, composeTablePhysicalName, createEmptyModel,
+  DEFAULT_NAMING_RULES, DIALECTS, composeTableLogicalName, composeTablePhysicalName, createEmptyModel,
   type NamingRules,
   type ProjectModel,
+  type TableOptions,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { useIsLocal } from '@/components/require-auth'
@@ -229,6 +230,67 @@ function NamingRulesSection({
   )
 }
 
+/**
+ * 프로젝트 수준 테이블 옵션(설계 §5.6). `CREATE TABLE` 의 닫는 괄호 뒤에 그대로 붙는
+ * **방언별 자유 문자열**이다 — 검증하지 않는다(`Domain.dialectTypes` 와 같은 방침).
+ *
+ * ⚠️ **언제나 네 키를 전부 실어 보낸다.** 쓰기 스키마가 strict 라 부분 페이로드는 400 이고,
+ * 그 strict 가 「한 칸만 보낸 화면이 나머지 셋을 지우는」 사고를 막는 장치다(HANDOFF 3.16).
+ *
+ * **네 칸을 다 보인다**(§9 ⑦) — 도메인 편집의 「방언별 물리 타입 (선택)」과 같은 모양이어야
+ * 사용자가 배운 것을 다시 쓴다. 방언은 나중에 추가되는데 숨겨 두면 추가한 순간 「전에 적어 둔
+ * 값이 있었나」를 알 수 없다.
+ */
+function TableOptionsSection({
+  projectId, tableOptions,
+}: { projectId: string; tableOptions: TableOptions }) {
+  const trpc = useTRPC()
+  const queryClient = useQueryClient()
+  const update = useMutation(
+    trpc.project.update.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: trpc.project.get.queryKey({ projectId }) })
+      },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
+  // 매 글자마다 mutate 하지 않는다 — 로컬 draft 로 받고 blur 에 커밋한다(템플릿 입력과 같은 관례).
+  const [draft, setDraft] = useState(tableOptions)
+  // ⚠️ projectId 를 deps 에 함께 넣는다 — 값만 넣으면 「같은 값을 가진 다른 프로젝트」로 옮길 때
+  // draft 가 남는다(그룹 별칭 사이클에서 실제로 겪은 버그).
+  useEffect(() => { setDraft(tableOptions) }, [projectId, tableOptions])
+
+  return (
+    <section className="grid gap-2">
+      <h2 className="text-lg font-semibold">테이블 옵션</h2>
+      <p className="text-xs text-muted-foreground">
+        DDL 로 내보낼 때 <code className="font-mono">CREATE TABLE</code> 의 닫는 괄호 뒤에 그대로
+        붙습니다. 모든 테이블에 같은 값이 붙습니다. 예:
+        <code className="font-mono"> ENGINE=InnoDB DEFAULT CHARSET=utf8mb4</code>
+        <span className="block">
+          ⚠️ 여기에 <code className="font-mono">COMMENT=</code> 를 적지 마세요 — 되읽을 때
+          테이블 코멘트로 잘못 읽힙니다.
+        </span>
+      </p>
+      {DIALECTS.map((d) => (
+        <div key={d} className="grid gap-1">
+          <Label htmlFor={`topt-${d}`} className="text-xs">{d}</Label>
+          <input
+            id={`topt-${d}`} className="h-9 rounded-md border bg-background px-2 font-mono text-sm"
+            value={draft[d]} disabled={update.isPending}
+            onChange={(e) => setDraft((prev) => ({ ...prev, [d]: e.target.value }))}
+            onBlur={() => {
+              if (draft[d] === tableOptions[d]) return
+              // 네 키를 전부 보낸다(위 ⚠️).
+              update.mutate({ projectId, tableOptions: { ...tableOptions, [d]: draft[d] } })
+            }}
+          />
+        </div>
+      ))}
+    </section>
+  )
+}
+
 export function ProjectSettingsPage() {
   const { projectId = '' } = useParams()
   const trpc = useTRPC()
@@ -262,6 +324,7 @@ export function ProjectSettingsPage() {
       </div>
 
       {canManage && <NamingRulesSection projectId={projectId} namingRules={p.namingRules} />}
+      {canManage && <TableOptionsSection projectId={projectId} tableOptions={p.tableOptions} />}
       {canManage && !isLocal && <ProjectMembers projectId={projectId} orgId={p.orgId} />}
     </div>
   )

@@ -1219,3 +1219,118 @@ describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
     })
   })
 })
+
+/**
+ * 부호 없음을 허용 집합 밖에 붙이면 **떨어뜨리고 경고**한다(설계 §4.6).
+ *
+ * ⚠️ `DdlImportWarning` 은 등록처가 유니온 하나뿐이라 **전수 강제가 없다**(HANDOFF 3.14).
+ * 문구가 유일한 사용자 접점이므로 **문자열까지** 못 박는다 — `kind` 만 보면 문구가 엉뚱한
+ * 타입 이름을 적어도 초록이다.
+ */
+describe('planDdlImport — unsigned-dropped', () => {
+  const plan = (ddl: string, d: Dialect = 'mysql') =>
+    planDdlImport(createEmptyModel(), parseDdl(ddl), d, DEFAULT_NAMING_RULES)
+
+  it('허용 집합 밖(DECIMAL)은 부호 없음만 떨어뜨리고 경고한다', () => {
+    const p = plan('CREATE TABLE ORD (AMT decimal(10,2) unsigned);')
+    expect(p.tables[0]!.columns[0]!.type).toBe('DECIMAL(10,2)')
+    expect(p.warnings.filter((w) => w.kind === 'unsigned-dropped')).toEqual([{
+      kind: 'unsigned-dropped', target: 'ORD.AMT',
+      message: 'DECIMAL(10,2)에는 부호 없음을 붙일 수 없어 떨어뜨렸습니다 (원문 decimal(10,2) unsigned)',
+    }])
+  })
+
+  it('TINYINT(1) → BOOLEAN 승격 갈래도 원문과 결과를 함께 적는다', () => {
+    const p = plan('CREATE TABLE ORD (FLG tinyint(1) unsigned);')
+    expect(p.tables[0]!.columns[0]!.type).toBe('BOOLEAN')
+    expect(p.warnings.filter((w) => w.kind === 'unsigned-dropped')).toEqual([{
+      kind: 'unsigned-dropped', target: 'ORD.FLG',
+      message: 'BOOLEAN에는 부호 없음을 붙일 수 없어 떨어뜨렸습니다 (원문 tinyint(1) unsigned)',
+    }])
+  })
+
+  it('정수 3종에는 경고가 없다', () => {
+    const p = plan('CREATE TABLE ORD (A int unsigned, B bigint(20) unsigned, C smallint unsigned);')
+    expect(p.tables[0]!.columns.map((c) => c.type))
+      .toEqual(['INT UNSIGNED', 'BIGINT UNSIGNED', 'SMALLINT UNSIGNED'])
+    expect(p.warnings.filter((w) => w.kind === 'unsigned-dropped')).toEqual([])
+    expect(p.warnings.filter((w) => w.kind === 'unknown-type')).toEqual([])
+  })
+})
+
+/**
+ * 테이블 옵션은 **프로젝트 수준**이라 테이블마다 다르면 다수결로 하나를 고르고 알린다
+ * (설계 D2·§5.5-2). 적용은 `applyDdlImport` **밖**이다 — 설정은 op 로그 밖이라
+ * 「Revision 1건 = undo 1회」 규약이 닿지 않는다.
+ */
+describe('planDdlImport — 테이블 옵션 다수결', () => {
+  const plan = (ddl: string) =>
+    planDdlImport(createEmptyModel(), parseDdl(ddl), 'mysql', DEFAULT_NAMING_RULES)
+  const t = (name: string, tail: string) => `CREATE TABLE ${name} (A INT)${tail};`
+
+  it('허용 목록(ENGINE·CHARSET·COLLATE)만 취하고 정규화한다', () => {
+    const p = plan(t('A', ' ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC'))
+    expect(p.tableOptions).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+  })
+
+  it('⚠️ AUTO_INCREMENT 는 반드시 버린다 — 테이블별 일회성 카운터다', () => {
+    expect(plan(t('A', ' AUTO_INCREMENT=3'))!.tableOptions).toBeNull()
+  })
+
+  it('CHARACTER SET 도 DEFAULT CHARSET 으로 통일한다 — 안 그러면 다수결이 갈린다', () => {
+    const p = plan(
+      `${t('A', ' ENGINE=InnoDB CHARACTER SET=utf8mb4')}\n${t('B', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')}`,
+    )
+    expect(p.tableOptions).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict')).toEqual([])
+  })
+
+  it('COLLATE 도 담는다(§9 ⑧) — 값의 대소문자는 원문 그대로다', () => {
+    const p = plan(t('A', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'))
+    expect(p.tableOptions).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci')
+  })
+
+  it('COMMENT 는 배제한다 — 이미 테이블 코멘트로 잡히므로 진실이 둘이 된다', () => {
+    const p = plan(`CREATE TABLE A (X INT) ENGINE=InnoDB COMMENT='주문';`)
+    expect(p.tableOptions).toBe('ENGINE=InnoDB')
+  })
+
+  it('다수결 — 3 테이블(A,A,B) 에서 최다 득표를 채택하고 다른 테이블마다 경고 1건', () => {
+    const p = plan([
+      t('T1', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'),
+      t('T2', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'),
+      t('T3', ' ENGINE=MyISAM'),
+    ].join('\n'))
+    expect(p.tableOptions).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict')).toEqual([{
+      kind: 'table-option-conflict', target: 'T3',
+      message: "테이블 옵션이 'ENGINE=MyISAM'이라 채택값 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'과"
+        + ' 다릅니다 — 채택값을 씁니다',
+    }])
+  })
+
+  it('동수면 DDL 에 먼저 나온 것 — 결정적이어야 한다', () => {
+    const p = plan(`${t('T1', ' ENGINE=MyISAM')}\n${t('T2', ' ENGINE=InnoDB')}`)
+    expect(p.tableOptions).toBe('ENGINE=MyISAM')
+    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict').map((w) => w.target)).toEqual(['T2'])
+  })
+
+  it('⚠️ 빈 꼬리는 투표하지 않는다 — 절반이 생략한 덤프에서 있는 값을 잃으면 안 된다', () => {
+    const p = plan([
+      t('T1', ''), t('T2', ''), t('T3', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'),
+    ].join('\n'))
+    expect(p.tableOptions).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+    // 옵션이 없는 테이블은 「다르다」고 경고하지도 않는다 — 적은 적이 없기 때문이다.
+    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict')).toEqual([])
+  })
+
+  it('아무 테이블도 옵션이 없으면 null 이다', () => {
+    expect(plan(`${t('T1', '')}\n${t('T2', '')}`).tableOptions).toBeNull()
+  })
+
+  it('target 은 DDL 원문 이름이다 — 사용자가 입력에서 찾을 수 있어야 한다', () => {
+    const p = plan(`${t('Ord_Log', ' ENGINE=MyISAM')}\n${t('Ord', ' ENGINE=InnoDB')}\n${t('Ord2', ' ENGINE=InnoDB')}`)
+    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict').map((w) => w.target))
+      .toEqual(['Ord_Log'])
+  })
+})

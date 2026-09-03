@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import {
-  createEmptyModel, DEFAULT_NAMING_RULES, type Dialect, type NamingRules, type Op, type Peer,
-  type ProjectModel,
+  createEmptyModel, DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS,
+  type Dialect, type NamingRules, type Op, type Peer,
+  type ProjectModel, type TableOptions,
 } from '@erdd/core'
 
 export type ViewMode = 'logical' | 'physical' | 'mixed'
@@ -13,6 +14,8 @@ type EditorState = {
   loaded: boolean
   loadedProjectId: string | null
   namingRules: NamingRules
+  /** 프로젝트 수준 테이블 옵션(방언 4키). DDL 내보내기가 그대로 붙인다. */
+  tableOptions: TableOptions
   dialects: Dialect[]
   /** 프로젝트 이름(버전 모델 밖, project.get). DBML 의 Project 블록에 쓴다. */
   projectName: string | null
@@ -59,6 +62,7 @@ type EditorState = {
   setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
   setProjectConfig: (
     namingRules: NamingRules, dialects: Dialect[], projectName: string | null,
+    tableOptions: TableOptions,
   ) => void
   setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
   /** 로컬 모드 파일 손상으로 편집을 잠그거나(failures) 푼다(null). canEdit 을 함께 내린다. */
@@ -151,6 +155,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   loaded: false,
   loadedProjectId: null,
   namingRules: DEFAULT_NAMING_RULES,
+  tableOptions: DEFAULT_TABLE_OPTIONS,
   dialects: [],
   projectName: null,
   canEdit: false,
@@ -176,8 +181,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       undoStack: [], redoStack: [], activeGroupView: null, peers: [],
       ...CLEARED_SELECTION,
     }),
-  setProjectConfig: (namingRules, dialects, projectName) =>
-    set({ namingRules, dialects, projectName }),
+  setProjectConfig: (namingRules, dialects, projectName, tableOptions) =>
+    set({ namingRules, dialects, projectName, tableOptions }),
   // blocked(파일 손상) 상태에서는 project.get이 다시 도착해도 편집을 열지 않는다 — 두 곳이
   // canEdit을 다투지 않도록 setBlocked가 내린 잠금을 여기서 존중한다.
   setPermissions: ({ canEdit, canManage }) =>
@@ -266,7 +271,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   reset: () => set({
     model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
-    namingRules: DEFAULT_NAMING_RULES, dialects: [], projectName: null, peers: [],
+    namingRules: DEFAULT_NAMING_RULES, tableOptions: DEFAULT_TABLE_OPTIONS,
+    dialects: [], projectName: null, peers: [],
     canEdit: false, canManage: false, blocked: null,
     localSave: { dirty: false, external: false, saving: false },
     ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],

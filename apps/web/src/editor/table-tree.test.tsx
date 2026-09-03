@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { toast } from 'sonner'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
+import { DEFAULT_TABLE_OPTIONS } from '@erdd/core'
 import type { ProjectModel, Table } from '@erdd/core'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
@@ -145,7 +146,7 @@ describe('TableTree', () => {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
         tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '',
       },
-      ['postgresql'], null,
+      ['postgresql'], null, DEFAULT_TABLE_OPTIONS,
     )
     renderTree()
     expect(screen.getByText('MBR')).toBeInTheDocument()

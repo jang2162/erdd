@@ -2,7 +2,7 @@ import { initTRPC, TRPCError } from '@trpc/server'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  parseOps, DIALECTS, NamingRulesStrictSchema, OpParseError, type RunMode,
+  parseOps, DIALECTS, NamingRulesStrictSchema, OpParseError, TableOptionsStrictSchema, type RunMode,
 } from '@erdd/core'
 import { writeConfig, type ErddConfig } from '../config.js'
 import { FileStore, LocalStoreError } from './store.js'
@@ -100,6 +100,7 @@ export function createLocalRouter() {
         description: '',
         dialects: ctx.config.dialects,
         namingRules: ctx.config.namingRules,
+        tableOptions: ctx.config.tableOptions,
         createdAt: new Date(0),
         myRole: 'admin' as const,
         myOrgRole: 'owner' as const,
@@ -122,6 +123,9 @@ export function createLocalRouter() {
           description: z.string().optional(),
           dialects: z.array(z.enum(DIALECTS)).min(1).optional(),
           namingRules: NamingRulesStrictSchema.optional(),
+          // 서버와 같은 이유로 **strict** 다 — 한 방언만 보낸 화면이 나머지 셋을 지우면
+          // `erdd.config.yaml` 이 그대로 오염된다.
+          tableOptions: TableOptionsStrictSchema.optional(),
         }))
         .mutation(async ({ ctx, input }) => {
           // 이름·설명은 config 에 담을 자리가 없다(로컬 프로젝트에는 이름이 없다).
@@ -130,6 +134,7 @@ export function createLocalRouter() {
             ...ctx.config,
             dialects: input.dialects ?? ctx.config.dialects,
             namingRules: input.namingRules ?? ctx.config.namingRules,
+            tableOptions: input.tableOptions ?? ctx.config.tableOptions,
           }
           await writeConfig(ctx.cwd, next)
           // ⚠️ 파일만 되쓰면 안 된다 — 컨텍스트가 들고 있는 config 는 서버가 뜰 때 읽은 것이라

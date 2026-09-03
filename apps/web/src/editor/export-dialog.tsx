@@ -37,6 +37,7 @@ export function ExportDialog({ open, onOpenChange }: {
   const model = useEditorStore((s) => s.model)
   const projectName = useEditorStore((s) => s.projectName)
   const namingRules = useEditorStore((s) => s.namingRules)
+  const tableOptions = useEditorStore((s) => s.tableOptions)
   const rf = useReactFlow()
   const [section, setSection] = useState<Section>('ddl')
   const [dialect, setDialect] = useState<Dialect>('postgresql')
@@ -54,7 +55,8 @@ export function ExportDialog({ open, onOpenChange }: {
   }, [open])
 
   const ddl = useMemo(
-    () => generateDdl(model, dialect, scope, namingRules), [model, dialect, scope, namingRules])
+    () => generateDdl(model, dialect, scope, namingRules, tableOptions),
+    [model, dialect, scope, namingRules, tableOptions])
   const dbml = useMemo(
     () => generateDbml(model, dialect, scope, { projectName: projectName ?? undefined }, namingRules),
     [model, dialect, scope, projectName, namingRules],

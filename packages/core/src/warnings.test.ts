@@ -53,6 +53,23 @@ describe('computeWarnings', () => {
     expect(w[0]!.entityId).toBe('R')
   })
 
+  /**
+   * 부호 없음이 1급이 되면서 이 경고가 덤으로 정확해진다 — **MySQL 이 실제로 FK 를 거절하는
+   * 바로 그 조건**이다(부모 `INT UNSIGNED` ↔ 자식 `INT`). 의도한 효과다(설계 §4.6).
+   */
+  it('부호 없음이 다르면 타입 불일치를 경고한다', () => {
+    const m = createEmptyModel()
+    m.tables['P'] = tbl('P'); m.tables['C'] = tbl('C')
+    m.columns['PC'] = col('PC', 'P', 'ID', { type: 'INT UNSIGNED', isPk: true })
+    m.columns['CC'] = col('CC', 'C', 'PID', { type: 'INT' })
+    m.relationships['R'] = { id: 'R', parentTableId: 'P', childTableId: 'C',
+      columnMappings: [{ childColumnId: 'CC', parentColumnId: 'PC' }],
+      cardinality: '1:N', identifying: false, name: null }
+    const w = computeWarnings(m).filter((x) => x.kind === 'type-mismatch')
+    expect(w).toHaveLength(1)
+    expect(w[0]!.message).toContain('INT UNSIGNED ↔ INT')
+  })
+
   it('부모 PK 수와 매핑 수가 다르면 매핑 불완전을 경고한다', () => {
     const m = createEmptyModel()
     m.tables['P'] = tbl('P'); m.tables['C'] = tbl('C')
