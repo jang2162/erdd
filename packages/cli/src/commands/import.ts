@@ -7,6 +7,7 @@ import {
   type DdlImportPlan, type Dialect, type ParsedDbml, type ParsedDdl,
 } from '@erdd/core'
 import { readConfig, type ErddConfig } from '../config.js'
+import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { CliError, emit, note } from '../output.js'
 import { readTree, writeTree } from '../tree.js'
 import { run, type CommandCtx } from './context.js'
@@ -89,6 +90,8 @@ function planSummary(plan: DdlImportPlan): {
  */
 export function importCommand(ctx: ImportCtx): Promise<number> {
   return run(ctx, async () => {
+    // 미저장 편집은 `erdd/` 에 없다 — 이 명령이 보는 것과 화면이 보는 것이 다르다.
+    if (await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
     if (ctx.file === undefined || ctx.file === '') {
       throw new CliError('USAGE', '가져올 파일 경로가 필요합니다: erdd import <파일>')
     }

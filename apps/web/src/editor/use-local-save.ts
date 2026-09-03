@@ -22,8 +22,15 @@ import { useEditorStore } from './store.js'
 export function useLocalSave() {
   const { dirty, external, saving } = useEditorStore((s) => s.localSave)
 
+  /**
+   * ⚠️ **상태 코드를 봐야 한다.** `store.save()` 는 디스크 가득참·권한 오류에서 예외를 내고
+   * 그것은 Fastify 500 이 된다 — `LocalSaveResult` 가 약속하지 않는 **세 번째 결과**다. 그대로
+   * 캐스트하면 `r.ok === undefined` 라 거절 갈래로 떨어져 참이던 `external` 을 거짓으로 덮고
+   * 영문 오류를 토스트로 띄운다. 403(낯선 Origin)도 같은 길로 샌다.
+   */
   const post = useCallback(async (path: string): Promise<unknown> => {
     const res = await fetch(path, { method: 'POST' })
+    if (!res.ok) throw new Error(`요청이 실패했습니다 (HTTP ${res.status})`)
     return res.json()
   }, [])
 

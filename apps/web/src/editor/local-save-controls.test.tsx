@@ -9,7 +9,7 @@ function mockPost(result: unknown = { ok: true }): string[] {
   const calls: string[] = []
   vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
     calls.push(`${init?.method ?? 'GET'} ${url}`)
-    return Promise.resolve({ json: () => Promise.resolve(result) } as Response)
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(result) } as Response)
   }))
   return calls
 }

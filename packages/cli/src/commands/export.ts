@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { ddlWarnings, filesToModel, generateDbml, generateDdl, type Dialect } from '@erdd/core'
 import { readConfig } from '../config.js'
+import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { emit, note } from '../output.js'
 import { readTree } from '../tree.js'
 import { run, type CommandCtx } from './context.js'
@@ -48,6 +49,8 @@ export function dbmlProjectName(cwd: string): string | undefined {
  */
 export function exportCommand(ctx: ExportCtx): Promise<number> {
   return run(ctx, async () => {
+    // 미저장 편집은 `erdd/` 에 없다 — 이 명령이 보는 것과 화면이 보는 것이 다르다.
+    if (await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
     const config = await readConfig(ctx.cwd)
     const result = filesToModel(await readTree(ctx.cwd))
     if (!result.ok) {

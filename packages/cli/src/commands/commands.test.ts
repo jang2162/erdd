@@ -10,6 +10,9 @@ import type { ApiClient } from '../client.js'
 import { pull } from './pull.js'
 import { status } from './status.js'
 import { validate } from './validate.js'
+import { push } from './push.js'
+import { exportCommand } from './export.js'
+import { importCommand } from './import.js'
 import { UNSAVED_NOTICE, writeDraft } from '../local/draft.js'
 
 let dir: string
@@ -520,7 +523,28 @@ describe('미저장 편집 알림', () => {
     expect(payload.unsavedDraft).toBe(true)
   })
 
-  it('세 명령이 같은 문구를 쓴다', () => {
-    expect(UNSAVED_NOTICE).toContain('저장하지 않은 편집')
+  /**
+   * ⚠️ **`expect(UNSAVED_NOTICE).toContain(…)` 은 동어반복이었다** — 상수를 자기 자신과 비교할
+   * 뿐, 명령들이 **그 상수를 쓰는지** 아무것도 잠그지 않아 하나가 다른 문자열로 갈라져도
+   * 초록이었다. 실제로 각 명령을 돌려 그 문구가 나가는지 본다.
+   *
+   * `validate` 는 stdout(사람용 출력), 나머지 넷은 stderr(note)로 낸다 — 둘 다 모은다.
+   */
+  it('다섯 명령이 모두 같은 문구로 알린다', async () => {
+    const runs: [name: string, run: () => Promise<unknown>][] = [
+      ['status', () => status({ ...ctx(), json: false })],
+      ['validate', () => validate({ ...ctx(), json: false })],
+      ['push', () => push({ ...ctx(), client: stubClient() })],
+      ['export', () => exportCommand({ ...ctx(), json: false, format: 'ddl' })],
+      ['import', () => importCommand({ ...ctx(), json: false, file: join(dir, 'x.sql'), yes: true, dryRun: true })],
+    ]
+    for (const [name, run] of runs) {
+      await seedPulled(dir, model())
+      await seedDraft()
+      await writeFile(join(dir, 'x.sql'), 'CREATE TABLE T (A INT);', 'utf8')
+      out = []; err = []
+      await run().catch(() => undefined)   // 명령 자체의 성패는 이 테스트의 관심이 아니다
+      expect([...out, ...err].join(''), `${name} 이 알리지 않았다`).toContain(UNSAVED_NOTICE)
+    }
   })
 })

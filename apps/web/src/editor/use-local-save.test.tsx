@@ -6,11 +6,14 @@ import { useLocalSave } from './use-local-save.js'
 
 const OK = { ok: true, seq: 1, written: ['erdd/tables/MBR.yaml'], deleted: [] }
 
-function mockPost(result: unknown = OK): string[] {
+/** `status` 를 주면 그 코드로 응답한다 — 200 이 아니면 훅이 오류로 다뤄야 한다. */
+function mockPost(result: unknown = OK, status = 200): string[] {
   const calls: string[] = []
   vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
     calls.push(`${init?.method ?? 'GET'} ${url}`)
-    return Promise.resolve({ json: () => Promise.resolve(result) } as Response)
+    return Promise.resolve({
+      ok: status >= 200 && status < 300, status, json: () => Promise.resolve(result),
+    } as Response)
   }))
   return calls
 }
@@ -105,6 +108,20 @@ describe('useLocalSave', () => {
     const { result } = renderHook(() => useLocalSave())
     await result.current.save()
     expect(useEditorStore.getState().localSave).toMatchObject({ dirty: true, external: false })
+  })
+
+  /**
+   * 🔥 **HTTP 오류는 `LocalSaveResult` 가 약속하지 않는 세 번째 결과다.** `store.save()` 는
+   * 디스크 가득참·권한 오류에서 예외를 내고 그것은 500 이 된다. 상태 코드를 보지 않으면
+   * `r.ok === undefined` 라 거절 갈래로 떨어져 **참이던 `external` 을 거짓으로 덮고** 배너를
+   * 지운다 — 사용자는 충돌이 해소된 줄 안다.
+   */
+  it('HTTP 오류가 배너 상태를 덮지 않는다', async () => {
+    mockPost({ error: 'Internal Server Error' }, 500)
+    useEditorStore.getState().setLocalSaveStatus({ dirty: true, external: true })
+    const { result } = renderHook(() => useLocalSave())
+    await result.current.save()
+    expect(useEditorStore.getState().localSave).toMatchObject({ dirty: true, external: true })
   })
 
   it('저장 중에는 두 번째 요청을 보내지 않는다', async () => {
