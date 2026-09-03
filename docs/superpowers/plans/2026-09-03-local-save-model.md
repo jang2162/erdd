@@ -21,7 +21,12 @@
 - **새 마이그레이션 없다. `apps/server/**` 를 고치지 않는다.**
 - **로컬 라우터의 tRPC 프로시저를 하나도 늘리지 않는다.** `packages/cli/src/local/router.test.ts` 의 프로시저 이름 목록 단언과 `InputGaps`/`OutputGaps`/`LocalOnly` 세 타입은 **바뀌지 않고 그대로 초록**이어야 한다(spec §6.2). 그 파일을 고치게 되면 설계에서 벗어난 것이므로 멈추고 보고한다.
 - **`docs/superpowers/HANDOFF.md` 를 고치지 않는다.** 다른 트랙(`feat/cli-ddl`)이 동시에 돌고 있고 갱신은 병합 후 컨트롤러가 한다.
-- **다른 트랙이 쥔 파일을 고치지 않는다:** `packages/cli/src/main.ts`(USAGE) · `packages/cli/src/commands/export.ts` · `packages/cli/src/commands/import.ts` · `packages/cli/src/commands/init.ts` · `packages/core/README.md`.
+- 🔥 **착수 전에 `main` 을 얹어라.** 이 워크트리는 `2307ec7` 기준인데 `feat/cli-ddl` 이 이미 병합됐다(`2618fc6`). 얹지 않으면 Task 11 이 고쳐야 할 `cli-guide.md` 의 신설 절(`export`·`import`)이 보이지 않고, 병합 뒤 그 절을 다시 손봐야 한다.
+  ```bash
+  git merge main          # 워크트리 안에서. 충돌이 나면 멈추고 보고한다
+  pnpm install            # cli-ddl 이 의존성을 늘렸다면 필요하다
+  ```
+- **다른 트랙이 쥔 파일을 고치지 않는다:** `packages/cli/src/main.ts`(USAGE) · `packages/cli/src/commands/export.ts` · `packages/cli/src/commands/import.ts` · `packages/cli/src/commands/init.ts` · `packages/core/README.md`. 병합 뒤에도 **이 사이클은 그 파일들을 건드릴 일이 없다**(새 CLI 명령·새 플래그가 없다).
 - **커밋은 경로 지정이다.** `git add -A` / `git commit -a` 금지. 신규 파일은 `git add <경로들> && git commit -m "..."` 처럼 **한 명령에 붙인다**(경로 지정 커밋 `git commit -- <경로>` 는 untracked 파일에 통하지 않는다). 트레일러 2줄:
   ```
   Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
@@ -37,10 +42,10 @@
   pnpm -r typecheck
   ```
 
-### 계획서가 채택한 판단 둘 (사용자 확정 아님 — spec §13)
+### 판단 둘의 출처 (spec §13)
 
-- **①** 「내 편집 유지」 뒤의 저장은 **화면이 곧 파일**이 된다(밖에서 추가된 파일도 지워진다). Task 4 의 `keep()` 과 Task 4 테스트 ⑬이 그 자리다.
-- **②** `push` 에도 미저장 알림 한 줄을 붙인다. Task 8 의 자리다.
+- **① 사용자 확정(2026-09-03).** 「내 편집 유지」 뒤의 저장은 **화면이 곧 파일**이 된다 — 밖에서 추가된 파일도 지워진다. Task 4 의 `keep()` 과 그 테스트가 자리다. **바꾸지 마라.**
+- **② 작성자 판단(사용자 확정 아님).** `push` 에도 미저장 알림 한 줄을 붙인다. Task 8 의 자리다. 리뷰에서 빠지면 그 한 줄과 테스트 하나를 지우면 된다.
 
 ---
 
@@ -997,7 +1002,7 @@ describe('FileStore.save', () => {
   })
 
   /**
-   * ⚠️ **계획서가 채택한 판단 ①이다**(spec §13 — 사용자 확정 아님). 「내 편집 유지」는 기준선을
+   * ⚠️ **사용자가 확정한 동작이다**(spec §13 ①, 2026-09-03). 「내 편집 유지」는 기준선을
    * 지금 디스크로 옮기므로, 이어지는 저장은 **화면이 곧 파일**이 된다 — 밖에서 추가된 파일도
    * 지워진다. 대안(옛 기준선 유지)은 「화면에 없는 테이블이 파일에 있는」 조용한 부분 병합이라
    * 「자동 병합 없음」과 어긋난다. 배너 문구가 이 대가를 말해야 한다.
@@ -2082,7 +2087,7 @@ emit(ctx.json, human, { /* 기존 필드 그대로 */, unsavedDraft })
 
 `validate.ts` — 같은 방식으로 `human` 끝에 붙이고 `emit` 에 `unsavedDraft` 를 더한다. **`ok` 계산에는 넣지 않는다.**
 
-`push.ts` — 계획 출력 앞에 한 줄만 더한다(판정·종료 코드에는 손대지 않는다). ⚠️ **이것은 계획서가 채택한 판단 ②다**(spec §13). 리뷰에서 빠지면 이 줄과 그 테스트만 지우면 된다.
+`push.ts` — 계획 출력 앞에 한 줄만 더한다(판정·종료 코드에는 손대지 않는다). ⚠️ **이것은 작성자 판단 ②다**(spec §13 — 사용자 확정 아님). 리뷰에서 빠지면 이 줄과 그 테스트만 지우면 된다.
 
 `serve.ts` — 종료 직전:
 
@@ -2446,7 +2451,7 @@ describe('LocalSaveBanner', () => {
   })
 
   /**
-   * ⚠️ **배너 문구가 대가를 말해야 한다**(계획서 채택 판단 ①) — 「내 편집 유지」를 고르면
+   * ⚠️ **배너 문구가 대가를 말해야 한다**(spec §13 ①, 사용자 확정) — 「내 편집 유지」를 고르면
    * 저장할 때 화면의 내용이 파일을 덮어쓴다.
    */
   it('external 이면 두 선택지와 대가를 보여 준다', () => {
@@ -2537,10 +2542,10 @@ MSG
 
 **Files:** spec §10.1·§10.2 의 목록 그대로. **`docs/superpowers/HANDOFF.md` 는 건드리지 않는다.**
 
-> ⚠️ **다른 트랙(`feat/cli-ddl`)이 `docs/manual/cli-guide.md`·`local-guide.md` 를 함께 고친다.**
-> spec §11 이 정한 순서는 **cli-ddl 을 먼저 병합하고 이 트랙이 그 위에서 고친다**이다. 이 태스크를
-> 시작하기 전에 `git log --oneline main..feat/cli-ddl` 로 그 트랙이 병합됐는지 확인하고, 아직이면
-> **컨트롤러에게 보고하고 멈춘다.**
+> ⚠️ **`feat/cli-ddl` 은 이미 `main` 에 병합됐다**(`2618fc6`). Global Constraints 의 「착수 전에
+> `main` 을 얹어라」를 따랐다면 `cli-guide.md` 에 그 트랙이 만든 `export`·`import` 절이 이미 있다.
+> **없다면 병합을 건너뛴 것이다** — 여기서 멈추고 `git merge main` 부터 한다. 안 그러면 이 태스크가
+> 고친 문서를 병합 때 다시 손봐야 한다.
 
 - [ ] **Step 1: 문서 — 로컬 모드 매뉴얼**
 
