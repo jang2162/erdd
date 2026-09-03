@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { ddlWarnings, filesToModel, generateDbml, generateDdl, type Dialect } from '@erdd/core'
 import { readConfig } from '../config.js'
 import { emit, note } from '../output.js'
@@ -14,6 +14,25 @@ export type ExportCtx = CommandCtx & {
   dialect?: Dialect
   /** 없으면 stdout. */
   out?: string
+}
+
+/**
+ * DBML `Project` 블록에 쓸 이름 — **작업 디렉터리 이름**이다.
+ *
+ * ⚠️ **이 이름의 목적은 방언을 실어 나르는 것이다.** DBML 의 방언은 `Project { database_type }`
+ * 이고(→ `import.ts` 의 `resolveDialect`), `generateDbml` 은 **이름이 있을 때만** 그 블록을 낸다.
+ * 이름을 안 주면 블록이 통째로 빠져 **CLI 가 낸 DBML 을 되읽을 때 방언이 `config.dialects[0]` 로
+ * 떨어진다** — 방언이 다른 프로젝트로 옮기면 컬럼 타입이 조용히 달라진다(리뷰가 실측으로 찾은
+ * 구멍이다. `roundtrip.test.ts` 의 「방언이 다른 프로젝트로 되읽어도」가 이것을 잠근다).
+ *
+ * `erdd.config.yaml` 에 이름 필드를 새로 만들지 않은 이유는 파일 포맷 변경이 딸려 오기 때문이다
+ * (읽기·쓰기·기본값 주입·매뉴얼, 연결 모드에서는 서버 동기화 여부까지).
+ *
+ * 공백·한글·하이픈은 `quoteDbmlIdent` 가 큰따옴표로 감싸므로 그대로 안전하다. 루트에서 부르면
+ * 이름이 빈 문자열이라 `undefined` 를 돌려주고, 그때는 블록이 빠진다(이 수정 이전의 동작이다).
+ */
+export function dbmlProjectName(cwd: string): string | undefined {
+  return basename(cwd) || undefined
 }
 
 /**
@@ -51,7 +70,7 @@ export function exportCommand(ctx: ExportCtx): Promise<number> {
     const rules = config.namingRules
     const content = ctx.format === 'ddl'
       ? generateDdl(result.model, dialect, { kind: 'all' }, rules)
-      : generateDbml(result.model, dialect, { kind: 'all' }, {}, rules)
+      : generateDbml(result.model, dialect, { kind: 'all' }, { projectName: dbmlProjectName(ctx.cwd) }, rules)
     const warnings = ddlWarnings(result.model, dialect, { kind: 'all' }, rules)
     for (const w of warnings) note(`경고: ${w}`)
 

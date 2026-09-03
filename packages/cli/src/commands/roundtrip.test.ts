@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -8,7 +8,7 @@ import {
 import { writeConfig } from '../config.js'
 import { seedPulled, TEST_CONFIG } from '../testing/harness.js'
 import { readTree } from '../tree.js'
-import { exportCommand } from './export.js'
+import { dbmlProjectName, exportCommand } from './export.js'
 import { importCommand } from './import.js'
 
 let out: string[]
@@ -133,6 +133,57 @@ describe('erdd export → erdd import 왕복', () => {
     const to = await project()
     expect(await importCommand({ cwd: to, ...yes, file, dryRun: false })).toBe(0)
     expect(shape(await modelOf(to))).toEqual(shape(await modelOf(from)))
+  })
+
+  /**
+   * ⚠️ **CLI 자신이 낸 DBML 을 되읽는 경로다.** 위의 두 왕복은 방언이 같은 프로젝트끼리 오가서
+   * `config.dialects[0]` 이 우연히 맞아떨어져도 통과한다 — 그래서 **`export` 가 `Project` 블록을
+   * 아예 안 싣던 구멍을 아무도 못 잡았다**(리뷰가 실측으로 찾았다). 방언이 **다른** 프로젝트로
+   * 되읽어야 `database_type` 이 실렸는지가 드러난다.
+   */
+  it('DBML 왕복 — 방언이 다른 프로젝트로 되읽어도 원본 방언이 실려 간다', async () => {
+    const from = await project('mysql')
+    await seedPulled(from, sourceModel())
+    const file = join(from, 'schema.dbml')
+    expect(await exportCommand({ cwd: from, ...yes, format: 'dbml', out: file })).toBe(0)
+    // 산출물 자체에 방언이 박혀 있어야 한다 — 이것이 없으면 아래는 config 로 떨어진다.
+    expect(await readFile(file, 'utf8')).toContain("database_type: 'MySQL'")
+
+    const to = await project('postgresql')
+    out.length = 0
+    expect(await importCommand({ cwd: to, ...yes, file, dryRun: true })).toBe(0)
+    const parsed = JSON.parse(out.join('')) as { dialect: string; dialectSource: string }
+    expect(parsed.dialect).toBe('mysql')
+    expect(parsed.dialectSource).toBe('Project의 database_type')
+  })
+
+  /**
+   * 경계 — 디렉터리 이름을 이름으로 쓰므로 **이름이 빈 문자열이 되는 자리**(파일시스템 루트)가
+   * 있다. 그때는 `Project` 블록이 빠지고 방언은 `config.dialects[0]` 으로 떨어진다 — 이 수정
+   * 이전의 동작이라 회귀가 아니다. 갈래가 있다는 사실을 여기서 못 박는다.
+   */
+  it('작업 디렉터리 이름이 비면 Project 블록 없이 낸다(루트 경계)', () => {
+    expect(dbmlProjectName('/tmp/my-project')).toBe('my-project')
+    expect(dbmlProjectName('/')).toBeUndefined()
+  })
+
+  /** 공백·한글·하이픈이 든 디렉터리 이름도 `quoteDbmlIdent` 가 감싸 파싱되는 DBML 이 된다. */
+  it('디렉터리 이름에 공백·한글이 있어도 되읽힌다', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'erdd-rt-'))
+    const from = join(base, '내 프로젝트 v2')
+    await mkdir(from)
+    await writeConfig(from, {
+      ...TEST_CONFIG, dialects: ['mysql'], namingRules: { ...TEST_CONFIG.namingRules },
+    })
+    await seedPulled(from, sourceModel())
+    const file = join(from, 'schema.dbml')
+    expect(await exportCommand({ cwd: from, ...yes, format: 'dbml', out: file })).toBe(0)
+    expect(await readFile(file, 'utf8')).toContain('Project "내 프로젝트 v2"')
+
+    const to = await project('postgresql')
+    out.length = 0
+    expect(await importCommand({ cwd: to, ...yes, file, dryRun: true })).toBe(0)
+    expect((JSON.parse(out.join('')) as { dialect: string }).dialect).toBe('mysql')
   })
 
   /**
