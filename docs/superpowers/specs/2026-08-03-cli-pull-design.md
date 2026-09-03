@@ -87,7 +87,7 @@
 
 ### 3.1 경계 — core는 plain object까지
 
-`packages/core`는 IO·런타임 의존성이 없다(→ HANDOFF 3.5). YAML 파서는 의존성이므로 core에 넣을 수 없다.
+`packages/core`는 IO·런타임 의존성이 없다(→ [HANDOFF 3.5](../HANDOFF.md)). YAML 파서는 의존성이므로 core에 넣을 수 없다.
 
 `packages/core/src/file-format.ts`에 순수 함수 두 개를 둔다. **YAML 문자열이 아니라 plain object를 다룬다.**
 
