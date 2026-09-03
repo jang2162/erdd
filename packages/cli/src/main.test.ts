@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi, afterEach } from 'vitest'
@@ -131,6 +131,37 @@ describe('main', () => {
     vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
     vi.spyOn(process.stderr, 'write').mockReturnValue(true)
     expect(await main(['export', '-o', '--json'], '/tmp/erdd-none')).toBe(2)
+    expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+  })
+  it('import 이 배선돼 있고 위치 인자·--dry-run 이 전달된다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+
+    // (1) config 가 없으면 NO_CONFIG(1) — USAGE(2)면 switch 에 배선되지 않은 것이다.
+    expect(await main(['import', 'x.sql', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+
+    // (2) 파일 인자가 없으면 USAGE(2)
+    out.length = 0
+    expect(await main(['import', '--json'], '/tmp/erdd-does-not-exist')).toBe(2)
+    expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+
+    // (3) 위치 인자와 --dry-run 이 실제로 명령까지 간다
+    const dir = await mkdtemp(join(tmpdir(), 'erdd-main-import-'))
+    expect(await main(['init', '--local', '--json'], dir)).toBe(0)
+    await writeFile(join(dir, 's.sql'), 'CREATE TABLE ORD (ORD_NO bigint NOT NULL, PRIMARY KEY (ORD_NO));', 'utf8')
+    out.length = 0
+    expect(await main(['import', 's.sql', '--dry-run', '--json', '--yes'], dir)).toBe(0)
+    const parsed = JSON.parse(out.join('')) as { dryRun: boolean; added: number }
+    expect(parsed).toMatchObject({ dryRun: true, added: 1 })
+  })
+
+  it('import 의 --format 도 값이 틀리면 USAGE 로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['import', 'x.sql', '--format', 'xml', '--json'], '/tmp/erdd-none')).toBe(2)
     expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
   })
 })
