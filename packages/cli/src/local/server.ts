@@ -160,8 +160,6 @@ export async function startLocalServer(opts: {
       // config 만 바뀐 경우도 모델 서명은 그대로라 위 modelChanged 필터에 걸리지 않는다 —
       // 자기 쓰기 판정과 무관하게(그 판정은 모델/레이아웃 서명만 본다) 여기서 직접 내보낸다.
       if (configChanged) { broadcast(); return }
-      // 방금 읽은 디스크가 우리가 마지막으로 쓴 그것이면 자기 쓰기다 — 브라우저를 흔들 이유가 없다.
-      if (store.isSelfWrite) return
       if (modelChanged) broadcast()
     })().catch((err) => { console.warn('[local server] 감시 처리 중 오류:', err) })
   })

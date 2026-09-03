@@ -5,6 +5,7 @@ import { parse as parseYaml } from 'yaml'
 import { describe, expect, it } from 'vitest'
 import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
 import { FileStore, LAYOUT_FILE, LocalStoreError } from './store.js'
+import { hasDraft, readDraft } from './draft.js'
 
 async function project(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-local-'))
@@ -205,7 +206,8 @@ describe('FileStore.load', () => {
     // reject 됐다면 이 await 가 던져 테스트가 실패한다 — load() 가 resolve 하는 것 자체가 증거다.
     const s = await store.load()
     expect(s.ok).toBe(false)
-    expect(store.isSelfWrite).toBe(false)
+    // (옛 `isSelfWrite` 단언이 있던 자리다. 그 판정은 `#base.signature` 로 합쳐졌고, 「손상은
+    //  반드시 알린다」는 이제 server.test.ts 의 '파일이 깨지면 blocked 를 보낸다' 가 잠근다.)
   })
 
   it('신규 id 되쓰기의 쓰기 실패는 던지지 않고 ok:false 로 알린다', async () => {
@@ -218,7 +220,6 @@ describe('FileStore.load', () => {
     try {
       const s = await store.load()
       expect(s.ok).toBe(false)
-      expect(store.isSelfWrite).toBe(false)
     } finally {
       await chmod(join(dir, 'erdd/tables/ORD.yaml'), 0o644)
     }
@@ -244,7 +245,8 @@ describe('FileStore.mutate', () => {
     expect(store.state.model.tables['t1']!.physicalName).toBe('MBR')
   })
 
-  it('flush 하면 파일에 쓴다', async () => {
+  // ⚠️ Task 4 가 `save()` 로 되살린다 — 파일을 쓰는 것은 이제 save 뿐이다.
+  it.skip('flush 하면 파일에 쓴다', async () => {
     const dir = await project({})
     const store = new FileStore(dir)
     await store.load()
@@ -317,12 +319,19 @@ describe('FileStore.mutate', () => {
     await store.mutate([createTable('t1', 'A')])
     const flush1 = store.flush()
     await store.mutate([createTable('t2', 'B')])
-    // flush1 이 #chain 을 우회했다면 이 mutate 는 flush1 의 writeTree 를 기다리지 않고 먼저
-    // 끝나 A.yaml 이 아직 없을 수 있다. #chain 을 지난다면 이 시점엔 이미 다 쓰여 있어야 한다.
-    expect(await readFile(join(dir, 'erdd/tables/A.yaml'), 'utf8')).toContain('name: A')
+    // flush1 이 #chain 을 우회했다면 이 mutate 는 flush1 의 드래프트 쓰기를 기다리지 않고 먼저
+    // 끝나 드래프트가 아직 없을 수 있다. #chain 을 지난다면 이 시점엔 이미 쓰여 있어야 한다.
+    const mid = await readDraft(dir)
+    expect(mid.kind).toBe('ok')
+    if (mid.kind !== 'ok') return
+    expect(Object.values(mid.draft.model.tables).map((t) => t.physicalName)).toEqual(['A'])
     const flush2 = store.flush()
     await Promise.all([flush1, flush2])
-    expect(await readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).toContain('name: B')
+    const after = await readDraft(dir)
+    expect(after.kind).toBe('ok')
+    if (after.kind !== 'ok') return
+    expect(Object.values(after.draft.model.tables).map((t) => t.physicalName).sort())
+      .toEqual(['A', 'B'])
   })
 
   it('load() 진행 중에 커밋된 mutate 의 편집을 되돌리지 않는다(경합)', async () => {
@@ -346,12 +355,13 @@ describe('FileStore.mutate', () => {
     const dir = await project({})
     const store = new FileStore(dir)
     await store.load()
-    // 자기 쓰기 서명을 남긴다 — 이 시점 isSelfWrite 는 true 다.
+    // 편집을 드래프트에 남긴다 — 이 시점 dirty 는 true 다(파일에는 아직 아무것도 없다).
     await store.mutate([createTable('t1', 'A')])
     await store.flush()
-    expect(store.isSelfWrite).toBe(true)
+    expect(store.dirty).toBe(true)
 
-    // 외부 편집기가 파일을 깨뜨린다.
+    // 외부 편집기가 파일을 깨뜨린다. (편집은 이제 파일을 만들지 않으므로 디렉터리를 직접 만든다.)
+    await mkdir(join(dir, 'erdd/tables'), { recursive: true })
     await writeFile(join(dir, 'erdd/tables/A.yaml'), 'name: [불완전\n', 'utf8')
 
     // load() 를 시작만 하고(readTree 의 실제 파일 IO 로 곧장 양보한다) 기다리지 않는다.
@@ -364,16 +374,19 @@ describe('FileStore.mutate', () => {
 
     // 손상이 "낡았다"고 버려지면 안 된다 — 파일이 깨졌으면 반드시 알리고 편집을 잠가야 한다.
     expect(store.state.ok).toBe(false)
-    expect(store.isSelfWrite).toBe(false)
   })
 
   /**
-   * 이 트랙의 **네 번째** 경합이다. 겹친 편집 때문에 로드를 통째로 버리면, 그 사이 밖에서
-   * 생긴 `erdd/tables/*.yaml` 이 메모리 모델에 영영 들어오지 못한다 — 화면에 안 보이는 것은
-   * 물론이고, 트리 전체를 다시 쓰던 옛 flush 는 그 파일을 **지웠다**(최종 리뷰 I-2).
-   * 버리지 말고 다시 읽어 **편집과 밖의 변경이 둘 다** 살아남아야 한다.
+   * 이 트랙의 **네 번째** 경합이었다. 옛 계약은 「편집과 밖의 변경이 **둘 다** 살아남는다」였고,
+   * 로드가 겹친 편집 때문에 버려지면 밖에서 생긴 파일이 메모리 모델에 영영 못 들어왔다.
+   *
+   * ⚠️ **드래프트 도입으로 그 계약이 바뀌었다.** 미저장 편집이 있는 동안에는 밖의 변경을
+   * **채택하지 않는다** — 자동 병합을 하지 않는 것이 설계 D2 이고, 대신 `external` 로 알려
+   * 사용자가 「내 편집 유지 / 파일 다시 읽기」를 고른다. 그러므로 이 테스트가 잠그는 것은
+   * 「둘 다 모델에 들어온다」가 아니라 **「밖의 변경이 조용히 묻히지 않는다」**로 옮겨졌다.
+   * (원래 방어의 정신은 그대로다 — 잃어서는 안 되는 것은 **알림**이다.)
    */
-  it('편집과 겹쳐 버려진 로드의 외부 변경이 사라지지 않는다(경합)', async () => {
+  it('편집과 겹친 로드의 외부 변경은 묻히지 않고 external 로 알려진다(경합)', async () => {
     const dir = await project({})
     const store = new FileStore(dir)
     await store.load()
@@ -381,6 +394,7 @@ describe('FileStore.mutate', () => {
     await store.flush()
 
     // 에이전트가 밖에서 새 테이블 파일을 쓴다.
+    await mkdir(join(dir, 'erdd/tables'), { recursive: true })
     await writeFile(join(dir, 'erdd/tables/ORD.yaml'), [
       'id: 018f6b0e-0000-7000-8000-0000000000aa',
       'name: ORD',
@@ -395,14 +409,13 @@ describe('FileStore.mutate', () => {
     await store.mutate([createTable('t2', 'B')])
     await loadPromise
 
-    // 메모리 모델이 셋을 전부 알아야 한다 — 밖의 ORD 도, 겹친 편집 B 도.
+    // 밖의 변경은 **채택되지 않는다** — 내 편집만 그대로다.
     expect(Object.values(store.state.model.tables).map((t) => t.physicalName).sort())
-      .toEqual(['A', 'B', 'ORD'])
-
-    await store.flush()
-    // 디스크에서도 둘 다 살아 있어야 한다.
+      .toEqual(['A', 'B'])
+    // 그러나 조용하지 않다 — 사용자가 고를 수 있도록 알린다.
+    expect(store.external).toBe(true)
+    // 그리고 파일은 손대지 않았다(자동 병합도, 덮어쓰기도 없다).
     expect(await readFile(join(dir, 'erdd/tables/ORD.yaml'), 'utf8')).toContain('name: ORD')
-    expect(await readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).toContain('name: B')
   })
 
   it('flush() 가 쓰기에 실패하면 dirty 를 유지해 다음 flush 가 재시도한다', async () => {
@@ -410,17 +423,25 @@ describe('FileStore.mutate', () => {
     const store = new FileStore(dir)
     await store.load()
     await store.mutate([createTable('t1', 'A')])
-    // layout.yaml 자리에 디렉터리를 둔다 — writeFile 이 EISDIR 로 던져 flush() 가 실패한다.
-    await mkdir(join(dir, 'erdd/layout.yaml'), { recursive: true })
+    // 드래프트의 임시 파일 자리에 디렉터리를 둔다 — writeFile 이 EISDIR 로 던져 flush() 가 실패한다.
+    await mkdir(join(dir, '.erdd/draft.json.tmp'), { recursive: true })
     await expect(store.flush()).rejects.toThrow()
-    // 실패했으니 dirty 가 꺼지면 안 된다 — 장애물을 치우면 다음 flush 가 실제로 써야 한다.
-    await rm(join(dir, 'erdd/layout.yaml'), { recursive: true, force: true })
+    expect(await hasDraft(dir)).toBe(false)
+    // 실패했으니 #draftPending 이 꺼지면 안 된다 — 장애물을 치우면 다음 flush 가 실제로 써야 한다.
+    await rm(join(dir, '.erdd/draft.json.tmp'), { recursive: true, force: true })
     await store.flush()
-    expect(await readFile(join(dir, 'erdd/layout.yaml'), 'utf8')).toContain('t1')
+    expect(await hasDraft(dir)).toBe(true)
+    expect(store.dirty).toBe(true)
   })
 })
 
-describe('FileStore.flush', () => {
+/**
+ * ⚠️ **Task 4(`save()`)가 되살릴 둘이다.** 이 describe 는 「flush 가 파일을 쓴다」를 재던
+ * 것인데, flush 의 대상이 드래프트로 바뀌어 그 주어가 사라졌다. 파일을 쓰는 것은 이제
+ * `save()` 뿐이므로 다음 태스크에서 `store.flush()` → `await store.save()` 로 바꾸고 skip 을 뗀다.
+ * **지우지 않는다** — 되살릴 것을 잊지 않기 위해서다.
+ */
+describe.skip('FileStore.flush', () => {
   /**
    * 로컬 모드는 **에이전트·사람이 파일을 직접 쓰는 것**이 전제라 비정규 포맷이 예외가 아니라
    * 기본이다. flush 가 매번 트리 전체를 다시 쓰면 무관한 편집 한 번에 저장소가 통째로
@@ -468,5 +489,158 @@ describe('FileStore.flush', () => {
     }])
     await store.flush()
     await expect(readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).rejects.toThrow()
+  })
+})
+
+/** 픽스처 `MBR` 의 테이블 id. 파일에 id 가 **이미 있다**(신규 id 되쓰기를 타지 않는다). */
+const MBR_ID = '018f6b0e-0000-7000-8000-000000000001'
+
+/**
+ * 물리명만 바꾸는 update op.
+ *
+ * ⚠️ 계획서는 `patch` 를 쓴다고 적었으나 실제 `UpdateOp` 는
+ * `changes: Record<string, { from, to }>` 다(`packages/core/src/op.ts`). `applyOps` 는 `to` 만
+ * 적용하고 `from` 은 검증하지 않는다 — 계획의 단언을 실제에 맞춰 정정한 것이다.
+ */
+const renameMbr = (to: string): Op => ({
+  action: 'update',
+  entity: 'table',
+  entityId: MBR_ID,
+  changes: { physicalName: { from: 'MBR', to } },
+})
+
+describe('FileStore 드래프트', () => {
+  /**
+   * 🔥 **이 사이클의 존재 이유다.** 편집이 파일을 건드리지 않는다는 것을 직접 잠근다.
+   *
+   * ⚠️ 픽스처의 테이블 파일에 `id` 가 **이미 있어야 한다** — 없으면 `#loadOnce` 의 신규 id
+   * 되쓰기가 파일을 건드려, 이 테스트가 「편집이 안 썼다」가 아니라 「되쓰기가 썼다」를 재게 된다.
+   */
+  it('편집과 flush 는 erdd/ 를 건드리지 않는다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    const before = await stat(join(dir, 'erdd/tables/MBR.yaml'))
+    const bodyBefore = await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')
+
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+
+    expect(await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')).toBe(bodyBefore)
+    expect((await stat(join(dir, 'erdd/tables/MBR.yaml'))).mtimeMs).toBe(before.mtimeMs)
+    // 개명 결과가 새 파일로 새어 나가지도 않는다.
+    await expect(readFile(join(dir, 'erdd/tables/MBR2.yaml'), 'utf8')).rejects.toThrow()
+    // 대신 드래프트가 생겼다.
+    expect(await hasDraft(dir)).toBe(true)
+    expect(store.dirty).toBe(true)
+  })
+
+  it('드래프트에 담긴 모델이 편집 결과다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+
+    const r = await readDraft(dir)
+    expect(r.kind).toBe('ok')
+    if (r.kind !== 'ok') return
+    expect(r.draft.model.tables[MBR_ID]!.physicalName).toBe('MBR2')
+    expect(r.draft.seq).toBe(1)
+  })
+
+  /**
+   * 되돌리는 편집(A→B→A)에서 「미저장」이 남으면 표시가 거짓말을 하고 저장 버튼이 쓸 것 없는
+   * 저장을 하게 된다. **그래서 `#dirty` 는 플래그가 아니라 내용 비교다.**
+   */
+  it('편집을 되돌리면 dirty 가 내려가고 드래프트 파일이 지워진다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+    expect(store.dirty).toBe(true)
+
+    await store.mutate([{
+      action: 'update', entity: 'table', entityId: MBR_ID,
+      changes: { physicalName: { from: 'MBR2', to: 'MBR' } },
+    }])
+    await store.flush()
+    expect(store.dirty).toBe(false)
+    expect(await hasDraft(dir)).toBe(false)
+  })
+
+  it('adoptDraft 가 재시작을 넘어 편집을 되살린다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const first = new FileStore(dir)
+    await first.load()
+    await first.mutate([renameMbr('MBR2')])
+    await first.flush()
+
+    const second = new FileStore(dir)
+    await second.load()
+    await second.adoptDraft()
+    expect(second.state.model.tables[MBR_ID]!.physicalName).toBe('MBR2')
+    expect(second.dirty).toBe(true)
+    // 파일은 여전히 옛 이름이다 — 저장하지 않았으므로.
+    expect(await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')).toContain('name: MBR\n')
+  })
+
+  /**
+   * `serve` 가 꺼진 사이 `git pull`·`git checkout` 이 파일을 바꾼 경우다. 조용히 얹으면 사용자는
+   * 브랜치가 바뀐 줄 모른 채 저장해 남의 변경을 덮는다.
+   */
+  it('드래프트의 기준선이 지금 파일과 다르면 external 을 함께 세운다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const first = new FileStore(dir)
+    await first.load()
+    await first.mutate([renameMbr('MBR2')])
+    await first.flush()
+
+    await writeFile(
+      join(dir, 'erdd/tables/MBR.yaml'), MBR.replace('logicalName: 회원', 'logicalName: 멤버'), 'utf8',
+    )
+
+    const second = new FileStore(dir)
+    await second.load()
+    await second.adoptDraft()
+    expect(second.dirty).toBe(true)
+    expect(second.external).toBe(true)
+    expect(second.state.model.tables[MBR_ID]!.physicalName).toBe('MBR2')
+  })
+
+  it('손상 드래프트는 얹지 않고 파일 그대로 연다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    await mkdir(join(dir, '.erdd'), { recursive: true })
+    await writeFile(join(dir, '.erdd/draft.json'), '{"model":{}}', 'utf8')
+
+    const store = new FileStore(dir)
+    await store.load()
+    await store.adoptDraft()
+    expect(store.state.model.tables[MBR_ID]!.physicalName).toBe('MBR')
+    expect(store.dirty).toBe(false)
+  })
+
+  /**
+   * 첫 `load()` 가 실패하면(파일 손상) 얹을 기준선이 없다. 들고 있다가 파일이 고쳐져 로드가
+   * 성공하는 순간 얹는다 — 그때까지 편집은 어차피 잠겨 있다.
+   */
+  it('파일이 깨진 채로 기동하면 드래프트를 들고 있다가 복구 시 얹는다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const first = new FileStore(dir)
+    await first.load()
+    await first.mutate([renameMbr('MBR2')])
+    await first.flush()
+
+    await writeFile(join(dir, 'erdd/tables/MBR.yaml'), 'name: [불완전\n', 'utf8')
+    const second = new FileStore(dir)
+    expect((await second.load()).ok).toBe(false)
+    await second.adoptDraft()
+    expect(second.dirty).toBe(false)          // 아직 얹지 않았다
+
+    await writeFile(join(dir, 'erdd/tables/MBR.yaml'), MBR, 'utf8')
+    expect((await second.load()).ok).toBe(true)
+    expect(second.state.model.tables[MBR_ID]!.physicalName).toBe('MBR2')
+    expect(second.dirty).toBe(true)
   })
 })

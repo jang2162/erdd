@@ -10,6 +10,7 @@ import {
   type TableLayout,
 } from '@erdd/core'
 import { canonical, readTree, writeTreeChanges } from '../tree.js'
+import { readDraft, removeDraft, writeDraft, type Draft } from './draft.js'
 
 export const LAYOUT_FILE = 'erdd/layout.yaml'
 const WRITE_DEBOUNCE_MS = 300
@@ -37,9 +38,27 @@ const MAX_LOAD_ATTEMPTS = 4
 /** `#loadOnce` 의 결과. `stale` 이면 겹친 편집 때문에 확정하지 못했다는 뜻이다. */
 type LoadAttempt = { state: StoreState; stale: boolean }
 
-/** 자기 쓰기 판정용 정규화 서명. 키 순서·표현 차이를 지운다. */
+/** 정규화 서명. 키 순서·표현 차이를 지운다. */
 function signatureOf(tree: FileTree, layout: LayoutData): string {
   return canonical({ ...tree, [LAYOUT_FILE]: layout }, LAYOUT_FILE) ?? ''
+}
+
+/**
+ * 모델을 **저장했을 때 나올 파일**의 서명. `#dirty` 판정의 양쪽이 모두 이 함수를 지나야 한다 —
+ * 한쪽만 정규화하면 손으로 다듬은 YAML 이나 `layout.yaml` 이 없는 프로젝트가 열자마자 「미저장」이
+ * 된다(`FileStore.#base` 주석 참조).
+ */
+function modelSignatureOf(model: ProjectModel): string {
+  return signatureOf(modelToFiles(model).tree, layoutFromModel(model))
+}
+
+/** 성공한 로드 결과에서 기준선 조각을 만든다. */
+function baseOf(outcome: { tree: FileTree; layout: LayoutData; model: ProjectModel }) {
+  return {
+    tree: outcome.tree,
+    layout: outcome.layout,
+    modelSignature: modelSignatureOf(outcome.model),
+  }
 }
 
 /**
@@ -113,16 +132,45 @@ function isNote(v: unknown): v is Note {
 export class FileStore {
   #cwd: string
   #state: StoreState = { ok: true, model: createEmptyModel(), seq: 0 }
-  /** flush 가 마지막으로 디스크에 쓴 내용의 정규화 서명. */
-  #written = ''
-  /** 마지막 load 가 읽은 것이 그 서명과 같았는가. */
-  #selfWrite = false
   /**
-   * 디스크와 맞춰 둔 것으로 아는 마지막 트리·layout. `flush` 는 **이것과 달라진 것만** 쓴다
-   * (`writeTreeChanges`). 성공한 load 와 성공한 flush 만 이 값을 옮긴다.
+   * 마지막으로 **채택했거나 사용자가 인정한** 디스크 상태. 두 가지 일을 한다.
+   * 1. **저장의 비교 기준** — `save()` 가 `writeTreeChanges(cwd, #base.tree, next)` 로 쓴다.
+   * 2. **외부 변경 감지의 기준** — 읽어 온 서명이 이것과 다르면 밖에서 바뀐 것이다.
+   *
+   * 옛 `#written`/`#selfWrite`/`#tree`/`#layout` 이 여기로 합쳐졌다. 옛 자기 쓰기 판정은
+   * 「방금 읽은 것 == 내가 마지막으로 쓴 것」이었는데, 드래프트 이후에는 「방금 읽은 것 == 내가
+   * 아는 파일 상태」가 **자기 쓰기 거르기와 외부 변경 감지를 동시에** 한다. 비교식은 그대로다 —
+   * `load()` 전후의 서명을 비교하는 방식으로는 판정할 수 없다는 옛 주석의 이유도 그대로다
+   * (그 서명은 우리가 쓸 때만 움직이므로 언제나 같다).
+   *
+   * ⚠️ `signature` 의 초깃값 `''` 는 **어떤 실제 서명과도 같을 수 없다**(`canonical` 은 객체에
+   * 대해 언제나 문자열을 낸다). 그래서 첫 `load()` 는 언제나 채택한다.
+   *
+   * ⚠️ **서명이 둘인 이유가 있다 — 하나로 합치지 마라.**
+   * - `signature`: 디스크에서 **읽은 그대로**의 서명. 「밖에서 바뀌었는가」를 잰다.
+   * - `modelSignature`: 그 디스크 상태가 낸 **모델**을 다시 파일로 만든 것의 서명.
+   *   「저장할 것이 남았는가」(`#dirty`)를 잰다.
+   *
+   * 둘은 정상적으로 다르다. `erdd pull` 로 받아 온 프로젝트에는 `layout.yaml` 이 없어서
+   * `layoutFromModel` 이 격자 좌표를 새로 만들어 내고, 사람이 손으로 다듬은 YAML 은 포맷이
+   * `modelToFiles` 출력과 어긋난다. **원본 바이트로 `#dirty` 를 재면 아무것도 편집하지 않은
+   * 프로젝트가 열자마자 「미저장」이 된다** — 그리고 그것은 「연다고 저장소가 더러워지지 않는다」는
+   * 이 사이클의 목적과 정면으로 어긋난다. `#dirty` 는 **모델이 디스크의 모델과 다른가**이다.
    */
-  #tree: FileTree = {}
-  #layout: LayoutData = EMPTY_LAYOUT
+  #base: { tree: FileTree; layout: LayoutData; signature: string; modelSignature: string } =
+    { tree: {}, layout: EMPTY_LAYOUT, signature: '', modelSignature: '' }
+
+  /**
+   * 디스크가 `#base` 와 달라졌는데 **사용자가 아직 고르지 않았다**(설계 D2 — 자동 병합 없음).
+   *
+   * 밖에서 온 내용을 들고 있지 않고 **플래그 하나**다 — 들고 있으면 그 사이 디스크가 또 바뀌었을
+   * 때 낡은 것을 `#base` 로 승격시켜 다음 저장이 그 두 번째 변경을 말없이 덮는다. `keep`·
+   * `discard` 가 그 시점에 디스크를 다시 읽으므로 스스로 교정된다.
+   */
+  #external = false
+
+  /** 아직 얹지 못한 드래프트(첫 `load()` 가 실패했을 때). 로드가 성공하는 순간 얹는다. */
+  #pendingDraft: Draft | null = null
 
   constructor(cwd: string) {
     this.#cwd = cwd
@@ -132,14 +180,14 @@ export class FileStore {
   get state(): StoreState { return this.#state }
 
   /**
-   * 마지막 `load()` 가 읽은 디스크 내용이 **우리가 마지막으로 쓴 것과 같은가.**
-   *
-   * 감시 이벤트가 자기 쓰기인지 남의 변경인지 가르는 값이다. ⚠️ `load()` 전후의 서명을
-   * 비교하는 방식으로는 판정할 수 없다 — 서명은 `flush()` 만 바꾸므로 언제나 같다.
-   * **읽은 것**과 **쓴 것**을 비교해야 한다. 로드가 실패하면 언제나 `false` 다(파일이 깨진 것은
-   * 자기 쓰기로 설명되지 않으므로 반드시 알려야 한다).
+   * **저장할 것**이 남았는가. 플래그가 아니라 **내용 비교 결과**다(`flush()` 가 갱신한다) —
+   * 되돌리는 편집(A→B→A)에서 `#draftPending` 은 참이고 이것은 거짓이다. 합치면 「미저장」
+   * 표시가 거짓말을 하고 저장 버튼이 쓸 것 없는 저장을 하게 된다.
    */
-  get isSelfWrite(): boolean { return this.#selfWrite }
+  get dirty(): boolean { return this.#dirty }
+
+  /** 디스크가 밖에서 바뀌었는데 사용자가 아직 「유지/다시 읽기」를 고르지 않았는가. */
+  get external(): boolean { return this.#external }
 
   /**
    * 파일에서 모델을 다시 읽는다. **실패해도 마지막 정상 모델을 버리지 않는다** — 호출자가
@@ -147,27 +195,25 @@ export class FileStore {
    *
    * 읽는 사이에 편집이 커밋되면 그 결과는 낡은 것이라 확정할 수 없다(`#commitLoad` 참조).
    * **그렇다고 버리기만 하면 그 로드가 들고 온 「밖의 변경」이 통째로 사라진다** — 그 사이
-   * 에이전트가 만든 `erdd/tables/*.yaml` 이 메모리 모델에 영영 못 들어오고, 화면에도 안 뜬다
-   * (옛 flush 는 그 파일을 지우기까지 했다 — 최종 리뷰 I-2). 그래서 **버린 뒤 다시 읽는다.**
+   * 에이전트가 만든 `erdd/tables/*.yaml` 이 메모리 모델에 영영 못 들어오고, 화면에도 안 뜬다.
+   * 그래서 **버린 뒤 다시 읽는다.**
    *
-   * 다시 읽기 전에 **대기 중인 편집을 먼저 flush 한다.** 안 그러면 디바운스 때문에 아직 디스크에
-   * 없는 그 편집을 「파일에 없다」로 읽어 방금 커밋된 편집을 되돌린다 — seq 가드가 막으려던 바로
-   * 그 사고다. flush 가 **바뀐 파일만** 쓰므로(`writeTreeChanges`) 이 flush 가 밖에서 온 파일을
-   * 건드리는 일도 없다. 그렇게 디스크가 「편집 + 밖의 변경」을 모두 담은 뒤 다시 읽으면 둘 다 산다.
+   * 겹친 편집을 만나면 **그냥 다시 읽는다.** 옛 구현은 다시 읽기 전에 대기 중인 편집을 먼저
+   * flush 했는데, 그것은 디스크가 메모리 모델의 유일한 보관처였기 때문이다(디바운스 대기 중인
+   * 편집을 「파일에 없다」로 읽어 되돌리는 사고를 막던 자리). **드래프트 이후에는 읽기가 미저장
+   * 편집을 건드릴 수 없으므로** 그 flush 가 필요 없다.
    */
   async load(): Promise<StoreState> {
     for (let attempt = 1; ; attempt += 1) {
       const { state, stale } = await this.#loadOnce()
       if (!stale) return state
-      // 재시도 상한. 편집이 끊임없이 들어오면(드래그) 언제까지고 겹칠 수 있다 — 그때는 지금
-      // 상태를 그대로 두고 물러난다. **아무것도 지워지지 않는다**(flush 는 자기가 아는 트리와의
-      // 차이만 쓴다). 이 flush 가 낸 쓰기가 다시 감시를 깨워 다음 load 가 밖의 변경을 데려온다.
-      if (attempt >= MAX_LOAD_ATTEMPTS) return state
-      try {
-        await this.flush()
-      } catch {
-        // 쓰기가 막힌 상태(권한·EISDIR 등)에서 다시 읽으면 편집을 되돌린다 — 물러난다.
-        // #dirty 는 참으로 남아 다음 flush 가 재시도하고, load() 는 여전히 던지지 않는다.
+      // 재시도 상한. 편집이 끊임없이 들어오면(드래그) 언제까지고 겹칠 수 있다.
+      // ⚠️ **그때 결과를 버리지 않고 `#external` 을 세운다.** 옛 구현은 버려도 「자기 flush 가
+      // 다시 감시를 깨운다」가 회수해 줬는데, 편집이 더 이상 `erdd/` 를 쓰지 않으므로 그 회수
+      // 경로가 사라졌다 — 버리면 이 로드가 들고 온 밖의 변경 알림이 통째로 증발한다. 편집이
+      // 쉼 없이 들어오는 중이면 어차피 곧 미저장이므로 「미저장 + 외부 변경」과 같은 처리다.
+      if (attempt >= MAX_LOAD_ATTEMPTS) {
+        this.#external = true
         return state
       }
     }
@@ -215,6 +261,10 @@ export class FileStore {
         try {
           await mkdir(dirname(abs), { recursive: true })
           await writeFile(abs, stringifyYaml(content), 'utf8')
+          // ⚠️ **되쓴 것을 tree 에 반영해야 한다.** 안 하면 `#base` 가 디스크보다 뒤처져, 이
+          // 쓰기가 깨운 다음 감시가 「밖에서 바뀌었다」로 판정해 **거짓 충돌 배너**를 띄운다.
+          // 옛 코드에서는 `#written` 이 `modelToFiles` 결과라 우연히 가려져 있던 갈래다.
+          tree[rel] = content
         } catch (err) {
           return fail([{ path: rel, message: (err as Error).message }])
         }
@@ -249,9 +299,8 @@ export class FileStore {
    * ⚠️ **이 seq 가드는 실패(`!outcome.ok`) 결과에는 적용하지 않는다.** 실패는 모델을 덮지 않고
    * `ok:false` + `failures` 만 세우므로(마지막 정상 모델은 그대로 `this.#state.model` 을 쓴다)
    * 경합과 무관하게 언제나 반영돼야 한다 — 안 그러면 「파일이 깨지면 쓰기를 멈추고 알린다」는
-   * 안전망이 경합 창에서 조용히 사라진다(`isSelfWrite` 가 직전 `flush()` 의 `true` 를 그대로
-   * 물고 있어 자기 쓰기로 오인되고, `blocked` 도 나가지 않고, 뒤이은 `flush()` 가 그 손상된
-   * 파일을 메모리 모델로 덮어쓴다). `seq` 는 `seqAtStart`(진입 시점 캡처값)가 아니라
+   * 안전망이 경합 창에서 조용히 사라진다(`blocked` 가 나가지 않아 편집이 계속 열려 있고, 뒤이은
+   * `save()` 가 그 손상된 파일을 메모리 모델로 덮어쓴다). `seq` 는 `seqAtStart`(진입 시점 캡처값)가 아니라
    * `this.#state.seq`(지금 값)를 쓴다 — `seqAtStart` 를 쓰면 성공 경로에서 고친 seq 되돌림이
    * 실패 경로로 되돌아온다.
    */
@@ -263,24 +312,39 @@ export class FileStore {
   ): Promise<LoadAttempt> {
     return this.#serialize(async () => {
       if (!outcome.ok) {
-        // 깨진 파일은 자기 쓰기로 설명되지 않는다 — 반드시 알려야 하므로 언제나 false 다.
-        this.#selfWrite = false
         this.#state = { ok: false, model: this.#state.model, seq: this.#state.seq, failures: outcome.failures }
         return { state: this.#state, stale: false }
       }
       if (this.#state.seq !== seqAtStart) return { state: this.#state, stale: true }
-      // **읽은 것**의 서명을 **쓴 것**과 비교한다. 같으면 이 감시 이벤트는 자기 쓰기다.
-      this.#selfWrite = signatureOf(outcome.tree, outcome.layout) === this.#written
-      // 방금 읽은 것이 디스크의 현재 모습이다 — 다음 flush 의 비교 기준을 여기로 옮긴다.
-      this.#tree = outcome.tree
-      this.#layout = outcome.layout
-      this.#state = { ok: true, model: outcome.model, seq: seqAtStart }
+
+      const signature = signatureOf(outcome.tree, outcome.layout)
+      const changed = signature !== this.#base.signature
+      const unsaved = this.#dirty || this.#draftPending
+
+      if (changed && unsaved) {
+        // 미저장 편집이 있는데 밖이 바뀌었다 — **채택하지 않고** 사용자가 고르게 한다
+        // (설계 D2, 자동 병합 없음). 모델도 기준선도 그대로 두고 플래그만 세운다.
+        this.#external = true
+      } else if (changed) {
+        // 미저장이 없으니 디스크가 진실이다 — 모델과 기준선을 함께 옮긴다.
+        this.#base = { ...baseOf(outcome), signature }
+      }
+
+      // ⚠️ **`changed` 가 거짓이어도 여기까지 와야 한다.** 깨졌던 파일이 **원래 내용 그대로**
+      // 복구되면 서명이 기준선과 같은데, 조기 반환하면 `ok:false` 가 영영 풀리지 않는다.
+      // 미저장 편집이 있으면 메모리 모델(=드래프트)을 지키고, 없으면 디스크 모델을 쓴다.
+      this.#state = unsaved
+        ? { ok: true, model: this.#state.model, seq: this.#state.seq }
+        : { ok: true, model: outcome.model, seq: seqAtStart }
+      this.#tryAdoptPending()
       return { state: this.#state, stale: false }
     })
   }
 
   #chain: Promise<unknown> = Promise.resolve()
   #timer: NodeJS.Timeout | null = null
+  /** 드래프트 **파일에 쓸 것**이 남았는가(디바운스 플래그). 옛 `#dirty` 의 역할이다. */
+  #draftPending = false
   #dirty = false
 
   /** 서버의 프로젝트 행 FOR UPDATE 락에 대응하는 자리. 모든 쓰기가 이 체인을 지난다. */
@@ -329,47 +393,88 @@ export class FileStore {
   #commit(model: ProjectModel): { seq: number } {
     const seq = this.#state.seq + 1
     this.#state = { ok: true, model, seq }
-    this.#dirty = true
+    this.#draftPending = true
     if (this.#timer !== null) clearTimeout(this.#timer)
-    // 드래그 한 번이 초당 수십 건의 mutate 를 낸다 — 매번 파일을 쓰면 감시 루프와 함께 요동친다.
-    // 타이머發 호출은 아무도 반환값을 보지 않으므로 실패를 삼킨다 — #dirty 는 flush() 가 실패
-    // 시 참으로 남기므로 다음 편집이나 명시적 flush() 가 재시도한다.
+    // 드래그 한 번이 초당 수십 건의 mutate 를 낸다 — 매번 드래프트를 쓰면 디스크가 요동친다.
+    // 타이머發 호출은 아무도 반환값을 보지 않으므로 실패를 삼킨다 — #draftPending 은 flush() 가
+    // 실패 시 참으로 남기므로 다음 편집이나 명시적 flush() 가 재시도한다.
     this.#timer = setTimeout(() => { this.flush().catch(() => {}) }, WRITE_DEBOUNCE_MS)
     return { seq }
   }
 
   /**
-   * 대기 중인 쓰기를 지금 끝낸다. 프로세스 종료 전에 반드시 부른다.
+   * 대기 중인 **드래프트** 쓰기를 지금 끝낸다. 프로세스 종료 전에 반드시 부른다.
    *
-   * `#serialize` 를 지난다 — 타이머發 호출과 명시적 호출(예: 다음 태스크의 서버 종료 훅)이
-   * 동시에 들어와도 `writeTree` 두 개가 겹쳐 돌지 않는다(`writeTree` 는 삭제·쓰기 패스가 나뉘어
-   * 있어 원자적이지 않다). ⚠️ 체인 안에서 이 메서드를 await 하면 자기 자신을 기다려 교착된다 —
-   * `mutate`/`setModel` 은 절대 `flush()` 를 부르지 않는다.
+   * 옛 구현은 여기서 `erdd/` 에 썼다 — **그 대상이 `.erdd/draft.json` 으로 바뀐 것이 이 사이클의
+   * 전부다.** 사용자의 편집이 파일에 닿는 것은 `save()` 뿐이다.
+   *
+   * `#dirty` 를 여기서 **다시 계산한다.** 내용 비교 비용(`modelToFiles` 한 번)이 드는 유일한
+   * 자리이고 디바운스돼 있으므로, 드래그 프레임마다 계산하지 않는다.
+   *
+   * `#serialize` 를 지난다 — 타이머發 호출과 명시적 호출(서버 종료 훅)이 겹쳐 돌지 않는다.
+   * ⚠️ 체인 안에서 이 메서드를 await 하면 자기 자신을 기다려 교착된다 — `mutate`/`setModel` 은
+   * 절대 `flush()` 를 부르지 않는다.
    */
   async flush(): Promise<void> {
     return this.#serialize(async () => {
       if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
-      if (!this.#dirty) return
+      if (!this.#draftPending) return
       const model = this.#state.model
-      // **바뀐 파일만** 쓴다(설계 §4). 매번 전체를 다시 쓰면 손으로 다듬어 둔 YAML 포맷이
-      // 무관한 편집 한 번에 전부 정규화된다 — 로컬 모드는 에이전트가 파일을 직접 쓰는 것이
-      // 전제라 비정규 포맷이 예외가 아니다. 삭제는 그대로 산다(#tree 에 있었는데 모델에서
-      // 사라진 파일은 지워진다).
-      const { tree } = modelToFiles(model)
-      await writeTreeChanges(this.#cwd, this.#tree, tree)
-      const layout = layoutFromModel(model)
-      if (canonical(layout, LAYOUT_FILE) !== canonical(this.#layout, LAYOUT_FILE)) {
-        const abs = join(this.#cwd, LAYOUT_FILE)
-        await mkdir(dirname(abs), { recursive: true })
-        await writeFile(abs, stringifyYaml(layout), 'utf8')
+      const dirty = modelSignatureOf(model) !== this.#base.modelSignature
+      if (dirty) {
+        await writeDraft(this.#cwd, {
+          formatVersion: 1,
+          baseSignature: this.#base.signature,
+          seq: this.#state.seq,
+          updatedAt: new Date().toISOString(),
+          model,
+        })
+      } else {
+        // 편집이 원래 내용으로 되돌아왔다 — 남겨 둘 드래프트가 없다.
+        await removeDraft(this.#cwd)
       }
-      // 쓰기가 전부 성공한 뒤에만 dirty 를 내린다 — 실패하면 참으로 남아 다음 flush 가 재시도한다.
-      this.#dirty = false
-      this.#tree = tree
-      this.#layout = layout
-      // 다음 load 가 이 서명과 같은 것을 읽으면 그 감시 이벤트는 자기 쓰기다.
-      this.#written = signatureOf(tree, layout)
-      this.#selfWrite = true
+      // 쓰기가 성공한 뒤에만 내린다 — 실패하면 참으로 남아 다음 flush 가 재시도한다.
+      this.#draftPending = false
+      this.#dirty = dirty
     })
+  }
+
+  /**
+   * 기동 시 1회. 드래프트가 있으면 얹어 「미저장 변경 있음」 상태로 연다.
+   *
+   * **첫 `load()` 가 성공했을 때만 얹는다** — 실패했으면 얹을 기준선(`#base`)이 없어 판정할
+   * 근거가 없고, 어차피 편집이 잠겨 있다. 그때는 들고 있다가 파일이 고쳐져 로드가 성공하는
+   * 순간 얹는다(`#tryAdoptPending`).
+   *
+   * 손상 드래프트는 `readDraft` 가 이미 격리했다 — 여기서는 조용히 넘어간다(파일만 열린다).
+   */
+  async adoptDraft(): Promise<void> {
+    const read = await readDraft(this.#cwd)
+    if (read.kind !== 'ok') return
+    await this.#serialize(async () => {
+      if (!this.#state.ok) { this.#pendingDraft = read.draft; return }
+      this.#applyDraft(read.draft)
+    })
+  }
+
+  /** 로드가 성공한 순간 밀린 드래프트를 얹는다. 이미 `#serialize` 안이다. */
+  #tryAdoptPending(): void {
+    const draft = this.#pendingDraft
+    if (draft === null) return
+    this.#pendingDraft = null
+    this.#applyDraft(draft)
+  }
+
+  #applyDraft(draft: Draft): void {
+    if (modelSignatureOf(draft.model) === this.#base.modelSignature) {
+      // 드래프트 내용이 파일과 같다 — 얹을 것도 알릴 것도 없다. 파일 삭제는 다음 flush 가 한다.
+      this.#draftPending = true
+      return
+    }
+    this.#dirty = true
+    this.#state = { ok: true, model: draft.model, seq: Math.max(this.#state.seq, draft.seq) }
+    // `serve` 가 꺼진 사이 파일이 바뀌었으면(git pull·checkout) 사용자가 알아야 한다 — 조용히
+    // 얹으면 브랜치가 바뀐 줄 모른 채 저장해 남의 변경을 덮는다.
+    if (draft.baseSignature !== this.#base.signature) this.#external = true
   }
 }
