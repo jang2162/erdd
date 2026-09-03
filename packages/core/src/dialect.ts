@@ -193,6 +193,8 @@ function fromPostgres(t: SqlTypeParts): FromDialectResult | null {
 /**
  * toDialectType의 역함수. alternatives가 비어 있지 않으면 모호하게 해석한 것이다.
  * ⚠️ toDialectType·FIXED를 고치면 이 함수도 함께 고쳐야 한다 — 그래서 같은 파일에 둔다.
+ * **부호 없음 접미도 같은 짝이다**: `toDialectType` 의 mysql 접미 출력과 여기의 `applyUnsigned`
+ * 는 서로의 역이라 한쪽만 고치면 왕복이 조용히 깨진다.
  */
 /**
  * 부호 없음 접미를 base 결과에 얹는다. **방언별 분기를 새로 만들지 않는다** — 네 방언 공통
