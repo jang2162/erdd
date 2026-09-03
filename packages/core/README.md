@@ -43,7 +43,7 @@ ERDD 의 **순수 로직 패키지**다. 모델 타입·명명 규칙·DDL/DBML 
 
 | `target` | 결과 | 무엇이 깨지는가 |
 |---|---|---|
-| `ES2017` | 오류 45건 | `TS1501` 정규식 `s` 플래그 8곳(`ddl-parse.ts`) + `TS2550` `Object.fromEntries`·`String.trimEnd` 등 |
+| `ES2017` | 오류 45건 | `TS1501` 정규식 `s` 플래그 6곳(`ddl-parse.ts`) + `TS2550` `Object.fromEntries`·`String.trimEnd` 등 38건 |
 | `ES2018` | 오류 39건 | `TS1501` 은 사라지고 `TS2550` 이 남는다 |
 | `ES2020` | 오류 25건 | `TS2550` `Object.hasOwn` 24곳 · `String.prototype.at` 1곳 |
 | `ES2021` | 오류 25건 | 위와 같다 |
@@ -75,8 +75,9 @@ EXIT=0
   고를 뿐이고, 시작점에서 `import` 로 딸려 오는 파일은 그 목록과 무관하게 따라온다. 위 실측도
   `exclude` 를 준 채로 `node_modules/@erdd/core/src/**` 의 오류를 냈다.
 - **`lib` 만 올려도 안 된다.** `target: ES2017` + `lib: ["ES2022"]` 로는 `TS2550`(라이브러리 계열)은
-  사라지지만 **`TS1501` 8건이 남는다** — 정규식 `s` 플래그의 판정 기준은 `lib` 이 아니라 `target`
-  이기 때문이다.
+  사라지지만 **`TS1501` 6건이 그대로 남는다** — 정규식 `s` 플래그의 판정 기준은 `lib` 이 아니라
+  `target` 이기 때문이다. ⚠️ 게다가 `lib` 을 **명시하면 기본으로 딸려 오던 `DOM` 이 빠져** `TS2304`
+  (`structuredClone`·`TextEncoder`) 2건이 새로 생긴다 — 이 조합의 총 오류는 8건이다.
 
 `target` 을 올릴 수 없는 소비처라면 번들러(esbuild·swc·vite 등)로 `@erdd/core` 를 자기 target 으로
 트랜스파일해 쓰는 것이 남는 길이다.
