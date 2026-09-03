@@ -377,6 +377,9 @@ git add erdd erdd.config.yaml && git commit -m "스키마: 회원 등급 컬럼"
   자동 병합된 서버 쪽 변경도 함께 내려와 다음 `status` 가 바로 깨끗해진다.
 - **커밋 대상은 `erdd/` 와 `erdd.config.yaml` 이다.** `.erdd/` 는 커밋하지 않는다.
 - **로컬 모드에는 이 왕복 자체가 없다.** 편집이 곧 파일이고 커밋이 곧 이력이다 — `pull`·`diff`·`push` 대신 `erdd serve` 를 띄워 두고 편집한 뒤 `git commit` 한다(→ [3.4](#34-로컬-모드--서버-없이-쓰기)).
+- **`export`·`import` 도 서버를 부르지 않는다** — `erdd/` 파일만 읽고 쓴다(→ [6.9](#69-erdd-export) ·
+  [6.10](#610-erdd-import-파일)). `import` 는 **파일만** 고치므로 서버 모드라면 그 뒤에 `diff` → `push` 가
+  이어진다. 서버의 최신 상태를 내보내려면 `export` 앞에 `pull` 을 둔다.
 
 ---
 
@@ -633,13 +636,44 @@ notes:
 
 | | |
 |---|---|
-| 전용 옵션 | `--server <url>` · `--token <token>` · `--project <id>` · `--local` |
+| 전용 옵션 | `--server <url>` · `--token <token>` · `--project <id>` · `--local` · `--dialect <방언>` · `--case <UPPER_SNAKE\|lower_snake>` |
 | 서버 호출 | `auth.me`, (선택 시) `org.list`·`project.list`, `project.get` |
 | 쓰는 파일 | `erdd.config.yaml` · `.erdd/credentials.json` · `.gitignore` |
 
 **`--local` 은 서버 연결 없이 로컬 전용 프로젝트를 만든다** → [3.4](#34-로컬-모드--서버-없이-쓰기).
 서버를 한 번도 부르지 않고 `.erdd/credentials.json` 도 쓰지 않는다(`erdd.config.yaml` 과 `.gitignore`
 뿐이다). 다른 인자와 달리 **기존 config 를 `--yes` 로도 덮어쓰지 않는다.**
+
+**`--dialect` 와 `--case` 는 `--local` 전용이다.** 로컬 전용 프로젝트에는 설정을 받아 올 서버가
+없어서 이 둘만 여기서 정하고, 나머지 명명 규칙(`separator`·`logicalSeparator`·`maxLengthBytes`·
+템플릿)은 기본값으로 시작해 `erdd.config.yaml` 을 직접 고쳐 바꾼다.
+
+| 옵션 | 기본값 | 값 |
+|---|---|---|
+| `--dialect` | `postgresql` | `postgresql` · `mysql` · `oracle` · `mssql` |
+| `--case` | `UPPER_SNAKE` | `UPPER_SNAKE` · `lower_snake` |
+
+```bash
+$ erdd init --local --dialect mysql --case lower_snake
+로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요
+
+$ cat erdd.config.yaml
+serverUrl: null
+projectId: null
+dialects:
+  - mysql
+namingRules:
+  case: lower_snake
+  separator: _
+  logicalSeparator: _
+  maxLengthBytes: 30
+  tablePhysicalTemplate: ""
+  tableLogicalTemplate: ""
+```
+
+⚠️ **연결 모드(`--local` 없이)에서 이 둘을 주면 사용법 오류(`2`)다** —
+`--dialect·--case는 init --local 전용입니다 — 연결 모드에서는 서버 프로젝트 설정을 따릅니다`.
+서버 프로젝트의 방언·명명 규칙이 진실 원천이라, 여기서 받아 봐야 첫 `pull` 이 곧바로 덮어쓴다.
 
 ### 6.2 `erdd pull`
 
@@ -857,6 +891,164 @@ http://127.0.0.1:4399 에서 실행 중 (프로젝트: /path/to/my-project)
 - 브라우저를 못 열면(`--no-open` 이 아닌데 실행기가 없을 때) `브라우저를 열지 못했습니다. 직접 … 을
   여세요` 만 남기고 서버는 계속 돈다.
 
+### 6.9 `erdd export`
+
+로컬 파일을 DDL 또는 DBML 로 내보낸다. **서버를 부르지 않는다** — `validate` 와 같은 순수 파일
+경로다(`erdd/` → 모델 → DDL). 서버 모드에서도 **로컬 파일**이 원본이므로, 서버의 최신 상태를
+내보내려면 먼저 `erdd pull` 한다.
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `--format <ddl\|dbml>` | `ddl` | 산출 형식. 다른 값은 사용법 오류(`2`) |
+| `--dialect <방언>` | `erdd.config.yaml` 의 `dialects[0]` | `DIALECTS` 밖의 값은 사용법 오류(`2`) |
+| `-o <경로>` | (없음 = stdout) | 쓸 파일. 상위 디렉터리는 만들어 준다 |
+
+```bash
+$ erdd export --format ddl
+CREATE TABLE mbr (
+  mbr_no BIGINT AUTO_INCREMENT NOT NULL COMMENT '회원번호',
+  mbr_nm VARCHAR(100) NOT NULL COMMENT '회원명',
+  PRIMARY KEY (mbr_no)
+) COMMENT '회원 - 회원 기본 정보';
+
+CREATE TABLE ord (
+  ord_no BIGINT NOT NULL COMMENT '주문번호',
+  mbr_no BIGINT NOT NULL COMMENT '회원번호',
+  ord_sttus VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '주문상태',
+  PRIMARY KEY (ord_no)
+) COMMENT '주문';
+
+ALTER TABLE ord ADD CONSTRAINT FK_ord_mbr FOREIGN KEY (mbr_no) REFERENCES mbr (mbr_no);
+
+CREATE INDEX ix_mbr_nm ON mbr (mbr_nm ASC);
+
+$ erdd export -o schema.sql
+/path/to/my-project/schema.sql에 ddl을 썼습니다
+
+$ erdd export --format dbml -o schema.dbml
+/path/to/my-project/schema.dbml에 dbml을 썼습니다
+
+$ cat schema.dbml
+Table "mbr" [note: '회원 - 회원 기본 정보'] {
+  "mbr_no" BIGINT [pk, increment, note: '회원번호']
+  "mbr_nm" VARCHAR(100) [not null, note: '회원명']
+
+  indexes {
+    ("mbr_nm") [name: 'ix_mbr_nm']
+  }
+}
+
+Table "ord" [note: '주문'] {
+  "ord_no" BIGINT [pk, note: '주문번호']
+  "mbr_no" BIGINT [not null, note: '회원번호']
+  "ord_sttus" VARCHAR(20) [not null, default: 'PENDING', note: '주문상태']
+}
+
+Ref: "ord"."mbr_no" > "mbr"."mbr_no"
+```
+
+⚠️ **stdout 에는 산출물 본문만 나간다.** 내보내기 경고도, 방언 안내도 전부 **stderr** 다 —
+`erdd export > schema.sql` 이 이 명령의 주 용도라, 한 줄이 섞이면 파일이 깨진다.
+
+```bash
+$ erdd export --dialect postgresql > schema.sql
+알림: postgresql는 erdd.config.yaml의 dialects에 없습니다(mysql). 그대로 내보냅니다
+#  ↑ stderr. schema.sql 에는 DDL 만 들어간다
+```
+
+- **`config.dialects` 에 없는 방언도 유효하기만 하면 낸다.** 일회성으로 다른 DB 의 DDL 이 필요한
+  것은 정상적인 쓰임이라 막지 않고, 대신 위처럼 stderr 로 한 줄 알린다.
+- 내보내기 경고(컬럼이 없거나 물리명이 빈 테이블은 제외된다)도 stderr 로 `경고: …` 로 나온다.
+  `--json` 이면 `warnings` 배열에도 함께 실린다.
+- 로컬 파일에 파싱 오류가 있으면 **`validate` 와 같은 봉투**로 종료 코드 `1` 이다.
+
+### 6.10 `erdd import <파일>`
+
+DDL 또는 DBML 파일을 로컬 파일 트리에 가져온다. **웹 에디터의 「DDL·DBML 가져오기」와 같은
+경로**라 동작도 같다.
+
+| 옵션 | 기본값 | 뜻 |
+|---|---|---|
+| `--format <ddl\|dbml>` | 확장자로 판별 | `.sql`·`.ddl` → ddl, `.dbml` → dbml |
+| `--dialect <방언>` | 아래 판별 순서 | `DIALECTS` 밖의 값은 사용법 오류(`2`) |
+| `--dry-run` | — | 계획만 내고 **파일을 하나도 건드리지 않는다** |
+| `--yes` | — | 쓰기 전 확인을 건너뛴다 |
+
+**형식 판별**: `--format` > 확장자 > **실패하면 사용법 오류(`2`)**. 내용을 추정하지 않는다 —
+틀린 파서로 읽으면 테이블이 하나도 안 잡힌 채 「0건 가져왔습니다」로 조용히 끝나기 때문이다.
+
+```bash
+$ erdd import dump.txt
+오류: dump.txt의 형식을 확장자로 정할 수 없습니다 — --format ddl 또는 --format dbml을 주세요(확장자는 .sql·.ddl이면 ddl, .dbml이면 dbml입니다)
+$ echo $?
+2
+```
+
+**방언 판별은 형식마다 다르다.**
+
+| 형식 | 순서 |
+|---|---|
+| DDL | `--dialect` > 본문의 특징 토큰 감지(`detectDialect`) > `config.dialects[0]` |
+| DBML | `--dialect` > `Project { database_type }` > `config.dialects[0]` |
+
+⚠️ **DBML 에는 본문 토큰 감지를 쓰지 않는다.** DBML 의 속성 문법(`[pk, increment, …]`)이 감지기의
+mssql 대괄호 식별자 시그니처를 **항상** 때려서, 그대로 태우면 어떤 DBML 이든 mssql 로 읽힌다
+(2026-09-03 실측). 무엇을 왜 골랐는지는 출력 첫 줄과 `--json` 의 `dialectSource` 에 나온다.
+
+```bash
+$ erdd import ../proj/schema.sql --dry-run
+ddl · 방언 mysql(erdd.config.yaml의 dialects[0]) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
+--dry-run이라 파일을 쓰지 않았습니다
+
+$ erdd import ../proj/schema.sql --yes
+ddl · 방언 mysql(erdd.config.yaml의 dialects[0]) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
+파일 7개를 썼습니다. erdd push로 서버에 반영하세요
+```
+
+⚠️ **머지다. 덮어쓰기가 아니다.**
+
+- **만들어질 이름이 이미 있는 테이블은 건너뛴다** — 기존 테이블의 `id` 도 내용도 그대로다.
+  **갱신하지 않는다.** 건너뛴 이름은 `table-conflict` 경고와 `--json` 의 `skipped` 에 나온다.
+- 가져오는 파일에 없는 기존 테이블은 **지우지 않는다.**
+- 새 엔티티의 `id` 는 그 자리에서 `uuidv7` 로 발급해 **파일에 바로 박는다**(`push` 의 관례와 같다).
+
+```bash
+$ erdd import ../proj/schema.sql --yes --json | jq '{added, skipped, warnings}'
+{
+  "added": 0,
+  "skipped": ["mbr", "ord"],
+  "warnings": [
+    { "kind": "table-conflict", "target": "mbr", "message": "같은 이름의 테이블이 이미 있어 건너뜁니다" },
+    { "kind": "table-conflict", "target": "ord", "message": "같은 이름의 테이블이 이미 있어 건너뜁니다" },
+    { "kind": "unresolved-index", "target": "mbr.ix_mbr_nm", "message": "소속 테이블을 찾지 못해 인덱스 ix_mbr_nm을 만들지 않았습니다" },
+    { "kind": "unresolved-fk", "target": "ord", "message": "참조 대상 mbr을 찾지 못해 관계를 만들지 않았습니다" }
+  ]
+}
+```
+
+**서버에는 아무것도 보내지 않는다.** `.erdd/base.json`·`sync.json` 을 건드리지 않으므로 가져온
+결과는 `erdd status` 에 **로컬 변경**으로 보인다 — 반영은 기존대로 `erdd diff` → `erdd push` 다.
+
+⚠️ **테이블 파일 이름이 물리명 기준으로 재작성된다.** `pull` 과 같은 동작이다(`writeTree` 가
+`<물리명>.yaml` 로 정규화한다) — 사람이 직접 지은 파일명은 이 명령을 지나면 바뀌어 있다.
+
+**확인 프롬프트.** `--dry-run` 이 아니고 `--yes` 도 없으면 쓰기 전에 묻는다. 비대화형(`--json`)
+에서는 물을 수 없으므로 무엇을 하면 되는지 말하고 멈춘다.
+
+```bash
+$ erdd import ../proj/schema.sql --json
+ddl · 방언 mysql(본문에서 감지) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
+{"error":{"code":"CANCELLED","message":"파일을 덮어씁니다 — 비대화형(--json)에서는 --yes를 함께 주세요"}}
+$ echo $?
+1
+```
+
+⚠️ **왕복에서 유실되는 것이 있다.** MySQL 의 `INT UNSIGNED` 같은 부호 없음 표기와 테이블 옵션
+(`ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)은 모델에 담을 자리가 없어 **경고 없이** 사라진다.
+컬럼 타입이 방언 중립 논리 타입 17종이라는 설계와 맞물린 것이라 별도 사이클의 과제이고,
+`packages/cli/src/commands/roundtrip.test.ts` 의 「MySQL INT UNSIGNED·ENGINE·CHARSET 은 현재
+왕복에서 유실된다」가 그 사실을 잠그고 있다.
+
 ---
 
 ## 7. 동기화와 충돌
@@ -1034,6 +1226,60 @@ $ echo $?
 
 ⚠️ **에이전트·스크립트가 재시도를 판단할 때 `code` 로 분기한다면**, `NETWORK` 만 재시도 대상으로
 삼는다. `VALIDATION`·`FORBIDDEN` 은 같은 명령을 다시 돌려도 영원히 실패한다.
+
+**`export` 의 JSON.** `content` 와 `path` 는 **서로 배타다** — 같은 본문을 두 자리에 싣지 않는다.
+`-o` 를 줬으면 본문은 그 파일에 있으므로 `content` 가 `null` 이고, 안 줬으면 `path` 가 `null` 이다.
+
+```bash
+$ erdd export --json
+{"format":"ddl","dialect":"mysql","path":null,
+ "content":"CREATE TABLE mbr (\n  mbr_no BIGINT AUTO_INCREMENT NOT NULL COMMENT '회원번호',\n …",
+ "warnings":[]}
+
+$ erdd export --json -o out.sql
+{"format":"ddl","dialect":"mysql",
+ "path":"/path/to/my-project/out.sql","content":null,"warnings":[]}
+```
+
+| 키 | 뜻 |
+|---|---|
+| `format` | `"ddl"` 또는 `"dbml"` |
+| `dialect` | 실제로 쓴 방언 |
+| `path` | `-o` 로 쓴 **절대 경로**. `-o` 가 없으면 `null` |
+| `content` | 산출물 본문. `-o` 를 줬으면 `null` |
+| `warnings` | 내보내기 경고 문자열 배열(사람용 출력에서는 stderr 로도 나간다) |
+
+**`import` 의 JSON.**
+
+```bash
+$ erdd import ../proj/schema.sql --dry-run --json
+{"ok":true,"format":"ddl","dialect":"mysql","dialectSource":"erdd.config.yaml의 dialects[0]",
+ "dryRun":true,"added":2,"columns":5,"indexes":1,"relationships":1,"groups":0,
+ "skipped":[],"warnings":[],"written":[],"deleted":[]}
+
+$ erdd import ../proj/schema.sql --yes --json
+{"ok":true,"format":"ddl","dialect":"mysql","dialectSource":"본문에서 감지",
+ "dryRun":false,"added":2,"columns":5,"indexes":1,"relationships":1,"groups":0,
+ "skipped":[],"warnings":[],
+ "written":["erdd/custom-fields.yaml","erdd/domains.yaml","erdd/groups.yaml",
+            "erdd/tables/mbr.yaml","erdd/tables/ord.yaml","erdd/terms.yaml","erdd/words.yaml"],
+ "deleted":[]}
+```
+
+| 키 | 뜻 |
+|---|---|
+| `format`·`dialect` | 실제로 쓴 형식·방언 |
+| `dialectSource` | 방언을 고른 근거 — `"--dialect"` · `"본문에서 감지"` · `"Project의 database_type"` · `"erdd.config.yaml의 dialects[0]"` |
+| `dryRun` | `--dry-run` 이었는가. `true` 면 `written`·`deleted` 는 항상 `[]` 다 |
+| `added` | **새로 만든** 테이블 수(건너뛴 것은 안 센다) |
+| `columns`·`indexes`·`relationships`·`groups` | 새 테이블에 딸려 만들어진 개수 |
+| `skipped` | 이름이 겹쳐 **건너뛴** 테이블 이름들(가져오는 파일의 원문 이름) |
+| `warnings` | `{kind, target, message}` 배열 — `table-conflict`·`unknown-type`·`unknown-word`·`unresolved-fk`·`unresolved-index` 등 |
+| `written`·`deleted` | 실제로 쓰거나 지운 파일 경로(저장소 상대) |
+
+⚠️ 파일 파싱 오류일 때는 `export`·`import` 둘 다 **`validate` 와 같은 봉투**
+(`{ok:false, parseErrors, integrityIssues, warnings}`)를 내고 종료 코드 `1` 이다 — 오류 봉투
+(`{error:{code,…}}`)가 아니다.
 
 ### 10.2 CI 예시
 

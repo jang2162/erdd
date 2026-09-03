@@ -84,6 +84,46 @@ git add erdd erdd.config.yaml && git commit -m "스키마: 회원 등급 컬럼 
 **무엇을 고쳤든 언제나 「로컬 변경 없음」**을 종료 `0`으로 낸다 — 조용한 거짓 음성이다. 이것을
 믿고 커밋을 건너뛰면 작업이 통째로 날아간다. 내가 고친 것은 `git status`·`git diff`로 본다.
 
+## DDL·DBML로 주고받기
+
+**두 모드가 같다.** 서버를 부르지 않고 `erdd/` 파일만 읽고 쓴다.
+
+**내보내기** — 스키마를 SQL로 보여 달라거나 다른 도구에 넘겨야 할 때. 마이그레이션을 손으로
+짜 맞추지 말고 이것을 쓴다.
+
+```bash
+erdd export                          # DDL을 stdout으로 (기본 방언 = config의 dialects[0])
+erdd export --format dbml -o s.dbml  # DBML을 파일로
+erdd export --dialect mysql --json   # {format, dialect, path, content, warnings}
+```
+
+**본문만 stdout이고 경고는 stderr다** — `erdd export > schema.sql`이 깨지지 않는다.
+`-o`를 주면 `--json`의 `content`는 `null`이고 `path`가 채워진다(본문은 그 파일에 있다).
+
+**가져오기** — 남의 DDL/DBML이나 기존 DB 덤프를 이 프로젝트로 들여올 때.
+
+```bash
+erdd import schema.sql --dry-run     # 먼저 계획만 본다 — 파일을 하나도 건드리지 않는다
+erdd import schema.sql --yes         # 반영
+erdd validate                        # 반영 뒤 항상 검사한다
+```
+
+⚠️ **머지다. 덮어쓰기가 아니다.**
+
+- **만들어질 이름이 이미 있는 테이블은 건너뛴다**(갱신하지 않는다). `--json`의 `skipped`와
+  `table-conflict` 경고에 그 이름이 나온다. 기존 테이블을 DDL로 **고치려는** 시도는 통하지
+  않으니, 그럴 때는 테이블 파일을 직접 편집한다.
+- DDL에 없는 기존 테이블은 지우지 않는다.
+- **파일은 건드려도 서버에는 아무것도 안 간다.** 서버 모드라면 이어서 `erdd diff` → `erdd push`다.
+- **테이블 파일 이름이 물리명 기준으로 재작성된다**(`pull`과 같은 동작). 사람이 지은 파일명은
+  이 명령을 지나면 `<물리명>.yaml`이 된다.
+- 형식은 `--format` > 확장자(`.sql`·`.ddl`→ddl, `.dbml`→dbml) 순이고 **내용은 추정하지 않는다** —
+  확장자가 다르면 `--format`을 준다(종료 `2`).
+- 방언은 `--dialect` > (DDL) 본문 감지 / (DBML) `Project { database_type }` > config의
+  `dialects[0]` 순이다. 무엇을 왜 골랐는지 출력 첫 줄과 `--json`의 `dialectSource`에 나온다.
+- `unknown-type`·`unknown-word` 같은 경고는 `warnings`에 실려 온다 — 무시하지 말고 사전
+  (`words.yaml`·`terms.yaml`)이나 타입을 정리한다.
+
 ## 물리명 짓는 법
 
 물리명을 임의로 만들지 않는다. 이 프로젝트는 사전 기반 명명 규칙을 쓴다. **두 모드가 같다.**

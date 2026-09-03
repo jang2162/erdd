@@ -171,6 +171,39 @@ namingRules:
 
 토큰도, 서버 왕복도, `erdd/` 디렉터리도 이 시점에는 없다(→ [3.3](#33-첫-편집이-erdd-를-만든다)).
 
+**방언과 대소문자 규칙은 여기서 고른다.** 기본값이 위의 `postgresql` · `UPPER_SNAKE` 다.
+
+| 옵션 | 기본값 | 값 |
+|---|---|---|
+| `--dialect` | `postgresql` | `postgresql` · `mysql` · `oracle` · `mssql` |
+| `--case` | `UPPER_SNAKE` | `UPPER_SNAKE` · `lower_snake` |
+
+```bash
+$ erdd init --local --dialect mysql --case lower_snake
+로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요
+
+$ cat erdd.config.yaml
+serverUrl: null
+projectId: null
+dialects:
+  - mysql
+namingRules:
+  case: lower_snake
+  separator: _
+  logicalSeparator: _
+  maxLengthBytes: 30
+  tablePhysicalTemplate: ""
+  tableLogicalTemplate: ""
+```
+
+**나머지 명명 규칙은 옵션이 없다** — `separator`·`logicalSeparator`·`maxLengthBytes`·이름 템플릿은
+`erdd.config.yaml` 을 직접 고쳐 바꾼다(형식은 [CLI 매뉴얼 5.2](cli-guide.md#52-erddconfigyaml)).
+잘못된 값을 주면 사용법 오류(`2`)로 멈춘다 —
+`--case 값이 올바르지 않습니다: Camel — UPPER_SNAKE | lower_snake`.
+
+⚠️ **이 둘은 `--local` 전용이다.** 서버에 연결하는 `erdd init` 에 함께 주면 사용법 오류(`2`)다 —
+서버 프로젝트의 설정이 진실 원천이라 첫 `pull` 이 곧바로 덮어쓴다.
+
 ⚠️ **`--local` 은 `--yes` 로도 덮어쓰지 않는다.** `erdd.config.yaml` 이 이미 있으면
 `erdd.config.yaml이 이미 있습니다. 지우고 다시 실행하세요` 로 멈춘다(종료 코드 `1`). 되물을 서버
 프로젝트가 없어서, 덮어쓰면 공들여 맞춘 방언·명명 규칙을 조용히 잃기 때문이다.
@@ -395,6 +428,22 @@ erdd validate --strict   # 경고도 실패로 본다(종료 코드 1) — 커�
 ```
 오류: erdd.config.yaml에 연결 설정이 없습니다. erdd init으로 서버에 연결하거나 erdd serve로 로컬에서 여세요
 ```
+
+### 5.5 DDL·DBML 로 주고받기 — `erdd export` · `erdd import`
+
+둘 다 **서버를 부르지 않으므로 로컬 모드에서 그대로 돈다.**
+
+```bash
+erdd export > schema.sql             # 파이프에 안전하다 — 경고는 stderr 로 나간다
+erdd export --format dbml -o s.dbml
+erdd import legacy.sql --dry-run     # 먼저 계획만 본다
+erdd import legacy.sql --yes         # 반영 — 머지다(있는 테이블은 건너뛴다)
+```
+
+기존 DB 덤프로 프로젝트를 시작할 때가 `import` 의 자리다. 반영 뒤에는 `erdd validate` 로 사전
+(`words.yaml`·`terms.yaml`)을 정리하고 **git 커밋**한다 — 로컬 모드에서는 그것이 이력 전부다.
+
+옵션·판별 순서·`--json` 모양은 [CLI 매뉴얼 6.9·6.10](cli-guide.md#69-erdd-export) 에 있다.
 
 ---
 

@@ -26,6 +26,13 @@ pnpm add -D @erdd/cli tsx
 설치하면 `node_modules/.bin/erdd` 가 생겨 `pnpm exec erdd …` 로 부른다. `@erdd/core` 는 의존성으로
 따라 들어온다. `45` 는 ERDD 의 **Project ID** 로, 사내 GitLab 을 옮기면 바뀐다.
 
+> ⚠️ **소비처 tsconfig 의 `target` 은 `ES2022` 이상이어야 한다.** `@erdd/core` 도 원본 TypeScript 를
+> 그대로 배포하므로, 그 패키지를 `import` 하면 소비처가 그 `.ts` 소스를 자기 tsconfig 로
+> 타입체크한다. `target` 이 낮으면 **소비처 코드가 아니라 `node_modules/@erdd/core/src/**` 에서**
+> 오류가 난다(`ES2020` 에서 25건 실측). `skipLibCheck` 도 `exclude` 도 회피가 안 된다 — 근거와
+> 실측 표는 [`@erdd/core` README](../core/README.md) 에 있다. CLI 만 쓰고 `@erdd/core` 를
+> `import` 하지 않는다면 해당 없다.
+
 > ⚠️ **`tsx` 를 빼면 안 된다.** 이 패키지에는 빌드 산출물이 아니라 **원본 TypeScript 가 그대로**
 > 들어 있고 바이너리의 셰방이 `#!/usr/bin/env -S npx tsx` 다. **`@erdd/cli` 가 `tsx` 를 대신
 > 끌어오지 않으므로** 소비처가 자기 프로젝트에 직접 선언해야 한다.
@@ -84,9 +91,11 @@ erdd push -m "회원 등급 컬럼 추가"
 | 명령 | | 모드 |
 |---|---|---|
 | `erdd init` | 서버에 연결한다 (URL·토큰·프로젝트). 비대화형이면 `--server` · `--token` · `--project`, 기존 config 덮어쓰기는 `--yes` | 서버 |
-| `erdd init --local` | 서버 없는 로컬 전용 프로젝트를 만든다 | 로컬 |
+| `erdd init --local` | 서버 없는 로컬 전용 프로젝트를 만든다 (`--dialect` · `--case`) | 로컬 |
 | `erdd serve` | 로컬 서버를 띄워 브라우저에서 편집한다 (`--port` · `--no-open`) | 둘 다 |
 | `erdd validate` | 서버 없이 참조 무결성·명명 규칙을 검사한다 (`--strict`) | 둘 다 |
+| `erdd export` | 로컬 파일을 DDL·DBML 로 내보낸다 (`--format` · `--dialect` · `-o`). 본문만 stdout, 경고는 stderr | 둘 다 |
+| `erdd import <파일>` | DDL·DBML 파일을 로컬 파일에 **머지**한다 (`--format` · `--dialect` · `--dry-run`). 서버 반영은 `push` | 둘 다 |
 | `erdd status` | 서버를 부르지 않고 연결 정보와 로컬 변경만 본다 | 둘 다 |
 | `erdd pull` | 서버 스키마를 파일로 받는다 | **서버 전용** |
 | `erdd diff` | 올릴 변경·내려올 변경·충돌을 미리 본다 (`--strict`) | **서버 전용** |
