@@ -2,10 +2,11 @@ import { readFile } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
 import { uuidv7 } from 'uuidv7'
 import {
-  applyDdlImport, detectDialect, filesToModel, modelToFiles, parseDbml, parseDdl, planDdlImport,
-  type DdlImportPlan, type Dialect,
+  applyDdlImport, detectDialect, dialectFromDatabaseType, filesToModel, modelToFiles,
+  parseDbml, parseDdl, planDdlImport,
+  type DdlImportPlan, type Dialect, type ParsedDbml, type ParsedDdl,
 } from '@erdd/core'
-import { readConfig } from '../config.js'
+import { readConfig, type ErddConfig } from '../config.js'
 import { CliError, emit, note } from '../output.js'
 import { readTree, writeTree } from '../tree.js'
 import { run, type CommandCtx } from './context.js'
@@ -30,6 +31,32 @@ function formatFromExtension(path: string): ExportFormat | null {
     case '.dbml': return 'dbml'
     default: return null
   }
+}
+
+/**
+ * 어느 방언으로 읽을지와 **왜 그렇게 정했는지**. 근거를 함께 내는 이유는 조용히 고르지 않기
+ * 위해서다 — 방언은 `fromDialectType` 의 타입 매핑을 가르므로 잘못 고르면 컬럼 타입이 조용히
+ * 달라진다.
+ *
+ * ⚠️ **DDL 과 DBML 의 감지기가 다르다.** `detectDialect` 는 **DDL 텍스트 전용**이다 — DBML 의
+ * 속성 문법(`[pk, increment, …]`)이 그 함수의 mssql 대괄호 식별자 시그니처를 **항상** 때려서,
+ * DBML 에 태우면 다른 단서가 없는 한 언제나 mssql 이 나온다(실측: mysql 프로젝트가 낸 DBML 을
+ * 되읽자 mssql 로 읽혔다). DBML 은 웹 다이얼로그와 같이 `Project { database_type }` 을 본다.
+ */
+function resolveDialect(
+  explicit: Dialect | undefined, format: ExportFormat, text: string,
+  parsed: ParsedDdl | ParsedDbml, config: ErddConfig,
+): { dialect: Dialect; source: string } {
+  if (explicit !== undefined) return { dialect: explicit, source: '--dialect' }
+  if (format === 'ddl') {
+    const detected = detectDialect(text)
+    if (detected !== null) return { dialect: detected, source: '본문에서 감지' }
+  } else {
+    const dt = (parsed as ParsedDbml).databaseType
+    const fromType = dt === null || dt === undefined ? null : dialectFromDatabaseType(dt)
+    if (fromType !== null) return { dialect: fromType, source: 'Project의 database_type' }
+  }
+  return { dialect: config.dialects[0]!, source: 'erdd.config.yaml의 dialects[0]' }
 }
 
 function planSummary(plan: DdlImportPlan): {
@@ -87,8 +114,6 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
       throw err
     }
 
-    const dialect = ctx.dialect ?? detectDialect(text) ?? config.dialects[0]!
-
     // 신규 id 는 여기서부터 최종 값이다 — filesToModel 의 발급도 uuidv7 로 맞춰 임시 id 가
     // 모델에 들어오지 않게 한다(위 ⚠️).
     const result = filesToModel(await readTree(ctx.cwd), { newId: uuidv7 })
@@ -102,11 +127,12 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
     }
 
     const parsed = format === 'ddl' ? parseDdl(text) : parseDbml(text)
+    const { dialect, source: dialectSource } = resolveDialect(ctx.dialect, format, text, parsed, config)
     const plan = planDdlImport(result.model, parsed, dialect, config.namingRules)
     const summary = planSummary(plan)
     const warningLines = plan.warnings.map((w) => `  [${w.kind}] ${w.target}: ${w.message}`)
     const humanHead = [
-      `${format} ${dialect} · 추가 ${summary.added}개 테이블`
+      `${format} · 방언 ${dialect}(${dialectSource}) · 추가 ${summary.added}개 테이블`
         + `(컬럼 ${summary.columns} · 인덱스 ${summary.indexes} · 관계 ${summary.relationships}`
         + `${summary.groups > 0 ? ` · 그룹 ${summary.groups}` : ''})`,
       ...(plan.skippedTables.length > 0
@@ -116,7 +142,7 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
     ]
     const payload = {
       ok: true,
-      format, dialect, dryRun: ctx.dryRun,
+      format, dialect, dialectSource, dryRun: ctx.dryRun,
       ...summary,
       skipped: plan.skippedTables,
       warnings: plan.warnings,

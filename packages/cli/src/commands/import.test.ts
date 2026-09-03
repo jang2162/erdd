@@ -94,7 +94,7 @@ describe('import', () => {
     expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
   })
 
-  it('방언은 --dialect > detectDialect > config.dialects[0] 순이다', async () => {
+  it('DDL 의 방언은 --dialect > detectDialect > config.dialects[0] 순이다', async () => {
     await seedPulled(dir, model())
     // (1) 아무 단서가 없으면 config 의 첫 방언
     await importCommand({ cwd: dir, json: true, ...yes, file: await ddlFile(), dryRun: true })
@@ -216,5 +216,55 @@ describe('import', () => {
     expect(parsed.ok).toBe(false)
     expect(JSON.stringify(parsed.parseErrors)).toContain('없는그룹')
     expect((await readdir(join(dir, 'erdd/tables'))).sort()).toEqual(['MBR.yaml'])
+  })
+  /**
+   * ⚠️ **DBML 에는 detectDialect 를 쓰지 않는다.** DBML 의 속성 문법(`[pk, increment, …]`)이
+   * detectDialect 의 mssql 대괄호 식별자 시그니처를 **항상** 때려서, 다른 시그니처가 없으면
+   * 모든 DBML 이 mssql 로 탐지된다(스모크에서 mysql 프로젝트가 낸 DBML 이 실제로 mssql 로
+   * 읽혔다). 웹 다이얼로그와 같이 `Project { database_type }` 을 본다.
+   */
+  it('DBML 의 방언은 database_type 을 따르고, 없으면 config 로 떨어진다 — mssql 로 새지 않는다', async () => {
+    await seedPulled(dir, model())   // config.dialects 는 ['postgresql']
+    // (1) database_type 이 있으면 그것이다
+    const withType = `Project "P" {
+  database_type: 'MySQL'
+}
+Table "PRD" {
+  "PRD_NO" bigint [pk]
+}`
+    await importCommand({
+      cwd: dir, json: true, ...yes, file: await ddlFile('a.dbml', withType), dryRun: true,
+    })
+    expect(JSON.parse(out.join('')).dialect).toBe('mysql')
+    // (2) 없으면 config.dialects[0] — detectDialect 를 태웠다면 여기서 mssql 이 나온다
+    out.length = 0
+    await importCommand({
+      cwd: dir, json: true, ...yes, file: await ddlFile('b.dbml', DBML), dryRun: true,
+    })
+    expect(JSON.parse(out.join('')).dialect).toBe('postgresql')
+    // (3) --dialect 가 그 위다
+    out.length = 0
+    await importCommand({
+      cwd: dir, json: true, ...yes, file: await ddlFile('c.dbml', withType),
+      dialect: 'oracle', dryRun: true,
+    })
+    expect(JSON.parse(out.join('')).dialect).toBe('oracle')
+  })
+
+  it('어느 방언을 왜 골랐는지 사람용 출력에 적는다 — 조용히 고르지 않는다', async () => {
+    await seedPulled(dir, model())
+    await importCommand({ cwd: dir, json: false, ...yes, file: await ddlFile(), dryRun: true })
+    expect(out.join('')).toContain('erdd.config.yaml')
+    out.length = 0
+    const mysqlDdl = 'CREATE TABLE ORD (ORD_NO bigint NOT NULL AUTO_INCREMENT, PRIMARY KEY (ORD_NO));'
+    await importCommand({
+      cwd: dir, json: false, ...yes, file: await ddlFile('m3.sql', mysqlDdl), dryRun: true,
+    })
+    expect(out.join('')).toContain('본문에서 감지')
+    out.length = 0
+    await importCommand({
+      cwd: dir, json: false, ...yes, file: await ddlFile(), dialect: 'oracle', dryRun: true,
+    })
+    expect(out.join('')).toContain('--dialect')
   })
 })

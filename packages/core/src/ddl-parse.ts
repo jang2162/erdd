@@ -163,7 +163,16 @@ const SIGNATURES: Array<{ dialect: Dialect; pattern: RegExp; weight: number }> =
   { dialect: 'postgresql', pattern: /\b(JSONB|TIMESTAMPTZ|BYTEA)\b/i, weight: 3 },
 ]
 
-/** 특징 토큰 점수제. 1등이 없거나 동점이면 null(사용자가 고른다). */
+/**
+ * 특징 토큰 점수제. 1등이 없거나 동점이면 null(사용자가 고른다).
+ *
+ * ⚠️ **DDL 텍스트 전용이다. DBML 에 태우지 마라.** DBML 의 속성 문법(`[pk, increment, …]`)이
+ * 위 mssql 대괄호 식별자 시그니처 `/\[[A-Za-z_]/` 를 **항상** 때린다 — 다른 단서가 없으면
+ * 어떤 DBML 이든 mssql 이 나온다(2026-09-03 실측: mysql 프로젝트가 낸 DBML 을 되읽자 mssql 로
+ * 읽혔다). DBML 의 방언은 `Project { database_type }` 이고 `dialectFromDatabaseType` 이 그것을
+ * 푼다 — 웹의 `ddl-import-dialog.tsx` 와 CLI 의 `import.ts`(`resolveDialect`) 가 둘 다 그렇게
+ * 갈라 쓴다.
+ */
 export function detectDialect(ddl: string): Dialect | null {
   const score: Record<Dialect, number> = { postgresql: 0, mysql: 0, oracle: 0, mssql: 0 }
   for (const s of SIGNATURES) if (s.pattern.test(ddl)) score[s.dialect] += s.weight
