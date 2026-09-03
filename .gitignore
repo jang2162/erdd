@@ -3,4 +3,6 @@ dist/
 .env
 *.local
 .worktrees/
+# 게시용 tarball 에만 넣는 동봉물 — bundle:web / prepack 의 bundle-docs 가 만드는 산출물이라 커밋하지 않는다
 packages/cli/web/
+packages/cli/docs/

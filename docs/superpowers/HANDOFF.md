@@ -1177,7 +1177,8 @@ DATABASE_URL='postgres://postgres:erdd@localhost:5432/erdd_test' pnpm -C apps/se
 게시 대상은 **사내 GitLab(`gitlab.develma.com`) 패키지 레지스트리의 프로젝트 엔드포인트**다. 공개
 npm 에는 올리지 않는다. 배포 형태는 **원본 TypeScript 그대로**이고(빌드 산출물이 아니다 — 소비처에
 `tsx` 가 필요하다), `apps/web` 의 빌드 산출물을 `packages/cli/web/` 로 복사해 **tarball 에 동봉**한다.
-그래야 설치본에서도 `erdd serve` 가 화면을 낸다. 두 패키지 모두 `engines.node: ">=22"` 를 선언한다.
+그래야 설치본에서도 `erdd serve` 가 화면을 낸다. **문서도 함께 동봉된다** — 패키지 루트의
+`README.md` 와 `docs/manual/*.md` 네 편이다(아래 ⚠️). 두 패키지 모두 `engines.node: ">=22"` 를 선언한다.
 
 **절차.**
 
@@ -1209,7 +1210,7 @@ git tag cli-v0.1.0 && git push origin cli-v0.1.0
 | 패키지 이름이 `@erdd/` 스코프 | CI publish | `.npmrc` 는 `@erdd:` 에만 레지스트리·토큰을 매단다. 스코프를 벗어나면 그 설정이 통째로 안 먹어 **공개 npm 으로 나갈 수 있다** |
 | `packages/cli/web/index.html` 존재 | CI publish | 번들 없는 게시. 설치한 쪽에서 서버는 뜨는데 `/p/<id>` 만 404 를 내는, 원인을 짚기 어려운 상태가 된다 |
 | **core 버전 누락** | CI publish | **직전 `cli-v*` 태그와 core `version` 이 같은데** `packages/core` 가 바뀌었으면 **잡이 죽는다.** 「새 cli + 옛 core」가 조용히 나가는 것을 막는다. version 비교가 조건에 들어가는 것이 핵심이다(아래 ⚠️) |
-| **`prepack`**(`packages/cli/scripts/check-web-bundle.mjs`) | pack·publish 어디서나 | 웹 번들 없이 팩하는 것. CI 가드와 겹치지만 **CI 밖의 손 게시까지** 덮는다. CI 가 `--ignore-scripts` 를 쓰지 않는 것이 이 훅을 거기서도 돌게 하려는 것이다 |
+| **`prepack`**(`packages/cli/scripts/check-web-bundle.mjs` → `bundle-docs.mjs`) | pack·publish 어디서나 | 웹 번들 없이 팩하는 것. CI 가드와 겹치지만 **CI 밖의 손 게시까지** 덮는다. CI 가 `--ignore-scripts` 를 쓰지 않는 것이 이 훅을 거기서도 돌게 하려는 것이다. **가드를 지난 뒤 이어서 매뉴얼을 복사한다**(아래 ⚠️) — 매뉴얼 원본이 하나라도 없으면 여기서 종료 코드 `1` 이다 |
 
 ⚠️ **core 를 고쳤으면 `packages/core/package.json` 의 `version` 을 반드시 올려라.** publish 잡은
 `npm view "@erdd/core@<버전>"` 으로 「이미 있으면 건너뛴다」를 하는데(cli 만 고친 릴리스에서 409 로
@@ -1287,6 +1288,32 @@ pnpm 은 그 bin 을 어떤 `.bin` 에도 링크하지 않아, 되던 것이 `sh
 빌드를 가리는 함정이 실제로 재현됐다 — 뒤집어서 없앴다). 설치본에서 저장소 후보가 잡히는 일은 없다:
 `<소비처>/node_modules/apps/web/dist` 로 풀려 `node_modules` 안이라 구조적으로 성립하지 않는다.
 
+⚠️ **패키지에 README 와 매뉴얼 4개가 동봉되고, 그 복사는 `prepack` 이 한다.** `packages/cli/README.md`
+는 저장소에 커밋돼 있고 npm 이 `files` 와 무관하게 자동 동봉한다(GitLab 패키지 레지스트리 페이지도
+그것을 렌더한다). 매뉴얼은 다르다 — **npm 은 패키지 디렉터리 밖의 파일을 팩하지 않아서**
+`files` 에 `../../docs/manual/*.md` 를 적어도 들어가지 않는다. 그래서
+`packages/cli/scripts/bundle-docs.mjs` 가 `docs/manual/` 의 **네 편 전부**
+(`local-guide` · `cli-guide` · `user-guide` · `install`)를 `packages/cli/docs/` 로 복사하고,
+`prepack` 이 `check-web-bundle.mjs` 다음에 그것을 돌린다.
+
+- **`packages/cli/docs/` 는 커밋하지 않는다**(gitignore, `packages/cli/web/` 바로 아래에 있다).
+  빌드 산출물이다 — 거기 있는 파일을 고쳐도 다음 팩에서 덮어써지므로 **원본인 `docs/manual/` 을 고친다.**
+- **넷을 다 넣는 것이 요점이다.** 문서끼리 상대 링크로 엮여 있어(`local-guide.md` 하나가 나머지 셋을
+  30번 넘게 가리킨다) 일부만 넣으면 설치본에서 깨진 링크가 된다. 같은 디렉터리에 나란히 두면 원본
+  링크가 그대로 살아서 **링크를 고쳐 쓸 필요가 없다** — `bundle-docs.mjs` 는 내용을 손대지 않고 복사만 한다.
+- **`web` 과 달리 CI artifact 로 넘기지 않는다.** 빌드가 필요 없는 단순 복사라 `prepack` 에서 하면
+  CI 든 손으로 `pnpm pack` 하든 항상 최신 매뉴얼이 들어간다. 그래서 `.gitlab-ci.yml` 에는 문서 관련
+  단계가 없다 — **넣지 마라.** prepack 이 어느 경로에서도 도는 것이 이 설계의 요점이다.
+- 동봉 문서를 가리키는 상대 링크(`./docs/local-guide.md`)가 `README.md` 에 있다. **저장소에서는 그
+  경로가 비어 있는 것이 정상이다**(팩할 때 생긴다).
+- ⚠️ **살아나는 것은 「매뉴얼 넷 사이」의 링크다. `docs/manual/` 밖을 가리키는 링크는 동봉본에서
+  열리지 않는다.** 팩된 tarball 을 검사하면 파일을 가리키는 상대 링크 71건 중 69건이 살고 2건이
+  깨지는데, 둘 다 `install.md` 가 manual 디렉터리 밖을 가리키는 것이다
+  (`../superpowers/HANDOFF.md` — 이 문서 · `../18-account.md`). **알고 그대로 두었다** — 기여자용·
+  저장소 내부 문서라 패키지를 설치한 사람이 볼 일이 없고, 절대 URL 로 바꾸면 저장소 안에서 매일
+  쓰는 클릭 이동을 잃는 데다 사내 GitLab 주소가 바뀌면 그때 깨진다. **매뉴얼 넷에 manual 밖을
+  가리키는 링크를 새로 넣으면 동봉본에서 같은 방식으로 깨진다** — 넣을 거면 알고 넣어라.
+
 ⚠️ **`publishConfig.registry` 를 매니페스트에 두지 않는다.** 그룹 엔드포인트는 읽기 전용이라 게시가
 거절된다(형제 저장소가 그 사고를 겪었다). 레지스트리는 잡 안에서 만드는 `.npmrc` 로만 지정한다.
 
@@ -1299,7 +1326,7 @@ pnpm 은 그 bin 을 어떤 `.bin` 에도 링크하지 않아, 되던 것이 `sh
 | **소비처의 `tsx` 직접 설치**(셰방 런처) | `bin` 셰방을 `#!/usr/bin/env node` + 얇은 `.mjs` 런처로 바꾸고 런타임에서 tsx 를 로드하면 소비처가 `tsx` 를 직접 넣을 필요가 없어진다. **방법은 실증됐다** — `createRequire(realpathSync(런처 경로))` 로 pnpm 심볼릭을 실경로로 풀면 `tsx` 가 해석된다. ⚠️ **이것이 유일한 근본 해결책이다** — `dependencies` 선언만으로는 **pnpm 에서 오히려 회귀한다**(실측해서 되돌렸다). 셰방을 바꿔야 비로소 값을 한다. 비용은 진입점 교체와 두 배치(pnpm 격리·npm 평면)·전역 설치·`npx @erdd/cli` 재검증, 그리고 `tsx/esm/api` 라는 프로그램적 API 에 묶이는 것. **회귀 위험 때문에 별도 라운드로 미뤘다.** |
 | **루트 `.npmrc` 가 없다** | 저장소에 `@erdd:registry` 가 없어 로컬 `pnpm publish` 는 **기본값인 공개 npm 을 향한다**(dry-run 로그에 그대로 찍힌다). `@erdd` 스코프 소유가 아니라 실제로 나가지는 않지만, **GitLab 프로젝트 ID 가 정해지면 루트 `.npmrc` 에 넣기로 했다.** |
 | **`npm view` 의 401/403** | core 게시 판정이 401/403·네트워크 오류를 「없음」으로 읽어 게시를 시도한다. 그때는 409 로 시끄럽게 죽으므로 조용히 잘못되지는 않는다. 로그를 보고 GitLab Packages API 조회로 바꾸는 편이 낫다. |
-| **게시본의 죽은 항목** | tarball 의 `package.json` 에 `scripts.bundle:web` 이 남는데 `scripts/` 는 동봉되지 않는다. `devDependencies` 의 `@erdd/server: ^0.0.0` 도 어느 레지스트리에도 없는 버전이다. 둘 다 소비처에 실질 피해는 없다(`prepack` 은 팩할 때 떨어져 나가 남지 않는다). |
+| **게시본의 죽은 항목** | tarball 의 `package.json` 에 `scripts.bundle:web`·`scripts.bundle:docs` 가 남는데 `scripts/` 는 동봉되지 않는다. `devDependencies` 의 `@erdd/server: ^0.0.0` 도 어느 레지스트리에도 없는 버전이다. 둘 다 소비처에 실질 피해는 없다(`prepack` 은 팩할 때 떨어져 나가 남지 않는다). |
 | **`image: node:22` 가 떠 있는 태그** | 재현 가능한 파이프라인을 원하면 digest 나 `node:22.x.y` 로 고정한다. |
 | **태그 정규식과 빌드 메타데이터** | `cli-v0.1.0+build.1` 형태는 잡히지 않는다. 의도라면 그대로 둬도 된다. |
 | **`erdd --version` 이 없다** | 게시되는 CLI 인데 버전을 물을 방법이 없다(`--version` 은 `알 수 없는 명령` 이다). |

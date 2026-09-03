@@ -11,7 +11,8 @@
     "src",
     "!src/**/*.test.ts",
     "skill",
-    "web"
+    "web",
+    "docs"
   ],
   "repository": {
     "type": "git",
@@ -25,7 +26,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "bundle:web": "node scripts/bundle-web.mjs",
-    "prepack": "node scripts/check-web-bundle.mjs"
+    "bundle:docs": "node scripts/bundle-docs.mjs",
+    "prepack": "node scripts/check-web-bundle.mjs && node scripts/bundle-docs.mjs"
   },
   "dependencies": {
     "@erdd/core": "workspace:^",
