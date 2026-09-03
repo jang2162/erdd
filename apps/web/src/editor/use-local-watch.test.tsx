@@ -129,3 +129,28 @@ describe('useLocalWatch', () => {
     expect(useEditorStore.getState().canEdit).toBe(false)
   })
 })
+
+describe('useLocalWatch — status', () => {
+  it('status 를 받아 store 에 반영한다', async () => {
+    renderHook(() => useLocalWatch(PROJECT_ID, true), { wrapper: wrapper() })
+    FakeEventSource.last!.emit({ type: 'status', dirty: true, external: false })
+    await waitFor(() => {
+      expect(useEditorStore.getState().localSave.dirty).toBe(true)
+    })
+  })
+
+  it('external 도 함께 반영한다', async () => {
+    renderHook(() => useLocalWatch(PROJECT_ID, true), { wrapper: wrapper() })
+    FakeEventSource.last!.emit({ type: 'status', dirty: true, external: true })
+    await waitFor(() => {
+      expect(useEditorStore.getState().localSave.external).toBe(true)
+    })
+  })
+
+  /** 설치본의 웹 번들은 CLI 버전과 따로 움직인다 — 모르는 이벤트에 죽으면 안 된다. */
+  it('모르는 이벤트는 조용히 무시한다', () => {
+    renderHook(() => useLocalWatch(PROJECT_ID, true), { wrapper: wrapper() })
+    expect(() => FakeEventSource.last!.emit({ type: '미래의것' })).not.toThrow()
+    expect(useEditorStore.getState().localSave.dirty).toBe(false)
+  })
+})

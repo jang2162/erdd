@@ -22,6 +22,14 @@ type EditorState = {
   canManage: boolean
   /** 로컬 모드에서 파일이 깨져 편집이 잠긴 상태. null 이면 정상. */
   blocked: { path: string; message: string }[] | null
+  /**
+   * 로컬 모드의 저장 상태. **서버(FileStore)가 진실**이고 SSE `status` 로 받는다
+   * (`use-local-watch`). 서버 모드에서는 전부 false 로 남아 아무 UI 도 뜨지 않는다.
+   * - `dirty`: 저장할 것이 남았다
+   * - `external`: 파일이 밖에서 바뀌었는데 아직 「유지/다시 읽기」를 고르지 않았다
+   * - `saving`: 저장 요청이 도는 중(버튼 중복 클릭 방지)
+   */
+  localSave: { dirty: boolean; external: boolean; saving: boolean }
   viewMode: ViewMode
   /**
    * 선택된 테이블들. 순서 = 선택한 순서이고 **`[0]`이 주 선택**(presence·사이드바의 기준)이다.
@@ -55,6 +63,8 @@ type EditorState = {
   setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
   /** 로컬 모드 파일 손상으로 편집을 잠그거나(failures) 푼다(null). canEdit 을 함께 내린다. */
   setBlocked: (failures: { path: string; message: string }[] | null) => void
+  setLocalSaveStatus: (s: { dirty: boolean; external: boolean }) => void
+  setSaving: (saving: boolean) => void
   setModel: (model: ProjectModel) => void
   setSeq: (seq: number) => void
   setPeers: (peers: Peer[]) => void
@@ -146,6 +156,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   canEdit: false,
   canManage: false,
   blocked: null,
+  localSave: { dirty: false, external: false, saving: false },
   viewMode: 'physical',
   ...CLEARED_SELECTION,
   focusTableId: null,
@@ -172,6 +183,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setPermissions: ({ canEdit, canManage }) =>
     set((s) => ({ canEdit: s.blocked !== null ? false : canEdit, canManage })),
   setBlocked: (failures) => set({ blocked: failures, canEdit: failures === null }),
+  setLocalSaveStatus: ({ dirty, external }) =>
+    set((s) => ({ localSave: { ...s.localSave, dirty, external } })),
+  setSaving: (saving) => set((s) => ({ localSave: { ...s.localSave, saving } })),
   setModel: (model) => set({ model }),
   setSeq: (seq) => set((s) => ({ seq: Math.max(s.seq, seq) })),
   setPeers: (peers) => set({ peers }),
@@ -254,6 +268,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
     namingRules: DEFAULT_NAMING_RULES, dialects: [], projectName: null, peers: [],
     canEdit: false, canManage: false, blocked: null,
+    localSave: { dirty: false, external: false, saving: false },
     ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],
   }),
 }))
