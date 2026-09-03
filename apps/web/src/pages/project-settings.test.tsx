@@ -4,7 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { createRoutesStub } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import { DEFAULT_NAMING_RULES, createEmptyModel, type NamingRules } from '@erdd/core'
+import {
+  DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS, createEmptyModel,
+  type NamingRules, type TableOptions,
+} from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
@@ -27,6 +30,7 @@ function projectFixture(over: {
   canManage?: boolean
   myRole?: string | null
   myOrgRole?: string | null
+  tableOptions?: Partial<TableOptions>
 } = {}) {
   return {
     id: PROJECT_ID,
@@ -41,6 +45,7 @@ function projectFixture(over: {
       tablePhysicalTemplate: over.tablePhysicalTemplate ?? '',
       tableLogicalTemplate: over.tableLogicalTemplate ?? '',
     },
+    tableOptions: { ...DEFAULT_TABLE_OPTIONS, ...over.tableOptions },
     myRole: over.myRole === undefined ? 'admin' : over.myRole,
     myOrgRole: over.myOrgRole === undefined ? 'owner' : over.myOrgRole,
     canEdit: true,
@@ -289,5 +294,58 @@ describe('ProjectSettingsPage — 테이블 논리명 형식', () => {
     renderSettings({ 'project.get': () => ({ data: projectFixture() }) })
     await screen.findByLabelText(/테이블 논리명 형식/)
     expect(screen.queryByText(/미리보기:/)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * 테이블 옵션 섹션(설계 §5.6). 방언 4칸을 **언제나 전부** 보인다 — 도메인 편집 다이얼로그의
+ * 「방언별 물리 타입 (선택)」과 같은 모양이어야 사용자가 배운 것을 다시 쓴다(§9 ⑦).
+ */
+describe('ProjectSettingsPage — 테이블 옵션', () => {
+  it('방언 4칸을 전부 보이고 현재 값을 채운다', async () => {
+    renderSettings({
+      'project.get': () => ({ data: projectFixture({ tableOptions: { mysql: 'ENGINE=InnoDB' } }) }),
+    })
+    expect(await screen.findByLabelText('mysql')).toHaveValue('ENGINE=InnoDB')
+    for (const d of ['postgresql', 'oracle', 'mssql']) {
+      expect(screen.getByLabelText(d)).toHaveValue('')
+    }
+  })
+
+  /** ⚠️ UI 는 **언제나 네 키를 전부 보낸다** — 쓰기 스키마가 strict 라 부분 페이로드는 400 이다. */
+  it('blur 에 네 키를 전부 실어 update 를 보낸다', async () => {
+    const calls: { tableOptions: TableOptions }[] = []
+    renderSettings({
+      'project.get': () => ({ data: projectFixture({ tableOptions: { oracle: 'TABLESPACE users' } }) }),
+      'project.update': (input) => {
+        calls.push(input as { tableOptions: TableOptions })
+        return { data: { ok: true } }
+      },
+    })
+    const mysql = await screen.findByLabelText('mysql')
+    await userEvent.type(mysql, 'ENGINE=InnoDB')
+    await userEvent.tab()
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0]!.tableOptions).toEqual({
+      postgresql: '', mysql: 'ENGINE=InnoDB', oracle: 'TABLESPACE users', mssql: '',
+    })
+  })
+
+  it('값이 그대로면 보내지 않는다', async () => {
+    const calls: unknown[] = []
+    renderSettings({
+      'project.get': () => ({ data: projectFixture({ tableOptions: { mysql: 'ENGINE=InnoDB' } }) }),
+      'project.update': (input) => { calls.push(input); return { data: { ok: true } } },
+    })
+    const mysql = await screen.findByLabelText('mysql')
+    await userEvent.click(mysql)
+    await userEvent.tab()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('manage 권한이 없으면 섹션이 렌더되지 않는다', async () => {
+    renderSettings({ 'project.get': () => ({ data: projectFixture({ canManage: false }) }) })
+    await screen.findByText('주문시스템')
+    expect(screen.queryByLabelText('mysql')).toBeNull()
   })
 })

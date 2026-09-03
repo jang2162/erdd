@@ -34,6 +34,7 @@ export function useModelLoader(projectId: string) {
     if (projectQuery.data) {
       setProjectConfig(
         projectQuery.data.namingRules, projectQuery.data.dialects, projectQuery.data.name,
+        projectQuery.data.tableOptions,
       )
       setPermissions({
         canEdit: projectQuery.data.canEdit,

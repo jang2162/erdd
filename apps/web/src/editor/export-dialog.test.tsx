@@ -193,3 +193,32 @@ describe('ExportDialog — 범위 초기화', () => {
     expect(scopeSelect().value).toBe('')
   })
 })
+
+/**
+ * ⚠️ **`generateDdl` 의 5번째 인자는 옵셔널이라 빠뜨려도 조용히 동작한다.** core 테스트만으로는
+ * 절대 안 잡히므로 호출처마다 「설정한 옵션이 산출물에 있다」를 따로 단언한다(설계 §5.4·§8.2).
+ * CLI `export` 에도 짝이 되는 단언이 있다.
+ */
+describe('ExportDialog — 테이블 옵션 배선', () => {
+  it('store 의 테이블 옵션이 DDL 미리보기에 나간다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
+    act(() => {
+      useEditorStore.setState({
+        tableOptions: { postgresql: 'TABLESPACE pg_default', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '' },
+      })
+    })
+    renderDialog()
+    expect(screen.getByLabelText('DDL 미리보기').textContent).toContain(') TABLESPACE pg_default;')
+  })
+
+  it('그 방언의 칸이 비면 붙지 않는다', async () => {
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
+    act(() => {
+      useEditorStore.setState({
+        tableOptions: { postgresql: '', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '' },
+      })
+    })
+    renderDialog()
+    expect(screen.getByLabelText('DDL 미리보기').textContent).not.toContain('ENGINE')
+  })
+})
