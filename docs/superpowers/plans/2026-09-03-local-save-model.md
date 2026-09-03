@@ -2542,6 +2542,12 @@ MSG
 
 **Files:** spec §10.1·§10.2 의 목록 그대로. **`docs/superpowers/HANDOFF.md` 는 건드리지 않는다.**
 
+> ⚠️ **아래 줄 번호는 병합 전 것이라 밀려 있다.** 착수 시 아래 grep 으로 **다시 뽑아라** —
+> `feat/cli-ddl` 병합과 기획 문서 삭제로 `cli-guide.md` 가 250줄 넘게 길어졌다.
+> ```bash
+> grep -n "편집이 곧 파일\|즉시 쓰기\|snapshots.json\|디바운스" docs/manual/*.md packages/cli/skill/SKILL.md packages/cli/README.md
+> ```
+>
 > ⚠️ **`feat/cli-ddl` 은 이미 `main` 에 병합됐다**(`2618fc6`). Global Constraints 의 「착수 전에
 > `main` 을 얹어라」를 따랐다면 `cli-guide.md` 에 그 트랙이 만든 `export`·`import` 절이 이미 있다.
 > **없다면 병합을 건너뛴 것이다** — 여기서 멈추고 `git merge main` 부터 한다. 안 그러면 이 태스크가
@@ -2566,11 +2572,18 @@ MSG
 `docs/manual/cli-guide.md`: 328행 · 379행 · 403행 트리 · 839행 「쓰는 파일」 · 855행 `Ctrl+C` · 1154행 부록 스모크 목록.
 `docs/manual/user-guide.md`: 528행 각주.
 
-- [ ] **Step 3: 문서 — 기획**
+- [ ] **Step 3: 기획 문서는 대상이 아니다 — 확인만 한다**
 
-`docs/16-cli.md`: 76행 트리 · 148행 문단(첫 편집 → 첫 저장) · 153행 스냅샷 · **155행 「즉시 쓰기 + 파일 감시가 기본 동작이다」**(이 사이클이 정확히 이 문장을 없앤다) · 179행 단계별 범위.
-`docs/02-architecture.md`: 69행 표(스냅샷 행) · 75행 · **128행**(「디바운스 뒤 파일로 쓰인다」).
-`docs/90-roadmap.md`: 38행 부근에 완료 항목.
+⚠️ **spec §10.1 이 적은 `docs/16-cli.md`·`docs/02-architecture.md`·`docs/90-roadmap.md` 는 이제
+없다.** main 이 기획 문서 14개를 지웠다(`1dcffcf`, 2026-09-03). 남은 문서는
+`docs/manual/*.md` 넷과 `docs/superpowers/` 뿐이다. **이 단계에서 할 일은 그 사실을 확인하는 것뿐이다:**
+
+```bash
+ls docs                     # manual · superpowers 만 나와야 한다
+```
+
+설계 근거는 이제 `docs/superpowers/specs/` 가 들고 있고(`CLAUDE.md` 의 목적지 표도 그렇게 바뀌었다),
+이번 사이클의 근거는 이 계획서의 spec 이다 — 따로 옮겨 적을 곳이 없다.
 
 - [ ] **Step 4: 문서 — 에이전트 스킬과 README**
 

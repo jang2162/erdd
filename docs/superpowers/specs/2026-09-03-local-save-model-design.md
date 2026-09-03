@@ -613,6 +613,11 @@ dirty·external 은 **서버가 진실**이고 웹은 SSE `status` 로 받는다
 
 ### 10.1 문서
 
+> ⚠️ **2026-09-03 갱신:** main 이 기획 문서 14개를 지웠다(`1dcffcf`) — 아래 목록에서
+> `docs/16-cli.md`·`docs/02-architecture.md`·`docs/90-roadmap.md` 행은 **대상이 사라져 걷어냈다.**
+> 남은 문서는 `docs/manual/*.md` 넷과 스킬·README 뿐이다. 줄 번호는 그 뒤 병합으로 밀렸으니
+> 착수 시 grep 으로 다시 뽑아라.
+
 | 파일 | 자리 | 무엇이 거짓이 되나 |
 |---|---|---|
 | `docs/manual/local-guide.md` | 33행 표 | 스냅샷 = `.erdd/snapshots.json`(커밋 안 함) → `erdd/snapshots/`(커밋함) |
@@ -633,15 +638,6 @@ dirty·external 은 **서버가 진실**이고 웹은 SSE `status` 로 받는다
 | 〃 | 〃 (855행) `Ctrl+C` | 파일 flush → 드래프트 flush |
 | 〃 | 1154행 부록 스모크 목록 | 옛 관찰(테이블 생성이 곧바로 파일을 만든다)이 거짓 |
 | `docs/manual/user-guide.md` | 528행 각주 | 로컬 스냅샷이 커밋되지 않는다는 서술 |
-| `docs/16-cli.md` | 76행 트리 | 〃 |
-| 〃 | 로컬 모드 절 도입부(148행) | "`erdd/` 는 첫 편집에서 생긴다" |
-| 〃 | 153행 | 스냅샷 = `.erdd/` 단일 파일 + git-ignore |
-| 〃 | **155행** | 「즉시 쓰기 + 파일 감시가 기본 동작이다」 — 이 사이클이 정확히 이 문장을 없앤다 |
-| 〃 | 179행 단계별 범위 | 이번 사이클 항목 추가 |
-| `docs/02-architecture.md` | 75행 표 | 스냅샷 행 |
-| 〃 | **128행** | "op 배치는 …디바운스 뒤 파일로 쓰인다" |
-| 〃 | 69행 표 | 「저장 모델」 행을 더할지(선택) |
-| `docs/90-roadmap.md` | 38행 부근 | 완료 항목 |
 | `packages/cli/skill/SKILL.md` | 37~39행 트리 | `.erdd/` = snapshots.json → draft.json, `erdd/snapshots/` |
 | 〃 | **56행** | "`erdd serve` 는 …파일만 보고 **파일에만 쓴다**" → 사람이 저장해야 파일이 바뀐다 |
 | 〃 | 〃 (에이전트용 주의 신설) | **`serve` 가 떠 있고 미저장 편집이 있으면 내 파일 수정이 충돌 배너를 띄운다** — 이 문장이 없으면 에이전트가 자기 수정이 왜 화면에 안 뜨는지 모른다 |
@@ -709,7 +705,6 @@ core 이동, `packages/core/README.md` 신설을 건드렸다.
 | `packages/core/src/index.ts` | 양쪽이 export 를 더한다 | 기계적 충돌 — 양쪽 줄을 모두 살린다 |
 | `packages/cli/src/commands/` | 파일이 다르다(저쪽 `export.ts`·`import.ts` 신설 / 이쪽 `status.ts`·`validate.ts` 한 줄) | 충돌 없음. 다만 **저쪽이 만드는 `export` 명령도 「파일만 본다」**(D3)에 자동으로 들어온다 — 특별히 할 일이 없다는 것을 구현 브리프에 적어 둔다 |
 | `packages/cli/src/main.ts` | 이 트랙은 **건드리지 않는다** — 새 CLI 명령을 만들지 않는다 | 없음 |
-| `docs/16-cli.md` | 저쪽이 import/export 절을 건드릴 수 있다 | 절이 달라 기계적 충돌 수준 |
 
 ---
 
