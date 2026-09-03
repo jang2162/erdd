@@ -11,6 +11,7 @@ import { Canvas } from '@/editor/canvas'
 import { DragGhost } from '@/editor/drag-ghost'
 import { EditPanel } from '@/editor/edit-panel'
 import { HeaderTools } from '@/editor/header-tools'
+import { LocalSaveBanner, LocalSaveControls } from '@/editor/local-save-controls'
 import { TableTree } from '@/editor/table-tree'
 import { BrandWordmark } from '@/components/brand-mark'
 import { UserMenu } from '@/components/user-menu'
@@ -40,6 +41,9 @@ export function ProjectPage() {
           <Link to="/" aria-label="홈으로"><BrandWordmark /></Link>
           <div className="flex items-center gap-2">
             {loaded && !isLocal && <PresenceBar selfUserId={me.id} />}
+            {/* 저장은 문서 수준 동작이라 도구 모음(HeaderTools) 앞에 둔다. 서버 모드에서는
+                렌더 자체를 하지 않으므로 Cmd+S 리스너도 붙지 않는다. */}
+            {loaded && isLocal && <LocalSaveControls />}
             {loaded && <HeaderTools projectId={projectId} />}
             <Button variant="ghost" size="sm" asChild>
               <Link to={`/p/${projectId}/settings`}><Settings /> 설정</Link>
@@ -52,6 +56,8 @@ export function ProjectPage() {
             파일을 읽을 수 없어 편집이 잠겼습니다 — {blocked[0]!.path}: {blocked[0]!.message}
           </div>
         )}
+        {/* 손상 배너 아래다 — 편집이 잠긴 것이 더 급한 사실이다. */}
+        {isLocal && <LocalSaveBanner />}
         <div className="flex min-h-0 flex-1">
           {loaded
             ? (
