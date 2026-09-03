@@ -768,9 +768,21 @@ describe('FileStore.save', () => {
       'erdd/tables/ORD.yaml': ['name: ORD', 'logicalName: 주문', 'columns: []', ''].join('\n'),
     })
     const store = new FileStore(dir)
-    await store.load()
+    await store.load()          // 여기서 id 가 발급돼 파일에 되쓰인다
     expect(store.external).toBe(false)
-    // 되쓰기 직후의 재로드(감시가 하는 일)에서도 external 이 서지 않아야 한다.
+
+    // ⚠️ **미저장 편집이 있어야 이 잠금이 성립한다.** 되쓰기가 기준선에 반영되지 않으면
+    // 다음 로드가 「밖에서 바뀌었다」로 보는데, 미저장이 없으면 그냥 채택해 버려 증상이 숨는다.
+    // 실제 동선이 정확히 이것이다 — 되쓰기가 깨운 감시 이벤트가 사용자의 첫 편집보다 늦게 온다.
+    const ord = Object.values(store.state.model.tables)[0]!
+    await store.mutate([{
+      action: 'update', entity: 'table', entityId: ord.id,
+      changes: { logicalName: { from: '주문', to: '주문서' } },
+    }])
+    await store.flush()
+    expect(store.dirty).toBe(true)
+
+    // 되쓰기가 깨운 감시 이벤트가 이제 도착한다 — 우리가 쓴 것이므로 배너가 뜨면 안 된다.
     await store.load()
     expect(store.external).toBe(false)
   })
