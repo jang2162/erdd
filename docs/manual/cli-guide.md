@@ -929,6 +929,10 @@ $ erdd export --format dbml -o schema.dbml
 /path/to/my-project/schema.dbml에 dbml을 썼습니다
 
 $ cat schema.dbml
+Project "my-project" {
+  database_type: 'MySQL'
+}
+
 Table "mbr" [note: '회원 - 회원 기본 정보'] {
   "mbr_no" BIGINT [pk, increment, note: '회원번호']
   "mbr_nm" VARCHAR(100) [not null, note: '회원명']
@@ -956,6 +960,10 @@ $ erdd export --dialect postgresql > schema.sql
 #  ↑ stderr. schema.sql 에는 DDL 만 들어간다
 ```
 
+- ⚠️ **DBML 의 `Project` 이름은 작업 디렉터리 이름이다**(위 예시의 `my-project`). 이름 자체는
+  표시용이지만 **그 블록이 방언을 실어 나른다** — `database_type` 이 곧 `erdd import` 가 읽는
+  방언이라(→ [6.10](#610-erdd-import-파일)의 판별 표), 이 블록이 없으면 되읽을 때 방언이 받는
+  쪽 `config.dialects[0]` 으로 떨어진다. 파일시스템 루트에서 내보내면 이름이 비어 블록이 빠진다.
 - **`config.dialects` 에 없는 방언도 유효하기만 하면 낸다.** 일회성으로 다른 DB 의 DDL 이 필요한
   것은 정상적인 쓰임이라 막지 않고, 대신 위처럼 stderr 로 한 줄 알린다.
 - 내보내기 경고(컬럼이 없거나 물리명이 빈 테이블은 제외된다)도 stderr 로 `경고: …` 로 나온다.
@@ -1004,8 +1012,8 @@ $ erdd import ../a/schema.sql --yes
 ddl · 방언 mysql(본문에서 감지) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
 파일 7개를 썼습니다. erdd push로 서버에 반영하세요
 
-$ erdd import ../a/schema.dbml --yes     # DBML — Project 블록이 없어 config 로 떨어진다
-dbml · 방언 mysql(erdd.config.yaml의 dialects[0]) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
+$ erdd import ../a/schema.dbml --yes     # DBML — erdd export 가 실어 준 Project 를 읽는다
+dbml · 방언 mysql(Project의 database_type) · 추가 2개 테이블(컬럼 5 · 인덱스 1 · 관계 1)
 파일 7개를 썼습니다. erdd push로 서버에 반영하세요
 ```
 
