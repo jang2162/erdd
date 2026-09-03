@@ -172,10 +172,14 @@ A 는 기존 코드에서 **디바운스의 쓰기 대상 한 줄**을 바꾸는
 | 이름 | 뜻 |
 |---|---|
 | `#base` | `{ tree, layout, signature }` — **마지막으로 채택했거나 사용자가 인정한 디스크 상태.** 저장의 비교 기준(`writeTreeChanges` 의 `base`) |
-| `#incoming` | `{ tree, layout, model, signature } \| null` — 밖에서 왔지만 **사용자가 아직 고르지 않은** 디스크 상태 |
+| `#external` | 디스크가 `#base` 와 달라졌는데 **사용자가 아직 고르지 않았다** |
 | `#draftPending` | 드래프트 **파일에 쓸 것**이 남았는가. 기존 `#dirty` 의 역할을 그대로 물려받는 디바운스 플래그 |
 | `#dirty` | **저장할 것**이 남았는가. 플래그가 아니라 **내용 비교 결과**다(§5.1) |
 | `#pendingDraft` | 아직 얹지 못한 드래프트(첫 load 가 실패했을 때) |
+
+> **`#external` 은 밖에서 온 내용을 들고 있지 않고 플래그 하나다.** 들고 있으면 그 사이 디스크가
+> 또 바뀌었을 때 낡은 것을 `#base` 로 승격시킨다. 대신 `keep`·`discard` 가 **그 시점에 디스크를
+> 다시 읽는다** — 두 번째 외부 변경에 대해 스스로 교정된다.
 
 > ⚠️ **`#draftPending` 과 `#dirty` 를 하나로 합치지 마라.** 앞의 것은 「디스크에 반영할 것이
 > 남았다」이고 뒤의 것은 「파일과 내용이 다르다」다 — 되돌리는 편집(A→B→A)에서 앞은 참이고 뒤는
@@ -241,7 +245,7 @@ model.mutate ─▶ applyOps ─▶ #state.model 갱신, seq+1 ─▶ #draftPend
 > 약해지지 않았다. **실패(`!ok`) 결과에는 그 가드를 적용하지 않는다는 예외도 그대로다.**
 >
 > 재시도 상한 `MAX_LOAD_ATTEMPTS` 도 그대로 두되, **상한에 닿았을 때 결과를 버리지 않고
-> `#incoming` 으로 세운다.** 지금은 버려도 「자기 flush 가 다시 감시를 깨운다」가 회수해 줬는데,
+> `#external` 을 세운다.** 지금은 버려도 「자기 flush 가 다시 감시를 깨운다」가 회수해 줬는데,
 > 편집이 더 이상 `erdd/` 를 쓰지 않으므로 그 회수 경로가 없어진다 — 버리면 그 로드가 들고 온 외부
 > 변경 알림이 통째로 사라진다. 편집이 쉼 없이 들어오는 중이면 어차피 곧 `#dirty` 이므로 §5.3 의
 > 「미저장 있음」과 같은 처리로 수렴한다.
@@ -252,7 +256,7 @@ model.mutate ─▶ applyOps ─▶ #state.model 갱신, seq+1 ─▶ #draftPend
 POST /local/save
   ① 파일이 깨져 있으면            → ok:false, reason:'blocked'
   ② 디스크를 다시 읽어 서명 비교
-       #base 와 다르면            → #incoming 세우고 SSE, ok:false, reason:'external'
+       #base 와 다르면            → #external=true, SSE, ok:false, reason:'external'
   ③ writeTreeChanges(cwd, #base.tree, next.tree) + layout 쓰기
   ④ #base = next,  드래프트 삭제,  #dirty=false
   ⑤ SSE status 브로드캐스트(다른 탭의 표시도 내려간다)
@@ -268,7 +272,7 @@ POST /local/save
 | 상태 | 감시가 잡았을 때 |
 |---|---|
 | **미저장 없음**(`#dirty=false`) | 지금과 같다 — 채택하고 `#base` 를 옮기고 SSE `reload`. 브라우저가 다시 읽는다 |
-| **미저장 있음**(`#dirty=true`) | 채택하지 **않는다.** `#incoming` 에 담고 SSE `status{external:true}`. 배너: 「파일이 밖에서 바뀌었습니다 — 내 편집 유지 / 파일 다시 읽기」 |
+| **미저장 있음**(`#dirty=true`) | 채택하지 **않는다.** `#external=true` 로 세우고 SSE `status{external:true}`. 배너: 「파일이 밖에서 바뀌었습니다 — 내 편집 유지 / 파일 다시 읽기」 |
 | **자기 저장** | 읽은 서명 == `#base.signature` → 아무 일도 없다(브로드캐스트 없음) |
 | **파일 손상** | 지금과 같다 — `ok:false`, `blocked` 브로드캐스트, 편집·저장 모두 잠긴다. **드래프트는 그대로 남는다** |
 
@@ -276,8 +280,8 @@ POST /local/save
 
 | 선택 | 엔드포인트 | 하는 일 |
 |---|---|---|
-| **내 편집 유지** | `POST /local/keep` | `#base = #incoming`, `#incoming=null`. 모델은 그대로. 그 뒤의 저장은 **화면이 곧 파일**이 된다 |
-| **파일 다시 읽기** | `POST /local/discard` | 드래프트 삭제, `#incoming` 의 모델을 채택, `#dirty=false`. SSE `reload` |
+| **내 편집 유지** | `POST /local/keep` | **디스크를 지금 다시 읽어** `#base` 로 삼고 `#external=false`. 모델은 그대로. 그 뒤의 저장은 **화면이 곧 파일**이 된다 |
+| **파일 다시 읽기** | `POST /local/discard` | 드래프트 삭제, `#dirty=false`·`#external=false` 로 내린 뒤 `load()` 로 디스크를 채택. SSE `reload` |
 
 > ⚠️ **「내 편집 유지」를 고른 뒤의 저장은 밖에서 추가된 파일을 지운다.** `#base` 를 새 디스크로
 > 옮겼으므로 `writeTreeChanges` 가 「base 에 있는데 모델에 없는 파일」을 삭제한다 — 즉 저장 결과가
@@ -296,7 +300,7 @@ startLocalServer
   └ store.adoptDraft()           .erdd/draft.json 이 있으면
         ├ ProjectModelSchema 실패 → draft.corrupt-<ts>.json 으로 이름 바꾸고 파일만 연다 + note
         ├ baseSignature === #base.signature → 그대로 얹는다. dirty=true
-        └ baseSignature !== #base.signature → 얹고 dirty=true, **그리고 #incoming 을 세워
+        └ baseSignature !== #base.signature → 얹고 dirty=true, **그리고 #external 을 세워
                                               외부 변경 배너를 함께 띄운다**
 ```
 
@@ -658,11 +662,46 @@ dirty·external 은 **서버가 진실**이고 웹은 SSE `status` 로 받는다
 
 ---
 
+## 10.3 다음 사이클이 붙을 자리 — `erdd apply` (2026-09-03 사용자 확정)
+
+이 사이클의 **범위 밖**이지만, 여기서 만드는 것이 그 토대가 되므로 자리를 못 박아 둔다. 사용자가
+방향을 확정했다: **에이전트는 `erdd/` 의 YAML 을 직접 고치지 않고 CLI 로 고친다.**
+
+- **모양:** `erdd apply <ops.json>`(`-` 면 stdin) — core 의 op 포맷을 그대로 받는 얇은 명령 하나다.
+  `parseOps` · `applyOps` · `MAX_OPS_PER_MUTATION` 을 그대로 재사용하므로 웹·서버·로컬과 **규칙이
+  한 벌**이고, 엔티티 10종을 덮는 하위 명령 수십 개를 만들지 않아도 된다.
+- **도는 서버와의 관계:** `serve` 가 떠 있으면 **그 서버로 보낸다** — 에이전트 편집이 사람의 편집과
+  **같은 드래프트**에 합류해 충돌 배너가 아예 뜨지 않고 브라우저가 즉시 따라온다. 꺼져 있으면 파일에
+  직접 쓴다.
+- **그래서 이 사이클이 남겨야 할 것 둘:**
+  1. `POST /local/apply` 가 `/local/save` 옆에 자연스럽게 붙도록 **라우트 등록을 한 함수에 모아 둔다**
+     (§6.2 의 세 라우트를 각각 흩어 놓지 않는다).
+  2. 실행 중인 서버를 찾는 수단 — `serve` 가 포트를 어딘가에 적어 두어야 한다. **이번 사이클에서는
+     만들지 않는다**(YAGNI). 다음 사이클이 `.erdd/serve.json`(포트·pid)을 더하면 되고, `.erdd/` 는
+     이미 gitignore 되어 있어 새 규칙이 필요 없다.
+- **이 사이클의 D2(외부 변경 배너)는 그래도 남는다.** `erdd apply` 가 생겨도 `git pull`·
+  `git checkout`·`erdd pull`·`erdd import` 가 파일을 밖에서 바꾼다. 줄어드는 것은 빈도이지 갈래가
+  아니다.
+- **강제는 코드가 아니라 지침이다.** 파일을 못 고치게 막을 수단이 없다(사람도 git 도 쓴다) — 금지는
+  `packages/cli/skill/SKILL.md` 의 워크플로 개정으로 한다(§10.1 의 그 항목이 다음 사이클에서 한 번 더
+  바뀐다).
+
+---
+
 ## 11. 다른 트랙(`feat/cli-ddl`)과 겹치는 자리
 
-동시에 도는 트랙이 `packages/cli/src/commands/*`(export·import 명령 신설), `packages/cli/src/main.ts`
+> ⚠️ **2026-09-03 갱신 — `feat/cli-ddl` 은 이미 `main` 에 병합됐다**(머지 커밋 `2618fc6`).
+> 아래 표의 「먼저 병합한다」는 **이미 일어난 일**이다. 이 워크트리는 `2307ec7` 기준이라 **`main`
+> 최신으로 rebase 하거나 머지한 뒤 시작해라** — 그러지 않으면 `cli-guide.md` 의 export·import 절
+> (약 250줄 신설)과 `local-guide.md` 의 init 옵션 절을 못 본 채 §10 을 적용하게 된다.
+> 병합 후 기준선은 **core 877 · cli 287 · web 943 · typecheck EXIT=0** 이다.
+> 함께 들어온 것 중 이 트랙이 알아야 할 것: `packages/core/README.md` 신설,
+> `applyDdlImport` 가 `apps/web` → `packages/core/src/ddl-apply.ts` 로 이동, `erdd export`·`erdd import`
+> 두 명령 신설(둘 다 **파일만 본다** — D3 에 자동으로 들어온다).
+
+동시에 돌던 트랙이 `packages/cli/src/commands/*`(export·import 명령 신설), `packages/cli/src/main.ts`
 의 USAGE, `docs/manual/cli-guide.md`·`local-guide.md`, `apps/web/src/editor/ddl-import-edits.ts` 의
-core 이동, `packages/core/README.md` 신설을 건드린다.
+core 이동, `packages/core/README.md` 신설을 건드렸다.
 
 | 자리 | 겹침 | 처리 |
 |---|---|---|
@@ -723,13 +762,20 @@ core 이동, `packages/core/README.md` 신설을 건드린다.
 
 ## 13. 미결 사항 (각각 추천을 단다 — TBD 로 두지 않는다)
 
+> **2026-09-03 갱신:** **①은 사용자가 확정했다 — 「지운다」다.** 더는 작성자 판단이 아니므로
+> 구현 사이클은 그대로 간다. **②는 여전히 작성자 판단**이고(사용자에게 묻지 않았다) 나머지도 같다 —
+> 뒤집는 비용을 각 항목에 적어 두었으니 리뷰에서 바꿔도 태스크 하나 안에서 끝난다.
+
 **① 「내 편집 유지」 뒤의 저장이 밖에서 추가된 파일을 지우는가.**
-→ **지운다(추천).** 근거는 §5.3 의 ⚠️ 다 — 대안(옛 base 유지)은 「화면에 없는 테이블이 파일에 있는」
-조용한 부분 병합이고, 그것은 D2 의 「자동 병합 없음」과 어긋난다. **조건은 배너 문구다** — 사용자가
-그 대가를 읽고 고르게 한다. 이 항목만은 사용자가 다르게 고를 여지가 있어 남긴다.
+→ **지운다 — 2026-09-03 사용자 확정.** 근거는 §5.3 의 ⚠️ 다 — 대안(옛 base 유지)은 「화면에 없는
+테이블이 파일에 있는」 조용한 부분 병합이고, 그것은 D2 의 「자동 병합 없음」과 어긋난다. **조건은
+배너 문구다** — 사용자가 그 대가를 읽고 고르게 한다.
+**뒤집는 비용:** `keep()` 이 `#base` 를 옮기지 않게 하고 테스트 ⑬의 단언을 반대로 적으면 된다 —
+한 태스크 안이다.
 
 **② `push` 에도 미저장 알림을 붙일까.**
-→ **붙인다(추천).** D3 이 고정한 것은 「`push` 는 파일만 **본다**」이지 「알리지 않는다」가 아니다.
+→ **붙인다(추천, 계획서가 채택).** D3 이 고정한 것은 「`push` 는 파일만 **본다**」이지 「알리지
+않는다」가 아니다. **뒤집는 비용:** `push.ts` 의 한 줄과 그 테스트 하나를 지우면 된다.
 알림은 판정을 바꾸지 않는 한 줄이고, **미저장 편집이 실제로 새어 나가는 유일한 자리가 `push`** 다
 (`validate` 는 검사일 뿐이다). `status`·`validate` 와 같은 함수·같은 문구를 쓴다.
 
@@ -772,7 +818,7 @@ core 이동, `packages/core/README.md` 신설을 건드린다.
 
 **변경**
 
-- `packages/cli/src/local/store.ts` — 드래프트 계층, `#base`/`#incoming`, `save`/`discard`/`keep`,
+- `packages/cli/src/local/store.ts` — 드래프트 계층, `#base`/`#external`, `save`/`discard`/`keep`,
   `#written`·`#selfWrite` → `#base.signature`, id 되쓰기의 base 반영
 - `packages/cli/src/local/snapshots.ts` — 새 포맷(`erdd/snapshots/<id>.json.gz` + `index.yaml`),
   gzip, 이행
