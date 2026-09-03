@@ -68,8 +68,10 @@ const SAMPLE: Record<LogicalTypeKind, LogicalType> = {
   CHAR: { kind: 'CHAR', length: 10 },
   VARCHAR: { kind: 'VARCHAR', length: 100 },
   DECIMAL: { kind: 'DECIMAL', precision: 12, scale: 3 },
-  TEXT: { kind: 'TEXT' }, SMALLINT: { kind: 'SMALLINT' }, INT: { kind: 'INT' },
-  BIGINT: { kind: 'BIGINT' }, FLOAT: { kind: 'FLOAT' }, DOUBLE: { kind: 'DOUBLE' },
+  TEXT: { kind: 'TEXT' },
+  // 정수 3종은 `unsigned` 가 **필수**다 — 이 리터럴이 타입 검사에 걸려야 정상이다(설계 §4.3).
+  SMALLINT: { kind: 'SMALLINT', unsigned: false }, INT: { kind: 'INT', unsigned: false },
+  BIGINT: { kind: 'BIGINT', unsigned: false }, FLOAT: { kind: 'FLOAT' }, DOUBLE: { kind: 'DOUBLE' },
   BOOLEAN: { kind: 'BOOLEAN' }, DATE: { kind: 'DATE' }, TIME: { kind: 'TIME' },
   DATETIME: { kind: 'DATETIME' }, TIMESTAMPTZ: { kind: 'TIMESTAMPTZ' },
   BLOB: { kind: 'BLOB' }, JSON: { kind: 'JSON' }, UUID: { kind: 'UUID' },
@@ -141,5 +143,112 @@ describe('fromDialectType', () => {
     expect(fromDialectType('timestamp with time zone', 'postgresql')).toMatchObject({
       type: { kind: 'TIMESTAMPTZ' },
     })
+  })
+})
+
+/**
+ * 부호 없음(설계 §4.4~4.5)과 정수 표시폭(§9 ①).
+ *
+ * ⚠️ `splitSqlType` 은 **접미를 이름에서 떼어내야** 방언별 전용 분기가 계속 맞는다 —
+ * `tinyint unsigned` 의 이름이 `TINYINT UNSIGNED` 로 남으면 `fromMysql` 의 `TINYINT` 분기를
+ * 못 타 `unknown-type` 으로 떨어진다(오늘은 파서가 접미를 잘라 우연히 살아 있다).
+ */
+describe('fromDialectType — 부호 없음 접미', () => {
+  const from = (t: string, d: Dialect) => {
+    const r = fromDialectType(t, d)
+    return r.ok ? { canonical: r.canonical, dropped: r.unsignedDropped } : { canonical: `RAW:${r.raw}` }
+  }
+
+  it('정수 3종의 접미를 읽는다', () => {
+    expect(from('int unsigned', 'mysql')).toEqual({ canonical: 'INT UNSIGNED', dropped: false })
+    expect(from('smallint unsigned', 'mysql')).toEqual({ canonical: 'SMALLINT UNSIGNED', dropped: false })
+    expect(from('bigint unsigned', 'mysql')).toEqual({ canonical: 'BIGINT UNSIGNED', dropped: false })
+  })
+  it('네 방언 모두 같게 읽는다 — 읽는 시점의 방언으로 모델 값을 깎지 않는다(§4.6)', () => {
+    for (const d of DIALECTS) {
+      expect(from('INT UNSIGNED', d)).toEqual({ canonical: 'INT UNSIGNED', dropped: false })
+    }
+  })
+  it('⚠️ tinyint unsigned 회귀 — 이름이 TINYINT 로 남아 mysql 분기를 탄다', () => {
+    expect(from('tinyint unsigned', 'mysql')).toEqual({ canonical: 'SMALLINT UNSIGNED', dropped: false })
+  })
+  it('허용 집합 밖은 부호 없음만 떨어뜨리고 그 사실을 싣는다', () => {
+    expect(from('tinyint(1) unsigned', 'mysql')).toEqual({ canonical: 'BOOLEAN', dropped: true })
+    expect(from('decimal(10,2) unsigned', 'mysql')).toEqual({ canonical: 'DECIMAL(10,2)', dropped: true })
+    expect(from('double unsigned', 'mysql')).toEqual({ canonical: 'DOUBLE', dropped: true })
+  })
+  it('ZEROFILL 은 삼키고 버린다 — UNSIGNED 를 함의하지 않는다(§10.5)', () => {
+    expect(from('int zerofill', 'mysql')).toEqual({ canonical: 'INT', dropped: false })
+    expect(from('int unsigned zerofill', 'mysql')).toEqual({ canonical: 'INT UNSIGNED', dropped: false })
+  })
+  it('기존 분해가 그대로다', () => {
+    expect(from('NVARCHAR(MAX)', 'mssql')).toEqual({ canonical: 'TEXT', dropped: false })
+    expect(from('double precision', 'postgresql')).toEqual({ canonical: 'DOUBLE', dropped: false })
+    expect(from('timestamp with time zone', 'postgresql')).toEqual({ canonical: 'TIMESTAMPTZ', dropped: false })
+    expect(from('number(10,2)', 'oracle')).toEqual({ canonical: 'DECIMAL(10,2)', dropped: false })
+  })
+})
+
+/** MySQL 5.7 의 `mysqldump`·`SHOW CREATE TABLE` 이 내는 표준 모양(설계 §9 ①·§3.4 가). */
+describe('fromDialectType — 정수 표시폭', () => {
+  const canon = (t: string, d: Dialect) => {
+    const r = fromDialectType(t, d)
+    return r.ok ? r.canonical : `RAW:${r.raw}`
+  }
+
+  it('mysql 의 표시폭은 무시한다', () => {
+    expect(canon('int(11)', 'mysql')).toBe('INT')
+    expect(canon('bigint(20)', 'mysql')).toBe('BIGINT')
+    expect(canon('smallint(5)', 'mysql')).toBe('SMALLINT')
+    expect(canon('int(10) unsigned', 'mysql')).toBe('INT UNSIGNED')
+    expect(canon('bigint(20) unsigned', 'mysql')).toBe('BIGINT UNSIGNED')
+  })
+  it('tinyint(1)·tinyint(3) 의 기존 분기는 그대로다', () => {
+    expect(canon('tinyint(1)', 'mysql')).toBe('BOOLEAN')
+    expect(canon('tinyint(3)', 'mysql')).toBe('SMALLINT')
+  })
+  it('표시폭은 mysql 전용이다 — 다른 방언에서 정수에 괄호가 오면 원문을 보존한다', () => {
+    expect(canon('int(11)', 'postgresql')).toBe('RAW:int(11)')
+    expect(canon('int(11)', 'mssql')).toBe('RAW:int(11)')
+  })
+})
+
+describe('toDialectType — 부호 없음', () => {
+  const conv2 = (t: string, d: Dialect) => {
+    const p = parseLogicalType(t)
+    if (!p.ok) throw new Error('parse fail')
+    return toDialectType(p.type, d)
+  }
+  it('mysql 만 접미를 낸다 — 나머지는 기본 타입이고 CHECK 가 의미를 나른다(§4.5)', () => {
+    expect(conv2('INT UNSIGNED', 'mysql')).toBe('INT UNSIGNED')
+    expect(conv2('BIGINT UNSIGNED', 'mysql')).toBe('BIGINT UNSIGNED')
+    expect(conv2('SMALLINT UNSIGNED', 'mysql')).toBe('SMALLINT UNSIGNED')
+    expect(conv2('INT UNSIGNED', 'postgresql')).toBe('integer')
+    expect(conv2('INT UNSIGNED', 'mssql')).toBe('INT')
+    expect(conv2('INT UNSIGNED', 'oracle')).toBe('NUMBER(10)')
+  })
+})
+
+describe('resolveColumnType — 부호 없음 상한 경고(§4.5 표)', () => {
+  const warn = (t: string, d: Dialect) => resolveColumnType(t, d).warning
+  it('mysql 은 경고가 없다', () => {
+    for (const t of ['SMALLINT UNSIGNED', 'INT UNSIGNED', 'BIGINT UNSIGNED']) {
+      expect(warn(t, 'mysql')).toBeUndefined()
+    }
+  })
+  it('postgresql·mssql 은 정수 3종 모두 경고한다', () => {
+    for (const d of ['postgresql', 'mssql'] as const) {
+      for (const t of ['SMALLINT UNSIGNED', 'INT UNSIGNED', 'BIGINT UNSIGNED']) {
+        expect(warn(t, d)).toMatch(/CHECK/)
+      }
+    }
+  })
+  it('oracle 은 BIGINT UNSIGNED 만 경고한다 — NUMBER(5)·NUMBER(10) 은 상한이 넉넉하다', () => {
+    expect(warn('SMALLINT UNSIGNED', 'oracle')).toBeUndefined()
+    expect(warn('INT UNSIGNED', 'oracle')).toBeUndefined()
+    expect(warn('BIGINT UNSIGNED', 'oracle')).toMatch(/CHECK/)
+  })
+  it('부호 있는 정수는 경고가 없다', () => {
+    for (const d of DIALECTS) expect(warn('INT', d)).toBeUndefined()
   })
 })

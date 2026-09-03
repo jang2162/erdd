@@ -1,4 +1,7 @@
-import { parseLogicalType, type LogicalType, type LogicalTypeKind } from './logical-type.js'
+import {
+  canonicalOf, isUnsignedCapable, parseLogicalType,
+  type LogicalType, type LogicalTypeKind, type UnsignedCapableKind,
+} from './logical-type.js'
 
 export const DIALECTS = ['postgresql', 'mysql', 'oracle', 'mssql'] as const
 export type Dialect = (typeof DIALECTS)[number]
@@ -41,18 +44,41 @@ export function toDialectType(type: LogicalType, dialect: Dialect): string {
       : dialect === 'oracle' ? `NUMBER(${ps})`
       : `DECIMAL(${ps})`
   }
+  if (isUnsignedCapable(type)) {
+    const sql = FIXED[type.kind][dialect]
+    // **mysql 만 접미를 낸다.** 나머지 셋에는 부호 없음 타입이 없어 `columnLine` 이
+    // `CHECK (col >= 0)` 로 의미를 나른다(설계 §4.5).
+    return type.unsigned && dialect === 'mysql' ? `${sql} UNSIGNED` : sql
+  }
   return FIXED[type.kind][dialect]
 }
 
 export type FromDialectResult =
-  | { ok: true; type: LogicalType; canonical: string; alternatives: LogicalTypeKind[] }
+  | {
+      ok: true; type: LogicalType; canonical: string; alternatives: LogicalTypeKind[]
+      /** 원문에 `UNSIGNED` 가 있었지만 허용 집합 밖이라 떨어뜨렸다(설계 §4.6 의 경고 재료). */
+      unsignedDropped: boolean
+    }
   | { ok: false; raw: string }
 
-type SqlTypeParts = { name: string; p1: number | null; p2: number | null; isMax: boolean }
+type SqlTypeParts = {
+  name: string; p1: number | null; p2: number | null; isMax: boolean
+  /** 이름 뒤 접미에 `UNSIGNED` 가 있었는가. `ZEROFILL` 은 삼키기만 하고 버린다. */
+  unsigned: boolean
+}
 
-/** 'NVARCHAR(MAX)'·'NUMBER(10,2)'·'double precision'을 이름과 파라미터로 가른다. */
+/**
+ * 'NVARCHAR(MAX)'·'NUMBER(10,2)'·'double precision'·'int(10) unsigned'를 이름·파라미터·접미로 가른다.
+ *
+ * ⚠️ **접미를 이름에서 떼어내는 것이 이 함수의 핵심 계약이다.** 그래야 방언별 전용 분기가 계속
+ * 맞는다 — `tinyint unsigned` 는 이름이 `TINYINT` 로 남아야 `fromMysql` 의 `TINYINT` 분기를 타
+ * `SMALLINT` 가 된다. 이름에 접미가 붙은 채로 넘기면 그 컬럼이 통째로 미지 타입이 된다.
+ *
+ * `ZEROFILL` 은 표시 전용이고 8.0.17 부터 deprecated 라 **삼키기만 하고 버린다.** MySQL 에서
+ * `ZEROFILL` 이 `UNSIGNED` 를 함의하는 규칙은 **따르지 않는다**(설계 §10.5).
+ */
 function splitSqlType(sqlType: string): SqlTypeParts | null {
-  const m = /^([A-Za-z][A-Za-z0-9_ ]*?)\s*(?:\(\s*(\d+|MAX)\s*(?:,\s*(\d+)\s*)?\))?$/i
+  const m = /^([A-Za-z][A-Za-z0-9_ ]*?)\s*(?:\(\s*(\d+|MAX)\s*(?:,\s*(\d+)\s*)?\))?((?:\s+(?:UNSIGNED|ZEROFILL))*)\s*$/i
     .exec(sqlType.trim())
   if (!m) return null
   const isMax = (m[2] ?? '').toUpperCase() === 'MAX'
@@ -61,21 +87,31 @@ function splitSqlType(sqlType: string): SqlTypeParts | null {
     p1: m[2] === undefined || isMax ? null : Number(m[2]),
     p2: m[3] === undefined ? null : Number(m[3]),
     isMax,
+    unsigned: /\bUNSIGNED\b/i.test(m[4] ?? ''),
   }
 }
 
+// ⚠️ **`as LogicalType` 캐스트를 두지 마라** — 캐스트가 있으면 `unsigned` 필수화가 여기서
+// 무력화되어 강제되는 자리가 하나도 남지 않는다(설계 §4.3).
 const fixed = (
   kind: Exclude<LogicalTypeKind, 'CHAR' | 'VARCHAR' | 'DECIMAL'>,
   alternatives: LogicalTypeKind[] = [],
-): FromDialectResult => ({ ok: true, type: { kind } as LogicalType, canonical: kind, alternatives })
+): FromDialectResult => {
+  const type: LogicalType = kind === 'SMALLINT' || kind === 'INT' || kind === 'BIGINT'
+    ? { kind, unsigned: false } : { kind }
+  return { ok: true, type, canonical: canonicalOf(type), alternatives, unsignedDropped: false }
+}
 
 const sized = (
   kind: 'CHAR' | 'VARCHAR', length: number, alternatives: LogicalTypeKind[] = [],
-): FromDialectResult => ({ ok: true, type: { kind, length }, canonical: `${kind}(${length})`, alternatives })
+): FromDialectResult => ({
+  ok: true, type: { kind, length }, canonical: `${kind}(${length})`,
+  alternatives, unsignedDropped: false,
+})
 
 const decimal = (precision: number, scale: number): FromDialectResult => ({
   ok: true, type: { kind: 'DECIMAL', precision, scale },
-  canonical: `DECIMAL(${precision},${scale})`, alternatives: [],
+  canonical: `DECIMAL(${precision},${scale})`, alternatives: [], unsignedDropped: false,
 })
 
 // 방언별 특수 규칙. null을 돌려주면 아래의 parseLogicalType 공통 경로로 넘어간다.
@@ -107,6 +143,12 @@ function fromOracle(t: SqlTypeParts): FromDialectResult | null {
 function fromMysql(t: SqlTypeParts): FromDialectResult | null {
   switch (t.name) {
     case 'TINYINT': return t.p1 === 1 ? fixed('BOOLEAN', ['SMALLINT']) : fixed('SMALLINT')
+    // MySQL 5.7 의 `mysqldump`·`SHOW CREATE TABLE` 이 내는 표시폭(`int(11)`·`bigint(20)`)은
+    // 8.0.17 부터 deprecated 인 표시 전용 값이라 **무시한다**(설계 §9 ①). 공통 경로의
+    // `parseLogicalType` 은 모델 표기용이라 괄호를 거절하므로 여기서 받아야 한다.
+    case 'SMALLINT': return fixed('SMALLINT')
+    case 'INT': case 'INTEGER': return fixed('INT')
+    case 'BIGINT': return fixed('BIGINT')
     case 'CHAR': return t.p1 === 36 ? sized('CHAR', 36, ['UUID']) : null
     case 'LONGTEXT': case 'MEDIUMTEXT': case 'TINYTEXT': return fixed('TEXT')
     case 'LONGBLOB': case 'MEDIUMBLOB': case 'TINYBLOB': return fixed('BLOB')
@@ -152,6 +194,25 @@ function fromPostgres(t: SqlTypeParts): FromDialectResult | null {
  * toDialectType의 역함수. alternatives가 비어 있지 않으면 모호하게 해석한 것이다.
  * ⚠️ toDialectType·FIXED를 고치면 이 함수도 함께 고쳐야 한다 — 그래서 같은 파일에 둔다.
  */
+/**
+ * 부호 없음 접미를 base 결과에 얹는다. **방언별 분기를 새로 만들지 않는다** — 네 방언 공통
+ * 경로라 postgresql 프로젝트로 `INT UNSIGNED` 가 든 DDL 이 들어와도 똑같이 해석된다(설계 §4.6).
+ * 프로젝트는 방언을 여럿 가질 수 있으므로 읽는 시점의 방언 하나로 모델 값을 깎지 않는다.
+ */
+function applyUnsigned(base: FromDialectResult, unsigned: boolean): FromDialectResult {
+  if (!base.ok || !unsigned) return base
+  if (!isUnsignedCapable(base.type)) return { ...base, unsignedDropped: true }
+  const type: LogicalType = { kind: base.type.kind, unsigned: true }
+  return { ...base, type, canonical: canonicalOf(type) }
+}
+
+/** 접미를 뗀 방언 원문. 공통 경로의 `parseLogicalType` 이 엄격하므로 재조립해 넘긴다. */
+function baseText(t: SqlTypeParts): string {
+  if (t.isMax) return `${t.name}(MAX)`
+  if (t.p1 === null) return t.name
+  return t.p2 === null ? `${t.name}(${t.p1})` : `${t.name}(${t.p1},${t.p2})`
+}
+
 export function fromDialectType(sqlType: string, dialect: Dialect): FromDialectResult {
   const raw = sqlType.trim()
   const parts = splitSqlType(raw)
@@ -161,12 +222,15 @@ export function fromDialectType(sqlType: string, dialect: Dialect): FromDialectR
       : dialect === 'mysql' ? fromMysql(parts)
       : dialect === 'mssql' ? fromMssql(parts)
       : fromPostgres(parts)
-    if (special) return special
+    if (special) return applyUnsigned(special, parts.unsigned)
   }
   // 공통 경로: VARCHAR2·INTEGER·NUMERIC·BOOL 같은 별칭은 parseLogicalType이 이미 안다.
-  const parsed = parseLogicalType(raw)
+  const parsed = parseLogicalType(parts ? baseText(parts) : raw)
   if (!parsed.ok) return { ok: false, raw }
-  return { ok: true, type: parsed.type, canonical: parsed.canonical, alternatives: [] }
+  return applyUnsigned(
+    { ok: true, type: parsed.type, canonical: parsed.canonical, alternatives: [], unsignedDropped: false },
+    parts?.unsigned ?? false,
+  )
 }
 
 // Oracle에서 손실/변환 경고가 필요한 조합.
@@ -176,10 +240,40 @@ const ORACLE_WARN: Partial<Record<LogicalTypeKind, string>> = {
   JSON: 'Oracle에서는 CLOB으로 변환됩니다(21c+ JSON 타입은 도메인 오버라이드)',
 }
 
+// 부호 없음이 mysql 밖으로 나갈 때 표현되지 않는 상한(설계 §4.5 의 표). oracle 의 NUMBER(n)
+// 은 10진 자릿수라 SMALLINT·INT 는 상한이 넉넉하고 BIGINT 만 걸린다.
+const UNSIGNED_LIMIT: Record<UnsignedCapableKind, string> = {
+  SMALLINT: '65,535', INT: '4,294,967,295', BIGINT: '18,446,744,073,709,551,615',
+}
+const UNSIGNED_TARGET: Record<Dialect, Partial<Record<UnsignedCapableKind, string>>> = {
+  mysql: {},
+  postgresql: {
+    SMALLINT: 'smallint(32,767)', INT: 'integer(2,147,483,647)',
+    BIGINT: 'bigint(9,223,372,036,854,775,807)',
+  },
+  mssql: {
+    SMALLINT: 'SMALLINT(32,767)', INT: 'INT(2,147,483,647)',
+    BIGINT: 'BIGINT(9,223,372,036,854,775,807)',
+  },
+  oracle: { BIGINT: 'NUMBER(19)(9,999,999,999,999,999,999)' },
+}
+
+/** 부호 없음 상한이 대상 방언 타입을 넘는 조합의 경고. 넘지 않으면 undefined. */
+export function unsignedWarning(kind: UnsignedCapableKind, dialect: Dialect): string | undefined {
+  const target = UNSIGNED_TARGET[dialect][kind]
+  if (target === undefined) return undefined
+  return `${dialect}에는 부호 없음이 없어 CHECK (컬럼 >= 0)로 대신합니다`
+    + ` — 상한 ${UNSIGNED_LIMIT[kind]}가 ${target}를 넘습니다`
+}
+
 export function resolveColumnType(rawType: string, dialect: Dialect): { sql: string; warning?: string } {
   const parsed = parseLogicalType(rawType)
   if (!parsed.ok) return { sql: parsed.raw }
   const sql = toDialectType(parsed.type, dialect)
+  if (isUnsignedCapable(parsed.type) && parsed.type.unsigned) {
+    const warning = unsignedWarning(parsed.type.kind, dialect)
+    if (warning) return { sql, warning }
+  }
   if (dialect === 'oracle') {
     const warning = ORACLE_WARN[parsed.type.kind]
     if (warning) return { sql, warning }
