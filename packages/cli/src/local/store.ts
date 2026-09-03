@@ -6,7 +6,8 @@ import {
   MAX_OPS_PER_MUTATION,
   applyLayout, applyOps, createEmptyModel, filesToModel, layoutFromModel, modelToFiles,
   OpApplyError, validateModelIntegrity,
-  type FileTree, type LayoutData, type Note, type Op, type Position, type ProjectModel,
+  type FileTree, type LayoutData, type LocalSaveResult, type Note, type Op, type Position,
+  type ProjectModel,
   type TableLayout,
 } from '@erdd/core'
 import { canonical, readTree, writeTreeChanges } from '../tree.js'
@@ -27,6 +28,9 @@ export type StoreState =
   | { ok: false; model: ProjectModel; seq: number; failures: LoadFailure[] }
 
 const EMPTY_LAYOUT: LayoutData = { tables: [], notes: [] }
+
+/** 저장·재읽기가 같은 문구를 쓴다 — 사용자가 배너와 토스트에서 같은 말을 봐야 한다. */
+const EXTERNAL_MESSAGE = '파일이 밖에서 바뀌었습니다 — 내 편집을 유지할지 파일을 다시 읽을지 고르세요'
 
 /**
  * 겹친 편집 때문에 확정하지 못한 로드를 몇 번까지 다시 읽을지. 한 번이면 대개 충분하다
@@ -436,6 +440,120 @@ export class FileStore {
       // 쓰기가 성공한 뒤에만 내린다 — 실패하면 참으로 남아 다음 flush 가 재시도한다.
       this.#draftPending = false
       this.#dirty = dirty
+    })
+  }
+
+  /**
+   * 드래프트를 파일에 확정한다. **사용자의 편집이 파일에 닿는 유일한 자리다**(신규 id 되쓰기 제외).
+   *
+   * 🔥 **②의 재읽기가 이 설계의 안전 계약이다.** 감시(150ms 디바운스)가 늦어 배너가 아직 안 떴어도,
+   * 저장 직전에 디스크를 다시 읽어 기준선과 다르면 거절한다 — 사용자가 **보지 못한** 외부 변경을
+   * 구조적으로 덮지 않는다.
+   *
+   * 전부 `#serialize` 안에서 한다 — 재읽기와 쓰기 사이에 `mutate` 가 끼어들면 방금 잰 디스크와
+   * 다른 모델을 쓰게 된다.
+   */
+  async save(): Promise<LocalSaveResult> {
+    return this.#serialize(async () => {
+      if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
+      if (!this.#state.ok) {
+        return { ok: false, reason: 'blocked', message: '파일을 읽을 수 없어 저장이 잠겨 있습니다' }
+      }
+      if (this.#external) {
+        return { ok: false, reason: 'external', message: EXTERNAL_MESSAGE }
+      }
+      // 저장할 것이 없으면 **아무것도 쓰지 않는다.** 열었다 닫는 것만으로 `layout.yaml` 이
+      // 생기면 「연다고 저장소가 더러워지지 않는다」가 깨진다(`#base` 주석의 두 서명 참조).
+      if (!this.#dirty && !this.#draftPending) {
+        return { ok: true, seq: this.#state.seq, written: [], deleted: [] }
+      }
+
+      let disk: { tree: FileTree; layout: LayoutData }
+      try {
+        disk = { tree: await readTree(this.#cwd), layout: await readLayout(this.#cwd) }
+      } catch (err) {
+        return { ok: false, reason: 'blocked', message: (err as Error).message }
+      }
+      if (signatureOf(disk.tree, disk.layout) !== this.#base.signature) {
+        this.#external = true
+        return { ok: false, reason: 'external', message: EXTERNAL_MESSAGE }
+      }
+
+      const model = this.#state.model
+      // **바뀐 파일만** 쓴다. 매번 전체를 다시 쓰면 손으로 다듬어 둔 YAML 포맷이 무관한 편집
+      // 한 번에 전부 정규화된다 — 로컬 모드는 사람·에이전트가 파일을 직접 쓰는 것이 전제라
+      // 비정규 포맷이 예외가 아니다. 삭제는 그대로 산다.
+      const { tree } = modelToFiles(model)
+      const layout = layoutFromModel(model)
+      const { written, deleted } = await writeTreeChanges(this.#cwd, this.#base.tree, tree)
+      if (canonical(layout, LAYOUT_FILE) !== canonical(this.#base.layout, LAYOUT_FILE)) {
+        const abs = join(this.#cwd, LAYOUT_FILE)
+        await mkdir(dirname(abs), { recursive: true })
+        await writeFile(abs, stringifyYaml(layout), 'utf8')
+        written.push(LAYOUT_FILE)
+      }
+
+      this.#base = {
+        tree, layout, signature: signatureOf(tree, layout), modelSignature: modelSignatureOf(model),
+      }
+      this.#draftPending = false
+      this.#dirty = false
+      await removeDraft(this.#cwd)
+      return { ok: true, seq: this.#state.seq, written: written.sort(), deleted }
+    })
+  }
+
+  /**
+   * 미저장 편집을 버리고 디스크를 채택한다. 「파일 다시 읽기」의 자리다.
+   *
+   * 플래그를 **먼저** 내리고 `load()` 를 부르는 순서가 중요하다 — 미저장으로 남은 채 부르면
+   * `#commitLoad` 가 「미저장 있음」으로 보고 채택하지 않는다.
+   */
+  async discard(): Promise<void> {
+    await this.#serialize(async () => {
+      if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
+      this.#draftPending = false
+      this.#dirty = false
+      this.#external = false
+      this.#pendingDraft = null
+      await removeDraft(this.#cwd)
+      // 기준선을 비워 다음 load() 가 반드시 채택하게 한다 — 디스크가 기준선과 같아도 모델을
+      // 되돌려야 하기 때문이다(편집은 메모리에만 있었다).
+      this.#base = { ...this.#base, signature: '', modelSignature: '' }
+    })
+    await this.load()
+  }
+
+  /**
+   * 밖의 변경을 인정하되 **내 편집을 유지한다.** 기준선을 지금 디스크로 옮기므로, 이어지는 저장은
+   * 화면이 곧 파일이 된다 — 밖에서 추가된 파일도 지워진다(설계 §13 ①, 사용자 확정).
+   *
+   * `#external` 이 값을 들고 있지 않고 **여기서 디스크를 다시 읽는다** — 그 사이 디스크가 또
+   * 바뀌었을 수 있고, 그때 낡은 값을 기준선으로 승격시키면 다음 저장이 그 두 번째 변경을 말없이
+   * 덮는다.
+   */
+  async keep(): Promise<void> {
+    return this.#serialize(async () => {
+      let tree: FileTree
+      let layout: LayoutData
+      try {
+        tree = await readTree(this.#cwd)
+        layout = await readLayout(this.#cwd)
+      } catch {
+        // 디스크를 못 읽으면 인정할 것이 없다 — 다음 load() 가 blocked 로 알린다.
+        return
+      }
+      const result = filesToModel(tree, { newId: uuidv7 })
+      if (!result.ok) return
+      this.#base = {
+        tree,
+        layout,
+        signature: signatureOf(tree, layout),
+        modelSignature: modelSignatureOf(applyLayout(result.model, layout)),
+      }
+      this.#external = false
+      // 기준선이 움직였으므로 「저장할 것이 남았는가」를 다시 계산해야 한다.
+      this.#draftPending = true
     })
   }
 

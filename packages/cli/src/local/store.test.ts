@@ -245,13 +245,13 @@ describe('FileStore.mutate', () => {
     expect(store.state.model.tables['t1']!.physicalName).toBe('MBR')
   })
 
-  // ⚠️ Task 4 가 `save()` 로 되살린다 — 파일을 쓰는 것은 이제 save 뿐이다.
-  it.skip('flush 하면 파일에 쓴다', async () => {
+  it('save 하면 파일에 쓴다', async () => {
     const dir = await project({})
     const store = new FileStore(dir)
     await store.load()
     await store.mutate([createTable('t1', 'MBR')])
     await store.flush()
+    expect((await store.save()).ok).toBe(true)
     expect(await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')).toContain('name: MBR')
     expect(await readFile(join(dir, 'erdd/layout.yaml'), 'utf8')).toContain('t1')
   })
@@ -435,13 +435,8 @@ describe('FileStore.mutate', () => {
   })
 })
 
-/**
- * ⚠️ **Task 4(`save()`)가 되살릴 둘이다.** 이 describe 는 「flush 가 파일을 쓴다」를 재던
- * 것인데, flush 의 대상이 드래프트로 바뀌어 그 주어가 사라졌다. 파일을 쓰는 것은 이제
- * `save()` 뿐이므로 다음 태스크에서 `store.flush()` → `await store.save()` 로 바꾸고 skip 을 뗀다.
- * **지우지 않는다** — 되살릴 것을 잊지 않기 위해서다.
- */
-describe.skip('FileStore.flush', () => {
+/** 「바뀐 파일만 쓴다」·「사라진 파일은 지운다」는 이제 `save()` 의 성질이다. */
+describe('FileStore.save 의 쓰기 규칙', () => {
   /**
    * 로컬 모드는 **에이전트·사람이 파일을 직접 쓰는 것**이 전제라 비정규 포맷이 예외가 아니라
    * 기본이다. flush 가 매번 트리 전체를 다시 쓰면 무관한 편집 한 번에 저장소가 통째로
@@ -453,6 +448,7 @@ describe.skip('FileStore.flush', () => {
     await store.load()
     await store.mutate([createTable('t1', 'A'), createTable('t2', 'B')])
     await store.flush()
+    expect((await store.save()).ok).toBe(true)
 
     // B.yaml 을 사람이 손으로 다듬은 형태로 바꾼다 — **값은 그대로**고 포맷과 주석만 다르다.
     // 정규화 재작성이 돌면 주석이 사라지고 들여쓰기가 바뀌므로 바이트 비교로 잡힌다.
@@ -469,6 +465,7 @@ describe.skip('FileStore.flush', () => {
       changes: { logicalName: { from: 'A', to: '가나' } },
     }])
     await store.flush()
+    expect((await store.save()).ok).toBe(true)
 
     expect(await readFile(bPath, 'utf8')).toBe(handwritten)
     expect((await stat(bPath)).mtimeMs).toBe(before.mtimeMs)
@@ -482,12 +479,14 @@ describe.skip('FileStore.flush', () => {
     await store.load()
     await store.mutate([createTable('t1', 'A'), createTable('t2', 'B')])
     await store.flush()
+    expect((await store.save()).ok).toBe(true)
     expect(await readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).toContain('name: B')
 
     await store.mutate([{
       action: 'delete', entity: 'table', entityId: 't2', before: store.state.model.tables['t2'],
     }])
     await store.flush()
+    expect((await store.save()).ok).toBe(true)
     await expect(readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).rejects.toThrow()
   })
 })
@@ -642,5 +641,137 @@ describe('FileStore 드래프트', () => {
     expect((await second.load()).ok).toBe(true)
     expect(second.state.model.tables[MBR_ID]!.physicalName).toBe('MBR2')
     expect(second.dirty).toBe(true)
+  })
+})
+
+describe('FileStore.save', () => {
+  it('저장이 파일을 쓰고 드래프트를 지우고 dirty 를 내린다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+
+    const r = await store.save()
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.written).toContain('erdd/tables/MBR2.yaml')
+    expect(r.deleted).toContain('erdd/tables/MBR.yaml')
+    expect(store.dirty).toBe(false)
+    expect(await hasDraft(dir)).toBe(false)
+  })
+
+  /**
+   * 🔥 **열었다 닫는 것만으로 저장소가 더러워지면 안 된다.** `erdd pull` 로 받아 온 프로젝트에는
+   * `layout.yaml` 이 없어 「저장하면 쓸 것」이 있지만, 편집하지 않았으면 저장도 아무것도 쓰지
+   * 않는다(`#base` 의 두 서명 주석 참조).
+   */
+  it('편집이 없으면 저장이 아무것도 쓰지 않는다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    expect(store.dirty).toBe(false)
+    expect(await store.save()).toMatchObject({ ok: true, written: [], deleted: [] })
+    await expect(readFile(join(dir, LAYOUT_FILE), 'utf8')).rejects.toThrow()
+  })
+
+  /**
+   * 🔥 **안전 계약이다 — 저장은 사용자가 보지 못한 외부 변경을 절대 덮지 않는다.**
+   * 감시(150ms 디바운스)가 늦어 배너가 아직 안 떴어도 저장 직전의 재읽기가 구조적으로 막는다.
+   * 그래서 이 테스트는 **감시를 쓰지 않고** FileStore 만으로 그 창을 만든다.
+   */
+  it('저장 직전에 디스크를 다시 읽어, 밖에서 바뀌었으면 거절한다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+
+    // 감시를 거치지 않고 파일만 바꾼다 — store 는 아직 모른다.
+    await writeFile(
+      join(dir, 'erdd/tables/MBR.yaml'), MBR.replace('logicalName: 회원', 'logicalName: 멤버'), 'utf8',
+    )
+    const body = await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')
+
+    expect(await store.save()).toMatchObject({ ok: false, reason: 'external' })
+    expect(store.external).toBe(true)
+    // 파일이 그대로여야 한다 — 이것이 요점이다.
+    expect(await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')).toBe(body)
+    expect(await hasDraft(dir)).toBe(true)
+  })
+
+  it('파일이 깨져 있으면 blocked 로 거절하고 드래프트를 남긴다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+
+    await writeFile(join(dir, 'erdd/tables/MBR.yaml'), 'name: [불완전\n', 'utf8')
+    await store.load()
+
+    expect(await store.save()).toMatchObject({ ok: false, reason: 'blocked' })
+    expect(await hasDraft(dir)).toBe(true)
+  })
+
+  /**
+   * ⚠️ **사용자가 확정한 동작이다**(설계 §13 ①, 2026-09-03). 「내 편집 유지」는 기준선을 지금
+   * 디스크로 옮기므로, 이어지는 저장은 **화면이 곧 파일**이 된다 — 밖에서 추가된 파일도 지워진다.
+   * 대안(옛 기준선 유지)은 「화면에 없는 테이블이 파일에 있는」 조용한 부분 병합이라 「자동 병합
+   * 없음」과 어긋난다. 배너 문구가 이 대가를 말해야 한다.
+   */
+  it('keep 뒤의 저장은 화면이 곧 파일이 된다 — 밖에서 추가된 파일이 지워진다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+
+    await writeFile(join(dir, 'erdd/tables/NEW.yaml'), [
+      'id: 018f6b0e-0000-7000-8000-0000000000ff',
+      'name: NEW',
+      'logicalName: 신규',
+      'columns: []',
+      '',
+    ].join('\n'), 'utf8')
+    expect(await store.save()).toMatchObject({ ok: false, reason: 'external' })
+
+    await store.keep()
+    expect(store.external).toBe(false)
+    const r = await store.save()
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.deleted).toContain('erdd/tables/NEW.yaml')
+    await expect(readFile(join(dir, 'erdd/tables/NEW.yaml'), 'utf8')).rejects.toThrow()
+  })
+
+  it('discard 는 드래프트를 버리고 디스크를 채택한다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([renameMbr('MBR2')])
+    await store.flush()
+
+    await store.discard()
+    expect(store.dirty).toBe(false)
+    expect(store.external).toBe(false)
+    expect(await hasDraft(dir)).toBe(false)
+    expect(store.state.model.tables[MBR_ID]!.physicalName).toBe('MBR')
+  })
+
+  /**
+   * 설계 §4.4 의 함정. id 없는 파일로 기동하면 되쓰기가 일어나는데, 그것이 기준선에 반영되지
+   * 않으면 그 쓰기가 깨운 다음 로드가 「밖에서 바뀌었다」로 판정해 **거짓 충돌 배너**를 띄운다.
+   */
+  it('신규 id 되쓰기는 외부 변경으로 오인되지 않는다', async () => {
+    const dir = await project({
+      'erdd/tables/ORD.yaml': ['name: ORD', 'logicalName: 주문', 'columns: []', ''].join('\n'),
+    })
+    const store = new FileStore(dir)
+    await store.load()
+    expect(store.external).toBe(false)
+    // 되쓰기 직후의 재로드(감시가 하는 일)에서도 external 이 서지 않아야 한다.
+    await store.load()
+    expect(store.external).toBe(false)
   })
 })
