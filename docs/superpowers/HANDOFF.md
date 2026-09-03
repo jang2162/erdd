@@ -65,6 +65,7 @@
 | **이름 트랙 잔여 3건(병렬)** | 워크트리 3개를 동시에 돌려 각 워커가 **브레인스토밍부터** 했다. (1) **컬럼 이름 템플릿 — 만들지 않기로 정했다**(용어가 컬럼 논리명과 1:1 이라 접두가 붙으면 정의상 표준 물리명과 어긋나는데 용어 검사는 부분 기준이라 경고도 안 뜬다 · 테이블 템플릿을 정당화한 「중복은 최종 기준」의 대응물이 컬럼에는 0). 근거와 「그래도 만든다면」의 설계를 [결정 문서](specs/2026-08-20-column-name-template-decision.md)에 남겼고 `docs/13-naming.md` 의 낡은 문장 다섯도 고쳤다. **코드 변경 0.** (2) **머릿말 잔여** — 그룹 좌표는 안 하기로 판정(정본 파일 형식이 좌표를 이미 빼므로 실으면 교환 형식이 정본보다 충실해지는 역전), 동명 그룹이 뭉개지는 방식을 「먼저 나온 것이 이긴다」로 통일, **`35a1684` 가 만든 회귀를 닫았다**(충돌 판정과 8번 절이 서로 다른 사실을 봐서 같은 물리명이 둘 생겼다 — `groupOf` 하나로 통일해 갈릴 수 없는 구조로 만들었다). (3) **경고 좌표·문구** — `reserved` 문구를 core 에서 잠그고, `validate` 와 `push`·`diff` 충돌 리포트의 좌표를 **재조립이 아니라 읽어 온 실제 파일**로 바꿨다(`filesToModel` 에 `tableFiles` 가산). **서버·마이그레이션 없음** |
 | **머릿말이 그룹·별칭까지 왕복 복원** | 머릿말 형식을 `erdd:v2` 로 올려 최상위를 `t`(테이블)·`g`(그룹) 두 구획으로 갈랐다. 테이블 항목에 소속 그룹 이름(`g`)이, 그룹 구획에 **별칭·색·코멘트**가 실린다(v1 은 계속 읽는다). `ddl.ts`·`dbml.ts` 에 복제돼 있던 머릿말 빌더를 `name-meta.ts` 의 `buildNameMeta` 하나로 합치고 그룹 수집을 얹었다. 가져오기는 머릿말 그룹을 `DdlImportGroup[]` 에 합류시키고(같은 이름의 DBML `TableGroup` 블록보다 **머릿말이 이긴다** — 설계 D7), 이름 충돌 판정 키를 **(그룹 이름, 만들어질 부분 이름)** 으로 넓혀 그룹이 다른 같은 이름의 테이블이 더 이상 잘못 건너뛰어지지 않는다. 별칭이 갈리면 `group-conflict` 경고를 낸다(색·코멘트는 표시용이라 조용하다 — 설계 D3). ⚠️ **「템플릿을 안 쓰는 프로젝트의 산출물은 한 글자도 안 바뀐다」가 「그룹도 템플릿도 안 쓰는 프로젝트」로 좁아졌다**(설계 D4) — 그룹만 쓰던 프로젝트의 DDL 첫 줄에 이제 주석이 생긴다. **서버·CLI·마이그레이션 변경 없음**, 웹은 `ddl-import-edits.ts` 의 별칭 한 줄뿐이다 ([설계](specs/2026-08-19-group-meta-roundtrip-design.md)) |
 | **CLI 로컬 모드(`erdd serve`)** | `erdd serve` 가 Fastify + **축소 tRPC 라우터** + 파일 저장소(`packages/cli/src/local/`)를 띄워 계정·DB 없이 `erdd/` 파일을 진실 원천으로 **기존 웹 에디터를** 브라우저에 연다(`erdd init --local` 은 `erdd.config.yaml` 만 쓴다). `apps/server` 를 재사용하지 않은 이유는 재사용할 계층의 대부분(`FOR UPDATE` 락 · op 영속화 · 권한 게이트)이 Postgres 전제라 **축소 라우터가 추상화보다 작기** 때문이다. ⚠️ **급소는 계약 잠금이다**(→ 3.18) — 웹은 `AppRouter` **타입**으로 클라이언트를 만들어 로컬 라우터가 어긋나도 **컴파일에 안 잡히고 런타임에 깨진다.** 좌표·메모는 `erdd/layout.yaml` 로 **갈랐다** — 스키마 파일에 넣으면 테이블을 **옮기기만 해도** diff 가 뜨고(그래서 원래 뺐다), git-ignore 하면 팀이 공유하는 그림을 잃는다. 서버와 오가는 파일은 그대로라 `pull`/`push` 는 이 파일을 보지도 않는다. 파일 감시의 **자기 쓰기는 내용 서명 비교**로 거른다(안 거르면 쓰기 → 감시 → 재로드 루프가 돈다) — ⚠️ **`load()` 전후의 서명을 비교하면 안 된다**(서명은 `flush()` 만 바꾸므로 언제나 같다). **읽은 것과 쓴 것**을 비교해야 한다. 웹의 재로드는 `setLoaded` 가 아니라 **`resync`** 다 — `resync` 만 `keptSelection` 을 타서 사라진 대상이 선택에 남지 않고 그룹 뷰에서 튕기지 않는다. `apps/server` 변경은 `auth.me` **한 곳**(`mode` 를 core 의 `RunMode` 로 명시). 마이그레이션 없음 → [설계](specs/2026-08-20-cli-local-mode-design.md) |
+| **CLI DDL·DBML 내보내기/가져오기** | 소비처 피드백 3·4·5번. 신규 명령 `erdd export`(`--format ddl\|dbml` · `--dialect` · `-o`)와 `erdd import <파일>`(`--format` · `--dialect` · `--dry-run`), 그리고 `erdd init --local` 의 `--dialect`·`--case`. **서버를 타지 않는 순수 파일 경로**라 두 모드에서 같이 돈다. 선행으로 `applyDdlImport` 와 그룹 팔레트를 web → core 로 옮기고(`ddl-apply.ts`·`group-palette.ts`) **배치를 `LayoutFn` 주입 인자로 뺐다** — core 는 dagre 를 의존할 수 없어 기본값이 격자(`gridPositions`)이고 web 이 `computeAutoLayout` 을 주입한다(주입을 빼면 오류 없이 격자로 바뀌므로 web 에 잠금 테스트 1건을 남겼다). 가져오기는 **웹 다이얼로그와 같은 경로**라 머지 동작도 같다(이름이 겹치는 테이블은 **건너뛴다** — 갱신이 아니다). 신규 id 는 `uuidv7` 로 파일에 바로 박고 `base`·`sync` 는 건드리지 않는다(서버 반영은 기존대로 `push`). 부수로 **DBML 의 방언 판별 결함**을 고쳤다 — `detectDialect` 는 DDL 전용인데 DBML 의 `[pk, …]` 속성 문법이 mssql 대괄호 시그니처를 항상 때려 모든 DBML 이 mssql 로 읽혔다(스모크에서 실측). DBML 은 웹과 같이 `Project { database_type }` 을 본다. `packages/core/README.md` 신설(소비처 tsconfig `target` 하한 **ES2022** 실측). **서버 변경·마이그레이션 없음** |
 
 > **공용 리소스 fork·Excel 산출물/업로드**는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
 > **스냅샷 diff → 실시간 동시편집**은 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
@@ -73,8 +74,12 @@
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 859 · cli 234 · web 956 · server 209 · typecheck EXIT=0
+core 877 · cli 287 · web 943 · server 209 · typecheck EXIT=0
 ```
+
+⚠️ **직전 사이클(CLI DDL·DBML 내보내기/가져오기)에서 `web` 이 956 → 943 으로 줄었다 — 회귀가 아니다.**
+`ddl-import-edits.test.ts` 14건이 `applyDdlImport` 와 함께 core 로 **옮겨 갔고**(core 의 +18 중 14 가
+이동분이다) 그 자리에 「web 이 dagre 를 주입한다」 잠금 1건만 남겼다.
 
 ⚠️ **`server 209` 는 최근 사이클들이 재지 않고 옮겨 적기만 한 값이다.** 서버 스위트는 `DATABASE_URL`
 이 필요해 워크트리에서 건너뛴 사이클이 이어졌다. **서버를 건드리는 다음 사이클은 격리 DB로 다시 재고
@@ -802,6 +807,22 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
   **명시**하지 않으면 tRPC 추론이 리터럴 `'server'` 로 좁혀 로컬의 `'local'` 과 서로를 만족하지
   못한다. 서버가 로컬과 공유하는 값은 **core 의 타입으로 적어라**.
 
+### 3.19 `detectDialect` 는 DDL 전용이다 — DBML 에 태우지 마라
+
+- **`detectDialect`(`packages/core/src/ddl-parse.ts`)의 시그니처 목록에 `/\[[A-Za-z_]/`(mssql 대괄호
+  식별자, 가중치 2)가 있다.** DBML 의 **속성 문법**(`[pk, increment, note: '…']`)이 그것을 **항상**
+  때리므로, 다른 시그니처가 걸리지 않는 한 **어떤 DBML 이든 mssql 로 판정된다.** 2026-09-03 CLI
+  스모크에서 mysql 프로젝트가 낸 DBML 을 되읽자 실제로 `dbml mssql` 이 나왔다.
+- **DBML 의 방언은 `Project { database_type }` 이고 `dialectFromDatabaseType` 이 그것을 푼다.** 웹의
+  `ddl-import-dialog.tsx` 는 처음부터 그렇게 갈라 쓰고 있었고, CLI 의 `import.ts`(`resolveDialect`)도
+  같게 맞췄다. **같은 일을 웹과 CLI 가 다르게 하지 않는다**(3.18 과 같은 정신).
+- **방언은 조용히 틀려도 타입이 나온다.** `fromDialectType` 의 매핑이 방언마다 갈리므로 잘못 고르면
+  컬럼 타입이 경고 없이 달라진다. 그래서 CLI 는 **무엇을 왜 골랐는지**를 사람용 출력 첫 줄과
+  `--json` 의 `dialectSource` 에 함께 싣는다.
+- 잠금: `packages/cli/src/commands/import.test.ts` 의 「DBML 의 방언은 database_type 을 따르고,
+  없으면 config 로 떨어진다 — mssql 로 새지 않는다」. `resolveDialect` 의 형식 분기를 지우면 빨개진다
+  (실측).
+
 ## 4. 개발 환경
 
 ```bash
@@ -1206,6 +1227,30 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 ---
 
 ## 6. 이월 항목 (모두 non-blocking)
+
+**DDL 왕복의 `UNSIGNED`·테이블 옵션 유실 (소비처 피드백 1·2번 — 별도 설계 사이클)**
+
+- **무엇:** MySQL DDL 을 가져왔다가 다시 내보내면 컬럼의 **부호 없음**(`INT UNSIGNED`·
+  `SMALLINT UNSIGNED`)과 **테이블 옵션**(`ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)이 사라진다.
+  실측(2026-09-03): `int unsigned` → 논리 타입 `INT`, `ENGINE`·`CHARSET` 은 파서의 `skipped` 에도
+  안 남는다. **유실을 알리는 경고가 한 줄도 없다** — `planDdlImport` 의 `warnings` 에는 사전
+  미등록(`unknown-word`)만 실린다. `unknown-type`·`ambiguous-type` 도 안 뜬다.
+- **왜 이번에 안 고쳤나:** 「컬럼 타입은 방언 중립 논리 타입 17종」이라는 설계와 정면으로 맞물린다.
+  부호 없음은 타입 축에, 테이블 옵션은 모델(`Table`)에 담을 자리 자체가 없다. 담을 자리를 만드는
+  것은 모델 스키마·마이그레이션·DDL 생성·파서·왕복 테스트를 함께 여는 일이라 별도 사이클이다.
+- **어느 테스트가 이 사실을 잠그고 있나:**
+  `packages/cli/src/commands/roundtrip.test.ts` 의
+  **「MySQL INT UNSIGNED·ENGINE·CHARSET 은 현재 왕복에서 유실된다 (피드백 1·2번)」**.
+  ⚠️ **그 테스트는 「고쳐진 동작」이 아니라 「현재 유실된다」를 단언한다.** 고치면 그 테스트가
+  빨개지면서 사람을 이 이월 항목으로 데려온다 — 그때 단언을 뒤집어라(유실 → 보존).
+  사용자용 서술은 `docs/manual/cli-guide.md` 6.10 절 끝의 ⚠️ 문단에 있다.
+
+**`erdd export --format dbml` 은 `Project` 블록을 내지 않는다**
+
+- `generateDbml` 의 `projectName` 을 주지 않아 `Project { database_type }` 이 없다. 그래서 그 산출물을
+  되읽으면 방언이 `config.dialects[0]` 로 떨어진다 — 같은 프로젝트로 왕복하는 한 값이 같아 문제가
+  없지만, **다른 프로젝트로 옮기면 방언 정보가 따라가지 않는다.** 프로젝트 이름을 무엇으로 쓸지가
+  먼저 정해져야 한다(로컬 모드에는 프로젝트 이름이 없다 — `erdd.config.yaml` 에 `projectId` 만 있다).
 
 > **패키지 게시(`@erdd/cli`·`@erdd/core`) 관련 이월은 [4.1b](#41b-게시-관련-이월-항목-일부러-고치지-않은-것)에
 > 따로 모아 두었다** — 소비처의 `tsx` 직접 설치(셰방 런처), 루트 `.npmrc` 부재, `npm view` 의 401/403,

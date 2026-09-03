@@ -10,6 +10,12 @@ export type InitCtx = CommandCtx & {
   serverUrl?: string
   token?: string
   projectId?: string
+  /**
+   * --local 전용. 연결 모드에서는 서버 프로젝트 설정이 진실이라 이 둘을 받지 않는다
+   * (main.ts가 함께 준 것을 USAGE로 세운다).
+   */
+  dialect?: Dialect
+  namingCase?: NamingRules['case']
   prompt?: (question: string) => Promise<string>
   choose?: (question: string, options: { id: string; label: string }[]) => Promise<string>
 }
@@ -34,13 +40,14 @@ export function init(ctx: InitCtx): Promise<number> {
     }
 
     if (ctx.local === true) {
-      // 서버 왕복이 전부 없다. 방언·명명 규칙은 기본값으로 시작하고, 이후 GUI 의 설정 화면이나
-      // erdd.config.yaml 직접 편집으로 바꾼다.
+      // 서버 왕복이 전부 없다. 방언과 대소문자 규칙만 여기서 정하고, 나머지 명명 규칙
+      // (separator·logicalSeparator·maxLengthBytes·템플릿)은 기본값으로 시작해 이후 GUI 의
+      // 설정 화면이나 erdd.config.yaml 직접 편집으로 바꾼다.
       await writeConfig(ctx.cwd, {
         serverUrl: null,
         projectId: null,
-        dialects: ['postgresql'],
-        namingRules: DEFAULT_NAMING_RULES,
+        dialects: [ctx.dialect ?? 'postgresql'],
+        namingRules: { ...DEFAULT_NAMING_RULES, case: ctx.namingCase ?? DEFAULT_NAMING_RULES.case },
       })
       await ensureGitignore(ctx.cwd)
       emit(ctx.json, '로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요', { local: true })
