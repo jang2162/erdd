@@ -18,15 +18,15 @@ grep '^serverUrl:' erdd.config.yaml
 
 | grep 결과 | 모드 | 진실 원천 |
 |---|---|---|
-| 값이 있다 | **서버 모드** | ERDD 서버. `erdd/`는 작업 사본이다 |
-| `serverUrl: null` | **로컬 모드** | `erdd/` 파일 자체. 이력은 git 커밋이 남긴다 |
-| 아무것도 안 나온다(키 자체가 없다 — grep이 종료 `1`) | **로컬 모드** | 위와 같다. `serverUrl`·`projectId`가 **함께** 없으면 로컬 전용이다 |
-| 값이 있는데 `projectId`가 없다 | **설정 오류** | 모든 명령이 종료 `1`로 거절한다 — `erdd.config.yaml에 serverUrl과 projectId는 함께 있어야 합니다`. 하나만 적은 것은 오타로 본다 |
+| 값이 있다(`projectId`도 있다) | **서버 모드** | ERDD 서버. `erdd/`는 작업 사본이다 |
+| 값이 있는데 `projectId`가 없다 | **설정 오류** | **config를 읽는 명령**(`status`·`validate`·`diff`·`pull`·`push`·`serve`)이 종료 `1`로 거절한다 — `erdd.config.yaml에 serverUrl과 projectId는 함께 있어야 합니다(둘 다 없으면 로컬 전용입니다)`. 하나만 적은 것은 오타로 본다. **복구는 막히지 않는다** — `erdd init`은 config를 읽지 않아 이 오류에 걸리지 않으니, 빠진 키를 채우거나 `erdd.config.yaml`을 지우고 `erdd init`(서버 연결) 또는 `erdd init --local`로 다시 쓴다. `erdd skill install`과 `--help`도 그대로 된다 |
+| `serverUrl: null` | **로컬 모드** | `erdd/` 파일 자체. 이력은 git 커밋이 남긴다. `erdd init --local`이 쓰는 형태라 `projectId`도 함께 `null`이다 |
+| 아무것도 안 나온다(키 자체가 없다 — grep이 종료 `1`) | **로컬 모드** | 위와 같다. `serverUrl`·`projectId`가 **함께** 없으면(둘 다 `null`이든, 키 자체가 없든) 로컬 전용이다 |
 
 ## 구조
 
 ```
-erdd.config.yaml       서버·프로젝트(로컬 모드는 둘 다 null)·방언·명명 규칙
+erdd.config.yaml       서버·프로젝트(로컬 모드는 둘 다 null — 키 자체가 없어도 같다)·방언·명명 규칙
 erdd/
 ├─ tables/MBR.yaml     테이블 하나당 파일 하나(파일명 = 물리명)
 ├─ groups.yaml         테이블 그룹
