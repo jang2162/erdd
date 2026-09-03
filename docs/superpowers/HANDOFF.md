@@ -10,22 +10,22 @@
 
 ### 완료 (main에 머지됨)
 
-| 단계 | 내용 |
+| 사이클 | 내용 |
 |---|---|
-| **Phase 1 (MVP)** M0~M9 | 계정/조직/프로젝트, GUI 에디터(테이블·컬럼·관계·인덱스·메모), 그룹핑(색상영역·그룹뷰·외부참조 고스트), 버전(Revision 이력·스냅샷·복원), 내보내기(DDL 4방언·이미지 PNG/SVG) |
-| **Phase 1 이월 정리** M10 + 후속 | 그룹 영역 드래그, 자동 정렬(dagre), DDL 식별자 조건부 인용(방언별 예약어), 0컬럼 DDL 제외+경고 통합, 그룹 라벨 가림 해소, 중복 헬퍼 통합 |
-| **Phase 2 #1 도메인** | 도메인 CRUD·컬럼 지정(라이브 해석·타입란 잠금)·일괄반영·삭제가드·DDL 통합(방언타입·CHECK·기본값), 마이그 0004 |
-| **Phase 2 #2 명명 체계** | 단어/용어 op 엔티티, 물리명 자동생성(용어일치→최장일치 분해), 명명 경고 5종(기존 computeWarnings 확장), 사전 관리 화면, 자동생성 에디터 통합, 명명 검사 화면, 마이그 0005 |
-| **Phase 2 #3 커스텀 항목** | 정의=10번째 op 엔티티 `customField`(도메인/사전과 동일 패턴), 값=`table.custom`/`column.custom`(문자열, 기본값 라이브 해석, dangling 키 관대). 필수 미입력 경고(`custom-required`), 정의 관리 화면, 편집 패널 인라인 값 입력(text/boolean/select), 검사 화면 표시명 "모델 검사"로 정리, 마이그 0006 |
-| **Phase 2 #4 공용 리소스 fork** | 전역·조직 2계층 라이브러리(`resource_libraries`/`resource_items`, op 로그 밖), 모델 4종(domain/word/term/customField)에 `origin` 필드, 3-way 병합 엔진(core `resource-sync.ts` 순수 함수), 프로젝트 "공용 리소스" 통합 화면(가져오기=재동기화 같은 경로), 충돌 항목별 3상태 라디오, 전역 예시 시드, 마이그 0007·0008 |
-| **Phase 2 #5 Excel 산출물/업로드** | 정의서 Excel 내보내기 5시트(테이블 목록·테이블정의서·단어사전·용어사전·도메인정의서, 커스텀 항목 컬럼 포함), Excel 사전 업로드(신규/중복/오류 미리보기 + 건너뛰기·덮어쓰기), 양식 다운로드, 범위 선택기 공용화(그룹 드롭다운), `Word.englishName` 추가, 마이그 0009 |
+| **초기 MVP** M0~M9 | 계정/조직/프로젝트, GUI 에디터(테이블·컬럼·관계·인덱스·메모), 그룹핑(색상영역·그룹뷰·외부참조 고스트), 버전(Revision 이력·스냅샷·복원), 내보내기(DDL 4방언·이미지 PNG/SVG) |
+| **초기 이월 정리** M10 + 후속 | 그룹 영역 드래그, 자동 정렬(dagre), DDL 식별자 조건부 인용(방언별 예약어), 0컬럼 DDL 제외+경고 통합, 그룹 라벨 가림 해소, 중복 헬퍼 통합 |
+| **도메인** | 도메인 CRUD·컬럼 지정(라이브 해석·타입란 잠금)·일괄반영·삭제가드·DDL 통합(방언타입·CHECK·기본값), 마이그 0004 |
+| **명명 체계** | 단어/용어 op 엔티티, 물리명 자동생성(용어일치→최장일치 분해), 명명 경고 5종(기존 computeWarnings 확장), 사전 관리 화면, 자동생성 에디터 통합, 명명 검사 화면, 마이그 0005 |
+| **커스텀 항목** | 정의=10번째 op 엔티티 `customField`(도메인/사전과 동일 패턴), 값=`table.custom`/`column.custom`(문자열, 기본값 라이브 해석, dangling 키 관대). 필수 미입력 경고(`custom-required`), 정의 관리 화면, 편집 패널 인라인 값 입력(text/boolean/select), 검사 화면 표시명 "모델 검사"로 정리, 마이그 0006 |
+| **공용 리소스 fork** | 전역·조직 2계층 라이브러리(`resource_libraries`/`resource_items`, op 로그 밖), 모델 4종(domain/word/term/customField)에 `origin` 필드, 3-way 병합 엔진(core `resource-sync.ts` 순수 함수), 프로젝트 "공용 리소스" 통합 화면(가져오기=재동기화 같은 경로), 충돌 항목별 3상태 라디오, 전역 예시 시드, 마이그 0007·0008 |
+| **Excel 산출물/업로드** | 정의서 Excel 내보내기 5시트(테이블 목록·테이블정의서·단어사전·용어사전·도메인정의서, 커스텀 항목 컬럼 포함), Excel 사전 업로드(신규/중복/오류 미리보기 + 건너뛰기·덮어쓰기), 양식 다운로드, 범위 선택기 공용화(그룹 드롭다운), `Word.englishName` 추가, 마이그 0009 |
 
-| **Phase 3 #1 스냅샷 diff** | 표시 전용 `diffModelsForDisplay`(core 순수 함수 — 기존 `diffModels`(Op[])는 불가침), 버전 다이얼로그 "비교" 섹션(기준/비교 각각 선택: 현재+스냅샷), 변경분 정의서 Excel(한 시트 flat, 1행 제목·2행 헤더), 배치 좌표 제외, 참조형 속성 이름 해석. **서버 변경·마이그레이션 없음** |
-| **Phase 3 #2 실시간 동시편집** | `/ws?projectId=` WebSocket 채널(`@fastify/websocket`, 쿠키 인증·close code 4401/4403), 인메모리 `RealtimeHub`(프로젝트별 채널·같은 사용자 다중 소켓 병합), `mutateAndPublish`로 **커밋 후에만** op 브로드캐스트(모든 변경 경로의 유일한 진입점), 웹 `useRealtime`(seq 3분기: 연속 적용/과거 무시/간극 전체 리로드, 기존 `serializeMutation` 체인 재사용), presence 아바타 + 캔버스 선택 하이라이트, 충돌 토스트. **마이그레이션 없음** |
+| **스냅샷 diff** | 표시 전용 `diffModelsForDisplay`(core 순수 함수 — 기존 `diffModels`(Op[])는 불가침), 버전 다이얼로그 "비교" 섹션(기준/비교 각각 선택: 현재+스냅샷), 변경분 정의서 Excel(한 시트 flat, 1행 제목·2행 헤더), 배치 좌표 제외, 참조형 속성 이름 해석. **서버 변경·마이그레이션 없음** |
+| **실시간 동시편집** | `/ws?projectId=` WebSocket 채널(`@fastify/websocket`, 쿠키 인증·close code 4401/4403), 인메모리 `RealtimeHub`(프로젝트별 채널·같은 사용자 다중 소켓 병합), `mutateAndPublish`로 **커밋 후에만** op 브로드캐스트(모든 변경 경로의 유일한 진입점), 웹 `useRealtime`(seq 3분기: 연속 적용/과거 무시/간극 전체 리로드, 기존 `serializeMutation` 체인 재사용), presence 아바타 + 캔버스 선택 하이라이트, 충돌 토스트. **마이그레이션 없음** |
 
-| **Phase 4 #1 DDL 역설계** | 손으로 쓴 좁은 파서(`CREATE TABLE`/`ALTER TABLE ADD CONSTRAINT`/`CREATE INDEX`/`COMMENT ON`)로 기존 DDL을 파싱해 미리보기 후 모델에 적용. 논리명은 코멘트→사전→물리명 순으로 복원, 왕복이 깨지는 5건은 테스트 상수로 고정. **마이그레이션 없음** |
-| **Phase 4 #2 CLI 트랙 A** | 개인 액세스 토큰(`access_tokens` 테이블, `erdd_pat_` 접두 평문 + SHA-256 저장, 만료 없이 폐기만), 조직·프로젝트 역할에서 그대로 파생되는 권한(새 축 아님) + 토큰 노출 프로시저 5개 allowlist(`apiProcedure`), 파일 포맷(`packages/core/src/file-format.ts` — plain object만 다루고 YAML은 모름), 신규 패키지 `packages/cli`(`@erdd/cli`, 바이너리 `erdd`)의 읽기 명령 `init`/`pull`/`status`/`validate`, 마이그 0010 |
-| **Phase 4 #3 CLI 트랙 B** | 파일 3-way 병합 core 순수 함수(`packages/core/src/file-merge.ts` — `FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`·`fileVisibleModel`·`mergeModels`·`applyMerge`·`pruneDangling`·`gridPositions`), 신규 프로시저 `model.push`(토큰 allowlist 6번째, 필수 `expectedSeq`를 프로젝트 행 락 안에서 검증해 경합 차단, `model.mutate`는 세션 전용 유지), CLI `push`(필드 단위 자동 병합·충돌 시 블록형 출력+exit 1·삭제 확인 프롬프트·성공 후 암묵적 pull로 신규 id 채움)·`diff`(항상 3-way 계획 미리보기, `--base` 없음)·`skill install`(`.claude/skills/erdd/SKILL.md` 동봉, `--dir`/`--force`). **마이그레이션 없음** |
+| **DDL 역설계** | 손으로 쓴 좁은 파서(`CREATE TABLE`/`ALTER TABLE ADD CONSTRAINT`/`CREATE INDEX`/`COMMENT ON`)로 기존 DDL을 파싱해 미리보기 후 모델에 적용. 논리명은 코멘트→사전→물리명 순으로 복원, 왕복이 깨지는 5건은 테스트 상수로 고정. **마이그레이션 없음** |
+| **CLI 트랙 A** | 개인 액세스 토큰(`access_tokens` 테이블, `erdd_pat_` 접두 평문 + SHA-256 저장, 만료 없이 폐기만), 조직·프로젝트 역할에서 그대로 파생되는 권한(새 축 아님) + 토큰 노출 프로시저 5개 allowlist(`apiProcedure`), 파일 포맷(`packages/core/src/file-format.ts` — plain object만 다루고 YAML은 모름), 신규 패키지 `packages/cli`(`@erdd/cli`, 바이너리 `erdd`)의 읽기 명령 `init`/`pull`/`status`/`validate`, 마이그 0010 |
+| **CLI 트랙 B** | 파일 3-way 병합 core 순수 함수(`packages/core/src/file-merge.ts` — `FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`·`fileVisibleModel`·`mergeModels`·`applyMerge`·`pruneDangling`·`gridPositions`), 신규 프로시저 `model.push`(토큰 allowlist 6번째, 필수 `expectedSeq`를 프로젝트 행 락 안에서 검증해 경합 차단, `model.mutate`는 세션 전용 유지), CLI `push`(필드 단위 자동 병합·충돌 시 블록형 출력+exit 1·삭제 확인 프롬프트·성공 후 암묵적 pull로 신규 id 채움)·`diff`(항상 3-way 계획 미리보기, `--base` 없음)·`skill install`(`.claude/skills/erdd/SKILL.md` 동봉, `--dir`/`--force`). **마이그레이션 없음** |
 
 | **공용 리소스 승격** | fork의 반대 방향 — 프로젝트 사전 4종을 조직/전역 라이브러리로 올린다. core 순수 함수 `resource-promote.ts`(`planPromote` 3상태 분류 / `applyPromotePlan` write+`origin` 갱신), `runMutation`의 트랜잭션 내 선행 훅 `prepare`로 라이브러리 쓰기와 모델 op를 한 트랜잭션에 묶는 신규 프로시저 `resource.promote`(권한 3중·라이브러리 항목 `FOR UPDATE`·기대치 불일치 skip), `listForProject`의 `canWrite`, 공용 리소스 다이얼로그를 탭 2개로 분리 + "조직으로 승격" 탭. **마이그레이션 없음** ([설계](specs/2026-08-04-resource-promotion-design.md)) |
 | **승격 요청·승인 큐** | 라이브러리 쓰기 권한이 없는 Editor의 요청 경로. `promotion_requests`(op 로그 밖, 마이그 0011)는 **엔티티 포인터만** 담고 승인 시 `planPromote`를 재계산한다. `resource.promote`의 트랜잭션 본문을 `services/promote.ts`(`runPromoteInTx`·`loadLibraryItems`)로 추출해 승인이 같은 엔진을 타고, 요청 행 종결이 같은 `prepare` 훅에 들어가 함께 롤백된다. 프로시저 7개(`create`/`listForProject`/`cancel`/`listForOrg`/`get`/`pendingCount`/`resolve`), 승격 탭의 요청 모드, 조직 화면 승인 목록·검토 다이얼로그, 헤더·홈 배지 ([설계](specs/2026-08-04-promotion-request-queue-design.md)) |
@@ -65,16 +65,21 @@
 | **이름 트랙 잔여 3건(병렬)** | 워크트리 3개를 동시에 돌려 각 워커가 **브레인스토밍부터** 했다. (1) **컬럼 이름 템플릿 — 만들지 않기로 정했다**(용어가 컬럼 논리명과 1:1 이라 접두가 붙으면 정의상 표준 물리명과 어긋나는데 용어 검사는 부분 기준이라 경고도 안 뜬다 · 테이블 템플릿을 정당화한 「중복은 최종 기준」의 대응물이 컬럼에는 0). 근거와 「그래도 만든다면」의 설계를 [결정 문서](specs/2026-08-20-column-name-template-decision.md)에 남겼고 `docs/13-naming.md` 의 낡은 문장 다섯도 고쳤다. **코드 변경 0.** (2) **머릿말 잔여** — 그룹 좌표는 안 하기로 판정(정본 파일 형식이 좌표를 이미 빼므로 실으면 교환 형식이 정본보다 충실해지는 역전), 동명 그룹이 뭉개지는 방식을 「먼저 나온 것이 이긴다」로 통일, **`35a1684` 가 만든 회귀를 닫았다**(충돌 판정과 8번 절이 서로 다른 사실을 봐서 같은 물리명이 둘 생겼다 — `groupOf` 하나로 통일해 갈릴 수 없는 구조로 만들었다). (3) **경고 좌표·문구** — `reserved` 문구를 core 에서 잠그고, `validate` 와 `push`·`diff` 충돌 리포트의 좌표를 **재조립이 아니라 읽어 온 실제 파일**로 바꿨다(`filesToModel` 에 `tableFiles` 가산). **서버·마이그레이션 없음** |
 | **머릿말이 그룹·별칭까지 왕복 복원** | 머릿말 형식을 `erdd:v2` 로 올려 최상위를 `t`(테이블)·`g`(그룹) 두 구획으로 갈랐다. 테이블 항목에 소속 그룹 이름(`g`)이, 그룹 구획에 **별칭·색·코멘트**가 실린다(v1 은 계속 읽는다). `ddl.ts`·`dbml.ts` 에 복제돼 있던 머릿말 빌더를 `name-meta.ts` 의 `buildNameMeta` 하나로 합치고 그룹 수집을 얹었다. 가져오기는 머릿말 그룹을 `DdlImportGroup[]` 에 합류시키고(같은 이름의 DBML `TableGroup` 블록보다 **머릿말이 이긴다** — 설계 D7), 이름 충돌 판정 키를 **(그룹 이름, 만들어질 부분 이름)** 으로 넓혀 그룹이 다른 같은 이름의 테이블이 더 이상 잘못 건너뛰어지지 않는다. 별칭이 갈리면 `group-conflict` 경고를 낸다(색·코멘트는 표시용이라 조용하다 — 설계 D3). ⚠️ **「템플릿을 안 쓰는 프로젝트의 산출물은 한 글자도 안 바뀐다」가 「그룹도 템플릿도 안 쓰는 프로젝트」로 좁아졌다**(설계 D4) — 그룹만 쓰던 프로젝트의 DDL 첫 줄에 이제 주석이 생긴다. **서버·CLI·마이그레이션 변경 없음**, 웹은 `ddl-import-edits.ts` 의 별칭 한 줄뿐이다 ([설계](specs/2026-08-19-group-meta-roundtrip-design.md)) |
 | **CLI 로컬 모드(`erdd serve`)** | `erdd serve` 가 Fastify + **축소 tRPC 라우터** + 파일 저장소(`packages/cli/src/local/`)를 띄워 계정·DB 없이 `erdd/` 파일을 진실 원천으로 **기존 웹 에디터를** 브라우저에 연다(`erdd init --local` 은 `erdd.config.yaml` 만 쓴다). `apps/server` 를 재사용하지 않은 이유는 재사용할 계층의 대부분(`FOR UPDATE` 락 · op 영속화 · 권한 게이트)이 Postgres 전제라 **축소 라우터가 추상화보다 작기** 때문이다. ⚠️ **급소는 계약 잠금이다**(→ 3.18) — 웹은 `AppRouter` **타입**으로 클라이언트를 만들어 로컬 라우터가 어긋나도 **컴파일에 안 잡히고 런타임에 깨진다.** 좌표·메모는 `erdd/layout.yaml` 로 **갈랐다** — 스키마 파일에 넣으면 테이블을 **옮기기만 해도** diff 가 뜨고(그래서 원래 뺐다), git-ignore 하면 팀이 공유하는 그림을 잃는다. 서버와 오가는 파일은 그대로라 `pull`/`push` 는 이 파일을 보지도 않는다. 파일 감시의 **자기 쓰기는 내용 서명 비교**로 거른다(안 거르면 쓰기 → 감시 → 재로드 루프가 돈다) — ⚠️ **`load()` 전후의 서명을 비교하면 안 된다**(서명은 `flush()` 만 바꾸므로 언제나 같다). **읽은 것과 쓴 것**을 비교해야 한다. 웹의 재로드는 `setLoaded` 가 아니라 **`resync`** 다 — `resync` 만 `keptSelection` 을 타서 사라진 대상이 선택에 남지 않고 그룹 뷰에서 튕기지 않는다. `apps/server` 변경은 `auth.me` **한 곳**(`mode` 를 core 의 `RunMode` 로 명시). 마이그레이션 없음 → [설계](specs/2026-08-20-cli-local-mode-design.md) |
+| **CLI DDL·DBML 내보내기/가져오기** | 소비처 피드백 3·4·5번. 신규 명령 `erdd export`(`--format ddl\|dbml` · `--dialect` · `-o`)와 `erdd import <파일>`(`--format` · `--dialect` · `--dry-run`), 그리고 `erdd init --local` 의 `--dialect`·`--case`. **서버를 타지 않는 순수 파일 경로**라 두 모드에서 같이 돈다. 선행으로 `applyDdlImport` 와 그룹 팔레트를 web → core 로 옮기고(`ddl-apply.ts`·`group-palette.ts`) **배치를 `LayoutFn` 주입 인자로 뺐다** — core 는 dagre 를 의존할 수 없어 기본값이 격자(`gridPositions`)이고 web 이 `computeAutoLayout` 을 주입한다(주입을 빼면 오류 없이 격자로 바뀌므로 web 에 잠금 테스트 1건을 남겼다). 가져오기는 **웹 다이얼로그와 같은 경로**라 머지 동작도 같다(이름이 겹치는 테이블은 **건너뛴다** — 갱신이 아니다). 신규 id 는 `uuidv7` 로 파일에 바로 박고 `base`·`sync` 는 건드리지 않는다(서버 반영은 기존대로 `push`). 부수로 **DBML 의 방언 판별 결함**을 고쳤다 — `detectDialect` 는 DDL 전용인데 DBML 의 `[pk, …]` 속성 문법이 mssql 대괄호 시그니처를 항상 때려 모든 DBML 이 mssql 로 읽혔다(스모크에서 실측). DBML 은 웹과 같이 `Project { database_type }` 을 본다. `packages/core/README.md` 신설(소비처 tsconfig `target` 하한 **ES2022** 실측). **서버 변경·마이그레이션 없음** |
 
-> **Phase 2 완료.** #4·#5는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
-> **Phase 3 완료.** 스냅샷 diff → 실시간 동시편집 순으로 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
-> **Phase 4 완료.** DDL 역설계 → CLI 트랙 A(읽기) → CLI 트랙 B(`push`·3-way 병합·`diff`·에이전트 스킬) 순으로 마쳤다.
+> **공용 리소스 fork·Excel 산출물/업로드**는 병렬 worktree 2개로 동시에 진행해 순서대로 병합했다(머지 커밋 `1012e9d`, `d580028`).
+> **스냅샷 diff → 실시간 동시편집**은 각각 별도 사이클로 진행했다(머지 커밋 `9dbdeef`).
+> **DDL 역설계 → CLI 트랙 A(읽기) → CLI 트랙 B**(`push`·3-way 병합·`diff`·에이전트 스킬) 순으로 마쳤다.
 
 ### 테스트 기준선 (이 상태에서 전부 그린이어야 정상)
 
 ```
-core 859 · cli 234 · web 956 · server 209 · typecheck EXIT=0
+core 877 · cli 287 · web 943 · server 209 · typecheck EXIT=0
 ```
+
+⚠️ **직전 사이클(CLI DDL·DBML 내보내기/가져오기)에서 `web` 이 956 → 943 으로 줄었다 — 회귀가 아니다.**
+`ddl-import-edits.test.ts` 14건이 `applyDdlImport` 와 함께 core 로 **옮겨 갔고**(core 의 +18 중 14 가
+이동분이다) 그 자리에 「web 이 dagre 를 주입한다」 잠금 1건만 남겼다.
 
 ⚠️ **`server 209` 는 최근 사이클들이 재지 않고 옮겨 적기만 한 값이다.** 서버 스위트는 `DATABASE_URL`
 이 필요해 워크트리에서 건너뛴 사이클이 이어졌다. **서버를 건드리는 다음 사이클은 격리 DB로 다시 재고
@@ -134,9 +139,9 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
 
 ### 다음 작업
 
-**Phase 4 + 공용 리소스 승격 + 요청·승인 큐 완료 — 다음 후보** (→ `docs/90-roadmap.md`)
+**다음 후보**
 
-로드맵의 Phase 1~4가 모두 완료됐고, 공용 리소스의 반대 방향(승격)과 그 위의 요청·승인 큐까지 채웠다. 정해진 다음 Phase는 없다. 후보는 (a) 6절 이월 항목 정리, (b) `docs/90-roadmap.md` "추후 검토" 목록 중 조직 내부 도구로서 가치가 큰 것. 과금은 여전히 최우선이 아니다 — 조직 내에서 쓸 수 있는 도구 완성이 우선.
+계획해 둔 작업은 모두 끝났다. 공용 리소스의 반대 방향(승격)과 그 위의 요청·승인 큐까지 채웠고, 정해진 다음 작업은 없다. 후보는 (a) 6절 이월 항목 정리, (b) 사용자가 실제로 쓰다 걸린 것 중 조직 내부 도구로서 가치가 큰 것. 과금은 여전히 최우선이 아니다 — 조직 내에서 쓸 수 있는 도구 완성이 우선.
 
 > **2026-08-10 이후 우선순위가 바뀌었다.** 물리명 우선 명명·캔버스 다중 선택·사이드바 드래그 그룹
 > 이동 세 사이클은 로드맵이 아니라 **사용자가 실제로 쓰다 걸린 것**에서 나왔다(폼 순서, 양방향 명명,
@@ -186,13 +191,11 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
    오케스트레이션 우선. Claude Code 세션에 자동 로드되지만, **재사용할 결정을 기록할 때 목적지를
    정하려면 직접 읽어라.**
 1. **이 문서** — 현재 상태·불변식·환경·워크플로
-2. `docs/90-roadmap.md` — 단계별 범위(무엇이 어느 Phase인지)
-3. 작업할 영역의 기획 문서 — `docs/13-naming.md`(명명), `docs/14-domain.md`(도메인/타입), `docs/15-custom-fields.md`(커스텀 항목), `docs/17-import-export.md`(내보내기/Excel), `docs/01-concepts.md`(공용 리소스 fork 패턴), `docs/11-collaboration.md`(버전/협업), `docs/02-architecture.md`(데이터 계층 원칙)
-4. 최근 sub-project의 **설계 문서**(패턴 참고용) — `docs/superpowers/specs/` 의 최신 것 몇 개. 직전 사이클은
+2. 작업할 영역의 **설계 문서** — `docs/superpowers/specs/`. 기능을 왜 그렇게 만들었는지의 근거와
+   결정 기록이 여기에 있고, 새 사이클의 패턴 참고용이기도 하다. 최신 것 몇 개를 본다. 직전 사이클은
    `specs/2026-08-20-cli-local-mode-design.md` 이고, 만들지 않기로 정한 것을 남긴 결정 문서의 예는
    `specs/2026-08-20-column-name-template-decision.md` 다. **계획서는 병합 뒤 지우므로 `specs/` 만 남는다**(5절)
-5. `docs/91-checklist.md` — 착수 전 결정 사항 추적(Phase 1~4 전 항목 확정 완료. 다음 Phase 착수 시 이 문서에 새 항목을 추가한다)
-6. **사용자용 매뉴얼** — `docs/manual/install.md`(사내 서버 설치·운영), `docs/manual/user-guide.md`(웹 UI 기능별 레퍼런스 19절), `docs/manual/cli-guide.md`(`erdd` CLI 11절 — 설치·연결, 워크플로, 파일 포맷, 명령 레퍼런스, 3-way 병합·충돌, 에이전트 연동, `--json` 규약), `docs/manual/local-guide.md`(로컬 모드 8절 — 준비·시작, 되는 것과 없는 것, 파일과 git, 스냅샷, 서버 이관). 개발자용이 아니라 **제품 사용자용**이다. 기능을 바꾸면 여기도 함께 고쳐야 한다 — 특히 화면 문구를 바꾸면 user-guide 의 「」 인용이 어긋나고, 환경변수·compose·마이그레이션을 건드리면 install 의 표와 절차가 어긋나며, **CLI 의 명령·옵션·출력 문구·종료 코드·파일 포맷을 바꾸면 cli-guide 가 어긋난다**(그 문서는 실물 출력을 그대로 인용한다). **로컬 모드 분기(`useIsLocal`)를 늘리거나 줄이면 local-guide 4.2 의 장별 대조표와 user-guide 각 장 머리의 「로컬 모드에는 없다」 표시가 함께 어긋난다** — 둘은 같은 사실을 두 곳에서 말한다. **게시 형태가 바뀌면 두 매뉴얼의 설치 절이 함께 어긋난다** — cli-guide 2절과 local-guide 2절이 사내 레지스트리 설치(`.npmrc`·토큰·`pnpm add -D @erdd/cli tsx`)와 「웹 번들이 패키지에 동봉된다」를 각자 적고 있어서, 배포 형태·레지스트리 주소·번들 동봉 여부를 바꾸면 두 곳을 함께 고쳐야 한다(절차 자체는 → [4.1](#41-릴리스--사내-레지스트리에-cli-패키지를-게시한다)).
+3. **사용자용 매뉴얼** — `docs/manual/install.md`(사내 서버 설치·운영), `docs/manual/user-guide.md`(웹 UI 기능별 레퍼런스 19절), `docs/manual/cli-guide.md`(`erdd` CLI 11절 — 설치·연결, 워크플로, 파일 포맷, 명령 레퍼런스, 3-way 병합·충돌, 에이전트 연동, `--json` 규약), `docs/manual/local-guide.md`(로컬 모드 8절 — 준비·시작, 되는 것과 없는 것, 파일과 git, 스냅샷, 서버 이관). 개발자용이 아니라 **제품 사용자용**이다. 기능을 바꾸면 여기도 함께 고쳐야 한다 — 특히 화면 문구를 바꾸면 user-guide 의 「」 인용이 어긋나고, 환경변수·compose·마이그레이션을 건드리면 install 의 표와 절차가 어긋나며, **CLI 의 명령·옵션·출력 문구·종료 코드·파일 포맷을 바꾸면 cli-guide 가 어긋난다**(그 문서는 실물 출력을 그대로 인용한다). **로컬 모드 분기(`useIsLocal`)를 늘리거나 줄이면 local-guide 4.2 의 장별 대조표와 user-guide 각 장 머리의 「로컬 모드에는 없다」 표시가 함께 어긋난다** — 둘은 같은 사실을 두 곳에서 말한다. **게시 형태가 바뀌면 두 매뉴얼의 설치 절이 함께 어긋난다** — cli-guide 2절과 local-guide 2절이 사내 레지스트리 설치(`.npmrc`·토큰·`pnpm add -D @erdd/cli tsx`)와 「웹 번들이 패키지에 동봉된다」를 각자 적고 있어서, 배포 형태·레지스트리 주소·번들 동봉 여부를 바꾸면 두 곳을 함께 고쳐야 한다(절차 자체는 → [4.1](#41-릴리스--사내-레지스트리에-cli-패키지를-게시한다)).
 
 > `.superpowers/sdd/progress.md`(SDD 진행 원장)는 **git-ignored 스크래치**다. 세션이 바뀌면 신뢰하지 말고 이 문서 + `git log`를 기준으로 삼는다.
 
@@ -328,9 +331,9 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
 
 ---
 
-### 3.6 실시간 협업 (Phase 3 #2에서 실제로 물린 것들)
+### 3.6 실시간 협업 (실제로 물린 것들)
 
-- **모델을 바꾸는 모든 경로는 `mutateAndPublish`를 거친다**(`apps/server/src/services/mutate-publish.ts`). `runMutation`을 직접 부르면 커밋은 되지만 **실시간 채널로 전파되지 않는다.** 호출처는 `model.mutate`·`snapshot.restore`·CLI `model.push`(Phase 4 트랙 B) 셋이다. 발행은 `db.transaction()`이 resolve된 **뒤**에만 일어나야 한다 — 콜백 안에서 발행하면 롤백된 op가 채널로 나간다(drizzle의 `transaction()`은 `commit`을 await한 뒤에만 resolve하므로 현재 구조에선 구조적으로 불가능).
+- **모델을 바꾸는 모든 경로는 `mutateAndPublish`를 거친다**(`apps/server/src/services/mutate-publish.ts`). `runMutation`을 직접 부르면 커밋은 되지만 **실시간 채널로 전파되지 않는다.** 호출처는 `model.mutate`·`snapshot.restore`·CLI `model.push`(CLI 트랙 B) 셋이다. 발행은 `db.transaction()`이 resolve된 **뒤**에만 일어나야 한다 — 콜백 안에서 발행하면 롤백된 op가 채널로 나간다(drizzle의 `transaction()`은 `commit`을 await한 뒤에만 resolve하므로 현재 구조에선 구조적으로 불가능).
 - **`store.seq`에는 의미가 하나여야 한다.** 이 사이클의 Critical 결함이 여기서 나왔다: `use-model.ts`의 `submit()`이 서버 응답 seq로 `setSeq`하고, `use-realtime.ts`는 그 값을 "내가 적용한 마지막 seq"로 읽었다. 두 의미가 갈리면, 내 mutation이 서버 락에 대기하는 동안 커밋된 **남의 op가 "에코"로 오인돼 영구 유실**된다(seq 불연속도 안 잡혀 자가 치유도 발동 안 함). 현재는 `submit()`이 `seq !== seqBefore + 1`이면 `model.get`으로 통째 resync해서 막는다. **seq에 새 writer를 추가하려면 이 불변식을 먼저 확인하라.**
 - **소켓 핸들러에서 `await` 앞에 close 리스너를 걸어라.** `hub.subscribe()` 직후·`await` 이전에 `socket.on('close', ...)`를 등록하지 않으면, 인증(DB 왕복 3회)이나 `currentSeq` 대기 중 끊긴 소켓이 허브에 **영구 유령 항목**을 남긴다 — 다른 참여자에게 유령 아바타·잔상 하이라이트가 서버 재시작 전까지 남고 하트비트 타이머도 누수된다.
 - **재접속 시 클라이언트 상태를 다시 알려야 한다.** 서버 `Entry`는 `selection: null`로 새로 시작하는데, 선택 발신 effect는 "값이 바뀔 때만" 보낸다. `socket.onopen`에서 현재 선택을 무조건 재발신하지 않으면 재접속 후 하이라이트가 사라진 채로 남는다. presence는 서버→클라 방향만 전체 스냅샷이고 클라→서버는 델타라 이 비대칭이 생긴다.
@@ -341,11 +344,11 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
 - dev에서 **React StrictMode가 effect를 2회 실행**해 소켓이 잠시 2개 생기고 presence 프레임이 중복된다. 프로덕션 빌드에는 없다 — dev 로그에서 중복 프레임을 보고 버그로 오인하지 말 것.
 - 허브는 **인메모리 단일 인스턴스** 전제다. 다중 인스턴스로 가면 Redis pub/sub 브리지가 필요하다(설계상 예정된 확장점, 현재 범위 밖). `publishOps`/`peers`가 동기 API라 그때 시그니처를 async로 바꿔야 한다.
 
-### 3.7 액세스 토큰 인증 (Phase 4 CLI 트랙 A)
+### 3.7 액세스 토큰 인증 (CLI 트랙 A)
 
 > **새 tRPC 프로시저의 기본은 `authedProcedure`(세션 전용)다.** 액세스 토큰으로 호출 가능하게 하려면 `apiProcedure`로 명시적으로 열어야 하고, 그 목록은 CLI가 실제로 쓰는 것으로 한정한다. 기본이 거부이므로 프로시저를 추가해도 토큰에 저절로 열리지 않는다.
 
-### 3.8 CLI push의 낙관적 동시성 (Phase 4 CLI 트랙 B)
+### 3.8 CLI push의 낙관적 동시성 (CLI 트랙 B)
 
 - **`runMutation`의 `deriveOps`가 `(model, seq)`를 받는다**(`apps/server/src/services/mutation.ts`, 예전엔 `model`만). `currentSeq` 조회를 `deriveOps` 호출 **위로** 끌어올려, `model.push`의 `expectedSeq` 비교가 프로젝트 행 `FOR UPDATE` 락 안에서 이뤄지는 유일한 지점이 됐다 — **이 지점이 CLI push의 유일한 경합 방어선**이다(락 밖에서 seq를 읽으면 읽기와 커밋 사이에 남이 끼어들 여지가 생긴다). 기존 호출자 `model.mutate`·`snapshot.restore`는 두 번째 인자를 무시해 무영향이고 `mutateAndPublish`도 시그니처를 그대로 통과시킨다. **이번 브랜치에서 두 번째 호출자가 생긴 기존 함수**(5절의 최종 리뷰 질문)로 `runMutation`/`mutateAndPublish`와 `filesToModel`(`opts.newId` 주입)이 해당한다.
 - **`FILE_FIELDS`/`FILE_INVISIBLE_FIELDS`(`packages/core/src/file-merge.ts`)는 3.2절과는 별개의 체크리스트다.** 3.2절의 6곳(+ `model-diff.ts`의 `KIND_ORDER`)은 **새 op 엔티티 종류**를 등록하는 곳이고, 이건 **이미 등록된 엔티티에 필드를 추가**할 때 그 필드를 파일에 보이는 것(`FILE_FIELDS`)인지 안 보이는 것(`FILE_INVISIBLE_FIELDS`)인지 분류하는 곳이다 — 서로 다른 유지보수 범주라 하나로 이어 세면 안 된다. 분류하지 않으면 `file-merge.test.ts`의 분류 완전성 테스트가 깨진다(zod shape과 실제 필드 집합을 대조해 자동으로 잡는다 — `model-diff.ts`의 `KIND_ORDER` 완전성 테스트와 같은 선례).
@@ -804,6 +807,22 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
   **명시**하지 않으면 tRPC 추론이 리터럴 `'server'` 로 좁혀 로컬의 `'local'` 과 서로를 만족하지
   못한다. 서버가 로컬과 공유하는 값은 **core 의 타입으로 적어라**.
 
+### 3.19 `detectDialect` 는 DDL 전용이다 — DBML 에 태우지 마라
+
+- **`detectDialect`(`packages/core/src/ddl-parse.ts`)의 시그니처 목록에 `/\[[A-Za-z_]/`(mssql 대괄호
+  식별자, 가중치 2)가 있다.** DBML 의 **속성 문법**(`[pk, increment, note: '…']`)이 그것을 **항상**
+  때리므로, 다른 시그니처가 걸리지 않는 한 **어떤 DBML 이든 mssql 로 판정된다.** 2026-09-03 CLI
+  스모크에서 mysql 프로젝트가 낸 DBML 을 되읽자 실제로 `dbml mssql` 이 나왔다.
+- **DBML 의 방언은 `Project { database_type }` 이고 `dialectFromDatabaseType` 이 그것을 푼다.** 웹의
+  `ddl-import-dialog.tsx` 는 처음부터 그렇게 갈라 쓰고 있었고, CLI 의 `import.ts`(`resolveDialect`)도
+  같게 맞췄다. **같은 일을 웹과 CLI 가 다르게 하지 않는다**(3.18 과 같은 정신).
+- **방언은 조용히 틀려도 타입이 나온다.** `fromDialectType` 의 매핑이 방언마다 갈리므로 잘못 고르면
+  컬럼 타입이 경고 없이 달라진다. 그래서 CLI 는 **무엇을 왜 골랐는지**를 사람용 출력 첫 줄과
+  `--json` 의 `dialectSource` 에 함께 싣는다.
+- 잠금: `packages/cli/src/commands/import.test.ts` 의 「DBML 의 방언은 database_type 을 따르고,
+  없으면 config 로 떨어진다 — mssql 로 새지 않는다」. `resolveDialect` 의 형식 분기를 지우면 빨개진다
+  (실측).
+
 ## 4. 개발 환경
 
 ```bash
@@ -1114,7 +1133,7 @@ CLI push 멱등성 사이클의 결함은 거의 전부 두 종류였다 — (i)
 
 ### 병렬 트랙(worktree 2개)으로 돌릴 때
 
-Phase 2 #4·#5를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다음이 필수였다.
+공용 리소스 fork·Excel 산출물/업로드를 worktree 2개로 동시에 진행했다. 잘 돌아갔고, 다음이 필수였다.
 
 > 워크트리 **생성·위치·포트·정리** 규칙과 Orca 오케스트레이션 우선 규칙은 `CLAUDE.md`에 있다. 여기에는
 > 그 위에서 실제로 든 비용과 트랙 운영 노하우만 남긴다.
@@ -1208,6 +1227,30 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 ---
 
 ## 6. 이월 항목 (모두 non-blocking)
+
+**DDL 왕복의 `UNSIGNED`·테이블 옵션 유실 (소비처 피드백 1·2번 — 별도 설계 사이클)**
+
+- **무엇:** MySQL DDL 을 가져왔다가 다시 내보내면 컬럼의 **부호 없음**(`INT UNSIGNED`·
+  `SMALLINT UNSIGNED`)과 **테이블 옵션**(`ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)이 사라진다.
+  실측(2026-09-03): `int unsigned` → 논리 타입 `INT`, `ENGINE`·`CHARSET` 은 파서의 `skipped` 에도
+  안 남는다. **유실을 알리는 경고가 한 줄도 없다** — `planDdlImport` 의 `warnings` 에는 사전
+  미등록(`unknown-word`)만 실린다. `unknown-type`·`ambiguous-type` 도 안 뜬다.
+- **왜 이번에 안 고쳤나:** 「컬럼 타입은 방언 중립 논리 타입 17종」이라는 설계와 정면으로 맞물린다.
+  부호 없음은 타입 축에, 테이블 옵션은 모델(`Table`)에 담을 자리 자체가 없다. 담을 자리를 만드는
+  것은 모델 스키마·마이그레이션·DDL 생성·파서·왕복 테스트를 함께 여는 일이라 별도 사이클이다.
+- **어느 테스트가 이 사실을 잠그고 있나:**
+  `packages/cli/src/commands/roundtrip.test.ts` 의
+  **「MySQL INT UNSIGNED·ENGINE·CHARSET 은 현재 왕복에서 유실된다 (피드백 1·2번)」**.
+  ⚠️ **그 테스트는 「고쳐진 동작」이 아니라 「현재 유실된다」를 단언한다.** 고치면 그 테스트가
+  빨개지면서 사람을 이 이월 항목으로 데려온다 — 그때 단언을 뒤집어라(유실 → 보존).
+  사용자용 서술은 `docs/manual/cli-guide.md` 6.10 절 끝의 ⚠️ 문단에 있다.
+
+**`erdd export --format dbml` 은 `Project` 블록을 내지 않는다**
+
+- `generateDbml` 의 `projectName` 을 주지 않아 `Project { database_type }` 이 없다. 그래서 그 산출물을
+  되읽으면 방언이 `config.dialects[0]` 로 떨어진다 — 같은 프로젝트로 왕복하는 한 값이 같아 문제가
+  없지만, **다른 프로젝트로 옮기면 방언 정보가 따라가지 않는다.** 프로젝트 이름을 무엇으로 쓸지가
+  먼저 정해져야 한다(로컬 모드에는 프로젝트 이름이 없다 — `erdd.config.yaml` 에 `projectId` 만 있다).
 
 > **패키지 게시(`@erdd/cli`·`@erdd/core`) 관련 이월은 [4.1b](#41b-게시-관련-이월-항목-일부러-고치지-않은-것)에
 > 따로 모아 두었다** — 소비처의 `tsx` 직접 설치(셰방 런처), 루트 `.npmrc` 부재, `npm view` 의 401/403,
@@ -1645,7 +1688,7 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 - **컬럼 행 `aria-selected` 가 `role="button"` 위에 있다**(main 기존 코드). 사이드바 테이블 행은
   이 사이클에서 접근 가능하게 노출했다
 
-**Phase 1 잔여**
+**초기 MVP 잔여**
 - 측정 bbox 기반 그룹 영역 크기 산정(현재는 추정치 EST_W/estHeight)
 - 자동 정렬 방향 토글(TB/LR) — 현재 TB 고정
 - `toolbar.tsx` `visibleTables`가 raw `activeGroupView` truthy만 판정(그룹 삭제 중 스테일 뷰에서 자동정렬 버튼 비활성) → canvas의 유효-뷰 계산과 통일
@@ -1737,9 +1780,9 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 - boolean 필드에는 required 표식(*)이 없음(현재 UI로는 required:true인 boolean을 생성할 수 없어 도달 불가 — fork/임포트로 우회 생성되면 문제)
 - `custom-fields-section.tsx`의 text 입력(blur 커밋)이 `edit-panel.tsx`의 `CommitInput`과 의미상 중복(공용 파일 추출 여지 — edit-panel에서 import하면 순환이라 별도 파일 필요)
 - 자동 저장 금지 가드(정의 기본값 표시 중 blur해도 저장 안 됨) 고정 테스트 없음
-- CLI `custom` 필드는 Phase 4로 이월(Excel 정의서 컬럼은 #5에서 구현됨)
+- CLI `custom` 필드는 CLI 트랙으로 이월(Excel 정의서 컬럼은 Excel 산출물/업로드 사이클에서 구현됨)
 
-**공용 리소스 fork (#4)**
+**공용 리소스 fork**
 - **프로젝트 → 조직 리소스 승격(반대 방향)** 미구현 — 기획(`01-concepts.md` 4항)에 있으나 이번 범위에서 제외
 - **행안부 표준 사전 실데이터 미확보** — 현재는 전역 라이브러리가 비어 있을 때 부팅 시 "표준 사전(예시)" 소량(도메인 3·단어 6·용어 3·커스텀 항목 2)만 시드. `91-checklist`의 "표준 사전 데이터 소싱" 미결과 연결
 - `resource-sync`: 같은 배치 내 동명 added 2건은 서로에 대해 `nameClash=false`(UI 자문용, 무결성 무관)
@@ -1776,14 +1819,14 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 - **`summary`에 실제 승격 건수를 넣을 수 없다** — `summary`는 string이라 `mutateAndPublish` 호출 시점에 확정되는데 `outcome`은 `prepare` 훅이 돈 뒤에야 채워진다. 현재는 호출 시점에 아는 값("요청 N건 중 M건 승인")을 쓴다
 - 코드 정리 여지: `mutateAndPublish` 스캐폴딩이 `routers/resource.ts`와 `promotion.ts`에 축자 중복(배선이라 값이 갈리지는 않는다), `resolve`가 88줄 단일 함수, 승인 권한 규칙이 `requireScopeWrite`와 `pendingCount`의 `inArray`에 따로 표현(`ORG_WRITE_ROLES` 공유 상수 권장), `promotion.get`이 요청 행을 통째로 스프레드, `org-detail.tsx`의 `canManage` 식 중복, 요청 경로의 op 상한 가드·요청 메모(`note`)·대기 목록의 `libraryId` 필터·목록의 `isError` 알림·`resolve`의 `onError` 토스트가 미검증
 
-**Excel 산출물/업로드 (#5)**
-- **"변경분 정의서" 시트 미구현** — 스냅샷 diff 기반이라 Phase 3의 diff 화면과 함께 설계(의도적으로 남긴 유일한 시트)
+**Excel 산출물/업로드**
+- **"변경분 정의서" 시트 미구현** — 스냅샷 diff 기반이라 diff 화면과 함께 설계(의도적으로 남긴 유일한 시트)
 - **테이블·컬럼 커스텀 항목 "값"의 Excel 업로드 미지원**(내보내기만) — 테이블·컬럼 식별 규칙(물리명? id?)이 따로 필요해 별도 사이클
 - **선택 테이블 범위 내보내기** — `ExportScope`의 `{kind:'tables'}`는 타입만 있고 UI 없음
 - 도메인 허용값의 쉼표 왕복 한계(값 자체에 쉼표가 있으면 분리됨)
 - 대량 업로드는 `MAX_OPS_PER_MUTATION`(5000)이 천장 — 초과 시 UI가 막고 파일 분할 안내(청크 적용 미구현)
 
-**스냅샷 diff (Phase 3 #1)**
+**스냅샷 diff**
 - 라벨 2차 정렬(같은 종류 안 `localeCompare`)·`labelOf`의 relationship/index/tableGroup/customField/term/note 분기 미테스트
 - 키 누락의 역방향(base에만 있고 target 엔티티엔 없는 필드) 미테스트
 - 비교 화면의 `normalize()`를 실증하는 테스트 없음(core가 컬렉션 기본값을 자체적으로 채워 크래시는 안 남)
@@ -1796,7 +1839,7 @@ main 의 즉시 삭제) — 이건 양쪽 다 사용자 결정이라 컨트롤�
 - diff에서 선택 항목만 되돌리는 "선택 복원" 미지원(스냅샷 전체 복원만)
 - 배치 좌표 변경 이력 보기 없음(좌표는 diff에서 의도적으로 제외)
 
-**실시간 동시편집 (Phase 3 #2)**
+**실시간 동시편집**
 - **다중 인스턴스 미지원** — 허브가 인메모리 단일 인스턴스 전제. 스케일아웃 시 Redis pub/sub 브리지 필요하고, 그때 `publishOps`/`peers`를 async로 바꿔야 한다(현재 동기 API라 `mutateAndPublish`가 fire-and-forget으로 부른다)
 - **`actorUserId`/`actorName`이 브로드캐스트되지만 클라가 안 쓴다** — 같은 사용자의 다른 탭에서 온 변경에도 "다른 사용자가…" 토스트가 뜬다. `msg.actorUserId !== me.id`로 게이트하거나 `${actorName}님이…`로 카피에 쓰면 둘 다 해소된다
 - **peer 이름 라벨이 테이블에만 있다** — 설계·계획 산문은 관계·메모에도 이름 라벨을 약속했으나 구현은 테이블만(관계는 `EdgeLabelRenderer`가 필요해 까다롭다). 계획 산문을 고치든 라벨을 추가하든 정리 필요
@@ -1974,8 +2017,8 @@ CLAUDE.md의 규칙은 예외 없이 지킨다 — 특히 메모리 기능에 �
 (알게 된 것은 문서에 쓰고 커밋한다), 최상위에서 브랜치를 갈아타지 않는 것,
 커밋은 경로를 명시해 스테이징하는 것.
 
-다음 작업: <6절 이월 항목 정리 | docs/90-roadmap.md "추후 검토" 항목 중 하나>를 고른다.
-로드맵의 Phase 1~4(DDL 역설계, CLI 트랙 A·B)가 모두 끝나 정해진 다음 Phase가 없다 —
+다음 작업: <6절 이월 항목 정리 | 사용자가 실제로 쓰다 걸린 것 중 하나>를 고른다.
+계획해 둔 작업이 모두 끝나 정해진 다음 작업이 없다 —
 착수 전 브레인스토밍으로 범위를 사용자와 먼저 확정해라. HANDOFF.md의 "작업 방식"대로
 brainstorming(설계 결정 확인) → spec → plan → SDD 구현/리뷰 → 최종 리뷰 → 브라우저 스모크 → main 머지
 순서로 가라.

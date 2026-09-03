@@ -57,6 +57,9 @@ export type {
 export { parseDbml, dbmlDefaultToRaw, dialectFromDatabaseType } from './dbml-parse.js'
 export type { ParsedDbml, ParsedGroup, ParsedCustomValue } from './dbml-parse.js'
 export { planDdlImport } from './ddl-import.js'
+export { applyDdlImport } from './ddl-apply.js'
+export type { LayoutFn } from './ddl-apply.js'
+export { GROUP_PALETTE, nextGroupColor } from './group-palette.js'
 export type {
   DdlImportWarning, DdlImportColumn, DdlImportTable, DdlImportRelationship, DdlImportGroup,
   DdlImportPlan,

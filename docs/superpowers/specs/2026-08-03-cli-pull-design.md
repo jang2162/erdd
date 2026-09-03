@@ -4,7 +4,7 @@
 **범위:** Phase 4 CLI의 전반부. 개인 액세스 토큰, 모델↔파일 직렬화, `init`·`pull`·`status`·`validate`.
 **후속(트랙 B, 별도 사이클):** `push`, 3-way 병합, `diff`, 에이전트 스킬(`SKILL.md`)과 `skill install`.
 
-관련 문서: [16-cli](../../16-cli.md), [91-checklist](../../91-checklist.md), [02-architecture](../../02-architecture.md)
+관련 문서: 16-cli, 91-checklist, 02-architecture
 
 ---
 
@@ -18,7 +18,7 @@
 
 ### 2.1 왜 프로젝트 토큰이 아닌가
 
-`16-cli.md`의 원안은 "프로젝트 API 토큰(read/write 권한)"이다. 이는 조직(Owner/Admin/Member) × 프로젝트(Admin/Editor/Viewer)와 **별개의 새 권한 축**이다. 직전 사이클에서 권한 세분화를 검토한 결과 "필요가 실증되지 않은 새 축은 도입하지 않는다"고 결론 내렸다(→ [viewer-readonly-ui 설계](2026-08-01-viewer-readonly-ui-design.md), [91-checklist](../../91-checklist.md) Phase 3). 그 결론을 CLI에서 뒤집을 근거가 없다.
+`16-cli.md`의 원안은 "프로젝트 API 토큰(read/write 권한)"이다. 이는 조직(Owner/Admin/Member) × 프로젝트(Admin/Editor/Viewer)와 **별개의 새 권한 축**이다. 직전 사이클에서 권한 세분화를 검토한 결과 "필요가 실증되지 않은 새 축은 도입하지 않는다"고 결론 내렸다(→ [viewer-readonly-ui 설계](2026-08-01-viewer-readonly-ui-design.md), 91-checklist Phase 3). 그 결론을 CLI에서 뒤집을 근거가 없다.
 
 **사용자 단위 토큰**으로 하면 권한은 그 사용자의 기존 역할에서 그대로 파생된다. 서버는 `requireProjectAccess`를 변경 없이 재사용하고, 새 축이 생기지 않는다. Viewer가 발급한 토큰은 Viewer 권한이고, 그 사용자가 프로젝트에서 빠지면 토큰도 자동으로 그 프로젝트에 접근하지 못한다 — 별도의 회수 절차가 필요 없다.
 
@@ -190,7 +190,7 @@ relations:
 
 규칙:
 
-- **참조는 이름으로 쓰고 `id`를 함께 둔다.** `group`·`domain`·`to`는 사람이 읽을 이름이고, identity는 `id`다. 이름이 바뀌어도 `id`로 추적되므로 삭제+추가로 오인되지 않는다(→ [02-architecture](../../02-architecture.md)).
+- **참조는 이름으로 쓰고 `id`를 함께 둔다.** `group`·`domain`·`to`는 사람이 읽을 이름이고, identity는 `id`다. 이름이 바뀌어도 `id`로 추적되므로 삭제+추가로 오인되지 않는다(→ 02-architecture).
 - 컬럼은 `type`(논리 타입 문자열)을 항상 쓰고, 도메인이 지정된 컬럼은 `domain`(도메인 이름)을 함께 쓴다. **둘 다 쓰는 이유는 모델이 실제로 둘 다 들고 있기 때문이다** — `setColumnDomain`(`apps/web/src/editor/column-edits.ts:36`)은 도메인을 지정할 때 기존 `type` 문자열을 지우지 않는다. `type`만 쓰면 도메인이 소실되고, `domain`만 쓰면 그 `type` 문자열이 소실된다. 읽을 때 실효 타입은 도메인이 우선하며(`resolveColumn`), 파일의 `type`은 도메인이 있을 때 참고값이다.
 - 관계는 **자식 테이블 파일**에 적는다(`to`가 부모). 한 관계가 두 파일에 나타나지 않는다.
 - 기본값이 있는 필드는 값이 기본값이면 파일에서 생략한다(`nullable: true`, `pk: false`, `unique: false`). diff를 조용하게 유지한다.

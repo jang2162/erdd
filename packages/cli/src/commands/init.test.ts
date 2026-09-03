@@ -3,6 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir as osTmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ApiClient } from '../client.js'
+import { DEFAULT_NAMING_RULES } from '@erdd/core'
 import { readConfig } from '../config.js'
 import { CliError } from '../output.js'
 import { init } from './init.js'
@@ -121,5 +122,24 @@ describe('init --local', () => {
     await init({ cwd: dir, json: true, yes: true, strict: false, local: true })
     const code = await init({ cwd: dir, json: true, yes: true, strict: false, local: true })
     expect(code).toBe(1)
+  })
+  it('--local 은 --dialect·--case 를 config 에 싣고 나머지 명명 규칙은 기본값 그대로다', async () => {
+    const code = await init({
+      cwd: dir, json: true, yes: false, strict: false,
+      local: true, dialect: 'mysql', namingCase: 'lower_snake',
+    })
+    expect(code).toBe(0)
+    const config = await readConfig(dir)
+    expect(config.dialects).toEqual(['mysql'])
+    expect(config.namingRules).toEqual({
+      ...DEFAULT_NAMING_RULES, case: 'lower_snake',
+    })
+  })
+
+  it('--local 의 기본값은 postgresql · UPPER_SNAKE 다', async () => {
+    expect(await init({ cwd: dir, json: true, yes: false, strict: false, local: true })).toBe(0)
+    const config = await readConfig(dir)
+    expect(config.dialects).toEqual(['postgresql'])
+    expect(config.namingRules).toEqual(DEFAULT_NAMING_RULES)
   })
 })

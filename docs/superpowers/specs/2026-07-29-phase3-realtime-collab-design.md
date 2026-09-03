@@ -2,8 +2,8 @@
 
 **작성일:** 2026-07-29
 **상태:** 승인됨 (사용자 "진행해")
-**원 기획:** [docs/11-collaboration.md](../../11-collaboration.md) "실시간 동시편집" 절, [docs/02-architecture.md](../../02-architecture.md) "실시간 협업 (Phase 3)"
-**해소하는 체크리스트 항목:** [docs/91-checklist.md](../../91-checklist.md) "실시간 프로토콜 상세 — 채널 인증, 재수화 한계 기준, presence 메시지 설계"
+**원 기획:** docs/11-collaboration.md "실시간 동시편집" 절, docs/02-architecture.md "실시간 협업 (Phase 3)"
+**해소하는 체크리스트 항목:** docs/91-checklist.md "실시간 프로토콜 상세 — 채널 인증, 재수화 한계 기준, presence 메시지 설계"
 
 ## 목표
 

@@ -2,7 +2,7 @@
 
 **작성일:** 2026-07-27
 **상태:** 승인됨 (사용자 "맞다, 그대로 진행해줘" / "spec 문서로 작성해줘")
-**원 기획:** [docs/15-custom-fields.md](../../15-custom-fields.md) Phase 2 범위
+**원 기획:** docs/15-custom-fields.md Phase 2 범위
 
 ## 목표
 

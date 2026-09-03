@@ -2,7 +2,7 @@
 
 **작성일:** 2026-07-28
 **상태:** 승인됨 (사용자 "진행해줘")
-**원 기획:** [docs/17-import-export.md](../../17-import-export.md) Phase 2 범위, [docs/12-grouping.md](../../12-grouping.md) 그룹 단위 내보내기
+**원 기획:** docs/17-import-export.md Phase 2 범위, docs/12-grouping.md 그룹 단위 내보내기
 
 ## 목표
 

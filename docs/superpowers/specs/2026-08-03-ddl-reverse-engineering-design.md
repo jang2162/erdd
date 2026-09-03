@@ -2,8 +2,8 @@
 
 **작성일:** 2026-08-03
 **상태:** 승인 대기
-**원 기획:** [docs/17-import-export.md](../../17-import-export.md) "DDL 가져오기 (역설계)", [docs/90-roadmap.md](../../90-roadmap.md) Phase 4
-**해소하는 체크리스트 항목:** [docs/91-checklist.md](../../91-checklist.md) "DDL 역설계 범위 — 지원 방언별 파싱 범위와 한계, 파서 라이브러리 선택"
+**원 기획:** docs/17-import-export.md "DDL 가져오기 (역설계)", docs/90-roadmap.md Phase 4
+**해소하는 체크리스트 항목:** docs/91-checklist.md "DDL 역설계 범위 — 지원 방언별 파싱 범위와 한계, 파서 라이브러리 선택"
 
 ## Phase 4 분해
 
@@ -101,7 +101,7 @@ generateDdl(model, dialect) → parseDdl → planDdlImport(…, dialect, …) �
 
 **건너뛰고 경고하는 것:** `CHECK`, 파티션 절, 테이블스페이스·스토리지 절, `CREATE TRIGGER/SEQUENCE/VIEW/PROCEDURE`, `GRANT`, `SET`, `ALTER TABLE … ENABLE/DISABLE`, 그 밖에 인식하지 못한 문장.
 
-건너뛴 문장은 키워드·줄 번호·앞부분 발췌를 경고에 담는다. "관대한 파싱"은 이 프로젝트의 기존 방침이다(논리 타입 파싱, [91-checklist](../../91-checklist.md) Phase 2).
+건너뛴 문장은 키워드·줄 번호·앞부분 발췌를 경고에 담는다. "관대한 파싱"은 이 프로젝트의 기존 방침이다(논리 타입 파싱, 91-checklist Phase 2).
 
 **방언 감지**는 특징 토큰 점수제로 한다: `AUTO_INCREMENT`·백틱 → mysql, `VARCHAR2`·`NUMBER(`·`CLOB` → oracle, `NVARCHAR`·`IDENTITY(`·`[대괄호]` → mssql, `serial`·`jsonb`·`timestamptz`·`text` → postgresql. 동점이거나 근거가 없으면 `null`을 돌려주고 UI가 사용자에게 고르게 한다. 감지 결과는 항상 **수동으로 덮을 수 있다.**
 
