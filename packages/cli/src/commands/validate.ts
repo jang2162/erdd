@@ -5,6 +5,7 @@ import {
 import { readConfig } from '../config.js'
 import { emit } from '../output.js'
 import { readTree } from '../tree.js'
+import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { run, type CommandCtx } from './context.js'
 
 /** 경고가 가리키는 자리. 못 구하면 두 값 모두 null이다 — 키는 언제나 있다. */
@@ -96,6 +97,9 @@ export function validate(ctx: CommandCtx): Promise<number> {
     // 좌표는 기존 필드에 얹기만 한다 — --json 소비자가 보던 모양은 그대로다.
     const warnings = computeWarnings(result.model, config.namingRules, config.dialects)
       .map((w) => ({ ...w, ...locate(result.model, result.tableFiles, w) }))
+    // ⚠️ **판정에 넣지 않는다**(설계 D3) — `validate` 는 파일만 본다. 미저장 편집이 있다고
+    // 종료 코드가 바뀌면 커밋 훅·CI 가 화면 상태에 좌우된다.
+    const unsavedDraft = await hasDraft(ctx.cwd)
     const ok = integrityIssues.length === 0 && (!ctx.strict || warnings.length === 0)
 
     const human = [
@@ -103,11 +107,12 @@ export function validate(ctx: CommandCtx): Promise<number> {
       ...integrityIssues.map((i) => `  ${JSON.stringify(i)}`),
       warnings.length === 0 ? '명명 경고 없음' : `명명 경고 ${warnings.length}건`,
       ...warnings.map(warningLine),
+      ...(unsavedDraft ? [UNSAVED_NOTICE] : []),
     ].join('\n')
 
     emit(ctx.json, human, {
       ok,
-      parseErrors: [], integrityIssues, warnings,
+      parseErrors: [], integrityIssues, warnings, unsavedDraft,
     })
     return ok ? 0 : 1
   })

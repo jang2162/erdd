@@ -10,6 +10,7 @@ import type { ApiClient } from '../client.js'
 import { pull } from './pull.js'
 import { status } from './status.js'
 import { validate } from './validate.js'
+import { UNSAVED_NOTICE, writeDraft } from '../local/draft.js'
 
 let dir: string
 let out: string[]
@@ -471,5 +472,55 @@ describe('validate 경고 좌표', () => {
       message: '등록되지 않은 단어가 있습니다: 회원번호',
       path: 'erdd/tables/MBR.yaml', label: 'MBR.MBR_NO',
     })
+  })
+})
+
+describe('미저장 편집 알림', () => {
+  const ctx = () => ({ cwd: dir, json: true, yes: false, strict: false })
+
+  const seedDraft = () => writeDraft(dir, {
+    formatVersion: 1,
+    baseSignature: 'sig',
+    seq: 3,
+    updatedAt: '2026-09-03T05:25:30.000Z',
+    model: createEmptyModel(),
+  })
+
+  it('status 가 드래프트를 발견하면 --json 에 알린다', async () => {
+    await seedPulled(dir, model())
+    await seedDraft()
+    await status(ctx())
+    expect(JSON.parse(out.join('')).unsavedDraft).toBe(true)
+  })
+
+  it('드래프트가 없으면 알리지 않는다', async () => {
+    await seedPulled(dir, model())
+    await status(ctx())
+    expect(JSON.parse(out.join('')).unsavedDraft).toBe(false)
+  })
+
+  it('사람용 출력에도 같은 문구가 나간다', async () => {
+    await seedPulled(dir, model())
+    await seedDraft()
+    await status({ ...ctx(), json: false })
+    expect(out.join('')).toContain('저장하지 않은 편집')
+  })
+
+  /**
+   * ⚠️ **판정을 바꾸지 않는다**(설계 D3 — validate·push·export 는 파일만 본다).
+   * 미저장 편집이 있어도 종료 코드는 파일 검사 결과 그대로다 — 아니면 커밋 훅·CI 가
+   * 화면 상태에 좌우된다.
+   */
+  it('validate 의 종료 코드는 드래프트와 무관하다', async () => {
+    await seedPulled(dir, model())
+    await seedDraft()
+    expect(await validate(ctx())).toBe(0)
+    const payload = JSON.parse(out.join('')) as { ok: boolean; unsavedDraft: boolean }
+    expect(payload.ok).toBe(true)
+    expect(payload.unsavedDraft).toBe(true)
+  })
+
+  it('세 명령이 같은 문구를 쓴다', () => {
+    expect(UNSAVED_NOTICE).toContain('저장하지 않은 편집')
   })
 })

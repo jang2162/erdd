@@ -5,6 +5,7 @@ import {
 import { readConfig, requireConnection } from '../config.js'
 import { buildPlan, type PushPlan } from '../plan.js'
 import { CliError, emit, note, type CliErrorCode } from '../output.js'
+import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { renderConflicts } from './conflict-report.js'
 import { clientFor, run, type CommandCtx } from './context.js'
 import { reserveIds } from './reserve-ids.js'
@@ -84,6 +85,9 @@ export function push(ctx: PushCtx): Promise<number> {
   return run(ctx, async () => {
     const config = await readConfig(ctx.cwd)
     const connection = requireConnection(config)
+    // 미저장 편집이 **실제로 서버로 새어 나가는 유일한 자리**가 push 다 — 알림만 낸다.
+    // stderr 라 `--json` 봉투를 건드리지 않고, 판정·종료 코드도 그대로다(설계 D3).
+    if (await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
     const client = await clientFor(ctx)
     let retried = false
     // 시도를 가로질러 누적한다. CONFLICT로 다시 계산하면 두 번째 reserveIds는 아무것도 쓸

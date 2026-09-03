@@ -1,4 +1,5 @@
 import { readConfig } from '../config.js'
+import { hasDraft } from '../local/draft.js'
 import { CliError, note } from '../output.js'
 import { run, type CommandCtx } from './context.js'
 
@@ -29,12 +30,14 @@ export function serve(ctx: CommandCtx): Promise<number> {
     note('중지하려면 Ctrl+C')
     if (ctx.open !== false) await openBrowser(server.url)
 
-    // 신호를 받을 때까지 돈다. 종료 전에 대기 중인 쓰기를 flush 한다.
+    // 신호를 받을 때까지 돈다. 종료 전에 대기 중인 **드래프트** 쓰기를 flush 한다.
     await new Promise<void>((resolve) => {
       const stop = () => { void server.close().then(resolve, resolve) }
       process.once('SIGINT', stop)
       process.once('SIGTERM', stop)
     })
+    // 미저장 편집은 드래프트에 남는다 — 잃지 않았다는 것을 알려야 사용자가 안심한다.
+    if (await hasDraft(ctx.cwd)) note('미저장 편집이 있습니다 — 다음 erdd serve 에서 이어집니다')
     return 0
   })
 }
