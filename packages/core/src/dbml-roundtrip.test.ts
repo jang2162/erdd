@@ -158,3 +158,39 @@ describe('DBML 왕복 — 내보낸 것을 다시 읽으면 같은 계획이 나
     expect(dtl.indexes).toEqual([])
   })
 })
+
+/**
+ * DBML 은 `r.sql`(방언 타입)을 그대로 적으므로 **mysql 로 낼 때만** 부호 없음을 나른다
+ * (설계 §4.5 끝·§10.9). 파서는 `[` 앞을 통째로 타입으로 읽어 왕복이 저절로 성립한다.
+ * 다른 방언 DBML 에는 CHECK 를 낼 자리가 없어 부호 없음이 사라진다 — 그 갈래를 함께 못 박는다.
+ */
+describe('DBML 왕복 — 부호 없음', () => {
+  const model = () => {
+    const m = createEmptyModel()
+    m.tables['t'] = {
+      id: 't', logicalName: 'ORD', physicalName: 'ORD', comment: null, groupId: null,
+      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c'] = {
+      id: 'c', tableId: 't', logicalName: 'ORD_NO', physicalName: 'ORD_NO', type: 'INT UNSIGNED',
+      isPk: true, autoIncrement: true, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    return m
+  }
+
+  it('mysql DBML 은 INT UNSIGNED 를 싣고 되읽는다', () => {
+    const dbml = generateDbml(model(), 'mysql')
+    expect(dbml).toContain('INT UNSIGNED')
+    const plan = planDdlImport(createEmptyModel(), parseDbml(dbml), 'mysql', DEFAULT_NAMING_RULES)
+    expect(plan.tables[0]!.columns[0]!.type).toBe('INT UNSIGNED')
+    expect(plan.warnings.filter((w) => w.kind === 'unknown-type')).toEqual([])
+  })
+
+  it('postgresql DBML 에서는 사라진다 — CHECK 를 적을 자리가 없다(범위 밖 §10.9)', () => {
+    const dbml = generateDbml(model(), 'postgresql')
+    expect(dbml).not.toContain('UNSIGNED')
+    const plan = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(plan.tables[0]!.columns[0]!.type).toBe('INT')
+  })
+})

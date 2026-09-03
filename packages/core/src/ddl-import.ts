@@ -9,6 +9,7 @@ export type DdlImportWarning = {
   kind: 'ambiguous-type' | 'unknown-type' | 'unknown-word'
       | 'table-conflict' | 'unresolved-fk' | 'unresolved-index' | 'skipped-statement'
       | 'unknown-custom-field' | 'group-conflict'
+      | 'unsigned-dropped' | 'table-option-conflict'
   target: string
   message: string
 }
@@ -46,7 +47,42 @@ export type DdlImportPlan = {
   skippedTables: string[]
   warnings: DdlImportWarning[]
   groups: DdlImportGroup[]
+  /**
+   * 다수결로 채택한 **프로젝트 수준** 테이블 옵션. 아무 테이블도 옵션을 적지 않았으면 null 이다.
+   *
+   * ⚠️ **적용은 `applyDdlImport` 밖이다.** 프로젝트 설정은 op 로그 밖이라 「Revision 1건 =
+   * undo 1회」 규약이 닿지 않는다 — 모델 변경에 섞으면 되돌리기가 반쪽이 된다(설계 §5.5-3).
+   * 웹은 체크박스 + `project.update`, CLI 는 `erdd.config.yaml` 되쓰기로 **따로** 반영한다.
+   */
+  tableOptions: string | null
   opCountEstimate: number
+}
+
+/**
+ * 꼬리 절에서 **프로젝트 수준으로 올릴 수 있는 것만** 뽑아 한 줄로 정규화한다(설계 §5.5-2).
+ *
+ * ⚠️ **`AUTO_INCREMENT=3` 을 반드시 버려야 한다** — 테이블마다 다른 일회성 카운터인데 프로젝트
+ * 설정으로 올려 모든 테이블에 다시 붙이면 전 테이블의 시작값을 3 으로 바꾼다. `ROW_FORMAT`·
+ * `PARTITION BY`·`DATA DIRECTORY`·`STATS_*` 도 「테이블별이거나 이번 범위 밖」이라 버린다.
+ * **`COMMENT` 는 사유가 다르다** — 이미 테이블 코멘트로 따로 잡히므로 여기 담으면 진실이 둘이 된다.
+ *
+ * ⚠️ **정규화가 없으면 다수결이 깨진다** — 같은 뜻을 `CHARACTER SET` 과 `DEFAULT CHARSET` 으로
+ * 적은 두 테이블이 서로 다른 표에 갈린다. 키는 이 표기로 통일하고 **값의 대소문자는 원문 그대로**
+ * 둔다(`InnoDB`·`utf8mb4`).
+ */
+const TABLE_OPTION_PATTERNS: ReadonlyArray<{ key: string; re: RegExp }> = [
+  { key: 'ENGINE', re: /\bENGINE\s*=?\s*([A-Za-z0-9_]+)/i },
+  { key: 'DEFAULT CHARSET', re: /\b(?:DEFAULT\s+)?(?:CHARSET|CHARACTER\s+SET)\s*=?\s*([A-Za-z0-9_]+)/i },
+  { key: 'COLLATE', re: /\b(?:DEFAULT\s+)?COLLATE\s*=?\s*([A-Za-z0-9_]+)/i },
+]
+
+export function normalizeTableOptions(tail: string): string {
+  const parts: string[] = []
+  for (const { key, re } of TABLE_OPTION_PATTERNS) {
+    const m = re.exec(tail)
+    if (m) parts.push(`${key}=${m[1]!}`)
+  }
+  return parts.join(' ')
 }
 
 /** DBML 파서만 채우는 확장 필드. DDL 경로에서는 undefined 다. */
@@ -247,6 +283,14 @@ export function planDdlImport(
         warnings.push({ kind: 'unknown-type', target, message: `${mapped.raw}를 알지 못해 타입을 그대로 두었습니다` })
       } else {
         type = mapped.canonical
+        // ⚠️ 문구에 **원문과 결과를 함께** 적는다 — 하나만 적으면 `tinyint(1) unsigned` 를
+        // `BOOLEAN` 이라고만 말해 사용자가 자기 입력에서 그 자리를 못 찾는다.
+        if (mapped.unsignedDropped) {
+          warnings.push({
+            kind: 'unsigned-dropped', target,
+            message: `${mapped.canonical}에는 부호 없음을 붙일 수 없어 떨어뜨렸습니다 (원문 ${c.rawType})`,
+          })
+        }
         if (mapped.alternatives.length > 0) {
           warnings.push({
             kind: 'ambiguous-type', target,
@@ -519,6 +563,38 @@ export function planDdlImport(
     })
   }
 
+  // 9) 테이블 옵션 다수결. **살아남은 테이블만 투표한다** — 건너뛴 테이블이 프로젝트 설정을
+  // 흔들면 안 된다.
+  // ⚠️ **빈 꼬리는 투표하지 않는다.** 「옵션 없음」이 표를 던지면 절반이 ENGINE 을 생략한
+  // 덤프에서 최다 득표가 '' 이 되어 **있는 값을 잃는다.**
+  const optionVotes: Array<{ name: string; value: string }> = []
+  for (const t of alive.values()) {
+    if (t.options === undefined) continue
+    const value = normalizeTableOptions(t.options)
+    if (value === '') continue
+    optionVotes.push({ name: t.name, value })
+  }
+  let tableOptions: string | null = null
+  if (optionVotes.length > 0) {
+    const counts = new Map<string, number>()
+    for (const v of optionVotes) counts.set(v.value, (counts.get(v.value) ?? 0) + 1)
+    // **동수면 DDL 에 먼저 나온 것.** 테이블 둘짜리 덤프에서 동수는 흔하다 — 결정적이어야 한다.
+    let best = optionVotes[0]!.value
+    for (const v of optionVotes) {
+      if ((counts.get(v.value) ?? 0) > (counts.get(best) ?? 0)) best = v.value
+    }
+    tableOptions = best
+    for (const v of optionVotes) {
+      if (v.value === best) continue
+      warnings.push({
+        // ⚠️ target 은 **그 테이블의 DDL 원문 이름**이다(3.17 의 관례) — 어느 테이블이 달랐는지를
+        // 못 찍으면 사용자가 원문에서 확인할 방법이 없다.
+        kind: 'table-option-conflict', target: v.name,
+        message: `테이블 옵션이 '${v.value}'이라 채택값 '${best}'과 다릅니다 — 채택값을 씁니다`,
+      })
+    }
+  }
+
   const opCountEstimate =
     tables.length
     + tables.reduce((n, t) => n + t.columns.length + t.indexes.length, 0)
@@ -526,5 +602,5 @@ export function planDdlImport(
     // 기존 그룹에 넣는 경우는 테이블 create op 에 groupId 가 실려 나가므로 새 그룹만 센다.
     + groups.filter((g) => g.existingId === null).length
 
-  return { tables, relationships, skippedTables, warnings, groups, opCountEstimate }
+  return { tables, relationships, skippedTables, warnings, groups, tableOptions, opCountEstimate }
 }

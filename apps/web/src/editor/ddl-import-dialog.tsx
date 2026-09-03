@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   DIALECTS, MAX_OPS_PER_MUTATION, detectDialect, dialectFromDatabaseType, parseDbml, parseDdl,
   planDdlImport, type Dialect, type ParsedDbml,
 } from '@erdd/core'
+import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { applyDdlImport } from './ddl-import-edits.js'
@@ -35,7 +38,19 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
 }) {
   const model = useEditorStore((s) => s.model)
   const namingRules = useEditorStore((s) => s.namingRules)
+  const tableOptions = useEditorStore((s) => s.tableOptions)
+  const canManage = useEditorStore((s) => s.canManage)
   const mutate = useModelMutation(projectId)
+  const trpc = useTRPC()
+  const queryClient = useQueryClient()
+  const updateProject = useMutation(
+    trpc.project.update.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: trpc.project.get.queryKey({ projectId }) })
+      },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
 
   const [text, setText] = useState('')
   const [format, setFormat] = useState<Format>('ddl')
@@ -58,12 +73,35 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
   )
   const overLimit = plan !== null && plan.opCountEstimate > MAX_OPS_PER_MUTATION
 
+  // 테이블 옵션 반영(설계 §5.5-3). **공통 규칙을 CLI 와 같이 쓴다**(3.19 의 정신):
+  //   비어 있다 → 켬 / 같다 → 보일 것이 없다 / 값이 있고 다르다 → 끔.
+  // ⚠️ 「항상 끔」이면 처음 가져오는 사용자가 체크박스를 못 보고 지나쳐 왕복이 안 닫히고,
+  // 「항상 켬」이면 설정해 둔 값을 조용히 덮어쓴다 — 이 저장소에서 가장 비싼 사고 유형이다.
+  const planOption = plan?.tableOptions ?? null
+  const currentOption = tableOptions[dialect]
+  const optionDiffers = planOption !== null && planOption !== currentOption
+  const canApplyOption = canManage && optionDiffers
+  const [applyOption, setApplyOption] = useState(false)
+  // 채택값·방언·현재 값이 바뀌면 기본값을 다시 계산한다. 사용자가 뒤집은 뒤에도 입력이 바뀌면
+  // 다시 기본값으로 돌아간다 — 다른 DDL 은 다른 결정이다.
+  useEffect(() => {
+    setApplyOption(planOption !== null && currentOption.trim() === '')
+  }, [planOption, currentOption])
+
   const onApply = async () => {
     if (plan === null || overLimit) return
     const captured = plan                       // producer 진입 전에 캡처한다(마이크로태스크 지연 대비)
     const summary = format === 'ddl' ? 'DDL 가져오기' : 'DBML 가져오기'
     const r = await mutate((m) => applyDdlImport(m, captured, newId), { summary })
-    if (r === 'applied') { onOpenChange(false); setText('') }
+    if (r !== 'applied') return
+    // ⚠️ **모델 변경 뒤의 두 번째 동작이다** — 프로젝트 설정은 op 로그 밖이라 `applyDdlImport`
+    // 에 섞으면 「Revision 1건 = undo 1회」 규약이 깨진다.
+    if (canApplyOption && applyOption && captured.tableOptions !== null) {
+      await updateProject.mutateAsync({
+        projectId, tableOptions: { ...tableOptions, [dialect]: captured.tableOptions },
+      })
+    }
+    onOpenChange(false); setText('')
   }
 
   const columnCount = plan === null ? 0 : plan.tables.reduce((n, t) => n + t.columns.length, 0)
@@ -132,6 +170,25 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
                   </li>
                 ))}
               </ul>
+            )}
+            {canApplyOption && (
+              <div className="grid gap-1">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox" checked={applyOption}
+                    onChange={(e) => setApplyOption(e.target.checked)}
+                  />
+                  프로젝트의 테이블 옵션도 갱신
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-mono">{dialect}</span> 칸을
+                  {currentOption.trim() === ''
+                    ? ' '
+                    : <> <span className="font-mono">{currentOption}</span> 에서 </>}
+                  <span className="font-mono">{planOption}</span> 로 바꿉니다.
+                  ⚠️ 테이블 생성은 되돌리기로 취소되지만 이 설정은 되돌아가지 않습니다.
+                </p>
+              </div>
             )}
             {overLimit && (
               <p role="alert" className="text-sm text-destructive">

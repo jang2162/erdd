@@ -208,7 +208,8 @@ describe('applyDdlImport — DBML 확장', () => {
       }],
       indexes: [],
     }],
-    relationships: [], skippedTables: [], warnings: [], groups: [], opCountEstimate: 2,
+    relationships: [], skippedTables: [], warnings: [], groups: [],
+    tableOptions: null, opCountEstimate: 2,
     ...over,
   })
 
@@ -236,7 +237,8 @@ describe('applyDdlImport — DBML 확장', () => {
 
   it('새로 만드는 그룹에 계획의 별칭을 꽂는다', () => {
     const plan: DdlImportPlan = {
-      tables: [], relationships: [], skippedTables: [], warnings: [], opCountEstimate: 1,
+      tables: [], relationships: [], skippedTables: [], warnings: [],
+      tableOptions: null, opCountEstimate: 1,
       groups: [{
         name: '회원관리', color: '#4A90D9', comment: null, alias: 'MBR',
         tablePhysicalNames: [], existingId: null,

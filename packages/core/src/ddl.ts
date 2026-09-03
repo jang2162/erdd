@@ -1,6 +1,7 @@
 import type { Column, ProjectModel, Relationship, Table } from './model.js'
 import { resolveColumnType, type Dialect } from './dialect.js'
-import { parseLogicalType } from './logical-type.js'
+import { isUnsignedCapable, parseLogicalType } from './logical-type.js'
+import type { TableOptions } from './table-options.js'
 import { quoteIdentifier } from './identifier.js'
 import { resolveColumn } from './domain-resolve.js'
 import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
@@ -80,6 +81,11 @@ function uniqueConstraintName(base: string, used: Set<string>): string {
   return name
 }
 
+function needsUnsignedCheck(logicalType: string): boolean {
+  const p = parseLogicalType(logicalType)
+  return p.ok && isUnsignedCapable(p.type) && p.type.unsigned
+}
+
 function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string {
   const r = resolveColumn(col, model, dialect)
   const parts = [quoteIdentifier(col.physicalName, dialect), r.sql]
@@ -87,9 +93,17 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string 
   if (auto) parts.push(autoIncrementToken(dialect))
   if (!col.nullable) parts.push('NOT NULL')
   if (!auto && r.defaultValue !== null && r.defaultValue !== '') parts.push(`DEFAULT ${r.defaultValue}`)
+  // CHECK 는 **둘**이 될 수 있다 — 도메인 허용값과 부호 없음.
   if (r.checkValues && r.checkValues.length > 0) {
     const list = r.checkValues.map((v) => `'${esc(v)}'`).join(', ')
     parts.push(`CHECK (${quoteIdentifier(col.physicalName, dialect)} IN (${list}))`)
+  }
+  // mysql 밖에는 부호 없음 타입이 없으므로 「음수가 될 수 없다」를 CHECK 로 나른다(설계 §4.5).
+  // ⚠️ 판정 기준은 **해석된 논리 타입**(`r.logicalType`)이다 — 컬럼 자신의 문자열을 보면
+  // 도메인을 지정한 컬럼이 조용히 빠진다(§3.4 다의 함정). 방언별 물리 타입 오버라이드가
+  // 있어도 낸다 — 오버라이드는 저장 형태, CHECK 는 값이라 서로 배타적이지 않다.
+  if (dialect !== 'mysql' && needsUnsignedCheck(r.logicalType)) {
+    parts.push(`CHECK (${quoteIdentifier(col.physicalName, dialect)} >= 0)`)
   }
   if (dialect === 'mysql') {
     const text = commentText(col.logicalName, col.physicalName, col.comment)
@@ -100,6 +114,7 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string 
 
 function createTableBlock(
   model: ProjectModel, table: Table, dialect: Dialect, rules: NamingRules,
+  tableOptions?: TableOptions,
 ): string {
   const tableName = composeTablePhysicalName(table, model, rules)
   const cols = tableColumns(model, table.id)
@@ -107,6 +122,11 @@ function createTableBlock(
   const pks = cols.filter((c) => c.isPk)
   if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => quoteIdentifier(c.physicalName, dialect)).join(', ')})`)
   let block = `CREATE TABLE ${quoteIdentifier(tableName, dialect)} (\n${lines.join(',\n')}\n)`
+  // ⚠️ **`COMMENT` 앞에 둔다.** 파서의 테이블 코멘트 추출이 꼬리에서 첫 `COMMENT` 키워드를
+  // 찾으므로 옵션이 앞이어야 그 스캔이 그대로 맞는다(설계 §5.4). 빈 문자열이면 한 글자도
+  // 붙이지 않는다 — 옵션을 안 쓰는 프로젝트의 산출물이 달라지면 안 된다.
+  const opts = tableOptions?.[dialect].trim() ?? ''
+  if (opts !== '') block += ` ${opts}`
   if (dialect === 'mysql') {
     // 「논리명==물리명이면 생략」 판정은 **양쪽 다 최종 이름**으로 한다(설계 D5).
     const text = commentText(composeTableLogicalName(table, model, rules), tableName, table.comment)
@@ -234,15 +254,21 @@ function columnCommentStatement(dialect: Dialect, tableName: string, columnName:
   }
 }
 
+/**
+ * ⚠️ `tableOptions` 는 **옵셔널이라 빠뜨려도 조용히 동작한다.** 그래서 호출처 둘(웹
+ * `export-dialog.tsx` · CLI `export.ts`)의 배선을 **각각** 잠그는 테스트가 따로 있다 —
+ * core 테스트만으로는 절대 안 잡힌다(설계 §5.4·§8.2).
+ */
 export function generateDdl(
   model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }, rules: NamingRules,
+  tableOptions?: TableOptions,
 ): string {
   const tables = selectTables(model, scope, rules).filter(
     (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t, rules),
   )
   const selectedIds = new Set(tables.map((t) => t.id))
 
-  const createBlocks = tables.map((table) => createTableBlock(model, table, dialect, rules))
+  const createBlocks = tables.map((table) => createTableBlock(model, table, dialect, rules, tableOptions))
   const fk = fkStatements(model, selectedIds, dialect, rules).join('\n')
   const index = indexStatements(model, selectedIds, dialect, rules).join('\n')
   const comment = dialect === 'mysql' ? '' : commentStatements(model, tables, dialect, rules).join('\n')
@@ -268,7 +294,11 @@ export function ddlWarnings(
   }
   for (const t of inScope) {
     for (const c of tableColumns(model, t.id)) {
-      const { warning } = resolveColumnType(c.type, dialect)
+      // ⚠️ **해석된 컬럼**을 본다 — 예전에는 `resolveColumnType(c.type, …)` 로 컬럼 자신의
+      // 문자열을 봐서 도메인을 지정한 컬럼의 경고가 통째로 빠졌다(설계 §3.4 다).
+      // 방언별 물리 타입 오버라이드가 있으면 `resolveColumn` 이 경고를 내지 않는다 —
+      // 사용자가 고른 물리 타입의 범위를 우리가 알 수 없으므로 그것이 맞다.
+      const { warning } = resolveColumn(c, model, dialect)
       if (warning) out.push(`${composeTablePhysicalName(t, model, rules)}.${c.physicalName}: ${warning}`)
     }
   }

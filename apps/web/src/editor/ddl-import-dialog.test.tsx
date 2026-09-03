@@ -194,3 +194,93 @@ describe('DdlImportDialog — DBML 형식', () => {
     expect(await screen.findByText(/그룹 1개/)).toBeInTheDocument()
   })
 })
+
+/**
+ * 가져오기가 프로젝트의 테이블 옵션도 갱신할지(설계 §5.5-3·§9 ⑥).
+ *
+ * ⚠️ **모델 변경과 갈린다** — 모델은 undo 되지만 프로젝트 설정은 op 로그 밖이라 되돌아가지
+ * 않는다. 그래서 `model.mutate` **뒤에** `project.update` 를 따로 부르고, 그 사실을 문구로 알린다.
+ */
+describe('DdlImportDialog — 테이블 옵션', () => {
+  const OPT_DDL = 'CREATE TABLE ORD (ORD_NO bigint NOT NULL, PRIMARY KEY (ORD_NO))'
+    + ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'
+  const box = () => screen.getByRole('checkbox', { name: /프로젝트의 테이블 옵션/ })
+
+  const setup = async (over: {
+    mysql?: string; canManage?: boolean
+  } = {}) => {
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission({ canEdit: true, canManage: over.canManage ?? true })
+    useEditorStore.setState({
+      tableOptions: { postgresql: '', mysql: over.mysql ?? '', oracle: '', mssql: '' },
+    })
+    renderDialog()
+    await userEvent.selectOptions(screen.getByLabelText('방언'), 'mysql')
+    await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await userEvent.paste(OPT_DDL)
+    await screen.findByText(/테이블 1개/)
+  }
+
+  it('채택값이 있으면 체크박스와 채택값을 보여 준다', async () => {
+    await setup()
+    expect(box()).toBeInTheDocument()
+    // 체크박스 옆 설명이 채택값을 그대로 보여 준다(원문 textarea 와 구분해 라벨 안에서 찾는다).
+    expect(box().closest('div')!.textContent).toContain('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+  })
+
+  it('현재 값이 비었으면 기본 켬', async () => {
+    await setup({ mysql: '' })
+    expect(box()).toBeChecked()
+  })
+
+  it('⚠️ 값이 있고 다르면 기본 끔 — 조용한 덮어쓰기가 이 저장소에서 가장 비싼 사고다', async () => {
+    await setup({ mysql: 'ENGINE=MyISAM' })
+    expect(box()).not.toBeChecked()
+  })
+
+  it('canManage 가 아니면 체크박스를 렌더하지 않는다 — 설정 변경은 manage 다', async () => {
+    await setup({ canManage: false })
+    expect(screen.queryByRole('checkbox', { name: /프로젝트의 테이블 옵션/ })).toBeNull()
+  })
+
+  it('채택할 옵션이 없으면 체크박스가 없다', async () => {
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderDialog()
+    await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
+    await userEvent.paste(DDL)
+    await screen.findByText(/테이블 1개/)
+    expect(screen.queryByRole('checkbox', { name: /프로젝트의 테이블 옵션/ })).toBeNull()
+  })
+
+  it('켠 채로 적용하면 model.mutate 뒤에 project.update 를 부른다', async () => {
+    const calls: string[] = []
+    mockTrpcFetch({
+      'model.mutate': () => { calls.push('model.mutate'); return { data: { seq: 2, ops: [] } } },
+      'project.update': (input) => {
+        calls.push('project.update')
+        expect(input).toMatchObject({
+          tableOptions: {
+            postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', oracle: '', mssql: '',
+          },
+        })
+        return { data: { ok: true } }
+      },
+    })
+    await setup({ mysql: '' })
+    await userEvent.click(screen.getByRole('button', { name: /테이블 만들기/ }))
+    await waitFor(() => expect(calls).toEqual(['model.mutate', 'project.update']))
+  })
+
+  it('끈 채로 적용하면 project.update 를 부르지 않는다', async () => {
+    const calls: string[] = []
+    mockTrpcFetch({
+      'model.mutate': () => { calls.push('model.mutate'); return { data: { seq: 2, ops: [] } } },
+      'project.update': () => { calls.push('project.update'); return { data: { ok: true } } },
+    })
+    await setup({ mysql: '' })
+    await userEvent.click(box())
+    await userEvent.click(screen.getByRole('button', { name: /테이블 만들기/ }))
+    await waitFor(() => expect(calls).toEqual(['model.mutate']))
+  })
+})

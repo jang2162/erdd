@@ -123,6 +123,12 @@ erdd validate                        # 반영 뒤 항상 검사한다
   `dialects[0]` 순이다. 무엇을 왜 골랐는지 출력 첫 줄과 `--json`의 `dialectSource`에 나온다.
 - `unknown-type`·`unknown-word` 같은 경고는 `warnings`에 실려 온다 — 무시하지 말고 사전
   (`words.yaml`·`terms.yaml`)이나 타입을 정리한다.
+- **테이블 옵션**(`ENGINE`·`DEFAULT CHARSET`·`COLLATE`)은 다수결로 하나를 골라
+  `erdd.config.yaml`의 `tableOptions`에 반영한다 — 그 방언 칸이 **비어 있을 때만** 쓴다. 채택값과
+  반영 여부는 `--json`의 `tableOptions`·`tableOptionsApplied`에 나온다. 연결된 프로젝트에서는
+  서버에 올라가지 않고 다음 `pull`이 덮어쓴다.
+- **부호 없음**(`int unsigned`)은 논리 타입 `INT UNSIGNED`로 들어온다. 정수 3종
+  (`SMALLINT`·`INT`·`BIGINT`) 밖에 붙으면 떨어뜨리고 `unsigned-dropped` 경고를 낸다.
 
 ## 물리명 짓는 법
 
@@ -138,6 +144,10 @@ erdd validate                        # 반영 뒤 항상 검사한다
 
 - 컬럼 타입은 가능하면 `domain`(도메인 이름)으로 지정한다. 방언별 타입·기본값·허용값이 함께 따라온다
 - `type`은 도메인이 있어도 함께 적는다(모델이 둘 다 들고 있다). 실효 타입은 도메인이 우선한다
+- 정수에는 부호 없음 접미를 쓸 수 있다 — `SMALLINT UNSIGNED`·`INT UNSIGNED`·`BIGINT UNSIGNED`
+  셋뿐이다(대문자, 공백 하나). MySQL DDL 은 접미 그대로, 나머지 방언은 `CHECK (컬럼 >= 0)`로 나간다.
+  `int(11)`·`tinyint unsigned` 같은 **방언 원문을 `type`에 쓰지 마라** — 가져오기가 논리 타입으로
+  바꿔 주지만 직접 적으면 미지 타입이 된다
 - `custom-fields.yaml`에 `required: true`인 항목이 있으면 대상 테이블·컬럼의 `custom`에 값을 반드시 채운다
 
 ## 하지 말 것

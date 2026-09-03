@@ -1,4 +1,7 @@
-import { modelToFiles, type Dialect, type FileIssue, type NamingRules, type ProjectModel } from '@erdd/core'
+import {
+  DEFAULT_TABLE_OPTIONS, modelToFiles,
+  type Dialect, type FileIssue, type NamingRules, type ProjectModel, type TableOptions,
+} from '@erdd/core'
 import type { ApiClient } from '../client.js'
 import { writeBase, writeConfig, writeSync, type Connection } from '../config.js'
 import { writeTree } from '../tree.js'
@@ -16,7 +19,9 @@ export type SyncDownResult = {
 export async function syncDown(
   cwd: string, connection: Connection, client: ApiClient,
 ): Promise<SyncDownResult> {
-  const project = await client.query<{ name: string; dialects: Dialect[]; namingRules: NamingRules }>(
+  const project = await client.query<{
+    name: string; dialects: Dialect[]; namingRules: NamingRules; tableOptions?: TableOptions
+  }>(
     'project.get', { projectId: connection.projectId },
   )
   const { model, seq } = await client.query<{ model: ProjectModel; seq: number }>(
@@ -33,7 +38,12 @@ export async function syncDown(
   await writeBase(cwd, tree)
   await writeSync(cwd, { revisionSeq: seq, pulledAt: new Date().toISOString() })
   // 서버가 진실 원천이다 — 방언·명명 규칙을 매번 갱신한다.
-  await writeConfig(cwd, { ...connection, dialects: project.dialects, namingRules: project.namingRules })
+  // ⚠️ 서버 값으로 config 를 통째로 덮어쓴다 — 연결된 프로젝트에서 config 의 테이블 옵션은
+  // 서버의 거울이다(`namingRules` 가 이미 갖고 있는 성질).
+  await writeConfig(cwd, {
+    ...connection, dialects: project.dialects, namingRules: project.namingRules,
+    tableOptions: project.tableOptions ?? { ...DEFAULT_TABLE_OPTIONS },
+  })
 
   return { projectName: project.name, seq, model, written, deleted, issues }
 }

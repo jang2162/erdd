@@ -11,6 +11,7 @@ export const TEST_CONFIG = {
     case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
     tablePhysicalTemplate: '', tableLogicalTemplate: '',
   } as const,
+  tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' } as const,
 }
 
 /** 서버 모델을 pull한 직후 상태(트리 + base)를 만든다. */

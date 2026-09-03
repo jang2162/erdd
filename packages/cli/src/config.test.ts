@@ -20,6 +20,7 @@ const CONFIG: ErddConfig = {
     case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
     tablePhysicalTemplate: '', tableLogicalTemplate: '',
   },
+  tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
 }
 
 describe('config', () => {
@@ -66,6 +67,49 @@ describe('config', () => {
     ].join('\n')
     await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
     expect((await readConfig(dir)).namingRules.tablePhysicalTemplate).toBe('')
+  })
+
+  // 테이블 옵션도 같은 정책이다 — 방언별 자유 문자열이라 「잘못 적은 값」이 없고, 필수로
+  // 요구하면 옛 사용자의 pull 이 깨진다. **누락만** 기본값으로 채운다(설계 §5.2-2).
+  it('tableOptions 가 없는 옛 config 에 기본값을 채운다', async () => {
+    const yaml = [
+      'serverUrl: https://erdd.example.com',
+      'projectId: 018f6b0e-0000-7000-8000-000000000000',
+      'dialects:',
+      '  - postgresql',
+      'namingRules:',
+      '  case: UPPER_SNAKE',
+      '  separator: "_"',
+      '  logicalSeparator: "_"',
+      '  maxLengthBytes: 30',
+    ].join('\n')
+    await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
+    expect((await readConfig(dir)).tableOptions).toEqual({
+      postgresql: '', mysql: '', oracle: '', mssql: '',
+    })
+  })
+
+  it('한 방언만 적힌 tableOptions 는 나머지를 빈 문자열로 채운다', async () => {
+    const yaml = [
+      'dialects:', '  - mysql',
+      'namingRules: {case: UPPER_SNAKE, separator: "_", maxLengthBytes: 30}',
+      'tableOptions:',
+      '  mysql: ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+    ].join('\n')
+    await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
+    expect((await readConfig(dir)).tableOptions).toEqual({
+      postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', oracle: '', mssql: '',
+    })
+  })
+
+  it('적어 둔 테이블 옵션은 그대로 읽는다', async () => {
+    await writeConfig(dir, {
+      ...CONFIG,
+      tableOptions: { postgresql: '', mysql: 'ENGINE=InnoDB', oracle: 'TABLESPACE users', mssql: '' },
+    })
+    expect((await readConfig(dir)).tableOptions).toEqual({
+      postgresql: '', mysql: 'ENGINE=InnoDB', oracle: 'TABLESPACE users', mssql: '',
+    })
   })
 
   it('적어 둔 템플릿은 그대로 읽는다', async () => {
@@ -252,6 +296,7 @@ describe('연결 설정이 없는 config', () => {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
         tablePhysicalTemplate: '', tableLogicalTemplate: '',
       },
+      tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
     })).toThrow(/erdd init/)
   })
 
@@ -262,6 +307,7 @@ describe('연결 설정이 없는 config', () => {
         case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
         tablePhysicalTemplate: '', tableLogicalTemplate: '',
       },
+      tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
     })).toEqual({ serverUrl: 'https://e.example.com', projectId: 'p1' })
   })
 

@@ -152,7 +152,7 @@ $ erdd init --local
 
 | 파일 | 내용 |
 |---|---|
-| `erdd.config.yaml` | 방언·명명 규칙. `serverUrl`·`projectId` 는 `null` 이다 |
+| `erdd.config.yaml` | 방언·명명 규칙·테이블 옵션. `serverUrl`·`projectId` 는 `null` 이다 |
 | `.gitignore` | `.erdd/` 한 줄이 추가된다(이미 있으면 건드리지 않는다) |
 
 ```yaml
@@ -167,6 +167,11 @@ namingRules:
   maxLengthBytes: 30
   tablePhysicalTemplate: ""
   tableLogicalTemplate: ""
+tableOptions:
+  postgresql: ""
+  mysql: ""
+  oracle: ""
+  mssql: ""
 ```
 
 토큰도, 서버 왕복도, `erdd/` 디렉터리도 이 시점에는 없다(→ [3.3](#33-첫-편집이-erdd-를-만든다)).
@@ -313,6 +318,7 @@ erdd/
 |---|---|
 | 프로젝트 이름 | **「로컬 프로젝트」로 고정.** 바꿀 수 없다 — `erdd.config.yaml` 에 이름을 담을 자리가 없다 |
 | 명명 규칙 | **여기서 고친다.** 저장하면 `erdd.config.yaml` 에 되쓰인다 |
+| 테이블 옵션 | **여기서 고친다.** 방언 4칸이 그대로 보이고, 저장하면 `erdd.config.yaml` 의 `tableOptions` 에 되쓰인다. 서버 모드와 화면·동작이 같다 |
 | 방언(`dialects`) | 화면에 편집 자리가 없다(서버 모드도 같다 — 프로젝트를 만들 때 정하는 값이다). `erdd.config.yaml` 의 `dialects` 를 직접 고치면 파일 감시가 반영한다 |
 | 프로젝트 멤버 | 없다 |
 
@@ -358,7 +364,7 @@ git checkout feature/orders      # 브랜치의 스키마로 화면이 갈아탄
 ### 5.1 무엇이 어디에 있나
 
 ```
-erdd.config.yaml            # 방언·명명 규칙 (serverUrl·projectId 는 null)   ← 커밋한다
+erdd.config.yaml            # 방언·명명 규칙·테이블 옵션 (serverUrl·projectId 는 null)  ← 커밋한다
 erdd/                                                                        ← 커밋한다
 ├─ tables/*.yaml            # 테이블 1개 = 파일 1개, 파일명 = 물리명
 ├─ groups.yaml              # 테이블 그룹
@@ -382,7 +388,7 @@ git commit -m "스키마: 회원 등급 컬럼 추가"
 ```
 
 - **`.erdd/` 는 커밋하지 않는다.** `init --local` 이 `.gitignore` 에 한 줄을 넣어 둔다.
-- **`erdd.config.yaml` 을 함께 커밋한다.** 팀원이 클론해 `erdd serve` 만 하면 같은 방언·명명 규칙으로
+- **`erdd.config.yaml` 을 함께 커밋한다.** 팀원이 클론해 `erdd serve` 만 하면 같은 방언·명명 규칙·테이블 옵션으로
   같은 그림을 본다 — `init` 을 다시 돌릴 필요가 없다.
 - 이 커밋이 로컬 모드의 **이력 전부**다. 되돌리기는 `git revert`, 비교는 `git diff` 다.
 
