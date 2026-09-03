@@ -451,6 +451,32 @@ describe('로컬 저장 라우트', () => {
     expect((await rawPost(`${s.url}${LOCAL_SAVE_PATH}`, 'evil.example.com')).status).toBe(403)
   }, 10_000)
 
+  /**
+   * 🔥 **Host 검사만으로는 CSRF 를 막지 못한다.** 그것이 막는 것은 DNS 리바인딩(Host 가 공격자
+   * 도메인)뿐이고, 공격자 페이지가 `127.0.0.1:<포트>` 로 **직접** 보내는 요청의 Host 는 우리 것이라
+   * 통과한다. 그리고 이 라우트들은 본문도 content-type 도 없어 **simple request** 라 preflight 가
+   * 아예 없다 — 남의 페이지 한 줄로 미저장 편집이 통째로 버려진다.
+   * (실측으로 확인한 뒤 막은 구멍이다. Origin 검사를 지우면 이 셋이 빨개진다.)
+   */
+  for (const path of [LOCAL_SAVE_PATH, LOCAL_DISCARD_PATH, LOCAL_KEEP_PATH]) {
+    it(`낯선 Origin 의 POST ${path} 는 403 이다`, async () => {
+      const s = await start(await project())
+      const res = await fetch(`${s.url}${path}`, {
+        method: 'POST', headers: { Origin: 'https://evil.example.com' },
+      })
+      expect(res.status).toBe(403)
+    }, 10_000)
+  }
+
+  /** 대조군 — 우리 페이지가 보내는 Origin 은 그대로 통과해야 한다(과하게 조이지 않았다). */
+  it('자기 Origin 의 POST 는 통과한다', async () => {
+    const s = await start(await project())
+    const res = await fetch(`${s.url}${LOCAL_SAVE_PATH}`, {
+      method: 'POST', headers: { Origin: s.url },
+    })
+    expect(res.status).toBe(200)
+  }, 10_000)
+
   it('접속하자마자 현재 status 를 한 번 받는다', async () => {
     const cwd = await project()
     const s = await start(cwd)

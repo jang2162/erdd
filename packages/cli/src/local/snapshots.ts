@@ -41,8 +41,17 @@ export type SnapshotMeta = Omit<SnapshotRecord, 'model'>
  * 시각 접두도 붙이지 않는다 — uuidv7 은 앞 48비트가 밀리초 타임스탬프라 **사전순 = 시간순**이다.
  * 사람이 읽을 이름은 파일명이 아니라 `index.yaml` 이 맡는다.
  */
-const fileOf = (id: string) => join(SNAPSHOTS_DIR, `${id}.json.gz`)
+const ID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const FILE_RE = /^([0-9a-fA-F-]{36})\.json\.gz$/
+
+/**
+ * ⚠️ **id 가 곧 파일 경로가 되므로 형식을 반드시 검사한다.** 라우터 입력은 `z.string()` 이고
+ * (서버 라우터와 같은 타입이어야 해서 좁힐 수 없다) 이행 경로는 옛 파일의 값을 그대로 쓴다 —
+ * `../../` 가 섞이면 `rm` 이 프로젝트 **밖** 파일을 지우고, `readSnapshot` 은 「없음(null) vs
+ * 손상(throw)」으로 갈려 임의 경로의 **존재 여부 오라클**이 된다.
+ */
+const fileOf = (id: string): string | null =>
+  (ID_RE.test(id) ? join(SNAPSHOTS_DIR, `${id}.json.gz`) : null)
 
 /** 디렉터리에 실제로 있는 스냅샷 id. **이것이 진실이다.** */
 async function idsOnDisk(cwd: string): Promise<string[]> {
@@ -127,9 +136,11 @@ export async function listSnapshots(cwd: string): Promise<SnapshotMeta[]> {
  * `.default({})` 라 누락 컬렉션 보충이 파싱 안에서 일어난다(옛 스냅샷을 여는 데 필요하다).
  */
 export async function readSnapshot(cwd: string, id: string): Promise<SnapshotRecord | null> {
+  const rel = fileOf(id)
+  if (rel === null) return null
   let raw: Buffer
   try {
-    raw = await readFile(join(cwd, fileOf(id)))
+    raw = await readFile(join(cwd, rel))
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw err
@@ -162,9 +173,11 @@ export async function readSnapshot(cwd: string, id: string): Promise<SnapshotRec
  * 다시 쓰지 않는 파일이라 기댈 자리도 없다.
  */
 export async function writeSnapshot(cwd: string, rec: SnapshotRecord): Promise<void> {
+  const rel = fileOf(rec.id)
+  if (rel === null) throw new Error(`스냅샷 id 형식이 올바르지 않습니다: ${rec.id}`)
   return updateSnapshots(cwd, async () => {
     await mkdir(join(cwd, SNAPSHOTS_DIR), { recursive: true })
-    await writeFile(join(cwd, fileOf(rec.id)), gzipSync(Buffer.from(JSON.stringify(rec), 'utf8')))
+    await writeFile(join(cwd, rel), gzipSync(Buffer.from(JSON.stringify(rec), 'utf8')))
     const { model: _model, ...meta } = rec
     const rest = (await listSnapshots(cwd)).filter((m) => m.id !== rec.id)
     await writeIndex(cwd, [...rest, meta].sort((a, b) => (a.id < b.id ? -1 : 1)))
@@ -173,10 +186,12 @@ export async function writeSnapshot(cwd: string, rec: SnapshotRecord): Promise<v
 
 /** 없던 것은 `false`. 파일을 먼저 지우고 인덱스를 정리한다. */
 export async function deleteSnapshot(cwd: string, id: string): Promise<boolean> {
+  const rel = fileOf(id)
+  if (rel === null) return false
   let removed = false
   await updateSnapshots(cwd, async () => {
     try {
-      await rm(join(cwd, fileOf(id)))
+      await rm(join(cwd, rel))
       removed = true
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err

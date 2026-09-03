@@ -164,6 +164,25 @@ describe('snapshots', () => {
     expect(await deleteSnapshot(cwd, ID_A)).toBe(false)
   })
 
+  /**
+   * 🔥 **id 가 곧 파일 경로가 된다.** 라우터 입력은 `z.string()`(서버 라우터와 같은 타입이어야
+   * 해서 좁힐 수 없다) 이고 이행 경로는 옛 파일의 값을 그대로 넘긴다 — 형식 검사가 없으면
+   * `rm` 이 프로젝트 **밖** 파일을 지우고, 읽기는 「없음 vs 손상」으로 갈려 존재 오라클이 된다.
+   */
+  it('경로가 섞인 id 는 어떤 파일도 건드리지 않는다', async () => {
+    const cwd = await dir()
+    const outside = join(cwd, 'victim.json.gz')
+    await writeFile(outside, gzipSync(Buffer.from('{}', 'utf8')))
+
+    const evil = '../../victim'
+    expect(await deleteSnapshot(cwd, evil)).toBe(false)
+    expect(await readSnapshot(cwd, evil)).toBeNull()
+    // 밖의 파일이 그대로 있어야 한다 — 이것이 요점이다.
+    await expect(stat(outside)).resolves.toBeDefined()
+
+    await expect(writeSnapshot(cwd, rec(evil, '악성'))).rejects.toThrow()
+  })
+
   it('스냅샷이 하나도 없으면 빈 목록이다', async () => {
     expect(await listSnapshots(await dir())).toEqual([])
   })

@@ -111,6 +111,26 @@ export async function startLocalServer(opts: {
       void reply.code(403).send({ error: '허용되지 않은 Host 헤더입니다' })
       return
     }
+    // ── Origin 검사: CSRF 차단 ──
+    // ⚠️ **Host 검사만으로는 부족하다.** 그것이 막는 것은 DNS 리바인딩(Host 가 공격자 도메인)
+    // 뿐이고, 공격자 페이지가 `127.0.0.1:<포트>` 로 **직접** 보내는 요청의 Host 는 우리 것이라
+    // 그대로 통과한다. tRPC 는 `application/json` 을 요구해 preflight 장벽이 서지만,
+    // `/local/*` 는 본문도 content-type 도 없어 **simple request** 로 도달한다 — 남의 페이지
+    // 한 줄(`fetch(…, {mode:'no-cors'})` 이나 `<form enctype="text/plain">`)로 미저장 편집이
+    // 통째로 버려질 수 있다(실측: `Origin: https://evil…` 의 POST /local/discard → 200).
+    //
+    // 브라우저는 GET·HEAD 가 아닌 요청에 **언제나** `Origin` 을 붙이므로(동일 출처 포함) 그것이
+    // 우리 것이 아니면 끊는다. `Origin` 이 없는 요청(curl·서버 간 호출)은 브라우저發이 아니므로
+    // CSRF 가 성립하지 않는다 — 여기서 막지 않는다.
+    const origin = req.headers.origin
+    if (origin !== undefined) {
+      let originHost: string | null = null
+      try { originHost = new URL(origin).host.toLowerCase() } catch { originHost = null }
+      if (originHost === null || !allowedHosts.has(originHost)) {
+        void reply.code(403).send({ error: '허용되지 않은 Origin 입니다' })
+        return
+      }
+    }
     done()
   })
 
