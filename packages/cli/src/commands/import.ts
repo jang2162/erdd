@@ -6,7 +6,7 @@ import {
   parseDbml, parseDdl, planDdlImport,
   type DdlImportPlan, type Dialect, type ParsedDbml, type ParsedDdl,
 } from '@erdd/core'
-import { readConfig, type ErddConfig } from '../config.js'
+import { readConfig, writeConfig, type ErddConfig } from '../config.js'
 import { CliError, emit, note } from '../output.js'
 import { readTree, writeTree } from '../tree.js'
 import { run, type CommandCtx } from './context.js'
@@ -130,6 +130,27 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
     const { dialect, source: dialectSource } = resolveDialect(ctx.dialect, format, text, parsed, config)
     const plan = planDdlImport(result.model, parsed, dialect, config.namingRules)
     const summary = planSummary(plan)
+
+    // 테이블 옵션 반영 판정(설계 §5.5-3). **공통 규칙을 웹과 CLI 가 같이 쓴다**(3.19 의 정신):
+    //   비어 있다 → 반영 / 채택값과 같다 → 아무 일도 없음 / 값이 있고 다르다 → 반영하지 않고 알림.
+    // ⚠️ 조용히 정하지 않는다 — 무엇을 했는지 사람용 출력과 --json 에 함께 싣는다
+    // (`dialectSource` 를 싣는 것과 같은 정신).
+    const currentOption = config.tableOptions[dialect]
+    const tableOptionsApplied = plan.tableOptions !== null && currentOption.trim() === ''
+    const tableOptionsConflict = plan.tableOptions !== null
+      && currentOption.trim() !== '' && currentOption !== plan.tableOptions
+    const optionLines = tableOptionsApplied
+      ? [
+          `테이블 옵션 '${plan.tableOptions!}'을 erdd.config.yaml 의 ${dialect} 칸에 반영합니다`,
+          // ⚠️ 이 한 줄이 없으면 사용자는 서버에도 들어간 줄 안다.
+          ...(config.projectId !== null
+            ? ['  (서버 프로젝트 설정에는 반영되지 않습니다 — 다음 erdd pull 이 이 값을 덮어씁니다)']
+            : []),
+        ]
+      : tableOptionsConflict
+        ? [`테이블 옵션 '${plan.tableOptions!}'은 erdd.config.yaml 의 ${dialect} 칸`
+            + `('${currentOption}')과 달라 반영하지 않았습니다 — 바꾸려면 그 파일을 직접 고치세요`]
+        : []
     const warningLines = plan.warnings.map((w) => `  [${w.kind}] ${w.target}: ${w.message}`)
     const humanHead = [
       `${format} · 방언 ${dialect}(${dialectSource}) · 추가 ${summary.added}개 테이블`
@@ -139,6 +160,7 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
         ? [`이미 있는 이름이라 건너뛴 테이블 ${plan.skippedTables.length}개: ${plan.skippedTables.join(', ')}`]
         : []),
       ...(plan.warnings.length > 0 ? [`경고 ${plan.warnings.length}건`, ...warningLines] : []),
+      ...optionLines,
     ]
     const payload = {
       ok: true,
@@ -146,12 +168,16 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
       ...summary,
       skipped: plan.skippedTables,
       warnings: plan.warnings,
+      tableOptions: plan.tableOptions,
+      tableOptionsApplied,
       written: [] as string[],
       deleted: [] as string[],
     }
 
     if (ctx.dryRun) {
-      emit(ctx.json, [...humanHead, '--dry-run이라 파일을 쓰지 않았습니다'].join('\n'), payload)
+      emit(ctx.json, [...humanHead, '--dry-run이라 파일을 쓰지 않았습니다'].join('\n'), {
+        ...payload, tableOptionsApplied: false,
+      })
       return 0
     }
 
@@ -165,6 +191,15 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
       if (!await ctx.confirm('로컬 파일에 반영할까요?')) {
         throw new CliError('CANCELLED', '사용자가 취소했습니다')
       }
+    }
+
+    // ⚠️ **설정 반영은 `applyDdlImport` 밖의 두 번째 동작이다** — 프로젝트 설정은 op 로그 밖이라
+    // 「Revision 1건 = undo 1회」 규약이 닿지 않는다(설계 §5.5-3).
+    if (tableOptionsApplied) {
+      await writeConfig(ctx.cwd, {
+        ...config,
+        tableOptions: { ...config.tableOptions, [dialect]: plan.tableOptions! },
+      })
     }
 
     const next = applyDdlImport(result.model, plan, uuidv7)

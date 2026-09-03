@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createEmptyModel, type ProjectModel } from '@erdd/core'
-import { readBase, writeConfig } from '../config.js'
+import { readBase, readConfig, writeConfig } from '../config.js'
 import { seedPulled, TEST_CONFIG } from '../testing/harness.js'
 import { readTree, writeTree } from '../tree.js'
 import { importCommand } from './import.js'
@@ -266,5 +266,87 @@ Table "PRD" {
       cwd: dir, json: false, ...yes, file: await ddlFile(), dialect: 'oracle', dryRun: true,
     })
     expect(out.join('')).toContain('--dialect')
+  })
+})
+
+/**
+ * 가져오기의 테이블 옵션 반영(설계 §5.5-3). `erdd import` 는 **이미 로컬 파일을 쓰는 명령**이고
+ * 확인 프롬프트도 있으므로 같은 승인 아래 `erdd.config.yaml` 도 쓴다.
+ *
+ * ⚠️ **「안 쓴다」쪽 두 건이 없으면 「항상 덮어쓴다」로 바꿔도 초록이다.** 세 갈래를 각각 잠근다.
+ */
+describe('import — 테이블 옵션 반영', () => {
+  const OPT_DDL = 'CREATE TABLE ORD (ORD_NO bigint NOT NULL, PRIMARY KEY (ORD_NO))'
+    + ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'
+
+  const writeCfg = (mysql: string, connected = true) => writeConfig(dir, {
+    ...TEST_CONFIG,
+    serverUrl: connected ? TEST_CONFIG.serverUrl : null,
+    projectId: connected ? TEST_CONFIG.projectId : null,
+    dialects: ['mysql'], namingRules: { ...TEST_CONFIG.namingRules },
+    tableOptions: { postgresql: '', mysql, oracle: '', mssql: '' },
+  })
+  const cfgMysql = async () =>
+    ((await readConfig(dir)).tableOptions).mysql
+  const json = () => JSON.parse(out.join('')) as {
+    tableOptions: string | null; tableOptionsApplied: boolean
+  }
+
+  it('비어 있으면 반영한다', async () => {
+    await writeCfg('', false)
+    await seedPulled(dir, createEmptyModel())
+    expect(await importCommand({ cwd: dir, ...yes, json: true, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(await cfgMysql()).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+    expect(json()).toMatchObject({
+      tableOptions: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', tableOptionsApplied: true,
+    })
+  })
+
+  it('같으면 아무 일도 없다', async () => {
+    await writeCfg('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', false)
+    await seedPulled(dir, createEmptyModel())
+    expect(await importCommand({ cwd: dir, ...yes, json: true, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(await cfgMysql()).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+    expect(json().tableOptionsApplied).toBe(false)
+  })
+
+  it('⚠️ 값이 있고 다르면 반영하지 않고 알린다 — 설정한 값을 조용히 덮어쓰지 않는다', async () => {
+    await writeCfg('ENGINE=MyISAM', false)
+    await seedPulled(dir, createEmptyModel())
+    expect(await importCommand({ cwd: dir, ...yes, json: false, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(await cfgMysql()).toBe('ENGINE=MyISAM')
+    expect(out.join('')).toContain('erdd.config.yaml')
+    expect(out.join('')).toContain('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+  })
+
+  it('⚠️ 연결된 프로젝트에서는 서버에 안 올라가고 다음 pull 이 덮어쓴다는 것을 함께 출력한다', async () => {
+    await writeCfg('', true)
+    await seedPulled(dir, createEmptyModel())
+    expect(await importCommand({ cwd: dir, ...yes, json: false, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(out.join('')).toContain('pull')
+  })
+
+  it('로컬 전용 프로젝트에는 그 주의 문구가 없다', async () => {
+    await writeCfg('', false)
+    await seedPulled(dir, createEmptyModel())
+    expect(await importCommand({ cwd: dir, ...yes, json: false, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(out.join('')).not.toContain('pull')
+  })
+
+  it('--dry-run 은 config 를 쓰지 않는다', async () => {
+    await writeCfg('', false)
+    await seedPulled(dir, createEmptyModel())
+    expect(await importCommand({
+      cwd: dir, ...yes, json: true, dryRun: true, file: await ddlFile('m.sql', OPT_DDL),
+    })).toBe(0)
+    expect(await cfgMysql()).toBe('')
+  })
+
+  it('채택할 옵션이 없으면 config 를 건드리지 않는다', async () => {
+    await writeCfg('ENGINE=MyISAM', false)
+    await seedPulled(dir, createEmptyModel())
+    expect(await importCommand({ cwd: dir, ...yes, json: true, dryRun: false, file: await ddlFile('m.sql', DDL) })).toBe(0)
+    expect(await cfgMysql()).toBe('ENGINE=MyISAM')
+    expect(json()).toMatchObject({ tableOptions: null, tableOptionsApplied: false })
   })
 })

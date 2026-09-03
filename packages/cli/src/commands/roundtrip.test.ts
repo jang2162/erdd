@@ -187,17 +187,18 @@ describe('erdd export → erdd import 왕복', () => {
   })
 
   /**
-   * ⚠️ **이 테스트는 「고쳐진 동작」이 아니라 「현재 유실된다」를 단언한다 — 피드백 1·2번이고
-   * 별도 설계 사이클에서 다룬다.**
+   * 피드백 1·2번을 닫은 자리다. **예전에는 이 테스트가 「현재 유실된다」를 단언하고 있었다** —
+   * 부호 없음이 담길 자리가 없고 테이블 옵션도 모델에 자리가 없어 둘 다 경고 한 줄 없이
+   * 사라졌다. 2026-09-03 사이클이 단언을 뒤집었다(유실 → 보존).
    *
-   * 컬럼 타입은 방언 중립 논리 타입 17종이라 `INT UNSIGNED`의 부호 없음이 담길 자리가 없고,
-   * 테이블 옵션(`ENGINE`·`DEFAULT CHARSET`)도 모델에 자리가 없다. 둘 다 **경고 한 줄 없이**
-   * 조용히 사라진다(실측: `planDdlImport`의 warnings 에 unknown-type·ambiguous-type 도 없다).
+   * ⚠️ **이 왕복이 닫히려면 `erdd import` 가 `erdd.config.yaml` 에 테이블 옵션을 써야 한다**
+   * (설계 §5.5). 그 반영을 없애면 여기의 ENGINE·CHARSET 단언이 곧바로 빨개진다 — 둘은 한 몸이다.
    *
-   * 나중에 그것을 고치면 **이 테스트가 빨개져서** 사람을 이 자리로 데려온다. 그때 단언을
-   * 뒤집어라(유실 → 보존).
+   * ⚠️ **경고 집합은 그대로 `{'unknown-word'}` 다.** 테이블이 하나라 다수결 충돌이 없고, 부호
+   * 없음은 이제 정상 해석이라 경고를 내지 않는다. **이 단언을 지우지 마라** — 새 경고가
+   * 조용히 늘면 여기서 걸린다.
    */
-  it('MySQL INT UNSIGNED·ENGINE·CHARSET 은 현재 왕복에서 유실된다 (피드백 1·2번)', async () => {
+  it('MySQL INT UNSIGNED·ENGINE·CHARSET 이 왕복에서 보존된다 (피드백 1·2번)', async () => {
     const dir = await project('mysql')
     const src = join(dir, 'mysql.sql')
     await writeFile(src, `CREATE TABLE ORD (
@@ -208,7 +209,6 @@ describe('erdd export → erdd import 왕복', () => {
 
     out.length = 0
     expect(await importCommand({ cwd: dir, ...yes, file: src, dryRun: false })).toBe(0)
-    // 유실을 알리는 경고조차 없다 — 있는 경고는 사전에 없는 단어(unknown-word)뿐이다.
     const kinds = (JSON.parse(out.join('')) as { warnings: Array<{ kind: string }> })
       .warnings.map((w) => w.kind)
     expect(new Set(kinds)).toEqual(new Set(['unknown-word']))
@@ -218,13 +218,10 @@ describe('erdd export → erdd import 왕복', () => {
     expect(await exportCommand({ cwd: dir, ...yes, format: 'ddl', out: back })).toBe(0)
     const ddl = await readFile(back, 'utf8')
 
-    // 원본에 있던 것 — 왕복 뒤에는 하나도 남지 않는다.
-    expect(ddl).not.toContain('UNSIGNED')
-    expect(ddl).not.toContain('unsigned')
-    expect(ddl).not.toContain('ENGINE')
-    expect(ddl).not.toContain('CHARSET')
-    // 사라진 자리는 부호 있는 정수다.
-    expect(ddl).toContain('ORD_NO INT AUTO_INCREMENT NOT NULL')
-    expect(ddl).toContain('QTY SMALLINT NOT NULL')
+    // 원본에 있던 것이 전부 돌아온다.
+    expect(ddl).toContain('ORD_NO INT UNSIGNED AUTO_INCREMENT NOT NULL')
+    expect(ddl).toContain('QTY SMALLINT UNSIGNED NOT NULL')
+    expect(ddl).toContain('ENGINE=InnoDB')
+    expect(ddl).toContain('CHARSET=utf8mb4')
   })
 })
