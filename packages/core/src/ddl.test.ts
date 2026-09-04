@@ -7,6 +7,7 @@ import { buildSampleModel } from './testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import type { Dialect } from './dialect.js'
 import { parseNameMeta } from './name-meta.js'
+import { parseDdl } from './ddl-parse.js'
 
 // 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다. 심으로 그 전제를 한 줄에 적고
 // 호출부 30곳을 그대로 둔다. 템플릿을 쓰는 새 케이스는 rules 를 직접 넘긴다.
@@ -612,5 +613,79 @@ describe('generateDdl — 테이블 옵션', () => {
     const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES, OPTS)
     expect(ddl).not.toContain('ENGINE')
     expect(ddl).not.toContain('TABLESPACE')
+  })
+})
+
+// ── MySQL nullable TIMESTAMP ────────────────────────────────────────────────
+
+/**
+ * MySQL·MariaDB 서버가 `explicit_defaults_for_timestamp = 0` 이면 `NULL` 을 명시하지 않은
+ * `TIMESTAMP` 컬럼을 제멋대로 `NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`
+ * 로 만든다 — nullable 로 설계한 컬럼이 실제 DB 에서 NOT NULL 이 되고 UPDATE 마다 값이 조용히 바뀐다.
+ *
+ * ⚠️ 판정 기준이 위 CHECK 와 **반대**다. 여기는 **실제로 나가는 물리 타입**(`r.sql`)으로 본다 —
+ * `NULL` 명시는 저장 형태의 문제이고, CHECK 는 값의 제약이라 논리 타입이 맞다.
+ */
+describe('generateDdl — MySQL nullable TIMESTAMP', () => {
+  function tsModel(over: Partial<Column> = {}): ProjectModel {
+    const m = createEmptyModel()
+    m.tables['t'] = tbl('t', 'ORD')
+    m.columns['c1'] = col('c1', 't', 'ORD_NO', 'BIGINT', { isPk: true, nullable: false, order: 0 })
+    m.columns['c2'] = col('c2', 't', 'REG_DT', 'TIMESTAMPTZ', { order: 1, ...over })
+    return m
+  }
+  /** 도메인의 mysql 물리 타입 오버라이드로만 TIMESTAMP 가 되는 모델(논리 타입은 TIMESTAMP 가 아니다). */
+  function overrideModel(): ProjectModel {
+    const m = tsModel()
+    m.domains['d'] = {
+      id: 'd', name: '등록일시', category: null, logicalType: 'DATETIME',
+      dialectTypes: { postgresql: null, mysql: 'TIMESTAMP', oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null, origin: null,
+    }
+    m.columns['c2'] = { ...m.columns['c2']!, type: '', domainId: 'd' }
+    return m
+  }
+
+  it('nullable TIMESTAMP 에 NULL 을 명시한다', () => {
+    expect(generateDdl(tsModel(), 'mysql')).toContain('REG_DT TIMESTAMP NULL')
+  })
+
+  // ⚠️ 논리 타입으로 판정하면 이 경로가 조용히 빠진다 — 오버라이드가 물리 타입을 갈아치운다.
+  it('도메인의 mysql 물리 타입 오버라이드가 TIMESTAMP 여도 NULL 이 붙는다', () => {
+    expect(generateDdl(overrideModel(), 'mysql')).toContain('REG_DT TIMESTAMP NULL')
+  })
+
+  // 타입 조건 단독 잠금 — dialect 가드가 사라져도 이 케이스는 안 걸린다.
+  it('mysql 이어도 TIMESTAMP 가 아니면 NULL 을 붙이지 않는다', () => {
+    const m = tsModel()
+    m.columns['c2'] = { ...m.columns['c2']!, type: 'VARCHAR(100)' }
+    const line = generateDdl(m, 'mysql').split('\n').find((l) => l.trim().startsWith('REG_DT'))!
+    expect(line).toContain('REG_DT VARCHAR(100)')
+    expect(line).not.toMatch(/\bNULL\b/)
+  })
+
+  it('NOT NULL TIMESTAMP 는 그대로이고 NULL 이 겹쳐 붙지 않는다', () => {
+    const line = generateDdl(tsModel({ nullable: false }), 'mysql')
+      .split('\n').find((l) => l.trim().startsWith('REG_DT'))!
+    expect(line.trim()).toBe('REG_DT TIMESTAMP NOT NULL,')
+  })
+
+  // 방언 조건 단독 잠금 — 타입 가드가 사라져도 이 케이스는 안 걸린다.
+  it('postgresql 의 nullable TIMESTAMPTZ 에는 NULL 을 붙이지 않는다', () => {
+    const line = generateDdl(tsModel(), 'postgresql').split('\n').find((l) => l.trim().startsWith('REG_DT'))!
+    expect(line).toContain('REG_DT timestamptz')
+    expect(line).not.toMatch(/\bNULL\b/)
+  })
+
+  // 왕복 — 명시한 NULL 이 파서에서 NOT NULL 로 뒤집히지 않는다(`notNull: false` 가 nullable 이다).
+  it('낸 DDL 을 다시 파싱해도 nullable 이 유지된다', () => {
+    const ddl = generateDdl(tsModel(), 'mysql')
+    // ⚠️ 전제를 먼저 단언한다 — 토큰이 없는 출력도 `notNull: false` 로 읽히므로, 이것이 없으면
+    // 이 테스트는 「NULL 토큰이 왕복한다」가 아니라 그냥 항상 참인 문장이 된다(실측).
+    expect(ddl).toContain('REG_DT TIMESTAMP NULL')
+    const parsed = parseDdl(ddl)
+    const c = parsed.tables.find((t) => t.name === 'ORD')!.columns.find((x) => x.name === 'REG_DT')!
+    expect(c.rawType).toBe('TIMESTAMP')
+    expect(c.notNull).toBe(false)
   })
 })
