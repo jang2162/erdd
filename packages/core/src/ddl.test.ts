@@ -670,11 +670,26 @@ describe('generateDdl — MySQL nullable TIMESTAMP', () => {
     expect(line.trim()).toBe('REG_DT TIMESTAMP NOT NULL,')
   })
 
-  // 방언 조건 단독 잠금 — 타입 가드가 사라져도 이 케이스는 안 걸린다.
-  it('postgresql 의 nullable TIMESTAMPTZ 에는 NULL 을 붙이지 않는다', () => {
-    const line = generateDdl(tsModel(), 'postgresql').split('\n').find((l) => l.trim().startsWith('REG_DT'))!
-    expect(line).toContain('REG_DT timestamptz')
-    expect(line).not.toMatch(/\bNULL\b/)
+  /**
+   * 방언 조건 단독 잠금 — 타입 가드가 살아 있어도 mysql 가드가 사라지면 걸려야 한다.
+   *
+   * ⚠️ **postgresql + TIMESTAMPTZ 로는 이 조건이 안 잠긴다**(실측). 그 조합의 물리 타입은
+   * `timestamptz` 라 `/^TIMESTAMP\b/` 의 단어 경계에서 이미 떨어져 나가므로, mysql 가드를
+   * 지워도 초록으로 남는다. 물리 타입이 **실제로 `TIMESTAMP` 로 시작하는** 비 mysql 조합을
+   * 골라야 한다 — postgresql 의 DATETIME(`timestamp`) 과 oracle 의 TIMESTAMPTZ
+   * (`TIMESTAMP WITH TIME ZONE`).
+   */
+  it('mysql 이 아닌 방언은 물리 타입이 TIMESTAMP 로 시작해도 NULL 을 붙이지 않는다', () => {
+    const line = (m: ProjectModel, d: Dialect) =>
+      generateDdl(m, d).split('\n').find((l) => l.trim().startsWith('REG_DT'))!
+    const pg = line(tsModel({ type: 'DATETIME' }), 'postgresql')
+    expect(pg).toContain('REG_DT timestamp')
+    expect(pg).not.toMatch(/\bNULL\b/)
+    const ora = line(tsModel(), 'oracle')
+    expect(ora).toContain('REG_DT TIMESTAMP WITH TIME ZONE')
+    expect(ora).not.toMatch(/\bNULL\b/)
+    // 대조군: 단어 경계에서 떨어지는 postgresql 의 TIMESTAMPTZ(`timestamptz`)도 물론 안 붙는다.
+    expect(line(tsModel(), 'postgresql')).toContain('REG_DT timestamptz')
   })
 
   // 왕복 — 명시한 NULL 이 파서에서 NOT NULL 로 뒤집히지 않는다(`notNull: false` 가 nullable 이다).
