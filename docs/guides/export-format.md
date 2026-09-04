@@ -136,6 +136,25 @@ Excel 정의서와 스냅샷 변경분도 여기 있다.
 
 ---
 
+## MySQL 의 nullable `TIMESTAMP` 에는 `NULL` 을 명시한다
+
+`explicit_defaults_for_timestamp = 0` 인 서버는 `NULL` 이 없는 `TIMESTAMP` 컬럼을
+`NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` 로 만들어 버린다 —
+nullable 로 설계한 컬럼이 값을 안 넣으면 현재 시각이 들어가고 **UPDATE 마다 조용히 바뀐다.**
+그래서 DDL 과 DBML 양쪽이 그 컬럼에 토큰을 명시한다(DDL 은 `NULL`, DBML 은 `null`).
+
+- **판정은 `needsExplicitNullToken` 한 곳이 갖는다.** ⚠️ 두 포맷이 각자 판정하게 만들지 마라 —
+  한쪽만 고쳐지면 **같은 모델의 DDL 과 DBML 이 서로 다른 nullability 를 말한다.** 실제로 복제한
+  적이 있고, 그때 한쪽 판정식은 정규식 조각을 전부 지워도 스위트가 초록이었다.
+- ⚠️ **판정 기준은 실제로 나가는 물리 타입이다 — 같은 컬럼 줄의 `CHECK` 와 반대다.** `CHECK` 는
+  값의 제약이라 논리 타입이 맞고 `NULL` 명시는 저장 형태의 문제라 물리 타입이 맞다.
+  **둘을 통일하지 마라** — 논리 타입으로 보면 방언별 물리 타입 오버라이드로 `TIMESTAMP` 가 된
+  컬럼과, 타입 파싱에 실패해 원문이 그대로 나가는 컬럼이 조용히 빠진다.
+- **판정은 같고 정책은 다르다.** DDL 은 PK 여도 `NULL` 을 내지만(MySQL 이 유일 인덱스 컬럼을
+  조용히 `NOT NULL` 로 바꾼다) **DBML 은 PK 컬럼에 내지 않는다** — `pk` 와 겹치면 가져오기가
+  어차피 `nullable=false` 로 닫아 **산출물만 거짓말을 하게 된다.** 그래서 DBML 쪽 가드는
+  인라인 pk 가 아니라 `isPk` 다(복합 PK 컬럼도 빠진다). 두 가드를 「통일」하지 마라.
+
 ## 알려진 한계
 
 ### 머릿말·왕복
@@ -211,3 +230,6 @@ Excel 정의서와 스냅샷 변경분도 여기 있다.
 
 - **방언별 예약어 목록은 큐레이션 세트다**(전수가 아니다).
 - **0컬럼 테이블은 DDL 에서 제외하고 경고한다**(정책 확정).
+- **`NULL` 명시는 nullable 쪽만 막는다.** `TIMESTAMP NOT NULL` 은 여전히 위 함정에 그대로 걸려
+  UPDATE 마다 값이 바뀐다(막으려면 명시적 `DEFAULT` 가 필요한데 무엇을 줄지가 제품 결정이라
+  미뤘다). PK 인 `TIMESTAMP` 컬럼도 MySQL 이 `NOT NULL` 로 바꾸므로 같은 자리에 남는다.

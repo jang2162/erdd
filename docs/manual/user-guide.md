@@ -591,7 +591,7 @@ oracle `TABLESPACE users`, mssql `ON [PRIMARY]`.
 
 | 구성 | 설명 |
 |---|---|
-| `CREATE TABLE` | 컬럼 타입·NOT NULL·기본값·자동증가(방언별 문법), 기본 키 |
+| `CREATE TABLE` | 컬럼 타입·NOT NULL·기본값·자동증가(방언별 문법), 기본 키. **MySQL·MariaDB 는 NULL 을 허용하는 `TIMESTAMP` 컬럼에 `NULL` 을 함께 적는다** — 서버 설정에 따라 그 컬럼이 제멋대로 `NOT NULL` 이 되고 값이 수정될 때마다 현재 시각으로 바뀌는 것을 막는다 |
 | CHECK 제약 | 도메인 허용값이 있는 컬럼에 `컬럼 IN (…)` |
 | 외래 키 | `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY`. 1:1 관계는 UNIQUE 제약이 함께 나간다 |
 | 인덱스 | `CREATE [UNIQUE] INDEX`, 구성 컬럼의 정렬 방향 포함 |
@@ -613,7 +613,7 @@ oracle `TABLESPACE users`, mssql `ON [PRIMARY]`.
 |---|---|
 | `Project` | 프로젝트명과 `database_type`(고른 방언). 프로젝트명이 있을 때만 나간다 |
 | `Table` | 그룹에 속하면 `headercolor`, `note` 에 「논리명 - 설명」 |
-| 컬럼 설정 | `pk`(단일 기본 키) · `increment` · `not null` · `default` · `note` |
+| 컬럼 설정 | `pk`(단일 기본 키) · `increment` · `not null` · `null` · `default` · `note`. `null` 은 **MySQL·MariaDB 방언에서 NULL 을 허용하는 `TIMESTAMP` 컬럼에만** 붙고, 기본 키 컬럼에는 붙지 않는다 |
 | `indexes` 블록 | 인덱스(이름·`unique`)와 **복합 기본 키**(`[pk]`) |
 | `TableGroup` | 그룹 이름과 `color`, 소속 테이블 목록 |
 | `Ref` | 관계. 1:N 은 `>`, 1:1 은 `-`. 합성키는 괄호로 묶고, **이름을 지어 둔 관계만** 이름이 붙는다 |

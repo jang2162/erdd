@@ -37,6 +37,28 @@
 - 프로젝트당 복수 스키마 / 복수 다이어그램
 - MCP 서버
 
+## MySQL 의 `TIMESTAMP` 함정 — 나머지 절반
+
+nullable 쪽은 `NULL` 명시로 막았다(정본은 [export-format.md](../guides/export-format.md)
+「MySQL 의 nullable `TIMESTAMP` 에는 `NULL` 을 명시한다」). **`TIMESTAMP NOT NULL` 은 그대로 남아
+있다** — `explicit_defaults_for_timestamp = 0` 서버에서 실물로 확인했다.
+
+- 테이블의 **첫** `TIMESTAMP NOT NULL` 컬럼은 `DEFAULT current_timestamp()` +
+  `on update current_timestamp()` 를 받아 **다른 컬럼만 바꾸는 UPDATE 에도 값이 바뀐다.**
+- **두 번째부터**는 `DEFAULT '0000-00-00 00:00:00'` 이 박혀 값을 안 넣으면 0 날짜가 조용히 들어간다.
+- PK 인 `TIMESTAMP` 컬럼은 `NULL` 을 내도 MySQL 이 `NOT NULL` 로 바꾸므로 같은 자리에 남는다.
+
+**막으려면 명시적 `DEFAULT` 를 내야 하는데 무엇을 줄지가 제품 결정이다** — `CURRENT_TIMESTAMP`
+(자동 초기화는 남고 `ON UPDATE` 만 사라진다) / `'0000-00-00 00:00:00'`(엄격 모드에서 거부된다) /
+사용자에게 강제 입력 중 어느 쪽도 기본값으로 삼기 어렵다. 착수하려면 그 결정이 먼저다.
+
+## mysql DDL 의 `CHECK` → `COMMENT` 토큰 순서가 MariaDB 에서 깨진다
+
+`columnLine` 이 `CHECK` 를 `COMMENT` 앞에 낸다. MariaDB 는 컬럼 인라인 `CHECK` 가 컬럼 정의의
+**끝**에 와야 해서 `ERROR 1064` 로 죽는다 — **도메인에 허용값이 있는 컬럼이 하나라도 있는 mysql
+프로젝트는 내보낸 DDL 이 통째로 실행되지 않는다.** MySQL 8.0 은 임의 순서를 받아 통과할 수 있어
+MariaDB 에서만 터진다. 고치는 것 자체는 토큰 순서 한 줄이다.
+
 ## ⚠️ 배제한 것 — 다시 1순위로 올리지 마라
 
 - **실제 DB 접속 스키마 스캔.** 「이 프로젝트 성격에 안 맞다」가 사용자 판단이다. 설계 도구가 운영
