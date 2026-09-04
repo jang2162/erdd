@@ -88,6 +88,16 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect, singlePk
   // 가져오기도 `nullable: !notNull && !isPk` 로 판정하므로 왕복이 그대로 성립한다.
   // 복합 PK 컬럼은 인라인 pk 가 없으므로(indexes 블록으로 나간다) not null 을 그대로 낸다.
   if (!col.nullable && !inlinePk) settings.push('not null')
+  // MySQL 은 `explicit_defaults_for_timestamp = 0` 서버에서 null 이 명시되지 않은 TIMESTAMP 컬럼을
+  // NOT NULL + DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 로 만든다 — 이 DBML 을
+  // 도구가 MySQL DDL 로 되돌리면 nullable 로 설계한 컬럼이 UPDATE 마다 조용히 바뀐다. DDL 쪽
+  // `columnLine` 과 **같은 범위**로 막는다(방언 + 실제로 나가는 물리 타입 `r.sql`).
+  // ⚠️ `!inlinePk` 를 빼지 마라 — `[pk, null]` 은 모순된 DBML 이고, 가져오기가
+  // `nullable: !notNull && !isPk` 로 판정해 어차피 pk 가 이긴다. 위 not null 과 같은 이유다.
+  // nullable 인 PK 컬럼은 실제로 도달 가능하다(편집기의 PK 체크박스는 nullable 을 끄지 않는다).
+  if (col.nullable && !inlinePk && dialect === 'mysql' && /^TIMESTAMP\b/i.test(r.sql.trim())) {
+    settings.push('null')
+  }
   if (r.defaultValue !== null && r.defaultValue !== '') {
     settings.push(`default: ${rawDefaultToDbml(r.defaultValue)}`)
   }

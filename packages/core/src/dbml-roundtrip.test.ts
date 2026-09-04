@@ -194,3 +194,40 @@ describe('DBML 왕복 — 부호 없음', () => {
     expect(plan.tables[0]!.columns[0]!.type).toBe('INT')
   })
 })
+
+/**
+ * mysql 의 nullable TIMESTAMP 는 `[null]` 을 명시해야 왕복한다. DBML 파서에는 `null` 설정을 읽는
+ * 자리가 이미 있고(`dbml-parse.ts` 의 `key === 'null'`), 가져오기는 `nullable: !notNull && !isPk`
+ * 로 판정한다 — 즉 토큰을 적기만 하면 왕복은 저절로 성립한다. 문제는 **적히지 않는 것**이다.
+ */
+describe('DBML 왕복 — MySQL nullable TIMESTAMP', () => {
+  function tsModel(): ProjectModel {
+    const m = createEmptyModel()
+    m.tables['t'] = {
+      id: 't', logicalName: 'ORD', physicalName: 'ORD', comment: null, groupId: null,
+      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 't', logicalName: 'ORD_NO', physicalName: 'ORD_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    m.columns['c2'] = {
+      id: 'c2', tableId: 't', logicalName: 'REG_DT', physicalName: 'REG_DT', type: 'TIMESTAMPTZ',
+      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 1,
+      comment: null, domainId: null, custom: {},
+    }
+    return m
+  }
+
+  it('낸 DBML 을 다시 읽어도 nullable 이 유지된다', () => {
+    const dbml = generateDbml(tsModel(), 'mysql')
+    // ⚠️ 전제를 먼저 단언한다 — 토큰이 없는 출력도 `notNull: false` 로 읽히므로, 이것이 없으면
+    // 이 테스트는 「null 토큰이 왕복한다」가 아니라 구현과 무관하게 항상 참인 문장이 된다(실측).
+    expect(dbml).toContain('"REG_DT" TIMESTAMP [null]')
+    const plan = planDdlImport(createEmptyModel(), parseDbml(dbml), 'mysql', DEFAULT_NAMING_RULES)
+    const c = plan.tables.find((t) => t.physicalName === 'ORD')!
+      .columns.find((x) => x.physicalName === 'REG_DT')!
+    expect(c.nullable).toBe(true)
+  })
+})

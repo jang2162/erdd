@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createEmptyModel, type ProjectModel } from './model.js'
+import { createEmptyModel, type Column, type ProjectModel } from './model.js'
 import { generateDbml as generateDbmlRaw } from './dbml.js'
 import { parseDbml } from './dbml-parse.js'
 import { buildSampleModel } from './testing/fixtures.js'
@@ -418,5 +418,105 @@ describe('머릿말 메타', () => {
   it('템플릿이 없어도 그룹이 있으면 // 머릿말이 나온다', () => {
     const out = generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES)
     expect(out.split('\n')[0]!.startsWith('// erdd:v2 ')).toBe(true)
+  })
+})
+
+// ── MySQL nullable TIMESTAMP ────────────────────────────────────────────────
+
+/**
+ * DBML 은 DDL 과 같은 물리 타입 문자열을 내는 **두 번째 출구**다. nullable 을 적지 않으면
+ * dbdiagram 같은 도구가 이 DBML 을 MySQL DDL 로 되돌릴 때 `explicit_defaults_for_timestamp = 0`
+ * 서버의 함정(`NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`)으로 그대로
+ * 돌아간다 — nullable 로 설계한 컬럼이 UPDATE 마다 조용히 바뀐다.
+ *
+ * 판정은 DDL 쪽과 **같은 범위**다 — mysql 이고 실제로 나가는 물리 타입(`r.sql`)이 TIMESTAMP 로
+ * 시작하는 nullable 컬럼만이다. nullable 인 모든 컬럼이 아니다.
+ */
+describe('generateDbml — MySQL nullable TIMESTAMP', () => {
+  function tsModel(over: Partial<Column> = {}): ProjectModel {
+    const m = createEmptyModel()
+    m.tables['t'] = {
+      id: 't', logicalName: 'ORD', physicalName: 'ORD', comment: null, groupId: null,
+      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1', tableId: 't', logicalName: 'ORD_NO', physicalName: 'ORD_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
+      comment: null, domainId: null, custom: {},
+    }
+    m.columns['c2'] = {
+      id: 'c2', tableId: 't', logicalName: 'REG_DT', physicalName: 'REG_DT', type: 'TIMESTAMPTZ',
+      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 1,
+      comment: null, domainId: null, custom: {}, ...over,
+    }
+    return m
+  }
+  /** mysql 물리 타입을 도메인 오버라이드로만 정하는 모델(논리 타입은 TIMESTAMP 가 아니다). */
+  function overrideModel(mysqlType = 'TIMESTAMP'): ProjectModel {
+    const m = tsModel()
+    m.domains['d'] = {
+      id: 'd', name: '등록일시', category: null, logicalType: 'DATETIME',
+      dialectTypes: { postgresql: null, mysql: mysqlType, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null, origin: null,
+    }
+    m.columns['c2'] = { ...m.columns['c2']!, type: '', domainId: 'd' }
+    return m
+  }
+  const line = (out: string, name: string): string =>
+    out.split('\n').find((l) => l.trim().startsWith(`"${name}"`))!.trim()
+  /** 그 컬럼의 설정 목록. `not null` 이 `null` 을 부분 문자열로 품으므로 토큰으로 갈라 본다. */
+  const settingsOf = (out: string, name: string): string[] => {
+    const m = /\[(.*)\]$/.exec(line(out, name))
+    return m === null ? [] : m[1]!.split(', ')
+  }
+
+  it('nullable TIMESTAMP 에 null 을 명시한다', () => {
+    const out = generateDbml(tsModel(), 'mysql')
+    expect(line(out, 'REG_DT')).toBe('"REG_DT" TIMESTAMP [null]')
+  })
+
+  // ⚠️ 논리 타입으로 판정하면 이 경로가 조용히 빠진다 — 오버라이드가 물리 타입을 갈아치운다.
+  it('도메인의 mysql 물리 타입 오버라이드가 TIMESTAMP 여도 null 이 붙는다', () => {
+    expect(line(generateDbml(overrideModel(), 'mysql'), 'REG_DT')).toBe('"REG_DT" TIMESTAMP [null]')
+  })
+
+  // 타입 조건 단독 잠금 — dialect 가드가 사라져도 이 케이스는 안 걸린다.
+  it('mysql 이어도 TIMESTAMP 가 아니면 null 을 붙이지 않는다', () => {
+    const out = generateDbml(tsModel({ type: 'VARCHAR(100)' }), 'mysql')
+    expect(line(out, 'REG_DT')).toContain('"REG_DT" VARCHAR(100)')
+    expect(settingsOf(out, 'REG_DT')).not.toContain('null')
+  })
+
+  it('NOT NULL TIMESTAMP 는 그대로이고 null 이 겹쳐 붙지 않는다', () => {
+    const out = generateDbml(tsModel({ nullable: false }), 'mysql')
+    expect(line(out, 'REG_DT')).toBe('"REG_DT" TIMESTAMP [not null]')
+  })
+
+  /**
+   * 방언 조건 단독 잠금 — 타입 가드가 살아 있어도 mysql 가드가 사라지면 걸려야 한다.
+   *
+   * ⚠️ **postgresql + TIMESTAMPTZ 로는 이 조건이 안 잠긴다**(DDL 쪽에서 실측). 그 조합의 물리
+   * 타입은 `timestamptz` 라 `/^TIMESTAMP\b/` 의 단어 경계에서 이미 떨어져 나가므로 mysql 가드를
+   * 지워도 초록으로 남는다. 물리 타입이 **실제로 TIMESTAMP 로 시작하는** 비 mysql 조합을 골라야
+   * 한다 — postgresql 의 DATETIME(`timestamp`) 과 oracle 의 TIMESTAMPTZ(`TIMESTAMP WITH TIME ZONE`).
+   */
+  it('mysql 이 아닌 방언은 물리 타입이 TIMESTAMP 로 시작해도 null 을 붙이지 않는다', () => {
+    const pg = generateDbml(tsModel({ type: 'DATETIME' }), 'postgresql')
+    expect(line(pg, 'REG_DT')).toContain('"REG_DT" timestamp')
+    expect(settingsOf(pg, 'REG_DT')).not.toContain('null')
+    const ora = generateDbml(tsModel(), 'oracle')
+    expect(line(ora, 'REG_DT')).toContain('"REG_DT" TIMESTAMP WITH TIME ZONE')
+    expect(settingsOf(ora, 'REG_DT')).not.toContain('null')
+  })
+
+  /**
+   * ⚠️ pk 를 낸 컬럼에는 null 을 덧붙이지 않는다 — DBML 에서 `[pk, null]` 은 모순이고, 가져오기가
+   * `nullable: !notNull && !isPk` 로 판정해 어차피 pk 가 이긴다. 이 조합은 실제로 도달 가능하다
+   * (웹 편집기의 PK 체크박스가 `isPk` 만 바꾸고 `nullable` 을 끄지 않는다).
+   */
+  it('inlinePk 인 nullable TIMESTAMP 에는 pk 만 나오고 null 이 붙지 않는다', () => {
+    const m = tsModel({ isPk: true })
+    m.columns['c1'] = { ...m.columns['c1']!, isPk: false }   // 단일 PK 로 만들어 인라인 pk 를 낸다
+    expect(line(generateDbml(m, 'mysql'), 'REG_DT')).toBe('"REG_DT" TIMESTAMP [pk]')
   })
 })
