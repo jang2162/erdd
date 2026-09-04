@@ -1,7 +1,7 @@
 import type { Column, ProjectModel, Table } from './model.js'
 import type { Dialect } from './dialect.js'
 import { parseLogicalType } from './logical-type.js'
-import { resolveColumn } from './domain-resolve.js'
+import { needsExplicitNullToken, resolveColumn } from './domain-resolve.js'
 import { customFieldsFor } from './custom-field.js'
 import { buildDbmlNote } from './dbml-note.js'
 import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
@@ -86,16 +86,22 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect, singlePk
   if (col.autoIncrement && col.isPk && isIntegerType(r.logicalType)) settings.push('increment')
   // pk 를 낸 컬럼에는 not null 을 덧붙이지 않는다 — DBML 에서 pk 는 not null 을 함의하고,
   // 가져오기도 `nullable: !notNull && !isPk` 로 판정하므로 왕복이 그대로 성립한다.
-  // 복합 PK 컬럼은 인라인 pk 가 없으므로(indexes 블록으로 나간다) not null 을 그대로 낸다.
+  // 복합 PK 컬럼은 인라인 pk 가 없으므로(indexes 블록으로 나간다) not null 을 그대로 낸다 —
+  // **참인 말**이다(PK 는 not null 이다). 아래 null 가지가 `!col.isPk` 인 것과 다른 이유가 이것이다.
   if (!col.nullable && !inlinePk) settings.push('not null')
-  // MySQL 은 `explicit_defaults_for_timestamp = 0` 서버에서 null 이 명시되지 않은 TIMESTAMP 컬럼을
-  // NOT NULL + DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 로 만든다 — 이 DBML 을
-  // 도구가 MySQL DDL 로 되돌리면 nullable 로 설계한 컬럼이 UPDATE 마다 조용히 바뀐다. DDL 쪽
-  // `columnLine` 과 **같은 범위**로 막는다(방언 + 실제로 나가는 물리 타입 `r.sql`).
-  // ⚠️ `!inlinePk` 를 빼지 마라 — `[pk, null]` 은 모순된 DBML 이고, 가져오기가
-  // `nullable: !notNull && !isPk` 로 판정해 어차피 pk 가 이긴다. 위 not null 과 같은 이유다.
+  // MySQL 의 nullable TIMESTAMP 함정을 막는다(판정 근거는 `needsExplicitNullToken`). DBML 을
+  // 도구가 MySQL DDL 로 되돌릴 때 그 함정으로 그대로 돌아가는 것을 막는 것이다.
+  // ⚠️ **판정은 DDL 쪽 `columnLine` 과 같고(같은 함수다) 정책은 다르다** — DDL 은 PK 여도 `NULL`
+  // 을 내지만(SQL 에서 합법이고 PK 가 이긴다) DBML 은 pk 선언과 겹치지 않게 뺀다. 「같은 범위」가
+  // 아니다. 단일 PK · nullable · TIMESTAMP · mysql 에서 DDL 은 `TIMESTAMP NULL` 을, DBML 은
+  // `[pk]` 만 낸다 — 그 차이는 의도된 것이니 한쪽에 맞추지 마라.
+  // ⚠️ 가드가 `!inlinePk` 가 아니라 **`!col.isPk`** 인 것은 위 not null 가지와 **이유가 다르기**
+  // 때문이다. 복합 PK 컬럼에 not null 을 내는 것은 참이지만, null 을 내는 것은 **거짓**이다 —
+  // 가져오기가 `nullable: !notNull && !isPk` 로 판정해 그 컬럼은 어차피 `nullable: false` 로 닫힌다.
+  // `!inlinePk` 로 좁히면 복합 PK 에서 `[null]` 과 `indexes … [pk]` 가 동시에 나가 산출물이 스스로
+  // 모순된 문장을 말한다. 「불일치」로 보고 두 가드를 통일하지 마라.
   // nullable 인 PK 컬럼은 실제로 도달 가능하다(편집기의 PK 체크박스는 nullable 을 끄지 않는다).
-  if (col.nullable && !inlinePk && dialect === 'mysql' && /^TIMESTAMP\b/i.test(r.sql.trim())) {
+  if (col.nullable && !col.isPk && needsExplicitNullToken(dialect, r.sql)) {
     settings.push('null')
   }
   if (r.defaultValue !== null && r.defaultValue !== '') {

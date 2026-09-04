@@ -3,7 +3,7 @@ import { resolveColumnType, type Dialect } from './dialect.js'
 import { isUnsignedCapable, parseLogicalType } from './logical-type.js'
 import type { TableOptions } from './table-options.js'
 import { quoteIdentifier } from './identifier.js'
-import { resolveColumn } from './domain-resolve.js'
+import { needsExplicitNullToken, resolveColumn } from './domain-resolve.js'
 import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
 import type { NamingRules } from './naming.js'
 import { buildNameMeta, serializeNameMeta } from './name-meta.js'
@@ -92,15 +92,13 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string 
   const auto = col.autoIncrement && col.isPk && isIntegerType(r.logicalType)
   if (auto) parts.push(autoIncrementToken(dialect))
   if (!col.nullable) parts.push('NOT NULL')
-  // MySQL 은 `explicit_defaults_for_timestamp = 0` 서버에서 NULL 을 명시하지 않은 TIMESTAMP 컬럼을
-  // NOT NULL + DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 로 만든다 — nullable 로
-  // 설계한 컬럼이 UPDATE 마다 조용히 바뀐다. `TIMESTAMP NULL DEFAULT …` 는 정상 문법이라 자리는
-  // NOT NULL 이 있던 그대로 DEFAULT 앞이다.
+  // MySQL 의 nullable TIMESTAMP 함정을 막는다(판정 근거는 `needsExplicitNullToken`).
+  // `TIMESTAMP NULL DEFAULT …` 는 정상 문법이라 자리는 NOT NULL 이 있던 그대로 DEFAULT 앞이다.
   // ⚠️ 판정 기준이 아래 CHECK 와 **반대**로 실제로 나가는 물리 타입(`r.sql`)이다 — NULL 명시는
-  // 저장 형태의 문제이고 CHECK 는 값의 제약이라 논리 타입이 맞다. 둘을 통일하지 마라: 논리 타입으로
-  // 보면 방언별 물리 타입 오버라이드로 TIMESTAMP 가 된 컬럼과 파싱에 실패해 원문이 그대로 나가는
-  // 컬럼이 조용히 빠진다.
-  else if (dialect === 'mysql' && /^TIMESTAMP\b/i.test(r.sql.trim())) parts.push('NULL')
+  // 저장 형태의 문제이고 CHECK 는 값의 제약이라 논리 타입이 맞다. 둘을 통일하지 마라.
+  // ⚠️ **PK 여도 낸다** — DBML 과 다른 것이 맞다(정책이 다르다. 판정은 같은 함수가 갖는다).
+  // SQL 에서 `... NULL, PRIMARY KEY (...)` 는 합법이고 PK 가 이겨 조용히 NOT NULL 이 된다.
+  else if (needsExplicitNullToken(dialect, r.sql)) parts.push('NULL')
   if (!auto && r.defaultValue !== null && r.defaultValue !== '') parts.push(`DEFAULT ${r.defaultValue}`)
   // CHECK 는 **둘**이 될 수 있다 — 도메인 허용값과 부호 없음.
   if (r.checkValues && r.checkValues.length > 0) {

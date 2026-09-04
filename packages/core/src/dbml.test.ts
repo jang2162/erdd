@@ -429,8 +429,10 @@ describe('머릿말 메타', () => {
  * 서버의 함정(`NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`)으로 그대로
  * 돌아간다 — nullable 로 설계한 컬럼이 UPDATE 마다 조용히 바뀐다.
  *
- * 판정은 DDL 쪽과 **같은 범위**다 — mysql 이고 실제로 나가는 물리 타입(`r.sql`)이 TIMESTAMP 로
- * 시작하는 nullable 컬럼만이다. nullable 인 모든 컬럼이 아니다.
+ * ⚠️ **판정은 DDL 쪽과 같고(`needsExplicitNullToken` 한 함수다) 정책은 다르다.** 판정은 mysql 이고
+ * 실제로 나가는 물리 타입(`r.sql`)이 TIMESTAMP 로 시작하는 nullable 컬럼만이다(nullable 인 모든
+ * 컬럼이 아니다). 정책은 PK 를 어떻게 다루느냐가 갈린다 — DDL 은 PK 여도 `NULL` 을 내지만 DBML 은
+ * pk 선언과 겹치지 않게 뺀다. 두 산출물을 서로 맞추려 하지 마라.
  */
 describe('generateDbml — MySQL nullable TIMESTAMP', () => {
   function tsModel(over: Partial<Column> = {}): ProjectModel {
@@ -462,12 +464,16 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
     m.columns['c2'] = { ...m.columns['c2']!, type: '', domainId: 'd' }
     return m
   }
-  const line = (out: string, name: string): string =>
-    out.split('\n').find((l) => l.trim().startsWith(`"${name}"`))!.trim()
-  /** 그 컬럼의 설정 목록. `not null` 이 `null` 을 부분 문자열로 품으므로 토큰으로 갈라 본다. */
-  const settingsOf = (out: string, name: string): string[] => {
-    const m = /\[(.*)\]$/.exec(line(out, name))
-    return m === null ? [] : m[1]!.split(', ')
+  /**
+   * 그 컬럼의 줄 전체. 못 찾으면 **던진다.**
+   * ⚠️ 「설정 목록에 null 이 없다」로 단언하지 마라 — 설정이 하나도 없는 줄의 목록은 `[]` 라
+   * 그 단언은 줄이 통째로 망가진 경우에도 통과한다(항진명제가 된다). 줄 전체를 `toBe` 로
+   * 단언하면 그런 퇴화 상태가 없다.
+   */
+  const line = (out: string, name: string): string => {
+    const found = out.split('\n').find((l) => l.trim().startsWith(`"${name}"`))
+    if (found === undefined) throw new Error(`컬럼 줄을 찾지 못했다: ${name}`)
+    return found.trim()
   }
 
   it('nullable TIMESTAMP 에 null 을 명시한다', () => {
@@ -483,8 +489,7 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
   // 타입 조건 단독 잠금 — dialect 가드가 사라져도 이 케이스는 안 걸린다.
   it('mysql 이어도 TIMESTAMP 가 아니면 null 을 붙이지 않는다', () => {
     const out = generateDbml(tsModel({ type: 'VARCHAR(100)' }), 'mysql')
-    expect(line(out, 'REG_DT')).toContain('"REG_DT" VARCHAR(100)')
-    expect(settingsOf(out, 'REG_DT')).not.toContain('null')
+    expect(line(out, 'REG_DT')).toBe('"REG_DT" VARCHAR(100)')
   })
 
   it('NOT NULL TIMESTAMP 는 그대로이고 null 이 겹쳐 붙지 않는다', () => {
@@ -502,11 +507,9 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
    */
   it('mysql 이 아닌 방언은 물리 타입이 TIMESTAMP 로 시작해도 null 을 붙이지 않는다', () => {
     const pg = generateDbml(tsModel({ type: 'DATETIME' }), 'postgresql')
-    expect(line(pg, 'REG_DT')).toContain('"REG_DT" timestamp')
-    expect(settingsOf(pg, 'REG_DT')).not.toContain('null')
+    expect(line(pg, 'REG_DT')).toBe('"REG_DT" timestamp')
     const ora = generateDbml(tsModel(), 'oracle')
-    expect(line(ora, 'REG_DT')).toContain('"REG_DT" TIMESTAMP WITH TIME ZONE')
-    expect(settingsOf(ora, 'REG_DT')).not.toContain('null')
+    expect(line(ora, 'REG_DT')).toBe('"REG_DT" TIMESTAMP WITH TIME ZONE')
   })
 
   /**
@@ -518,5 +521,48 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
     const m = tsModel({ isPk: true })
     m.columns['c1'] = { ...m.columns['c1']!, isPk: false }   // 단일 PK 로 만들어 인라인 pk 를 낸다
     expect(line(generateDbml(m, 'mysql'), 'REG_DT')).toBe('"REG_DT" TIMESTAMP [pk]')
+  })
+
+  /**
+   * 복합 PK 컬럼도 마찬가지다 — 가드가 `!inlinePk` 가 아니라 **`!col.isPk`** 인 이유가 이것이다.
+   * pk 선언이 `indexes` 블록으로 나가므로 `!inlinePk` 로는 안 막히는데, 그러면 산출물이
+   * **스스로 모순된 문장**을 말한다: 컬럼 줄은 `[null]` 이라 하고 같은 컬럼이 pk 로 선언된다.
+   * 가져오기가 `nullable: !notNull && !isPk` 로 판정해 어차피 `nullable: false` 로 닫히므로
+   * 그 `[null]` 은 **거짓 정보**다.
+   *
+   * ⚠️ 바로 위 not null 가지의 가드(`!inlinePk`)와 다른 것이 **옳다.** 복합 PK 컬럼에 not null 을
+   * 내는 것은 참이고(PK 는 not null 이다), null 을 내는 것은 거짓이다. 통일하지 마라.
+   */
+  it('복합 PK 인 nullable TIMESTAMP 에는 null 이 붙지 않는다', () => {
+    const out = generateDbml(tsModel({ isPk: true }), 'mysql')   // c1 과 함께 복합 PK 가 된다
+    expect(line(out, 'REG_DT')).toBe('"REG_DT" TIMESTAMP')
+    // 전제 — pk 선언은 indexes 블록으로 실제로 나간다(그래서 `[null]` 이면 모순이 된다).
+    expect(out).toContain('("ORD_NO", "REG_DT") [pk]')
+  })
+
+  /*
+   * 아래 셋은 **dbml.ts 가 판정을 스스로 다시 적지 않고 `needsExplicitNullToken` 에 맡긴다**를
+   * 잠근다 — 판정식 조각(`\b`·`i`·`.trim()`)의 단독 잠금은 그 함수 자리(domain-resolve.test.ts)에
+   * 있고, 여기 셋은 **호출부**의 잠금이라 역할이 다르다. ddl.test.ts 에 같은 모양의 셋이 있다.
+   * ⚠️ 「중복이다」로 걷지 마라 — 걷으면 dbml 쪽에만 느슨한 정규식을 다시 심어도 초록으로 남고,
+   * 그 순간 같은 모델의 DDL 과 DBML 이 서로 다른 nullability 를 말하게 된다.
+   */
+
+  // `\b` — `TIMESTAMP` 로 **시작만** 하는 타입은 걸리지 않는다.
+  it('mysql 이어도 물리 타입이 TIMESTAMP 로 시작만 하면 null 을 붙이지 않는다', () => {
+    expect(line(generateDbml(overrideModel('timestamptz'), 'mysql'), 'REG_DT'))
+      .toBe('"REG_DT" timestamptz')
+  })
+
+  // `i` — 소문자 오버라이드도 걸린다.
+  it('물리 타입이 소문자 timestamp 여도 null 이 붙는다', () => {
+    expect(line(generateDbml(overrideModel('timestamp'), 'mysql'), 'REG_DT'))
+      .toBe('"REG_DT" timestamp [null]')
+  })
+
+  // `.trim()` — 생산자가 정규화하지 않는 오버라이드의 앞뒤 공백을 넘어 걸린다.
+  it('물리 타입 앞뒤에 공백이 있어도 null 이 붙는다', () => {
+    expect(line(generateDbml(overrideModel('  TIMESTAMP  '), 'mysql'), 'REG_DT'))
+      .toMatch(/^"REG_DT"\s+TIMESTAMP\s+\[null\]$/)
   })
 })
