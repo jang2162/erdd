@@ -634,12 +634,12 @@ describe('generateDdl — MySQL nullable TIMESTAMP', () => {
     m.columns['c2'] = col('c2', 't', 'REG_DT', 'TIMESTAMPTZ', { order: 1, ...over })
     return m
   }
-  /** 도메인의 mysql 물리 타입 오버라이드로만 TIMESTAMP 가 되는 모델(논리 타입은 TIMESTAMP 가 아니다). */
-  function overrideModel(): ProjectModel {
+  /** mysql 물리 타입을 도메인 오버라이드로만 정하는 모델(논리 타입은 TIMESTAMP 가 아니다). */
+  function overrideModel(mysqlType = 'TIMESTAMP'): ProjectModel {
     const m = tsModel()
     m.domains['d'] = {
       id: 'd', name: '등록일시', category: null, logicalType: 'DATETIME',
-      dialectTypes: { postgresql: null, mysql: 'TIMESTAMP', oracle: null, mssql: null },
+      dialectTypes: { postgresql: null, mysql: mysqlType, oracle: null, mssql: null },
       defaultValue: null, allowedValues: [], description: null, origin: null,
     }
     m.columns['c2'] = { ...m.columns['c2']!, type: '', domainId: 'd' }
@@ -689,7 +689,44 @@ describe('generateDdl — MySQL nullable TIMESTAMP', () => {
     expect(ora).toContain('REG_DT TIMESTAMP WITH TIME ZONE')
     expect(ora).not.toMatch(/\bNULL\b/)
     // 대조군: 단어 경계에서 떨어지는 postgresql 의 TIMESTAMPTZ(`timestamptz`)도 물론 안 붙는다.
-    expect(line(tsModel(), 'postgresql')).toContain('REG_DT timestamptz')
+    const pgTz = line(tsModel(), 'postgresql')
+    expect(pgTz).toContain('REG_DT timestamptz')
+    expect(pgTz).not.toMatch(/\bNULL\b/)
+  })
+
+  /*
+   * 아래 셋은 판정식의 세 조각(`\b`·`i`·`.trim()`)을 **하나씩 단독으로** 잠근다.
+   * ⚠️ 한 테스트가 두 조각을 함께 잠그게 만들지 마라 — 이중 방어를 넣으면 어느 조각을 지웠을 때
+   * 무엇이 걸린 것인지 구분되지 않아 각 조각의 구분력이 함께 사라진다.
+   */
+
+  /**
+   * `\b` 단독 잠금 — 단어 경계를 지우면 `TIMESTAMP` 로 **시작만** 하는 타입에 NULL 이 붙는다.
+   *
+   * ⚠️ 방언은 반드시 mysql 이어야 한다. 같은 케이스를 postgresql 로 쓰면 방언 가드에서 먼저
+   * 떨어져 나가 `\b` 를 지워도 초록으로 남는다 — 위 테스트의 대조군과 헷갈리지 마라.
+   * 이 조합의 DDL 은 MySQL 에 `timestamptz` 타입이 없어 어차피 실행되지 않지만, 판정식이
+   * 무엇을 보는지는 그와 무관하게 잠겨 있어야 한다.
+   */
+  it('mysql 이어도 물리 타입이 TIMESTAMP 로 시작만 하면 NULL 을 붙이지 않는다', () => {
+    const line = generateDdl(overrideModel('timestamptz'), 'mysql')
+      .split('\n').find((l) => l.trim().startsWith('REG_DT'))!
+    expect(line).toContain('REG_DT timestamptz')
+    expect(line).not.toMatch(/\bNULL\b/)
+  })
+
+  // `i` 플래그 단독 잠금 — 대소문자를 가리면 소문자 오버라이드와 파싱에 실패해 원문이 그대로
+  // 나가는 컬럼(`timestamp(6)` 등)이 조용히 빠진다.
+  it('물리 타입이 소문자 timestamp 여도 NULL 이 붙는다', () => {
+    expect(generateDdl(overrideModel('timestamp'), 'mysql')).toContain('REG_DT timestamp NULL')
+  })
+
+  // `.trim()` 단독 잠금 — 도메인 오버라이드는 생산자가 정규화하지 않아 앞뒤 공백이 그대로
+  // 물리 타입 문자열에 남는다. 정규화를 독자에서 걷으면 그 컬럼이 조용히 빠진다.
+  it('물리 타입 앞뒤에 공백이 있어도 NULL 이 붙는다', () => {
+    const line = generateDdl(overrideModel('  TIMESTAMP  '), 'mysql')
+      .split('\n').find((l) => l.trim().startsWith('REG_DT'))!
+    expect(line).toMatch(/REG_DT\s+TIMESTAMP\s+NULL\b/)
   })
 
   // 왕복 — 명시한 NULL 이 파서에서 NOT NULL 로 뒤집히지 않는다(`notNull: false` 가 nullable 이다).
