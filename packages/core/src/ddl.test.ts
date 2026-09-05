@@ -741,3 +741,106 @@ describe('generateDdl — MySQL nullable TIMESTAMP', () => {
     expect(c.notNull).toBe(false)
   })
 })
+
+// ── mysql 인라인 CHECK 의 자리 ───────────────────────────────────────────────
+
+/**
+ * MariaDB 는 컬럼 인라인 `CHECK` 를 **컬럼 정의의 맨 끝**에서만 받는다. `CHECK (…) COMMENT '…'`
+ * 순서로 내면 문장 전체가 `ERROR 1064` 로 죽어, 허용값 도메인을 쓰는 컬럼이 하나라도 있는
+ * mysql 프로젝트는 내보낸 DDL 이 통째로 실행되지 않는다(MariaDB 11.8 실측). 그래서 mysql 의
+ * 인라인 `COMMENT` 는 `CHECK` **앞**에 온다.
+ *
+ * ⚠️ 자리가 바뀌는 것은 mysql 뿐이어야 한다 — 인라인 COMMENT 는 mysql 만 내고(나머지 셋은
+ * 별도 `COMMENT ON`·확장 속성 문장), 부호 없음 CHECK 는 mysql 이 **아닌** 방언만 낸다.
+ * 나머지 세 방언의 출력은 한 글자도 바뀌지 않아야 한다.
+ */
+describe('generateDdl — mysql 인라인 CHECK 는 줄 맨 끝에 온다', () => {
+  function stsModel(over: Partial<Column> = {}, allowedValues: string[] = ['A', 'B']): ProjectModel {
+    const m = createEmptyModel()
+    m.tables['t'] = tbl('t', 'ORD')
+    m.domains['d'] = {
+      id: 'd', name: '상태', category: null, logicalType: 'CHAR(1)',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: "'A'", allowedValues, description: null, origin: null,
+    }
+    m.columns['c'] = col('c', 't', 'STS', '', { domainId: 'd', nullable: false, order: 0, ...over })
+    return m
+  }
+  const stsLine = (m: ProjectModel, d: Dialect) =>
+    generateDdl(m, d).split('\n').find((l) => /^\s*[["`]?STS/.test(l))!
+
+  // 1. 허용값 + 코멘트가 한 컬럼에 다 붙는 경우 — 줄 전체를 단언한다. `toContain` 으로는
+  //    두 토큰의 **순서**가 잠기지 않는다.
+  it('허용값 도메인과 코멘트가 함께 있으면 COMMENT 가 CHECK 앞에 온다', () => {
+    const m = stsModel({ logicalName: '상태', comment: '주문 상태' })
+    expect(stsLine(m, 'mysql')).toBe(
+      "  STS CHAR(1) NOT NULL DEFAULT 'A' COMMENT '상태 - 주문 상태' CHECK (STS IN ('A', 'B'))")
+  })
+
+  // 2·3. 한쪽만 있는 경우는 옮길 것이 없다 — 출력이 그대로다.
+  it('허용값만 있으면(코멘트 없음) 출력이 바뀌지 않는다', () => {
+    expect(stsLine(stsModel(), 'mysql')).toBe(
+      "  STS CHAR(1) NOT NULL DEFAULT 'A' CHECK (STS IN ('A', 'B'))")
+  })
+  it('코멘트만 있으면(허용값 없음) 출력이 바뀌지 않는다', () => {
+    const m = stsModel({ logicalName: '상태', comment: '주문 상태' }, [])
+    expect(stsLine(m, 'mysql')).toBe("  STS CHAR(1) NOT NULL DEFAULT 'A' COMMENT '상태 - 주문 상태'")
+  })
+
+  // 4. 나머지 세 방언 — 인라인 COMMENT 가 없으므로 줄이 한 글자도 달라지지 않는다.
+  it('다른 세 방언의 컬럼 줄은 한 글자도 바뀌지 않는다', () => {
+    const m = stsModel({ logicalName: '상태', comment: '주문 상태' })
+    expect(stsLine(m, 'postgresql')).toBe("  STS char(1) NOT NULL DEFAULT 'A' CHECK (STS IN ('A', 'B'))")
+    expect(stsLine(m, 'oracle')).toBe("  STS CHAR(1) NOT NULL DEFAULT 'A' CHECK (STS IN ('A', 'B'))")
+    expect(stsLine(m, 'mssql')).toBe("  STS NCHAR(1) NOT NULL DEFAULT 'A' CHECK (STS IN ('A', 'B'))")
+    // 코멘트는 mysql 밖에서 별도 문장으로 나가고, 그 자리도 그대로다.
+    expect(generateDdl(m, 'postgresql')).toContain("COMMENT ON COLUMN ORD.STS IS '상태 - 주문 상태';")
+  })
+
+  /**
+   * ⚠️ 부호 없음 CHECK 와 허용값 CHECK 가 **한 줄에 둘 다** 나오는 유일한 조합은 mysql 이 아닌
+   * 방언이다(mysql 은 접미 `UNSIGNED` 로 내고 부호 없음 CHECK 를 아예 내지 않는다). 그래서 이
+   * 조합에도 인라인 COMMENT 가 끼어들 자리가 없고, CHECK 둘은 이미 줄 끝에 모여 있다.
+   */
+  it('CHECK 가 둘인 조합(mysql 아님)에서도 CHECK 들이 줄 끝에 모인다', () => {
+    const m = stsModel({ logicalName: '상태', comment: '주문 상태' })
+    m.domains['d']!.logicalType = 'INT UNSIGNED'
+    m.domains['d']!.defaultValue = null
+    m.domains['d']!.allowedValues = ['1', '2']
+    expect(stsLine(m, 'postgresql')).toBe(
+      "  STS integer NOT NULL CHECK (STS IN ('1', '2')) CHECK (STS >= 0)")
+    // mysql 은 접미로 내므로 CHECK 는 허용값 하나뿐이고, 그것이 COMMENT 뒤에 온다.
+    expect(stsLine(m, 'mysql')).toBe(
+      "  STS INT UNSIGNED NOT NULL COMMENT '상태 - 주문 상태' CHECK (STS IN ('1', '2'))")
+  })
+
+  /**
+   * 5. 왕복. 파서의 컬럼 코멘트 추출은 위치와 무관한 정규식이라 순서를 바꿔도 읽혀야 한다.
+   *
+   * ⚠️ **전제를 먼저 단언한다** — 「파싱 결과에 코멘트가 있다」만 보면 옛 순서에서도 참이라
+   * 구현 여부를 구분하지 못한다. 파싱 전에 토큰 순서를 먼저 잠근다.
+   */
+  it('새 순서로 낸 DDL 을 다시 파싱해도 코멘트·기본값이 복원된다', () => {
+    const m = stsModel({ logicalName: '상태', comment: '주문 상태' })
+    const ddl = generateDdl(m, 'mysql')
+    expect(ddl).toMatch(/COMMENT '상태 - 주문 상태' CHECK \(STS IN/)   // 전제: 새 순서다
+    const c = parseDdl(ddl).tables.find((t) => t.name === 'ORD')!.columns.find((x) => x.name === 'STS')!
+    expect(c.comment).toBe('상태 - 주문 상태')
+    // DEFAULT 가 **문자열 리터럴**이고 바로 뒤에 COMMENT 가 오는 새 배치에서도 값이 정확히 잘린다.
+    expect(c.defaultValue).toBe("'A'")
+    expect(c.rawType).toBe('CHAR(1)')
+    expect(c.notNull).toBe(true)
+  })
+
+  /**
+   * CHECK 식 안에 작은따옴표 문자열이 여럿 들어도 코멘트 추출이 흔들리지 않는다.
+   * 허용값 자체가 `COMMENT '…'` 처럼 생긴 경우가 최악인데, 새 순서에서는 **진짜 코멘트가
+   * 먼저 오므로** 위치 무관 정규식이 그것을 먼저 집는다(옛 순서에서는 CHECK 안의 가짜를 집었다).
+   */
+  it("허용값에 COMMENT '…' 모양 문자열이 들어도 코멘트가 흔들리지 않는다", () => {
+    const m = stsModel({ logicalName: '상태', comment: '주문 상태' }, ["COMMENT 'X'", 'B'])
+    const ddl = generateDdl(m, 'mysql')
+    const c = parseDdl(ddl).tables.find((t) => t.name === 'ORD')!.columns.find((x) => x.name === 'STS')!
+    expect(c.comment).toBe('상태 - 주문 상태')
+  })
+})

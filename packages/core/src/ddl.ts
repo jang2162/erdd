@@ -100,6 +100,15 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string 
   // SQL 에서 `... NULL, PRIMARY KEY (...)` 는 합법이고 PK 가 이겨 조용히 NOT NULL 이 된다.
   else if (needsExplicitNullToken(dialect, r.sql)) parts.push('NULL')
   if (!auto && r.defaultValue !== null && r.defaultValue !== '') parts.push(`DEFAULT ${r.defaultValue}`)
+  // ⚠️ **CHECK 앞이다.** MariaDB 는 컬럼 인라인 CHECK 를 **컬럼 정의의 맨 끝**에서만 받아
+  // `CHECK (…) COMMENT '…'` 를 `ERROR 1064` 로 거절한다(11.8 실측). 뒤로 옮기면 허용값 도메인을
+  // 쓰는 컬럼이 하나라도 있는 프로젝트의 DDL 이 통째로 실행되지 않는다.
+  // 인라인 COMMENT 는 mysql 만 내므로(나머지 셋은 별도 문장) 이 자리는 다른 방언에 닿지 않는다.
+  if (dialect === 'mysql') {
+    const text = commentText(col.logicalName, col.physicalName, col.comment)
+    if (text !== null) parts.push(`COMMENT '${esc(text)}'`)
+  }
+  // ── 여기부터는 **줄의 맨 끝**이다. CHECK 뒤에 다른 컬럼 속성을 붙이지 마라(위 MariaDB 제약).
   // CHECK 는 **둘**이 될 수 있다 — 도메인 허용값과 부호 없음.
   if (r.checkValues && r.checkValues.length > 0) {
     const list = r.checkValues.map((v) => `'${esc(v)}'`).join(', ')
@@ -111,10 +120,6 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string 
   // 있어도 낸다 — 오버라이드는 저장 형태, CHECK 는 값이라 서로 배타적이지 않다.
   if (dialect !== 'mysql' && needsUnsignedCheck(r.logicalType)) {
     parts.push(`CHECK (${quoteIdentifier(col.physicalName, dialect)} >= 0)`)
-  }
-  if (dialect === 'mysql') {
-    const text = commentText(col.logicalName, col.physicalName, col.comment)
-    if (text !== null) parts.push(`COMMENT '${esc(text)}'`)
   }
   return `  ${parts.join(' ')}`
 }
