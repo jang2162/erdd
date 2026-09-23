@@ -259,4 +259,27 @@ describe('main', () => {
       expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
     }
   })
+
+  it('init --create 는 --project·--local 과 함께 쓰면 USAGE, --dialect·--case 는 받는다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const dir = await mkdtemp(join(tmpdir(), 'erdd-main-create-'))
+    // 연결 인자를 전부 줘야 가드에 구분력이 생긴다 — 가드가 없으면 서버에 붙으러 가 NETWORK(1)가 된다.
+    const conn = ['--server', 'http://127.0.0.1:1', '--token', 't', '--org', '팀', '--name', 'P', '--json']
+    for (const argv of [
+      ['init', '--create', '--project', 'p1', ...conn],
+      ['init', '--create', '--local', ...conn],
+      ['init', '--create', '--org', '--name', 'P', '--server', 'http://127.0.0.1:1', '--token', 't', '--json'],  // --org 값이 빠졌다
+      ['init', '--create', '--name', '--org', '팀', '--server', 'http://127.0.0.1:1', '--token', 't', '--json'], // --name 값이 빠졌다
+    ]) {
+      out.length = 0
+      expect(await main(argv, dir)).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+    // --create 는 --dialect·--case 를 받는다 — 가드를 통과해 서버에 붙으러 간다.
+    out.length = 0
+    expect(await main(['init', '--create', '--dialect', 'mysql', '--case', 'lower_snake', ...conn], dir)).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NETWORK')
+  })
 })

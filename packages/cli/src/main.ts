@@ -46,10 +46,12 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --token <token>       init 전용
   --project <id>        init 전용
   --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
-  --case <대소문자>      init --local 전용 — UPPER_SNAKE(기본) 또는 lower_snake
+  --create              init 전용 — 서버에 프로젝트를 만들어 연결한다(로컬 전용 프로젝트면 이관한다)
+  --org <이름|id>        init --create 전용 — 프로젝트를 만들 조직
+  --case <대소문자>      init --local·--create 전용 — UPPER_SNAKE(기본) 또는 lower_snake
   --format <ddl|dbml>   export·import 전용 — export 기본 ddl, import 기본 확장자 판별
-  --dialect <방언>       export·import·init --local 전용
-                        export·import는 기본이 erdd.config.yaml의 dialects[0], init --local은 postgresql
+  --dialect <방언>       export·import·init --local·--create 전용
+                        export·import는 기본이 erdd.config.yaml의 dialects[0], init은 postgresql
   -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
   --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
   --library <이름|id>   dict pull·push 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
@@ -58,6 +60,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
   --kind <종류,…>        dict push 전용 — domain·word·term·customField 중 올릴 종류
   --name <이름>          dict push 전용 — 올릴 항목 이름(반복 가능)
+                        init --create 전용 — 서버에 만들 프로젝트 이름
   --include-name-match  dict push 전용 — 라이브러리에 같은 이름이 있는 항목도 올린다(기본 제외)
   --status <상태>        dict requests 전용 — pending·resolved·rejected·cancelled
   --port <번호>          serve 전용 — 기본 4300
@@ -160,14 +163,24 @@ export async function main(argv: string[], cwd: string): Promise<number> {
   switch (command) {
     case 'init': {
       const local = argv.includes('--local')
+      const create = argv.includes('--create')
+      if (create && argv.includes('--project')) return usageError(json, '--create와 --project는 함께 쓸 수 없습니다')
+      if (create && local) return usageError(json, '--create와 --local은 함께 쓸 수 없습니다')
+      // 값이 빠진 --org·--name 이 조용히 대화형 선택·입력으로 흐르면 사용자는 자기가 적은 것이
+      // 무시된 줄 모른다.
+      for (const name of ['org', 'name']) {
+        if (argv.includes(`--${name}`) && flagValue(argv, name) === undefined) {
+          return usageError(json, `--${name} 값이 빠졌습니다`)
+        }
+      }
       const dialect = enumFlag<Dialect>(argv, 'dialect', DIALECTS)
       if (!dialect.ok) return usageError(json, dialect.message)
       const namingCase = enumFlag<NamingRules['case']>(argv, 'case', NAMING_CASES)
       if (!namingCase.ok) return usageError(json, namingCase.message)
       // 연결 모드에서는 서버 프로젝트 설정이 진실이다 — 그 둘을 여기서 받으면 init이 만든
       // config가 첫 pull에 곧바로 덮여, 사용자는 자기가 준 값이 왜 사라졌는지 알 수 없다.
-      if (!local && (dialect.value !== undefined || namingCase.value !== undefined)) {
-        return usageError(json, '--dialect·--case는 init --local 전용입니다 — 연결 모드에서는 서버 프로젝트 설정을 따릅니다')
+      if (!local && !create && (dialect.value !== undefined || namingCase.value !== undefined)) {
+        return usageError(json, '--dialect·--case는 init --local·--create 전용입니다 — 기존 프로젝트에 연결할 때는 서버 프로젝트 설정을 따릅니다')
       }
       return init({
         ...ctx,
@@ -177,6 +190,9 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         local,
         dialect: dialect.value,
         namingCase: namingCase.value,
+        create,
+        org: flagValue(argv, 'org'),
+        name: flagValue(argv, 'name'),
       })
     }
     case 'pull': return pull(ctx)
