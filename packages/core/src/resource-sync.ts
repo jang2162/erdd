@@ -134,9 +134,12 @@ export function planResync(
   let keptDetached = 0
   for (const key of linked.keys()) if (!seen.has(key)) keptDetached += 1
 
+  // 동률은 sourceId(코드 단위 비교)로 깬다 — 동명 원본의 adopt 선착이 라이브러리 항목의 입력
+  // 순서(서버 행 순서)에 의존하지 않게 한다.
   const kindOrder = new Map(RESOURCE_KINDS.map((k, i) => [k, i]))
   entries.sort((a, b) =>
-    kindOrder.get(a.kind)! - kindOrder.get(b.kind)! || a.name.localeCompare(b.name))
+    kindOrder.get(a.kind)! - kindOrder.get(b.kind)! || a.name.localeCompare(b.name)
+    || (a.sourceId < b.sourceId ? -1 : a.sourceId > b.sourceId ? 1 : 0))
 
   return { libraryId, entries, keptLocal, keptSynced, keptDetached }
 }

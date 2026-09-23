@@ -340,6 +340,21 @@ describe('adopt', () => {
     expect(assigned.has('S2')).toBe(false)
   })
 
+  it('동명 원본의 선착은 입력 순서가 아니라 sourceId 로 정해진다', () => {
+    const m = createEmptyModel()
+    m.words['w1'] = localWord('w1', 'CUST')
+    const s1 = libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })
+    const s2 = libWord('S2', 1, { logicalName: '고객', abbreviation: 'CSTMR', englishName: null, description: null })
+    const decisions = { S1: 'adopt', S2: 'adopt' } as const
+    for (const items of [[s1, s2], [s2, s1]]) {
+      const plan = planResync(m, 'L1', items)
+      expect(plan.entries.map((e) => e.sourceId)).toEqual(['S1', 'S2'])
+      expect([...adoptAssignments(m, plan, decisions)]).toEqual([['S1', 'w1']])
+      expect(applyResyncPlan(m, plan, decisions, () => 'unused').words['w1']!.origin)
+        .toMatchObject({ sourceId: 'S1' })
+    }
+  })
+
   it('added 가 아닌 항목의 adopt 는 무시한다(keep 으로 새지 않는다)', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } })
