@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as fsp from 'node:fs/promises'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,6 +10,12 @@ import { TEST_CONFIG } from '../testing/harness.js'
 import { readTree, writeTree } from '../tree.js'
 import { dictPull, type DictPullCtx } from './dict-pull.js'
 import type { LibraryRow } from './dict-shared.js'
+
+// 쓰기 순서를 보려고 writeFile 을 그대로 통과시키며 기록한다(동작은 원본과 같다).
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const m = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...m, writeFile: vi.fn(m.writeFile) }
+})
 
 let dir: string
 let out: string[]
@@ -51,7 +58,13 @@ type Report = {
   unlinkable: { kind: string; name: string }[]
   conflicts: unknown[]
 }
+const LIB2: LibraryRow = { ...LIB, id: 'L2', name: '확장' }
 const lastReport = (): Report => JSON.parse(out.at(-1)!).libraries[0]
+const namedWord = (id: string, version: number, logicalName: string, abbreviation: string): LibraryItem =>
+  ({ id, kind: 'word', version, payload: { logicalName, abbreviation, englishName: null, description: null } })
+type OriginRow = { id: string; library: string; item: string; version: number }
+const origins = async (): Promise<OriginRow[]> =>
+  ((await readTree(dir))['erdd/origins.yaml'] as { origins: OriginRow[] } | undefined)?.origins ?? []
 
 describe('dict pull', () => {
   it('신규 항목을 words.yaml·origins.yaml 에 쓰고 구독을 남긴다', async () => {
@@ -110,6 +123,79 @@ describe('dict pull', () => {
     expect(await readTree(dir)).not.toHaveProperty('erdd/origins.yaml')
   })
 
+  it('여러 라이브러리는 config 순서로 모델을 이어받는다 — 앞 구독이 연결한 항목을 뒤 구독이 다시 잡지 않는다', async () => {
+    const m = createEmptyModel(); localWord(m, 'w1', 'CSTMR'); await seed(m)
+    await writeConfig(dir, { ...(await readConfig(dir)), dictionaries: [{ id: 'L1', name: '표준' }, { id: 'L2', name: '확장' }] })
+    const c = client([LIB, LIB2], {
+      L1: [namedWord('SA', 1, '고객', 'CUST'), namedWord('SA2', 1, '주문', 'ORD')],
+      L2: [namedWord('SB', 1, '고객', 'CS')],
+    })
+    expect(await dictPull(ctx(c, { adopt: true }))).toBe(0)
+    const { libraries } = JSON.parse(out.at(-1)!) as { libraries: (Report & { id: string })[] }
+    expect(libraries).toEqual([
+      expect.objectContaining({ id: 'L1', added: 1, adopted: 1, unlinkable: [] }),
+      expect.objectContaining({ id: 'L2', added: 0, adopted: 0, unlinkable: [{ kind: '단어', name: '고객' }] }),
+    ])
+    // w1 은 L1 에만 연결된다. L1 이 새로 더한 주문도 남는다 — 앞 라이브러리의 결과를 버리지 않는다.
+    const rows = await origins()
+    expect(rows.filter((o) => o.id === 'w1')).toEqual([expect.objectContaining({ library: 'L1', item: 'SA' })])
+    expect(rows.every((o) => o.library === 'L1')).toBe(true)
+    expect(rows.map((o) => o.item).sort()).toEqual(['SA', 'SA2'])
+    const words = ((await readTree(dir))['erdd/words.yaml'] as { words: { logicalName: string; abbreviation: string }[] }).words
+    expect(words.map((w) => `${w.logicalName}:${w.abbreviation}`).sort()).toEqual(['고객:CSTMR', '주문:ORD'])
+  })
+
+  it('--library 는 다른 구독이 있어도 그 라이브러리만 받는다', async () => {
+    await seed(createEmptyModel())
+    await writeConfig(dir, { ...(await readConfig(dir)), dictionaries: [{ id: 'L1', name: '표준' }] })
+    const c = client([LIB, LIB2], { L1: [word('S1', 1, 'CUST')], L2: [namedWord('S9', 1, '주문', 'ORD')] })
+    expect(await dictPull(ctx(c, { library: 'L2' }))).toBe(0)
+    expect((JSON.parse(out.at(-1)!) as { libraries: { id: string }[] }).libraries.map((l) => l.id)).toEqual(['L2'])
+    expect((await origins()).map((o) => o.library)).toEqual(['L2'])
+    expect((await readConfig(dir)).dictionaries.map((d) => d.id)).toEqual(['L1', 'L2'])
+  })
+
+  it('원본이 올라가고 로컬이 그대로면 자동 갱신 1 이다', async () => {
+    await seed(createEmptyModel())
+    await dictPull(ctx(client([LIB], { L1: [word('S1', 1, 'CUST')] }), { library: 'L1' }))
+    await dictPull(ctx(client([LIB], { L1: [word('S1', 2, 'CUS')] })))
+    expect(lastReport()).toMatchObject({ added: 0, autoUpdated: 1, conflicts: [] })
+    expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toContain('CUS\n')
+    expect((await origins())[0]).toMatchObject({ item: 'S1', version: 2 })
+  })
+
+  /**
+   * 🔥 출처 파일은 **마지막**에 쓴다. 먼저 쓰고 내용 파일 전에 끊기면 출처는 v2·내용은 v1 이 되어
+   * 다음 pull 이 「버전이 같다」로 조용히 넘긴다. 마지막이면 끊겨도 다음 pull 이 충돌로 알린다.
+   */
+  it('사전 내용 파일을 먼저 쓰고 origins.yaml 을 마지막에 쓴다', async () => {
+    await seed(createEmptyModel())
+    await dictPull(ctx(client([LIB], { L1: [word('S1', 1, 'CUST')] }), { library: 'L1' }))
+    const spy = vi.mocked(fsp.writeFile)
+    spy.mockClear()
+    await dictPull(ctx(client([LIB], { L1: [word('S1', 2, 'CUS')] })))
+    const written = spy.mock.calls.map(([p]) => String(p)).filter((p) => p.includes(`${join(dir, 'erdd')}/`))
+    expect(written.map((p) => p.slice(dir.length + 1))).toEqual(['erdd/words.yaml', 'erdd/origins.yaml'])
+    // 보고는 여전히 정렬된 목록이다.
+    expect(JSON.parse(out.at(-1)!).written).toEqual(['erdd/origins.yaml', 'erdd/words.yaml'])
+  })
+
+  it('원본에서 사라진 항목은 로컬에 남기고 그 수를 보고한다', async () => {
+    await seed(createEmptyModel())
+    await dictPull(ctx(client([LIB], { L1: [word('S1', 1, 'CUST')] }), { library: 'L1' }))
+    await dictPull(ctx(client([LIB], { L1: [] }), { json: false }))
+    expect(out.at(-1)).toBe([
+      '표준 (조직)',
+      '  추가 0 · 자동 갱신 0 · 연결 0 · 유지 0',
+      '  원본에서 사라짐 1 (로컬에 남겨 둠)',
+      '바뀐 파일이 없습니다',
+      '',
+    ].join('\n'))
+    await dictPull(ctx(client([LIB], { L1: [] })))
+    expect(lastReport()).toMatchObject({ detached: 1 })
+    expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toContain('CUST')
+  })
+
   it('사람용 출력은 라이브러리별 집계와 이름 중복 두 갈래, 반영한 파일을 보인다', async () => {
     const m = createEmptyModel(); localWord(m, 'w1', 'CSTMR'); await seed(m)
     const items = [word('S2', 1, 'CS'), word('S1', 1, 'CUST'),
@@ -119,7 +205,7 @@ describe('dict pull', () => {
       '표준 (조직)',
       '  추가 1 · 자동 갱신 0 · 연결 0 · 유지 0',
       '  이름 중복 1 — 건너뜀 (--adopt 로 연결)',
-      '  이름 중복 1 — 연결할 수 없음 (같은 이름 항목에 이미 출처가 있거나 대상이 다릅니다)',
+      '  이름 중복 1 — 연결할 수 없음 (같은 이름 항목을 다른 원본이 차지했거나 커스텀 항목의 적용 대상이 다릅니다)',
       '반영했습니다 — erdd/origins.yaml, erdd/words.yaml',
       '',
     ].join('\n'))
@@ -137,6 +223,39 @@ describe('dict pull', () => {
     expect(lastReport().conflicts).toHaveLength(1)
     await dictPull(ctx(v2, { conflicts: 'theirs' }))
     expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toContain('CUS\n')
+  })
+
+  /** 로컬 약어 CSTMR, 원본 v1 CUST → v2 CUS 인 충돌을 만든다. */
+  async function seedConflict(): Promise<ApiClient> {
+    await seed(createEmptyModel())
+    await dictPull(ctx(client([LIB], { L1: [word('S1', 1, 'CUST')] }), { library: 'L1' }))
+    const words = await readFile(join(dir, 'erdd/words.yaml'), 'utf8')
+    await writeFile(join(dir, 'erdd/words.yaml'), words.replace('CUST', 'CSTMR'))
+    return client([LIB], { L1: [word('S1', 2, 'CUS')] })
+  }
+
+  it('--conflicts ours 는 로컬 값을 두고 출처만 올린다 — 다음 pull 에 같은 충돌이 다시 뜨지 않는다', async () => {
+    const v2 = await seedConflict()
+    await dictPull(ctx(v2, { conflicts: 'ours' }))
+    expect(lastReport().conflicts).toEqual([expect.objectContaining({ decision: 'keep' })])
+    expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toContain('CSTMR')
+    expect((await origins())[0]).toMatchObject({ item: 'S1', version: 2 })
+    await dictPull(ctx(v2))
+    expect(lastReport()).toMatchObject({ conflicts: [], kept: 1 })
+  })
+
+  it('사람용 출력의 충돌 머리줄은 결정을 말한다 — 보류·원본 반영·로컬 유지', async () => {
+    const v2 = await seedConflict()
+    const header = async (extra: Partial<DictPullCtx>) => {
+      out = []
+      await dictPull(ctx(v2, { json: false, dryRun: true, ...extra }))
+      return out.join('').split('\n').filter((l) => l.includes('충돌'))
+    }
+    expect(await header({})).toEqual(['  충돌 1 — 보류(--conflicts theirs|ours 로 정리):'])
+    expect(await header({ conflicts: 'theirs' })).toEqual(['  충돌 1 — 원본 반영:'])
+    expect(await header({ conflicts: 'ours' })).toEqual(['  충돌 1 — 로컬 유지:'])
+    // 필드 키는 그대로 보인다(매뉴얼이 실물을 인용한다).
+    expect(out.join('')).toContain('    단어 고객  (abbreviation)')
   })
 
   it('--dry-run 은 파일도 config 도 쓰지 않는다', async () => {
