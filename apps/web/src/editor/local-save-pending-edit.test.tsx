@@ -148,6 +148,23 @@ describe('Cmd+S 뒤 포커스는 원래 칸에 남는다', () => {
     expect(now.value).toBe('VARCHAR(77')
   })
 
+  /**
+   * 헤더 버튼은 누르면 포커스를 가져가고, 저장 중 `disabled` 가 되면서 그 포커스를 body 로 떨군다.
+   * 버튼이 mousedown 에서 포커스를 가져가지 않아야 저장이 Cmd+S 와 같은 길(blur → 대기 → 복원)을 탄다.
+   */
+  it('헤더 「저장」 클릭도 — 포커스가 타입 칸에 남고 Backspace 가 테이블을 지우지 않는다', async () => {
+    const saved = setup()
+    const input = screen.getAllByLabelText('타입')[0] as HTMLInputElement
+    await userEvent.clear(input)
+    await userEvent.type(input, 'VARCHAR(99)')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    await waitFor(() => { expect(saved.length).toBe(1) })
+    await waitFor(() => { expect(useEditorStore.getState().localSave.saving).toBe(false) })
+    expect(document.activeElement).toBe(screen.getAllByLabelText('타입')[0])
+    await userEvent.keyboard('{Backspace}')
+    expect(useEditorStore.getState().model.tables['t1']).toBeDefined()
+  })
+
   it('테이블 물리명(NamePair) — 같은 요소로 돌아온다', async () => {
     const saved = setup()
     const input = screen.getByLabelText('테이블 물리명') as HTMLInputElement

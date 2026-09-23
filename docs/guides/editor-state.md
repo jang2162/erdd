@@ -30,9 +30,12 @@
 **포커스된 `input`/`textarea` 를 blur → 한 틱 양보 → 뮤테이션 체인(`serializeMutation`)이 빌 때까지 대기.**
 
 - **셋 중 하나라도 빠지면 방금 친 값이 빠진 채 직전 값이 파일에 쓰이고 성공 토스트가 뜬다.**
-  `Cmd+S` 는 포커스를 옮기지 않아 blur 가 없으면 커밋 자체가 없다. 헤더 클릭은 mousedown 에서 blur
-  하지만 그 `model.mutate` 와 저장 POST 가 같은 순간에 나가 서버가 저장을 먼저 처리한다.
+  `Cmd+S` 는 포커스를 옮기지 않아 blur 가 없으면 커밋 자체가 없다. 커밋이 일어나도 기다리지 않으면
+  그 `model.mutate` 와 저장 POST 가 같은 순간에 나가 서버가 저장을 먼저 처리한다.
   한 틱은 `NamePair` 가 blur 커밋을 `setTimeout(0)` 으로 미루기 때문이다.
+- **헤더 「저장」 버튼은 mousedown 에서 `preventDefault` 로 포커스를 가져가지 않는다**
+  (`local-save-controls.tsx`). 그래서 클릭도 Cmd+S 와 같은 길을 탄다. 가져가게 두면 저장 중
+  `disabled` 가 된 버튼이 포커스를 body 로 떨궈 아래 사고가 헤더 클릭에서 되살아난다.
 - ⚠️ **새 입력란의 blur 커밋은 blur 안에서(늦어도 한 틱 안에) `mutate` 를 불러야 한다.** 디바운스·
   `await` 뒤에 부르면 저장이 그 편집을 기다리지 못하고 위 증상이 그 입력란에서만 되살아난다.
   세 갈래는 `local-save-pending-edit.test.tsx` 가 하나씩 잠근다(하나를 빼면 그 갈래가 빨개진다).
