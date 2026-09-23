@@ -42,9 +42,9 @@ export function ResourceLibraryManager({
 
   const invalidateLibraries = () =>
     queryClient.invalidateQueries({ queryKey: trpc.resource.library.list.queryKey(listInput) })
-  const invalidateItems = () =>
+  const invalidateItems = (libraryId: string | null) =>
     queryClient.invalidateQueries({
-      queryKey: trpc.resource.items.list.queryKey({ libraryId: selectedId ?? '' }),
+      queryKey: trpc.resource.items.list.queryKey({ libraryId: libraryId ?? '' }),
     })
   const onError = (err: { message: string }) => toast.error(err.message)
 
@@ -74,14 +74,14 @@ export function ResourceLibraryManager({
     onSuccess: async () => { setSelectedId(null); await invalidateLibraries() }, onError,
   }))
   const createItem = useMutation(trpc.resource.items.create.mutationOptions({
-    onSuccess: async () => { setEditing(null); await invalidateItems(); await invalidateLibraries() },
+    onSuccess: async () => { setEditing(null); await invalidateItems(selectedId); await invalidateLibraries() },
     onError,
   }))
   const updateItem = useMutation(trpc.resource.items.update.mutationOptions({
-    onSuccess: async () => { setEditing(null); await invalidateItems() }, onError,
+    onSuccess: async () => { setEditing(null); await invalidateItems(selectedId) }, onError,
   }))
   const removeItem = useMutation(trpc.resource.items.remove.mutationOptions({
-    onSuccess: async () => { await invalidateItems(); await invalidateLibraries() }, onError,
+    onSuccess: async () => { await invalidateItems(selectedId); await invalidateLibraries() }, onError,
   }))
 
   const rows = (items.data ?? []) as ItemRow[]
@@ -264,7 +264,11 @@ export function ResourceLibraryManager({
 
       {importTarget && (
         <LibraryImportDialog target={importTarget} onClose={() => setImportTarget(null)}
-          onDone={() => { setImportTarget(null); void invalidateLibraries(); void invalidateItems() }} />
+          onDone={() => {
+            setImportTarget(null)
+            void invalidateLibraries()
+            void invalidateItems(importTarget.kind === 'existing' ? importTarget.libraryId : null)
+          }} />
       )}
     </section>
   )

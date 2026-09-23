@@ -30,6 +30,7 @@ function renderManager(
       </TRPCProvider>
     </QueryClientProvider>,
   )
+  return queryClient
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -145,5 +146,42 @@ describe('ResourceLibraryManager', () => {
     expect(await screen.findByRole('button', { name: '표준 사전(예시) 내보내기' })).toBeDefined()
     expect(screen.queryByRole('button', { name: '표준 사전(예시) 가져오기' })).toBeNull()
     expect(screen.queryByRole('button', { name: /파일에서 만들기/ })).toBeNull()
+  })
+
+  it('가져오기 완료는 펼쳐진 라이브러리가 아니라 가져온 라이브러리의 항목 쿼리를 무효화한다', async () => {
+    const LIBS2 = [
+      { id: 'a1', scope: 'global', orgId: null, name: '대상 A', description: '', itemCount: 1 },
+      { id: 'b1', scope: 'global', orgId: null, name: '펼친 B', description: '', itemCount: 1 },
+    ]
+    const importFn = vi.fn((input: unknown) => ({
+      data: {
+        libraryId: 'a1',
+        applied: !(input as { dryRun: boolean }).dryRun,
+        stateHash: 'h',
+        summary: { counts: { add: 1, update: 0, unchanged: 0, stale: 0, remove: 0, removeBlocked: 0 }, warnings: [], entries: [] },
+      },
+    }))
+    const queryClient = renderManager({
+      'resource.library.list': () => ({ data: LIBS2 }),
+      'resource.items.list': () => ({ data: [] }),
+      'resource.library.import': importFn,
+    })
+    await screen.findByText('대상 A')
+    // B 를 펼쳐 둔 채로 A 의 가져오기를 실행한다 — 펼친 행과 가져오기 대상이 다를 수 있다.
+    await userEvent.click(screen.getByRole('button', { name: /펼친 B.*항목 1개/ }))
+    await screen.findByText('단어')
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    await userEvent.click(screen.getByRole('button', { name: '대상 A 가져오기' }))
+    const file = new File(
+      ['format: erdd-library\nformatVersion: 1\nlibrary: { name: 표준 }\n'], 'std.erdd-lib.yaml',
+    )
+    await userEvent.upload(await screen.findByLabelText('파일 선택'), file)
+    await userEvent.click(await screen.findByRole('button', { name: '가져오기 실행' }))
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalled())
+    const invalidatedItemsKey = (libraryId: string) => invalidateSpy.mock.calls.some(([opts]) =>
+      JSON.stringify((opts as { queryKey?: unknown } | undefined)?.queryKey) ===
+      JSON.stringify([['resource', 'items', 'list'], { input: { libraryId }, type: 'query' }]))
+    expect(invalidatedItemsKey('a1')).toBe(true)
+    expect(invalidatedItemsKey('b1')).toBe(false)
   })
 })

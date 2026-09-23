@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 
-type Handler = (input: unknown) => {
+type HandlerResult = {
   data?: unknown
   error?: {
     code: number
@@ -28,6 +28,9 @@ type Handler = (input: unknown) => {
    */
   offline?: true
 }
+
+/** 동기 반환이 기본이다. 응답을 지연시켜야 하는 테스트(레이스 조건)만 Promise 를 돌려준다. */
+type Handler = (input: unknown) => HandlerResult | Promise<HandlerResult>
 
 /**
  * JSON-RPC 코드 → tRPC 오류 키·HTTP 상태. **서버의 `getErrorShape`가 실제로 내는 표와 같다**
@@ -66,10 +69,10 @@ export function mockTrpcFetch(handlers: Record<string, Handler>) {
       const [key, httpStatus] = ERROR_CODES[code] ?? ['INTERNAL_SERVER_ERROR', 500]
       return { error: { code, message, data: { code: key, httpStatus, linkDead, linkReissuable } } }
     }
-    const results = paths.map((path, i) => {
+    const results = await Promise.all(paths.map(async (path, i) => {
       const handler = handlers[path]
       if (!handler) return shape(-32004, `no handler: ${path}`)
-      const out = handler(inputs[String(i)])
+      const out = await handler(inputs[String(i)])
       // 배치 전체를 거절시킨다 — 실제 네트워크 단절도 응답 하나만 골라 잃지 않는다.
       if (out.offline) throw new TypeError('Failed to fetch')
       if (out.error) {
@@ -79,7 +82,7 @@ export function mockTrpcFetch(handlers: Record<string, Handler>) {
         )
       }
       return { result: { data: out.data } }
-    })
+    }))
     const body = isBatch ? results : results[0]
     return new Response(JSON.stringify(body), {
       status: 200,

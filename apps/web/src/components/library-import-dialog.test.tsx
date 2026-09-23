@@ -76,4 +76,27 @@ describe('LibraryImportDialog', () => {
     await userEvent.click(await screen.findByRole('button', { name: '가져오기 실행' }))
     expect(await screen.findByRole('button', { name: '다시 미리보기' })).toBeDefined()
   })
+
+  it('늦게 응답한 먼저 고른 파일의 미리보기가 나중에 고른 파일의 요약을 덮지 않는다', async () => {
+    let resolveFirst: (v: { data: unknown }) => void = () => {}
+    const pending = new Promise<{ data: unknown }>((resolve) => { resolveFirst = resolve })
+    let call = 0
+    const marker = (name: string) => summary({ add: 1 }, [
+      { status: 'add', kind: 'word', name, currentVersion: null, fileVersion: null, referencedBy: 0, changes: [] },
+    ])
+    renderDialog({ 'resource.library.import': () => {
+      call += 1
+      return call === 1
+        ? pending
+        : { data: { libraryId: 'l1', applied: false, stateHash: 'h2', summary: marker('SECOND') } }
+    } })
+    await pick(FILE, 'first.erdd-lib.yaml')
+    await pick(FILE, 'second.erdd-lib.yaml')
+    expect(await screen.findByText(/SECOND/)).toBeDefined()
+    // 먼저 고른 파일의 dryRun 이 이제야 응답한다 — 화면은 이미 두 번째 파일의 요약을 보이고 있다.
+    resolveFirst({ data: { libraryId: 'l1', applied: false, stateHash: 'h1', summary: marker('FIRST') } })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.getByText(/SECOND/)).toBeDefined()
+    expect(screen.queryByText(/FIRST/)).toBeNull()
+  })
 })

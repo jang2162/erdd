@@ -45,24 +45,34 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
   const [description, setDescription] = useState('')
   const busyRef = useRef(false)
   const [busy, setBusy] = useState(false)
+  // 파일을 빠르게 다시 고르거나 「다시 미리보기」를 연타할 때, 먼저 시작했지만 늦게 응답하는 요청이
+  // 나중 요청의 상태를 덮지 않도록 호출마다 세대를 매겨 최신이 아닌 응답을 버린다.
+  const genRef = useRef(0)
+  const [previewing, setPreviewing] = useState(false)
 
   const targetInput = (): Parameters<typeof importLibrary.mutateAsync>[0]['target'] =>
     target.kind === 'existing'
       ? { libraryId: target.libraryId }
       : { create: { scope: target.scope, ...(target.orgId ? { orgId: target.orgId } : {}), name: name.trim() || '가져온 라이브러리', description } }
 
-  const runPreview = async (t: string) => {
+  const runPreview = async (t: string, gen: number) => {
     setConflict(false)
+    setPreviewing(true)
     try {
       const res = await importLibrary.mutateAsync({ target: targetInput(), text: t, dryRun: true })
+      if (genRef.current !== gen) return
       setPreview({ stateHash: res.stateHash, summary: res.summary })
     } catch (err) {
+      if (genRef.current !== gen) return
       toast.error(err instanceof Error ? err.message : '미리보기를 만들지 못했습니다')
+    } finally {
+      if (genRef.current === gen) setPreviewing(false)
     }
   }
 
   const onFile = async (file: File | undefined) => {
     if (!file) return
+    const gen = ++genRef.current
     setPreview(null); setIssues([]); setFileText(null)
     try {
       let t: string
@@ -70,17 +80,20 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
         const domainNames = (existingItems.data ?? []).filter((i) => i.kind === 'domain')
           .map((i) => resourceDisplayName('domain', i.payload as Record<string, unknown>))
         const r = libraryDocFromDictSheets(await readDictSheets(file), { name: file.name.replace(/\.xlsx$/i, ''), targetDomainNames: domainNames })
+        if (genRef.current !== gen) return
         if (!r.ok) { setIssues(r.issues.slice(0, 20).map(dictIssueText)); return }
         t = stringifyLibraryFile(r.doc)
       } else {
         t = await file.text()
+        if (genRef.current !== gen) return
         const parsed = parseLibraryFile(t, 'source')
         if (!parsed.ok) { setIssues(formatLibraryFileIssues(parsed.issues)); return }
         if (target.kind === 'create') { setName(parsed.doc.library.name); setDescription(parsed.doc.library.description) }
       }
       setFileText(t)
-      await runPreview(t)
+      await runPreview(t, gen)
     } catch (err) {
+      if (genRef.current !== gen) return
       toast.error(err instanceof Error ? err.message : '파일을 읽지 못했습니다')
     }
   }
@@ -183,12 +196,13 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
           {conflict && (
             <div role="alert" className="flex items-center justify-between gap-2 text-sm text-destructive">
               미리보기 이후 라이브러리가 바뀌었습니다
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => { if (fileText !== null) void runPreview(fileText) }}>다시 미리보기</Button>
+              <Button size="sm" variant="outline" disabled={busy || previewing}
+                onClick={() => { if (fileText !== null) { const gen = ++genRef.current; void runPreview(fileText, gen) } }}>다시 미리보기</Button>
             </div>
           )}
         </div>
         <DialogFooter>
-          <Button type="button" disabled={busy || preview === null || changes === 0 || conflict} onClick={() => void onApply()}>
+          <Button type="button" disabled={busy || previewing || preview === null || changes === 0 || conflict} onClick={() => void onApply()}>
             가져오기 실행
           </Button>
         </DialogFooter>
