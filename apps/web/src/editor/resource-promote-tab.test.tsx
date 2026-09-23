@@ -161,6 +161,7 @@ describe('ResourcePromoteTab', () => {
     expect(screen.getByRole('checkbox', { name: '거래처 선택' })).toHaveProperty('checked', true)
     expect(screen.getAllByText(BEHIND)).toHaveLength(1)
     expect(screen.getByText(BEHIND).closest('li')!.textContent).toContain('고객')
+    expect(screen.queryByText(/요청 뒤 원본이 더 새로워졌습니다/)).toBeNull()
     await userEvent.click(screen.getByRole('checkbox', { name: '고객 선택' }))
     expect(screen.getByRole('checkbox', { name: '고객 선택' })).toHaveProperty('checked', true)
   })

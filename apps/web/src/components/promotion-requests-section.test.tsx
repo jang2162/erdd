@@ -93,6 +93,30 @@ describe('PromotionRequestsSection', () => {
     expect(screen.getByText(/1건은 이미 반영됐거나 삭제되어 처리할 수 없습니다/)).toBeTruthy()
   })
 
+  /**
+   * 요청 뒤 원본이 앞서 나간 항목 — 승인하면 남이 고친 최신 원본이 요청 시점 값으로 되돌아간다.
+   * 승인자는 요청 프로젝트를 재동기화할 수 없으므로 문구가 요청자 화면과 달라야 한다.
+   */
+  it('요청 뒤 원본이 더 새로워진 항목은 기본 미선택이고 승인자용 배지를 단다', async () => {
+    renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => ({ data: {
+        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+        entries: [ENTRY, {
+          ...ENTRY, entityId: 'w2', name: '고객', status: 'update',
+          targetItemId: 's2', targetVersion: 3, changedFields: ['abbreviation'], sourceBehind: true,
+        }],
+        unavailable: [],
+      } }),
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    expect(await screen.findByLabelText('고객 선택')).toHaveProperty('checked', false)
+    expect(screen.getByLabelText('회원 선택')).toHaveProperty('checked', true)
+    const badge = screen.getByText('요청 뒤 원본이 더 새로워졌습니다 — 승인하면 최신 원본을 요청 시점 값으로 되돌립니다')
+    expect(badge.closest('li')!.textContent).toContain('고객')
+    expect(screen.queryByText(/먼저 가져오기\(재동기화\)로 받으세요/)).toBeNull()
+  })
+
   it('선택한 항목만 승인한다', async () => {
     const resolve = vi.fn((_input: unknown) => ({ data: {
       status: 'resolved', seq: 5, inserted: 1, updated: 0, skipped: [],

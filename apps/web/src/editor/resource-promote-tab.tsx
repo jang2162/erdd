@@ -136,6 +136,7 @@ export function ResourcePromoteTab({
       )}
 
       <PromoteEntryList
+        audience="promote"
         entries={plan.entries}
         selected={selected}
         syncedCount={plan.syncedCount}
