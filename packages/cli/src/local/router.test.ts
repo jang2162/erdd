@@ -127,6 +127,42 @@ describe('로컬 라우터', () => {
    * 파일만 되쓰고 `ctx.config` 를 그대로 두면 서버가 살아 있는 동안 설정 화면이 옛 값을
    * 계속 보여 준다 — 사용자에게는 저장이 안 된 것으로 보인다.
    */
+  /** 구독은 웹 계약 밖이라 화면이 보내지 않는다 — 설정을 저장해도 config 에 그대로 남아야 한다. */
+  it('project.update 는 구독(dictionaries)을 보존한다', async () => {
+    const c = await ctx()
+    await writeFile(join(c.cwd, 'erdd.config.yaml'), [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      'dictionaries: [{ id: L1, name: 표준 }]',
+      '',
+    ].join('\n'), 'utf8')
+    c.config = await readConfig(c.cwd)
+    await createLocalRouter().createCaller(c).project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })
+    const after = await readConfig(c.cwd)
+    expect(after.dialects).toEqual(['mysql'])
+    expect(after.dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+  })
+
+  /**
+   * `dict pull --library` 가 디스크 config 에 구독을 더한 직후, 감시 디바운스가 `ctx.config` 를 맞추기
+   * 전에 설정을 저장하는 창 — `ctx.config` 의 옛 구독으로 덮으면 방금 더한 구독이 조용히 사라진다.
+   */
+  it('project.update 는 ctx.config 의 구독이 낡았어도 디스크의 구독을 보존한다', async () => {
+    const c = await ctx()
+    expect(c.config.dictionaries).toEqual([])
+    await writeFile(join(c.cwd, 'erdd.config.yaml'), [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      'dictionaries: [{ id: L1, name: 표준 }]',
+      '',
+    ].join('\n'), 'utf8')
+    await createLocalRouter().createCaller(c).project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })
+    const after = await readConfig(c.cwd)
+    expect(after.dialects).toEqual(['mysql'])
+    expect(after.dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+    expect(c.config.dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+  })
+
   it('project.update 뒤의 project.get 이 새 값을 낸다', async () => {
     const call = createLocalRouter().createCaller(await ctx())
     await call.project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })

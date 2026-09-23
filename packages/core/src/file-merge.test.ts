@@ -36,14 +36,14 @@ describe('FILE_FIELDS 완전성', () => {
 })
 
 describe('fileVisibleModel', () => {
-  it('메모·좌표·origin을 파일 공간 값으로 정규화한다', () => {
+  it('메모·좌표를 파일 공간 값으로 정규화하고 origin은 보존한다', () => {
     const m = fullModel()
     m.domains['d1']!.origin = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 3, base: {} }
     const v = fileVisibleModel(m)
     expect(v.notes).toEqual({})
     expect(v.tables['tb1']!.position).toEqual({ x: 0, y: 0 })
     expect(v.tables['tb1']!.groupPosition).toBeNull()
-    expect(v.domains['d1']!.origin).toBeNull()
+    expect(v.domains['d1']!.origin).toEqual({ libraryId: 'L1', sourceId: 'S1', sourceVersion: 3, base: {} })
   })
 
   it('원본을 변형하지 않고 컬렉션도 새 객체로 만든다', () => {
@@ -333,7 +333,8 @@ describe('gridPositions', () => {
 })
 
 describe('applyMerge', () => {
-  it('메모·좌표·origin을 서버 값 그대로 보존한다', () => {
+  it('메모·좌표는 서버 값 그대로 보존하고, 출처는 병합 결과를 싣는다', () => {
+    // 출처는 비가시 필드가 아니라 병합 필드다 — 여기서는 base·local·server 가 같아 서버 값과 같다.
     const server = fullModel()
     server.domains['d1']!.origin = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 3, base: {} }
     const base = fileVisibleModel(server)
@@ -513,5 +514,106 @@ describe('pruneDangling', () => {
     expect(m.tables['tb1']!.groupId).toBeNull()
     expect(m.columns['c2']!.domainId).toBeNull()
     expect(m.terms['t1']!.domainId).toBeNull()
+  })
+})
+
+describe('origin 병합', () => {
+  const X = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 2, base: { logicalName: '고객' } }
+  function word(origin: typeof X | null) {
+    const m = createEmptyModel()
+    m.words['w1'] = { id: 'w1', logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin }
+    return m
+  }
+
+  it('하위호환 — base·local 에 출처가 없고 서버에만 있으면 서버 값을 채택하고 충돌이 없다', () => {
+    const { merged, conflicts } = mergeModels(word(null), word(null), fileVisibleModel(word(X)))
+    expect(conflicts).toEqual([])
+    expect(merged.words['w1']!.origin).toEqual(X)
+  })
+
+  it('업그레이드 직후 — 옛 base(출처 없음)에서 로컬이 지운 항목은 서버에 출처만 있어도 충돌 없이 지워진다', () => {
+    // 옛 base 는 출처를 모른다. 서버는 아무것도 고치지 않았으므로 로컬 삭제가 이긴다.
+    const { merged, conflicts } = mergeModels(word(null), createEmptyModel(), fileVisibleModel(word(X)))
+    expect(conflicts).toEqual([])
+    expect(merged.words['w1']).toBeUndefined()
+  })
+
+  it('서버가 지운 항목은 로컬이 출처만 바꿨어도 충돌 없이 지워진다', () => {
+    const { merged, conflicts } = mergeModels(word(null), word(X), createEmptyModel())
+    expect(conflicts).toEqual([])
+    expect(merged.words['w1']).toBeUndefined()
+  })
+
+  it('로컬이 붙인 출처(dict pull)는 서버로 올라간다', () => {
+    const server = word(null)
+    const { merged } = mergeModels(word(null), word(X), fileVisibleModel(server))
+    const { model } = applyMerge(server, merged)
+    const ops = diffModels(server, model)
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toMatchObject({ action: 'update', entity: 'word', entityId: 'w1' })
+    expect(ops[0]!.action === 'update' && ops[0]!.changes['origin']).toEqual({ from: null, to: X })
+  })
+
+  it('양쪽이 출처를 다르게 바꾸면 출처 필드 충돌이고, 값이 실린 origins.yaml 을 가리킨다', () => {
+    const Y = { ...X, sourceVersion: 3 }
+    const { conflicts } = mergeModels(word(null), word(X), fileVisibleModel(word(Y)))
+    expect(conflicts).toHaveLength(1)
+    // 표시 형식은 변경분 표시(formatOrigin)와 같다.
+    expect(conflicts[0]).toMatchObject({
+      field: '출처', reason: 'field', path: 'erdd/origins.yaml',
+      base: null, local: 'v2 · 항목 S1', server: 'v3 · 항목 S1',
+    })
+  })
+
+  describe('출처 중복', () => {
+    function words(...rows: [id: string, origin: typeof X | null][]): ProjectModel {
+      const m = createEmptyModel()
+      for (const [id, origin] of rows) {
+        m.words[id] = { id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin }
+      }
+      return m
+    }
+
+    /**
+     * 🔥 dict pull 은 로컬에서 새 id 를 발급한다. 같은 원본을 서버가 먼저 받았으면 id 가 다른 두 엔티티가
+     * 각각 「로컬 추가」·「서버 전용 유지」가 되어 둘 다 남고, 이후 재동기화는 한쪽만 본다.
+     */
+    it('로컬이 추가한 항목이 서버 항목과 같은 원본을 가리키면 충돌이다', () => {
+      const { conflicts } = mergeModels(createEmptyModel(), words(['id-B', X]), fileVisibleModel(words(['id-A', X])))
+      expect(conflicts).toEqual([expect.objectContaining({
+        kind: 'word', entityId: 'id-B', reason: 'duplicate-origin', field: '*', path: 'erdd/words.yaml',
+        base: null, local: '고객 (id id-B) · v2 · 항목 S1', server: '고객 (id id-A) · v2 · 항목 S1',
+      })])
+    })
+
+    it('로컬이 기존 항목에 붙인 출처가 서버 항목과 같은 원본이면 출처 충돌이다 — 연결을 풀라고 가리킨다', () => {
+      const { conflicts } = mergeModels(
+        words(['id-B', null]), words(['id-B', X]), fileVisibleModel(words(['id-B', null], ['id-A', X])),
+      )
+      expect(conflicts).toEqual([expect.objectContaining({
+        entityId: 'id-B', reason: 'duplicate-origin', field: '출처', path: 'erdd/origins.yaml', base: null,
+      })])
+    })
+
+    it('로컬이 만들지 않은 중복(서버에 이미 둘)은 push 를 막지 않는다', () => {
+      const both = words(['id-A', X], ['id-B', X])
+      expect(mergeModels(both, both, fileVisibleModel(both)).conflicts).toEqual([])
+    })
+
+    it('원본 id 가 같아도 라이브러리가 다르면 중복이 아니다', () => {
+      const { conflicts } = mergeModels(
+        createEmptyModel(), words(['id-B', { ...X, libraryId: 'L2' }]), fileVisibleModel(words(['id-A', X])),
+      )
+      expect(conflicts).toEqual([])
+    })
+  })
+
+  it('항목 삭제 충돌은 출처가 아니라 사전 파일을 가리킨다', () => {
+    const server = word(X)
+    server.words['w1']!.abbreviation = 'CSTM'
+    const { conflicts } = mergeModels(word(X), createEmptyModel(), fileVisibleModel(server))
+    expect(conflicts).toEqual([expect.objectContaining({
+      path: 'erdd/words.yaml', reason: 'local-delete', changedFields: ['abbreviation'],
+    })])
   })
 })

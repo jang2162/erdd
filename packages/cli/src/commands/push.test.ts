@@ -3,12 +3,15 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { applyOps, filesToModel, modelToFiles, MAX_OPS_PER_MUTATION, type Op, type ProjectModel } from '@erdd/core'
+import {
+  applyOps, createEmptyModel, filesToModel, modelToFiles, MAX_OPS_PER_MUTATION, type Op, type ProjectModel,
+} from '@erdd/core'
 import { fullModel } from '@erdd/core/src/testing/fixtures.js'
 import type { ApiClient } from '../client.js'
-import { writeConfig } from '../config.js'
+import { writeBase, writeConfig } from '../config.js'
 import { flagValue, shortFlagValue } from '../main.js'
 import { CliError } from '../output.js'
+import { buildPlan } from '../plan.js'
 import { seedPulled, stubClient as stub, TEST_CONFIG as CONFIG } from '../testing/harness.js'
 import { readTree, writeTree } from '../tree.js'
 import { push } from './push.js'
@@ -1041,5 +1044,86 @@ describe('push', () => {
     expect(text).toContain('중복 없이 수렴')
     expect(text).toContain('erdd diff')     // 두 갈래 모두에 남는다
     expect(text).toMatch(/erdd pull은[^.]*지웁니다/)
+  })
+
+  it('업그레이드 직후(base·로컬에 origins.yaml 이 없음) push 는 서버의 origin 을 지우지 않는다', async () => {
+    const server = createEmptyModel()
+    server.words['018f6b0e-0000-7000-8000-0000000000a1'] = {
+      id: '018f6b0e-0000-7000-8000-0000000000a1', logicalName: '고객', abbreviation: 'CUST',
+      englishName: null, description: null,
+      origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
+    }
+    // 옛 CLI 가 쓴 트리 — origins.yaml 이 없다.
+    const { tree } = modelToFiles(server)
+    delete tree['erdd/origins.yaml']
+    await writeTree(dir, tree)
+    await writeBase(dir, tree)
+    const { client } = stub(server)
+    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
+    expect(plan.conflicts).toEqual([])
+    expect(plan.ops).toEqual([])
+  })
+
+  it('서버 출처를 떼는 update 가 있으면 건수를 알리고 --json 봉투에 싣는다', async () => {
+    const id = '018f6b0e-0000-7000-8000-0000000000a1'
+    const server = createEmptyModel()
+    server.words[id] = {
+      id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null,
+      origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
+    }
+    await seed(server)
+    // 로컬이 출처를 잃었다(예: 출처를 모르는 옛 스냅샷 복원) — 사전 파일은 그대로다.
+    await rm(join(dir, 'erdd/origins.yaml'))
+
+    const { client, pushCalls } = stub(server)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
+    const sent = (pushCalls[0] as { ops: Op[] }).ops
+    expect(sent).toEqual([expect.objectContaining({ action: 'update', entity: 'word', entityId: id })])
+    expect(lastJson<{ ok: boolean; detachedOrigins: number }>()).toMatchObject({ ok: true, detachedOrigins: 1 })
+    expect(err.join('')).toContain(
+      '공용 사전 출처를 떼는 변경 1건이 포함됩니다 — 의도하지 않았다면 erdd pull 로 되돌리세요',
+    )
+  })
+
+  /**
+   * 🔥 같은 원본을 서버가 먼저 받았고(id-A) 로컬 dict pull 이 새 id 로 또 받았다(id-B). 3-way 는 둘 다
+   * 남기고 무결성 검사도 통과해, 이후 재동기화가 한쪽만 보는 상태가 조용히 서버에 올라간다.
+   */
+  it('로컬이 추가한 항목이 서버 항목과 같은 공용 사전 원본을 가리키면 충돌로 막는다', async () => {
+    const origin = { libraryId: 'L1', sourceId: 'item-1', sourceVersion: 1, base: { logicalName: '고객' } }
+    const word = (id: string) => ({ id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin })
+    await seed(createEmptyModel())
+    const local = createEmptyModel()
+    local.words['018f6b0e-0000-7000-8000-0000000000b2'] = word('018f6b0e-0000-7000-8000-0000000000b2')
+    await writeTree(dir, modelToFiles(local).tree)
+    const server = createEmptyModel()
+    server.words['018f6b0e-0000-7000-8000-0000000000a1'] = word('018f6b0e-0000-7000-8000-0000000000a1')
+
+    const { client, pushCalls } = stub(server)
+    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
+    expect(plan.conflicts).toEqual([expect.objectContaining({
+      reason: 'duplicate-origin', entityId: '018f6b0e-0000-7000-8000-0000000000b2', path: 'erdd/words.yaml',
+    })])
+    expect(plan.ops).toEqual([])
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
+    expect(pushCalls).toHaveLength(0)
+  })
+
+  it('업그레이드 직후 출처 있는 단어를 로컬에서 지우면 충돌 없이 delete op 1건이다', async () => {
+    const id = '018f6b0e-0000-7000-8000-0000000000a1'
+    const server = createEmptyModel()
+    server.words[id] = {
+      id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null,
+      origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
+    }
+    // 옛 CLI 가 쓴 base — origins.yaml 이 없다. 로컬은 그 단어를 지웠다.
+    const { tree } = modelToFiles(server)
+    delete tree['erdd/origins.yaml']
+    await writeBase(dir, tree)
+    await writeTree(dir, { ...tree, 'erdd/words.yaml': { words: [] } })
+    const { client } = stub(server)
+    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
+    expect(plan.conflicts).toEqual([])
+    expect(plan.ops).toEqual([expect.objectContaining({ action: 'delete', entity: 'word', entityId: id })])
   })
 })

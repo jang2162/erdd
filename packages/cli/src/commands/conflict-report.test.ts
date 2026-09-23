@@ -59,6 +59,23 @@ describe('renderConflicts', () => {
     expect(out).toContain('    로컬  (삭제됨)')
   })
 
+  it('출처 중복은 무엇을 지울지 말하고, 기준이 없으면 (삭제됨)이 아니라 (없음)이다', () => {
+    const dup = field({
+      path: 'erdd/words.yaml', kind: 'word', entityId: 'id-B', label: '단어 고객', field: '*',
+      reason: 'duplicate-origin', base: null,
+      local: '고객 (id id-B) · v2 · 항목 S1', server: '고객 (id id-A) · v2 · 항목 S1',
+    })
+    const out = renderConflicts([dup])
+    expect(out).toContain(
+      '  단어 고객 · 같은 공용 사전 항목이 두 번 들어왔습니다 — 로컬에서 추가한 이 항목을 지우고 다시 push 하세요',
+    )
+    expect(out).toContain('    기준  (없음)')
+    expect(out).toContain('    로컬  고객 (id id-B) · v2 · 항목 S1')
+    expect(renderConflicts([{ ...dup, path: 'erdd/origins.yaml', field: '출처' }])).toContain(
+      '  단어 고객 · 같은 공용 사전 항목이 두 번 들어왔습니다 — 이 항목의 출처 줄을 지워 연결을 풀고 다시 push 하세요',
+    )
+  })
+
   it('서버 삭제 충돌의 사유 문구는 반대다', () => {
     const out = renderConflicts([field({
       field: '*', reason: 'server-delete', local: 'MBR.MBR_NM', server: null, changedFields: ['name'],

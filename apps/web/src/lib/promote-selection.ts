@@ -1,10 +1,14 @@
 import type { PromoteEntry, PromoteStatus } from '@erdd/core'
 
-/** 기본 선택: 신규·원본 갱신은 켜고, 동명 발견은 사람이 확인해야 하므로 끈다. */
+/**
+ * 기본 선택: 신규·원본 갱신은 켜고, 동명 발견은 사람이 확인해야 하므로 끈다.
+ * 원본이 마지막 가져오기 이후 앞선 원본 갱신(`sourceBehind`)도 끈다 — 그 차이는 남이 고친 것이라
+ * 그대로 올리면 원본이 이 프로젝트의 옛 값으로 되돌아간다. 사람이 직접 켜는 것은 막지 않는다.
+ */
 export function initialSelection(entries: readonly PromoteEntry[]): Set<string> {
   const out = new Set<string>()
   for (const entry of entries) {
-    if (entry.status !== 'name-match') out.add(entry.entityId)
+    if (entry.status !== 'name-match' && !entry.sourceBehind) out.add(entry.entityId)
   }
   return out
 }
@@ -21,16 +25,6 @@ export function setAllForStatus(
     else out.delete(entry.entityId)
   }
   return out
-}
-
-/**
- * 이 용어를 지금 올리면 도메인 연결이 비는가.
- * 도메인이 이미 라이브러리에 있거나 같은 배치에서 함께 올라가면 연결된다.
- */
-export function danglingDomain(entry: PromoteEntry, selected: ReadonlySet<string>): boolean {
-  const ref = entry.domainRef
-  if (!ref || ref.targetItemId !== null) return false
-  return !selected.has(ref.entityId)
 }
 
 export function promoteSummary(

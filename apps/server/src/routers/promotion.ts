@@ -15,7 +15,7 @@ import {
 import {
   requireLibraryRead, requireLibraryWrite, requireScopeWrite,
 } from '../services/resource-library.js'
-import { authedProcedure, router } from '../trpc.js'
+import { apiProcedure, authedProcedure, router } from '../trpc.js'
 import type { Db } from '../db/client.js'
 
 /** 요청 행 하나. 없으면 NOT_FOUND. */
@@ -39,7 +39,8 @@ export const promotionRouter = router({
    * 승격 요청 생성. 계획에 실제로 있는 entityId만 저장한다 — 검증 없이 받으면 아무 uuid나
    * 요청에 들어가고 승인 화면이 그것을 전부 unavailable로 띄운다.
    */
-  create: authedProcedure
+  // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
+  create: apiProcedure
     .input(z.object({
       projectId: z.string().uuid(),
       libraryId: z.string().uuid(),
@@ -81,7 +82,8 @@ export const promotionRouter = router({
    * 이 프로젝트의 요청 목록(요청자가 결과를 확인하는 자리).
    * entityIds를 그대로 실어, 모델을 들고 있는 승격 탭이 항목 이름을 직접 해석하게 한다.
    */
-  listForProject: authedProcedure
+  // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
+  listForProject: apiProcedure
     .input(z.object({
       projectId: z.string().uuid(),
       status: z.enum(['pending', 'resolved', 'rejected', 'cancelled']).optional(),

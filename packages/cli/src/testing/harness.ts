@@ -1,6 +1,6 @@
 import { modelToFiles, type ProjectModel } from '@erdd/core'
 import type { ApiClient } from '../client.js'
-import { writeBase } from '../config.js'
+import { writeBase, type DictionaryRef } from '../config.js'
 import { writeTree } from '../tree.js'
 
 export const TEST_CONFIG = {
@@ -12,6 +12,7 @@ export const TEST_CONFIG = {
     tablePhysicalTemplate: '', tableLogicalTemplate: '',
   } as const,
   tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' } as const,
+  dictionaries: [] as DictionaryRef[],
 }
 
 /** 서버 모델을 pull한 직후 상태(트리 + base)를 만든다. */

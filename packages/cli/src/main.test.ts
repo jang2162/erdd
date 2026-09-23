@@ -63,6 +63,14 @@ describe('main', () => {
     expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
   })
 
+  // --project 연결 갈래에서 --dialect 는 USAGE 다 — 기본값은 init --local·--create 에만 있다.
+  it('도움말은 --dialect 의 init 기본값을 --local·--create 에만 적는다', async () => {
+    const err: string[] = []
+    vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+    expect(await main(['--help'], '/tmp')).toBe(0)
+    expect(err.join('')).toContain('init --local·--create는 postgresql')
+  })
+
   it('도움말에 새 명령이 모두 나온다', async () => {
     const err: string[] = []
     vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
@@ -79,6 +87,63 @@ describe('main', () => {
       out.length = 0
       expect(await main([cmd, '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
       expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+    }
+  })
+
+  it('dict list 는 명령으로 배선돼 있고, 모르는 하위 명령은 USAGE로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['dict', 'list', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+    for (const argv of [['dict', 'nope', '--json'], ['dict', '--json']]) {
+      out.length = 0
+      expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+  })
+
+  it('dict pull 은 배선돼 있고, --conflicts·--library 값이 잘못되면 USAGE로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['dict', 'pull', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+    for (const argv of [
+      ['dict', 'pull', '--conflicts', 'mine', '--json'],
+      ['dict', 'pull', '--conflicts', '--json'],
+      ['dict', 'pull', '--library', '--json'],
+    ]) {
+      out.length = 0
+      expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+  })
+
+  it('dict push·requests 는 배선돼 있고, --kind·--name·--library·--status 값이 잘못되면 USAGE로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    for (const argv of [
+      ['dict', 'push', '--library', '표준', '--kind', 'word,term', '--name', '고객', '--json'],
+      ['dict', 'requests', '--status', 'rejected', '--json'],
+    ]) {
+      out.length = 0
+      expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(1)
+      expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+    }
+    for (const argv of [
+      ['dict', 'push', '--library', '표준', '--kind', 'table', '--json'],
+      ['dict', 'push', '--library', '표준', '--kind', '--json'],
+      ['dict', 'push', '--library', '표준', '--name', '--json'],
+      ['dict', 'push', '--library', '--json'],
+      ['dict', 'push', '--json'],
+      ['dict', 'requests', '--status', 'open', '--json'],
+      ['dict', 'requests', '--status', '--json'],
+    ]) {
+      out.length = 0
+      expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
     }
   })
 
@@ -201,5 +266,28 @@ describe('main', () => {
       expect(await main(argv, dir)).toBe(2)
       expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
     }
+  })
+
+  it('init --create 는 --project·--local 과 함께 쓰면 USAGE, --dialect·--case 는 받는다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    const dir = await mkdtemp(join(tmpdir(), 'erdd-main-create-'))
+    // 연결 인자를 전부 줘야 가드에 구분력이 생긴다 — 가드가 없으면 서버에 붙으러 가 NETWORK(1)가 된다.
+    const conn = ['--server', 'http://127.0.0.1:1', '--token', 't', '--org', '팀', '--name', 'P', '--json']
+    for (const argv of [
+      ['init', '--create', '--project', 'p1', ...conn],
+      ['init', '--create', '--local', ...conn],
+      ['init', '--create', '--org', '--name', 'P', '--server', 'http://127.0.0.1:1', '--token', 't', '--json'],  // --org 값이 빠졌다
+      ['init', '--create', '--name', '--org', '팀', '--server', 'http://127.0.0.1:1', '--token', 't', '--json'], // --name 값이 빠졌다
+    ]) {
+      out.length = 0
+      expect(await main(argv, dir)).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+    // --create 는 --dialect·--case 를 받는다 — 가드를 통과해 서버에 붙으러 간다.
+    out.length = 0
+    expect(await main(['init', '--create', '--dialect', 'mysql', '--case', 'lower_snake', ...conn], dir)).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NETWORK')
   })
 })

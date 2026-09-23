@@ -132,6 +132,7 @@ function ReviewDialog({
             <p className="text-sm text-muted-foreground">처리할 항목이 없습니다.</p>
           )}
           <PromoteEntryList
+            audience="approve"
             entries={entries}
             selected={selected}
             onToggle={(entityId, on) => setSelected((prev) => {

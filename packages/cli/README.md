@@ -85,6 +85,7 @@ erdd push -m "회원 등급 컬럼 추가"
 | 명령 | | 모드 |
 |---|---|---|
 | `erdd init` | 서버에 연결한다 (URL·토큰·프로젝트). 비대화형이면 `--server` · `--token` · `--project`, 기존 config 덮어쓰기는 `--yes` | 서버 |
+| `erdd init --create` | 서버에 프로젝트를 만들어 연결한다 (`--org` · `--name`). 로컬 전용 프로젝트면 `erdd/` 를 그대로 두고 이관한다 — 이어서 `diff` → `push` | 서버 |
 | `erdd init --local` | 서버 없는 로컬 전용 프로젝트를 만든다 (`--dialect` · `--case`) | 로컬 |
 | `erdd serve` | 로컬 서버를 띄워 브라우저에서 편집한다 (`--port` · `--no-open`) | 둘 다 |
 | `erdd validate` | 서버 없이 참조 무결성·명명 규칙을 검사한다 (`--strict`) | 둘 다 |
@@ -94,6 +95,7 @@ erdd push -m "회원 등급 컬럼 추가"
 | `erdd pull` | 서버 스키마를 파일로 받는다 | **서버 전용** |
 | `erdd diff` | 올릴 변경·내려올 변경·충돌을 미리 본다 (`--strict`) | **서버 전용** |
 | `erdd push` | 서버에 반영한다 (3-way 병합, 충돌이면 중단) | **서버 전용** |
+| `erdd dict list·pull·push·requests` | 조직·전역 공용 사전을 받고(`pull` → `erdd/origins.yaml` 에 출처) 올린다(`push` — 권한이 없으면 승격 요청) | **서버 전용** |
 | `erdd skill install` | 에이전트 스킬 문서를 프로젝트에 깐다 (`--dir` · `--force`) | 둘 다 |
 
 ⚠️ **로컬 전용 프로젝트에서 `pull`·`push`·`diff` 는 종료 코드 `1` 로 멈춘다** — 부를 서버가 없기

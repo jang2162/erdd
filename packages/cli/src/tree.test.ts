@@ -1,10 +1,17 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
+import * as fsp from 'node:fs/promises'
 import { mkdtemp, mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createEmptyModel, filesToModel, modelToFiles, type ProjectModel } from '@erdd/core'
 import { CliError } from './output.js'
-import { canonical, diffTrees, readTree, writeTree } from './tree.js'
+import { canonical, diffTrees, readTree, writeTree, writeTreeChanges } from './tree.js'
+
+// 쓰기·삭제 순서를 보려고 writeFile·rm 을 그대로 통과시키며 기록한다(동작은 원본과 같다).
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const m = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...m, writeFile: vi.fn(m.writeFile), rm: vi.fn(m.rm) }
+})
 
 let dir: string
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'erdd-tree-')) })
@@ -128,10 +135,6 @@ describe('tree', () => {
     const expected: ProjectModel = JSON.parse(JSON.stringify(original))
     expected.notes = {}
     for (const t of Object.values(expected.tables)) { t.position = { x: 0, y: 0 }; t.groupPosition = null }
-    for (const d of Object.values(expected.domains)) d.origin = null
-    for (const w of Object.values(expected.words)) w.origin = null
-    for (const t of Object.values(expected.terms)) t.origin = null
-    for (const f of Object.values(expected.customFields)) f.origin = null
     expect(result.model).toEqual(expected)
   })
 })
@@ -145,7 +148,14 @@ function richModel(): ProjectModel {
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
     defaultValue: null, allowedValues: ['Y', 'N'], description: null, origin: null,
   }
-  m.words['w1'] = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', description: null, origin: null }
+  // 출처는 origins.yaml 로 왕복한다 — base 의 null 이 YAML 을 거쳐도 null 로 남는지까지 지나간다.
+  m.words['w1'] = {
+    id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', description: null,
+    origin: {
+      libraryId: 'L1', sourceId: 'S1', sourceVersion: 2,
+      base: { logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', description: null },
+    },
+  }
   m.terms['t1'] = { id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: 'd1', description: null, origin: null }
   m.customFields['cf1'] = {
     id: 'cf1', name: '개인정보여부', target: 'column', type: 'select',
@@ -191,3 +201,36 @@ function richModel(): ProjectModel {
   }
   return m
 }
+
+describe('writeTreeChanges', () => {
+  /** 이 디렉터리 안에서 일어난 쓰기·삭제를 호출 순서대로. */
+  function ops(): string[] {
+    const calls = [
+      ...vi.mocked(fsp.writeFile).mock.calls.map(([p], i) =>
+        [vi.mocked(fsp.writeFile).mock.invocationCallOrder[i]!, `write ${String(p)}`] as const),
+      ...vi.mocked(fsp.rm).mock.calls.map(([p], i) =>
+        [vi.mocked(fsp.rm).mock.invocationCallOrder[i]!, `rm ${String(p)}`] as const),
+    ]
+    return calls.sort((a, b) => a[0] - b[0]).map(([, op]) => op.replace(`${dir}/`, ''))
+      .filter((op) => op.includes('erdd/'))
+  }
+
+  it('origins.yaml 은 쓰기든 삭제든 사전 내용 파일 뒤에 한다', async () => {
+    const origins = { origins: [{ id: 'w1', kind: 'word', library: 'L1', item: 'S1', version: 1, base: {} }] }
+    const base = { 'erdd/words.yaml': { words: [{ id: 'w1', logicalName: '고객' }] }, 'erdd/origins.yaml': origins }
+    await writeTree(dir, base)
+
+    vi.mocked(fsp.writeFile).mockClear(); vi.mocked(fsp.rm).mockClear()
+    const next = { 'erdd/words.yaml': { words: [{ id: 'w1', logicalName: '고객명' }] }, 'erdd/origins.yaml': { origins: [{ ...origins.origins[0]!, version: 2 }] } }
+    expect(await writeTreeChanges(dir, base, next))
+      .toEqual({ written: ['erdd/origins.yaml', 'erdd/words.yaml'], deleted: [] })
+    expect(ops()).toEqual(['write erdd/words.yaml', 'write erdd/origins.yaml'])
+
+    vi.mocked(fsp.writeFile).mockClear(); vi.mocked(fsp.rm).mockClear()
+    const unlinked = { 'erdd/words.yaml': { words: [{ id: 'w1', logicalName: '고객' }] } }
+    expect(await writeTreeChanges(dir, next, unlinked))
+      .toEqual({ written: ['erdd/words.yaml'], deleted: ['erdd/origins.yaml'] })
+    expect(ops()).toEqual(['write erdd/words.yaml', 'rm erdd/origins.yaml'])
+    expect(await readTree(dir)).toEqual(unlinked)
+  })
+})

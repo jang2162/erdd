@@ -1,7 +1,7 @@
 import { deepEqual } from './equal.js'
-import { TOP_LEVEL_FILES, TREE_ROOT, tableFileName } from './file-format.js'
-import { DIFF_KIND_LABEL } from './model-diff.js'
-import { createEmptyModel, type Origin, type Position, type ProjectModel } from './model.js'
+import { ORIGINS_FILE, TOP_LEVEL_FILES, TREE_ROOT, tableFileName } from './file-format.js'
+import { DIFF_KIND_LABEL, formatOrigin } from './model-diff.js'
+import { createEmptyModel, type Position, type ProjectModel } from './model.js'
 import { COLLECTION_BY_KIND, ENTITY_KINDS, type EntityKind } from './op.js'
 
 /**
@@ -19,25 +19,27 @@ export const MERGE_KINDS: readonly MergeKind[] =
  *   2) 충돌 출력에 보여줄 필드 이름(사용자가 파일에서 실제로 보는 이름)
  *   3) FILE_INVISIBLE_FIELDS와 짝을 이뤄 "새 엔티티 필드를 분류하지 않으면 테스트가 깨지는" 게이트
  * 괄호 표기는 파일에 전용 키가 없고 배열 위치·파일 소속으로 표현되는 것들이다.
+ * `출처`는 사전 파일이 아니라 erdd/origins.yaml 의 한 줄이다 — 그 파일에 실제로 있으므로 괄호를
+ * 쓰지 않고, 필드 충돌의 경로도 그 파일로 낸다(mergeModels).
  */
 export const FILE_FIELDS: Record<MergeKind, Record<string, string>> = {
   tableGroup: { name: 'name', color: 'color', comment: 'comment', alias: 'alias' },
   domain: {
     name: 'name', category: 'category', logicalType: 'logicalType',
     dialectTypes: 'dialectTypes', defaultValue: 'defaultValue',
-    allowedValues: 'allowedValues', description: 'description',
+    allowedValues: 'allowedValues', description: 'description', origin: '출처',
   },
   word: {
     logicalName: 'logicalName', abbreviation: 'abbreviation',
-    englishName: 'englishName', description: 'description',
+    englishName: 'englishName', description: 'description', origin: '출처',
   },
   term: {
     logicalName: 'logicalName', physicalName: 'physicalName',
-    domainId: 'domain', description: 'description',
+    domainId: 'domain', description: 'description', origin: '출처',
   },
   customField: {
     name: 'name', target: 'target', type: 'type', options: 'options',
-    required: 'required', defaultValue: 'defaultValue', order: 'order',
+    required: 'required', defaultValue: 'defaultValue', order: 'order', origin: '출처',
   },
   table: {
     physicalName: 'name', logicalName: 'logicalName', comment: 'comment',
@@ -59,21 +61,14 @@ export const FILE_FIELDS: Record<MergeKind, Record<string, string>> = {
 /** 파일에 담기지 않는 필드. 병합 대상이 아니고 push가 절대 건드리지 않는다. */
 export const FILE_INVISIBLE_FIELDS: Record<MergeKind, readonly string[]> = {
   tableGroup: [],
-  domain: ['origin'], word: ['origin'], term: ['origin'], customField: ['origin'],
+  // origin 은 erdd/origins.yaml 에 실려 파일이 진실이다(병합 필드). 객체 전체를 한 값으로 비교한다.
+  domain: [], word: [], term: [], customField: [],
   table: ['position', 'groupPosition'],
   column: [], relationship: [], index: [],
 }
 
-function clearOrigin<T extends { origin: Origin | null }>(
-  collection: Record<string, T>,
-): Record<string, T> {
-  return Object.fromEntries(
-    Object.entries(collection).map(([id, v]) => [id, { ...v, origin: null }]),
-  ) as Record<string, T>
-}
-
 /**
- * 서버 모델을 filesToModel이 만드는 값으로 정규화한다.
+ * 서버 모델을 filesToModel이 만드는 값으로 정규화한다 — 메모를 비우고 좌표를 원점으로 둔다.
  * base·local·server 셋을 같은 공간에 놓아야 3-way 비교가 성립한다.
  * 모든 컬렉션을 새 객체로 만든다 — 병합이 결과에서 delete를 하므로 서버 모델과
  * 컬렉션을 공유하면 서버 모델이 오염된다.
@@ -90,14 +85,19 @@ export function fileVisibleModel(model: ProjectModel): ProjectModel {
     indexes: { ...model.indexes },
     notes: {},
     tableGroups: { ...model.tableGroups },
-    domains: clearOrigin(model.domains),
-    words: clearOrigin(model.words),
-    terms: clearOrigin(model.terms),
-    customFields: clearOrigin(model.customFields),
+    domains: { ...model.domains },
+    words: { ...model.words },
+    terms: { ...model.terms },
+    customFields: { ...model.customFields },
   }
 }
 
-export type ConflictReason = 'field' | 'local-delete' | 'server-delete' | 'both-added'
+/**
+ * `duplicate-origin` — 서로 다른 id 의 두 엔티티가 같은 공용 사전 원본(종류·라이브러리·원본 id)을
+ * 가리키고, 그중 하나를 **로컬이** 만들었다(새로 추가했거나 기존 항목에 출처를 붙였다). field 가 '*' 면
+ * 로컬이 추가한 항목이고(지워야 한다), '출처' 면 로컬이 기존 항목에 붙인 출처다(연결을 풀어야 한다).
+ */
+export type ConflictReason = 'field' | 'local-delete' | 'server-delete' | 'both-added' | 'duplicate-origin'
 
 export type MergeConflict = {
   /** 사용자가 열어야 할 파일. */
@@ -219,6 +219,7 @@ function displayValue(model: ProjectModel, field: string, value: unknown): strin
     if (field === 'domainId') return model.domains[value]?.name ?? value
     return model.tables[value]?.physicalName ?? value
   }
+  if (field === 'origin') return formatOrigin(value)
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }
@@ -232,6 +233,17 @@ function changedKeys(
 
 function sameVisible(a: Entity, b: Entity, fields: Record<string, string>): boolean {
   return Object.keys(fields).every((f) => deepEqual(a[f], b[f]))
+}
+
+/**
+ * 삭제 판정(한쪽이 지운 항목을 상대가 고쳤는가)에 쓰는 필드 — `origin` 을 뺀다.
+ * 항목을 지우는 쪽이 출처만 바뀐 상대 변경(재동기화 keep·승격)을 이겨도 잃는 것이 없다 —
+ * 항목과 함께 출처도 사라질 뿐이다. 반대로 `origin` 을 넣으면 출처를 모르는 옛 base
+ * (`origins.yaml` 이 없는 트리)에서 서버에만 출처가 있어 **서버가 아무것도 고치지 않았는데도**
+ * 삭제가 충돌이 된다. 필드 단위 병합과 `both-added` 는 여전히 `origin` 을 비교한다.
+ */
+function deleteJudgeFields(fields: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(fields).filter(([f]) => f !== 'origin'))
 }
 
 export type MergeOptions = {
@@ -262,6 +274,7 @@ export function mergeModels(
 
   for (const kind of MERGE_KINDS) {
     const fields = FILE_FIELDS[kind]
+    const deleteFields = deleteJudgeFields(fields)
     const bCol = collectionOf(base, kind)
     const lCol = collectionOf(local, kind)
     const sCol = collectionOf(server, kind)
@@ -278,7 +291,8 @@ export function mergeModels(
         field: string, reason: ConflictReason, modelField: string | null, changed: string[],
       ): void => {
         conflicts.push({
-          path: pathOf(kind, any, models, tableFiles),
+          // 출처 값은 사전 파일이 아니라 origins.yaml 에 있다. 엔티티 단위 충돌(삭제)은 사전 파일이다.
+          path: modelField === 'origin' ? ORIGINS_FILE : pathOf(kind, any, models, tableFiles),
           kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, any, models)}`,
           field, reason, changedFields: changed,
           base: modelField === null
@@ -296,8 +310,8 @@ export function mergeModels(
       if (l === undefined && b === undefined) continue          // 서버 전용 → 유지
       if (l === undefined) {
         if (s === undefined) { delete out[id]; continue }        // 양쪽 삭제
-        if (sameVisible(b!, s, fields)) { delete out[id]; continue }   // 로컬 삭제
-        conflict('*', 'local-delete', null, changedKeys(fields, b, s))
+        if (sameVisible(b!, s, deleteFields)) { delete out[id]; continue }   // 로컬 삭제
+        conflict('*', 'local-delete', null, changedKeys(deleteFields, b, s))
         continue
       }
       if (b === undefined) {
@@ -310,8 +324,8 @@ export function mergeModels(
         continue
       }
       if (s === undefined) {
-        if (sameVisible(b, l, fields)) continue                  // 서버 삭제 수용(out에 이미 없다)
-        conflict('*', 'server-delete', null, changedKeys(fields, b, l))
+        if (sameVisible(b, l, deleteFields)) continue            // 서버 삭제 수용(out에 이미 없다)
+        conflict('*', 'server-delete', null, changedKeys(deleteFields, b, l))
         continue
       }
 
@@ -327,7 +341,73 @@ export function mergeModels(
     }
   }
 
+  conflicts.push(...duplicateOriginConflicts(base, local, merged, models, tableFiles))
   return { merged, conflicts }
+}
+
+type OriginRef = { libraryId: string; sourceId: string }
+
+function originKey(kind: MergeKind, origin: unknown): string | null {
+  if (origin === null || origin === undefined) return null
+  const o = origin as OriginRef
+  return `${kind}\0${o.libraryId}\0${o.sourceId}`
+}
+
+/**
+ * 병합 결과에서 서로 다른 id 가 같은 원본을 가리키는데 그중 하나를 로컬이 만들었으면 충돌로 세운다.
+ *
+ * 필요한 이유: `dict pull` 은 새 항목에 **로컬에서** id 를 발급한다. 같은 원본을 서버가 먼저 받았으면
+ * (다른 사람의 `dict pull`+push, 웹 가져오기) 3-way 는 id 가 다른 두 엔티티를 각각 「로컬 추가」·
+ * 「서버 전용 유지」로 보고 둘 다 남긴다. 무결성 검사도 통과하지만 이후 재동기화는 한쪽만 보고
+ * 다른 쪽은 영원히 옛 값으로 남는다. 필드 병합은 id 단위라 이것을 볼 수 없어 여기서 따로 본다.
+ *
+ * 「로컬이 만들었다」 = 로컬의 출처가 병합 결과에 실렸고 base 의 출처와 다르다. 로컬이 만들지 않은
+ * 중복(서버에 이미 둘)은 막지 않는다 — 이 push 가 고칠 수 없는 상태로 모든 push 를 막게 된다.
+ */
+function duplicateOriginConflicts(
+  base: ProjectModel, local: ProjectModel, merged: ProjectModel,
+  models: readonly ProjectModel[], tableFiles: Record<string, string>,
+): MergeConflict[] {
+  const out: MergeConflict[] = []
+  for (const kind of MERGE_KINDS) {
+    if (!('origin' in FILE_FIELDS[kind])) continue
+    const bCol = collectionOf(base, kind)
+    const lCol = collectionOf(local, kind)
+    const mCol = collectionOf(merged, kind)
+    const byOrigin = new Map<string, string[]>()
+    for (const id of Object.keys(mCol).sort()) {
+      const key = originKey(kind, mCol[id]!['origin'])
+      if (key !== null) byOrigin.set(key, [...(byOrigin.get(key) ?? []), id])
+    }
+    for (const [key, ids] of byOrigin) {
+      if (ids.length < 2) continue
+      const introduced = (id: string): boolean => {
+        const l = lCol[id]
+        return l !== undefined && originKey(kind, l['origin']) === key
+          && originKey(kind, bCol[id]?.['origin']) !== key
+      }
+      for (const id of ids.filter(introduced)) {
+        const other = ids.find((o) => o !== id && !introduced(o)) ?? ids.find((o) => o !== id)!
+        const mine = mCol[id]!
+        const b = bCol[id]
+        // 표시는 이름·id·출처 — 두 항목은 이름이 같기 쉬워 id 가 있어야 어느 쪽을 지울지 안다.
+        const show = (e: Entity): string =>
+          `${entityDisplayName(kind, e, models)} (id ${e.id}) · ${formatOrigin(e['origin'])}`
+        const added = b === undefined
+        out.push({
+          path: added ? pathOf(kind, mine, models, tableFiles) : ORIGINS_FILE,
+          kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, mine, models)}`,
+          field: added ? '*' : FILE_FIELDS[kind]['origin']!,
+          reason: 'duplicate-origin',
+          base: added ? null : displayValue(base, 'origin', b['origin']),
+          local: show(mine),
+          server: show(mCol[other]!),
+          changedFields: [],
+        })
+      }
+    }
+  }
+  return out
 }
 
 export type PrunedRef = { kind: MergeKind; entityId: string; label: string; reason: string }
@@ -445,9 +525,9 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
 /**
  * 병합 결과를 서버 모델 위에 얹는다.
  *
- * merged는 파일 가시 공간이라 좌표·origin이 비어 있고 notes가 없다. 그대로 diffModels에
- * 넣으면 메모가 전멸하고 좌표가 0으로 초기화되며 fork 출처가 지워진다. 살아남은 엔티티는
- * **서버 엔티티에서 출발해 가시 필드만 덮어쓰고**, notes는 서버 것을 그대로 통과시킨다.
+ * merged는 파일 가시 공간이라 좌표가 원점이고 notes가 없다. 그대로 diffModels에 넣으면
+ * 메모가 전멸하고 좌표가 0으로 초기화된다. 살아남은 엔티티는 **서버 엔티티에서 출발해 가시
+ * 필드만 덮어쓰고**, notes는 서버 것을 그대로 통과시킨다.
  *
  * `out`의 각 엔티티·`notes`는 `server`를 얕게 복사한 것이라 position·columnMappings·
  * index.columns 같은 중첩 값은 여전히 server와 참조를 공유한다. pruneDangling이 스칼라

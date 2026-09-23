@@ -1,11 +1,14 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir as osTmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ApiClient } from '../client.js'
-import { DEFAULT_NAMING_RULES } from '@erdd/core'
-import { readConfig } from '../config.js'
+import { createEmptyModel, DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS, modelToFiles } from '@erdd/core'
+import { readConfig, writeConfig } from '../config.js'
+import { readTree } from '../tree.js'
 import { CliError } from '../output.js'
+import { UNSAVED_NOTICE } from '../local/draft.js'
 import { init } from './init.js'
 
 async function tmpdir(): Promise<string> {
@@ -14,11 +17,12 @@ async function tmpdir(): Promise<string> {
 
 let dir: string
 let out: string[]
+let err: string[]
 beforeEach(async () => {
   dir = await tmpdir()
-  out = []
+  out = []; err = []
   vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
-  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -98,6 +102,55 @@ describe('init', () => {
     expect(code).toBe(1)
     expect(JSON.parse(out.join('')).error.code).toBe('UNAUTHORIZED')
   })
+
+  describe('재-init 의 구독', () => {
+    const connect = { json: true, yes: true, strict: false, serverUrl: 'https://erdd.example.com', token: 't' }
+    async function subscribed(): Promise<void> {
+      await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p1' })
+      await writeConfig(dir, { ...(await readConfig(dir)), dictionaries: [{ id: 'L1', name: '표준' }] })
+    }
+
+    it('같은 서버·프로젝트로 다시 연결하면 구독을 잇는다', async () => {
+      await subscribed()
+      expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
+      expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+    })
+
+    // createClient 가 끝 슬래시를 떼므로 두 URL 은 같은 서버다 — 구독이 끊기면 안 된다.
+    it('끝 슬래시·앞뒤 공백만 다른 같은 서버로 다시 연결하면 구독을 잇고, 정규화한 URL 을 쓴다', async () => {
+      await subscribed()
+      expect(await init({ ...connect, serverUrl: ' https://erdd.example.com/ ', cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
+      expect(await readConfig(dir)).toMatchObject({
+        serverUrl: 'https://erdd.example.com', dictionaries: [{ id: 'L1', name: '표준' }],
+      })
+
+      // 정규화 전에 저장된 옛 config(끝 슬래시)도 같은 서버로 본다.
+      await writeConfig(dir, { ...(await readConfig(dir)), serverUrl: 'https://erdd.example.com//' })
+      expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
+      expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+    })
+
+    // 재-init 은 깨진 config 를 덮어 고치는 길이다 — 옛 config 를 읽지 못해도 막지 않고, 이을 구독도 없다.
+    it('옛 config 가 깨져 있으면 재-init 은 성공하고 구독은 비운다', async () => {
+      await writeFile(join(dir, 'erdd.config.yaml'), [
+        'serverUrl: https://erdd.example.com', 'projectId: p1', 'dialects: [nope]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        'dictionaries: [{ id: L1, name: 표준 }]', '',
+      ].join('\n'))
+      expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
+      expect(await readConfig(dir)).toMatchObject({ dialects: ['postgresql'], dictionaries: [] })
+    })
+
+    it('다른 프로젝트나 다른 서버로 연결하면 구독을 비운다', async () => {
+      await subscribed()
+      expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p2' })).toBe(0)
+      expect((await readConfig(dir)).dictionaries).toEqual([])
+
+      await subscribed()
+      expect(await init({ ...connect, serverUrl: 'https://other.example.com', cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
+      expect((await readConfig(dir)).dictionaries).toEqual([])
+    })
+  })
 })
 
 describe('init --local', () => {
@@ -141,5 +194,324 @@ describe('init --local', () => {
     const config = await readConfig(dir)
     expect(config.dialects).toEqual(['postgresql'])
     expect(config.namingRules).toEqual(DEFAULT_NAMING_RULES)
+  })
+})
+
+describe('init --create', () => {
+  const ORG = '018f6b0e-0000-7000-8000-00000000000a'
+  const CREATED = '018f6b0e-0000-7000-8000-0000000000f1'
+  function createClient(opts: { forbid?: boolean; oldServer?: boolean; orgs?: { id: string; name: string }[] } = {}) {
+    const calls: { path: string; input: unknown }[] = []
+    const c: ApiClient = {
+      query: vi.fn(async (path: string) => {
+        if (path === 'auth.me') return { id: 'u1', email: 'u1@test.dev', name: '사용자1', role: 'user' }
+        if (path === 'org.list') return opts.orgs ?? [{ id: ORG, name: '플랫폼팀', role: 'owner' }]
+        throw new Error(`unexpected ${path}`)
+      }) as ApiClient['query'],
+      mutate: vi.fn(async (path: string, input: unknown) => {
+        calls.push({ path, input })
+        if (path !== 'project.create') throw new Error(`unexpected mutate ${path}`)
+        // 서버 project.create 의 실제 문구(apps/server routers/project.ts, token-api.test.ts 가 잠근다)
+        if (opts.forbid) throw new CliError('FORBIDDEN', '프로젝트 생성 권한이 없습니다')
+        // 옛 서버: project.create 가 세션 전용(authedProcedure)이라 토큰 호출을 이 문구로 막는다(apps/server trpc.ts)
+        if (opts.oldServer) throw new CliError('UNAUTHORIZED', '이 작업은 액세스 토큰으로 할 수 없습니다')
+        return { id: CREATED, name: (input as { name: string }).name }
+      }) as ApiClient['mutate'],
+    }
+    return { client: c, calls }
+  }
+  const base = {
+    json: true, yes: true, strict: false, serverUrl: 'https://erdd.example.com', token: 'erdd_pat_x',
+    create: true, org: '플랫폼팀', name: '주문시스템',
+  }
+  const emptyServer = {
+    query: async (p: string) => (p === 'model.get' ? { model: createEmptyModel(), seq: 0 } : null),
+    mutate: async () => null,
+  } as unknown as ApiClient
+  async function planAgainstEmptyServer() {
+    const { buildPlan } = await import('../plan.js')
+    return buildPlan(dir, { serverUrl: 'https://erdd.example.com', projectId: CREATED }, emptyServer)
+  }
+
+  it('새 디렉터리: 프로젝트를 만들고 빈 모델을 기준선으로 연결한다', async () => {
+    const { client, calls } = createClient()
+    expect(await init({ ...base, cwd: dir, client, dialect: 'mysql' })).toBe(0)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      path: 'project.create',
+      input: {
+        orgId: ORG, name: '주문시스템', dialects: ['mysql'],
+        namingRules: DEFAULT_NAMING_RULES, tableOptions: DEFAULT_TABLE_OPTIONS,
+      },
+    })
+    const cfg = await readConfig(dir)
+    expect(cfg).toMatchObject({ serverUrl: 'https://erdd.example.com', projectId: CREATED, dialects: ['mysql'], dictionaries: [] })
+    expect(await readFile(join(dir, '.erdd/credentials.json'), 'utf8')).toContain('erdd_pat_x')
+    const emptyTree = modelToFiles(createEmptyModel()).tree
+    expect(JSON.parse(await readFile(join(dir, '.erdd/base.json'), 'utf8'))).toEqual(emptyTree)
+    expect(JSON.parse(await readFile(join(dir, '.erdd/sync.json'), 'utf8'))).toMatchObject({ revisionSeq: 0 })
+    // erdd/ 도 빈 서버를 pull 한 것과 같다 — 비어 있으면 push·diff 가 「erdd/ 아래에 파일이 없습니다」로 막힌다.
+    expect(await readTree(dir)).toEqual(emptyTree)
+    const plan = await planAgainstEmptyServer()
+    expect(plan).toMatchObject({ ops: [], conflicts: [] })
+    expect(JSON.parse(out.join(''))).toEqual({
+      configPath: 'erdd.config.yaml', projectId: CREATED, projectName: '주문시스템', migrated: false, hasLocalFiles: false,
+    })
+  })
+
+  it('서버 URL 은 앞뒤 공백·끝 슬래시를 떼고 config 에 쓴다', async () => {
+    const { client } = createClient()
+    expect(await init({ ...base, serverUrl: ' https://erdd.example.com/ ', cwd: dir, client })).toBe(0)
+    expect((await readConfig(dir)).serverUrl).toBe('https://erdd.example.com')
+  })
+
+  it('--case 를 명명 규칙에 싣고, 조직은 id 로도 고른다', async () => {
+    const { client, calls } = createClient()
+    expect(await init({ ...base, org: ORG, cwd: dir, client, namingCase: 'lower_snake' })).toBe(0)
+    expect(calls[0]!.input).toMatchObject({
+      orgId: ORG, dialects: ['postgresql'], namingRules: { ...DEFAULT_NAMING_RULES, case: 'lower_snake' },
+    })
+  })
+
+  it('조직을 찾지 못하면 NOT_FOUND 이고 아무것도 만들지 않는다', async () => {
+    const { client, calls } = createClient()
+    expect(await init({ ...base, org: '없는팀', cwd: dir, client })).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NOT_FOUND')
+    expect(calls).toEqual([])
+    expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
+  })
+
+  // 서버의 min(1) 은 공백을 통과시켜 공백 이름 프로젝트가 생긴다 — 대화형 입력처럼 다듬어 거른다.
+  it('--name 이 공백뿐이면 서버를 부르기 전에 USAGE, 앞뒤 공백은 떼어 보낸다', async () => {
+    const blank = createClient()
+    expect(await init({ ...base, name: '   ', cwd: dir, client: blank.client })).toBe(2)
+    expect(JSON.parse(out.join('')).error).toEqual({ code: 'USAGE', message: '프로젝트 이름이 비었습니다' })
+    expect(blank.client.query).not.toHaveBeenCalled()
+    expect(blank.calls).toEqual([])
+
+    const padded = createClient()
+    expect(await init({ ...base, name: '  주문시스템 ', cwd: dir, client: padded.client })).toBe(0)
+    expect(padded.calls[0]!.input).toMatchObject({ name: '주문시스템' })
+  })
+
+  it('같은 이름의 조직이 여럿이면 USAGE 로 id 를 요구한다', async () => {
+    const { client, calls } = createClient({
+      orgs: [{ id: ORG, name: '플랫폼팀' }, { id: '018f6b0e-0000-7000-8000-00000000000b', name: '플랫폼팀' }],
+    })
+    expect(await init({ ...base, cwd: dir, client })).toBe(2)
+    expect(JSON.parse(out.join('')).error).toEqual({
+      code: 'USAGE', message: '이름이 플랫폼팀인 조직이 여럿입니다 — id로 지정하세요',
+    })
+    expect(calls).toEqual([])
+  })
+
+  // readTree 를 서버에 만들기 **전에** 한다 — 뒤에서 YAML 오류로 멈추면 빈 서버 프로젝트가 남는다.
+  it('erdd/ 의 YAML 이 깨져 있으면 서버를 부르기 전에 VALIDATION', async () => {
+    await mkdir(join(dir, 'erdd'), { recursive: true })
+    await writeFile(join(dir, 'erdd/words.yaml'), 'a: [')
+    const { client, calls } = createClient()
+    expect(await init({ ...base, cwd: dir, client })).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('VALIDATION')
+    expect(client.query).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+    expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
+  })
+
+  it('--org 가 없으면 대화형으로 조직을 고르고, 비대화형이면 USAGE', async () => {
+    const { client } = createClient()
+    expect(await init({ ...base, org: undefined, cwd: dir, client })).toBe(2)
+    const choose = vi.fn(async (_q: string, opts: { id: string }[]) => opts[0]!.id)
+    const second = createClient()
+    expect(await init({ ...base, org: undefined, cwd: dir, client: second.client, choose })).toBe(0)
+    expect(choose).toHaveBeenCalledTimes(1)
+    expect(second.calls[0]!.input).toMatchObject({ orgId: ORG })
+  })
+
+  it('로컬 전용 프로젝트를 이관한다 — erdd/ 는 그대로, config 의 규칙을 생성값으로 보낸다', async () => {
+    await init({ cwd: dir, json: true, yes: false, strict: false, local: true, dialect: 'oracle', namingCase: 'lower_snake' })
+    await mkdir(join(dir, 'erdd'), { recursive: true })
+    await writeFile(join(dir, 'erdd/words.yaml'), 'words:\n  - logicalName: 주문\n    abbreviation: ORD\n')
+    const before = await readFile(join(dir, 'erdd/words.yaml'), 'utf8')
+    out.length = 0
+    const { client, calls } = createClient()
+    expect(await init({ ...base, cwd: dir, client })).toBe(0)
+    expect(calls[0]!.input).toMatchObject({
+      dialects: ['oracle'],
+      namingRules: { ...DEFAULT_NAMING_RULES, case: 'lower_snake' },
+      tableOptions: DEFAULT_TABLE_OPTIONS,
+    })
+    expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toBe(before)
+    // 이관은 erdd/ 에 파일을 더하지도 않는다 — 빈 트리의 다른 파일(groups.yaml 등)이 생기면 안 된다.
+    expect(Object.keys(await readTree(dir))).toEqual(['erdd/words.yaml'])
+    const cfg = await readConfig(dir)
+    expect(cfg).toMatchObject({ serverUrl: 'https://erdd.example.com', projectId: CREATED, dialects: ['oracle'] })
+    expect(JSON.parse(out.join(''))).toMatchObject({ migrated: true, hasLocalFiles: true })
+
+    // 기준선이 빈 모델이라 다음 push 는 로컬 스키마 전부를 「추가」로 올린다.
+    const plan = await planAgainstEmptyServer()
+    expect(plan.conflicts).toEqual([])
+    expect(plan.ops.length).toBeGreaterThan(0)
+    expect(plan.ops.every((op) => op.action === 'create')).toBe(true)
+  })
+
+  // config 가 커밋 지점이다 — 로컬 쓰기가 중간에 끊기면 base 없이 연결된 config 가 남아 다음
+  // pull 이 erdd/ 를 덮는 함정에 빠진다. 앞 단계 파일 자리를 디렉터리로 막아 쓰기를 실패시킨다.
+  describe('로컬 쓰기가 중간에 실패하면 config 는 연결되지 않은 채 남는다', () => {
+    for (const blocked of ['.erdd/base.json', '.erdd/sync.json', '.gitignore']) {
+      it(`${blocked} 쓰기 실패 — 이관`, async () => {
+        await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+        await rm(join(dir, blocked), { force: true })
+        await mkdir(join(dir, blocked), { recursive: true })
+        const { client, calls } = createClient()
+        expect(await init({ ...base, cwd: dir, client })).not.toBe(0)
+        expect(calls).toHaveLength(1)
+        expect((await readConfig(dir)).projectId).toBeNull()
+      })
+    }
+
+    it('.erdd/base.json 쓰기 실패 — 새 디렉터리', async () => {
+      await mkdir(join(dir, '.erdd/base.json'), { recursive: true })
+      const { client } = createClient()
+      expect(await init({ ...base, cwd: dir, client })).not.toBe(0)
+      expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
+    })
+  })
+
+  it('이관은 확인을 받는다 — 비대화형에 --yes 가 없으면 멈춘다', async () => {
+    await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+    out.length = 0
+    const { client, calls } = createClient()
+    expect(await init({ ...base, yes: false, cwd: dir, client })).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('CANCELLED')
+    expect(calls).toEqual([])
+    expect((await readConfig(dir)).projectId).toBeNull()
+  })
+
+  it('이관 확인을 대화형으로 받으면 진행하고, 거절하면 서버를 부르지 않는다', async () => {
+    await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+    const no = createClient()
+    const confirmNo = vi.fn(async () => false)
+    expect(await init({ ...base, yes: false, cwd: dir, client: no.client, confirm: confirmNo })).toBe(1)
+    expect(confirmNo).toHaveBeenCalledWith('이 로컬 프로젝트를 서버 프로젝트 "주문시스템"로 연결합니다. 계속할까요?')
+    expect(no.calls).toEqual([])
+
+    const yes = createClient()
+    expect(await init({ ...base, yes: false, cwd: dir, client: yes.client, confirm: async () => true })).toBe(0)
+    expect(yes.calls).toHaveLength(1)
+  })
+
+  // readConfig 는 enum·양의 정수를 보지 않는다. 서버 zod 의 400(이슈 JSON 문자열)은 읽기 어렵다.
+  it('이관할 config 의 명명 규칙이 서버 스키마에 맞지 않으면 서버를 부르기 전에 VALIDATION', async () => {
+    for (const [rules, key] of [
+      ['{ case: Foo, separator: _, maxLengthBytes: 30 }', 'case'],
+      ['{ case: UPPER_SNAKE, separator: "-", maxLengthBytes: 30 }', 'separator'],
+      ['{ case: UPPER_SNAKE, separator: _, maxLengthBytes: 0 }', 'maxLengthBytes'],
+    ] as const) {
+      await writeFile(join(dir, 'erdd.config.yaml'), `dialects: [postgresql]\nnamingRules: ${rules}\n`)
+      out.length = 0
+      const { client, calls } = createClient()
+      expect(await init({ ...base, cwd: dir, client })).toBe(1)
+      expect(JSON.parse(out.join('')).error).toEqual({
+        code: 'VALIDATION', message: `erdd.config.yaml의 namingRules.${key}가 올바르지 않습니다`,
+      })
+      expect(calls).toEqual([])
+      expect(client.query).not.toHaveBeenCalled()
+    }
+  })
+
+  it('이관에 --dialect·--case 를 주면 USAGE', async () => {
+    await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+    const { client, calls } = createClient()
+    expect(await init({ ...base, cwd: dir, client, dialect: 'mysql' })).toBe(2)
+    expect(await init({ ...base, cwd: dir, client, namingCase: 'lower_snake' })).toBe(2)
+    expect(calls).toEqual([])
+  })
+
+  it('이미 연결된 config 면 거절한다', async () => {
+    const { client } = createClient()
+    expect(await init({ ...base, cwd: dir, client })).toBe(0)
+    out.length = 0
+    const again = createClient()
+    expect(await init({ ...base, cwd: dir, client: again.client })).toBe(1)
+    expect(out.join('')).toContain('--project')
+    expect(again.calls).toEqual([])
+  })
+
+  it('생성 권한이 없으면 관리자에게 요청하라고 안내한다', async () => {
+    const { client } = createClient({ forbid: true })
+    expect(await init({ ...base, cwd: dir, client })).toBe(1)
+    const err = JSON.parse(out.join('')).error
+    expect(err.code).toBe('FORBIDDEN')
+    expect(err.message).toBe('프로젝트 생성 권한이 없습니다 — 조직 관리자에게 프로젝트를 만들어 달라고 한 뒤 erdd init --project <id> 로 연결하세요')
+    expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
+    expect(existsSync(join(dir, '.erdd'))).toBe(false)
+  })
+
+  // 토큰이 틀린 줄 알고 재발급하는 헛수고를 막는다 — 고칠 수 있는 것은 서버 업그레이드뿐이다.
+  it('옛 서버가 토큰의 프로젝트 생성을 막으면 서버를 업그레이드하라고 안내하고 로컬에 아무것도 쓰지 않는다', async () => {
+    const { client } = createClient({ oldServer: true })
+    expect(await init({ ...base, cwd: dir, client })).toBe(1)
+    const err = JSON.parse(out.join('')).error
+    expect(err.code).toBe('UNAUTHORIZED')
+    expect(err.message).toBe('서버가 이 기능을 지원하지 않습니다 — 서버를 업그레이드하세요')
+    expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
+    expect(existsSync(join(dir, '.erdd'))).toBe(false)
+    expect(existsSync(join(dir, 'erdd'))).toBe(false)
+  })
+
+  // 이관 중이면 --project 로 연결한 뒤의 pull 이 erdd/ 를 덮는다 — 커밋과 수동 절차로 보낸다.
+  it('이관 중 생성 권한이 없으면 erdd/ 를 커밋하고 수동 절차를 따르라고 안내한다', async () => {
+    await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+    out.length = 0
+    const { client } = createClient({ forbid: true })
+    expect(await init({ ...base, cwd: dir, client })).toBe(1)
+    const err = JSON.parse(out.join('')).error
+    expect(err.code).toBe('FORBIDDEN')
+    expect(err.message).toBe('프로젝트 생성 권한이 없습니다 — 조직 관리자에게 빈 프로젝트를 만들어 달라고 한 뒤, erdd/ 를 git 에 커밋하고 매뉴얼 「로컬로 시작한 프로젝트를 서버로 옮기기」의 수동 절차를 따르세요')
+    expect((await readConfig(dir)).projectId).toBeNull()
+  })
+
+  // push 는 저장된 파일만 올린다 — serve 에서 저장한 뒤 push 해야 하는 줄 알게 한다.
+  it('이관할 때 미저장 편집(.erdd/draft.json)이 있으면 알린다', async () => {
+    await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+    await mkdir(join(dir, '.erdd'), { recursive: true })
+    await writeFile(join(dir, '.erdd/draft.json'), '{}')
+    err.length = 0
+    expect(await init({ ...base, cwd: dir, client: createClient().client })).toBe(0)
+    expect(err.join('')).toContain(UNSAVED_NOTICE)
+
+    const dir2 = await tmpdir()
+    await init({ cwd: dir2, json: true, yes: false, strict: false, local: true })
+    err.length = 0
+    expect(await init({ ...base, cwd: dir2, client: createClient().client })).toBe(0)
+    expect(err.join('')).not.toContain(UNSAVED_NOTICE)
+  })
+
+  // config 만 지운 디렉터리나 다른 곳에서 받아 둔 erdd/ — 다음 push 가 그 파일 전부를 「추가」로 올린다.
+  it('config 가 없어도 erdd/ 에 파일이 있으면 diff 로 확인한 뒤 push 하라고 안내한다', async () => {
+    await mkdir(join(dir, 'erdd'), { recursive: true })
+    await writeFile(join(dir, 'erdd/words.yaml'), 'words:\n  - logicalName: 주문\n    abbreviation: ORD\n')
+    expect(await init({ ...base, json: false, cwd: dir, client: createClient().client })).toBe(0)
+    expect(out.join('')).toBe('서버 프로젝트 주문시스템을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.\n')
+    expect(Object.keys(await readTree(dir))).toEqual(['erdd/words.yaml'])
+
+    const dir2 = await tmpdir()
+    await mkdir(join(dir2, 'erdd'), { recursive: true })
+    await writeFile(join(dir2, 'erdd/words.yaml'), 'words: []\n')
+    out.length = 0
+    expect(await init({ ...base, cwd: dir2, client: createClient().client })).toBe(0)
+    expect(JSON.parse(out.join(''))).toMatchObject({ migrated: false, hasLocalFiles: true })
+  })
+
+  it('사람용 출력은 새 디렉터리와 이관을 구분해 다음 할 일을 안내한다', async () => {
+    const human = { ...base, json: false }
+    expect(await init({ ...human, cwd: dir, client: createClient().client })).toBe(0)
+    expect(out.join('')).toBe('서버 프로젝트 주문시스템을(를) 만들어 연결했습니다. erdd serve로 편집을 시작하세요.\n')
+
+    const dir2 = await tmpdir()
+    await init({ cwd: dir2, json: true, yes: false, strict: false, local: true })
+    out.length = 0
+    expect(await init({ ...human, cwd: dir2, client: createClient().client })).toBe(0)
+    expect(out.join('')).toBe('서버 프로젝트 주문시스템을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.\n')
   })
 })

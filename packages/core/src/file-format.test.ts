@@ -19,7 +19,8 @@ describe('modelToFiles', () => {
       `${TREE_ROOT}/terms.yaml`,
       `${TREE_ROOT}/words.yaml`,
     ].sort())
-    expect(TOP_LEVEL_FILES).toHaveLength(5)
+    // 여섯째는 origins.yaml 이다 — 출처가 0건이면 만들지 않아 위 목록에 없다.
+    expect(TOP_LEVEL_FILES).toHaveLength(6)
   })
 
   it('그룹 별칭을 groups.yaml 에 싣고 빈 별칭은 생략한다', () => {
@@ -55,11 +56,10 @@ describe('modelToFiles', () => {
     })
   })
 
-  it('notes·position·origin은 어느 파일에도 나타나지 않는다', () => {
+  it('notes·position은 어느 파일에도 나타나지 않는다', () => {
     const { tree } = modelToFiles(fullModel())
     const dumped = JSON.stringify(tree)
     expect(dumped).not.toContain('position')
-    expect(dumped).not.toContain('origin')
     expect(dumped).not.toContain('메모')
   })
 
@@ -601,5 +601,146 @@ describe('파일 왕복 — 부호 없음 표기', () => {
     if (!r.ok) return
     expect(Object.values(r.model.columns)[0]!.type).toBe('INT UNSIGNED')
     expect(Object.values(r.model.domains)[0]!.logicalType).toBe('BIGINT UNSIGNED')
+  })
+})
+
+describe('origins.yaml', () => {
+  const origin = {
+    libraryId: 'L1', sourceId: 'S1', sourceVersion: 3,
+    base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null },
+  }
+  function withWord(o: typeof origin | null = origin) {
+    const m = createEmptyModel()
+    m.words['w1'] = {
+      id: 'w1', logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin: o,
+    }
+    return m
+  }
+
+  it('출처를 origins.yaml 로 쓰고, 사전 파일에는 싣지 않으며, 다시 읽으면 복원된다', () => {
+    const { tree } = modelToFiles(withWord())
+    expect(tree['erdd/origins.yaml']).toEqual({
+      origins: [{ id: 'w1', kind: 'word', library: 'L1', item: 'S1', version: 3, base: origin.base }],
+    })
+    expect(tree['erdd/words.yaml']).toEqual({ words: [{ id: 'w1', logicalName: '고객', abbreviation: 'CUST' }] })
+    const r = filesToModel(tree)
+    expect(r.ok && r.model.words['w1']!.origin).toEqual(origin)
+  })
+
+  it('출처가 0건이면 origins.yaml 을 만들지 않는다', () => {
+    expect(modelToFiles(withWord(null)).tree).not.toHaveProperty('erdd/origins.yaml')
+  })
+
+  it('여러 종류의 출처를 id 오름차순으로 쓴다', () => {
+    const m = withWord()
+    m.domains['d0'] = {
+      id: 'd0', name: 'NO', category: null, logicalType: 'string',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null,
+      origin: { libraryId: 'L1', sourceId: 'S0', sourceVersion: 1, base: {} },
+    }
+    const list = (modelToFiles(m).tree['erdd/origins.yaml'] as { origins: { id: string }[] }).origins
+    expect(list.map((o) => o.id)).toEqual(['d0', 'w1'])
+  })
+
+  it('가리키는 엔티티가 없는 줄은 조용히 무시하고 다음 쓰기에서 사라진다', () => {
+    const { tree } = modelToFiles(withWord())
+    tree['erdd/words.yaml'] = { words: [] }   // 사람이 단어를 지웠다
+    const r = filesToModel(tree)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.warnings).toEqual([])
+    expect(modelToFiles(r.model).tree).not.toHaveProperty('erdd/origins.yaml')
+  })
+
+  it('id 가 프로토타입 키여도 엔티티로 오인하지 않는다', () => {
+    const { tree } = modelToFiles(withWord())
+    const [o] = (tree['erdd/origins.yaml'] as { origins: Record<string, unknown>[] }).origins
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, id: '__proto__' }, { ...o, id: 'constructor' }] }
+    const r = filesToModel(tree)
+    expect(r.ok).toBe(true)
+    expect(({} as Record<string, unknown>)['origin']).toBeUndefined()
+    expect((Object as unknown as Record<string, unknown>)['origin']).toBeUndefined()
+  })
+
+  it('같은 id 의 출처가 두 번이면 파일 오류다', () => {
+    const { tree } = modelToFiles(withWord())
+    const list = (tree['erdd/origins.yaml'] as { origins: unknown[] }).origins
+    tree['erdd/origins.yaml'] = { origins: [list[0], list[0]] }
+    const r = filesToModel(tree)
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.issues.map((i) => i.message).join('\n')).toContain('두 번')
+  })
+
+  it('kind 가 실제 엔티티 종류와 다르면 파일 오류다', () => {
+    const { tree } = modelToFiles(withWord())
+    const [o] = (tree['erdd/origins.yaml'] as { origins: Record<string, unknown>[] }).origins
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, kind: 'term' }] }
+    const r = filesToModel(tree)
+    expect(r.ok).toBe(false)
+  })
+
+  it('객체가 아닌 줄은 파일 오류이고, 좌표는 원래 배열의 번호다', () => {
+    const { tree } = modelToFiles(withWord())
+    const [o] = (tree['erdd/origins.yaml'] as { origins: Record<string, unknown>[] }).origins
+    tree['erdd/origins.yaml'] = { origins: ['garbage', 42, { ...o, version: '3' }] }
+    const r = filesToModel(tree)
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    const messages = r.issues.map((i) => i.message)
+    expect(messages.filter((m) => m.startsWith('origins[0]'))).toHaveLength(1)
+    expect(messages.filter((m) => m.startsWith('origins[1]'))).toHaveLength(1)
+    expect(messages.filter((m) => m.startsWith('origins[2]'))).toHaveLength(1)
+  })
+
+  it('종류가 다른 두 엔티티가 같은 id 를 쓰면 각자의 출처로 읽는다', () => {
+    const m = withWord()
+    m.terms['w1'] = {
+      id: 'w1', logicalName: '고객', physicalName: 'CUST', domainId: null, description: null,
+      origin: { ...origin, sourceId: 'S2' },
+    }
+    const r = filesToModel(modelToFiles(m).tree)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.words['w1']!.origin).toEqual(origin)
+    expect(r.model.terms['w1']!.origin).toEqual({ ...origin, sourceId: 'S2' })
+  })
+
+  it('출처는 로캘이 아니라 코드 단위 순서로 정렬한다', () => {
+    const m = createEmptyModel()
+    for (const id of ['a1', 'B1']) {
+      m.words[id] = { id, logicalName: id, abbreviation: id, englishName: null, description: null, origin }
+    }
+    const list = (modelToFiles(m).tree['erdd/origins.yaml'] as { origins: { id: string }[] }).origins
+    // localeCompare 는 a1 → B1 이다. 코드 단위로는 대문자가 앞선다.
+    expect(list.map((o) => o.id)).toEqual(['B1', 'a1'])
+  })
+
+  it('읽은 출처의 base 는 입력 트리와 참조를 공유하지 않는다', () => {
+    const { tree } = modelToFiles(withWord())
+    const [o] = (tree['erdd/origins.yaml'] as { origins: { base: Record<string, unknown> }[] }).origins
+    const r = filesToModel(tree)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.words['w1']!.origin!.base).toEqual(o!.base)
+    expect(r.model.words['w1']!.origin!.base).not.toBe(o!.base)
+  })
+
+  it('필수 키가 빠지거나 version 이 정수가 아니면 파일 오류다', () => {
+    const { tree } = modelToFiles(withWord())
+    const [o] = (tree['erdd/origins.yaml'] as { origins: Record<string, unknown>[] }).origins
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, version: '3' }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, base: undefined }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, library: undefined }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, item: undefined }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, kind: 'foo' }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, base: [] }] }
+    expect(filesToModel(tree).ok).toBe(false)
   })
 })

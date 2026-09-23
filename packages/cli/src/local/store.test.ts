@@ -1,11 +1,18 @@
+import * as fsp from 'node:fs/promises'
 import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
 import { FileStore, LAYOUT_FILE, LocalStoreError } from './store.js'
 import { hasDraft, readDraft, writeDraft } from './draft.js'
+
+// 쓰기 순서를 보려고 writeFile 을 그대로 통과시키며 기록한다(동작은 원본과 같다).
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const m = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...m, writeFile: vi.fn(m.writeFile) }
+})
 
 async function project(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-local-'))
@@ -659,6 +666,40 @@ describe('FileStore.save', () => {
     expect(r.deleted).toContain('erdd/tables/MBR.yaml')
     expect(store.dirty).toBe(false)
     expect(await hasDraft(dir)).toBe(false)
+  })
+
+  /**
+   * 🔥 출처 파일은 **마지막**에 쓴다(dict pull·syncDown 과 같은 불변식). 먼저 쓰고 내용 파일 전에 끊기면
+   * 출처는 새 버전·내용은 옛 값이 되어 다음 dict pull 이 「버전이 같다」로 조용히 넘긴다.
+   * 알파벳 순서면 `origins.yaml` 이 `words.yaml` 보다 앞선다 — 그 순서가 이 테스트가 잡는 것이다.
+   */
+  it('사전 내용과 출처가 함께 바뀌는 저장은 origins.yaml 을 마지막에 쓴다', async () => {
+    const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
+    const store = new FileStore(dir)
+    await store.load()
+    const origin = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } }
+    await store.setModel({
+      ...store.state.model,
+      words: {
+        '018f6b0e-0000-7000-8000-0000000000a1': {
+          id: '018f6b0e-0000-7000-8000-0000000000a1', logicalName: '고객', abbreviation: 'CUST',
+          englishName: null, description: null, origin,
+        },
+      },
+    })
+    await store.flush()
+    const spy = vi.mocked(fsp.writeFile)
+    spy.mockClear()
+    const r = await store.save()
+    expect(r).toMatchObject({ ok: true })
+    // layout.yaml 은 트리 밖(좌표·메모)이라 트리 쓰기 뒤에 따로 쓴다 — 순서 불변식의 대상이 아니다.
+    const written = spy.mock.calls.map(([p]) => String(p))
+      .filter((p) => p.startsWith(join(dir, 'erdd') + '/')).map((p) => p.slice(dir.length + 1))
+      .filter((p) => p !== LAYOUT_FILE)
+    expect(written).toContain('erdd/words.yaml')
+    expect(written.at(-1)).toBe('erdd/origins.yaml')
+    // 보고는 여전히 정렬된 목록이다.
+    if (r.ok) expect(r.written).toEqual([...r.written].sort())
   })
 
   /**
