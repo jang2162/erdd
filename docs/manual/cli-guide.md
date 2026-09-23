@@ -196,7 +196,8 @@ $ erdd --help
   --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
   --library <이름|id>   dict pull·push 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
                         push는 올릴 라이브러리(필수)
-  --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다
+  --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다(내용이 같을 때만)
+                        내용이 달라도 로컬 값을 유지한 채 연결하려면 --conflicts ours 를 함께 준다
   --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
   --kind <종류,…>        dict push 전용 — domain·word·term·customField 중 올릴 종류
   --name <이름>          dict push 전용 — 올릴 항목 이름(반복 가능)

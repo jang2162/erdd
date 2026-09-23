@@ -71,6 +71,15 @@ describe('main', () => {
     expect(err.join('')).toContain('init --local·--create는 postgresql')
   })
 
+  // --adopt 는 내용이 같을 때만 연결한다 — 도움말이 이를 빼면 이름만 같으면 연결되는 줄로 읽힌다.
+  it('도움말은 --adopt 가 내용이 같을 때만 연결하고 다르면 --conflicts ours 가 필요하다고 적는다', async () => {
+    const err: string[] = []
+    vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+    expect(await main(['--help'], '/tmp')).toBe(0)
+    expect(err.join('')).toContain('출처를 연결한다(내용이 같을 때만)')
+    expect(err.join('')).toContain('로컬 값을 유지한 채 연결하려면 --conflicts ours 를 함께 준다')
+  })
+
   it('도움말에 새 명령이 모두 나온다', async () => {
     const err: string[] = []
     vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
