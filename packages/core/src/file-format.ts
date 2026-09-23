@@ -214,7 +214,8 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
         id: e.id, kind, library: e.origin.libraryId, item: e.origin.sourceId,
         version: e.origin.sourceVersion, base: e.origin.base,
       })))
-    .sort((a, b) => a.id.localeCompare(b.id))
+    // 코드 단위 비교 — 커밋되는 파일의 순서가 실행 환경의 로캘에 기대면 안 된다.
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   if (origins.length > 0) tree[ORIGINS_FILE] = { origins }
 
   return { tree, issues }
@@ -351,15 +352,16 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     return explicit
   }
 
-  const readList = (path: string, key: string): Rec[] => {
+  const readRawList = (path: string, key: string): unknown[] => {
     const file = src[path]
     if (file === undefined) return []
     if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); return [] }
     const list = file[key]
     if (list === undefined) return []
     if (!Array.isArray(list)) { issues.push({ path, message: `${key}는 배열이어야 합니다` }); return [] }
-    return list.filter(isRec)
+    return list
   }
+  const readList = (path: string, key: string): Rec[] => readRawList(path, key).filter(isRec)
 
   // 1) 이름으로 참조되는 것부터 — 그룹·도메인.
   readList(`${TREE_ROOT}/groups.yaml`, 'groups').forEach((g, i) => {
@@ -439,7 +441,13 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     const col = model[RESOURCE_COLLECTION_BY_KIND[k]] as unknown as Record<string, { origin: Origin | null }>
     return Object.hasOwn(col, id) ? col[id] : undefined
   }
-  readList(ORIGINS_FILE, 'origins').forEach((o, i) => {
+  // 원 배열을 직접 훑는다 — 객체가 아닌 줄도 파일 오류이고, 오류 좌표 `origins[i]` 가 거르기 전
+  // 번호여야 사람이 파일에서 그 줄을 찾는다.
+  readRawList(ORIGINS_FILE, 'origins').forEach((o, i) => {
+    if (!isRec(o)) {
+      issues.push({ path: ORIGINS_FILE, message: `origins[${i}]가 객체가 아닙니다` })
+      return
+    }
     const id = asStr(o['id'])
     const kind = asStr(o['kind'])
     const library = asStr(o['library'])
@@ -455,11 +463,14 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
       })
       return
     }
-    if (originSeen.has(id)) {
+    // 키는 종류까지 — 단어와 용어는 같은 id 를 쓸 수 있고(모델의 idOf 도 종류로 가른다), 그때
+    // 두 줄은 서로 다른 엔티티의 출처다.
+    const seenKey = `${kind} ${id}`
+    if (originSeen.has(seenKey)) {
       issues.push({ path: ORIGINS_FILE, message: `id ${id}의 출처가 두 번 적혀 있습니다` })
       return
     }
-    originSeen.add(id)
+    originSeen.add(seenKey)
     const entity = entityOf(kind as ResourceKind, id)
     if (entity === undefined) {
       const actual = RESOURCE_KINDS.find((k) => k !== kind && entityOf(k, id) !== undefined)
@@ -468,7 +479,8 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
       }
       return
     }
-    entity.origin = { libraryId: library, sourceId: item, sourceVersion: version, base }
+    // 입력 트리와 참조를 끊는다 — 모델을 고치는 소비처가 읽어 온 트리를 오염시키지 않게.
+    entity.origin = { libraryId: library, sourceId: item, sourceVersion: version, base: structuredClone(base) }
   })
 
   // 2) 테이블 파일 — 두 번 훑는다. 관계가 다른 테이블의 컬럼을 참조하기 때문이다.
