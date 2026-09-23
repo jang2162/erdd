@@ -77,6 +77,25 @@ describe.skipIf(!url)('CLI 사전 동기화가 토큰으로 부르는 프로시�
     expect(got).toMatchObject({ dialects: ['mysql'], namingRules, tableOptions })
   })
 
+  it('조직 member(비관리자)의 토큰으로 project.create 는 403 과 권한 문구다', async () => {
+    // CLI init --create 가 이 코드·문구를 「프로젝트 생성 권한이 없습니다 — …」로 번역한다.
+    // 핸들러가 authKind 로 분기하지 않아도 토큰 경로로 한 번 잠가 둔다.
+    await createAccount(app.db!, { email: 'm@t.dev', name: '멤버', password: 'password-m', role: 'user' })
+    expect((await sPost('org.members.add', { orgId, email: 'm@t.dev', role: 'member' })).statusCode).toBe(200)
+    const memberSession = await loginAs(app, 'm@t.dev', 'password-m')
+    const memberToken = (await app.inject({
+      method: 'POST', url: '/trpc/auth.tokens.create', cookies: { erdd_session: memberSession },
+      headers: { 'content-type': 'application/json' }, payload: JSON.stringify({ name: 'cli' }),
+    })).json().result.data.token as string
+    const res = await app.inject({
+      method: 'POST', url: '/trpc/project.create',
+      headers: { authorization: `Bearer ${memberToken}`, 'content-type': 'application/json' },
+      payload: JSON.stringify({ orgId, name: 'X', dialects: ['mysql'] }),
+    })
+    expect(res.statusCode).toBe(403)
+    expect(res.json().error.message).toContain('프로젝트 생성 권한이 없습니다')
+  })
+
   it('라이브러리 목록·항목을 토큰으로 읽는다', async () => {
     const libs = await tGet('resource.library.listForProject', { projectId })
     expect(libs.statusCode).toBe(200)
