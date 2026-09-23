@@ -88,6 +88,13 @@ describe('parseChangeset', () => {
     expect(stripLines(r.changeset)).toEqual(ALL)
   })
 
+  it('배너 주석이 없는 파일 앞의 BOM 도 벗긴다', () => {
+    const text = '﻿' + "changeset 'x' {\n  format: 1\n  created: 'c'\n}\nrename table A -> B  @t1\n"
+    const r = parseChangeset(text)
+    if (!r.ok) throw new Error(`${r.line}: ${r.message}`)
+    expect(r.changeset.statements).toEqual([{ kind: 'renameTable', id: 't1', from: 'A', to: 'B', line: 5 }])
+  })
+
   it('머릿말이 없으면 1행에서 멈춘다', () => {
     expect(parseChangeset('')).toMatchObject({ ok: false, line: 1 })
     expect(parseChangeset('rename table A -> B  @t1\n')).toMatchObject({ ok: false, line: 1 })
