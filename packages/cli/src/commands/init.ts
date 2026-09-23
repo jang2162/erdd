@@ -198,18 +198,22 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
     throw err
   }
 
+  // 기준선 = 빈 서버 프로젝트. push 가 요구하는 base 를 pull 없이 세운다.
+  // ⚠️ config 를 **마지막에** 쓴다 — config 가 커밋 지점이다. 먼저 쓰면 그 뒤에서 끊겼을 때 base 없이
+  // 연결된 config 가 남고, 사용자의 자연스러운 다음 수(erdd pull)가 erdd/ 를 서버의 빈 상태로 덮는다.
+  // 이 순서면 중간 실패는 「로컬 전용(또는 없는) config + 쓸모없는 base」로 남는다 — 로컬 모드는
+  // base 를 읽지 않고, 재실행이 전부 다시 쓴다. 남는 것은 서버의 빈 프로젝트 하나뿐이다.
+  const emptyTree = modelToFiles(createEmptyModel()).tree
+  await writeToken(ctx.cwd, token)
+  if (writeEmptyTree) await writeTree(ctx.cwd, emptyTree)
+  await writeBase(ctx.cwd, emptyTree)
+  await writeSync(ctx.cwd, { revisionSeq: 0, pulledAt: new Date().toISOString() })
+  await ensureGitignore(ctx.cwd)
   await writeConfig(ctx.cwd, {
     serverUrl, projectId: project.id, dialects: settings.dialects,
     namingRules: settings.namingRules, tableOptions: settings.tableOptions,
     dictionaries: existing?.dictionaries ?? [],
   })
-  await writeToken(ctx.cwd, token)
-  await ensureGitignore(ctx.cwd)
-  // 기준선 = 빈 서버 프로젝트. push 가 요구하는 base 를 pull 없이 세운다.
-  const emptyTree = modelToFiles(createEmptyModel()).tree
-  if (writeEmptyTree) await writeTree(ctx.cwd, emptyTree)
-  await writeBase(ctx.cwd, emptyTree)
-  await writeSync(ctx.cwd, { revisionSeq: 0, pulledAt: new Date().toISOString() })
 
   emit(ctx.json, existing !== null
     ? `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.`

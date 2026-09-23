@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir as osTmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ApiClient } from '../client.js'
@@ -281,6 +281,29 @@ describe('init --create', () => {
     expect(plan.conflicts).toEqual([])
     expect(plan.ops.length).toBeGreaterThan(0)
     expect(plan.ops.every((op) => op.action === 'create')).toBe(true)
+  })
+
+  // config 가 커밋 지점이다 — 로컬 쓰기가 중간에 끊기면 base 없이 연결된 config 가 남아 다음
+  // pull 이 erdd/ 를 덮는 함정에 빠진다. 앞 단계 파일 자리를 디렉터리로 막아 쓰기를 실패시킨다.
+  describe('로컬 쓰기가 중간에 실패하면 config 는 연결되지 않은 채 남는다', () => {
+    for (const blocked of ['.erdd/base.json', '.erdd/sync.json', '.gitignore']) {
+      it(`${blocked} 쓰기 실패 — 이관`, async () => {
+        await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+        await rm(join(dir, blocked), { force: true })
+        await mkdir(join(dir, blocked), { recursive: true })
+        const { client, calls } = createClient()
+        expect(await init({ ...base, cwd: dir, client })).not.toBe(0)
+        expect(calls).toHaveLength(1)
+        expect((await readConfig(dir)).projectId).toBeNull()
+      })
+    }
+
+    it('.erdd/base.json 쓰기 실패 — 새 디렉터리', async () => {
+      await mkdir(join(dir, '.erdd/base.json'), { recursive: true })
+      const { client } = createClient()
+      expect(await init({ ...base, cwd: dir, client })).not.toBe(0)
+      expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
+    })
   })
 
   it('이관은 확인을 받는다 — 비대화형에 --yes 가 없으면 멈춘다', async () => {
