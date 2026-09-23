@@ -51,7 +51,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --case <대소문자>      init --local·--create 전용 — UPPER_SNAKE(기본) 또는 lower_snake
   --format <ddl|dbml>   export·import 전용 — export 기본 ddl, import 기본 확장자 판별
   --dialect <방언>       export·import·init --local·--create 전용
-                        export·import는 기본이 erdd.config.yaml의 dialects[0], init은 postgresql
+                        export·import는 기본이 erdd.config.yaml의 dialects[0], init --local·--create는 postgresql
   -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
   --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
   --library <이름|id>   dict pull·push 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)

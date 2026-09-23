@@ -176,7 +176,8 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
   // 읽다 실패하면(YAML 오류) 반쯤 만들어진 서버 프로젝트가 남는다.
   const writeEmptyTree = Object.keys(await readTree(ctx.cwd)).length === 0
 
-  const name = ctx.name ?? await ask(ctx, '서버에 만들 프로젝트 이름을 입력하세요')
+  // 대화형 입력(ask)처럼 플래그 값도 다듬는다 — 서버의 min(1) 은 공백뿐인 이름을 통과시킨다.
+  const name = (ctx.name ?? await ask(ctx, '서버에 만들 프로젝트 이름을 입력하세요')).trim()
   if (name === '') throw new CliError('USAGE', '프로젝트 이름이 비었습니다')
   if (existing !== null && !ctx.yes) {
     const ok = ctx.confirm === undefined ? false : await ctx.confirm(`이 로컬 프로젝트를 서버 프로젝트 "${name}"로 연결합니다. 계속할까요?`)

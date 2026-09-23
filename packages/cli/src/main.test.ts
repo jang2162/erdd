@@ -63,6 +63,14 @@ describe('main', () => {
     expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
   })
 
+  // --project 연결 갈래에서 --dialect 는 USAGE 다 — 기본값은 init --local·--create 에만 있다.
+  it('도움말은 --dialect 의 init 기본값을 --local·--create 에만 적는다', async () => {
+    const err: string[] = []
+    vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+    expect(await main(['--help'], '/tmp')).toBe(0)
+    expect(err.join('')).toContain('init --local·--create는 postgresql')
+  })
+
   it('도움말에 새 명령이 모두 나온다', async () => {
     const err: string[] = []
     vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })

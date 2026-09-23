@@ -279,6 +279,19 @@ describe('init --create', () => {
     expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
   })
 
+  // 서버의 min(1) 은 공백을 통과시켜 공백 이름 프로젝트가 생긴다 — 대화형 입력처럼 다듬어 거른다.
+  it('--name 이 공백뿐이면 서버를 부르기 전에 USAGE, 앞뒤 공백은 떼어 보낸다', async () => {
+    const blank = createClient()
+    expect(await init({ ...base, name: '   ', cwd: dir, client: blank.client })).toBe(2)
+    expect(JSON.parse(out.join('')).error).toEqual({ code: 'USAGE', message: '프로젝트 이름이 비었습니다' })
+    expect(blank.client.query).not.toHaveBeenCalled()
+    expect(blank.calls).toEqual([])
+
+    const padded = createClient()
+    expect(await init({ ...base, name: '  주문시스템 ', cwd: dir, client: padded.client })).toBe(0)
+    expect(padded.calls[0]!.input).toMatchObject({ name: '주문시스템' })
+  })
+
   it('같은 이름의 조직이 여럿이면 USAGE 로 id 를 요구한다', async () => {
     const { client, calls } = createClient({
       orgs: [{ id: ORG, name: '플랫폼팀' }, { id: '018f6b0e-0000-7000-8000-00000000000b', name: '플랫폼팀' }],
