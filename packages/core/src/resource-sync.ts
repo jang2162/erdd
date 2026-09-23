@@ -145,6 +145,7 @@ export function planResync(
  * `adopt` 의 대상 — 같은 종류·같은 표시 이름(trim)·**출처가 없는** 프로젝트 엔티티 중 id 오름차순
  * 첫 것. 이미 출처가 붙은 항목을 빼는 이유: 다른 라이브러리와의 링크를 조용히 갈아치우면 그쪽
  * 재동기화가 영영 「원본에서 사라짐」으로 보인다. 정렬은 planPromote 와 같은 결정성 규칙이다.
+ * 단건 후보다 — 여러 원본이 같은 대상을 고를 수 있으므로 배치 배정은 `adoptAssignments` 가 한다.
  */
 export function adoptTargetOf(model: ProjectModel, entry: ResyncEntry): string | null {
   if (entry.status !== 'added') return null
@@ -154,6 +155,27 @@ export function adoptTargetOf(model: ProjectModel, entry: ResyncEntry): string |
       resourcePayloadOf(entry.kind, e as unknown as Record<string, unknown>)).trim() === entry.name.trim())
     .sort((a, b) => a.id.localeCompare(b.id))[0]
   return hit?.id ?? null
+}
+
+/**
+ * 배치 단위 `adopt` 배정(sourceId → 연결할 엔티티 id). adopt 결정 항목을 `plan.entries` 순서로 돌며
+ * 대상이 이미 앞선 원본에 배정됐으면 건너뛴다 — 한 엔티티에 출처는 하나다.
+ * `applyResyncPlan` 이 이 함수로 색인을 채우므로, 연결 건수를 보고하는 쪽도 이 함수를 써야 실제
+ * 적용과 갈라지지 않는다. Map 에 없는 adopt 항목은 적용되지 않는다(대상 없음 또는 선착 패배).
+ */
+export function adoptAssignments(
+  model: ProjectModel, plan: ResyncPlan, decisions: Readonly<Record<string, ResyncDecision>>,
+): Map<string, string> {
+  const assigned = new Map<string, string>()
+  const claimed = new Set<string>()
+  for (const entry of plan.entries) {
+    if (decisions[entry.sourceId] !== 'adopt') continue
+    const target = adoptTargetOf(model, entry)
+    if (target === null || claimed.has(target)) continue
+    claimed.add(target)
+    assigned.set(entry.sourceId, target)
+  }
+  return assigned
 }
 
 function maxCustomFieldOrder(model: ProjectModel, target: string): number {
@@ -187,16 +209,10 @@ export function applyResyncPlan(
     }
   }
   // adopt 대상도 색인에 먼저 넣는다 — 같은 배치의 용어가 연결된 도메인을 참조할 수 있어야 한다.
-  // 두 원본이 같은 엔티티를 고르면 먼저 온 쪽만 인정한다.
-  const adopted = new Map<string, string>()
-  const claimed = new Set<string>()
+  const adopted = adoptAssignments(model, plan, decisions)
   for (const entry of selected) {
-    if (decisions[entry.sourceId] !== 'adopt') continue
-    const target = adoptTargetOf(model, entry)
-    if (target === null || claimed.has(target)) continue
-    claimed.add(target)
-    adopted.set(entry.sourceId, target)
-    idBySource.set(keyOf(entry.kind, entry.sourceId), target)
+    const target = adopted.get(entry.sourceId)
+    if (target !== undefined) idBySource.set(keyOf(entry.kind, entry.sourceId), target)
   }
   const allocated = new Map<string, string>()
   for (const entry of selected) {

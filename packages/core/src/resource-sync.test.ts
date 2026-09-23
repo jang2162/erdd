@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type Origin, type ProjectModel, type Word } from './model.js'
 import { validateModelIntegrity } from './integrity.js'
 import { diffModels } from './diff.js'
-import { adoptTargetOf, applyResyncPlan, planResync, type LibraryItem } from './resource-sync.js'
+import {
+  adoptAssignments, adoptTargetOf, applyResyncPlan, planResync, type LibraryItem,
+} from './resource-sync.js'
 
 const LIB = 'lib-1'
 
@@ -321,6 +323,21 @@ describe('adopt', () => {
     // 밀려난 원본은 연결되지 않은 채 다음 계획에 다시 added 로 뜬다
     expect(planResync(next, 'L1', items).entries)
       .toEqual([expect.objectContaining({ sourceId: 'S2', status: 'added', nameClash: true })])
+  })
+
+  it('adoptAssignments 는 배치 단위로 배정한다 — 동명 원본 둘이 한 대상을 고르면 한 건만', () => {
+    const m = createEmptyModel()
+    m.words['w1'] = localWord('w1', 'CUST')
+    const items = [
+      libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null }),
+      libWord('S2', 1, { logicalName: '고객', abbreviation: 'CSTMR', englishName: null, description: null }),
+    ]
+    const plan = planResync(m, 'L1', items)
+    // 단건 후보는 둘 다 w1 이다 — 배치 배정 없이 항목마다 세면 연결을 부풀린다
+    expect(plan.entries.map((e) => adoptTargetOf(m, e))).toEqual(['w1', 'w1'])
+    const assigned = adoptAssignments(m, plan, { S1: 'adopt', S2: 'adopt' })
+    expect([...assigned]).toEqual([['S1', 'w1']])
+    expect(assigned.has('S2')).toBe(false)
   })
 
   it('added 가 아닌 항목의 adopt 는 무시한다(keep 으로 새지 않는다)', () => {
