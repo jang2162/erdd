@@ -133,6 +133,22 @@ describe.skipIf(!url)('CLI 사전 동기화가 토큰으로 부르는 프로시�
     ])
   })
 
+  it('resource.items.list 는 createdAt 이 같은 행을 id 순으로 준다', async () => {
+    // 한 트랜잭션의 승격이 넣은 항목은 createdAt(= 트랜잭션 시작 시각)이 전부 같다. 동률 순서가
+    // 비결정적이면 CLI 의 계획과 서버 재계산(FOR UPDATE 조회)이 동명 선점을 다르게 해 plan-changed 가 난다.
+    // id 가 큰 행을 먼저 넣어 삽입 순서와 id 순서를 어긋나게 한다.
+    const [lo, hi] = [uuidv7(), uuidv7()].sort()
+    const at = new Date('2026-01-01T00:00:00Z')
+    await app.db!.insert(resourceItems).values([
+      { id: hi!, libraryId, kind: 'word', payload: { logicalName: '회원', abbreviation: 'MBR2', description: null }, createdAt: at },
+    ])
+    await app.db!.insert(resourceItems).values([
+      { id: lo!, libraryId, kind: 'word', payload: { logicalName: '회원', abbreviation: 'MBR', description: null }, createdAt: at },
+    ])
+    const res = await tGet('resource.items.list', { libraryId })
+    expect((res.json().result.data as { id: string }[]).map((r) => r.id)).toEqual([lo, hi])
+  })
+
   it('토큰으로 승격하면 Revision source 가 cli 다', async () => {
     const wordId = await seedWord()
     const res = await tPost('resource.promote', {

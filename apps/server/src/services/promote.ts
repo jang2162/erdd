@@ -44,7 +44,9 @@ export function loadLibraryItems(dbOrTx: Db | MutationTx, libraryId: string) {
     })
     .from(resourceItems)
     .where(eq(resourceItems.libraryId, libraryId))
-    .orderBy(asc(resourceItems.createdAt))
+    // 동률은 id 로 깬다 — 한 트랜잭션의 승격이 넣은 행은 createdAt(트랜잭션 시작 시각)이 전부 같아
+    // 순서가 비결정적이면 두 시점의 동명 선점이 갈린다.
+    .orderBy(asc(resourceItems.createdAt), asc(resourceItems.id))
 }
 
 /**
