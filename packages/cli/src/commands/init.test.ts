@@ -242,7 +242,7 @@ describe('init --create', () => {
     const plan = await planAgainstEmptyServer()
     expect(plan).toMatchObject({ ops: [], conflicts: [] })
     expect(JSON.parse(out.join(''))).toEqual({
-      configPath: 'erdd.config.yaml', projectId: CREATED, projectName: '주문시스템', migrated: false,
+      configPath: 'erdd.config.yaml', projectId: CREATED, projectName: '주문시스템', migrated: false, hasLocalFiles: false,
     })
   })
 
@@ -296,7 +296,7 @@ describe('init --create', () => {
     expect(Object.keys(await readTree(dir))).toEqual(['erdd/words.yaml'])
     const cfg = await readConfig(dir)
     expect(cfg).toMatchObject({ serverUrl: 'https://erdd.example.com', projectId: CREATED, dialects: ['oracle'] })
-    expect(JSON.parse(out.join(''))).toMatchObject({ migrated: true })
+    expect(JSON.parse(out.join(''))).toMatchObject({ migrated: true, hasLocalFiles: true })
 
     // 기준선이 빈 모델이라 다음 push 는 로컬 스키마 전부를 「추가」로 올린다.
     const plan = await planAgainstEmptyServer()
@@ -424,6 +424,22 @@ describe('init --create', () => {
     err.length = 0
     expect(await init({ ...base, cwd: dir2, client: createClient().client })).toBe(0)
     expect(err.join('')).not.toContain(UNSAVED_NOTICE)
+  })
+
+  // config 만 지운 디렉터리나 다른 곳에서 받아 둔 erdd/ — 다음 push 가 그 파일 전부를 「추가」로 올린다.
+  it('config 가 없어도 erdd/ 에 파일이 있으면 diff 로 확인한 뒤 push 하라고 안내한다', async () => {
+    await mkdir(join(dir, 'erdd'), { recursive: true })
+    await writeFile(join(dir, 'erdd/words.yaml'), 'words:\n  - logicalName: 주문\n    abbreviation: ORD\n')
+    expect(await init({ ...base, json: false, cwd: dir, client: createClient().client })).toBe(0)
+    expect(out.join('')).toBe('서버 프로젝트 주문시스템을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.\n')
+    expect(Object.keys(await readTree(dir))).toEqual(['erdd/words.yaml'])
+
+    const dir2 = await tmpdir()
+    await mkdir(join(dir2, 'erdd'), { recursive: true })
+    await writeFile(join(dir2, 'erdd/words.yaml'), 'words: []\n')
+    out.length = 0
+    expect(await init({ ...base, cwd: dir2, client: createClient().client })).toBe(0)
+    expect(JSON.parse(out.join(''))).toMatchObject({ migrated: false, hasLocalFiles: true })
   })
 
   it('사람용 출력은 새 디렉터리와 이관을 구분해 다음 할 일을 안내한다', async () => {

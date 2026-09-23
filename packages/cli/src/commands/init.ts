@@ -241,11 +241,17 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
     dictionaries: existing?.dictionaries ?? [],
   })
 
+  // 다음 push 가 올릴 로컬 스키마가 있다 — 이관이거나, config 없이 erdd/ 만 있던 디렉터리(config 만
+  // 지웠거나 다른 곳에서 받아 둔 파일)다. 후자도 push 가 전부 「추가」로 올리므로 diff 로 먼저 보게 한다.
+  const pushNext = existing !== null || !writeEmptyTree
   // push 는 저장된 파일만 올린다 — 미저장 편집은 serve 에서 저장해야 이관에 실린다.
-  if (existing !== null && await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
-  emit(ctx.json, existing !== null
+  if (pushNext && await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
+  emit(ctx.json, pushNext
     ? `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.`
     : `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd serve로 편집을 시작하세요.`,
-  { configPath: CONFIG_FILE, projectId: project.id, projectName: project.name, migrated: existing !== null })
+  {
+    configPath: CONFIG_FILE, projectId: project.id, projectName: project.name,
+    migrated: existing !== null, hasLocalFiles: !writeEmptyTree,
+  })
   return 0
 }
