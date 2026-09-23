@@ -82,6 +82,14 @@ SQL 을 실행하고 **FK 는 NOT DEFERRABLE 이다.** → **참조 대상(부�
   분류 완전성 테스트가 깨진다(zod shape 과 실제 필드 집합을 대조해 자동으로 잡는다).
 - **`packages/core/src/file-format.ts` 의 쓰기·읽기** — 실제 YAML.
   ⚠️ **`FILE_FIELDS` 만 넣으면 완전성 게이트는 통과하는데 CLI 왕복이 성립하지 않는다.**
+  - **필드를 별도 파일로 뺄 때는 `TOP_LEVEL_FILES` 에 등록한다** — 사전 4종의 `origin` 이 그렇게
+    `erdd/origins.yaml`(`ORIGINS_FILE`)로 나가 있다. 등록하지 않으면 CLI `tree.ts` 의 `readTree` 가
+    그 파일을 읽지 않고(`push`·`diff`·`status` 가 못 본다) `writeTree` 가 지울 대상에서도 빠지며,
+    `dict pull` 의 쓰기 대상(`DICTIONARY_FILES`)에도 들지 않는다.
+  - ⚠️ **새 파일은 `TOP_LEVEL_FILES` 의 끝에 붙인다.** `file-merge.ts` 가 앞 다섯
+    (groups·words·terms·domains·custom-fields)을 **위치로 구조분해**해 엔티티 → 경로 표를 만든다.
+    중간에 끼우면 타입 오류 없이 경로가 한 칸씩 밀려, 충돌·삭제 보고가 엉뚱한 파일을 가리킨다.
+    `ORIGINS_FILE` 이 마지막 원소인 이유가 이것이다.
 - **`model-diff.ts` 의 `FIELD_LABEL`** — ⚠️ **누락해도 테스트가 통과한다.** `IGNORED_FIELDS` 에
   없으면 표시용 diff 에는 잡히므로 폴백이 **영문 원문**을 낸다. 새는 곳 셋: 웹 스냅샷 비교 화면 ·
   변경분 Excel · CLI `erdd diff`. 라벨 단언 1건이면 잠긴다.
