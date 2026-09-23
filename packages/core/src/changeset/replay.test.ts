@@ -248,4 +248,27 @@ describe('drop column 은 그 컬럼을 쓰는 인덱스·FK 도 함께 지운�
     expect(r.warnings.some((w) => w.file === '3_b' && w.message.includes('추가하지 않았습니다'))).toBe(true)
     expect(r.projection).toEqual(proj(dropped))
   })
+
+  it('B 가 c3 를 FK 부모 컬럼으로 쓰는 관계를 만든 뒤(파일명 앞) A 가 c3 를 지우면(파일명 뒤) — 그 FK 도 지우고 경고한다', () => {
+    const base = structuredClone(buildSampleModel())
+    base.tables['t3'] = { id: 't3', logicalName: '참조', physicalName: 'REF', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+    base.columns['c9'] = {
+      id: 'c9', tableId: 't3', logicalName: '참조명', physicalName: 'REF_NM', type: 'VARCHAR(100)',
+      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    }
+    const withFk = structuredClone(base)
+    withFk.relationships['r9'] = {
+      id: 'r9', parentTableId: 't2', childTableId: 't3',
+      columnMappings: [{ childColumnId: 'c9', parentColumnId: 'c3' }], cardinality: '1:1', identifying: false, name: null,
+    }
+    const dropped = deleteColumnCascade(base, 'c3')
+    const r = replay([
+      { file: '1', changeset: changesetOf(emptyProjection(), base) },
+      { file: '2_b', changeset: changesetOf(proj(base), withFk) },
+      { file: '3_a', changeset: changesetOf(proj(base), dropped) },
+    ])
+    expect(r.error).toBeNull()
+    expect(r.warnings.some((w) => w.file === '3_a' && w.message.includes('FK') && w.message.includes('REF'))).toBe(true)
+    expect(r.projection).toEqual(proj(dropped))
+  })
 })
