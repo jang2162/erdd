@@ -99,6 +99,13 @@ describe('erdd changes', () => {
     expect(await status()).toBe(1)
     expect(out.join('')).toContain('오류: erdd/changes/20260101000000_x.erddc 5행:')
   })
+
+  it('깨진 기록이 있으면 new 도 파일·줄과 함께 거절한다', async () => {
+    await mkdir(join(dir, 'erdd/changes'), { recursive: true })
+    await writeFile(join(dir, 'erdd/changes/20260101000000_x.erddc'), "changeset 'x' {\n  format: 1\n  created: 'c'\n}\nbogus  @t1\n", 'utf8')
+    expect(await create('초기')).toBe(1)
+    expect(err.join('')).toContain('erdd/changes/20260101000000_x.erddc 5행:')
+  })
 })
 
 describe('main 의 changes 분기', () => {

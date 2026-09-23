@@ -89,7 +89,10 @@ export function composeChangeset(plan: ChangesPlan, input: PlanInput, opts: Comp
   const name = opts.name.trim()
   if (name === '') return { ok: false, reason: 'name', message: '변경 기록의 이름을 입력하세요' }
   if (plan.error !== null || plan.pending === null || plan.target === null) {
-    return { ok: false, reason: 'invalid', message: plan.error?.message ?? '변경 기록 상태를 계산하지 못했습니다' }
+    return {
+      ok: false, reason: 'invalid',
+      message: plan.error !== null ? formatChangeIssue(plan.error) : '변경 기록 상태를 계산하지 못했습니다',
+    }
   }
   if (plan.pending.length === 0) return { ok: false, reason: 'empty', message: '기록할 변경이 없습니다' }
   if (opts.baseline && input.sources.length > 0) {

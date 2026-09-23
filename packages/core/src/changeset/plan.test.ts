@@ -141,6 +141,14 @@ describe('composeChangeset', () => {
     const r = composeChangeset(plan, fresh, { name: 'x', created: 'c', baseline: false })
     expect(r).toMatchObject({ ok: false, reason: 'invalid' })
   })
+
+  it('상태 오류로 거절할 때 파일·줄을 메시지에 싣는다', () => {
+    const broken = input([{ file: 'x.erddc', text: "changeset 'x' {\n  format: 1\n" }], buildSampleModel())
+    const r = composeChangeset(planChanges(broken), broken, { name: 'n', created: 'c', baseline: false })
+    expect(r).toMatchObject({ ok: false, reason: 'invalid' })
+    if (r.ok) throw new Error('unreachable')
+    expect(r.message.startsWith('x.erddc 2행: ')).toBe(true)
+  })
 })
 
 describe('파일명 규칙', () => {
