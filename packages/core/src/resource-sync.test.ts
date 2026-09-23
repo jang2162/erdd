@@ -290,6 +290,43 @@ describe('adopt', () => {
     expect(planResync(next, 'L1', items).entries).toEqual([])
   })
 
+  it('도메인 없이 용어만 연결하면 base.domainId 는 null — 원본이 바뀌면 자동 갱신이 아니라 충돌', () => {
+    const m = createEmptyModel()
+    m.domains['d1'] = {
+      id: 'd1', name: 'NO', category: null, logicalType: 'string',
+      dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null, origin: null,
+    }
+    m.terms['t1'] = { id: 't1', logicalName: '고객번호', physicalName: 'CUST_NO', domainId: 'd1', description: null, origin: null }
+    const domain = { id: 'SD', kind: 'domain' as const, version: 1, payload: { name: 'NO', category: null, logicalType: 'string', dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null }, defaultValue: null, allowedValues: [], description: null } }
+    const term = (version: number, description: string | null) =>
+      ({ id: 'ST', kind: 'term' as const, version, payload: { logicalName: '고객번호', physicalName: 'CUST_NO', domainId: 'SD', description } })
+    const next = applyResyncPlan(m, planResync(m, 'L1', [domain, term(1, null)]), { ST: 'adopt' }, () => 'unused')
+    expect(next.terms['t1']!.domainId).toBe('d1')                     // 내용은 그대로
+    expect(next.terms['t1']!.origin!.base).toMatchObject({ domainId: null })   // base 는 투영값
+    // 자동 갱신이 도메인 연결을 조용히 지우지 못한다
+    expect(planResync(next, 'L1', [domain, term(2, '고객 식별 번호')]).entries
+      .map((e) => [e.sourceId, e.status, e.changedFields]))
+      .toEqual([['SD', 'added', []], ['ST', 'conflict', ['description']]])
+  })
+
+  it('added 가 아닌 항목은 같은 이름의 무출처 엔티티가 있어도 adopt 대상이 없다', () => {
+    const m = createEmptyModel()
+    m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } })
+    m.words['w0'] = localWord('w0', 'CSTMR')
+    const plan = planResync(m, 'L1', [libWord('S1', 2, { logicalName: '고객', abbreviation: 'CUS', englishName: null, description: null })])
+    expect(plan.entries[0]!.status).toBe('auto-update')
+    expect(adoptTargetOf(m, plan.entries[0]!)).toBeNull()
+  })
+
+  it('이름은 trim 해 비교한다 — nameClash 로 뜬 항목은 연결할 수 있다', () => {
+    const m = createEmptyModel()
+    m.words['w1'] = { ...localWord('w1', 'CUST'), logicalName: '고객 ' }
+    const plan = planResync(m, 'L1', [libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })])
+    expect(plan.entries[0]!.nameClash).toBe(true)
+    expect(adoptTargetOf(m, plan.entries[0]!)).toBe('w1')
+  })
+
   it('이미 다른 출처가 붙은 항목은 대상이 아니다', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L0', sourceId: 'X', sourceVersion: 1, base: {} })
