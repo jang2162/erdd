@@ -75,6 +75,11 @@ describe('fetchItems', () => {
   it('기본은 id 오름차순이다', async () => {
     expect((await fetchItems(reversed, 'L1')).map((i) => i.id)).toEqual(['S1', 'S2', 'S3'])
   })
+  // 손으로 적은 id(대소문자 혼용)에서도 환경 로케일에 기대지 않는다 — localeCompare 면 a·b·B 가 된다.
+  it('id 순서는 코드 단위 비교다', async () => {
+    const mixed: ApiClient = { ...reversed, query: (async () => [item('b'), item('a'), item('B')]) as ApiClient['query'] }
+    expect((await fetchItems(mixed, 'L1')).map((i) => i.id)).toEqual(['B', 'a', 'b'])
+  })
   it("order: 'server' 는 서버 순서를 그대로 둔다", async () => {
     expect((await fetchItems(reversed, 'L1', { order: 'server' })).map((i) => i.id)).toEqual(['S3', 'S2', 'S1'])
   })

@@ -65,7 +65,8 @@ export async function fetchItems(
   client: ApiClient, libraryId: string, opts: { order: 'id' | 'server' } = { order: 'id' },
 ): Promise<LibraryItem[]> {
   const items = await guardFeature(() => client.query<LibraryItem[]>('resource.items.list', { libraryId }))
-  return opts.order === 'server' ? items : [...items].sort((a, b) => a.id.localeCompare(b.id))
+  // 코드 단위 비교다 — localeCompare 는 환경 로케일에 따라 대소문자 혼용 id 의 순서가 갈린다.
+  return opts.order === 'server' ? items : [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
 
 /** id 가 정확히 맞으면 그것, 아니면 이름. 이름이 여럿에 맞으면 고르지 않는다 — 엉뚱한 사전을 받는다. */
