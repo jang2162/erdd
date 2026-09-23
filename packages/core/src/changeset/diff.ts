@@ -27,7 +27,7 @@ export function diffProjection(base: SchemaProjection, target: SchemaProjection)
     const next = target.foreignKeys[fk.id]
     if (next === undefined || !deepEqual(fk, next)) out.push({ kind: 'dropForeignKey', fk: foreignKeyDef(base, fk) })
   }
-  // 2. 인덱스 삭제 → 인덱스 개명 — 사라지는 테이블의 인덱스는 3번 drop table 블록이 싣는다.
+  // 2. 인덱스 삭제 — 사라지는 테이블의 인덱스는 3번 drop table 블록이 싣는다.
   // 삭제를 전부 먼저 내야 「지운 인덱스의 이름으로 개명」이 SQL 에서 충돌하지 않는다.
   const indexRenames: Extract<Statement, { kind: 'renameIndex' }>[] = []
   for (const ix of sortedIndexes(base)) {
@@ -39,36 +39,37 @@ export function diffProjection(base: SchemaProjection, target: SchemaProjection)
       indexRenames.push({ kind: 'renameIndex', id: ix.id, table: base.tables[ix.tableId]!.name, from: ix.name, to: next.name })
     }
   }
-  // 인덱스 이름은 PostgreSQL 에서 스키마 전역이다 — 테이블을 가로질러 정렬한다.
-  out.push(...renameOrder(indexRenames))
   // 3. 테이블 삭제 — 개명·생성보다 먼저여야 「지운 테이블의 이름」을 곧바로 쓸 수 있다.
   for (const t of sortedTables(base)) {
     if (target.tables[t.id] === undefined) out.push({ kind: 'dropTable', table: tableDef(base, t, true) })
   }
-  // 4. 테이블 개명
+  // 4. 인덱스 개명 — drop table 뒤로 둬야 「지워지는 테이블의 인덱스 이름으로 개명」이 부딪치지 않는다.
+  // 인덱스 이름은 PostgreSQL 에서 스키마 전역이다 — 테이블을 가로질러 정렬한다.
+  out.push(...renameOrder(indexRenames))
+  // 5. 테이블 개명
   const tableRenames: Extract<Statement, { kind: 'renameTable' }>[] = []
   for (const t of sortedTables(base)) {
     const next = target.tables[t.id]
     if (next !== undefined && next.name !== t.name) tableRenames.push({ kind: 'renameTable', id: t.id, from: t.name, to: next.name })
   }
   out.push(...renameOrder(tableRenames))
-  // 5. 테이블 생성
+  // 6. 테이블 생성
   for (const t of sortedTables(target)) {
     if (base.tables[t.id] === undefined) out.push({ kind: 'createTable', table: tableDef(target, t, false) })
   }
-  // 6. 테이블 변경
+  // 7. 테이블 변경
   for (const t of sortedTables(target)) {
     const prev = base.tables[t.id]
     if (prev === undefined) continue
     const actions = alterActions(base, target, prev, t)
     if (actions.length > 0) out.push({ kind: 'alterTable', id: t.id, name: t.name, actions })
   }
-  // 7. 인덱스 추가
+  // 8. 인덱스 추가
   for (const ix of sortedIndexes(target)) {
     const prev = base.indexes[ix.id]
     if (prev === undefined || !sameIndexContent(prev, ix)) out.push({ kind: 'addIndex', index: indexDef(target, ix) })
   }
-  // 8. FK 추가
+  // 9. FK 추가
   for (const fk of sortedForeignKeys(target)) {
     const prev = base.foreignKeys[fk.id]
     if (prev === undefined || !deepEqual(prev, fk)) out.push({ kind: 'addForeignKey', fk: foreignKeyDef(target, fk) })

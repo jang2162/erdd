@@ -193,6 +193,19 @@ describe('diffProjection — 개명의 SQL 순서', () => {
     expect(st[1]).toMatchObject({ kind: 'renameIndex', from: 'IX_B', to: 'IX_Z' })
   })
 
+  it('지워지는 테이블의 인덱스 이름으로 다른 인덱스를 개명하면 drop table 이 rename index 보다 앞선다(결함 2)', () => {
+    const a = buildSampleModel()
+    a.tables['t3'] = { id: 't3', logicalName: '', physicalName: 'TMP', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+    a.columns['c9'] = col({ id: 'c9', tableId: 't3', physicalName: 'TMP_NO', order: 0 })
+    a.indexes['i2'] = { id: 'i2', tableId: 't3', name: 'IX_Z', columns: [{ columnId: 'c9', direction: 'asc' }], unique: false }
+    a.indexes['i3'] = { id: 'i3', tableId: 't2', name: 'IX_B', columns: [{ columnId: 'c4', direction: 'asc' }], unique: false }
+    const b = deleteTableCascade(structuredClone(a), 't3')
+    b.indexes['i3'] = { ...b.indexes['i3']!, name: 'IX_Z' }
+    const st = diff(a, b)
+    expect(kinds(st)).toEqual(['dropTable', 'renameIndex'])
+    expect(st[1]).toMatchObject({ kind: 'renameIndex', from: 'IX_B', to: 'IX_Z' })
+  })
+
   it('테이블 개명 사슬(MBR→MBR_GRD, MBR_GRD→GRD)은 비워지는 이름부터 낸다', () => {
     const b = buildSampleModel()
     b.tables['t2'] = { ...b.tables['t2']!, physicalName: 'MBR_GRD' }
