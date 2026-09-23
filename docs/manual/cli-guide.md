@@ -217,10 +217,24 @@ $ erdd --help
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
   --check               changes 전용 — 미기록 변경이 있으면 종료 코드 1
   --baseline            changes new 전용 — 첫 기록을 「이미 DB 에 있음」으로 표시
+  -v, --version         버전을 출력한다
   --help                이 도움말
 ```
 
 `--help`·`-h` 는 다른 인자보다 먼저 처리되고 항상 종료 코드 `0` 이다.
+
+설치된 버전은 `--version`(`-v`) 으로 본다. 버전 문자열만 stdout 에 한 줄 내고 종료 코드 `0` 이다.
+`--json` 을 함께 주면 객체 하나를 낸다.
+
+```bash
+$ erdd --version
+0.5.0
+$ erdd --json --version
+{"version":"0.5.0"}
+```
+
+`--version` 도 명령보다 먼저 처리된다 — 명령 뒤에 적어도(`erdd status -v`) 명령은 돌지 않는다.
+`--help` 와 함께 주면 `--help` 가 이긴다. 웹 화면 상단 워드마크 옆에 뜨는 버전도 같은 값이다.
 
 ---
 
@@ -740,6 +754,7 @@ origins:
 | `--yes` | 확인 프롬프트를 건너뛴다(비대화형 필수). |
 | `--strict` | `validate` 는 경고를, `diff` 는 충돌을 실패로 본다. 다른 명령에는 영향이 없다. |
 | `--help`, `-h` | 도움말. 항상 종료 코드 `0`. |
+| `--version`, `-v` | 버전 문자열만 stdout 에 낸다(`--json` 이면 `{"version": …}`). 항상 종료 코드 `0`. |
 
 **종료 코드.**
 

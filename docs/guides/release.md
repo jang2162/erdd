@@ -391,6 +391,12 @@ echo "sha512-$(openssl dgst -sha512 -binary <밖의 디렉터리>/erdd-core-<버
 설치본에서 저장소 후보가 잡히는 일은 없다 — `<소비처>/node_modules/apps/web/dist` 로 풀려
 `node_modules` 안이라 구조적으로 성립하지 않는다.
 
+**웹 화면에 뜨는 제품 버전은 웹을 빌드할 때 굳는다.** `apps/web/erdd-version.ts` 의 `erddVersion` 이
+`packages/cli/package.json` 의 `version` 을 읽어 `__ERDD_VERSION__` 으로 주입한다. 그래서 **버전을 올린 뒤
+웹을 다시 빌드하지 않으면 화면은 옛 버전을 계속 보인다** — 저장소 배치의 `erdd serve` 가 먼저 보는
+`apps/web/dist` 도, 서버 배포 이미지도 마찬가지다. 게시본의 번들은 CI 가 태그 커밋에서 빌드하므로 맞다.
+파일을 못 읽거나 `version` 이 비면 빌드가 죽는다 — 헤더에 빈 버전이 뜬 채로 배포되지 않게 하려는 것이다.
+
 CI 는 이 번들을 artifact 로 넘길 때 `include-hidden-files: true` 로 **점 파일까지** 싣는다.
 upload-artifact 의 기본값은 점 파일을 빼는데, 그러면 `apps/web/public` 에 생긴 `.well-known/` 같은 것이
 게시본에서 조용히 빠지고 가드 2(index.html 존재)로는 잡히지 않는다 — 그 옵션을 걷지 마라.
