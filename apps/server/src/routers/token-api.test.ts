@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { desc, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { createEmptyModel, diffModels, type ProjectModel } from '@erdd/core'
-import { revisions } from '../db/schema.js'
+import { resourceItems, revisions } from '../db/schema.js'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
@@ -113,6 +113,24 @@ describe.skipIf(!url)('CLI 사전 동기화가 토큰으로 부르는 프로시�
     expect(libs.statusCode).toBe(200)
     expect(libs.json().result.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: libraryId, canWrite: true })]))
     expect((await tGet('resource.items.list', { libraryId })).statusCode).toBe(200)
+  })
+
+  it('resource.items.list 는 id·kind·payload·version 만 createdAt 오름차순으로 준다', async () => {
+    // CLI dict push 가 이 순서로 planPromote 를 돌린다 — 서버 재계산(loadLibraryItems)과 순서가
+    // 갈리면 동명 선점이 달라져 항목이 plan-changed 로 건너뛰어진다. 늦게 만든 행을 먼저 넣어
+    // (id·삽입 순서와 createdAt 순서를 어긋나게 해) 정렬 기준이 createdAt 임을 잠근다.
+    const newer = uuidv7()
+    const older = uuidv7()
+    await app.db!.insert(resourceItems).values([
+      { id: newer, libraryId, kind: 'word', payload: { logicalName: '회원', abbreviation: 'MBR2', description: null }, version: 3, createdAt: new Date('2026-01-02T00:00:00Z') },
+      { id: older, libraryId, kind: 'word', payload: { logicalName: '회원', abbreviation: 'MBR', description: null }, createdAt: new Date('2026-01-01T00:00:00Z') },
+    ])
+    const res = await tGet('resource.items.list', { libraryId })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().result.data).toEqual([
+      { id: older, kind: 'word', payload: { logicalName: '회원', abbreviation: 'MBR', description: null }, version: 1 },
+      { id: newer, kind: 'word', payload: { logicalName: '회원', abbreviation: 'MBR2', description: null }, version: 3 },
+    ])
   })
 
   it('토큰으로 승격하면 Revision source 가 cli 다', async () => {
