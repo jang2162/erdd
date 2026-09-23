@@ -71,15 +71,27 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
     const filtered = plan.entries.filter((e: PromoteEntry) =>
       (ctx.kinds === undefined || ctx.kinds.includes(e.kind))
       && (ctx.names === undefined || ctx.names.includes(e.name)))
-    const nameMatches = filtered.filter((e) => e.status === 'name-match')
-    const selected = filtered.filter((e) => e.status !== 'name-match' || ctx.includeNameMatch)
+    // 원본이 마지막 dict pull 이후 앞선 항목은 `--name` 으로 콕 집어도 뺀다 — 올리면 남이 고친 값이
+    // 이 프로젝트의 옛 값으로 되돌아가고, 서버의 expectedTargetVersion 은 계획 이후의 변경만 막는다.
+    // 덮어쓰려면 dict pull 로 충돌을 정리한다(--conflicts ours 가 origin 을 올려 다음 push 에서 update 가 된다).
+    const behind = filtered.filter((e) => e.sourceBehind)
+    const eligible = filtered.filter((e) => !e.sourceBehind)
+    const nameMatches = eligible.filter((e) => e.status === 'name-match')
+    const selected = eligible.filter((e) => e.status !== 'name-match' || ctx.includeNameMatch)
+    const behindJson = behind.map((e) => ({ kind: e.kind, name: e.name, entityId: e.entityId }))
+    const noteBehind = () => {
+      if (behind.length === 0) return
+      note(`라이브러리 원본이 마지막 dict pull 이후 바뀐 항목 ${behind.length}건은 제외했습니다 — erdd dict pull 로 먼저 받으세요`)
+      for (const e of behind) note(`  ${STATUS_MARK[e.status]} ${RESOURCE_KIND_LABEL[e.kind]} ${e.name}${fieldsOf(e)}`)
+    }
 
     if (selected.length === 0) {
       // 오타·제외된 동명을 「할 일 없음」과 구분해 알린다 — 종료 코드는 0 그대로다.
       const unmatched = (ctx.names ?? []).filter((n) => !plan.entries.some((e) => e.name === n))
       if (unmatched.length > 0) note(`--name 에 맞는 항목이 없습니다: ${unmatched.join(', ')}`)
       if (nameMatches.length > 0) note(`동명 발견 ${nameMatches.length}건은 제외했습니다 — 올리려면 --include-name-match`)
-      emit(ctx.json, '올릴 항목이 없습니다', { libraryId: lib.id, selected: 0 })
+      noteBehind()
+      emit(ctx.json, '올릴 항목이 없습니다', { libraryId: lib.id, selected: 0, behind: behindJson })
       return 0
     }
     if (selected.length > MAX_OPS_PER_MUTATION) {
@@ -89,6 +101,7 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
     const count = (s: PromoteEntry['status']) => selected.filter((e) => e.status === s).length
     note(`신규 추가 ${count('new')} · 원본 갱신 ${count('update')} · 동명 발견 ${ctx.includeNameMatch ? count('name-match') : `${nameMatches.length}(제외 — --include-name-match)`}`)
     for (const e of selected) note(`  ${STATUS_MARK[e.status]} ${RESOURCE_KIND_LABEL[e.kind]} ${e.name}${fieldsOf(e)}`)
+    noteBehind()
     if (!ctx.yes) {
       if (ctx.confirm === undefined) {
         throw new CliError('CANCELLED', '확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요')
@@ -105,7 +118,7 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
         `승격 요청을 만들었습니다 (${r.requested}건). 조직 관리자가 웹에서 승인하면 반영됩니다`,
         // 계획을 계산한 뒤 요청 사이에 엔티티가 지워지면 서버가 걸러 낸다 — 조용히 줄지 않게.
         ...(r.dropped.length > 0 ? [`(${r.dropped.length}건은 그 사이 사라져 빠졌습니다)`] : []),
-      ].join('\n'), { mode: 'request', ...r })
+      ].join('\n'), { mode: 'request', ...r, behind: behindJson })
       return 0
     }
 
@@ -121,7 +134,7 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
       return `  건너뜀 ${e === undefined ? s.entityId : `${RESOURCE_KIND_LABEL[e.kind]} ${e.name}`} (${s.reason === 'missing' ? '대상이 사라짐' : '그 사이 계획이 바뀜'})`
     })
     if (r.inserted + r.updated === 0) {
-      emit(ctx.json, ['승격된 항목이 없습니다 — 전부 건너뛰었습니다', ...skippedLines].join('\n'), { mode: 'promote', ok: false, ...r })
+      emit(ctx.json, ['승격된 항목이 없습니다 — 전부 건너뛰었습니다', ...skippedLines].join('\n'), { mode: 'promote', ok: false, ...r, behind: behindJson })
       return 1
     }
     const done = `승격했습니다 — 신규 ${r.inserted} · 갱신 ${r.updated}`
@@ -139,10 +152,10 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
       const detail = (err as Error).message
       emit(ctx.json,
         [`${done}. 파일 갱신에 실패했습니다 — erdd pull을 실행하세요 (${detail})`, ...skippedLines].join('\n'),
-        { mode: 'promote', ok: false, committed: true, syncError: detail, ...r })
+        { mode: 'promote', ok: false, committed: true, syncError: detail, ...r, behind: behindJson })
       return 1
     }
-    emit(ctx.json, [done, ...skippedLines].join('\n'), { mode: 'promote', ok: true, ...r })
+    emit(ctx.json, [done, ...skippedLines].join('\n'), { mode: 'promote', ok: true, ...r, behind: behindJson })
     return 0
   })
 }

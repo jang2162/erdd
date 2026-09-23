@@ -335,6 +335,81 @@ describe('dict push', () => {
     expect(calls).toEqual([])
   })
 
+  describe('라이브러리 원본이 마지막 dict pull 이후 앞선 항목', () => {
+    const CSTMR = { logicalName: '고객', abbreviation: 'CSTMR', englishName: null, description: null }
+    /** 고객 CSTMR 을 L1 의 S2 v2 로 받아 둔 동기 상태 — 로컬은 원본에서 고친 것이 없다. */
+    function syncedAtV2(): ProjectModel {
+      const m = serverModel()
+      m.words[W2] = { ...m.words[W2]!, abbreviation: 'CSTMR', origin: { libraryId: 'L1', sourceId: 'S2', sourceVersion: 2, base: CSTMR } }
+      return m
+    }
+    // 다른 프로젝트가 고객을 CSTM v3 으로 고쳤다.
+    const AHEAD: LibraryItem[] = [custItem('S2', 'CSTM', 3)]
+
+    /** 올리면 남이 고친 CSTM 이 이 프로젝트의 옛 값 CSTMR 로 되돌아간다. */
+    it('기본 선택에서 빼고 승격 호출에 싣지 않으며, 제외 사실을 알린다', async () => {
+      const m = syncedAtV2()
+      await seed(m)
+      const { client: c, calls } = client(m, true, { items: AHEAD })
+      expect(await dictPush(ctx(c))).toBe(0)
+      expect(calls).toEqual([{ path: 'resource.promote', input: {
+        projectId: TEST_CONFIG.projectId, libraryId: 'L1',
+        entries: [{ entityId: W1, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null }],
+      } }])
+      expect(JSON.parse(out.at(-1)!)).toMatchObject({
+        mode: 'promote', ok: true, behind: [{ kind: 'word', name: '고객', entityId: W2 }],
+      })
+    })
+
+    it('사람용 출력은 계획 요약 뒤에 제외한 항목을 보인다', async () => {
+      const m = syncedAtV2()
+      await seed(m)
+      const { client: c } = client(m, true, { items: AHEAD })
+      expect(await dictPush(ctx(c, { json: false }))).toBe(0)
+      expect(err.join('')).toBe([
+        '신규 추가 1 · 원본 갱신 0 · 동명 발견 0(제외 — --include-name-match)',
+        '  + 단어 주문',
+        '라이브러리 원본이 마지막 dict pull 이후 바뀐 항목 1건은 제외했습니다 — erdd dict pull 로 먼저 받으세요',
+        '  ~ 단어 고객  (abbreviation)',
+        '',
+      ].join('\n'))
+    })
+
+    it('--name 으로 콕 집어도 빼고, 선택이 0 이면 올릴 항목이 없다며 그 사실을 알린다(종료 0)', async () => {
+      const m = syncedAtV2()
+      await seed(m)
+      const { client: c, calls } = client(m, true, { items: AHEAD })
+      expect(await dictPush(ctx(c, { json: false, names: ['고객'] }))).toBe(0)
+      expect(calls).toEqual([])
+      expect(err.join('')).toBe([
+        '라이브러리 원본이 마지막 dict pull 이후 바뀐 항목 1건은 제외했습니다 — erdd dict pull 로 먼저 받으세요',
+        '  ~ 단어 고객  (abbreviation)',
+        '',
+      ].join('\n'))
+      expect(out.join('')).toBe('올릴 항목이 없습니다\n')
+
+      out = []
+      expect(await dictPush(ctx(c, { names: ['고객'] }))).toBe(0)
+      expect(JSON.parse(out.at(-1)!)).toEqual({
+        libraryId: 'L1', selected: 0, behind: [{ kind: 'word', name: '고객', entityId: W2 }],
+      })
+    })
+
+    /** dict pull --conflicts ours 는 내용은 그대로 두고 origin 만 v3 으로 올린다(applyResync 의 keep). */
+    it('dict pull --conflicts ours 로 origin 을 v3 으로 올린 뒤에는 update 로 올라간다', async () => {
+      const m = syncedAtV2()
+      m.words[W2]!.origin = { libraryId: 'L1', sourceId: 'S2', sourceVersion: 3, base: { ...CSTMR, abbreviation: 'CSTM' } }
+      await seed(m)
+      const { client: c, calls } = client(m, true, { items: AHEAD })
+      expect(await dictPush(ctx(c, { names: ['고객'] }))).toBe(0)
+      expect(calls).toEqual([{ path: 'resource.promote', input: {
+        projectId: TEST_CONFIG.projectId, libraryId: 'L1',
+        entries: [{ entityId: W2, expectedStatus: 'update', expectedTargetItemId: 'S2', expectedTargetVersion: 3 }],
+      } }])
+      expect(JSON.parse(out.at(-1)!)).toMatchObject({ behind: [] })
+    })
+  })
+
   it('일부만 건너뛰면 종료 0 이고 건너뛴 항목과 사유를 보인다', async () => {
     await seed(serverModel())
     const { client: c } = client(serverModel(), true, {
