@@ -146,3 +146,17 @@ export type {
   IndexDef as ChangesetIndexDef, ForeignKeyDef, TableDef, ColumnChange, AlterAction, Statement,
   Changeset, ChangesetHeader, ChangeIssue,
 } from './changeset/types.js'
+export {
+  LIBRARY_FILE_FORMAT, LIBRARY_FILE_VERSION, LIBRARY_FILE_EXTENSION, MAX_LIBRARY_FILE_ITEMS,
+  parseLibraryFile, stringifyLibraryFile, exportLibraryFile, libraryItemsOf, formatLibraryFileIssues,
+} from './library-file.js'
+export type {
+  LibraryFileEntry, LibraryFileMeta, LibraryFileDoc, LibraryFileStrictness, LibraryFileIssue,
+} from './library-file.js'
+export { planLibraryImport, materializeLibraryImport, summarizeLibraryImport } from './library-import.js'
+export type {
+  LibraryImportStatus, LibraryImportEntry, LibraryImportPlan, LibraryImportWrites, LibraryImportSummary,
+} from './library-import.js'
+export { dictSheetsFromWorkbook } from './excel-workbook.js'
+export type { WorkbookLike, WorksheetLike } from './excel-workbook.js'
+export { libraryDocFromDictSheets, dictIssueText } from './library-excel.js'

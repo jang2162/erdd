@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { uuidv7 } from 'uuidv7'
 import type { FastifyInstance } from 'fastify'
+import { parseLibraryFile } from '@erdd/core'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
@@ -240,5 +241,40 @@ describe.skipIf(!url)('resource', () => {
     const asMember = (await get(app, 'resource.library.listForProject', memberToken, { projectId }))
       .json().result.data as Array<{ name: string; canWrite: boolean }>
     expect(asMember.every((l) => l.canWrite === false)).toBe(true)
+  })
+
+  it('library.list 는 행마다 쓰기 가능 여부를 싣는다', async () => {
+    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
+    await createAccount(app.db!, { email: 'user@t.dev', name: 'U', password: 'pw-123456', role: 'user' })
+    const adminToken = await loginAs(app, 'admin@t.dev', 'pw-123456')
+    const userToken = await loginAs(app, 'user@t.dev', 'pw-123456')
+    await post(app, 'resource.library.create', adminToken, { scope: 'global', name: '표준' })
+    expect((await get(app, 'resource.library.list', adminToken, { scope: 'global' })).json().result.data[0].canWrite).toBe(true)
+    expect((await get(app, 'resource.library.list', userToken, { scope: 'global' })).json().result.data[0].canWrite).toBe(false)
+  })
+
+  it('library.export 는 읽기 권한이면 배포 파일을 내고, 끊긴 도메인 참조를 null 로 쓴다', async () => {
+    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
+    await createAccount(app.db!, { email: 'user@t.dev', name: 'U', password: 'pw-123456', role: 'user' })
+    const adminToken = await loginAs(app, 'admin@t.dev', 'pw-123456')
+    const userToken = await loginAs(app, 'user@t.dev', 'pw-123456')
+    const libraryId = (await post(app, 'resource.library.create', adminToken, { scope: 'global', name: '표준' })).json().result.data.id
+    const domainId = (await post(app, 'resource.items.create', adminToken, { libraryId, kind: 'domain', payload: {
+      name: '금액', category: null, logicalType: 'DECIMAL', dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+      defaultValue: null, allowedValues: [], description: null,
+    } })).json().result.data.id
+    await post(app, 'resource.items.create', adminToken, { libraryId, kind: 'term', payload: {
+      logicalName: '금액합계', physicalName: 'AMT_SUM', domainId, description: null,
+    } })
+    await post(app, 'resource.items.remove', adminToken, { itemId: domainId })
+
+    const res = await get(app, 'resource.library.export', userToken, { libraryId })
+    expect(res.statusCode).toBe(200)
+    const data = res.json().result.data
+    expect(data).toMatchObject({ libraryId, name: '표준', danglingDomainRefs: 1 })
+    const parsed = parseLibraryFile(data.text, 'distribution')
+    if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues))
+    expect(parsed.doc.library.id).toBe(libraryId)
+    expect(parsed.doc.kinds.term![0]!.fields.domainId).toBeNull()
   })
 })

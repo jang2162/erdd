@@ -26,10 +26,13 @@
 | `resource.library.listForProject` · `resource.items.list` | `dict list`·`dict pull`·`dict push` |
 | `resource.promote` · `promotion.create` | `dict push`(쓰기 권한이면 앞, 아니면 뒤) |
 | `promotion.listForProject` | `dict requests` |
+| `resource.library.list` · `resource.library.export` · `resource.library.import` | `library list`·`library export`·`library import` |
 
-- **토큰의 폭발 반경은 발급자의 역할과 같다.** 조직 Owner/Admin 의 토큰은 **프로젝트를 만들고
-  조직 라이브러리에 직접 쓴다**(`project.create`·`resource.promote`), 서비스 관리자의 토큰은 **전역
-  라이브러리에도 쓴다.** 에이전트·CI 에 줄 토큰은 편집자 계정으로 발급하라고 매뉴얼이 안내한다
+- **토큰의 폭발 반경은 발급자의 역할과 같다.** 조직 Owner/Admin 의 토큰은 **프로젝트를 만들고, 조직
+  라이브러리를 만들거나 그 안에 직접 쓴다**(`project.create`·`resource.promote`·
+  `resource.library.import`(`--create --scope org`)), 서비스 관리자의 토큰은 **전역 라이브러리도 만들고
+  그 안에 쓴다**(`resource.library.import`(`--create --scope global`)). 에이전트·CI 에 줄 토큰은
+  편집자 계정으로 발급하라고 매뉴얼이 안내한다
   (`cli-guide.md` 「개인 액세스 토큰 발급」). 역할 밖의 쓰기는 서버가 그대로 거절한다 — 토큰 경로라고
   권한 판정을 따로 두지 않는다.
 - **`resource.promote` 는 토큰 경로면 Revision `source` 를 `'cli'` 로 남긴다**(`model.push` 와 같다).
@@ -140,6 +143,9 @@
 - **서버 프로젝트 모델은 건드리지 않는다.** 라이브러리 항목을 받아 **로컬 파일 모델**에 core
   `planResync` → `applyResyncPlan` 을 돌리고 파일에 쓴다. 보관함(서버 프로젝트)은 다음 `erdd push` 때
   따라온다.
+- **`--file <경로>` 는 서버를 부르지 않는다.** 서버가 내보낸 라이브러리 파일을 그대로 항목 원천으로
+  써서, 서버에 연결되지 않은(로컬 전용) 프로젝트에서도 받을 수 있다(→
+  [shared-resources.md](shared-resources.md) 「파일 내보내기·가져오기」).
 - **쓰는 파일은 `dict-shared.ts` 의 `DICTIONARY_FILES` 뿐이다** — 그룹·테이블 파일은 쓰지 않는다.
   `modelToFiles` 가 다시 만든 테이블 파일을 쓰면 사람이 다듬은 YAML 이 이유 없이 정규화된다.
   `dict-pull.test.ts` 「사전과 무관한 테이블 파일은 바이트 그대로다」가 잠근다.
@@ -221,9 +227,11 @@
 
 - 지금 config 를 다시 쓰는 자리는 `syncDown`, `init`(연결·`--create`), `dict pull`, `import`(테이블 옵션
   반영), `serve` 의 `project.update` 다. **새 자리를 만들면 구독을 이어 싣는다.**
-- `init --project` 재연결은 **같은 서버의 같은 프로젝트일 때만** 구독을 잇는다(`keptSubscriptions`).
-  다른 프로젝트의 구독은 옛 프로젝트의 선택이라 비운다. 그래서 `serverUrl` 을 정규화해(`trim` + 끝 슬래시
-  제거) 저장한다 — 저장값이 갈리면 같은 서버를 다른 서버로 읽어 구독을 지운다.
+- `init --project` 재연결은 **같은 서버의 같은 프로젝트일 때만** 서버 구독을 잇는다(`keptSubscriptions`).
+  다른 프로젝트의 서버 구독은 옛 프로젝트의 선택이라 비운다. 그래서 `serverUrl` 을 정규화해(`trim` + 끝
+  슬래시 제거) 저장한다 — 저장값이 갈리면 같은 서버를 다른 서버로 읽어 구독을 지운다.
+  **파일 구독(`file` 이 있는 줄)은 다른 서버·프로젝트로 연결해도 남긴다** — 저장소 안 파일을 가리킬
+  뿐이라 서버 연결과 무관하고, 「다른 프로젝트의 선택이라 비운다」는 논리가 적용되지 않는다.
 - **`serve` 의 `project.update` 는 쓰기 직전에 디스크 config 의 `dictionaries` 를 다시 읽어 싣는다.**
   화면은 구독을 보내지 않고, 구독은 `dict pull --library` 가 디스크에 더한다. 메모리의 `ctx.config` 를
   그대로 싣으면 파일 감시가 그것을 맞추기 전(디바운스 폭)에 저장한 설정이 방금 더한 구독을 옛 값으로

@@ -12,6 +12,7 @@ import { diff } from './commands/diff.js'
 import { exportCommand, type ExportFormat } from './commands/export.js'
 import { importCommand } from './commands/import.js'
 import { init } from './commands/init.js'
+import { libraryExport, libraryImport, libraryList } from './commands/library.js'
 import { pull } from './commands/pull.js'
 import { push } from './commands/push.js'
 import { serve } from './commands/serve.js'
@@ -37,6 +38,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   changes      변경 기록 상태 — 미기록 변경 미리보기(로컬 모드 전용)
   changes new <이름> 미기록 변경을 erdd/changes/ 에 기록한다
   dict <list|pull|push|requests>  공용 사전을 주고받는다
+  library <list|export|import>  공용 라이브러리를 파일로 내보내고 가져온다(관리자)
 
 옵션
   --json                기계용 JSON 출력
@@ -45,24 +47,30 @@ const USAGE = `사용법: erdd <명령> [옵션]
   -m, --message <요약>  push의 Revision 요약, dict push의 승격 요청 메모
   --dir <경로>          skill install 전용 — 설치 위치
   --force               skill install 전용 — 기존 파일 덮어쓰기
-  --server <url>        init 전용
+  --server <url>        init·library 전용
   --token <token>       init 전용
   --project <id>        init 전용
   --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
   --create              init 전용 — 서버에 프로젝트를 만들어 연결한다(로컬 전용 프로젝트면 이관한다)
   --org <이름|id>        init --create 전용 — 프로젝트를 만들 조직
+                        library import --create --scope org 전용 — 라이브러리를 만들 조직
   --case <대소문자>      init --local·--create 전용 — UPPER_SNAKE(기본) 또는 lower_snake
   --format <ddl|dbml>   export·import 전용 — export 기본 ddl, import 기본 확장자 판별
   --dialect <방언>       export·import·init --local·--create 전용
                         export·import는 기본이 erdd.config.yaml의 dialects[0], init --local·--create는 postgresql
-  -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
-  --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
-  --library <이름|id>   dict pull·push 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
-                        push는 올릴 라이브러리(필수)
+  -o <경로>             export·library export 전용 — 산출물을 쓸 파일(없으면 stdout)
+  --dry-run             import·dict pull·library import 전용 — 계획만 보고 파일을 쓰지 않는다
+  --library <이름|id>   dict pull·push·library import 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
+                        push·library import 는 올릴/가져올 라이브러리
+  --file <경로>          dict pull 전용 — 서버에서 내보낸 라이브러리 파일에서 받는다(서버 연결 불필요)
   --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다(내용이 같을 때만)
                         내용이 달라도 로컬 값을 유지한 채 연결하려면 --conflicts ours 를 함께 준다
   --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
   --kind <종류,…>        dict push 전용 — domain·word·term·customField 중 올릴 종류
+  --create <이름>        library import 전용 — 새 라이브러리를 만들며 가져온다(init --create 와 다르다)
+  --scope <global|org>  library import --create 전용
+  --prune               library import 전용 — 파일에 없는 항목을 지운다(적힌 종류만)
+  --include-stale       library import 전용 — 서버가 더 새로운 항목도 파일 값으로 덮는다
   --name <이름>          dict push 전용 — 올릴 항목 이름(반복 가능)
                         init --create 전용 — 서버에 만들 프로젝트 이름
   --include-name-match  dict push 전용 — 라이브러리에 같은 이름이 있는 항목도 올린다(기본 제외)
@@ -254,8 +262,11 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         if (argv.includes('--library') && flagValue(argv, 'library') === undefined) {
           return usageError(json, '--library 값이 올바르지 않습니다: (값 없음)')
         }
+        if (argv.includes('--file') && flagValue(argv, 'file') === undefined) {
+          return usageError(json, '--file 값이 올바르지 않습니다: (값 없음)')
+        }
         return dictPull({
-          ...ctx, library: flagValue(argv, 'library'), adopt: argv.includes('--adopt'),
+          ...ctx, library: flagValue(argv, 'library'), file: flagValue(argv, 'file'), adopt: argv.includes('--adopt'),
           conflicts: conflicts.value, dryRun: argv.includes('--dry-run'),
         })
       }
@@ -285,6 +296,35 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         return dictRequests({ ...ctx, status: status.value })
       }
       return usageError(json, `알 수 없는 dict 하위 명령: ${sub ?? '(없음)'} — list | pull | push | requests`)
+    }
+    case 'library': {
+      const sub = argv[1]?.startsWith('-') === true ? undefined : argv[1]
+      if (argv.includes('--server') && flagValue(argv, 'server') === undefined) return usageError(json, '--server 값이 빠졌습니다')
+      const server = flagValue(argv, 'server')
+      if (sub === 'list') return libraryList({ ...ctx, server })
+      // 위치 인자는 하위 명령 바로 뒤다. 거기 플래그가 오면 빠진 것이다.
+      const positional = argv[2] !== undefined && !argv[2].startsWith('-') ? argv[2] : undefined
+      if (sub === 'export') {
+        let out: string | undefined
+        if (argv.includes('-o')) {
+          out = shortFlagValue(argv, 'o')
+          if (out === undefined) return usageError(json, '-o 값이 올바르지 않습니다: (값 없음)')
+        }
+        return libraryExport({ ...ctx, server, ref: positional, out })
+      }
+      if (sub === 'import') {
+        const scope = enumFlag<'global' | 'org'>(argv, 'scope', ['global', 'org'] as const)
+        if (!scope.ok) return usageError(json, scope.message)
+        for (const name of ['library', 'create', 'org']) {
+          if (argv.includes(`--${name}`) && flagValue(argv, name) === undefined) return usageError(json, `--${name} 값이 빠졌습니다`)
+        }
+        return libraryImport({
+          ...ctx, server, file: positional, library: flagValue(argv, 'library'), create: flagValue(argv, 'create'),
+          scope: scope.value, org: flagValue(argv, 'org'), prune: argv.includes('--prune'),
+          includeStale: argv.includes('--include-stale'), dryRun: argv.includes('--dry-run'),
+        })
+      }
+      return usageError(json, `알 수 없는 library 하위 명령: ${sub ?? '(없음)'} — list | export | import`)
     }
     case 'skill': return skill({
       ...ctx, sub: argv[1], dir: flagValue(argv, 'dir'), force: argv.includes('--force'),

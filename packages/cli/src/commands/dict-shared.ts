@@ -69,8 +69,14 @@ export async function fetchItems(
   return opts.order === 'server' ? items : [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
 
-/** id 가 정확히 맞으면 그것, 아니면 이름. 이름이 여럿에 맞으면 고르지 않는다 — 엉뚱한 사전을 받는다. */
-export function resolveLibrary(rows: readonly LibraryRow[], ref: string): LibraryRow {
+/**
+ * id 가 정확히 맞으면 그것, 아니면 이름. 이름이 여럿에 맞으면 고르지 않는다 — 엉뚱한 사전을 받는다.
+ * `listCommand` 는 못 찾았을 때 안내할 명령이다 — 호출자가 `dict`(기본 `erdd dict list`)냐
+ * `library`(`erdd library list`)냐에 따라 엉뚱한 명령을 안내하지 않도록 넘긴다.
+ */
+export function resolveLibrary(
+  rows: readonly LibraryRow[], ref: string, opts: { listCommand?: string } = {},
+): LibraryRow {
   const byId = rows.find((r) => r.id === ref)
   if (byId !== undefined) return byId
   const byName = rows.filter((r) => r.name === ref)
@@ -81,7 +87,8 @@ export function resolveLibrary(rows: readonly LibraryRow[], ref: string): Librar
       ...byName.map((r) => `  ${r.id}  ${r.scope === 'global' ? '전역' : '조직'}  ${r.name}`),
     ].join('\n'))
   }
-  throw new CliError('NOT_FOUND', `라이브러리 ${ref}을(를) 찾지 못했습니다 — erdd dict list 로 확인하세요`)
+  const listCommand = opts.listCommand ?? 'erdd dict list'
+  throw new CliError('NOT_FOUND', `라이브러리 ${ref}을(를) 찾지 못했습니다 — ${listCommand} 로 확인하세요`)
 }
 
 /**

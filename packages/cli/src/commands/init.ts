@@ -120,9 +120,11 @@ export function init(ctx: InitCtx): Promise<number> {
 }
 
 /**
- * 재-init 이 이어받을 구독. **같은 서버의 같은 프로젝트로 다시 연결할 때만** 잇는다 — 토큰을
- * 갈아 끼우려는 재-init 이 구독을 지우면 사용자는 인자 없는 dict pull 이 왜 아무것도 받지 않는지
- * 모른다. 다른 프로젝트면 그 구독은 옛 프로젝트의 선택이라 비운다.
+ * 재-init 이 이어받을 구독. **서버 구독은 같은 서버의 같은 프로젝트로 다시 연결할 때만** 잇는다 —
+ * 토큰을 갈아 끼우려는 재-init 이 구독을 지우면 사용자는 인자 없는 dict pull 이 왜 아무것도 받지
+ * 않는지 모른다. 다른 프로젝트면 그 서버 구독은 옛 프로젝트의 선택이라 비운다.
+ * **파일 구독(`file` 이 있는 줄)은 서버 연결과 무관하므로 프로젝트·서버가 달라져도 그대로 남긴다**
+ * (M-9) — 저장소 안 파일을 가리킬 뿐이라 「다른 프로젝트의 선택」이라는 논리가 적용되지 않는다.
  * 옛 config 가 깨져 있으면 이을 것이 없다 — 재-init 은 그 config 를 덮어 고치는 길이라 막지 않는다.
  */
 async function keptSubscriptions(cwd: string, serverUrl: string, projectId: string): Promise<DictionaryRef[]> {
@@ -135,7 +137,8 @@ async function keptSubscriptions(cwd: string, serverUrl: string, projectId: stri
   }
   // 옛 config 는 정규화 전에 저장됐을 수 있어 양쪽을 같은 모양으로 맞춰 비교한다.
   const sameServer = old.serverUrl !== null && normalizeServerUrl(old.serverUrl) === serverUrl
-  return sameServer && old.projectId === projectId ? old.dictionaries : []
+  if (sameServer && old.projectId === projectId) return old.dictionaries
+  return old.dictionaries.filter((d) => d.file !== undefined)
 }
 
 /** 서버 `project.create` 의 입력 스키마로 config 값을 먼저 읽어, 틀린 키를 사람이 읽는 문구로 알린다. */

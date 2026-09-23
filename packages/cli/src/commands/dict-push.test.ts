@@ -487,6 +487,29 @@ describe('dict push', () => {
       '',
     ].join('\n'))
   })
+
+  it('파일 구독 라이브러리는 올릴 수 없다 — 서버에 쓰기 전에 멈춘다', async () => {
+    await writeConfig(dir, {
+      ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects],
+      dictionaries: [{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }],
+    })
+    await seed(serverModel())
+    const { client: c, calls } = client(serverModel(), true)
+    expect(await dictPush(ctx(c))).toBe(2)
+    expect(JSON.parse(out.join('')).error.message).toContain('파일에서 받은 사전은 올릴 수 없습니다')
+    expect(calls).toEqual([])
+  })
+
+  it('승격 뒤 syncDown 이 config 를 다시 써도 파일 구독의 file 이 남는다', async () => {
+    await writeConfig(dir, {
+      ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects],
+      dictionaries: [{ id: 'L1', name: '표준' }, { id: 'L9', name: '파일표준', file: 'vendor/std.erdd-lib.yaml' }],
+    })
+    await seed(serverModel())
+    const { client: c } = client(serverModel(), true)
+    expect(await dictPush(ctx(c))).toBe(0)
+    expect((await readConfig(dir)).dictionaries[1]).toEqual({ id: 'L9', name: '파일표준', file: 'vendor/std.erdd-lib.yaml' })
+  })
 })
 
 describe('dict requests', () => {

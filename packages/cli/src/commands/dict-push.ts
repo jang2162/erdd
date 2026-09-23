@@ -57,6 +57,9 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
     await requireClean(ctx.cwd)
     const client = await clientFor(ctx)
     const lib = resolveLibrary(await listLibraries(client, connection.projectId), ctx.library)
+    if (config.dictionaries.some((d) => d.id === lib.id && d.file !== undefined)) {
+      throw new CliError('USAGE', '파일에서 받은 사전은 올릴 수 없습니다 — 서버에 연결된 뒤 구독의 file 을 지우세요')
+    }
     // 서버도 거절하지만(promotion.create) CLI 가 이미 아는 사실이다 — 계획을 보이고 확인받은 뒤에
     // 거절하면 헛 확인이 된다.
     if (lib.scope === 'global' && !lib.canWrite) {

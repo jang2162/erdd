@@ -353,4 +353,28 @@ describe('구독(dictionaries)', () => {
     }))
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('L1') })
   })
+
+  it('dictionaries[].file 을 읽고 다시 쓸 때 보존한다', async () => {
+    await writeConfig(dir, { ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects], dictionaries: [{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }, { id: 'L2', name: '팀' }] })
+    const config = await readConfig(dir)
+    expect(config.dictionaries).toEqual([{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }, { id: 'L2', name: '팀' }])
+    await writeConfig(dir, config)
+    expect((await readConfig(dir)).dictionaries[0]).toHaveProperty('file', 'vendor/std.erdd-lib.yaml')
+  })
+
+  it('dictionaries[].file 이 문자열이 아니면 거절한다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: 3 }] }))
+    await expect(readConfig(dir)).rejects.toThrow(/dictionaries/)
+  })
+
+  it('dictionaries[].file 을 손으로 고쳐 규칙을 어기면(erdd/ 안·프로젝트 밖) 거절한다', async () => {
+    // --file 입구(subscriptionPath)만 규칙을 거치면 손으로 고친 config 는 검사를 피해 간다 — 인자
+    // 없는 dict pull·dict list 는 이 값을 그대로 읽는다. readConfig 에서 다시 검증한다(M-6).
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: 'erdd/std.erdd-lib.yaml' }] }))
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('erdd/') })
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: '../outside/std.erdd-lib.yaml' }] }))
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('프로젝트 안') })
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: '/tmp/std.erdd-lib.yaml' }] }))
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('프로젝트 안') })
+  })
 })
