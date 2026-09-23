@@ -306,6 +306,23 @@ describe('adopt', () => {
     expect(next.words['w2']!.origin).toBeNull()
   })
 
+  it('두 원본이 같은 엔티티를 고르면 계획 순서상 먼저 온 쪽만 연결한다', () => {
+    const m = createEmptyModel()
+    m.words['w1'] = localWord('w1', 'CUST')
+    const items = [
+      libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null }),
+      libWord('S2', 1, { logicalName: '고객', abbreviation: 'CSTMR', englishName: null, description: null }),
+    ]
+    const plan = planResync(m, 'L1', items)
+    expect(plan.entries.map((e) => e.sourceId)).toEqual(['S1', 'S2'])
+    const next = applyResyncPlan(m, plan, { S1: 'adopt', S2: 'adopt' }, () => 'unused')
+    expect(Object.keys(next.words)).toEqual(['w1'])
+    expect(next.words['w1']!.origin).toMatchObject({ sourceId: 'S1' })
+    // 밀려난 원본은 연결되지 않은 채 다음 계획에 다시 added 로 뜬다
+    expect(planResync(next, 'L1', items).entries)
+      .toEqual([expect.objectContaining({ sourceId: 'S2', status: 'added', nameClash: true })])
+  })
+
   it('added 가 아닌 항목의 adopt 는 무시한다(keep 으로 새지 않는다)', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } })
