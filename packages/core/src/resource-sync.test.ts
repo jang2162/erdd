@@ -346,6 +346,15 @@ describe('adopt', () => {
     expect(next.words['w2']!.origin).toBeNull()
   })
 
+  it('후보의 id 순서는 로케일이 아니라 코드 단위 비교다 — 대문자가 소문자보다 앞선다', () => {
+    const m = createEmptyModel()
+    m.words['a1'] = localWord('a1', 'CUST')
+    m.words['B1'] = localWord('B1', 'CUST')
+    const plan = planResync(m, 'L1', [libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })])
+    // localeCompare 면 a1 < B1 이다(대소문자 무시 우선). 코드 단위로는 'B'(0x42) < 'a'(0x61).
+    expect(adoptTargetOf(m, plan.entries[0]!)).toBe('B1')
+  })
+
   it('두 원본이 같은 엔티티를 고르면 계획 순서상 먼저 온 쪽만 연결한다', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST')
