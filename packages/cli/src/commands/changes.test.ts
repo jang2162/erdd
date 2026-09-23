@@ -84,6 +84,21 @@ describe('erdd changes', () => {
     await expect(readdir(join(dir, 'erdd/changes'))).rejects.toThrow()
   })
 
+  it('--json 거절 봉투는 서버 연결이면 reason local-only 를 싣는다', async () => {
+    await writeConfig(dir, { ...LOCAL_CONFIG, serverUrl: TEST_CONFIG.serverUrl, projectId: TEST_CONFIG.projectId })
+    expect(await changes({ cwd: dir, ...base, json: true, sub: 'new', name: '초기', baseline: false, check: false })).toBe(1)
+    expect(JSON.parse(out.join(''))).toEqual({
+      error: { code: 'VALIDATION', message: '변경 기록은 로컬 모드 전용입니다 — 서버에 연결된 프로젝트에서는 쓸 수 없습니다', reason: 'local-only' },
+    })
+  })
+
+  it('--json 거절 봉투는 미저장 편집이면 reason unsaved 를 싣는다', async () => {
+    await mkdir(join(dir, '.erdd'), { recursive: true })
+    await writeFile(join(dir, '.erdd/draft.json'), '{}', 'utf8')
+    expect(await changes({ cwd: dir, ...base, json: true, sub: 'new', name: '초기', baseline: false, check: false })).toBe(1)
+    expect(JSON.parse(out.join(''))).toMatchObject({ error: { code: 'VALIDATION', reason: 'unsaved' } })
+  })
+
   it('--baseline 은 첫 기록에만 쓸 수 있다', async () => {
     expect(await create('운영', true)).toBe(0)
     const m = buildSampleModel()

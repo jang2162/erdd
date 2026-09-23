@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
-  LOCAL_CHANGES_CREATE_PATH, LOCAL_CHANGES_PATH,
+  LOCAL_CHANGES_CREATE_PATH, LOCAL_CHANGES_LOCAL_ONLY_MESSAGE, LOCAL_CHANGES_PATH,
   type LocalChangesCreateResult, type LocalChangesStatus,
 } from '@erdd/core'
 import { ChangesSection } from './changes-section.js'
@@ -67,6 +67,14 @@ describe('ChangesSection', () => {
     renderSection()
     expect(await screen.findByRole('alert')).toHaveTextContent('오류: erdd/changes/b.erddc 5행: 없습니다')
     expect(screen.getByText('⚠️ 기록 간 경합 — erdd/changes/a.erddc 3행: 이전 값이')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('이름'), 'x')
+    expect(screen.getByRole('button', { name: '변경 기록 만들기' })).toBeDisabled()
+  })
+
+  it('서버에 연결된 프로젝트면(로컬 서버의 거절 상태) 문구를 보여 주고 잠근다', async () => {
+    stubLocal([{ ...EMPTY, pending: null, error: { file: null, line: null, message: LOCAL_CHANGES_LOCAL_ONLY_MESSAGE } }])
+    renderSection()
+    expect(await screen.findByRole('alert')).toHaveTextContent(`오류: ${LOCAL_CHANGES_LOCAL_ONLY_MESSAGE}`)
     await userEvent.type(screen.getByLabelText('이름'), 'x')
     expect(screen.getByRole('button', { name: '변경 기록 만들기' })).toBeDisabled()
   })

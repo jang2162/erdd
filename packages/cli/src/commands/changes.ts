@@ -1,4 +1,4 @@
-import { filesToModel, formatChangeIssue, type LocalChangesStatus } from '@erdd/core'
+import { LOCAL_CHANGES_LOCAL_ONLY_MESSAGE, filesToModel, formatChangeIssue, type LocalChangesStatus } from '@erdd/core'
 import { readConfig } from '../config.js'
 import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { CHANGES_DIR, loadChangesPlan, toLocalStatus, writeChange } from '../local/changes.js'
@@ -13,7 +13,6 @@ export type ChangesCtx = CommandCtx & {
   check: boolean
 }
 
-const LOCAL_ONLY = '변경 기록은 로컬 모드 전용입니다 — 서버에 연결된 프로젝트에서는 쓸 수 없습니다'
 const UNSAVED_REFUSAL = '저장하지 않은 편집이 있습니다. 먼저 erdd serve 화면에서 저장한 뒤 변경 기록을 만드세요'
 
 function humanStatus(s: LocalChangesStatus): string {
@@ -41,7 +40,7 @@ function humanStatus(s: LocalChangesStatus): string {
 export function changes(ctx: ChangesCtx): Promise<number> {
   return run(ctx, async () => {
     const config = await readConfig(ctx.cwd)
-    if (config.serverUrl !== null || config.projectId !== null) throw new CliError('VALIDATION', LOCAL_ONLY)
+    if (config.serverUrl !== null || config.projectId !== null) throw new CliError('VALIDATION', LOCAL_CHANGES_LOCAL_ONLY_MESSAGE, { reason: 'local-only' })
     const unsaved = await hasDraft(ctx.cwd)
     const files = filesToModel(await readTree(ctx.cwd))
     if (!files.ok) {
@@ -56,7 +55,7 @@ export function changes(ctx: ChangesCtx): Promise<number> {
     const cctx = { cwd: ctx.cwd, model: files.model, config }
 
     if (ctx.sub === 'new') {
-      if (unsaved) throw new CliError('VALIDATION', UNSAVED_REFUSAL)
+      if (unsaved) throw new CliError('VALIDATION', UNSAVED_REFUSAL, { reason: 'unsaved' })
       const r = await writeChange(cctx, { name: ctx.name ?? '', baseline: ctx.baseline })
       if (!r.ok) throw new CliError('VALIDATION', r.message, { reason: r.reason })
       emit(ctx.json, `기록했습니다: ${r.file} (문장 ${r.statementCount}개)`, r)

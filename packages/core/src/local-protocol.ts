@@ -26,6 +26,8 @@ export const LOCAL_CHANGES_CREATE_PATH = '/local/changes/create'
 
 /** 미저장 편집이 있을 때 서버 거절과 웹 안내가 같은 문구를 쓴다. */
 export const LOCAL_CHANGES_UNSAVED_MESSAGE = '저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 변경 기록을 만드세요'
+/** 서버에 연결된 프로젝트에서 CLI(`erdd changes`)와 로컬 서버가 같은 문구로 거절한다. */
+export const LOCAL_CHANGES_LOCAL_ONLY_MESSAGE = '변경 기록은 로컬 모드 전용입니다 — 서버에 연결된 프로젝트에서는 쓸 수 없습니다'
 
 export type LocalChangesStatus = {
   records: ChangeRecordSummary[]
@@ -38,7 +40,7 @@ export type LocalChangesStatus = {
 
 export type LocalChangesCreateResult =
   | { ok: true; file: string; statementCount: number }
-  | { ok: false; reason: 'unsaved' | 'blocked' | ComposeFailureReason; message: string }
+  | { ok: false; reason: 'unsaved' | 'blocked' | 'local-only' | ComposeFailureReason; message: string }
 
 export type LocalLoadFailure = { path: string; message: string }
 

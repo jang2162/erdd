@@ -556,6 +556,46 @@ describe('변경 기록 엔드포인트', () => {
     expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ unsaved: true })
   }, 10_000)
 
+  it('서버에 연결된 프로젝트면 상태는 오류, 생성은 local-only 로 거절하고 파일을 만들지 않는다', async () => {
+    const cwd = await projectWithTable()
+    await writeFile(join(cwd, 'erdd.config.yaml'), [
+      'serverUrl: http://localhost:9',
+      `projectId: ${T}`,
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'), 'utf8')
+    const s = await start(cwd)
+    const message = '변경 기록은 로컬 모드 전용입니다 — 서버에 연결된 프로젝트에서는 쓸 수 없습니다'
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toEqual({
+      records: [], pending: null, warnings: [], error: { file: null, line: null, message }, unsaved: false,
+    })
+    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({ ok: false, reason: 'local-only', message })
+    await expect(readdir(join(cwd, 'erdd/changes'))).rejects.toMatchObject({ code: 'ENOENT' })
+  }, 10_000)
+
+  it('파일이 깨져 편집이 잠겼으면(blocked) 생성을 거절하고 파일을 만들지 않는다', async () => {
+    const cwd = await projectWithTable()
+    await writeFile(join(cwd, 'erdd/tables/BROKEN.yaml'), 'name: [불완전\n', 'utf8')
+    const s = await start(cwd)
+    const message = '파일이 깨져 편집이 잠겨 있습니다 — 파일을 고친 뒤 다시 하세요'
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ pending: null, error: { file: null, line: null, message } })
+    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({ ok: false, reason: 'blocked', message })
+    await expect(readdir(join(cwd, 'erdd/changes'))).rejects.toMatchObject({ code: 'ENOENT' })
+  }, 10_000)
+
+  it('동시에 두 번 생성하면 하나만 기록되고 다른 하나는 empty 로 거절한다', async () => {
+    const cwd = await projectWithTable()
+    const s = await start(cwd)
+    const results = await Promise.all([
+      postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '가' }),
+      postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '나' }),
+    ]) as { ok: boolean; reason?: string }[]
+    expect(results.filter((r) => r.ok)).toHaveLength(1)
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, reason: 'empty', message: '기록할 변경이 없습니다' }])
+    expect(await readdir(join(cwd, 'erdd/changes'))).toHaveLength(1)
+  }, 10_000)
+
   it('기록 파일을 써도 브라우저에 reload 를 보내지 않는다', async () => {
     const cwd = await projectWithTable()
     const s = await start(cwd)
