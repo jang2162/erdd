@@ -2,7 +2,8 @@
 
 게시 대상은 **공개 npm(registry.npmjs.org)** 이고 패키지는 `@erdd/core`·`@erdd/cli` 둘이다.
 게시는 GitHub Actions 의 `.github/workflows/release.yml` 이 하고, 인증은 **npm trusted publishing(OIDC)**,
-게시본에는 **provenance** 가 붙는다.
+게시본에는 **provenance** 가 붙는다. 예외는 **새 패키지의 첫 버전** 하나다 — 로컬에서 손으로 올리고
+그 버전에는 provenance 가 없다(→ 「첫 게시 — 패키지가 아직 없을 때」).
 
 배포 형태는 **원본 TypeScript 그대로**다(빌드 산출물이 아니다 — 소비처에 `tsx` 가 필요하다).
 `apps/web` 의 빌드 산출물을 `packages/cli/web/` 로 복사해 **tarball 에 동봉**한다. 그래야 설치본에서도
@@ -27,8 +28,8 @@ git tag cli-v0.1.0 && git push origin cli-v0.1.0
 SemVer 로 좁힌다(어긋나면 거기서 죽는다). 프리릴리스 버전(`0.4.0-rc.1` 등)은 npm dist-tag `next` 로,
 나머지는 `latest` 로 올라간다 — npm 11 은 프리릴리스를 `--tag` 없이 게시하면 거절한다.
 
-**처음 게시할 때는 이 절차만으로 끝나지 않는다** — 패키지가 아직 없어 trusted publisher 를 걸 수 없다.
-→ 「첫 게시 — 패키지가 아직 없을 때」.
+**새 패키지의 첫 버전은 이 절차로 올리지 않는다** — 레지스트리에 없는 패키지에는 trusted publisher 를
+걸 수 없다. → 「첫 게시 — 패키지가 아직 없을 때」.
 
 ### 서버를 먼저 배포한다
 
@@ -177,15 +178,42 @@ pnpm 10 은 `onlyBuiltDependencies` 에 적힌 것만 돌리고 이 저장소에
 
 ### trusted publishing 과 provenance
 
-trusted publishing 은 npmjs.com 의 **패키지별** 설정(Settings → Trusted Publisher → GitHub Actions)이다.
-넣는 값은 저장소 소유자 `jang2162`, 저장소 `erdd`, **워크플로 파일 이름 `release.yml`**, environment 는
-비운다. publish 잡은 `permissions: id-token: write` 를 갖는다. **npm 은 이 설정을 저장할 때 검증하지
-않는다** — 값이 틀리면 다음 게시에서야 거절로 드러난다.
+trusted publishing 은 npmjs.com 의 **패키지별** 설정이다 — 패키지의 Settings → Trusted Publisher 에서
+「Set up connection」으로 만든다. 칸과 넣는 값은 이렇다.
+
+| 칸 | 값 |
+|---|---|
+| Publisher | GitHub Actions |
+| Label | 선택 — 비워도 된다 |
+| Organization or user | `jang2162` |
+| Repository | `erdd` |
+| Workflow filename | `release.yml` — 경로 없이 **파일 이름만** |
+| Environment name | 비운다(아래 environment 규칙) |
+| Allowed actions | **「Allow `npm publish`」를 체크한다** |
+
+publish 잡은 `permissions: id-token: write` 를 갖는다.
+
+- ⚠️ **「Allow `npm publish`」를 체크하지 않으면 `release.yml` 의 게시가 거절된다.** 그 칸에서 기본으로
+  열려 있는 것은 「`npm stage publish` is always allowed」 — staged publish 뿐이고, 체크박스를 켜야 그
+  연결로 `npm publish` 가 허용된다. publish 잡은 `npm publish` 를 쓴다.
+- ⚠️ **칸은 만든 뒤 고칠 수 없다**(화면의 「Cannot be changed later」). 값이 틀렸으면 그 연결을 지우고
+  다시 만든다.
+- **npm 은 이 설정을 저장할 때 검증하지 않는다** — 값이 틀리면 다음 게시에서야 거절로 드러난다.
+- **웹 화면 대신 `npm trust` 명령으로도 건다.** 조건은 npm 11.15.0 이상, 계정 2FA, 그리고 2FA 우회 토큰이
+  아닐 것이다. 이 명령도 **레지스트리에 이미 있는 패키지**에만 건다.
+
+**Publishing access 는 「Require two-factor authentication and disallow bypass 2fa tokens (recommended)」로
+둔다.** 같은 Settings 화면에 있지만 trusted publisher 와 **따로 저장된다** — 그 선택지를 고른 뒤
+「Update Package Settings」를 눌러야 반영되고, 연결만 만들고 나오면 바뀌지 않는다. 이 선택은 trusted
+publishing 을 막지 않는다(화면 안내대로 어느 선택지든 OIDC 게시는 계속 된다). 닫히는 것은 2FA 우회
+토큰으로 게시하는 경로다 — 새 패키지 첫 게시의 (b) 가 기대는 경로라 그 패키지에는 첫 버전이 올라간 뒤에
+건다(설정 화면 자체가 그때 생긴다).
 
 - ⚠️ **publish 잡에 GitHub environment(`environment:`)를 붙이면 trusted publisher 의 environment 칸에
   같은 이름을 넣어야 한다.** 한쪽만 있으면 OIDC 게시가 거절된다. environment 는 필수 리뷰어로 게시를
   사람 승인 뒤로 미는 용도다 — 지금은 두지 않았으므로 쓰기 권한이 있는 사람은 `cli-v*` 태그를 밀어
   게시할 수 있다. 그것을 좁히려면 GitHub 의 태그 ruleset 으로 `cli-v*` 생성을 제한하거나 environment 를 둔다.
+  칸은 고칠 수 없으므로 environment 를 붙이면 두 패키지의 연결을 각각 지우고 다시 만든다.
 - ⚠️ **워크플로 파일 이름을 바꾸거나 publish 잡을 다른 파일로 옮기면 게시가 거절된다.** npm 은
   OIDC 토큰의 워크플로 이름을 그 설정과 대조한다. `workflow_call` 로 불린 워크플로 안에서 게시하면
   **부른 쪽**의 이름으로 대조되므로, 게시 단계는 `release.yml` 에 직접 둔다(`ci.yml` 은 검증만 한다).
@@ -201,22 +229,45 @@ trusted publishing 은 npmjs.com 의 **패키지별** 설정(Settings → Truste
 
 ### 첫 게시 — 패키지가 아직 없을 때
 
-trusted publisher 는 **이미 있는 패키지**의 설정 화면에서 건다. 그래서 첫 게시 한 번은 토큰으로 한다.
-publish 잡은 저장소 시크릿 `NPM_TOKEN` 이 있을 때만 `~/.npmrc` 에
-`//registry.npmjs.org/:_authToken=${NPM_TOKEN}` 을 적는다(값이 아니라 참조다). npm 은 OIDC 를 먼저
-시도하고, 그 패키지에 trusted publisher 가 없으면 토큰으로 떨어진다. provenance 는 토큰 게시에서도
-`id-token: write` 로 서명된다.
+**npm 은 레지스트리에 아직 없는 패키지에 trusted publisher 를 걸 수 없다**(`npm trust` 문서의
+「Package must exist」 — 웹 화면도 패키지 페이지가 생긴 뒤에야 열린다). 그래서 `@erdd/` 에 새 패키지를
+더하면 **그 첫 버전 한 번은 OIDC 로 올릴 수 없다.** 전제로 게시할 계정이 npm 조직 **`erdd`**(`@erdd`
+스코프의 소유자)에 쓰기 권한을 가져야 한다. 길은 둘이고 **기본은 (a) 다.**
 
-1. npmjs.com 에 조직 **`erdd`** 를 만든다(`@erdd` 스코프의 소유자다). 이미 있다면 게시할 계정이 그
-   조직에 쓰기 권한을 가져야 한다.
-2. **Granular Access Token** 을 만든다 — 패키지·스코프 `@erdd` 에 Read and write, 만료는 짧게.
-   계정에 쓰기 2FA 가 걸려 있으면 「Bypass two-factor authentication」을 켜야 CI 가 쓸 수 있다.
-3. GitHub 저장소의 Actions 시크릿 `NPM_TOKEN` 에 그 토큰을 넣는다.
-4. 위 「절차」대로 태그를 민다. 두 패키지가 토큰으로 게시된다.
-5. npmjs.com 에서 `@erdd/core`·`@erdd/cli` **각각** trusted publisher 를 건다(위 값).
-6. **시크릿 `NPM_TOKEN` 을 지우고 npm 의 토큰을 폐기한다.** 남겨 두면 장기 토큰이 CI 에 계속 열려 있다.
-   그다음 각 패키지의 Publishing access 를 「Require two-factor authentication and disallow tokens」로
-   올리면 토큰 게시 경로가 닫힌다(trusted publishing 은 그 설정과 무관하게 된다).
+**(a) 로컬에서 OTP 로 손 게시한다 — 권장.** 아래 「손 게시(CI 밖)」 절차 그대로 한다. 계정 2FA 의 OTP 로
+올리므로 **2FA 를 우회하는 토큰을 만들 일이 없다.** 대가는 **그 버전에 provenance 가 없다는 것**이다
+(CI 밖에는 서명할 OIDC 신원이 없다). 다음 버전부터는 CI 가 provenance 를 붙여 올린다.
+
+**(b) 2FA 우회 토큰으로 CI 가 올린다 — 폴백.** publish 잡은 저장소 시크릿 `NPM_TOKEN` 이 있을 때만
+`~/.npmrc` 에 `//registry.npmjs.org/:_authToken=${NPM_TOKEN}` 을 적는다(값이 아니라 참조다). npm 은 OIDC 를
+먼저 시도하고, 그 패키지에 trusted publisher 가 없으면 토큰으로 떨어진다. 토큰은 **Granular Access Token**
+— 스코프 `@erdd` 에 Read and write, 만료는 짧게, **「Bypass two-factor authentication」 을 켠다.**
+
+- ⚠️ **npm 은 2FA 우회 토큰의 직접 게시를 제한해 가고 있다**(게시 로그에 찍히는 공지 `npm tokens that
+  bypass 2FA are being restricted for account changes and direct publishing` —
+  https://gh.io/npm-gat-bypass2fa-deprecation). 이 경로는 언제든 막힐 수 있어 기본으로 두지 않는다.
+- 쓴다면 **첫 버전이 올라간 직후 시크릿 `NPM_TOKEN` 을 지우고 npm 에서 토큰을 폐기한다.** 남겨 두면
+  장기 토큰이 CI 에 계속 열려 있다.
+
+⚠️ **계정에 쓰기 2FA 가 켜져 있는데 bypass 가 꺼진 토큰으로 CI 가 게시하면 이렇게 죽는다.**
+
+```
+npm error 403 403 Forbidden - PUT https://registry.npmjs.org/@erdd%2fcore - Two-factor authentication or granular access token with bypass 2fa enabled is required to publish packages.
+```
+
+CI 에는 OTP 를 넣을 자리가 없어 그 토큰으로는 재시도해도 통과하지 못한다 — (a) 로 간다. 이때
+provenance 서명은 sigstore 에 기록되지만 **패키지는 올라가지 않는다.** 투명성 로그에 서명이 남은 것을
+게시로 읽지 말고 `npm view @erdd/<이름>@<버전> version` 이 404 인지로 판정한다.
+
+⚠️ **첫 버전을 손으로 올렸으면 그 태그의 release 실행을 다시 돌리지 마라.** 이미 있는 버전을 또 올리려다
+죽을 뿐이다(cli 는 건너뛰지 않는다 — 「게시를 막는 가드 넷」). 그 태그는 그대로 두고 다음 버전부터 CI 로
+게시한다.
+
+첫 버전이 올라가면 그 패키지에 차례로 건다(→ 「trusted publishing 과 provenance」).
+
+1. trusted publisher 연결 — 표의 값, 「Allow `npm publish`」 체크.
+2. Publishing access — 「disallow bypass 2fa tokens」, 「Update Package Settings」.
+3. (b) 를 썼다면 시크릿 `NPM_TOKEN` 삭제와 토큰 폐기.
 
 시크릿이 없는 상태에서 trusted publisher 가 없는 패키지를 게시하려 하면 npm 이 인증 오류로 거절한다 —
 조용히 잘못되지는 않는다.
@@ -225,29 +276,65 @@ publish 잡은 저장소 시크릿 `NPM_TOKEN` 이 있을 때만 `~/.npmrc` 에
 
 ## 손 게시(CI 밖)
 
-⚠️ **손 게시는 CI 가드 셋(태그 버전·웹 번들·core 버전)을 거치지 않는다.** 남는 것은 `prepack` 하나다.
-provenance 도 붙지 않는다(CI 밖에서는 서명할 OIDC 신원이 없다). 가능하면 태그 게시를 쓴다.
+새 패키지의 첫 버전(→ 「첫 게시 — 패키지가 아직 없을 때」)이 이 경로의 몫이다. 그 밖에는 태그 게시를 쓴다.
 
-번들이 없으면 `prepack` 이 종료 코드 `1` 로 막는다. 먼저 이 둘을 돌려라.
+⚠️ **손 게시는 CI 가드 셋(태그 버전·웹 번들·core 버전)을 거치지 않는다.** 남는 것은 `prepack` 하나다.
+provenance 도 붙지 않는다(CI 밖에서는 서명할 OIDC 신원이 없다). 가드 1 이 하던 대조 — 태그의 버전과
+`packages/cli/package.json` 의 `version` 이 같은가 — 는 손으로 한다.
+
+**1) 태그 커밋을 깨끗한 detached 워크트리로 꺼낸다.** 작업 중인 체크아웃에서 팩하면 커밋되지 않은
+변경이 tarball 에 들어가 게시본이 태그와 달라진다.
 
 ```bash
+git worktree add --detach <저장소 밖 경로> cli-v<버전>
+```
+
+**2) 그 워크트리에서 설치하고 웹 번들을 만든다.** 번들이 없으면 `prepack` 이 종료 코드 `1` 로 막는다.
+`pnpm pack` 이 `workspace:^` 를 치환하려면 설치가 먼저다(→ 「`pnpm pack` 으로 팩하고 …」).
+
+```bash
+pnpm install --frozen-lockfile
 pnpm -C apps/web build && pnpm -C packages/cli run bundle:web
 ```
 
-게시는 CI 와 같은 경로다 — `pnpm pack` 으로 팩하고 그 tarball 을 `npm publish` 한다(`npm login` 필요).
+**3) 저장소 밖으로 팩한다.** 게시는 CI 와 같은 경로다 — `pnpm pack` 의 tarball 을 `npm publish` 한다.
 
 ```bash
-pnpm -C packages/core pack --pack-destination /tmp/erdd-pack
-pnpm -C packages/cli pack --pack-destination /tmp/erdd-pack
-npm publish /tmp/erdd-pack/erdd-core-<버전>.tgz --access public
-npm publish /tmp/erdd-pack/erdd-cli-<버전>.tgz --access public
+pnpm -C packages/core pack --pack-destination <밖의 디렉터리>
+pnpm -C packages/cli pack --pack-destination <밖의 디렉터리>
 ```
 
-core 를 먼저 올린다 — cli 가 core 를 의존한다. **토큰을 저장소 안의 `.npmrc` 에 적지 마라**(커밋 대상이다).
+**4) 게시 대상을 확인한다.**
 
-⚠️ **먼저 `npm config get @erdd:registry` 가 `undefined` 인지 확인한다.** 사용자·전역 설정에 `@erdd` 스코프
+```bash
+npm config get @erdd:registry                                   # undefined 여야 한다
+npm publish <밖의 디렉터리>/erdd-core-<버전>.tgz --access public --dry-run
+```
+
+⚠️ **`npm config get @erdd:registry` 가 `undefined` 가 아니면 멈춘다.** 사용자·전역 설정에 `@erdd` 스코프
 레지스트리가 있으면 `npm publish`·`npm view` 가 **그 레지스트리로 나간다** — 스코프 설정이 `--registry`
-인자보다 이긴다. 조회는 엉뚱한 곳의 결과를 내고 게시는 엉뚱한 곳에 올라간다.
+인자보다 이긴다. 조회는 엉뚱한 곳의 결과를 내고 게시는 엉뚱한 곳에 올라간다. dry-run 출력의 게시 대상
+주소가 `https://registry.npmjs.org/` 인지도 본다.
+
+**5) 자기 터미널에서 로그인하고 core 먼저, cli 다음으로 올린다.** OTP 를 물으므로 에이전트나 CI 가 아니라
+사람이 대화형으로 돌린다.
+
+```bash
+npm login
+npm publish <밖의 디렉터리>/erdd-core-<버전>.tgz --access public
+npm publish <밖의 디렉터리>/erdd-cli-<버전>.tgz --access public
+```
+
+core 를 먼저 올린다 — cli 가 core 를 의존한다. 프리릴리스 버전이면 `--tag next` 를 붙인다(npm 11 은
+`--tag` 없는 프리릴리스 게시를 거절한다). **토큰을 저장소 안의 `.npmrc` 에 적지 마라**(커밋 대상이다).
+
+**6) 올라간 것이 팩한 것과 같은지 대조한다.** 레지스트리의 `dist.integrity` 와 로컬 tarball 의 sha512 가
+같아야 한다.
+
+```bash
+npm view @erdd/core@<버전> dist.integrity
+echo "sha512-$(openssl dgst -sha512 -binary <밖의 디렉터리>/erdd-core-<버전>.tgz | openssl base64 -A)"
+```
 
 ## 소비처 설치
 
@@ -354,11 +441,12 @@ npm 은 `files` 와 무관하게 **패키지 루트의** `LICENSE` 를 tarball �
   이 때문에 `packages/cli/src/local/watch.test.ts` 의 「감시 등록이 그 밖의 이유로 실패해도 던지지
   않는다」는 **macOS 에서만 검증력이 있어** `skipIf` 에 플랫폼을 함께 뒀다 — CI(Linux 러너)에서는
   skip 되고, 검증력은 macOS 로컬 실행에만 있다.
-- **워크플로는 GitHub 러너에서 실제로 돌 때만 확인되는 것이 있다.** 로컬에서 확인한 것은 actionlint
-  (shellcheck 포함) 통과, `server` 잡의 단계(새 `postgres:17` 에 `drizzle-kit migrate` → 테스트 →
-  skip 0 판정)와 두 패키지의 `pnpm pack` 산출물이다. 러너에서만 확인되는 것은 태그 fetch 가
-  자격증명 없이 실제로 도는지(체크아웃이 `persist-credentials: false` 다 — 공개 저장소 전제),
-  `git describe --match 'cli-v*'` 가 태그 체크아웃에서 같게 도는지, 잡이 `timeout-minutes` 안에
-  끝나는지(verify 30분·server 20분·publish 20분), OIDC 교환과 provenance 서명이 성립하는지다.
-  **태그 fetch 는 fetch 직후에 찍히는 `cli-v*` 목록으로 판정한다** — 이번 태그 하나뿐이면 옛 태그가
-  GitHub 에 없거나 refspec 쪽이고, 여럿이면 들어온 것이다.
+- **OIDC 게시가 아직 실측되지 않았다.** 두 패키지의 첫 버전은 손 게시라, trusted publisher 연결로 토큰
+  없이 올라가는 것은 **다음 태그 게시에서야 처음** 확인된다. 거절되면 「trusted publishing 과
+  provenance」의 표 — 특히 Workflow filename·Environment name·「Allow `npm publish`」 — 를 먼저 의심한다.
+  러너에서 이미 확인된 것은 verify·server 잡, publish 잡의 태그 fetch(자격증명 없이 — 체크아웃이
+  `persist-credentials: false` 다), 가드 1·2, core 의 `npm view` 404 판정, `id-token: write` 로 한
+  provenance 서명(sigstore 기록)까지다. **같은 첫 CI 게시에서 처음 도는 것**이 둘 더 있다 — core 가 이미
+  있을 때의 건너뛰기 분기(그 안의 `git describe --match 'cli-v*'` 와 가드 3)와 publish 잡이
+  `timeout-minutes`(20분) 안에 끝나는지다. **태그 fetch 는 fetch 직후에 찍히는 `cli-v*` 목록으로
+  판정한다** — 이번 태그 하나뿐이면 옛 태그가 GitHub 에 없거나 refspec 쪽이고, 여럿이면 들어온 것이다.

@@ -784,9 +784,12 @@ CLI 전반의 문제 해결(서버 연결·토큰·충돌)은 [CLI 매뉴얼 11�
   `@erdd/cli` 의 `dependencies` 에 넣어 대신 해결하려던 시도는 **pnpm 소비처를 오히려 회귀시켜**
   (되던 것이 `127` 로) 되돌렸다.
 
-**공개 npm 에서 설치해 확인하지는 않았다.** 위 항목은 `pnpm pack` 한 tarball 을 설치한 것이다.
-npm 에 게시된 판을 빈 프로젝트에 [2.2](#22-경로-a-npm-에서-설치한다-권장) 그대로 깔아 `erdd --help`·
-`init --local`·`validate` 의 종료 코드와 `erdd serve` 의 `/p/<id>` 응답을 확인하는 것이 남아 있다.
+**공개 npm 에서 설치해 확인한 것.** 위 항목(`pnpm pack` 한 tarball)과 달리 npm 에 게시된 판을 깔았다.
+빈 디렉터리에 [2.2](#22-경로-a-npm-에서-설치한다-권장) 그대로 `pnpm add -D @erdd/cli tsx` 로 깔아
+`erdd init --local`·`validate` 가 종료 코드 `0` 이고, `erdd serve --no-open` 의 `/` 가 `/p/<id>` 로 302 하고
+그 주소가 **200 + HTML** 인 것 — 웹을 한 번도 빌드하지 않은 프로젝트에서 동봉 웹 번들이 서빙되는 것 — 을
+확인했다. 출력 원문과 확인하지 않은 조합(npm 설치·전역 설치·`npx @erdd/cli`·Windows)은
+[CLI 매뉴얼 부록](cli-guide.md#레지스트리-게시-2026-08-29) 에 있다.
 
 **실서버로 확인한 것** — [7.2](#72-로컬로-시작한-프로젝트를-서버로-옮기기) 의 `init --create` 이관
 (`init --local` → 단어 추가 → `init --create` → `diff` 가 전부 「추가」 → `push`)과 [7.3](#73-공용-사전을-받아-쓰기--erdd-dict)
