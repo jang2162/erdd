@@ -105,12 +105,14 @@ describe('replay', () => {
     expect(p2.tables['t2']!.columnIds).toEqual(['c9', 'c4', 'c2', 'c3', 'c8'])
   })
 
-  it('없는 @id 를 고치면 그 파일·줄에서 멈춘다', () => {
+  it('없는 @id 를 고치면 그 파일·줄로 경고하고 건너뛴다', () => {
     const bad = parseChangeset(`${HEAD}alter table MBR {  @t404\n  rename column A -> B  @c404\n}\n`)
     if (!bad.ok) throw new Error(bad.message)
     const r = replay([{ file: 'bad.erddc', changeset: bad.changeset }])
-    expect(r.error).toMatchObject({ file: 'bad.erddc', line: 5 })
-    expect(r.error!.message).toContain('@t404')
+    expect(r.error).toBeNull()
+    expect(r.warnings).toHaveLength(1)
+    expect(r.warnings[0]).toMatchObject({ file: 'bad.erddc', line: 5 })
+    expect(r.warnings[0]!.message).toContain('@t404')
   })
 
   it('이미 있는 테이블을 또 만들면 멈춘다', () => {
@@ -120,10 +122,51 @@ describe('replay', () => {
     expect(r.error!.message).toContain('이미 있습니다')
   })
 
-  it('after 가 없는 컬럼을 가리키면 멈춘다', () => {
+  it('after 가 없는 컬럼을 가리키면 경고하고 그 컬럼을 테이블 끝에 둔다', () => {
     const p = proj(buildSampleModel())
     const bad = parseChangeset(`${HEAD}alter table MBR {  @t2\n  add column X INT [null, after: NOPE]  @c77\n}\n`)
     if (!bad.ok) throw new Error(bad.message)
-    expect(() => applyChangeset(p, bad.changeset)).toThrow('NOPE')
+    const warnings = applyChangeset(p, bad.changeset)
+    expect(warnings).toEqual([{ line: 6, message: 'MBR.X 컬럼을 테이블 끝에 두었습니다 — MBR 테이블에 NOPE 컬럼이 없습니다(after)' }])
+    expect(p.tables['t2']!.columnIds).toEqual(['c2', 'c3', 'c4', 'c77'])
+  })
+
+  it('한 블록 안에서 두 컬럼이 같은 자리를 가리키면 여전히 멈춘다', () => {
+    const bad = parseChangeset(`${HEAD}alter table MBR {  @t2\n  add column X INT [null, after: MBR_NO]  @c77\n  add column Y INT [null, after: MBR_NO]  @c78\n}\n`)
+    if (!bad.ok) throw new Error(bad.message)
+    expect(() => applyChangeset(proj(buildSampleModel()), bad.changeset)).toThrow('같은 자리')
+  })
+
+  it('두 브랜치가 같은 컬럼을 지우면 뒤 기록에서 경고 1건이고 멈추지 않는다', () => {
+    const base = structuredClone(buildSampleModel())
+    base.columns['c9'] = { ...base.columns['c3']!, id: 'c9', physicalName: 'MEMO', order: 9 }
+    const dropped = structuredClone(base)
+    delete dropped.columns['c9']
+    const r = replay([
+      { file: '1', changeset: changesetOf(emptyProjection(), base) },
+      { file: '2', changeset: changesetOf(proj(base), dropped) },
+      { file: '3', changeset: changesetOf(proj(base), dropped) },
+    ])
+    expect(r.error).toBeNull()
+    expect(r.warnings).toEqual([{ file: '3', line: expect.any(Number), message: 'MBR 테이블에 컬럼 @c9(MEMO) 이(가) 없습니다 — 건너뜁니다' }])
+    expect(r.projection).toEqual(proj(dropped))
+  })
+
+  it('A 가 지운 컬럼 뒤에 B 가 컬럼을 추가하면 경고하고 새 컬럼은 테이블 끝에 둔다', () => {
+    const base = buildSampleModel()
+    const dropped = structuredClone(base)
+    delete dropped.columns['c3']
+    delete dropped.indexes['i1']
+    const added = structuredClone(base)
+    added.columns['c9'] = { ...added.columns['c3']!, id: 'c9', physicalName: 'NICK_NM', order: 1.5 }
+    const r = replay([
+      { file: '1', changeset: changesetOf(emptyProjection(), base) },
+      { file: '2', changeset: changesetOf(proj(base), dropped) },
+      { file: '3', changeset: changesetOf(proj(base), added) },
+    ])
+    expect(r.error).toBeNull()
+    expect(r.warnings).toHaveLength(1)
+    expect(r.warnings[0]).toMatchObject({ file: '3', message: 'MBR.NICK_NM 컬럼을 테이블 끝에 두었습니다 — MBR 테이블에 MBR_NM 컬럼이 없습니다(after)' })
+    expect(r.projection.tables['t2']!.columnIds).toEqual(['c2', 'c4', 'c9'])
   })
 })

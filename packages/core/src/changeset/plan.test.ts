@@ -65,7 +65,7 @@ describe('planChanges', () => {
     expect(plan.pending).toEqual([])
   })
 
-  it('중간 기록이 지워지면 뒤 기록의 파일·줄에서 멈춘다', () => {
+  it('중간 기록이 지워지면 뒤 기록의 파일·줄로 경고하고, 그 차이는 미기록으로 돌아온다', () => {
     const base = buildSampleModel()
     const r0 = record([], base, '1_base')
     const next = structuredClone(base)
@@ -73,9 +73,56 @@ describe('planChanges', () => {
     const r1 = record([r0], next, '2_add')
     const r2 = record([r0, r1], withColumn(next, 'c9', { nullable: true }), '3_modify')
     const plan = planChanges(input([r0, r2], withColumn(next, 'c9', { nullable: true })))
-    expect(plan.pending).toBeNull()
-    expect(plan.error).toMatchObject({ file: '3_modify', line: expect.any(Number) })
-    expect(plan.error!.message).toContain('@c9')
+    expect(plan.error).toBeNull()
+    expect(plan.warnings).toHaveLength(1)
+    expect(plan.warnings[0]).toMatchObject({ file: '3_modify', line: expect.any(Number) })
+    expect(plan.warnings[0]!.message).toContain('@c9')
+    expect(plan.pending).toEqual([{
+      kind: 'alterTable', id: 't2', name: 'MBR',
+      actions: [{ kind: 'addColumn', column: expect.objectContaining({ id: 'c9', name: 'ADDED', nullable: true }), after: 'GRD_CD' }],
+    }])
+  })
+
+  describe('병합으로 어긋난 기록은 멈추지 않는다 — 경고하고 남은 차이는 미기록이다', () => {
+    const base = buildSampleModel()
+    const r0 = record([], base, '1_base')
+    const renamed = withColumn(base, 'c3', { physicalName: 'MBR_NAME' })
+    const indexed = structuredClone(base)
+    indexed.indexes['i9'] = { id: 'i9', tableId: 't2', name: 'IX_MBR_NM', columns: [{ columnId: 'c3', direction: 'asc' }], unique: false }
+    const merged = structuredClone(renamed)
+    merged.indexes['i9'] = structuredClone(indexed.indexes['i9']!)
+
+    it('A 개명이 먼저 재생되면 B 의 인덱스(옛 이름 참조)는 건너뛰고 경고 1건, 미기록에 그 인덱스가 남는다', () => {
+      const plan = planChanges(input([r0, record([r0], renamed, '2_a'), record([r0], indexed, '3_b')], merged))
+      expect(plan.error).toBeNull()
+      expect(plan.warnings).toHaveLength(1)
+      expect(plan.warnings[0]).toMatchObject({
+        file: '3_b', message: '인덱스 @i9(IX_MBR_NM) 을(를) 추가하지 않았습니다 — MBR 테이블에 MBR_NM 컬럼이 없습니다',
+      })
+      expect(plan.pending).toEqual([{
+        kind: 'addIndex', index: { id: 'i9', name: 'IX_MBR_NM', table: 'MBR', columns: [{ name: 'MBR_NAME', direction: 'asc' }], unique: false },
+      }])
+    })
+
+    it('B 인덱스가 먼저 재생되면 경고도 미기록도 없다', () => {
+      const plan = planChanges(input([r0, record([r0], indexed, '2_b'), record([r0], renamed, '3_a')], merged))
+      expect(plan.error).toBeNull()
+      expect(plan.warnings).toEqual([])
+      expect(plan.pending).toEqual([])
+    })
+
+    it('두 브랜치가 같은 컬럼을 지우면 경고만 남고 병합 모델과 미기록 0 이다', () => {
+      const dropped = structuredClone(base)
+      delete dropped.columns['c4']
+      delete dropped.relationships['r1']
+      const plan = planChanges(input([r0, record([r0], dropped, '2_a'), record([r0], dropped, '3_b')], dropped))
+      expect(plan.error).toBeNull()
+      expect(plan.warnings.map((w) => w.message)).toEqual([
+        '지울 FK @r1(FK_MBR_MBR_GRD) 이(가) 없습니다 — 건너뜁니다',
+        'MBR 테이블에 컬럼 @c4(GRD_CD) 이(가) 없습니다 — 건너뜁니다',
+      ])
+      expect(plan.pending).toEqual([])
+    })
   })
 
   it('기록 파일이 깨졌으면 그 파일·줄을 알린다', () => {
