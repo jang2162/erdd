@@ -176,6 +176,7 @@ $ erdd --help
   changes      변경 기록 상태 — 미기록 변경 미리보기(로컬 모드 전용)
   changes new <이름> 미기록 변경을 erdd/changes/ 에 기록한다
   dict <list|pull|push|requests>  공용 사전을 주고받는다
+  library <list|export|import>  공용 라이브러리를 파일로 내보내고 가져온다(관리자)
 
 옵션
   --json                기계용 JSON 출력
@@ -184,24 +185,30 @@ $ erdd --help
   -m, --message <요약>  push의 Revision 요약, dict push의 승격 요청 메모
   --dir <경로>          skill install 전용 — 설치 위치
   --force               skill install 전용 — 기존 파일 덮어쓰기
-  --server <url>        init 전용
+  --server <url>        init·library 전용
   --token <token>       init 전용
   --project <id>        init 전용
   --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
   --create              init 전용 — 서버에 프로젝트를 만들어 연결한다(로컬 전용 프로젝트면 이관한다)
   --org <이름|id>        init --create 전용 — 프로젝트를 만들 조직
+                        library import --create --scope org 전용 — 라이브러리를 만들 조직
   --case <대소문자>      init --local·--create 전용 — UPPER_SNAKE(기본) 또는 lower_snake
   --format <ddl|dbml>   export·import 전용 — export 기본 ddl, import 기본 확장자 판별
   --dialect <방언>       export·import·init --local·--create 전용
                         export·import는 기본이 erdd.config.yaml의 dialects[0], init --local·--create는 postgresql
-  -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
-  --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
-  --library <이름|id>   dict pull·push 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
-                        push는 올릴 라이브러리(필수)
+  -o <경로>             export·library export 전용 — 산출물을 쓸 파일(없으면 stdout)
+  --dry-run             import·dict pull·library import 전용 — 계획만 보고 파일을 쓰지 않는다
+  --library <이름|id>   dict pull·push·library import 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
+                        push·library import 는 올릴/가져올 라이브러리
+  --file <경로>          dict pull 전용 — 서버에서 내보낸 라이브러리 파일에서 받는다(서버 연결 불필요)
   --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다(내용이 같을 때만)
                         내용이 달라도 로컬 값을 유지한 채 연결하려면 --conflicts ours 를 함께 준다
   --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
   --kind <종류,…>        dict push 전용 — domain·word·term·customField 중 올릴 종류
+  --create <이름>        library import 전용 — 새 라이브러리를 만들며 가져온다(init --create 와 다르다)
+  --scope <global|org>  library import --create 전용
+  --prune               library import 전용 — 파일에 없는 항목을 지운다(적힌 종류만)
+  --include-stale       library import 전용 — 서버가 더 새로운 항목도 파일 값으로 덮는다
   --name <이름>          dict push 전용 — 올릴 항목 이름(반복 가능)
                         init --create 전용 — 서버에 만들 프로젝트 이름
   --include-name-match  dict push 전용 — 라이브러리에 같은 이름이 있는 항목도 올린다(기본 제외)
@@ -1817,8 +1824,9 @@ $ erdd library import demo-edit.erdd-lib.yaml --library "데모 사전" --server
   바뀌었습니다 — 다시 미리보기 하세요 — 아무것도 반영하지 않았습니다`, `1`) 다시 실행해 새 미리보기부터
   본다. `--yes` 로 미리보기 없이 바로 반영하는 경로에는 이 확인이 없다.
 - **`--create <이름> --scope <global|org>`** — 새 라이브러리를 만들며 파일 전체를 「추가」로 반영한다
-  (`init --create` 와는 다른 명령이다). `--scope org` 면 `--org <이름|id>` 가 필요하다
-  (`--scope org 에는 --org <이름|id> 가 필요합니다`, `2`).
+  (`init --create` 와는 다른 명령이다). `--scope` 없이 `--create` 만 주면 거절한다
+  (`--create 에는 --scope <global|org> 가 필요합니다`, `2`). `--scope org` 면 `--org <이름|id>` 가
+  필요하다(`--scope org 에는 --org <이름|id> 가 필요합니다`, `2`).
 
   ```bash
   $ erdd library import standard.erdd-lib.yaml --create "데모 사전" --scope global --server http://127.0.0.1:3001 --yes
