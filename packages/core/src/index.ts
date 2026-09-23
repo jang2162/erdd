@@ -93,9 +93,9 @@ export {
   resourcePayloadOf, resourceDisplayName, resourceEntitiesOf,
 } from './resource.js'
 export type { ResourceKind } from './resource.js'
-export { planResync, applyResyncPlan, adoptTargetOf, adoptAssignments } from './resource-sync.js'
+export { planResync, applyResyncPlan, adoptTargetOf, adoptAssignments, planAdoption } from './resource-sync.js'
 export type {
-  LibraryItem, ResyncStatus, ResyncDecision, ResyncEntry, ResyncPlan,
+  LibraryItem, ResyncStatus, ResyncDecision, ResyncEntry, ResyncPlan, AdoptionPlan,
 } from './resource-sync.js'
 export { planPromote, applyPromotePlan, danglingDomain } from './resource-promote.js'
 export type { PromoteStatus, PromoteEntry, PromotePlan, PromoteWrite } from './resource-promote.js'

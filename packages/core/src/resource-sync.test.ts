@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type Origin, type ProjectModel, type Word } from './model.js'
 import { validateModelIntegrity } from './integrity.js'
 import { diffModels } from './diff.js'
+import { planPromote } from './resource-promote.js'
 import {
-  adoptAssignments, adoptTargetOf, applyResyncPlan, planResync, type LibraryItem,
+  adoptAssignments, adoptTargetOf, applyResyncPlan, planAdoption, planResync, type LibraryItem,
 } from './resource-sync.js'
 
 const LIB = 'lib-1'
@@ -411,5 +412,95 @@ describe('adopt', () => {
     const plan = planResync(m, 'L1', [libWord('S1', 2, { logicalName: '고객', abbreviation: 'CUS', englishName: null, description: null })])
     expect(plan.entries[0]!.status).toBe('auto-update')
     expect(applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')).toBe(m)
+  })
+})
+
+describe('planAdoption — 내용이 같은 항목만 연결', () => {
+  const W = (abbreviation: string) =>
+    ({ logicalName: '고객', abbreviation, englishName: null, description: null })
+  const libWord = (id: string, abbreviation: string): LibraryItem =>
+    ({ id, kind: 'word', version: 3, payload: W(abbreviation) })
+  const localWord = (id: string, abbreviation: string): Word => ({ id, ...W(abbreviation), origin: null })
+  const NO_DOMAIN = {
+    name: 'NO', category: null, logicalType: 'string',
+    dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+    defaultValue: null, allowedValues: [], description: null,
+  }
+  const libDomain = (name = 'NO'): LibraryItem => ({ id: 'SD', kind: 'domain', version: 1, payload: { ...NO_DOMAIN, name } })
+  const libTerm = (domainId: string | null): LibraryItem =>
+    ({ id: 'ST', kind: 'term', version: 1, payload: { logicalName: '고객번호', physicalName: 'CUST_NO', domainId, description: null } })
+  function withTerm(domainId: string | null): ProjectModel {
+    const m = createEmptyModel()
+    m.domains['d1'] = { id: 'd1', ...NO_DOMAIN, origin: null }
+    m.terms['t1'] = { id: 't1', logicalName: '고객번호', physicalName: 'CUST_NO', domainId, description: null, origin: null }
+    return m
+  }
+
+  it('내용이 같으면 배정하고, 다르면 배정하지 않고 다른 필드를 돌려준다', () => {
+    const m = createEmptyModel()
+    m.words['w1'] = localWord('w1', 'CUST')
+    const same = planResync(m, 'L1', [libWord('S1', 'CUST')])
+    expect(planAdoption(m, same, { S1: 'adopt' }, { sameContentOnly: true }))
+      .toEqual({ assigned: new Map([['S1', 'w1']]), differs: new Map() })
+    const other = planResync(m, 'L1', [libWord('S1', 'CSTMR')])
+    expect(planAdoption(m, other, { S1: 'adopt' }, { sameContentOnly: true }))
+      .toEqual({ assigned: new Map(), differs: new Map([['S1', ['abbreviation']]]) })
+    // sameContentOnly 가 아니면 예전처럼 배정한다(= adoptAssignments)
+    expect([...planAdoption(m, other, { S1: 'adopt' }, { sameContentOnly: false }).assigned]).toEqual([['S1', 'w1']])
+    expect([...adoptAssignments(m, other, { S1: 'adopt' })]).toEqual([['S1', 'w1']])
+  })
+
+  it('내용이 달라 배정되지 않은 원본은 대상을 차지하지 않는다 — 뒤의 같은 내용 원본이 연결된다', () => {
+    const m = createEmptyModel()
+    m.words['w1'] = localWord('w1', 'CUST')
+    const plan = planResync(m, 'L1', [libWord('S1', 'CSTMR'), libWord('S2', 'CUST')])
+    const decisions = { S1: 'adopt', S2: 'adopt' } as const
+    const { assigned, differs } = planAdoption(m, plan, decisions, { sameContentOnly: true })
+    expect([...assigned]).toEqual([['S2', 'w1']])
+    expect([...differs]).toEqual([['S1', ['abbreviation']]])
+    // 배정되지 않은 adopt 를 defer 로 내린 결정을 적용해도 배정이 같다 — 보고와 적용이 갈라지지 않는다
+    const applied = applyResyncPlan(m, plan, { S1: 'defer', S2: 'adopt' }, () => 'unused')
+    expect(applied.words['w1']!.origin).toMatchObject({ sourceId: 'S2' })
+  })
+
+  it('용어는 같은 배치에서 연결한 도메인을 거쳐 비교한다', () => {
+    const m = withTerm('d1')
+    const plan = planResync(m, 'L1', [libDomain(), libTerm('SD')])
+    const { assigned, differs } = planAdoption(m, plan, { SD: 'adopt', ST: 'adopt' }, { sameContentOnly: true })
+    expect([...assigned]).toEqual([['SD', 'd1'], ['ST', 't1']])
+    expect(differs.size).toBe(0)
+  })
+
+  it('원본 용어의 도메인이 색인에 없으면(연결되지 않음) 로컬이 도메인 없음이어도 다르다', () => {
+    // 도메인 이름이 달라 연결되지 않는다 → 원본 용어의 domainId 는 프로젝트로 투영하면 null 이지만,
+    // 같다고 보면 다음 승격이 라이브러리 용어의 도메인 참조를 null 로 덮는다.
+    const m = withTerm(null)
+    const plan = planResync(m, 'L1', [libDomain('NUM'), libTerm('SD')])
+    const { assigned, differs } = planAdoption(m, plan, { ST: 'adopt' }, { sameContentOnly: true })
+    expect(assigned.size).toBe(0)
+    expect([...differs]).toEqual([['ST', ['domainId']]])
+  })
+
+  it('같은 배치에 새로 추가되는 도메인을 원본 용어가 가리키면 로컬 용어와 다르다', () => {
+    const m = withTerm('d1')
+    delete m.domains['d1']
+    m.terms['t1']!.domainId = null
+    const plan = planResync(m, 'L1', [libDomain(), libTerm('SD')])
+    const { differs } = planAdoption(m, plan, { SD: 'apply', ST: 'adopt' }, { sameContentOnly: true })
+    expect([...differs]).toEqual([['ST', ['domainId']]])
+  })
+
+  it('내용이 같아 연결한 항목은 이후 승격 계획에서 update 가 아니다(동기 상태)', () => {
+    const m = withTerm('d1')
+    m.words['w1'] = localWord('w1', 'CUST')
+    const items = [libDomain(), libWord('SW', 'CUST'), libTerm('SD')]
+    const plan = planResync(m, 'L1', items)
+    const decisions = { SD: 'adopt', SW: 'adopt', ST: 'adopt' } as const
+    const { assigned } = planAdoption(m, plan, decisions, { sameContentOnly: true })
+    expect(assigned.size).toBe(3)
+    const next = applyResyncPlan(m, plan, decisions, () => 'unused')
+    const promote = planPromote(next, 'L1', items)
+    expect(promote.entries).toEqual([])
+    expect(promote.syncedCount).toBe(3)
   })
 })

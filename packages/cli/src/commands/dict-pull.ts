@@ -1,6 +1,6 @@
 import { uuidv7 } from 'uuidv7'
 import {
-  ORIGINS_FILE, RESOURCE_KIND_LABEL, adoptAssignments, applyResyncPlan, modelToFiles, planResync,
+  ORIGINS_FILE, RESOURCE_KIND_LABEL, applyResyncPlan, modelToFiles, planAdoption, planResync,
   type FileTree, type ProjectModel, type ResyncDecision, type ResyncEntry, type ResyncPlan,
 } from '@erdd/core'
 import { readConfig, writeConfig, type DictionaryRef } from '../config.js'
@@ -31,6 +31,11 @@ type LibraryReport = {
   adopted: number
   /** 이름 중복인데 `--adopt` 면 연결되는 항목 — 기본으로 건너뛴다. */
   nameClashSkipped: Named[]
+  /**
+   * 이름 중복이고 연결할 대상도 있지만 내용이 달라 연결하지 않는 항목(`fields` 는 다른 payload 키).
+   * `--adopt --conflicts ours` 여야 연결된다 — 로컬 값 유지에 명시적으로 동의한 경우다.
+   */
+  adoptDiffers: (Named & { fields: string[] })[]
   /** 이름 중복인데 연결할 수 없는 항목 — 같은 이름 항목을 다른 원본이 차지했거나(이미 연결·선착에 밀림) 커스텀 항목의 target 이 다르다. */
   unlinkable: Named[]
   conflicts: (Named & { fields: string[]; decision: ResyncDecision })[]
@@ -41,12 +46,18 @@ type LibraryReport = {
 
 /**
  * 웹 「가져오기」의 기본 선택과 같다 — 설계 3.2. 이름 중복 항목은 일단 모두 `adopt` 로 두고
- * core `adoptAssignments` 로 배정한다 — 적용(`applyResyncPlan`)과 같은 함수라 보고가 실제와
- * 갈라지지 않는다. 배정되지 않았거나 `--adopt` 가 없으면 `defer` 로 내린다.
+ * core `planAdoption` 으로 배정한다. 배정되지 않았거나 `--adopt` 가 없으면 `defer` 로 내린다 —
+ * 남은 adopt 는 `applyResyncPlan` 이 같은 대상에 배정하므로 보고가 실제 적용과 갈라지지 않는다.
+ *
+ * **내용이 같은 항목만 연결한다**(`--conflicts ours` 는 예외). 내용이 다른 채 연결하면 다음
+ * `dict push` 가 그 항목을 원본 갱신으로 기본 선택해, 사용자가 본 적 없는 라이브러리 값을 로컬
+ * 값으로 덮는다(shared-resources 「승격」의 「보고 나서 덮어쓴다」). `ours` 는 로컬 값 유지에 명시적으로
+ * 동의한 것이라 그 결과가 의도다. `theirs` 는 이 갈래에서 연결하지 않는다.
  */
 function decide(model: ProjectModel, plan: ResyncPlan, ctx: DictPullCtx): {
   decisions: Record<string, ResyncDecision>
   linkable: ReadonlyMap<string, string>
+  differs: ReadonlyMap<string, string[]>
 } {
   const decisions: Record<string, ResyncDecision> = {}
   for (const e of plan.entries) {
@@ -54,15 +65,17 @@ function decide(model: ProjectModel, plan: ResyncPlan, ctx: DictPullCtx): {
     else if (e.status === 'auto-update') decisions[e.sourceId] = 'apply'
     else decisions[e.sourceId] = ctx.conflicts === 'theirs' ? 'apply' : ctx.conflicts === 'ours' ? 'keep' : 'defer'
   }
-  const linkable = adoptAssignments(model, plan, decisions)
+  const { assigned: linkable, differs } =
+    planAdoption(model, plan, decisions, { sameContentOnly: ctx.conflicts !== 'ours' })
   for (const e of plan.entries) {
     if (decisions[e.sourceId] === 'adopt' && !(ctx.adopt && linkable.has(e.sourceId))) decisions[e.sourceId] = 'defer'
   }
-  return { decisions, linkable }
+  return { decisions, linkable, differs }
 }
 
 function report(
-  lib: LibraryRow, plan: ResyncPlan, decisions: Record<string, ResyncDecision>, linkable: ReadonlyMap<string, string>,
+  lib: LibraryRow, plan: ResyncPlan, decisions: Record<string, ResyncDecision>,
+  linkable: ReadonlyMap<string, string>, differs: ReadonlyMap<string, string[]>,
 ): LibraryReport {
   const named = (e: ResyncEntry): Named => ({ kind: RESOURCE_KIND_LABEL[e.kind], name: e.name })
   const clashDeferred = plan.entries.filter((e) => e.status === 'added' && e.nameClash && decisions[e.sourceId] === 'defer')
@@ -72,7 +85,9 @@ function report(
     autoUpdated: plan.entries.filter((e) => e.status === 'auto-update').length,
     adopted: plan.entries.filter((e) => decisions[e.sourceId] === 'adopt').length,
     nameClashSkipped: clashDeferred.filter((e) => linkable.has(e.sourceId)).map(named),
-    unlinkable: clashDeferred.filter((e) => !linkable.has(e.sourceId)).map(named),
+    adoptDiffers: clashDeferred.filter((e) => differs.has(e.sourceId))
+      .map((e) => ({ ...named(e), fields: differs.get(e.sourceId)! })),
+    unlinkable: clashDeferred.filter((e) => !linkable.has(e.sourceId) && !differs.has(e.sourceId)).map(named),
     conflicts: plan.entries.filter((e) => e.status === 'conflict')
       .map((e) => ({ ...named(e), fields: e.changedFields, decision: decisions[e.sourceId]! })),
     kept: plan.keptSynced,
@@ -122,6 +137,10 @@ function render(reports: LibraryReport[], files: { written: string[]; deleted: s
     if (r.nameClashSkipped.length > 0) {
       lines.push(`  이름 중복 ${r.nameClashSkipped.length} — 건너뜀 (--adopt 로 연결)`)
     }
+    if (r.adoptDiffers.length > 0) {
+      lines.push(`  이름 중복 ${r.adoptDiffers.length} — 내용이 달라 연결하지 않음 (--adopt --conflicts ours 로 로컬 값을 유지한 채 연결)`)
+      for (const d of r.adoptDiffers) lines.push(`    ${d.kind} ${d.name}  (${d.fields.join(', ')})`)
+    }
     if (r.unlinkable.length > 0) {
       lines.push(`  이름 중복 ${r.unlinkable.length} — 연결할 수 없음 (같은 이름 항목을 다른 원본이 차지했거나 커스텀 항목의 적용 대상이 다릅니다)`)
     }
@@ -162,13 +181,13 @@ export function dictPull(ctx: DictPullCtx): Promise<number> {
         note(`경고: 라이브러리 ${target.name}(${target.id})을(를) 찾을 수 없어 건너뜁니다 — 삭제됐거나 권한이 없습니다`)
         reports.push({
           id: target.id, name: target.name, scope: null, missing: true, added: 0, autoUpdated: 0, adopted: 0,
-          nameClashSkipped: [], unlinkable: [], conflicts: [], kept: 0, detached: 0,
+          nameClashSkipped: [], adoptDiffers: [], unlinkable: [], conflicts: [], kept: 0, detached: 0,
         })
         continue
       }
       const plan = planResync(model, lib.id, await fetchItems(client, lib.id))
-      const { decisions, linkable } = decide(model, plan, ctx)
-      reports.push(report(lib, plan, decisions, linkable))
+      const { decisions, linkable, differs } = decide(model, plan, ctx)
+      reports.push(report(lib, plan, decisions, linkable, differs))
       model = applyResyncPlan(model, plan, decisions, uuidv7)
     }
 

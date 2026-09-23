@@ -56,6 +56,7 @@ type Report = {
   added: number; adopted: number
   nameClashSkipped: { kind: string; name: string }[]
   unlinkable: { kind: string; name: string }[]
+  adoptDiffers: { kind: string; name: string; fields: string[] }[]
   conflicts: unknown[]
 }
 const LIB2: LibraryRow = { ...LIB, id: 'L2', name: '확장' }
@@ -76,22 +77,62 @@ describe('dict pull', () => {
     expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
   })
 
-  it('이름 중복은 기본으로 건너뛰고 --adopt 면 출처만 붙인다', async () => {
-    const m = createEmptyModel(); localWord(m, 'w1', 'CSTMR'); await seed(m)
+  it('내용이 같은 이름 중복은 기본으로 건너뛰고 --adopt 면 출처만 붙인다', async () => {
+    const m = createEmptyModel(); localWord(m, 'w1', 'CUST'); await seed(m)
     const c = client([LIB], { L1: [word('S1', 1, 'CUST')] })
     await dictPull(ctx(c, { library: 'L1' }))
     expect(await readTree(dir)).not.toHaveProperty('erdd/origins.yaml')
-    expect(lastReport()).toMatchObject({ adopted: 0, nameClashSkipped: [{ kind: '단어', name: '고객' }], unlinkable: [] })
+    expect(lastReport()).toMatchObject({ adopted: 0, nameClashSkipped: [{ kind: '단어', name: '고객' }], unlinkable: [], adoptDiffers: [] })
     await dictPull(ctx(c, { adopt: true }))
-    expect(lastReport()).toMatchObject({ adopted: 1, nameClashSkipped: [], unlinkable: [] })
+    expect(lastReport()).toMatchObject({ adopted: 1, nameClashSkipped: [], unlinkable: [], adoptDiffers: [] })
     const tree = await readTree(dir)
     expect((tree['erdd/words.yaml'] as { words: { id: string; abbreviation: string }[] }).words)
-      .toEqual([expect.objectContaining({ id: 'w1', abbreviation: 'CSTMR' })])
+      .toEqual([expect.objectContaining({ id: 'w1', abbreviation: 'CUST' })])
     expect((tree['erdd/origins.yaml'] as { origins: { id: string }[] }).origins).toEqual([expect.objectContaining({ id: 'w1', item: 'S1' })])
   })
 
-  it('동명 원본 둘이 한 로컬 항목을 고르면 --adopt 여도 연결은 1, 밀려난 쪽은 연결할 수 없음이다', async () => {
+  /**
+   * 🔥 내용이 다른 채 연결하면 다음 `dict push` 가 그 항목을 원본 갱신으로 **기본 선택**해, 사용자가 본 적
+   * 없는 라이브러리 값을 로컬 값으로 덮는다. 로컬 값 유지에 명시적으로 동의한 `--conflicts ours` 만 연결한다.
+   */
+  it('내용이 다른 이름 중복은 --adopt 여도 연결하지 않고 다른 필드를 보고한다', async () => {
     const m = createEmptyModel(); localWord(m, 'w1', 'CSTMR'); await seed(m)
+    const c = client([LIB], { L1: [word('S1', 1, 'CUST')] })
+    const differs = [{ kind: '단어', name: '고객', fields: ['abbreviation'] }]
+    await dictPull(ctx(c, { library: 'L1' }))
+    expect(lastReport()).toMatchObject({ adopted: 0, nameClashSkipped: [], unlinkable: [], adoptDiffers: differs })
+    await dictPull(ctx(c, { adopt: true }))
+    expect(lastReport()).toMatchObject({ adopted: 0, nameClashSkipped: [], unlinkable: [], adoptDiffers: differs })
+    expect(await readTree(dir)).not.toHaveProperty('erdd/origins.yaml')
+    // theirs 는 이 갈래에서 연결하지 않는다 — 원본 값으로 바꾸려면 로컬 항목을 지우고 다시 받는다
+    await dictPull(ctx(c, { adopt: true, conflicts: 'theirs' }))
+    expect(lastReport()).toMatchObject({ adopted: 0, adoptDiffers: differs })
+    expect(await readTree(dir)).not.toHaveProperty('erdd/origins.yaml')
+  })
+
+  it('--adopt --conflicts ours 는 내용이 달라도 로컬 값을 둔 채 연결한다', async () => {
+    const m = createEmptyModel(); localWord(m, 'w1', 'CSTMR'); await seed(m)
+    await dictPull(ctx(client([LIB], { L1: [word('S1', 1, 'CUST')] }), { library: 'L1', adopt: true, conflicts: 'ours' }))
+    expect(lastReport()).toMatchObject({ adopted: 1, adoptDiffers: [] })
+    expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toContain('CSTMR')
+    expect(await origins()).toEqual([expect.objectContaining({ id: 'w1', item: 'S1' })])
+  })
+
+  it('내용이 달라 연결하지 않는 이름 중복은 사람용 출력에 필드와 함께 보인다', async () => {
+    const m = createEmptyModel(); localWord(m, 'w1', 'CSTMR'); await seed(m)
+    await dictPull(ctx(client([LIB], { L1: [word('S1', 1, 'CUST')] }), { library: 'L1', adopt: true, json: false }))
+    expect(out.join('')).toBe([
+      '표준 (조직)',
+      '  추가 0 · 자동 갱신 0 · 연결 0 · 유지 0',
+      '  이름 중복 1 — 내용이 달라 연결하지 않음 (--adopt --conflicts ours 로 로컬 값을 유지한 채 연결)',
+      '    단어 고객  (abbreviation)',
+      '바뀐 파일이 없습니다',
+      '',
+    ].join('\n'))
+  })
+
+  it('동명 원본 둘이 한 로컬 항목을 고르면 --adopt 여도 연결은 1, 밀려난 쪽은 연결할 수 없음이다', async () => {
+    const m = createEmptyModel(); localWord(m, 'w1', 'CUST'); await seed(m)
     const c = client([LIB], { L1: [word('S2', 1, 'CS'), word('S1', 1, 'CUST')] })
     await dictPull(ctx(c, { library: 'L1' }))
     expect(lastReport()).toMatchObject({ adopted: 0, nameClashSkipped: [{ name: '고객' }], unlinkable: [{ name: '고객' }] })
@@ -124,7 +165,7 @@ describe('dict pull', () => {
   })
 
   it('여러 라이브러리는 config 순서로 모델을 이어받는다 — 앞 구독이 연결한 항목을 뒤 구독이 다시 잡지 않는다', async () => {
-    const m = createEmptyModel(); localWord(m, 'w1', 'CSTMR'); await seed(m)
+    const m = createEmptyModel(); localWord(m, 'w1', 'CUST'); await seed(m)
     await writeConfig(dir, { ...(await readConfig(dir)), dictionaries: [{ id: 'L1', name: '표준' }, { id: 'L2', name: '확장' }] })
     const c = client([LIB, LIB2], {
       L1: [namedWord('SA', 1, '고객', 'CUST'), namedWord('SA2', 1, '주문', 'ORD')],
@@ -142,7 +183,7 @@ describe('dict pull', () => {
     expect(rows.every((o) => o.library === 'L1')).toBe(true)
     expect(rows.map((o) => o.item).sort()).toEqual(['SA', 'SA2'])
     const words = ((await readTree(dir))['erdd/words.yaml'] as { words: { logicalName: string; abbreviation: string }[] }).words
-    expect(words.map((w) => `${w.logicalName}:${w.abbreviation}`).sort()).toEqual(['고객:CSTMR', '주문:ORD'])
+    expect(words.map((w) => `${w.logicalName}:${w.abbreviation}`).sort()).toEqual(['고객:CUST', '주문:ORD'])
   })
 
   it('--library 는 다른 구독이 있어도 그 라이브러리만 받는다', async () => {
@@ -196,15 +237,19 @@ describe('dict pull', () => {
     expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toContain('CUST')
   })
 
-  it('사람용 출력은 라이브러리별 집계와 이름 중복 두 갈래, 반영한 파일을 보인다', async () => {
-    const m = createEmptyModel(); localWord(m, 'w1', 'CSTMR'); await seed(m)
-    const items = [word('S2', 1, 'CS'), word('S1', 1, 'CUST'),
+  it('사람용 출력은 라이브러리별 집계와 이름 중복 세 갈래, 반영한 파일을 보인다', async () => {
+    const m = createEmptyModel(); localWord(m, 'w1', 'CUST')
+    m.words['w2'] = { id: 'w2', logicalName: '주소', abbreviation: 'ADDR', englishName: null, description: null, origin: null }
+    await seed(m)
+    const items = [word('S2', 1, 'CS'), word('S1', 1, 'CUST'), namedWord('S4', 1, '주소', 'ADR'),
       { id: 'S3', kind: 'word' as const, version: 1, payload: { logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null } }]
     expect(await dictPull(ctx(client([LIB], { L1: items }), { library: 'L1', json: false }))).toBe(0)
     expect(out.join('')).toBe([
       '표준 (조직)',
       '  추가 1 · 자동 갱신 0 · 연결 0 · 유지 0',
       '  이름 중복 1 — 건너뜀 (--adopt 로 연결)',
+      '  이름 중복 1 — 내용이 달라 연결하지 않음 (--adopt --conflicts ours 로 로컬 값을 유지한 채 연결)',
+      '    단어 주소  (abbreviation)',
       '  이름 중복 1 — 연결할 수 없음 (같은 이름 항목을 다른 원본이 차지했거나 커스텀 항목의 적용 대상이 다릅니다)',
       '반영했습니다 — erdd/origins.yaml, erdd/words.yaml',
       '',
