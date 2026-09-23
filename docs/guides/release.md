@@ -19,9 +19,19 @@
 #    packages/cli/package.json  의 "version"  — 항상
 #    packages/core/package.json 의 "version"  — packages/core 를 고쳤으면 반드시(아래 가드가 죽인다)
 
-# 2) 커밋하고 태그를 push 한다. 게시 파이프라인은 이 태그에서만 돈다
-git tag cli-v0.1.0 && git push origin cli-v0.1.0
+# 2) 커밋하고 태그를 GitHub 원격에 push 한다. 게시 파이프라인은 이 태그에서만 돈다
+git tag cli-v0.1.0 && git push <GitHub 원격> cli-v0.1.0
 ```
+
+⚠️ **태그는 GitHub 원격(`jang2162/erdd`)에 민다.** 게시는 GitHub Actions 가 하므로 다른 원격(옛 저장소
+미러 등)에 밀면 아무것도 돌지 않는다 — 오류도 없이 게시가 시작되지 않는다. 체크아웃마다 원격 이름이
+다르니 `git remote -v` 로 GitHub 을 가리키는 이름을 확인하고 쓴다.
+
+⚠️ **게시할 태그는 혼자 push 한다 — 다른 태그와 한 번에 밀지 마라.** GitHub 은 한 번의 push 에 태그가
+셋을 넘으면 태그 이벤트를 만들지 않는다(GitHub Docs 「Events that trigger workflows」 의 `push` 절).
+`git push --tags` 로 밀린 태그를 한꺼번에 올리거나 옛 태그 묶음에 새 태그를 섞으면 **새 태그의 게시도
+시작되지 않는다** — 실패한 실행이 남지 않아 Actions 화면에서도 조용하다. 저장소에 없는 옛 태그를 올려야
+하면 그 묶음을 먼저 따로 밀고(이벤트가 생기지 않는 것이 정상이다) 게시할 태그는 그 뒤에 혼자 민다.
 
 `release.yml` 은 `cli-v<SemVer>` 태그 push 에서만 뜬다. GitHub 의 태그 필터는 정규식이 아니라 글롭이라
 `cli-v[0-9]+.[0-9]+.[0-9]+` 와 그 뒤 `-*` 을 넓게 받고, publish 잡의 「태그 형식 확인」 단계가 정확한
@@ -336,6 +346,24 @@ npm view @erdd/core@<버전> dist.integrity
 echo "sha512-$(openssl dgst -sha512 -binary <밖의 디렉터리>/erdd-core-<버전>.tgz | openssl base64 -A)"
 ```
 
+## 게시 직후 확인 — 레지스트리 반영은 늦을 수 있다
+
+**게시 로그에 `+ @erdd/<이름>@<버전>` 이 찍혀도 그 버전이 조회·설치에 곧바로 보이지 않을 수 있다.**
+그 사이 `npm view @erdd/cli`·`pnpm add @erdd/cli` 는 **옛 `latest` 를 돌려준다** — 오류가 아니라 정상
+응답으로. 두 패키지를 잇달아 올려도 반영 시점은 패키지마다 다르다.
+
+- **설치 검증은 버전을 못박아 한다** — `pnpm add -D @erdd/cli@<버전> tsx`. 버전 없이 설치하면 반영 전에는
+  옛 버전이 깔리고, 그것을 돌린 결과가 새 버전의 검증으로 읽힌다. 설치한 뒤 `node_modules/@erdd/cli/package.json`
+  의 `version` 을 확인하면 이 착각이 닫힌다.
+- **버전 없이 확인해야 하면 반영을 먼저 본다** — `npm view @erdd/cli dist-tags.latest` 가 새 버전을 낼 때까지
+  기다린 뒤에 한다.
+- ⚠️ **「안 보인다」를 게시 실패로 읽고 다시 게시하지 마라.** 게시 성공의 판정은 publish 잡의 종료와 로그의
+  `+ …` 줄이다. 같은 버전의 재게시는 npm 이 거절하므로 재실행은 죽을 뿐이고(cli 는 건너뛰지 않는다 —
+  「게시를 막는 가드 넷」), 그 빨간 실행이 남아 이미 성공한 게시를 실패로 보이게 한다.
+
+조회 결과가 이상하면 `npm config get @erdd:registry` 도 본다 — `@erdd` 스코프 레지스트리 설정이 남아 있으면
+조회와 설치가 공개 npm 이 아닌 그곳으로 간다(→ 「손 게시(CI 밖)」 4단계).
+
 ## 소비처 설치
 
 사용자 매뉴얼과 같은 내용이다. 레지스트리 설정 없이 `pnpm add -D @erdd/cli tsx`
@@ -441,12 +469,18 @@ npm 은 `files` 와 무관하게 **패키지 루트의** `LICENSE` 를 tarball �
   이 때문에 `packages/cli/src/local/watch.test.ts` 의 「감시 등록이 그 밖의 이유로 실패해도 던지지
   않는다」는 **macOS 에서만 검증력이 있어** `skipIf` 에 플랫폼을 함께 뒀다 — CI(Linux 러너)에서는
   skip 되고, 검증력은 macOS 로컬 실행에만 있다.
-- **OIDC 게시가 아직 실측되지 않았다.** 두 패키지의 첫 버전은 손 게시라, trusted publisher 연결로 토큰
-  없이 올라가는 것은 **다음 태그 게시에서야 처음** 확인된다. 거절되면 「trusted publishing 과
-  provenance」의 표 — 특히 Workflow filename·Environment name·「Allow `npm publish`」 — 를 먼저 의심한다.
-  러너에서 이미 확인된 것은 verify·server 잡, publish 잡의 태그 fetch(자격증명 없이 — 체크아웃이
-  `persist-credentials: false` 다), 가드 1·2, core 의 `npm view` 404 판정, `id-token: write` 로 한
-  provenance 서명(sigstore 기록)까지다. **같은 첫 CI 게시에서 처음 도는 것**이 둘 더 있다 — core 가 이미
-  있을 때의 건너뛰기 분기(그 안의 `git describe --match 'cli-v*'` 와 가드 3)와 publish 잡이
-  `timeout-minutes`(20분) 안에 끝나는지다. **태그 fetch 는 fetch 직후에 찍히는 `cli-v*` 목록으로
+- **러너에서 한 번도 돈 적 없는 게시 경로가 셋 있다.** 첫 실행에서 깨질 수 있다는 뜻이다.
+  - **core 건너뛰기 분기와 가드 3.** core 의 version 이 이미 npm 에 있을 때만 들어가는 분기라, core 를
+    고치지 않고 cli 만 올리는 릴리스(또는 core 게시 뒤 cli 에서 죽은 실행의 재시도)에서만 들어간다. 그 안의
+    `git describe --match 'cli-v*'` 로 직전 태그를 찾는 것, 직전 태그의 `packages/core/package.json` 을
+    읽는 것, version 비교가 전부 여기 걸려 있다. 로그에서 「이미 있습니다 — 게시를 건너뜁니다」 계열 문구가
+    나오고 `git describe` 가 직전 태그를 찾았는지(`fatal: No names found` 가 **없는지**) 본다.
+  - **프리릴리스 태그의 `--tag next` 게시.** 프리릴리스 버전을 태그로 민 적이 없다.
+  - **`NPM_TOKEN` 폴백으로 성공하는 게시**(「첫 게시」의 (b)). 시크릿이 없을 때 OIDC 만 쓰는 쪽은 아래처럼 돈다.
+
+  러너에서 이미 도는 것은 verify·server 잡, 자격증명 없는 태그 fetch(체크아웃이 `persist-credentials: false`
+  다)와 그 목록 로그, 가드 1·2, core 의 `npm view` 404 판정, 시크릿 없이 OIDC 로 두 패키지를 게시하는 것과
+  그 provenance(`https://slsa.dev/provenance/v1`), `timeout-minutes`(20분) 안의 완료다.
+  OIDC 게시가 거절되면 「trusted publishing 과 provenance」의 표 — 특히 Workflow filename·Environment
+  name·「Allow `npm publish`」 — 를 먼저 의심한다. **태그 fetch 는 fetch 직후에 찍히는 `cli-v*` 개수로
   판정한다** — 이번 태그 하나뿐이면 옛 태그가 GitHub 에 없거나 refspec 쪽이고, 여럿이면 들어온 것이다.
