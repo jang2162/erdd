@@ -12,6 +12,9 @@ docker ps --filter name=erdd-db      # erdd-db-1, postgres:17, :5432
 ```
 
 - **dev DB 는 `erdd`, test DB 는 `erdd_test`** 다. 둘 다 마이그레이션이 적용돼 있어야 한다.
+- compose 의 `db` 는 호스트 **루프백에만** 붙는다(`127.0.0.1:5432`, 포트는 `ERDD_DB_PORT` 로 옮긴다).
+  호스트의 `localhost` 로 붙는 아래 흐름은 그대로 동작한다. DB 만 띄울 때는 `docker compose up -d db`
+  — 서비스 이름 없이 `up` 하면 `migrate`·`app`(:3000)까지 뜬다(이미지가 없으면 빌드부터 한다).
 - 관리자 계정은 `admin@erdd.local` / `Passw0rd!erdd`.
   `ADMIN_EMAIL`·`ADMIN_PASSWORD` 를 export 하고 서버를 띄우면 계정이 없을 때
   `ensureBootstrapAdmin` 이 자동으로 만든다.
