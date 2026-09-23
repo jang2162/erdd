@@ -109,9 +109,10 @@ const next: ProjectModel = applyDdlImport(result.model, plan, () => crypto.rando
 
 ## 설치
 
-`@erdd/cli` 와 같은 사내 GitLab 레지스트리에 있다. 설정 방법은
-[`@erdd/cli` README 의 「설치」](../cli/README.md)와 같다.
+`@erdd/cli` 와 같이 **공개 npm** 에 있다. 따로 할 레지스트리 설정은 없다.
 
 ```bash
 pnpm add @erdd/core
+# npm 이면
+npm install @erdd/core
 ```

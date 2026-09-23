@@ -1,0 +1,204 @@
+# ERDD — `@erdd/core`·`@erdd/cli` 게시 파이프라인
+#
+# 트리거는 `cli-v<SemVer>` 태그 하나뿐이다. 예: `cli-v0.1.0`
+#   git tag cli-v0.1.0 && git push origin cli-v0.1.0
+#
+# 게시 대상은 공개 npm(registry.npmjs.org)이다. 인증은 npm trusted publishing(OIDC)이고
+# provenance 를 함께 올린다. 가드 넷(1 태그 버전 · 2 웹 번들 · 3 core 버전 누락 · 4 prepack)의
+# 「무엇을 막나」「어기면 무엇이 조용히 깨지나」와 게시 경로는 docs/guides/release.md 가 정본이다 —
+# 이 파일의 주석은 각 단계가 어느 가드인지만 가리킨다.
+
+name: release
+
+on:
+  push:
+    # GitHub 의 태그 필터는 정규식이 아니라 글롭이다. 넓게 받고, 정확한 SemVer 판정은
+    # publish 잡의 「태그 형식 확인」 단계가 한다(형식이 어긋나면 거기서 죽는다).
+    tags:
+      - 'cli-v[0-9]+.[0-9]+.[0-9]+'
+      - 'cli-v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: read
+
+# 두 태그의 게시가 겹치면 core 게시 판정(`npm view`)이 서로의 결과를 보지 못한다. 한 번에 하나만 돌린다.
+# ⚠️ 대기열은 하나뿐이다 — 도는 중에 태그 둘을 더 밀면 먼저 대기하던 쪽이 취소된다. 태그는 앞 게시가
+# 끝난 뒤 하나씩 민다.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# 셸을 명시하면 GitHub 가 `bash -eo pipefail` 로 돌린다(생략하면 pipefail 이 빠진다).
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # PR 에서 도는 것과 같은 검증을 그대로 부른다. 웹 번들을 artifact 로 올리게 한다.
+  verify:
+    uses: ./.github/workflows/ci.yml
+    with:
+      upload-web-bundle: true
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # trusted publishing(OIDC)과 provenance 서명에 쓴다.
+      id-token: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      # 가드 3(core 버전 누락)이 직전 `cli-v*` 태그까지 히스토리를 거슬러야 한다 — 깊이 제한을 푼다.
+      # 자격증명을 남기지 않는다 — 공개 저장소의 태그 fetch 에는 필요 없고, 남기면 뒤의 설치·팩 단계
+      # 내내 `.git/config` 에 GITHUB_TOKEN 이 있다.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # ── 태그를 가져온다 (가드보다 반드시 앞) ──
+      # refspec 을 명시해 **태그만** 받는다. 실패하면 **죽게 둔다**(`|| true` 를 붙이지 않는다) —
+      # 태그를 못 받은 「직전 태그 없음」은 첫 릴리스와 구분되지 않아 가드 3 이 조용히 통과한다.
+      - name: cli-v* 태그 가져오기
+        run: git fetch origin '+refs/tags/*:refs/tags/*'
+
+      # 받은 것을 로그에 남긴다. 「태그가 실제로 들어왔는가」는 이 목록으로만 판정된다.
+      - name: 받은 cli-v* 태그 목록
+        run: |
+          echo "받은 cli-v* 태그 $(git tag --list 'cli-v*' | wc -l | tr -d ' ') 개:"
+          git tag --list 'cli-v*' --sort=-v:refname
+
+      # ── 태그 형식 확인 ── 트리거 조건의 일부다(가드 넷과 별개). 글롭 필터가 넓게 받은 것을 SemVer 로 좁힌다.
+      - name: 태그 형식 확인
+        run: |
+          if [[ ! "$TAG" =~ ^cli-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "태그($TAG)가 cli-v<SemVer> 형식이 아닙니다." >&2
+            exit 1
+          fi
+
+      # `cache: pnpm` 을 두지 않는다 — 게시 신원(id-token: write)이 있는 잡에 다른 실행이 만든 캐시를
+      # 복원하지 않는다. 의존성은 lockfile 로 새로 받는다.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # trusted publishing 은 npm CLI 11.5.1 이상이 필요하다. Node 22 에 딸린 npm 은 그보다 낮다.
+      - name: npm CLI 올리기
+        run: |
+          npm install -g 'npm@^11.5.1'
+          node --version
+          npm --version
+          pnpm --version
+
+      # `pnpm pack` 이 `workspace:^` 를 실제 버전으로 바꿔 쓰려면 의존성이 설치돼 있어야 한다.
+      - run: pnpm install --frozen-lockfile
+
+      # ── 가드 1: 태그 버전 ── 태그의 버전 == packages/cli/package.json 의 version.
+      - name: 태그 버전 확인
+        run: |
+          VERSION="${TAG#cli-v}"
+          PKG_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "태그 버전($VERSION)과 packages/cli/package.json 의 version($PKG_VERSION)이 다릅니다." >&2
+            exit 1
+          fi
+          echo "버전 확인: $VERSION"
+
+      # verify 가 빌드·테스트한 번들을 그대로 받는다. 재빌드하지 않는다.
+      # artifact 보존 기간(7일, ci.yml)이 지나면 이 단계가 죽는다 — 그때는 태그 게시를 처음부터 다시 돌린다.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cli-web-bundle
+          path: packages/cli/web
+
+      # ── 가드 2: 웹 번들 ── packages/cli/web/index.html 이 실제로 있어야 한다.
+      - name: 웹 번들 확인
+        run: |
+          if [ ! -f packages/cli/web/index.html ]; then
+            echo "packages/cli/web/index.html 이 없습니다. verify 의 artifact 가 전달되지 않았습니다." >&2
+            exit 1
+          fi
+          echo "web 번들 확인: $(find packages/cli/web -type f | wc -l) 개 파일"
+
+      # 첫 게시(패키지가 아직 없어 trusted publisher 를 걸 수 없을 때)에만 쓰는 토큰 폴백.
+      # 토큰 값이 아니라 `${NPM_TOKEN}` 참조를 적는다 — npm 이 읽을 때 환경변수에서 푼다.
+      # 시크릿이 없으면 아무것도 쓰지 않아 OIDC 만 쓴다.
+      # 시크릿은 이 단계와 두 게시 단계에만 넘긴다(의존성 설치 단계 등에는 보이지 않게).
+      - name: 토큰 폴백 설정(NPM_TOKEN 시크릿이 있을 때만)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            # shellcheck disable=SC2016  # 참조를 그대로 적는 것이 의도다
+            echo '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' >> ~/.npmrc
+            echo "NPM_TOKEN 시크릿이 있습니다 — OIDC 가 안 되는 패키지는 토큰으로 게시됩니다."
+          else
+            echo "NPM_TOKEN 시크릿이 없습니다 — trusted publishing(OIDC)만 씁니다."
+          fi
+
+      # ── @erdd/core 를 먼저 ── cli 가 core 를 의존한다.
+      # ── 가드 3: core 버전 누락 ── 이미 있으면 건너뛰되, 직전 cli-v* 태그 이후 packages/core 가
+      # 바뀌었는데 version 이 그대로면 죽인다. version 비교가 조건에 반드시 들어간다(재시도 영구 차단 방지).
+      # 아래 `|| true` 는 판정의 기울기를 만드는 것이라 그대로 두고, git 의 stderr 는 삼키지 않는다.
+      - name: '@erdd/core 게시(이미 있으면 건너뜀)'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          CORE_VERSION="$(node -p "require('./packages/core/package.json').version")"
+
+          # 게시 여부 판정 — 404 만 「없음」이다. 그 밖의 실패(네트워크·인증·레지스트리 오류)는
+          # 판정할 수 없는 것이라 멈춘다.
+          if VIEW_OUT="$(npm view "@erdd/core@${CORE_VERSION}" version 2>&1)"; then
+            CORE_PUBLISHED=yes
+          elif grep -q 'E404' <<<"$VIEW_OUT"; then
+            CORE_PUBLISHED=no
+          else
+            printf '%s\n' "$VIEW_OUT" >&2
+            echo "npm view 가 404 가 아닌 이유로 실패했습니다 — @erdd/core@${CORE_VERSION} 의 게시 여부를 판정할 수 없습니다." >&2
+            exit 1
+          fi
+
+          if [ "$CORE_PUBLISHED" = yes ]; then
+            PREV_TAG="$(git describe --tags --abbrev=0 --match 'cli-v*' "${TAG}^" || true)"
+            PREV_CORE_VERSION="$(git show "$PREV_TAG:packages/core/package.json" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || true)"
+            if [ -n "$PREV_TAG" ] && [ "$PREV_CORE_VERSION" = "$CORE_VERSION" ] && ! git diff --quiet "$PREV_TAG" "$TAG" -- packages/core; then
+              echo "packages/core 가 $PREV_TAG 이후 바뀌었는데 version($CORE_VERSION)이 그대로입니다." >&2
+              echo "packages/core/package.json 의 version 을 올리고 태그를 다시 미세요." >&2
+              exit 1
+            fi
+            if [ -z "$PREV_TAG" ]; then
+              echo "직전 cli-v* 태그가 없어 core 변경 검사를 건너뜁니다(첫 태그입니다)." >&2
+              echo "@erdd/core@${CORE_VERSION} 는 npm 에 이미 있습니다 — 게시를 건너뜁니다."
+            elif [ "$PREV_CORE_VERSION" != "$CORE_VERSION" ]; then
+              echo "@erdd/core 의 version 이 $PREV_TAG 의 ${PREV_CORE_VERSION:-알 수 없음} 에서 ${CORE_VERSION} 으로 올랐고 그 버전은 npm 에 이미 있습니다 — 게시를 건너뜁니다."
+            else
+              echo "@erdd/core@${CORE_VERSION} 는 npm 에 이미 있고 $PREV_TAG 이후 packages/core 변경이 없습니다 — 게시를 건너뜁니다."
+            fi
+            exit 0
+          fi
+
+          echo "@erdd/core@${CORE_VERSION} 를 게시합니다."
+          case "$CORE_VERSION" in *-*) DIST_TAG=next ;; *) DIST_TAG=latest ;; esac
+          DEST="$RUNNER_TEMP/pack-core"
+          rm -rf "$DEST" && mkdir -p "$DEST"
+          pnpm -C packages/core pack --pack-destination "$DEST"
+          npm publish "$DEST"/*.tgz --access public --provenance --tag "$DIST_TAG"
+
+      # ── @erdd/cli ── 건너뛰지 않는다. 태그가 가리키는 버전이 이미 있다면 태그를 잘못 단 것이고
+      # npm 이 거절해 잡이 죽는다 — 조용히 넘어가면 「게시됐다」는 초록 파이프라인만 남는다.
+      # 팩은 `pnpm pack` 이 한다(`workspace:^` 치환). `--ignore-scripts` 를 **쓰지 않는다** —
+      # 가드 4 인 prepack 이 여기서도 실제로 돌아야 한다.
+      - name: '@erdd/cli 게시'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          CLI_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          case "$CLI_VERSION" in *-*) DIST_TAG=next ;; *) DIST_TAG=latest ;; esac
+          DEST="$RUNNER_TEMP/pack-cli"
+          rm -rf "$DEST" && mkdir -p "$DEST"
+          pnpm -C packages/cli pack --pack-destination "$DEST"
+          npm publish "$DEST"/*.tgz --access public --provenance --tag "$DIST_TAG"

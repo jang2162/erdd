@@ -1,6 +1,17 @@
 {
   "name": "@erdd/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
+  "description": "ERDD 의 ER 모델·명명 규칙·DDL 생성/파싱을 담은 코어 라이브러리",
+  "keywords": [
+    "erd",
+    "er-diagram",
+    "database",
+    "schema",
+    "ddl",
+    "naming"
+  ],
+  "license": "MIT",
+  "author": "장병현",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -11,11 +22,18 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://gitlab.develma.com/app/erdd.git",
+    "url": "git+https://github.com/jang2162/erdd.git",
     "directory": "packages/core"
+  },
+  "homepage": "https://github.com/jang2162/erdd/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/jang2162/erdd/issues"
   },
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "vitest run",

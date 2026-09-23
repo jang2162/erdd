@@ -1,0 +1,130 @@
+# ERDD — 검증 파이프라인
+#
+# PR 과 main push 에서 돈다. 태그 게시(release.yml)도 **이 파일을 그대로 불러** 검증 단계로 쓴다 —
+# PR 에서 도는 검증과 게시 전에 도는 검증이 갈라지지 않게 하려는 것이다.
+# 정본은 docs/guides/release.md 의 「CI — 검증과 게시」 절이다.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      upload-web-bundle:
+        description: 빌드한 packages/cli/web/ 를 artifact 로 올린다(release.yml 이 게시 잡에 넘길 때만)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# PR 은 같은 ref 에 새 push 가 오면 앞 실행을 취소한다. 그 밖(main push, release.yml 이 부를 때)은
+# 실행마다 제 그룹을 가져 서로 취소하지도 기다리지도 않는다 — `workflow_call` 로 불리면 github 컨텍스트가
+# 부른 쪽의 것이라 run_id 가 release 실행마다 다르다. 게시 실행이 PR 규칙에 휘말리지 않게 하려는 설계다.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# 셸을 명시하면 GitHub 가 `bash -eo pipefail` 로 돌린다(생략하면 pipefail 이 빠진다).
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # pnpm 버전은 루트 package.json 의 packageManager 를 읽는다 — 여기에 또 적으면 두 곳이 갈린다.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r typecheck
+      - run: pnpm -C packages/core test
+      - run: pnpm -C packages/cli test
+
+      # apps/web 은 반드시 테스트한다 — 그 빌드 산출물이 그대로 @erdd/cli tarball 의 web/ 이 된다.
+      # 빌드보다 앞에 둔다(깨졌으면 빌드에 시간을 쓰기 전에 죽는다).
+      - run: pnpm -C apps/web test
+      - run: pnpm -C apps/web build
+      - run: pnpm -C packages/cli run bundle:web
+
+      # 두 패키지의 LICENSE 는 루트 LICENSE 의 사본이다(npm 은 패키지 디렉터리 밖 파일을 팩하지 않는다).
+      - name: LICENSE 사본이 루트와 같은가
+        run: |
+          cmp LICENSE packages/cli/LICENSE
+          cmp LICENSE packages/core/LICENSE
+
+      # 게시 잡은 이 번들을 그대로 받아 tarball 에 넣는다. 재빌드하지 않는다 —
+      # 검증한 것과 게시하는 것이 같은 산출물이어야 한다.
+      - if: ${{ inputs.upload-web-bundle }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cli-web-bundle
+          path: packages/cli/web/
+          if-no-files-found: error
+          # 점 파일(예: `.well-known/`)이 조용히 빠지지 않게 한다 — 기본값은 뺀다.
+          include-hidden-files: true
+          # publish 잡의 재시도 창이다. 지나면 download 단계가 죽는다.
+          retention-days: 7
+
+  server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: erdd
+          POSTGRES_DB: erdd_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d erdd_test -h 127.0.0.1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # 이 잡 전용 DB 다. 서버 테스트는 매 케이스 전 테이블을 TRUNCATE 한다.
+      DATABASE_URL: postgres://postgres:erdd@localhost:5432/erdd_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # `pnpm db:migrate` 를 쓰지 않는다 — 그 스크립트는 .env 를 셸에 로드하는 관용구다.
+      - run: pnpm -C apps/server exec drizzle-kit migrate
+
+      # 서버 스위트는 DATABASE_URL 이 없으면 대부분을 skip 하고 초록으로 끝난다.
+      # 그래서 통과만 보지 않고 skip·todo 가 0 인지를 따로 판정한다.
+      - name: pnpm -C apps/server test (skip 0 판정)
+        run: |
+          pnpm -C apps/server exec vitest run --reporter=default --reporter=json \
+            --outputFile.json="$RUNNER_TEMP/server-vitest.json"
+          # shellcheck disable=SC2016  # 작은따옴표 안은 JS 템플릿 리터럴이다
+          node -e '
+            const r = require(process.argv[1])
+            const skipped = r.numPendingTests + r.numTodoTests
+            console.log(`서버 테스트: 전체 ${r.numTotalTests} · 통과 ${r.numPassedTests} · skip ${skipped}`)
+            if (skipped !== 0) {
+              console.error("skip 된 서버 테스트가 있습니다 — DB 가 배선되지 않았을 수 있습니다.")
+              process.exit(1)
+            }
+          ' "$RUNNER_TEMP/server-vitest.json"

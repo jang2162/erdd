@@ -40,7 +40,7 @@
   🔥 **`.env` 를 로드해 `pnpm verify` 를 돌리면 개발 DB 가 통째로 날아간다** ·
   `pnpm -s -r typecheck` 는 오류가 있어도 출력이 비고 종료코드만 1 이다 · 브라우저 스모크 준비
 - **CLI 패키지를 게시할 때 → [docs/guides/release.md](docs/guides/release.md)**
-  (태그 규약, 게시를 막는 가드 다섯, core 버전 가드, 웹 번들·매뉴얼 동봉)
+  (태그 규약, 게시를 막는 가드 넷, core 버전 가드, 게시 경로·trusted publishing·첫 게시, 웹 번들·매뉴얼 동봉)
 - **새 op 엔티티나 엔티티 필드를 추가할 때 → [docs/guides/data-layer.md](docs/guides/data-layer.md)**
   (등록처 여섯 + 일곱 번째, `ENTITY_KINDS` 순서가 정확성 제약인 이유, 하위호환, op 상한, diff 함수 둘)
 - **명명 규칙·사전·형식 템플릿·경고를 건드릴 때 → [docs/guides/naming.md](docs/guides/naming.md)**
@@ -64,6 +64,8 @@
 - **초대·비밀번호 재설정 링크나 공개 프로시저를 건드릴 때 →
   [docs/guides/auth-links.md](docs/guides/auth-links.md)**
   (공개 표면 일곱과 그 잠금, `assertLive` 한 곳 판정, 링크 오류의 종료성 판정)
+- **저장소를 공개하고 npm 에 첫 게시할 때 → [docs/ops/public-release.md](docs/ops/public-release.md)**
+  (일회성 체크리스트 — 끝나면 그 파일과 이 줄을 함께 지운다)
 - **다음에 무엇을 할지 고를 때 → [docs/ops/known-issues.md](docs/ops/known-issues.md)**
   (범위 밖으로 미룬 제품 결정, 배제한 것, 기획 대비 미구현)
 - **제품 동작·화면 문구를 바꿨을 때 → `docs/manual/` 네 편을 함께 고친다.**
