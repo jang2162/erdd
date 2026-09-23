@@ -93,6 +93,45 @@ describe.skipIf(!url)('resource.library.import', () => {
     expect((await items(libraryId)).map((i) => (i.payload as { logicalName: string }).logicalName)).toEqual(['주문'])
   })
 
+  /**
+   * 미리보기 해시가 맞으면 적용이 통과한다 — 위 409 테스트(불일치 → 거절)만으로는 「해시가 오면
+   * 무조건 409」나 dryRun·적용 두 경로의 해시 계산이 갈라지는 결함을 잡지 못한다. id 오름차순과
+   * 생성 순서를 일부러 어긋나게 심어 정렬 결정성도 함께 잠근다.
+   */
+  it('미리보기 해시가 일치하면 적용이 통과한다(변경 없음, 3개 이상, id·생성 순서 불일치)', async () => {
+    const libraryId = await createGlobal()
+    const idApple = '00000000-0000-4000-8000-000000000001'
+    const idBanana = '00000000-0000-4000-8000-000000000002'
+    const idOrange = '00000000-0000-4000-8000-000000000003'
+    // 생성 순서(오렌지 → 사과 → 바나나)와 id 오름차순(사과 → 바나나 → 오렌지)을 일부러 어긋나게 한다.
+    for (const [id, payload, offset] of [
+      [idOrange, { logicalName: '오렌지', abbreviation: 'ORNG', englishName: null, description: null }, '3 seconds'],
+      [idApple, { logicalName: '사과', abbreviation: 'APL', englishName: null, description: null }, '2 seconds'],
+      [idBanana, { logicalName: '바나나', abbreviation: 'BNN', englishName: null, description: null }, '1 seconds'],
+    ] as const) {
+      await app.pgPool!.query(
+        `INSERT INTO resource_items (id, library_id, kind, payload, version, created_at)
+         VALUES ($1, $2, 'word', $3::jsonb, 1, now() - $4::interval)`,
+        [id, libraryId, JSON.stringify(payload), offset],
+      )
+    }
+    const text = `${HEAD}words:\n  - { logicalName: 사과, abbreviation: APL }\n  - { logicalName: 바나나, abbreviation: BNN }\n  - { logicalName: 오렌지, abbreviation: ORNG }\n`
+    const preview = (await post(admin, { target: { libraryId }, text, dryRun: true })).json().result.data
+    expect(preview.summary.counts).toMatchObject({ unchanged: 3, add: 0, update: 0, remove: 0 })
+    const res = await post(admin, { target: { libraryId }, text, expectedStateHash: preview.stateHash })
+    expect(res.statusCode).toBe(200)
+    const data = res.json().result.data
+    expect(data).toMatchObject({ applied: true, summary: { counts: { unchanged: 3, add: 0, update: 0, remove: 0 } } })
+    const left = (await items(libraryId)).map((i) => ({
+      id: i.id, version: i.version, abbreviation: (i.payload as { abbreviation: string }).abbreviation,
+    })).sort((a, b) => (a.id < b.id ? -1 : 1))
+    expect(left).toEqual([
+      { id: idApple, version: 1, abbreviation: 'APL' },
+      { id: idBanana, version: 1, abbreviation: 'BNN' },
+      { id: idOrange, version: 1, abbreviation: 'ORNG' },
+    ])
+  })
+
   it('파일 오류는 400 이고 위치를 담는다', async () => {
     const libraryId = await createGlobal()
     const res = await post(admin, { target: { libraryId }, text: wordsFile('{ logicalName: 고객, abbrevation: X }') })
@@ -151,6 +190,39 @@ describe.skipIf(!url)('resource.library.import', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json().result.data.summary.counts).toMatchObject({ unchanged: 1, add: 0 })
     expect(await items(libraryId)).toHaveLength(1)
+  })
+
+  /**
+   * 🔥 가져오기가 라이브러리 행만 잠그고 항목은 잠그지 않은 채 읽으면, 그 사이 items.update 가
+   * 커밋한 값을 가져오기가 버전 조건 없이 덮어써 v2 가 두 값을 가리키게 된다. 밖에서 항목 행을
+   * 잠가 가져오기를 붙들어 두고(실제 대기를 pg_locks 로 확인), 그 사이 항목을 v2 로 바꾸고 풀어
+   * 준다 — 가져오기는 그 위에서 병합해 v3 으로 끝나야 한다(같은 버전 두 값이 생기면 안 된다).
+   */
+  it('가져오기가 항목도 잠가 동시 items.update 를 덮어쓰지 않는다', async () => {
+    const libraryId = await createGlobal()
+    await post(admin, { target: { libraryId }, text: wordsFile('{ logicalName: 고객, abbreviation: CUST }') })
+    const itemId = (await items(libraryId))[0]!.id
+    const client = await app.pgPool!.connect()
+    let res: Awaited<ReturnType<typeof post>>
+    try {
+      await client.query('BEGIN')
+      await client.query('SELECT id FROM resource_items WHERE id = $1 FOR UPDATE', [itemId])
+      const pending = post(admin, { target: { libraryId }, text: wordsFile('{ logicalName: 고객, abbreviation: CSTMR }') })
+      await waitForLockWaiter(client)
+      await client.query(
+        'UPDATE resource_items SET version = 2, payload = $2::jsonb WHERE id = $1',
+        [itemId, JSON.stringify({ logicalName: '고객', abbreviation: 'MID', englishName: null, description: null })],
+      )
+      await client.query('COMMIT')
+      res = await pending
+    } finally {
+      await client.query('ROLLBACK').catch(() => {})
+      client.release()
+    }
+    expect(res.statusCode).toBe(200)
+    const rows = await items(libraryId)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: itemId, version: 3, payload: { logicalName: '고객', abbreviation: 'CSTMR' } })
   })
 
   it('prune 은 파일에 없는 항목을 지우되, 남는 용어가 가리키는 도메인은 남긴다', async () => {

@@ -88,7 +88,12 @@ export async function runLibraryImport(db: Db, actor: Actor, input: LibraryImpor
     const locked = await tx.select({ id: resourceLibraries.id }).from(resourceLibraries)
       .where(eq(resourceLibraries.id, libraryId)).for('update')
     if (locked.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: '라이브러리를 찾을 수 없습니다' })
-    const items = await loadLibraryItems(tx, libraryId)
+    // 항목도 잠근다 — 잠그지 않으면 동시 items.update 를 같은 버전 번호로 덮어쓴다(가져오기가 v1을
+    // 읽은 뒤 items.update 가 v2=A 를 커밋하고, 가져오기가 그 위에 버전 조건 없이 v2=B 를 쓰면 v2 가
+    // 두 값을 가리키게 된다). promote(항목 → 라이브러리)와 잠금 순서가 반대라 겹치는 항목에서는
+    // 교착(40P01)이 날 수 있다 — 안전한 실패, guides/shared-resources.md 「파일 내보내기·가져오기」
+    // 알려진 한계.
+    const items = await loadLibraryItems(tx, libraryId).for('update')
     const stateHash = libraryStateHash(items)
     if (input.expectedStateHash !== undefined && input.expectedStateHash !== stateHash) {
       throw new TRPCError({ code: 'CONFLICT', message: '미리보기 이후 라이브러리가 바뀌었습니다 — 다시 미리보기 하세요' })
