@@ -52,6 +52,7 @@ export function init(ctx: InitCtx): Promise<number> {
         dialects: [ctx.dialect ?? 'postgresql'],
         namingRules: { ...DEFAULT_NAMING_RULES, case: ctx.namingCase ?? DEFAULT_NAMING_RULES.case },
         tableOptions: { ...DEFAULT_TABLE_OPTIONS },
+        dictionaries: [],
       })
       await ensureGitignore(ctx.cwd)
       emit(ctx.json, '로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요', { local: true })
@@ -83,6 +84,8 @@ export function init(ctx: InitCtx): Promise<number> {
     await writeConfig(ctx.cwd, {
       serverUrl, projectId, dialects: project.dialects, namingRules: project.namingRules,
       tableOptions: project.tableOptions ?? { ...DEFAULT_TABLE_OPTIONS },
+      // 새 연결 = 새 프로젝트라 옛 config 의 구독을 잇지 않는다.
+      dictionaries: [],
     })
     await writeToken(ctx.cwd, token)
     await ensureGitignore(ctx.cwd)

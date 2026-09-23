@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import { DIALECTS, type Dialect, type NamingRules } from '@erdd/core'
+import { dictList } from './commands/dict-list.js'
 import { diff } from './commands/diff.js'
 import { exportCommand, type ExportFormat } from './commands/export.js'
 import { importCommand } from './commands/import.js'
@@ -29,6 +30,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   import <파일> DDL·DBML 파일을 로컬 파일에 가져온다(머지 — 서버 반영은 push)
   serve        로컬 서버를 띄워 브라우저에서 편집한다(서버 연결 불필요)
   skill install 에이전트 스킬 문서를 프로젝트에 설치한다
+  dict <list|pull|push|requests>  공용 사전을 주고받는다
 
 옵션
   --json                기계용 JSON 출력
@@ -208,6 +210,12 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         }
       }
       return serve({ ...ctx, port, open: !argv.includes('--no-open') })
+    }
+    case 'dict': {
+      // 하위 명령 자리에 플래그가 오면 하위 명령이 빠진 것이다(`erdd dict --json`).
+      const sub = argv[1]?.startsWith('-') === true ? undefined : argv[1]
+      if (sub === 'list') return dictList(ctx)
+      return usageError(json, `알 수 없는 dict 하위 명령: ${sub ?? '(없음)'} — list | pull | push | requests`)
     }
     case 'skill': return skill({
       ...ctx, sub: argv[1], dir: flagValue(argv, 'dir'), force: argv.includes('--force'),

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createEmptyModel, type ProjectModel } from '@erdd/core'
-import { writeConfig, CONFIG_FILE } from '../config.js'
+import { readConfig, writeConfig, CONFIG_FILE } from '../config.js'
 import { seedPulled, TEST_CONFIG as CONFIG } from '../testing/harness.js'
 import { readTree, writeTree } from '../tree.js'
 import type { ApiClient } from '../client.js'
@@ -33,6 +33,7 @@ beforeEach(async () => {
       tablePhysicalTemplate: '', tableLogicalTemplate: '',
     },
     tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
+    dictionaries: [],
   })
 })
 afterEach(() => vi.restoreAllMocks())
@@ -113,6 +114,13 @@ describe('pull', () => {
     expect(confirm).not.toHaveBeenCalled()
     expect(code).toBe(0)
     expect(await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')).toContain('MBR')
+  })
+
+  // 리뷰 초점 1 — syncDown 이 config 를 서버 값으로 통째로 새로 만들며 구독을 지우면 안 된다.
+  it('pull 은 config 를 서버 값으로 갱신하면서 구독(dictionaries)을 보존한다', async () => {
+    await writeConfig(dir, { ...CONFIG, dialects: [...CONFIG.dialects], dictionaries: [{ id: 'L1', name: '표준' }] })
+    expect(await pull({ cwd: dir, json: true, yes: true, strict: false, client: stubClient() })).toBe(0)
+    expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
   })
 
   it('최초 pull은 base가 없으므로 확인하지 않는다', async () => {

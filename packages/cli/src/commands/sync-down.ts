@@ -3,7 +3,7 @@ import {
   type Dialect, type FileIssue, type NamingRules, type ProjectModel, type TableOptions,
 } from '@erdd/core'
 import type { ApiClient } from '../client.js'
-import { writeBase, writeConfig, writeSync, type Connection } from '../config.js'
+import { readConfig, writeBase, writeConfig, writeSync, type Connection } from '../config.js'
 import { writeTree } from '../tree.js'
 
 export type SyncDownResult = {
@@ -40,9 +40,12 @@ export async function syncDown(
   // 서버가 진실 원천이다 — 방언·명명 규칙을 매번 갱신한다.
   // ⚠️ 서버 값으로 config 를 통째로 덮어쓴다 — 연결된 프로젝트에서 config 의 테이블 옵션은
   // 서버의 거울이다(`namingRules` 가 이미 갖고 있는 성질).
+  // 구독은 서버가 모르는 로컬 값이다 — 보존한다.
+  const { dictionaries } = await readConfig(cwd)
   await writeConfig(cwd, {
     ...connection, dialects: project.dialects, namingRules: project.namingRules,
     tableOptions: project.tableOptions ?? { ...DEFAULT_TABLE_OPTIONS },
+    dictionaries,
   })
 
   return { projectName: project.name, seq, model, written, deleted, issues }

@@ -82,6 +82,19 @@ describe('main', () => {
     }
   })
 
+  it('dict list 는 명령으로 배선돼 있고, 모르는 하위 명령은 USAGE로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['dict', 'list', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+    for (const argv of [['dict', 'nope', '--json'], ['dict', '--json']]) {
+      out.length = 0
+      expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+  })
+
   it('serve --port 에 값이 빠지면 조용히 기본 포트로 떨어지지 않고 USAGE로 끝난다', async () => {
     const out: string[] = []
     vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
