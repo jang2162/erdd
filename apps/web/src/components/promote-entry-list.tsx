@@ -77,6 +77,12 @@ export function PromoteEntryList({
                       onChange={(e) => onToggle(entry.entityId, e.target.checked)} />
                     <EntryLabel entry={entry} />
                   </label>
+                  {/* 문장이 길어 좁은 패널에서 잘리지 않게 줄바꿈을 허용한다. */}
+                  {entry.sourceBehind && (
+                    <Badge variant="outline" className="max-w-[60%] shrink whitespace-normal">
+                      원본이 더 새롭습니다 — 먼저 가져오기(재동기화)로 받으세요
+                    </Badge>
+                  )}
                   {selected.has(entry.entityId) && danglingDomain(entry, selected) && (
                     <Badge variant="outline" className="shrink-0">도메인 연결 비움</Badge>
                   )}

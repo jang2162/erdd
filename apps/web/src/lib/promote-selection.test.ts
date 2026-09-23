@@ -19,6 +19,14 @@ describe('initialSelection', () => {
     ])
     expect([...selected].sort()).toEqual(['a', 'b'])
   })
+
+  it('원본이 더 새로운 update는 선택하지 않는다 — 올리면 남이 고친 값이 되돌아간다', () => {
+    const selected = initialSelection([
+      entry({ entityId: 'a', status: 'update' }),
+      entry({ entityId: 'b', status: 'update', sourceBehind: true }),
+    ])
+    expect([...selected]).toEqual(['a'])
+  })
 })
 
 describe('setAllForStatus', () => {

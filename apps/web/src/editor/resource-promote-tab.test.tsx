@@ -128,6 +128,43 @@ describe('ResourcePromoteTab', () => {
     expect(screen.getByRole('checkbox', { name: '회원 선택' })).toHaveProperty('checked', false)
   })
 
+  /**
+   * 링크된 항목의 payload 가 달라도 원본이 마지막 가져오기 이후 앞섰으면 그 차이는 남이 고친 것이다.
+   * 기본 선택하면 승격 한 번에 남이 고친 원본이 이 프로젝트의 옛 값으로 되돌아간다.
+   */
+  it('원본이 더 새로운 원본 갱신 항목은 기본 미선택이고 배지를 달며, 직접 체크하면 선택된다', async () => {
+    const BEHIND = '원본이 더 새롭습니다 — 먼저 가져오기(재동기화)로 받으세요'
+    const base = { logicalName: '고객', abbreviation: 'CSTMR', englishName: null, description: null }
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({
+        data: [
+          // 고객: 이 프로젝트가 v2 로 받은 뒤 남이 CSTM v3 으로 고쳤다.
+          { id: 's1', kind: 'word', version: 3, payload: { ...base, abbreviation: 'CSTM' } },
+          // 거래처: v2 그대로이고 이 프로젝트가 고쳤다 → 평범한 원본 갱신.
+          { id: 's2', kind: 'word', version: 2, payload: { ...base, logicalName: '거래처' } },
+        ],
+      }),
+    }, {
+      ...createEmptyModel(),
+      words: {
+        w1: { id: 'w1', ...base, origin: { libraryId: 'l2', sourceId: 's1', sourceVersion: 2, base } },
+        w2: {
+          id: 'w2', ...base, logicalName: '거래처', abbreviation: 'CLNT',
+          origin: { libraryId: 'l2', sourceId: 's2', sourceVersion: 2, base: { ...base, logicalName: '거래처' } },
+        },
+      },
+    })
+    await openPromoteTab()
+    expect(await screen.findByText('원본 갱신 (2)')).toBeDefined()
+    expect(screen.getByRole('checkbox', { name: '고객 선택' })).toHaveProperty('checked', false)
+    expect(screen.getByRole('checkbox', { name: '거래처 선택' })).toHaveProperty('checked', true)
+    expect(screen.getAllByText(BEHIND)).toHaveLength(1)
+    expect(screen.getByText(BEHIND).closest('li')!.textContent).toContain('고객')
+    await userEvent.click(screen.getByRole('checkbox', { name: '고객 선택' }))
+    expect(screen.getByRole('checkbox', { name: '고객 선택' })).toHaveProperty('checked', true)
+  })
+
   it('도메인을 함께 선택하면 "도메인 연결 비움" 경고가 사라진다', async () => {
     renderPanel({
       'resource.library.listForProject': () => ({ data: LIBS }),
