@@ -191,8 +191,8 @@ function maxCustomFieldOrder(model: ProjectModel, target: string): number {
 
 /**
  * 계획과 항목별 결정을 적용한 새 모델을 반환한다(입력 모델 불변).
- * 결정이 없는 항목은 'defer'로 본다. 처리할 것이 없으면 입력 모델을 그대로 돌려준다
- * (diffModels가 빈 배열을 내 뮤테이션 자체가 일어나지 않는다).
+ * 결정이 없는 항목은 'defer'로 본다. 실제로 바뀐 엔티티가 없으면(전부 defer, 대상 없는 adopt 등)
+ * 입력 모델을 그대로(`===`) 돌려준다 — 호출자가 참조 비교로 「바뀐 것 없음」을 판정할 수 있다.
  */
 export function applyResyncPlan(
   model: ProjectModel,
@@ -232,6 +232,7 @@ export function applyResyncPlan(
     terms: { ...model.terms },
     customFields: { ...model.customFields },
   }
+  let changed = false
   const nextOrder: Record<string, number> = {
     table: maxCustomFieldOrder(model, 'table') + 1,
     column: maxCustomFieldOrder(model, 'column') + 1,
@@ -254,6 +255,7 @@ export function applyResyncPlan(
         const target = adopted.get(entry.sourceId)
         if (target === undefined) continue
         collection[target] = { ...collection[target]!, origin }   // 내용은 그대로, 출처만
+        changed = true
         continue
       }
       if (decision !== 'apply') continue
@@ -262,6 +264,7 @@ export function applyResyncPlan(
         ? { order: nextOrder[String(payload.target)]!++ }
         : {}
       collection[id] = { ...payload, ...extra, id, origin }
+      changed = true
       continue
     }
 
@@ -277,7 +280,8 @@ export function applyResyncPlan(
       // 'keep' — 내용은 그대로, origin만 갱신해 "검토했고 거절했다"를 기록한다.
       collection[id] = { ...current, origin }
     }
+    changed = true
   }
 
-  return next
+  return changed ? next : model
 }

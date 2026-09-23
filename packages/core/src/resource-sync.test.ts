@@ -295,7 +295,7 @@ describe('adopt', () => {
     m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L0', sourceId: 'X', sourceVersion: 1, base: {} })
     const plan = planResync(m, 'L1', [libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })])
     expect(adoptTargetOf(m, plan.entries[0]!)).toBeNull()
-    expect(applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')).toEqual(m)
+    expect(applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')).toBe(m)   // 전부 no-op 이면 입력 그대로
   })
 
   it('후보가 둘이면 id 오름차순 첫 항목에 붙인다', () => {
@@ -360,6 +360,6 @@ describe('adopt', () => {
     m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } })
     const plan = planResync(m, 'L1', [libWord('S1', 2, { logicalName: '고객', abbreviation: 'CUS', englishName: null, description: null })])
     expect(plan.entries[0]!.status).toBe('auto-update')
-    expect(applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused').words['w1']!.origin!.sourceVersion).toBe(1)
+    expect(applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')).toBe(m)
   })
 })
