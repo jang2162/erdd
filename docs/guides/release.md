@@ -65,12 +65,14 @@ cli 의 퍼미션 테스트 둘 — `packages/cli/src/commands/push.test.ts` 의
 
 ## 게시를 막는 가드 넷
 
-| 가드 | 어디서 | 무엇을 막나 |
-|---|---|---|
-| 태그 버전 == `packages/cli/package.json` 의 `version` | CI publish | 태그만 올리고 매니페스트를 잊는 것. 그대로 나가면 npm 에 태그와 다른 버전이 올라간다 |
-| `packages/cli/web/index.html` 존재 | CI publish | 번들 없는 게시. 설치한 쪽에서 서버는 뜨는데 `/p/<id>` 만 404 를 내는, 원인을 짚기 어려운 상태가 된다 |
-| **core 버전 누락** | CI publish | 「새 cli + 옛 core」가 조용히 나가는 것. 아래 절 |
-| **`prepack`**(`check-web-bundle.mjs` → `bundle-docs.mjs`) | pack·publish 어디서나 | 웹 번들 없이 팩하는 것. CI 가드와 겹치지만 **CI 밖의 손 게시까지** 덮는다. CI 의 `pnpm pack` 이 `--ignore-scripts` 를 쓰지 않는 것이 이 훅을 거기서도 돌게 하려는 것이다 |
+워크플로 주석도 같은 번호·이름으로 부른다. 「태그 형식 확인」 단계는 트리거 조건의 일부라 가드에 넣지 않는다.
+
+| # | 가드 | 어디서 | 무엇을 막나 |
+|---|---|---|---|
+| 1 | **태그 버전** — 태그의 버전 == `packages/cli/package.json` 의 `version` | CI publish | 태그만 올리고 매니페스트를 잊는 것. 그대로 나가면 npm 에 태그와 다른 버전이 올라간다 |
+| 2 | **웹 번들** — `packages/cli/web/index.html` 존재 | CI publish | 번들 없는 게시. 설치한 쪽에서 서버는 뜨는데 `/p/<id>` 만 404 를 내는, 원인을 짚기 어려운 상태가 된다 |
+| 3 | **core 버전 누락** | CI publish | 「새 cli + 옛 core」가 조용히 나가는 것. 아래 절 |
+| 4 | **`prepack`**(`check-web-bundle.mjs` → `bundle-docs.mjs`) | pack·publish 어디서나 | 웹 번들 없이 팩하는 것. CI 가드와 겹치지만 **CI 밖의 손 게시까지** 덮는다. CI 의 `pnpm pack` 이 `--ignore-scripts` 를 쓰지 않는 것이 이 훅을 거기서도 돌게 하려는 것이다 |
 
 **패키지 이름을 검사하는 가드는 두지 않는다.** 게시 권한은 패키지 이름마다 npmjs.com 에 건 trusted
 publisher 설정이 쥔다 — 설정하지 않은 이름으로는 OIDC 게시가 거절된다(→ 「게시 경로와 인증」).
@@ -154,8 +156,15 @@ publish 잡은 두 패키지를 각각 `pnpm -C packages/<이름> pack --pack-de
   `@pnpm/plugin-commands-publishing` 의 `recursivePublish` 가 그렇게 짜여 있고, 이미 있는 버전에
   `pnpm --filter @erdd/core publish --dry-run --no-git-checks` 를 돌리면 위 문구와 `0` 이 나온다.
 
-`prepack`(가드 넷째)은 `pnpm pack` 이 부른다. `npm publish <tarball>` 은 이미 팩된 것을 올리므로
+`prepack`(가드 4)은 `pnpm pack` 이 부른다. `npm publish <tarball>` 은 이미 팩된 것을 올리므로
 라이프사이클 스크립트를 다시 돌리지 않는다.
+
+⚠️ **publish 잡에서 도는 것은 전부 게시 신원 옆에서 돈다.** `id-token: write` 의 OIDC 요청 토큰은 잡의
+모든 단계에 보인다. 지금은 의존성 설치(`pnpm install`)가 의존성의 빌드 스크립트를 돌리지 않는다 —
+pnpm 10 은 `onlyBuiltDependencies` 에 적힌 것만 돌리고 이 저장소에는 그 설정이 없다.
+**`onlyBuiltDependencies` 에 무언가를 넣으면 그 스크립트가 `id-token: write` 옆에서 돈다** — 넣어야 하면
+팩 잡(신원 없음)과 게시 잡(tarball 만 받아 `npm publish`)을 나누는 것을 먼저 검토하라. 같은 이유로 publish
+잡의 `setup-node` 에는 `cache: pnpm` 을 두지 않는다(다른 실행이 만든 캐시를 신원 있는 잡에 복원하지 않는다).
 
 ### trusted publishing 과 provenance
 
@@ -164,12 +173,19 @@ trusted publishing 은 npmjs.com 의 **패키지별** 설정(Settings → Truste
 비운다. publish 잡은 `permissions: id-token: write` 를 갖는다. **npm 은 이 설정을 저장할 때 검증하지
 않는다** — 값이 틀리면 다음 게시에서야 거절로 드러난다.
 
+- ⚠️ **publish 잡에 GitHub environment(`environment:`)를 붙이면 trusted publisher 의 environment 칸에
+  같은 이름을 넣어야 한다.** 한쪽만 있으면 OIDC 게시가 거절된다. environment 는 필수 리뷰어로 게시를
+  사람 승인 뒤로 미는 용도다 — 지금은 두지 않았으므로 쓰기 권한이 있는 사람은 `cli-v*` 태그를 밀어
+  게시할 수 있다. 그것을 좁히려면 GitHub 의 태그 ruleset 으로 `cli-v*` 생성을 제한하거나 environment 를 둔다.
 - ⚠️ **워크플로 파일 이름을 바꾸거나 publish 잡을 다른 파일로 옮기면 게시가 거절된다.** npm 은
   OIDC 토큰의 워크플로 이름을 그 설정과 대조한다. `workflow_call` 로 불린 워크플로 안에서 게시하면
   **부른 쪽**의 이름으로 대조되므로, 게시 단계는 `release.yml` 에 직접 둔다(`ci.yml` 은 검증만 한다).
 - ⚠️ **두 매니페스트의 `repository.url`(`git+https://github.com/jang2162/erdd.git`)을 바꾸지 마라.**
   provenance 는 매니페스트의 저장소와 실제로 빌드한 저장소를 대조해 어긋나면 게시를 거절한다.
 - **GitHub 호스트 러너에서만 된다.** npm 이 셀프 호스트 러너의 OIDC 게시를 받지 않는다.
+- **저장소가 공개여야 한다.** npm 의 provenance 는 공개 저장소에서 빌드한 공개 패키지에만 붙는다 —
+  비공개 저장소에서 `--provenance` 로 게시하면 거절된다. publish 잡의 태그 fetch 도 자격증명 없이
+  돌아 공개 저장소를 전제한다.
 - `publishConfig` 에는 `access: "public"` 만 둔다. 스코프 패키지의 게시는 기본이 비공개(`restricted`)라
   유료 플랜이 아니면 그것이 없을 때 거절된다(CLI 의 `--access public` 과 겹치지만 손 게시까지 덮는다).
   **`publishConfig.registry` 는 두지 않는다** — 게시 대상은 기본값인 공개 npm 하나다.
@@ -220,6 +236,10 @@ npm publish /tmp/erdd-pack/erdd-cli-<버전>.tgz --access public
 
 core 를 먼저 올린다 — cli 가 core 를 의존한다. **토큰을 저장소 안의 `.npmrc` 에 적지 마라**(커밋 대상이다).
 
+⚠️ **먼저 `npm config get @erdd:registry` 가 `undefined` 인지 확인한다.** 사용자·전역 설정에 `@erdd` 스코프
+레지스트리가 있으면 `npm publish`·`npm view` 가 **그 레지스트리로 나간다** — 스코프 설정이 `--registry`
+인자보다 이긴다. 조회는 엉뚱한 곳의 결과를 내고 게시는 엉뚱한 곳에 올라간다.
+
 ## 소비처 설치
 
 사용자 매뉴얼과 같은 내용이다. 레지스트리 설정 없이 `pnpm add -D @erdd/cli tsx`
@@ -246,6 +266,10 @@ core 를 먼저 올린다 — cli 가 core 를 의존한다. **토큰을 저장�
 안 지워져서, 반대 순서였을 때 그 잔재가 최신 빌드를 가리는 함정이 실제로 재현됐다.
 설치본에서 저장소 후보가 잡히는 일은 없다 — `<소비처>/node_modules/apps/web/dist` 로 풀려
 `node_modules` 안이라 구조적으로 성립하지 않는다.
+
+CI 는 이 번들을 artifact 로 넘길 때 `include-hidden-files: true` 로 **점 파일까지** 싣는다.
+upload-artifact 의 기본값은 점 파일을 빼는데, 그러면 `apps/web/public` 에 생긴 `.well-known/` 같은 것이
+게시본에서 조용히 빠지고 가드 2(index.html 존재)로는 잡히지 않는다 — 그 옵션을 걷지 마라.
 
 ### 라이선스 — `packages/*/LICENSE`
 
@@ -303,6 +327,11 @@ npm 은 `files` 와 무관하게 **패키지 루트의** `LICENSE` 를 tarball �
 - **떠 있는 버전이 셋 있다.** `.nvmrc` 의 `22` 는 실행 시점의 최신 22.x 로, `npm@^11.5.1` 은 최신
   11.x 로, 러너 이미지 `ubuntu-24.04` 는 GitHub 가 갱신하는 대로 풀린다. 재현 가능한 파이프라인을
   원하면 `.nvmrc` 를 `22.x.y` 로, npm 을 정확한 버전으로 고정한다. 액션은 커밋 SHA 로 고정돼 있다.
+- **게시 대기열은 하나뿐이다.** `concurrency: release` 는 한 번에 하나를 돌리고 대기는 하나만 둔다 —
+  도는 중에 태그 둘을 더 밀면 먼저 대기하던 쪽이 취소된다. 태그는 앞 게시가 끝난 뒤 하나씩 민다.
+  취소된 태그는 그 실행을 다시 돌리면 된다.
+- **publish 잡을 다시 돌릴 수 있는 창은 7일이다.** verify 가 올린 웹 번들 artifact 의 보존 기간이다.
+  지나서 「Re-run failed jobs」를 누르면 download 단계가 죽는다(시끄럽게) — 그때는 실행 전체를 다시 돌린다.
 - **태그 필터가 빌드 메타데이터를 잡지 않는다.** `cli-v0.1.0+build.1` 형태는 워크플로를 띄우지
   않는다. 의도라면 그대로 둬도 된다.
 - **`erdd --version` 이 없다.** 게시되는 CLI 인데 버전을 물을 방법이 없다(`--version` 은
@@ -319,7 +348,8 @@ npm 은 `files` 와 무관하게 **패키지 루트의** `LICENSE` 를 tarball �
 - **워크플로는 GitHub 러너에서 실제로 돌 때만 확인되는 것이 있다.** 로컬에서 확인한 것은 actionlint
   (shellcheck 포함) 통과, `server` 잡의 단계(새 `postgres:17` 에 `drizzle-kit migrate` → 테스트 →
   skip 0 판정)와 두 패키지의 `pnpm pack` 산출물이다. 러너에서만 확인되는 것은 태그 fetch 가
-  체크아웃이 남긴 자격증명으로 실제로 도는지, `git describe --match 'cli-v*'` 가 태그 체크아웃에서
-  같게 도는지, `pnpm -C apps/web test` 가 러너에서 타임아웃 없이 끝나는지, OIDC 교환과 provenance
-  서명이 성립하는지다. **태그 fetch 는 fetch 직후에 찍히는 `cli-v*` 목록으로 판정한다** — 이번 태그
-  하나뿐이면 자격증명이나 refspec 쪽이고, 여럿이면 들어온 것이다.
+  자격증명 없이 실제로 도는지(체크아웃이 `persist-credentials: false` 다 — 공개 저장소 전제),
+  `git describe --match 'cli-v*'` 가 태그 체크아웃에서 같게 도는지, 잡이 `timeout-minutes` 안에
+  끝나는지(verify 30분·server 20분·publish 20분), OIDC 교환과 provenance 서명이 성립하는지다.
+  **태그 fetch 는 fetch 직후에 찍히는 `cli-v*` 목록으로 판정한다** — 이번 태그 하나뿐이면 옛 태그가
+  GitHub 에 없거나 refspec 쪽이고, 여럿이면 들어온 것이다.

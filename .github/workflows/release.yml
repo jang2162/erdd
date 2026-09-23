@@ -4,15 +4,16 @@
 #   git tag cli-v0.1.0 && git push origin cli-v0.1.0
 #
 # 게시 대상은 공개 npm(registry.npmjs.org)이다. 인증은 npm trusted publishing(OIDC)이고
-# provenance 를 함께 올린다. 가드들의 「무엇을 막나」「어기면 무엇이 조용히 깨지나」와 첫 게시 절차는
-# docs/guides/release.md 가 정본이다 — 이 파일의 주석은 각 단계가 어느 가드인지만 가리킨다.
+# provenance 를 함께 올린다. 가드 넷(1 태그 버전 · 2 웹 번들 · 3 core 버전 누락 · 4 prepack)의
+# 「무엇을 막나」「어기면 무엇이 조용히 깨지나」와 게시 경로는 docs/guides/release.md 가 정본이다 —
+# 이 파일의 주석은 각 단계가 어느 가드인지만 가리킨다.
 
 name: release
 
 on:
   push:
     # GitHub 의 태그 필터는 정규식이 아니라 글롭이다. 넓게 받고, 정확한 SemVer 판정은
-    # publish 잡의 첫 가드가 한다(형식이 어긋나면 거기서 죽는다).
+    # publish 잡의 「태그 형식 확인」 단계가 한다(형식이 어긋나면 거기서 죽는다).
     tags:
       - 'cli-v[0-9]+.[0-9]+.[0-9]+'
       - 'cli-v[0-9]+.[0-9]+.[0-9]+-*'
@@ -20,7 +21,9 @@ on:
 permissions:
   contents: read
 
-# 두 태그의 게시가 겹치면 core 게시 판정(`npm view`)이 서로의 결과를 보지 못한다. 한 줄로 세운다.
+# 두 태그의 게시가 겹치면 core 게시 판정(`npm view`)이 서로의 결과를 보지 못한다. 한 번에 하나만 돌린다.
+# ⚠️ 대기열은 하나뿐이다 — 도는 중에 태그 둘을 더 밀면 먼저 대기하던 쪽이 취소된다. 태그는 앞 게시가
+# 끝난 뒤 하나씩 민다.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -40,6 +43,7 @@ jobs:
   publish:
     needs: verify
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
       # trusted publishing(OIDC)과 provenance 서명에 쓴다.
@@ -47,14 +51,17 @@ jobs:
     env:
       TAG: ${{ github.ref_name }}
     steps:
-      # core 가드가 직전 `cli-v*` 태그까지 히스토리를 거슬러야 한다 — 깊이 제한을 푼다.
+      # 가드 3(core 버전 누락)이 직전 `cli-v*` 태그까지 히스토리를 거슬러야 한다 — 깊이 제한을 푼다.
+      # 자격증명을 남기지 않는다 — 공개 저장소의 태그 fetch 에는 필요 없고, 남기면 뒤의 설치·팩 단계
+      # 내내 `.git/config` 에 GITHUB_TOKEN 이 있다.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # ── 태그를 가져온다 (가드보다 반드시 앞) ──
       # refspec 을 명시해 **태그만** 받는다. 실패하면 **죽게 둔다**(`|| true` 를 붙이지 않는다) —
-      # 태그를 못 받은 「직전 태그 없음」은 첫 릴리스와 구분되지 않아 core 가드가 조용히 통과한다.
+      # 태그를 못 받은 「직전 태그 없음」은 첫 릴리스와 구분되지 않아 가드 3 이 조용히 통과한다.
       - name: cli-v* 태그 가져오기
         run: git fetch origin '+refs/tags/*:refs/tags/*'
 
@@ -64,7 +71,7 @@ jobs:
           echo "받은 cli-v* 태그 $(git tag --list 'cli-v*' | wc -l | tr -d ' ') 개:"
           git tag --list 'cli-v*' --sort=-v:refname
 
-      # ── 가드: 태그 형식 ── 글롭 필터가 넓게 받은 것을 SemVer 로 좁힌다.
+      # ── 태그 형식 확인 ── 트리거 조건의 일부다(가드 넷과 별개). 글롭 필터가 넓게 받은 것을 SemVer 로 좁힌다.
       - name: 태그 형식 확인
         run: |
           if [[ ! "$TAG" =~ ^cli-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
@@ -72,11 +79,12 @@ jobs:
             exit 1
           fi
 
+      # `cache: pnpm` 을 두지 않는다 — 게시 신원(id-token: write)이 있는 잡에 다른 실행이 만든 캐시를
+      # 복원하지 않는다. 의존성은 lockfile 로 새로 받는다.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
 
       # trusted publishing 은 npm CLI 11.5.1 이상이 필요하다. Node 22 에 딸린 npm 은 그보다 낮다.
       - name: npm CLI 올리기
@@ -89,7 +97,7 @@ jobs:
       # `pnpm pack` 이 `workspace:^` 를 실제 버전으로 바꿔 쓰려면 의존성이 설치돼 있어야 한다.
       - run: pnpm install --frozen-lockfile
 
-      # ── 가드 1: 태그 버전 == packages/cli/package.json 의 version ──
+      # ── 가드 1: 태그 버전 ── 태그의 버전 == packages/cli/package.json 의 version.
       - name: 태그 버전 확인
         run: |
           VERSION="${TAG#cli-v}"
@@ -101,12 +109,13 @@ jobs:
           echo "버전 확인: $VERSION"
 
       # verify 가 빌드·테스트한 번들을 그대로 받는다. 재빌드하지 않는다.
+      # artifact 보존 기간(7일, ci.yml)이 지나면 이 단계가 죽는다 — 그때는 태그 게시를 처음부터 다시 돌린다.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: cli-web-bundle
           path: packages/cli/web
 
-      # ── 가드 2: 웹 번들이 실제로 들어 있어야 한다 ──
+      # ── 가드 2: 웹 번들 ── packages/cli/web/index.html 이 실제로 있어야 한다.
       - name: 웹 번들 확인
         run: |
           if [ ! -f packages/cli/web/index.html ]; then

@@ -20,6 +20,13 @@ on:
 permissions:
   contents: read
 
+# PR 은 같은 ref 에 새 push 가 오면 앞 실행을 취소한다. 그 밖(main push, release.yml 이 부를 때)은
+# 실행마다 제 그룹을 가져 서로 취소하지도 기다리지도 않는다 — `workflow_call` 로 불리면 github 컨텍스트가
+# 부른 쪽의 것이라 run_id 가 release 실행마다 다르다. 게시 실행이 PR 규칙에 휘말리지 않게 하려는 설계다.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # 셸을 명시하면 GitHub 가 `bash -eo pipefail` 로 돌린다(생략하면 pipefail 이 빠진다).
 defaults:
   run:
@@ -28,6 +35,7 @@ defaults:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,10 +74,14 @@ jobs:
           name: cli-web-bundle
           path: packages/cli/web/
           if-no-files-found: error
-          retention-days: 1
+          # 점 파일(예: `.well-known/`)이 조용히 빠지지 않게 한다 — 기본값은 뺀다.
+          include-hidden-files: true
+          # publish 잡의 재시도 창이다. 지나면 download 단계가 죽는다.
+          retention-days: 7
 
   server:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17
