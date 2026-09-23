@@ -15,6 +15,7 @@ import { CliError, emit, note } from '../output.js'
 import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { readTree, writeTree } from '../tree.js'
 import { run, type CommandCtx } from './context.js'
+import { guardFeature } from './dict-shared.js'
 
 export type InitCtx = CommandCtx & {
   serverUrl?: string
@@ -210,10 +211,11 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
 
   let project: { id: string; name: string }
   try {
-    project = await client.mutate('project.create', {
+    // 토큰으로 여는 새 기능이다 — 옛 서버의 세션 전용 거절을 「서버 업그레이드」로 번역한다.
+    project = await guardFeature(() => client.mutate<{ id: string; name: string }>('project.create', {
       orgId, name, dialects: settings.dialects,
       namingRules: settings.namingRules, tableOptions: settings.tableOptions,
-    })
+    }))
   } catch (err) {
     if (err instanceof CliError && err.code === 'FORBIDDEN') {
       // 이관 중에는 --project 로 연결하라고 보내지 않는다 — 그 연결에는 기준선이 없어 다음 pull 이

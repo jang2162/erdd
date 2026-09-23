@@ -200,7 +200,7 @@ describe('init --local', () => {
 describe('init --create', () => {
   const ORG = '018f6b0e-0000-7000-8000-00000000000a'
   const CREATED = '018f6b0e-0000-7000-8000-0000000000f1'
-  function createClient(opts: { forbid?: boolean; orgs?: { id: string; name: string }[] } = {}) {
+  function createClient(opts: { forbid?: boolean; oldServer?: boolean; orgs?: { id: string; name: string }[] } = {}) {
     const calls: { path: string; input: unknown }[] = []
     const c: ApiClient = {
       query: vi.fn(async (path: string) => {
@@ -213,6 +213,8 @@ describe('init --create', () => {
         if (path !== 'project.create') throw new Error(`unexpected mutate ${path}`)
         // 서버 project.create 의 실제 문구(apps/server routers/project.ts, token-api.test.ts 가 잠근다)
         if (opts.forbid) throw new CliError('FORBIDDEN', '프로젝트 생성 권한이 없습니다')
+        // 옛 서버: project.create 가 세션 전용(authedProcedure)이라 토큰 호출을 이 문구로 막는다(apps/server trpc.ts)
+        if (opts.oldServer) throw new CliError('UNAUTHORIZED', '이 작업은 액세스 토큰으로 할 수 없습니다')
         return { id: CREATED, name: (input as { name: string }).name }
       }) as ApiClient['mutate'],
     }
@@ -443,6 +445,18 @@ describe('init --create', () => {
     expect(err.message).toBe('프로젝트 생성 권한이 없습니다 — 조직 관리자에게 프로젝트를 만들어 달라고 한 뒤 erdd init --project <id> 로 연결하세요')
     expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
     expect(existsSync(join(dir, '.erdd'))).toBe(false)
+  })
+
+  // 토큰이 틀린 줄 알고 재발급하는 헛수고를 막는다 — 고칠 수 있는 것은 서버 업그레이드뿐이다.
+  it('옛 서버가 토큰의 프로젝트 생성을 막으면 서버를 업그레이드하라고 안내하고 로컬에 아무것도 쓰지 않는다', async () => {
+    const { client } = createClient({ oldServer: true })
+    expect(await init({ ...base, cwd: dir, client })).toBe(1)
+    const err = JSON.parse(out.join('')).error
+    expect(err.code).toBe('UNAUTHORIZED')
+    expect(err.message).toBe('서버가 이 기능을 지원하지 않습니다 — 서버를 업그레이드하세요')
+    expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
+    expect(existsSync(join(dir, '.erdd'))).toBe(false)
+    expect(existsSync(join(dir, 'erdd'))).toBe(false)
   })
 
   // 이관 중이면 --project 로 연결한 뒤의 pull 이 erdd/ 를 덮는다 — 커밋과 수동 절차로 보낸다.
