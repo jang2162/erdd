@@ -64,6 +64,8 @@
 - **초대·비밀번호 재설정 링크나 공개 프로시저를 건드릴 때 →
   [docs/guides/auth-links.md](docs/guides/auth-links.md)**
   (공개 표면 일곱과 그 잠금, `assertLive` 한 곳 판정, 링크 오류의 종료성 판정)
+- **저장소를 공개하고 npm 에 첫 게시할 때 → [docs/ops/public-release.md](docs/ops/public-release.md)**
+  (일회성 체크리스트 — 끝나면 그 파일과 이 줄을 함께 지운다)
 - **다음에 무엇을 할지 고를 때 → [docs/ops/known-issues.md](docs/ops/known-issues.md)**
   (범위 밖으로 미룬 제품 결정, 배제한 것, 기획 대비 미구현)
 - **제품 동작·화면 문구를 바꿨을 때 → `docs/manual/` 네 편을 함께 고친다.**
