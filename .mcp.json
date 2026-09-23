@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "playwright-neo": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--cdp-endpoint",
+        "http://127.0.0.1:9110"
+      ]
+    }
+  }
+}
