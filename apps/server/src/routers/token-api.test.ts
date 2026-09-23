@@ -77,6 +77,18 @@ describe.skipIf(!url)('CLI 사전 동기화가 토큰으로 부르는 프로시�
     expect(got).toMatchObject({ dialects: ['mysql'], namingRules, tableOptions })
   })
 
+  it('project.create 에 부분 명명 규칙(logicalSeparator 누락)을 실으면 400 이고 프로젝트가 생기지 않는다', async () => {
+    // 읽기용 NamingRulesSchema 로 바뀌면 누락 키에 기본값이 조용히 주입된다 — 쓰기는 strict 여야 한다.
+    const namingRules = {
+      case: 'lower_snake', separator: '_', maxLengthBytes: 64,
+      tablePhysicalTemplate: '', tableLogicalTemplate: '',
+    }
+    const res = await tPost('project.create', { orgId, name: '부분', dialects: ['mysql'], namingRules })
+    expect(res.statusCode).toBe(400)
+    const list = (await tGet('project.list', { orgId })).json().result.data as Array<{ name: string }>
+    expect(list.map((p) => p.name)).toEqual(['P'])
+  })
+
   it('조직 member(비관리자)의 토큰으로 project.create 는 403 과 권한 문구다', async () => {
     // CLI init --create 가 이 코드·문구를 「프로젝트 생성 권한이 없습니다 — …」로 번역한다.
     // 핸들러가 authKind 로 분기하지 않아도 토큰 경로로 한 번 잠가 둔다.
