@@ -157,3 +157,6 @@ export { planLibraryImport, materializeLibraryImport, summarizeLibraryImport } f
 export type {
   LibraryImportStatus, LibraryImportEntry, LibraryImportPlan, LibraryImportWrites, LibraryImportSummary,
 } from './library-import.js'
+export { dictSheetsFromWorkbook } from './excel-workbook.js'
+export type { WorkbookLike, WorksheetLike } from './excel-workbook.js'
+export { libraryDocFromDictSheets, dictIssueText } from './library-excel.js'
