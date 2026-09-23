@@ -8,7 +8,7 @@ import { ProjectModelSchema, type ProjectModel } from '@erdd/core'
  * 스냅샷은 **커밋 대상**이다(`erdd/` 아래). 하나당 파일 하나라 새 스냅샷이 새 blob 하나만 더하고
  * 기존 blob 을 재사용한다 — 단일 파일이면 만들 때마다 전체가 새 blob 이 되어 저장소가 빠르게 부푼다.
  *
- * ⚠️ **`readTree`/`writeTree` 는 이 디렉터리를 보지 않는다** — `TOP_LEVEL_FILES`(5개)와
+ * ⚠️ **`readTree`/`writeTree` 는 이 디렉터리를 보지 않는다** — `TOP_LEVEL_FILES`와
  * `erdd/tables/*.yaml` 만 훑기 때문이다. 그래서 모델 파싱에 섞이지 않고 `erdd pull` 의
  * `writeTree` 가 지우지도 않는다. 다만 `watchProject` 는 `erdd/` 를 재귀 감시하므로 스냅샷을 쓸
  * 때마다 감시가 깨어난다 — 읽어 봐야 `readTree` 결과가 그대로라 기준선이 움직이지 않아 아무것도

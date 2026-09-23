@@ -3,12 +3,15 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { applyOps, filesToModel, modelToFiles, MAX_OPS_PER_MUTATION, type Op, type ProjectModel } from '@erdd/core'
+import {
+  applyOps, createEmptyModel, filesToModel, modelToFiles, MAX_OPS_PER_MUTATION, type Op, type ProjectModel,
+} from '@erdd/core'
 import { fullModel } from '@erdd/core/src/testing/fixtures.js'
 import type { ApiClient } from '../client.js'
-import { writeConfig } from '../config.js'
+import { writeBase, writeConfig } from '../config.js'
 import { flagValue, shortFlagValue } from '../main.js'
 import { CliError } from '../output.js'
+import { buildPlan } from '../plan.js'
 import { seedPulled, stubClient as stub, TEST_CONFIG as CONFIG } from '../testing/harness.js'
 import { readTree, writeTree } from '../tree.js'
 import { push } from './push.js'
@@ -1041,5 +1044,23 @@ describe('push', () => {
     expect(text).toContain('중복 없이 수렴')
     expect(text).toContain('erdd diff')     // 두 갈래 모두에 남는다
     expect(text).toMatch(/erdd pull은[^.]*지웁니다/)
+  })
+
+  it('업그레이드 직후(base·로컬에 origins.yaml 이 없음) push 는 서버의 origin 을 지우지 않는다', async () => {
+    const server = createEmptyModel()
+    server.words['018f6b0e-0000-7000-8000-0000000000a1'] = {
+      id: '018f6b0e-0000-7000-8000-0000000000a1', logicalName: '고객', abbreviation: 'CUST',
+      englishName: null, description: null,
+      origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
+    }
+    // 옛 CLI 가 쓴 트리 — origins.yaml 이 없다.
+    const { tree } = modelToFiles(server)
+    delete tree['erdd/origins.yaml']
+    await writeTree(dir, tree)
+    await writeBase(dir, tree)
+    const { client } = stub(server)
+    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
+    expect(plan.conflicts).toEqual([])
+    expect(plan.ops).toEqual([])
   })
 })

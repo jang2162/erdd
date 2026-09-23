@@ -36,14 +36,14 @@ describe('FILE_FIELDS 완전성', () => {
 })
 
 describe('fileVisibleModel', () => {
-  it('메모·좌표·origin을 파일 공간 값으로 정규화한다', () => {
+  it('메모·좌표를 파일 공간 값으로 정규화하고 origin은 보존한다', () => {
     const m = fullModel()
     m.domains['d1']!.origin = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 3, base: {} }
     const v = fileVisibleModel(m)
     expect(v.notes).toEqual({})
     expect(v.tables['tb1']!.position).toEqual({ x: 0, y: 0 })
     expect(v.tables['tb1']!.groupPosition).toBeNull()
-    expect(v.domains['d1']!.origin).toBeNull()
+    expect(v.domains['d1']!.origin).toEqual({ libraryId: 'L1', sourceId: 'S1', sourceVersion: 3, base: {} })
   })
 
   it('원본을 변형하지 않고 컬렉션도 새 객체로 만든다', () => {
@@ -513,5 +513,36 @@ describe('pruneDangling', () => {
     expect(m.tables['tb1']!.groupId).toBeNull()
     expect(m.columns['c2']!.domainId).toBeNull()
     expect(m.terms['t1']!.domainId).toBeNull()
+  })
+})
+
+describe('origin 병합', () => {
+  const X = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 2, base: { logicalName: '고객' } }
+  function word(origin: typeof X | null) {
+    const m = createEmptyModel()
+    m.words['w1'] = { id: 'w1', logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin }
+    return m
+  }
+
+  it('하위호환 — base·local 에 출처가 없고 서버에만 있으면 서버 값을 채택하고 충돌이 없다', () => {
+    const { merged, conflicts } = mergeModels(word(null), word(null), word(X))
+    expect(conflicts).toEqual([])
+    expect(merged.words['w1']!.origin).toEqual(X)
+  })
+
+  it('로컬이 붙인 출처(dict pull)는 서버로 올라간다', () => {
+    const server = word(null)
+    const { merged } = mergeModels(word(null), word(X), server)
+    const { model } = applyMerge(server, merged)
+    const ops = diffModels(server, model)
+    expect(ops).toHaveLength(1)
+    expect(ops[0]).toMatchObject({ action: 'update', entity: 'word', entityId: 'w1' })
+  })
+
+  it('양쪽이 출처를 다르게 바꾸면 (출처) 필드 충돌이다', () => {
+    const Y = { ...X, sourceVersion: 3 }
+    const { conflicts } = mergeModels(word(null), word(X), word(Y))
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({ field: '(출처)', reason: 'field', path: 'erdd/words.yaml' })
   })
 })

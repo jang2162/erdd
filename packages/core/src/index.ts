@@ -100,7 +100,8 @@ export type {
 export { planPromote, applyPromotePlan } from './resource-promote.js'
 export type { PromoteStatus, PromoteEntry, PromotePlan, PromoteWrite } from './resource-promote.js'
 export {
-  modelToFiles, filesToModel, tableFileName, unsafeFileName, TREE_ROOT, TOP_LEVEL_FILES, NEW_ID_PREFIX, isNewId,
+  modelToFiles, filesToModel, tableFileName, unsafeFileName, TREE_ROOT, TOP_LEVEL_FILES, ORIGINS_FILE,
+  NEW_ID_PREFIX, isNewId,
 } from './file-format.js'
 export type { FileTree, FileIssue, FilesToModelResult, FilesToModelOptions } from './file-format.js'
 export {

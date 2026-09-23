@@ -1,7 +1,7 @@
 import { deepEqual } from './equal.js'
 import { TOP_LEVEL_FILES, TREE_ROOT, tableFileName } from './file-format.js'
 import { DIFF_KIND_LABEL } from './model-diff.js'
-import { createEmptyModel, type Origin, type Position, type ProjectModel } from './model.js'
+import { createEmptyModel, type Position, type ProjectModel } from './model.js'
 import { COLLECTION_BY_KIND, ENTITY_KINDS, type EntityKind } from './op.js'
 
 /**
@@ -19,25 +19,26 @@ export const MERGE_KINDS: readonly MergeKind[] =
  *   2) 충돌 출력에 보여줄 필드 이름(사용자가 파일에서 실제로 보는 이름)
  *   3) FILE_INVISIBLE_FIELDS와 짝을 이뤄 "새 엔티티 필드를 분류하지 않으면 테스트가 깨지는" 게이트
  * 괄호 표기는 파일에 전용 키가 없고 배열 위치·파일 소속으로 표현되는 것들이다.
+ * `(출처)`는 사전 파일이 아니라 erdd/origins.yaml 에 실린다.
  */
 export const FILE_FIELDS: Record<MergeKind, Record<string, string>> = {
   tableGroup: { name: 'name', color: 'color', comment: 'comment', alias: 'alias' },
   domain: {
     name: 'name', category: 'category', logicalType: 'logicalType',
     dialectTypes: 'dialectTypes', defaultValue: 'defaultValue',
-    allowedValues: 'allowedValues', description: 'description',
+    allowedValues: 'allowedValues', description: 'description', origin: '(출처)',
   },
   word: {
     logicalName: 'logicalName', abbreviation: 'abbreviation',
-    englishName: 'englishName', description: 'description',
+    englishName: 'englishName', description: 'description', origin: '(출처)',
   },
   term: {
     logicalName: 'logicalName', physicalName: 'physicalName',
-    domainId: 'domain', description: 'description',
+    domainId: 'domain', description: 'description', origin: '(출처)',
   },
   customField: {
     name: 'name', target: 'target', type: 'type', options: 'options',
-    required: 'required', defaultValue: 'defaultValue', order: 'order',
+    required: 'required', defaultValue: 'defaultValue', order: 'order', origin: '(출처)',
   },
   table: {
     physicalName: 'name', logicalName: 'logicalName', comment: 'comment',
@@ -59,21 +60,14 @@ export const FILE_FIELDS: Record<MergeKind, Record<string, string>> = {
 /** 파일에 담기지 않는 필드. 병합 대상이 아니고 push가 절대 건드리지 않는다. */
 export const FILE_INVISIBLE_FIELDS: Record<MergeKind, readonly string[]> = {
   tableGroup: [],
-  domain: ['origin'], word: ['origin'], term: ['origin'], customField: ['origin'],
+  // origin 은 erdd/origins.yaml 에 실려 파일이 진실이다(병합 필드). 객체 전체를 한 값으로 비교한다.
+  domain: [], word: [], term: [], customField: [],
   table: ['position', 'groupPosition'],
   column: [], relationship: [], index: [],
 }
 
-function clearOrigin<T extends { origin: Origin | null }>(
-  collection: Record<string, T>,
-): Record<string, T> {
-  return Object.fromEntries(
-    Object.entries(collection).map(([id, v]) => [id, { ...v, origin: null }]),
-  ) as Record<string, T>
-}
-
 /**
- * 서버 모델을 filesToModel이 만드는 값으로 정규화한다.
+ * 서버 모델을 filesToModel이 만드는 값으로 정규화한다 — 메모를 비우고 좌표를 원점으로 둔다.
  * base·local·server 셋을 같은 공간에 놓아야 3-way 비교가 성립한다.
  * 모든 컬렉션을 새 객체로 만든다 — 병합이 결과에서 delete를 하므로 서버 모델과
  * 컬렉션을 공유하면 서버 모델이 오염된다.
@@ -90,10 +84,10 @@ export function fileVisibleModel(model: ProjectModel): ProjectModel {
     indexes: { ...model.indexes },
     notes: {},
     tableGroups: { ...model.tableGroups },
-    domains: clearOrigin(model.domains),
-    words: clearOrigin(model.words),
-    terms: clearOrigin(model.terms),
-    customFields: clearOrigin(model.customFields),
+    domains: { ...model.domains },
+    words: { ...model.words },
+    terms: { ...model.terms },
+    customFields: { ...model.customFields },
   }
 }
 
@@ -218,6 +212,10 @@ function displayValue(model: ProjectModel, field: string, value: unknown): strin
     if (field === 'groupId') return model.tableGroups[value]?.name ?? value
     if (field === 'domainId') return model.domains[value]?.name ?? value
     return model.tables[value]?.physicalName ?? value
+  }
+  if (field === 'origin' && typeof value === 'object') {
+    const o = value as { libraryId: string; sourceId: string; sourceVersion: number }
+    return `${o.libraryId}/${o.sourceId} v${o.sourceVersion}`
   }
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
@@ -445,9 +443,9 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
 /**
  * 병합 결과를 서버 모델 위에 얹는다.
  *
- * merged는 파일 가시 공간이라 좌표·origin이 비어 있고 notes가 없다. 그대로 diffModels에
- * 넣으면 메모가 전멸하고 좌표가 0으로 초기화되며 fork 출처가 지워진다. 살아남은 엔티티는
- * **서버 엔티티에서 출발해 가시 필드만 덮어쓰고**, notes는 서버 것을 그대로 통과시킨다.
+ * merged는 파일 가시 공간이라 좌표가 원점이고 notes가 없다. 그대로 diffModels에 넣으면
+ * 메모가 전멸하고 좌표가 0으로 초기화된다. 살아남은 엔티티는 **서버 엔티티에서 출발해 가시
+ * 필드만 덮어쓰고**, notes는 서버 것을 그대로 통과시킨다.
  *
  * `out`의 각 엔티티·`notes`는 `server`를 얕게 복사한 것이라 position·columnMappings·
  * index.columns 같은 중첩 값은 여전히 server와 참조를 공유한다. pruneDangling이 스칼라
