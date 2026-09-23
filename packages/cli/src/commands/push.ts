@@ -59,6 +59,18 @@ function autoSummary(ops: readonly Op[]): string {
   return `CLI push (${parts.join(' · ')})`.slice(0, MAX_SUMMARY_LENGTH)
 }
 
+/**
+ * 서버 항목의 공용 사전 출처를 떼는 update 수 — 서버 값이 있고 반영 뒤 값이 `null` 인 것.
+ * 파일이 진실이라 로컬에서 출처가 사라지면 push 는 그대로 서버에서도 뗀다(설계대로다). 그런데
+ * 사용자가 출처를 지운 줄 모르는 경로(출처를 모르는 옛 스냅샷 복원, 옛 드래프트 유지)가 있고,
+ * 떼면 재동기화·승격 상태를 잃는다. 확인을 받지는 않되 「변경 N건」 속에 묻히지 않게 따로 센다.
+ */
+function countDetachedOrigins(ops: readonly Op[]): number {
+  return ops.filter((op) => op.action === 'update'
+    && Object.hasOwn(op.changes, 'origin')
+    && op.changes['origin']!.from != null && op.changes['origin']!.to === null).length
+}
+
 async function confirmDeletes(ctx: PushCtx, plan: PushPlan): Promise<void> {
   const deletes = plan.ops.filter((op) => op.action === 'delete')
   if (deletes.length === 0 && plan.pruned.length === 0) return
@@ -131,6 +143,10 @@ export function push(ctx: PushCtx): Promise<number> {
           `변경이 ${plan.ops.length}건으로 한 번에 반영할 수 있는 ${MAX_OPS_PER_MUTATION}건을 넘습니다. 나눠서 반영하세요`,
           { reservedFiles },
         )
+      }
+      const detachedOrigins = countDetachedOrigins(plan.ops)
+      if (detachedOrigins > 0) {
+        note(`공용 사전 출처를 떼는 변경 ${detachedOrigins}건이 포함됩니다 — 의도하지 않았다면 erdd pull 로 되돌리세요`)
       }
       await confirmDeletes(ctx, plan)
 
@@ -228,7 +244,7 @@ export function push(ctx: PushCtx): Promise<number> {
 
       emit(ctx.json, `반영했습니다 (리비전 ${seq}, 변경 ${plan.ops.length}건)`, {
         ok: true, revisionSeq: seq, ops: plan.ops.length,
-        ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
+        ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles, detachedOrigins,
       })
       return 0
     }

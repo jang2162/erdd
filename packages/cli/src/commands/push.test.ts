@@ -1064,6 +1064,27 @@ describe('push', () => {
     expect(plan.ops).toEqual([])
   })
 
+  it('서버 출처를 떼는 update 가 있으면 건수를 알리고 --json 봉투에 싣는다', async () => {
+    const id = '018f6b0e-0000-7000-8000-0000000000a1'
+    const server = createEmptyModel()
+    server.words[id] = {
+      id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null,
+      origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
+    }
+    await seed(server)
+    // 로컬이 출처를 잃었다(예: 출처를 모르는 옛 스냅샷 복원) — 사전 파일은 그대로다.
+    await rm(join(dir, 'erdd/origins.yaml'))
+
+    const { client, pushCalls } = stub(server)
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
+    const sent = (pushCalls[0] as { ops: Op[] }).ops
+    expect(sent).toEqual([expect.objectContaining({ action: 'update', entity: 'word', entityId: id })])
+    expect(lastJson<{ ok: boolean; detachedOrigins: number }>()).toMatchObject({ ok: true, detachedOrigins: 1 })
+    expect(err.join('')).toContain(
+      '공용 사전 출처를 떼는 변경 1건이 포함됩니다 — 의도하지 않았다면 erdd pull 로 되돌리세요',
+    )
+  })
+
   it('업그레이드 직후 출처 있는 단어를 로컬에서 지우면 충돌 없이 delete op 1건이다', async () => {
     const id = '018f6b0e-0000-7000-8000-0000000000a1'
     const server = createEmptyModel()
