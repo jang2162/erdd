@@ -28,6 +28,15 @@ export type PromoteEntry = {
   changedFields: string[]
   /** term의 도메인 참조. targetItemId가 null이면 "함께 승격해야 연결된다"는 뜻이다. */
   domainRef: { entityId: string; targetItemId: string | null } | null
+  /**
+   * 원본이 프로젝트가 마지막으로 받은 버전보다 앞섰다 — 이 라이브러리에 링크된 엔티티이고
+   * `origin.sourceVersion < targetVersion` 일 때만 true다(new·링크 없는 name-match는 false).
+   * status는 payload 비교라 「프로젝트가 고쳤다」와 「남이 원본을 고쳤다」를 둘 다 update로 낸다.
+   * 뒤쪽을 그대로 올리면 남이 고친 값이 프로젝트의 옛 값으로 조용히 되돌아가고, 서버의
+   * expectedTargetVersion은 계획 **이후**의 변경만 막아 이 경우를 잡지 못한다 — 그래서 호출자가
+   * 기본 선택에서 빼고 재동기화(충돌 정리)를 먼저 하게 하는 신호로 쓴다.
+   */
+  sourceBehind: boolean
 }
 
 export type PromotePlan = {
@@ -116,10 +125,13 @@ export function planPromote(
       const linked = linkedItemId.get(entity.id)
       let target: LibraryItem | undefined
       let status: PromoteStatus
+      let sourceBehind = false
       if (linked !== undefined) {
         target = itemById.get(linked)!
         if (deepEqual(payload, target.payload)) { syncedCount += 1; continue }
         status = 'update'
+        // 링크가 있으면 origin은 이 라이브러리의 이 항목을 가리킨다(1단계의 조건).
+        sourceBehind = entity.origin!.sourceVersion < target.version
       } else {
         target = itemByName.get(nameKey(kind, name))
         if (target && claimed.has(target.id)) target = undefined
@@ -139,6 +151,7 @@ export function planPromote(
           ? Object.keys(payload).filter((prop) => !deepEqual(payload[prop], target!.payload[prop]))
           : [],
         domainRef: domainRefOf(kind, raw, model, linkedItemId),
+        sourceBehind,
       })
     }
   }

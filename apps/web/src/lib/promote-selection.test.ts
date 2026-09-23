@@ -7,7 +7,7 @@ import {
 function entry(over: Partial<PromoteEntry> & Pick<PromoteEntry, 'entityId' | 'status'>): PromoteEntry {
   return {
     kind: 'word', name: '이름', targetItemId: null, targetVersion: null,
-    payload: {}, changedFields: [], domainRef: null, ...over,
+    payload: {}, changedFields: [], domainRef: null, sourceBehind: false, ...over,
   }
 }
 describe('initialSelection', () => {

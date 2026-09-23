@@ -7,6 +7,7 @@ import { PromoteEntryList } from './promote-entry-list'
 const ENTRY: PromoteEntry = {
   kind: 'word', entityId: 'w1', name: '회원', status: 'new',
   targetItemId: null, targetVersion: null, payload: {}, changedFields: [], domainRef: null,
+  sourceBehind: false,
 }
 
 afterEach(cleanup)
