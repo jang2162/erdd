@@ -123,11 +123,47 @@ describe('pull', () => {
     expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
   })
 
-  it('최초 pull은 base가 없으므로 확인하지 않는다', async () => {
+  it('최초 pull은 erdd/ 가 비어 있으면 확인하지 않는다', async () => {
     const confirm = vi.fn(async () => false)
     const code = await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient(), confirm })
     expect(confirm).not.toHaveBeenCalled()
     expect(code).toBe(0)
+  })
+
+  // base 없이 연결된 상태(init --project 직후, 이관 실패 뒤)의 pull 이 확인 없이 erdd/ 를 비우면 안 된다.
+  describe('base 가 없어도 erdd/ 에 파일이 있으면', () => {
+    const LOCAL = 'words:\n  - logicalName: 주문\n    abbreviation: ORD\n'
+    beforeEach(async () => {
+      await writeTree(dir, { 'erdd/words.yaml': { words: [{ logicalName: '주문', abbreviation: 'ORD' }] } })
+      await writeFile(join(dir, 'erdd/words.yaml'), LOCAL, 'utf8')
+    })
+
+    it('비대화형이면 --yes 를 안내하며 CANCELLED 로 멈추고 파일을 건드리지 않는다', async () => {
+      const code = await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient() })
+      expect(code).toBe(1)
+      const error = JSON.parse(out.join('')).error
+      expect(error.code).toBe('CANCELLED')
+      expect(error.message).toContain('--yes')
+      expect(err.join('')).toContain('로컬 변경 1건이 덮어쓰기 됩니다:')
+      expect(err.join('')).toContain('  erdd/words.yaml')
+      expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toBe(LOCAL)
+      expect(Object.keys(await readTree(dir))).toEqual(['erdd/words.yaml'])
+    })
+
+    it('대화형이면 확인을 받고, 거절하면 사용자가 취소했습니다', async () => {
+      const confirm = vi.fn(async () => false)
+      expect(await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient(), confirm })).toBe(1)
+      expect(confirm).toHaveBeenCalledWith('계속할까요?')
+      expect(JSON.parse(out.join('')).error).toMatchObject({ code: 'CANCELLED', message: '사용자가 취소했습니다' })
+      expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toBe(LOCAL)
+    })
+
+    it('--yes 면 확인 없이 서버 상태로 덮는다', async () => {
+      const confirm = vi.fn(async () => false)
+      expect(await pull({ cwd: dir, json: true, yes: true, strict: false, client: stubClient(), confirm })).toBe(0)
+      expect(confirm).not.toHaveBeenCalled()
+      expect(Object.keys(await readTree(dir))).toContain('erdd/tables/MBR.yaml')
+    })
   })
 
   it('연결 설정이 없으면 pull이 NO_CONFIG로 실패한다', async () => {
