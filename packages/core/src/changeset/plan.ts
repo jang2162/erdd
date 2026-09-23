@@ -30,7 +30,8 @@ export type PlanInput = { sources: readonly ChangesetSource[]; model: ProjectMod
 
 /**
  * 변경 기록 상태: 기록 전부를 파싱·재생해 기준선을 얻고, 현재 모델의 투영과 비교한다.
- * 첫 오류에서 멈춘다(guide 「기록을 만들 수 없는 경우」).
+ * 첫 오류에서 멈춘다(guide 「기록을 만들 수 없는 경우」). 다만 목록은 깨진 파일 뒤의 것까지
+ * 파싱되는 파일을 전부 싣는다 — 기록 개수가 오류 지점에서 잘리지 않게.
  */
 export function planChanges(input: PlanInput): ChangesPlan {
   const records: ChangeRecordSummary[] = []
@@ -38,9 +39,13 @@ export function planChanges(input: PlanInput): ChangesPlan {
   const stop = (error: ChangeIssue, warnings: ChangeIssue[] = []): ChangesPlan =>
     ({ records, warnings, error, pending: null, target: null })
 
+  let parseError: ChangeIssue | null = null
   for (const src of [...input.sources].sort((a, b) => compareCodeUnits(a.file, b.file))) {
     const r = parseChangeset(src.text)
-    if (!r.ok) return stop({ file: src.file, line: r.line, message: r.message })
+    if (!r.ok) {
+      parseError ??= { file: src.file, line: r.line, message: r.message }
+      continue
+    }
     parsed.push({ file: src.file, changeset: r.changeset })
     const h = r.changeset.header
     records.push({
@@ -48,6 +53,7 @@ export function planChanges(input: PlanInput): ChangesPlan {
       statementCount: r.changeset.statements.length, text: src.text,
     })
   }
+  if (parseError !== null) return stop(parseError)
   const replayed = replay(parsed)
   if (replayed.error !== null) return stop(replayed.error, replayed.warnings)
 

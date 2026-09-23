@@ -131,6 +131,18 @@ describe('planChanges', () => {
     expect(plan.pending).toBeNull()
   })
 
+  it('깨진 기록 파일이 있어도 파싱되는 기록은 전부 목록에 싣고, 오류는 첫 깨진 파일이다', () => {
+    const m = buildSampleModel()
+    const r0 = record([], m, '1_ok')
+    const broken = (file: string) => ({ file, text: "changeset 'x' {\n  format: 1\n" })
+    const r3 = record([r0], withColumn(m, 'c3', { nullable: true }), '4_ok')
+    const plan = planChanges(input([r3, broken('3_bad'), r0, broken('2_bad')], m))
+    expect(plan.records.map((r) => r.file)).toEqual(['1_ok', '4_ok'])
+    expect(plan.error).toMatchObject({ file: '2_bad' })
+    expect(plan.warnings).toEqual([])
+    expect(plan.pending).toBeNull()
+  })
+
   it('id 가 없는 항목(파일에서 새로 만든 것)이 있으면 멈춘다', () => {
     const m = buildSampleModel()
     m.tables['new:erdd/tables/X.yaml#table[0]'] = { ...m.tables['t1']!, id: 'new:erdd/tables/X.yaml#table[0]', physicalName: 'X' }
