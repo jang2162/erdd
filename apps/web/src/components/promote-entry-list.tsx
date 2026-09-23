@@ -11,10 +11,12 @@ const SECTIONS: { status: PromoteStatus; title: string }[] = [
 /**
  * 원본이 앞선 항목(`sourceBehind`)의 배지 문구 — 화면마다 할 수 있는 행동이 달라 여기서 한 번에 고른다.
  * 요청자·직접 승격자는 재동기화로 받을 수 있지만, 승인자는 요청 프로젝트를 재동기화할 수 없다.
+ * 승인자 문구는 「언제」 앞섰는지 말하지 않는다 — `sourceBehind` 는 승인 시점의 프로젝트 origin 과
+ * 원본 버전의 비교라, 요청자가 배지를 무시하고 직접 켠(요청 당시 이미 뒤처진) 항목에도 붙는다.
  */
 const SOURCE_BEHIND_NOTICE = {
   promote: '원본이 더 새롭습니다 — 먼저 가져오기(재동기화)로 받으세요',
-  approve: '요청 뒤 원본이 더 새로워졌습니다 — 승인하면 최신 원본을 요청 시점 값으로 되돌립니다',
+  approve: '원본이 요청자가 받은 버전보다 새롭습니다 — 승인하면 최신 원본을 요청자의 값으로 되돌립니다',
 } as const
 
 function EntryLabel({ entry }: { entry: PromoteEntry }) {
