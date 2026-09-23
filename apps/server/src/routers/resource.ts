@@ -14,7 +14,7 @@ import {
 } from '../services/resource-library.js'
 import { emptyOutcome, runPromoteInTx } from '../services/promote.js'
 import { mutateAndPublish } from '../services/mutate-publish.js'
-import { authedProcedure, router } from '../trpc.js'
+import { apiProcedure, authedProcedure, router } from '../trpc.js'
 
 const KindEnum = z.enum(RESOURCE_KINDS)
 
@@ -49,7 +49,8 @@ export const resourceRouter = router({
         return listWithCounts(ctx.db, where)
       }),
 
-    listForProject: authedProcedure
+    // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
+    listForProject: apiProcedure
       .input(z.object({ projectId: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
         const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
@@ -114,7 +115,8 @@ export const resourceRouter = router({
   }),
 
   items: router({
-    list: authedProcedure
+    // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
+    list: apiProcedure
       .input(z.object({ libraryId: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
         await requireLibraryRead(ctx.db, input.libraryId, ctx.user)
@@ -196,7 +198,8 @@ export const resourceRouter = router({
    *
    * 본문은 `runPromoteInTx`에 있다.
    */
-  promote: authedProcedure
+  // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
+  promote: apiProcedure
     .input(z.object({
       projectId: z.string().uuid(),
       libraryId: z.string().uuid(),
@@ -224,7 +227,7 @@ export const resourceRouter = router({
           projectId: input.projectId,
           actorUserId: ctx.user.id,
           actorName: ctx.user.name,
-          source: 'web',
+          source: ctx.authKind === 'token' ? 'cli' : 'web',
           prepare: async (tx, model) => {
             state.next = await runPromoteInTx(tx, {
               libraryId: input.libraryId, model, entries: input.entries, outcome,
