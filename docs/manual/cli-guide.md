@@ -1166,7 +1166,7 @@ erdd changes new <이름> [--baseline] [--json]
 
 | 형태 | 하는 일 | 종료 코드 |
 |---|---|---|
-| `erdd changes` | 기록 수·경합 경고·미기록 변경 미리보기 | `0`, 기록이 깨졌으면 `1` |
+| `erdd changes` | 기록 수·경합 경고·미기록 변경 미리보기 | `0`, 기록이 깨졌거나 기록을 만들 수 없는 상태면 `1` |
 | `erdd changes --check` | 위와 같고, 미기록 변경이 있으면 실패 | 미기록이 있으면 `1` |
 | `erdd changes new <이름>` | 미기록 변경을 `erdd/changes/<시각>_<이름>.erddc` 로 기록 | `0`, 거절이면 `1` |
 | `… --baseline` | 첫 기록에 「이미 DB 에 있음」 표시 | 기록이 이미 있으면 `1` |
@@ -1195,7 +1195,7 @@ $ erdd changes
 
 - 보는 것은 **디스크의 `erdd/`** 다. 미저장 편집은 포함하지 않고, 있으면 `new` 가 거절한다.
 - `--json` 은 `{ records, pending, warnings, error, unsaved }`(상태) / `{ ok, file, statementCount }`
-  (생성)이다. 거절은 오류 봉투에 `reason`(`name`·`empty`·`baseline`·`invalid`)이 실린다.
+  (생성)이다. 거절은 오류 봉투에 `reason`(`name`·`empty`·`baseline`·`invalid`·`unsaved`·`local-only`)이 실린다.
 - 서버에 연결된 프로젝트에서는 `변경 기록은 로컬 모드 전용입니다 …` 로 멈춘다(`1`).
 
 ---
