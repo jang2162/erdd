@@ -81,14 +81,6 @@ nullable 쪽은 `NULL` 명시로 막았다(정본은 [export-format.md](../guide
   테이블·프로시저·권한·실시간 전파가 새로 필요하다.
 - **테이블 옵션 기록.** `tableOptions`(MySQL ENGINE 등)는 기록에 싣지 않는다.
   ([../guides/changeset-format.md](../guides/changeset-format.md) 「알려진 한계」)
-- **🔧 병합으로 지워진 컬럼에 다른 기록이 붙인 인덱스·FK 가 기준선에 남는다(결함).** 브랜치 B 가 컬럼에
-  인덱스(또는 FK)를 붙이고 브랜치 A 가 그 컬럼을 지운 뒤 합치면, 재생의 `drop column` 이 딸린 인덱스·FK 를
-  지우지 않아 경고 없이 기준선에 남는다. 이어서 만드는 정리 기록에 `drop index IX (c3 asc)` 처럼 컬럼 이름
-  자리에 id 가 찍히고, 자기검증을 통과해 저장된다 — SQL 로 옮기면 실패한다. 고치는 법: 재생의 `drop column` 이
-  `drop table` 처럼 딸린 인덱스·FK 를 경고와 함께 지운다(재생 테스트 셋: 인덱스·FK·두 파일 순서).
-- **🔧 지워지는 테이블의 인덱스 이름으로 다른 인덱스를 개명하면 SQL 순서가 어긋난다(결함).** 같은 기록에서
-  `rename index … -> IX_Z` 가 `IX_Z` 를 가진 테이블의 `drop table` 보다 먼저 나와 PostgreSQL 에서 이름이 부딪친다.
-  고치는 법: `rename index` 를 `drop table` 뒤로 옮긴다(guide 「문장 순서」 의 순번도 함께).
 
 ## 기획에 있으나 구현되지 않은 것
 
