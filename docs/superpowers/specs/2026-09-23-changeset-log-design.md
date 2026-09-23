@@ -39,7 +39,7 @@ Liquibase·ORM 마이그레이션 등)와 자기 DB 문법으로 쓴다. ERDD �
 1. core: 스키마 투영, 투영 diff → 문장, 직렬화, 파서, 재생(경합 경고 포함).
 2. CLI: `erdd/changes/*.erddc` 입출력, `erdd changes`(상태) · `erdd changes new <이름> [--baseline]` ·
    `erdd changes --check`, `--json`.
-3. 로컬 서버: `GET /local/changes` · `POST /local/changes`.
+3. 로컬 서버: `POST /local/changes`(상태) · `POST /local/changes/create`(생성).
 4. 웹: 「버전」 다이얼로그의 「변경 기록」 탭(로컬 모드 전용).
 5. `erdd skill install` 의 SKILL.md 에 에이전트용 절.
 6. 문서: 문법 정본 guide 신설, 매뉴얼 셋 반영, known-issues.
@@ -74,12 +74,18 @@ Liquibase·ORM 마이그레이션 등)와 자기 DB 문법으로 쓴다. ERDD �
   뒤쪽 컬럼 전부가 「순서 변경」으로 잡힌다. 양쪽에 모두 있는 컬럼의 `id` 목록에서 **최장 공통
   부분열(LCS)** 에 들지 못한 컬럼만 순서 이동으로 기록한다. 새 컬럼은 `add column … [after: X]` 로
   위치를 싣는다(맨 앞이면 `first`).
+- **`after: X` 는 「이 기록이 끝난 뒤의 최종 순서에서 바로 앞 컬럼이 X」라는 뜻이다**(문장 시점의 순서가
+  아니다). 재생은 `alter table` 블록 끝에서 한 번에 순서를 정한다 — 추가·이동 문장의 순서와 무관하게
+  최종 순서가 정확히 복원된다. 문장 시점 의미로 두면 아직 옮기지 않은 컬럼 뒤에 붙인 추가가 그 컬럼이
+  옮겨 간 뒤 엉뚱한 자리에 남는다.
+- **투영에 들지 않는 테이블:** 컬럼이 없거나 물리명이 빈 테이블 — DDL 내보내기가 빼는 것과 같은 판정
+  (`exportableTables`)이다. 그 테이블에 걸린 FK·인덱스도 빠진다.
 - **도메인·명명 템플릿 변경은 영향받는 컬럼·테이블 각각의 변경으로 펼쳐진다.** 마이그레이션도 결국
   컬럼마다 ALTER 이므로 그게 맞다.
 - **FK 제약 이름은 모델 전체에서 파생된다**(충돌 접미사). 다른 FK 가 늘어 접미사가 바뀌면 이름 변경으로
   기록된다 — 내보내기 결과와 기록이 어긋나지 않게 하려는 선택이고, 「알려진 한계」에 적는다.
-- `ddl.ts` 의 이름·코멘트 함수(`fkBaseName`·`uniqueConstraintName`·`commentText` 등)는 **export 해서 같은
-  것을 쓴다.** 사본을 만들면 내보내기와 기록이 조용히 갈라진다.
+- `ddl.ts` 의 판정·이름 함수(`exportableTables`·`relationshipConstraintNames`·`effectiveAutoIncrement`·
+  `commentText`)를 **export 해서 같은 것을 쓴다.** 사본을 만들면 내보내기와 기록이 조용히 갈라진다.
 
 ## 2. 파일 구조
 
@@ -90,8 +96,9 @@ erdd/changes/
 ```
 
 - **기록 하나 = 파일 하나 = 마이그레이션 하나.** 파일명 앞 14자리 UTC 시각(`YYYYMMDDHHmmss`)이
-  **재생 순서**다. 같은 시각이면 파일명 전체의 사전순. 슬러그는 이름에서 파일명에 안전한 문자만 남긴다
-  (`unsafeFileName` 과 같은 기준).
+  **재생 순서**다(파일명 전체의 코드 단위 사전순). 새 기록의 시각은 **`max(지금, 마지막 기록 + 1초)`** —
+  새 기록이 언제나 마지막에 재생되게 한다(시계가 어긋난 브랜치의 기록이 미래 시각을 들고 와도).
+  슬러그는 이름에서 파일명에 쓸 수 없는 문자를 뺀 것이다(공백은 `-`, 비면 `changes`).
 - `erdd/` 아래라 커밋 대상이다. 브랜치 A·B 의 기록은 파일명이 달라 git 충돌 없이 합쳐진다.
 - 트리 로더는 `TOP_LEVEL_FILES` + `tables/` 만 읽으므로 `changes/` 를 모델로 오인하지 않는다.
   파일 감시는 `erdd/` 를 재귀로 보지만 모델 서명이 바뀌지 않으므로 reload 를 일으키지 않는다 —
@@ -111,6 +118,13 @@ changeset '회원 등급 추가' {
 
 drop foreign key FK_ORD_OLD ORD(OLD_NO) -> OLD(OLD_NO) [1:N]              @<id>
 drop index IX_MBR_OLD on MBR (MBR_NM asc)                                 @<id>
+
+drop table TMP_LOG [comment: '임시'] {                                    @<id>
+  column LOG_NO BIGINT [not null, increment]                              @<id>
+  primary key (LOG_NO)
+  index IX_TMP_LOG_01 (LOG_NO desc)                                       @<id>
+}
+
 rename table ORD_DTL -> ORD_ITEM                                          @<id>
 
 create table MBR_GRD [comment: '회원등급'] {                              @<id>
@@ -120,51 +134,57 @@ create table MBR_GRD [comment: '회원등급'] {                              @<
 }
 
 alter table MBR {                                                         @<id>
+  drop column OLD_FLAG CHAR(1) [not null, default: `'N'`]                 @<id>
   rename column TEL_NO -> MBL_TEL_NO                                      @<id>
   add column GRD_CD VARCHAR(10) [null, comment: '등급코드', after: MBR_NM] @<id>
   modify column MBR_NM {                                                  @<id>
     type: VARCHAR(50) -> VARCHAR(100)
     nullable: yes -> no
   }
-  drop column OLD_FLAG CHAR(1) [not null, default: `'N'`]                 @<id>
   primary key: (MBR_NO) -> (MBR_NO, SITE_CD)
   comment: '회원' -> '회원 기본'
 }
 
-drop table TMP_LOG [comment: '임시'] {                                    @<id>
-  column LOG_NO BIGINT [not null, increment]                              @<id>
-  primary key (LOG_NO)
-}
 add index IX_MBR_01 on MBR (MBR_NM asc, GRD_CD desc) [unique]             @<id>
 add foreign key FK_MBR_MBR_GRD MBR(GRD_CD) -> MBR_GRD(GRD_CD) [1:N]       @<id>
 ```
 
 ### 3.1 문장 순서 — SQL 로 옮겨도 안전한 순서로 고정
 
-1. `drop foreign key` 2. `drop index` / `rename index` 3. `rename table` 4. `create table`
-5. `alter table` (블록 안: `rename column` → `add column` → `modify column` → `drop column` →
-   `primary key` → 테이블 `comment`) 6. `drop table` 7. `add index` 8. `add foreign key`
+1. `drop foreign key` 2. `drop index` / `rename index` 3. `drop table` 4. `rename table`
+5. `create table` 6. `alter table` (블록 안: `drop column` → `rename column` → `add column` →
+   `modify column` → `primary key` → 테이블 `comment`) 7. `add index` 8. `add foreign key`
 
-같은 순번 안에서는 테이블 물리명(변경 후 이름) → 컬럼 순서 → 이름 사전순. **위에서 아래로 옮겨 쓰면
-의존성이 맞는다.**
+**삭제가 이름 변경·추가보다 앞선다** — 「지운 컬럼과 같은 이름으로 새 컬럼 추가」·「지운 테이블의 이름으로
+개명」에서 이름이 한순간도 겹치지 않는다. 삭제는 다른 것에 의존하지 않는다(걸린 FK·인덱스는 1·2번이
+이미 지웠다). 같은 순번 안에서는 테이블 물리명 → 컬럼 순서 → 이름의 코드 단위 사전순. **위에서 아래로
+옮겨 쓰면 의존성이 맞는다.** 두 컬럼의 이름을 맞바꾸는 경우만 예외로, 기록은 `rename` 두 줄로 나오고
+SQL 에서는 임시 이름을 거쳐야 한다(「알려진 한계」).
 
 ### 3.2 규칙
 
-- **이름은 그 문장 시점의 이름이다.** 개명 뒤 문장은 새 이름을 쓴다. `alter table` 머리는 3번 이후이므로
-  새 테이블 이름이다.
+- **이름은 그 문장 시점의 이름이다.** 개명 뒤 문장은 새 이름을 쓴다. `alter table` 머리는 4번(`rename table`)
+  이후이므로 새 테이블 이름이다. `rename index … on T` 의 `T` 는 2번 시점이므로 옛 테이블 이름이다.
 - **변경은 `이전 -> 이후`.** 되돌리기(down) 마이그레이션에 필요한 정보가 기록에 다 있다.
   `drop` 은 **삭제 직전의 정의 전부**를 싣는다.
 - **인덱스·FK 의 내용 변경은 `drop` + `add`** 로 쓴다(대부분의 DB 가 그렇다). 이름만 바뀐 인덱스는
   `rename index A -> B on T`. FK 는 이름만 바뀌어도 `drop` + `add` 다.
 - **기본값은 백틱 안에 원문 그대로** — `` `'Y'` ``, `` `CURRENT_TIMESTAMP` ``. 문자열 리터럴과 식이
-  섞이지 않는다. 백틱이 원문에 있으면 두 번 써서 이스케이프한다.
-- 문자열은 작은따옴표, 안의 `'` 는 `\'`, 줄바꿈은 `\n`.
-- 식별자(물리명)는 `[A-Za-z_][A-Za-z0-9_$#]*` 이면 그대로, 아니면 큰따옴표로 감싼다.
-- 속성 목록(`[...]`) 키: `null`/`not null`, `default`, `increment`, `comment`, `check`, `after`
-  (add column 만), 방언 타입(`postgresql:` 등), 관계의 `1:1`/`1:N`, 인덱스의 `unique`.
-- `modify column` 블록의 필드: `type`, `nullable`, `default`, `increment`, `comment`, `check`,
-  `position`(순서 이동; `position: after A -> after B`, 맨 앞은 `first`). 개명은 `modify` 가 아니라
-  `rename column` 이다.
+  섞이지 않는다. 원문의 `\`·백틱·줄바꿈만 `\\`·`` \` ``·`\n` 으로 이스케이프한다.
+- 문자열은 작은따옴표, 안의 `\`·`'`·줄바꿈은 `\\`·`\'`·`\n`.
+- 식별자(물리명)는 `[A-Za-z_][A-Za-z0-9_$#]*` 이면 그대로, 아니면 큰따옴표로 감싼다. 값 자리의 키워드와
+  같은 `first`·`none` 도 큰따옴표로 감싼다.
+- 타입은 `[A-Za-z][A-Za-z0-9_]*` 뒤에 괄호 하나(`VARCHAR(10)`, `DECIMAL(10, 2)`)까지 그대로 쓰고,
+  그 밖(`INT UNSIGNED` 처럼 공백이 있는 것)은 큰따옴표로 감싼다.
+- 속성 목록(`[...]`) 키: `null`/`not null`(언제나 쓴다), `increment`, `default`, `comment`, `check`,
+  방언 타입(`postgresql:` 등), `after: X`/`first`(add column 만), 관계의 `1:1`/`1:N` 과 1:1 의
+  `unique: <UQ 이름>`(DDL 내보내기의 UNIQUE 제약 이름), 인덱스의 `unique`.
+- `drop table` 블록은 컬럼·PK 에 더해 **그 테이블의 인덱스**도 `index <이름> (<컬럼> asc) [unique]` 로
+  싣는다 — 테이블과 함께 사라지므로 따로 `drop index` 를 쓰지 않지만, 되돌리기에는 필요하다.
+- `modify column` 블록의 필드: `type`, `dialects`(방언별 타입, `(postgresql: TEXT)`/`none`),
+  `nullable`, `default`, `increment`, `comment`, `check`, `position`(순서 이동;
+  `position: after A -> after B`, 맨 앞은 `first`). 개명은 `modify` 가 아니라 `rename column` 이다.
+  `position` 의 이전 값은 참고용이고(경합 판정에 쓰지 않는다), 이후 값은 위 `after` 와 같은 뜻이다.
 - **`@<id>` 는 줄 끝 꼬리표다.** 재생은 이름이 아니라 `@id` 로 대상을 찾는다. 사람은 무시하고 읽는다.
   테이블 수준 문장(`alter table`·`primary key`·테이블 `comment`)은 블록 머리의 `@id` 를 쓴다.
 - 헤더: `format`(필수), `created`(필수), `baseline: true`(선택 — 4.4).
@@ -214,6 +234,8 @@ add foreign key FK_MBR_MBR_GRD MBR(GRD_CD) -> MBR_GRD(GRD_CD) [1:N]       @<id>
 | 미저장 편집(`.erdd/draft.json`)이 있다 | 거절 — 스냅샷과 같은 형식의 문구 |
 | 서버에 연결된 프로젝트 | 멈춤(종료 코드 1) — 「변경 기록은 로컬 모드 전용입니다」 |
 | 미기록 변경 없음에 `new` | 성공이 아니라 거절(종료 코드 1) — 빈 기록 파일을 만들지 않는다 |
+| 현재 모델에 같은 물리명의 테이블이 둘, 또는 한 테이블에 같은 물리명의 컬럼이 둘 | 거절 — 재생이 이름으로 FK·인덱스·PK·`after` 를 풀기 때문이다. DB 에도 만들 수 없는 상태다 |
+| 컬럼이 다른 테이블로 옮겨졌다(같은 `id`, 다른 소속) | 거절 — 「옮긴 컬럼은 id 를 지워 새 컬럼으로 만드세요」 |
 
 ## 5. 사용 화면
 
@@ -223,14 +245,21 @@ add foreign key FK_MBR_MBR_GRD MBR(GRD_CD) -> MBR_GRD(GRD_CD) [1:N]       @<id>
   만들기」. 미기록이 없으면 「기록할 변경이 없습니다」, 버튼 비활성. 미저장 편집이 있으면 거절 문구.
 - **아래: 기록 목록**(최신순) — 이름·시각·문장 수·`baseline` 배지. 누르면 본문 펼침. 삭제 버튼 없음.
 - 재생 오류·경합 경고는 탭 맨 위에 파일·줄과 함께. 오류가 있으면 「만들기」가 잠긴다.
-- 탭을 열 때, 기록을 만든 뒤, `reload` 이벤트를 받을 때 다시 가져온다(`git pull` 로 기록이 늘어난 경우).
+- 탭을 열 때, 기록을 만든 뒤, `reload`·`status` 이벤트를 받을 때 다시 가져온다. 모델은 그대로이고
+  기록 파일만 늘어난 `git pull` 은 이벤트가 없으므로 탭을 다시 열어야 보인다(「알려진 한계」).
+- 미리보기는 **화면 모델 기준**이다(미저장 편집 포함). 미저장 편집이 있으면 거절 문구가 함께 뜨고
+  「만들기」가 잠긴다.
 - 서버 모드에서는 탭 자체가 렌더되지 않는다.
 
 ### 5.2 로컬 서버 채널
 
-`local-protocol.ts` 에 `LOCAL_CHANGES_PATH = '/local/changes'` 와 응답 타입을 정의한다.
-`GET` → `{ records: [{file, name, created, baseline, statementCount, text}], pending: {text, count},
-warnings: [...], error: {...} | null }`. `POST {name}` → `{ ok: true, file }` | `{ ok: false, reason, message }`.
+`local-protocol.ts` 에 두 경로와 응답 타입을 정의한다. **둘 다 POST 다** — 로컬 전용 라우트는 전부
+POST 라는 기존 규칙을 따른다.
+- `POST /local/changes` → `LocalChangesStatus` = `{ records: [{file, name, created, baseline,
+  statementCount, text}], pending: {text, count} | null, warnings, error | null, unsaved }`.
+- `POST /local/changes/create` (JSON `{name, baseline?}`) → `{ ok: true, file, statementCount }` |
+  `{ ok: false, reason, message }`.
+
 **tRPC 가 아니다** — 서버 라우터에 없는 로컬 전용 동작이라 `LocalOnly` 잠금과 같은 이유로
 `/local/save` 선례를 따른다.
 
@@ -256,16 +285,19 @@ erdd changes --check                    # 미기록 변경이 있으면 종료 �
 
 | 위치 | 역할 |
 |---|---|
-| `packages/core/src/changeset/projection.ts` | `project(model, settings) → SchemaProjection` |
-| `packages/core/src/changeset/diff.ts` | `diffProjection(a, b) → Statement[]` (3.1 순서로 정렬) |
-| `packages/core/src/changeset/format.ts` | `formatChangeset(header, statements) → string` |
-| `packages/core/src/changeset/parse.ts` | `parseChangeset(text) → {header, statements} | 오류(줄 번호)` |
-| `packages/core/src/changeset/replay.ts` | `replay(records) → {projection, warnings, error}` |
-| `packages/core/src/ddl.ts` | 이름·코멘트 함수 export (동작 불변) |
+| `packages/core/src/changeset/types.ts` | 투영·문장·헤더 타입 |
+| `packages/core/src/changeset/projection.ts` | `projectSchema(model, settings) → SchemaProjection` |
+| `packages/core/src/changeset/diff.ts` | `diffProjection(a, b) → 문장 목록 \| 거절 사유` (3.1 순서로 정렬) |
+| `packages/core/src/changeset/syntax.ts` | 식별자·타입·문자열·값의 표기 규칙(직렬화·파서가 공유) |
+| `packages/core/src/changeset/format.ts` | `formatChangeset(changeset) → string` · `formatStatements` |
+| `packages/core/src/changeset/parse.ts` | `parseChangeset(text) → 변경 기록 \| 오류(줄 번호)` |
+| `packages/core/src/changeset/replay.ts` | `applyChangeset` · `replay(records) → {projection, warnings, error}` |
+| `packages/core/src/changeset/plan.ts` | `planChanges`(상태) · `composeChangeset`(새 기록 + 자기검증) · 파일명 규칙 |
+| `packages/core/src/ddl.ts` | `exportableTables`·`relationshipConstraintNames`·`effectiveAutoIncrement` export (동작 불변) |
 | `packages/cli/src/local/changes.ts` | `erdd/changes/` 읽기·쓰기, 파일명, 상태 계산, 자기검증 |
 | `packages/cli/src/commands/changes.ts` + `main.ts` | `erdd changes` |
-| `packages/core/src/local-protocol.ts` + `packages/cli/src/local/server.ts` | `/local/changes` |
-| `apps/web/src/editor/version-dialog.tsx` | 「변경 기록」 탭 |
+| `packages/core/src/local-protocol.ts` + `packages/cli/src/local/server.ts` | `/local/changes` · `/local/changes/create` |
+| `apps/web/src/editor/use-local-changes.ts` · `changes-section.tsx` · `version-dialog.tsx` | 「변경 기록」 탭 |
 
 기존 `diffModels`(적용용)·`diffModelsForDisplay`(표시용)는 **건드리지 않는다.** 투영 전용 diff 를
 새로 둔다 — 두 함수는 모델 전체 대상이고 용도가 고정돼 있다(`data-layer.md` 「diff 함수가 두 개다」).
