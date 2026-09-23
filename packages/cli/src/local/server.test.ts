@@ -5,9 +5,11 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH,
+  LOCAL_CHANGES_PATH, LOCAL_CHANGES_CREATE_PATH, createEmptyModel, modelToFiles,
 } from '@erdd/core'
 import { startLocalServer, type LocalServer } from './server.js'
 import { LOCAL_PROJECT_ID } from '../config.js'
+import { writeTree } from '../tree.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 let running: LocalServer | null = null
@@ -510,6 +512,109 @@ describe('로컬 저장 라우트', () => {
     expect(Object.values(body.result.data.model.tables)[0]!.physicalName).toBe('MBR')
     // 파일에는 여전히 없다 — 저장하지 않았으므로.
     expect(await readdir(join(cwd, 'erdd/tables'))).toEqual([])
+  }, 10_000)
+})
+
+describe('변경 기록 엔드포인트', () => {
+  const T = '018f6b0e-0000-7000-8000-0000000000c1'
+  const C1 = '018f6b0e-0000-7000-8000-0000000000c2'
+
+  async function projectWithTable(): Promise<string> {
+    const cwd = await project()
+    const m = createEmptyModel()
+    m.tables[T] = { id: T, logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+    m.columns[C1] = { id: C1, tableId: T, logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null, domainId: null, custom: {} }
+    await writeTree(cwd, modelToFiles(m).tree)
+    return cwd
+  }
+
+  async function postJson(url: string, path: string, body?: unknown): Promise<unknown> {
+    const res = await fetch(`${url}${path}`, {
+      method: 'POST',
+      ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+    })
+    return res.json()
+  }
+
+  it('상태는 미기록을 보여 주고, 생성하면 파일이 생기고 미기록이 사라진다', async () => {
+    const cwd = await projectWithTable()
+    const s = await start(cwd)
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ records: [], error: null, unsaved: false, pending: { count: 1 } })
+    const created = await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' }) as { ok: boolean; file: string }
+    expect(created).toMatchObject({ ok: true, statementCount: 1 })
+    expect(await readdir(join(cwd, 'erdd/changes'))).toEqual([created.file.slice('erdd/changes/'.length)])
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ pending: { count: 0 } })
+  }, 10_000)
+
+  it('미저장 편집이 있으면 생성을 거절한다', async () => {
+    const cwd = await projectWithTable()
+    const s = await start(cwd)
+    await mutate(s.url, [{ action: 'update', entity: 'table', entityId: T, changes: { logicalName: { from: '회원', to: '멤버' } } }])
+    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({
+      ok: false, reason: 'unsaved', message: '저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 변경 기록을 만드세요',
+    })
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ unsaved: true })
+  }, 10_000)
+
+  it('서버에 연결된 프로젝트면 상태는 오류, 생성은 local-only 로 거절하고 파일을 만들지 않는다', async () => {
+    const cwd = await projectWithTable()
+    await writeFile(join(cwd, 'erdd.config.yaml'), [
+      'serverUrl: http://localhost:9',
+      `projectId: ${T}`,
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'), 'utf8')
+    const s = await start(cwd)
+    const message = '변경 기록은 로컬 모드 전용입니다 — 서버에 연결된 프로젝트에서는 쓸 수 없습니다'
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toEqual({
+      records: [], pending: null, warnings: [], error: { file: null, line: null, message }, unsaved: false,
+    })
+    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({ ok: false, reason: 'local-only', message })
+    await expect(readdir(join(cwd, 'erdd/changes'))).rejects.toMatchObject({ code: 'ENOENT' })
+  }, 10_000)
+
+  it('파일이 깨져 편집이 잠겼으면(blocked) 생성을 거절하고 파일을 만들지 않는다', async () => {
+    const cwd = await projectWithTable()
+    await writeFile(join(cwd, 'erdd/tables/BROKEN.yaml'), 'name: [불완전\n', 'utf8')
+    const s = await start(cwd)
+    const message = '파일이 깨져 편집이 잠겨 있습니다 — 파일을 고친 뒤 다시 하세요'
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ pending: null, error: { file: null, line: null, message } })
+    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({ ok: false, reason: 'blocked', message })
+    await expect(readdir(join(cwd, 'erdd/changes'))).rejects.toMatchObject({ code: 'ENOENT' })
+  }, 10_000)
+
+  it('동시에 두 번 생성하면 하나만 기록되고 다른 하나는 empty 로 거절한다', async () => {
+    const cwd = await projectWithTable()
+    const s = await start(cwd)
+    const results = await Promise.all([
+      postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '가' }),
+      postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '나' }),
+    ]) as { ok: boolean; reason?: string }[]
+    expect(results.filter((r) => r.ok)).toHaveLength(1)
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, reason: 'empty', message: '기록할 변경이 없습니다' }])
+    expect(await readdir(join(cwd, 'erdd/changes'))).toHaveLength(1)
+  }, 10_000)
+
+  it('기록 파일을 써도 브라우저에 reload 를 보내지 않는다', async () => {
+    const cwd = await projectWithTable()
+    const s = await start(cwd)
+    const res = await fetch(`${s.url}${LOCAL_EVENTS_PATH}`)
+    const reader = res.body!.getReader()
+    const messages: string[] = []
+    void (async () => {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) return
+        messages.push(new TextDecoder().decode(value))
+      }
+    })()
+    await sleep(300)
+    messages.length = 0
+    await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })
+    await sleep(800)
+    expect(messages.join('')).not.toContain('"type":"reload"')
+    await reader.cancel()
   }, 10_000)
 })
 

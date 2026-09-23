@@ -168,6 +168,10 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
   `ta.dispatchEvent(new Event('input',{bubbles:true}))`. 미리보기가 갱신되면 React 가 받은 것이다.
   다이얼로그를 먼저 열어 엘리먼트 존재를 확인한다 — 페이지 이동 후 stale 해진 엘리먼트 참조는
   클릭이 조용히 no-op 이 된다.
+- **React 가 그린 노드를 DOM 에서 직접 떼지 마라** — 클릭을 가리는 토스트(`[data-sonner-toast]`)도
+  마찬가지다. 뗀 뒤 다음 토스트가 뜨는 순간 React 가 `NotFoundError: Failed to execute 'insertBefore'
+  on 'Node'` 로 트리를 통째로 내려 화면이 빈다 — 어느 기능의 결함처럼 보이지만 계측이 만든 것이다.
+  가려진 버튼은 `click({ force: true })` 로 누르거나 토스트가 사라지기를 기다린다.
 - **`psql` 이 PATH 에 없다.** DB 를 직접 봐야 하면 `apps/server` 에서 `node` 스크립트로 `pg` 를
   import 한다(pnpm 엄격 모드라 리포 루트에서는 `pg`·`ws` 가 해석되지 않는다).
 

@@ -9,6 +9,7 @@ import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { useLocalWatch } from './use-local-watch.js'
 import { useEditorStore } from './store.js'
+import { LOCAL_CHANGES_QUERY_KEY } from './use-local-changes.js'
 
 function wrapper() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -127,6 +128,20 @@ describe('useLocalWatch', () => {
     })
     expect(useEditorStore.getState().blocked).not.toBeNull()
     expect(useEditorStore.getState().canEdit).toBe(false)
+  })
+
+  it('로컬 이벤트마다 변경 기록 조회를 무효화한다', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const spy = vi.spyOn(queryClient, 'invalidateQueries')
+    const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
+    const w = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      </QueryClientProvider>
+    )
+    renderHook(() => useLocalWatch(PROJECT_ID, true), { wrapper: w })
+    FakeEventSource.last!.emit({ type: 'status', dirty: false, external: false })
+    expect(spy).toHaveBeenCalledWith({ queryKey: LOCAL_CHANGES_QUERY_KEY })
   })
 })
 

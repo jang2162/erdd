@@ -173,6 +173,8 @@ $ erdd --help
   import <파일> DDL·DBML 파일을 로컬 파일에 가져온다(머지 — 서버 반영은 push)
   serve        로컬 서버를 띄워 브라우저에서 편집한다(서버 연결 불필요)
   skill install 에이전트 스킬 문서를 프로젝트에 설치한다
+  changes      변경 기록 상태 — 미기록 변경 미리보기(로컬 모드 전용)
+  changes new <이름> 미기록 변경을 erdd/changes/ 에 기록한다
   dict <list|pull|push|requests>  공용 사전을 주고받는다
 
 옵션
@@ -206,6 +208,8 @@ $ erdd --help
   --status <상태>        dict requests 전용 — pending·resolved·rejected·cancelled
   --port <번호>          serve 전용 — 기본 4300
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
+  --check               changes 전용 — 미기록 변경이 있으면 종료 코드 1
+  --baseline            changes new 전용 — 첫 기록을 「이미 DB 에 있음」으로 표시
   --help                이 도움말
 ```
 
@@ -1657,6 +1661,51 @@ $ erdd dict requests
 - `--status pending|resolved|rejected|cancelled` 로 거른다. 요청이 없으면 `승격 요청이 없습니다`.
 - 요청 취소와 승인은 웹에서 한다. 요청 항목의 이름은 보이지 않는다(건수만 보인다).
 
+### 6.12 `erdd changes`
+
+로컬 모드 전용. 스키마 수정 내역(변경 기록)을 `erdd/changes/` 에 남긴다. 무엇이고 어떻게 쓰는지는
+[로컬 모드 매뉴얼 5.6](local-guide.md#56-변경-기록--마이그레이션을-쓰기-위한-수정-내역), 문법은
+[변경 기록 문법](../guides/changeset-format.md).
+
+```
+erdd changes [--check] [--json]
+erdd changes new <이름> [--baseline] [--json]
+```
+
+| 형태 | 하는 일 | 종료 코드 |
+|---|---|---|
+| `erdd changes` | 기록 수·경합 경고·미기록 변경 미리보기 | `0`, 기록이 깨졌거나 기록을 만들 수 없는 상태면 `1` |
+| `erdd changes --check` | 위와 같고, 미기록 변경이 있으면 실패 | 미기록이 있으면 `1` |
+| `erdd changes new <이름>` | 미기록 변경을 `erdd/changes/<시각>_<이름>.erddc` 로 기록 | `0`, 거절이면 `1` |
+| `… --baseline` | 첫 기록에 「이미 DB 에 있음」 표시 | 기록이 이미 있으면 `1` |
+
+```bash
+$ erdd changes
+변경 기록 0건 (erdd/changes/)
+미기록 변경 1문장 — erdd changes new <이름> 으로 기록합니다
+
+  create table MBR [comment: '회원'] {                              @018f6b0e-0000-7000-8000-000000000001
+    column MBR_NO BIGINT [not null, comment: '회원번호']              @018f6b0e-0000-7000-8000-000000000002
+    primary key (MBR_NO)
+  }
+
+$ erdd changes new "초기 스키마"
+기록했습니다: erdd/changes/20260923061230_초기-스키마.erddc (문장 1개)
+
+$ erdd changes
+변경 기록 1건 (erdd/changes/)
+미기록 변경 1문장 — erdd changes new <이름> 으로 기록합니다
+
+  alter table MBR {                                               @018f6b0e-0000-7000-8000-000000000001
+    add column MBR_NM VARCHAR(100) [null, comment: '회원명', after: MBR_NO]  @018f6b0e-0000-7000-8000-000000000003
+  }
+```
+
+- 보는 것은 **디스크의 `erdd/`** 다. 미저장 편집은 포함하지 않고, 있으면 `new` 가 거절한다.
+- `--json` 은 `{ records, pending, warnings, error, unsaved }`(상태) / `{ ok, file, statementCount }`
+  (생성)이다. 거절은 오류 봉투에 `reason`(`name`·`empty`·`baseline`·`invalid`·`unsaved`·`local-only`)이 실린다.
+- 서버에 연결된 프로젝트에서는 `변경 기록은 로컬 모드 전용입니다 …` 로 멈춘다(`1`).
+
 ---
 
 ## 7. 동기화와 충돌
@@ -2038,6 +2087,7 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 | `포트 4300이 이미 사용 중입니다 …` | 다른 `erdd serve` 나 다른 프로그램이 그 포트를 물고 있다 | `--port` 로 다른 포트를 준다 |
 | 브라우저 상단에 「파일을 읽을 수 없어 편집이 잠겼습니다」 배너가 뜨고 편집이 안 된다 | `erdd/` 안의 YAML 이 깨졌다 | 배너가 가리키는 파일을 고친다. 고치면 자동으로 풀린다 |
 | `erdd serve` 화면에서 테이블이 격자로 나란히 놓여 있다(모드를 가리지 않는다) | `erdd/layout.yaml` 이 없거나 그 테이블 항목이 없다 | 정상이다. 옮기거나 「자동 정렬」을 하면 좌표가 그 파일에 저장된다 |
+| `변경 기록은 로컬 모드 전용입니다 …` | 서버에 연결된 프로젝트에서 `erdd changes` 를 돌렸다 | 서버 모드에는 변경 기록이 없다 |
 | `서버가 이 기능을 지원하지 않습니다 — 서버를 업그레이드하세요` | 서버가 CLI 보다 옛 버전이라 `erdd dict`·`init --create` 가 부르는 기능을 토큰에 열지 않았다 | 서버 관리자에게 서버 업그레이드를 요청한다. 토큰을 재발급해도 풀리지 않는다 |
 | `서버에 연결되지 않은 프로젝트입니다. erdd init --server <url> --create 로 연결하세요 …` | 로컬 전용 프로젝트에서 `erdd dict` 를 돌렸다 | `erdd init --server … --create` (→ [6.1](#61-erdd-init)) |
 | `push 하지 않은 로컬 변경이 있습니다. erdd push 로 보관함을 먼저 갱신하세요` | `dict push` 전에 로컬 변경이 서버에 없다 | `erdd push` 뒤 다시 `dict push` |

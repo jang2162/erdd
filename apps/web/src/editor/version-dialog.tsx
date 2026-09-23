@@ -6,6 +6,7 @@ import { formatCreatedAt } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { HistoryView } from './history-view.js'
 import { SnapshotDiff } from './snapshot-diff.js'
+import { ChangesSection } from './changes-section.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { useIsLocal } from '@/components/require-auth'
 
-type Section = 'snapshot' | 'history' | 'diff'
+type Section = 'snapshot' | 'history' | 'diff' | 'changes'
 
 /** 스냅샷 목록의 한 항목: 이름/설명/리비전/생성일 + 복원·삭제. 클릭하면 snapshot.get으로 요약을 펼쳐 보여준다(열람). */
 function SnapshotRow({
@@ -172,7 +173,7 @@ function SnapshotSection({ projectId, onRestored }: { projectId: string; onResto
 }
 
 /**
- * 헤더의 "버전": 스냅샷(생성/열람/복원/삭제)과 이력(Task 4) 두 섹션을 토글로 오간다.
+ * 헤더의 "버전": 스냅샷·이력·비교, 로컬 모드에서는 변경 기록까지 섹션을 토글로 오간다.
  *
  * 열림 상태는 제어형이다 — 트리거는 `header-tools.tsx`가 렌더한다(설계 D5).
  */
@@ -210,6 +211,14 @@ export function VersionDialog({ projectId, open, onOpenChange }: {
           >
             비교
           </Button>
+          {isLocal && (
+            <Button
+              type="button" size="sm" variant={section === 'changes' ? 'default' : 'outline'}
+              onClick={() => setSection('changes')}
+            >
+              변경 기록
+            </Button>
+          )}
         </div>
         {section === 'snapshot' && (
           <SnapshotSection projectId={projectId} onRestored={() => onOpenChange(false)} />
@@ -218,6 +227,7 @@ export function VersionDialog({ projectId, open, onOpenChange }: {
         {section === 'diff' && (
           <SnapshotDiff projectId={projectId} onNavigate={() => onOpenChange(false)} />
         )}
+        {isLocal && section === 'changes' && <ChangesSection />}
       </DialogContent>
     </Dialog>
   )

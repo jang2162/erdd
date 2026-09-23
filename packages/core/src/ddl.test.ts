@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   generateDdl as generateDdlRaw, ddlWarnings as ddlWarningsRaw, type DdlScope,
 } from './ddl.js'
+import {
+  effectiveAutoIncrement, exportableTables, relationshipConstraintNames,
+} from './ddl.js'
 import { createEmptyModel, type ProjectModel, type Table, type Column } from './model.js'
 import { buildSampleModel } from './testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
@@ -842,5 +845,46 @@ describe('generateDdl — mysql 인라인 CHECK 는 줄 맨 끝에 온다', () =
     const ddl = generateDdl(m, 'mysql')
     const c = parseDdl(ddl).tables.find((t) => t.name === 'ORD')!.columns.find((x) => x.name === 'STS')!
     expect(c.comment).toBe('상태 - 주문 상태')
+  })
+})
+
+describe('변경 기록이 공유하는 판정·이름 함수', () => {
+  it('relationshipConstraintNames 는 generateDdl 과 같은 이름을 낸다 — 충돌 접미사와 1:1 UNIQUE 까지', () => {
+    const m = buildSampleModel()
+    // 같은 두 테이블 사이에 이름 없는 관계를 하나 더 — FK_MBR_MBR_GRD 가 겹쳐 _2 가 붙는다.
+    m.relationships['r2'] = {
+      id: 'r2', parentTableId: 't1', childTableId: 't2',
+      columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
+      cardinality: '1:1', identifying: false, name: null,
+    }
+    const names = relationshipConstraintNames(m, new Set(['t1', 't2']), DEFAULT_NAMING_RULES)
+    expect(names.get('r1')).toEqual({ fk: 'FK_MBR_MBR_GRD', unique: null })
+    expect(names.get('r2')).toEqual({ fk: 'FK_MBR_MBR_GRD_2', unique: 'UQ_MBR_GRD_CD' })
+    const ddl = generateDdl(m, 'postgresql')
+    expect(ddl).toContain('ADD CONSTRAINT FK_MBR_MBR_GRD_2 FOREIGN KEY')
+    expect(ddl).toContain('ADD CONSTRAINT UQ_MBR_GRD_CD UNIQUE')
+  })
+
+  it('relationshipConstraintNames 는 선택되지 않은 테이블의 관계를 빼고 이름을 매긴다', () => {
+    const names = relationshipConstraintNames(buildSampleModel(), new Set(['t2']), DEFAULT_NAMING_RULES)
+    expect(names.size).toBe(0)
+  })
+
+  it('exportableTables 는 컬럼이 없거나 물리명이 빈 테이블을 뺀다 — generateDdl 과 같은 판정', () => {
+    const m = buildSampleModel()
+    m.tables['t3'] = {
+      id: 't3', logicalName: '빈', physicalName: 'EMPTY_TB', comment: null,
+      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    }
+    m.tables['t1'] = { ...m.tables['t1']!, physicalName: '' }
+    expect(exportableTables(m, { kind: 'all' }, DEFAULT_NAMING_RULES).map((t) => t.id)).toEqual(['t2'])
+  })
+
+  it('effectiveAutoIncrement 는 PK 이고 정수 타입일 때만 참이다', () => {
+    const m = buildSampleModel()
+    expect(effectiveAutoIncrement(m.columns['c2']!, 'BIGINT')).toBe(true)
+    expect(effectiveAutoIncrement({ ...m.columns['c2']!, isPk: false }, 'BIGINT')).toBe(false)
+    expect(effectiveAutoIncrement(m.columns['c2']!, 'VARCHAR(10)')).toBe(false)
+    expect(effectiveAutoIncrement({ ...m.columns['c2']!, autoIncrement: false }, 'BIGINT')).toBe(false)
   })
 })

@@ -54,6 +54,9 @@
 - **캔버스·사이드바 선택 상태나 다이얼로그를 건드릴 때 →
   [docs/guides/editor-state.md](docs/guides/editor-state.md)**
   (선택의 진실 원본은 하나, React Flow 와의 창구는 `onNodesChange` 하나, 단축키 가드 셋)
+- **변경 기록(`erdd/changes/`, `packages/core/src/changeset/`)을 건드릴 때 →
+  [docs/guides/changeset-format.md](docs/guides/changeset-format.md)**
+  (투영이 DDL 과 같은 함수를 쓰는 이유, 문장 순서, `after` 의 뜻, `@id` 재생, 생성 시 자기검증)
 - **실시간 채널·`seq`·소켓을 건드릴 때 → [docs/guides/realtime.md](docs/guides/realtime.md)**
   (모델 변경은 전부 `mutateAndPublish`, `store.seq` 에 의미는 하나)
 - **CLI 를 고치거나 서버 프로시저를 토큰에 열 때 → [docs/guides/cli.md](docs/guides/cli.md)**

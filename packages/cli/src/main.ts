@@ -18,6 +18,7 @@ import { serve } from './commands/serve.js'
 import { skill } from './commands/skill.js'
 import { status } from './commands/status.js'
 import { validate } from './commands/validate.js'
+import { changes } from './commands/changes.js'
 import { CliError, emitError, note } from './output.js'
 
 const USAGE = `사용법: erdd <명령> [옵션]
@@ -33,6 +34,8 @@ const USAGE = `사용법: erdd <명령> [옵션]
   import <파일> DDL·DBML 파일을 로컬 파일에 가져온다(머지 — 서버 반영은 push)
   serve        로컬 서버를 띄워 브라우저에서 편집한다(서버 연결 불필요)
   skill install 에이전트 스킬 문서를 프로젝트에 설치한다
+  changes      변경 기록 상태 — 미기록 변경 미리보기(로컬 모드 전용)
+  changes new <이름> 미기록 변경을 erdd/changes/ 에 기록한다
   dict <list|pull|push|requests>  공용 사전을 주고받는다
 
 옵션
@@ -66,6 +69,8 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --status <상태>        dict requests 전용 — pending·resolved·rejected·cancelled
   --port <번호>          serve 전용 — 기본 4300
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
+  --check               changes 전용 — 미기록 변경이 있으면 종료 코드 1
+  --baseline            changes new 전용 — 첫 기록을 「이미 DB 에 있음」으로 표시
   --help                이 도움말`
 
 export function flagValue(argv: string[], name: string): string | undefined {
@@ -284,6 +289,19 @@ export async function main(argv: string[], cwd: string): Promise<number> {
     case 'skill': return skill({
       ...ctx, sub: argv[1], dir: flagValue(argv, 'dir'), force: argv.includes('--force'),
     })
+    case 'changes': {
+      const sub = argv[1]
+      if (sub === 'new') {
+        const name = argv[2]
+        if (name === undefined || name.startsWith('-')) {
+          return usageError(json, '사용법: erdd changes new <이름> [--baseline]')
+        }
+        return changes({ ...ctx, sub: 'new', name, baseline: argv.includes('--baseline'), check: false })
+      }
+      if (sub !== undefined && !sub.startsWith('-')) return usageError(json, `알 수 없는 하위 명령: changes ${sub}`)
+      if (argv.includes('--baseline')) return usageError(json, '--baseline 은 changes new 전용입니다')
+      return changes({ ...ctx, sub: 'status', baseline: false, check: argv.includes('--check') })
+    }
     default:
       return usageError(json, `알 수 없는 명령: ${command}`)
   }

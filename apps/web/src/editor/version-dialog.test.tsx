@@ -146,4 +146,19 @@ describe('VersionDialog', () => {
     expect(screen.getByRole('button', { name: '복원' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '삭제' })).toBeInTheDocument()
   })
+
+  it('로컬 모드에서만 「변경 기록」 탭이 보인다', async () => {
+    renderDialog({
+      'auth.me': () => ({ data: { id: 'u1', email: 'local@erdd', name: '로컬', role: 'user', mode: 'local' } }),
+      'snapshot.list': () => ({ data: { items: [] } }),
+    })
+    expect(await screen.findByRole('button', { name: '변경 기록' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '이력' })).toBeNull()
+  })
+
+  it('서버 모드에는 「변경 기록」 탭이 없다', async () => {
+    renderDialog({ 'snapshot.list': () => ({ data: { items: [] } }) })
+    expect(await screen.findByRole('button', { name: '이력' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '변경 기록' })).toBeNull()
+  })
 })
