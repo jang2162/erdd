@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import type { z } from 'zod'
 import {
   createEmptyModel, DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS, modelToFiles,
+  NamingRulesStrictSchema, TableOptionsStrictSchema,
   type Dialect, type NamingRules, type TableOptions,
 } from '@erdd/core'
 import { createClient, type ApiClient } from '../client.js'
@@ -135,6 +137,14 @@ async function keptSubscriptions(cwd: string, serverUrl: string, projectId: stri
   return sameServer && old.projectId === projectId ? old.dictionaries : []
 }
 
+/** 서버 `project.create` 의 입력 스키마로 config 값을 먼저 읽어, 틀린 키를 사람이 읽는 문구로 알린다. */
+function assertServerSettings(field: 'namingRules' | 'tableOptions', schema: z.ZodType, value: unknown): void {
+  const result = schema.safeParse(value)
+  if (result.success) return
+  const key = result.error.issues[0]?.path[0]
+  throw new CliError('VALIDATION', `${CONFIG_FILE}의 ${key === undefined ? field : `${field}.${String(key)}`}가 올바르지 않습니다`)
+}
+
 /**
  * 서버에 빈 프로젝트를 만들고 연결한다. 로컬 전용 config 가 있으면 그 규칙으로 만들고 `erdd/` 는
  * 건드리지 않는다 — 기준선을 **빈 모델**로 두므로 다음 `erdd push` 가 로컬 스키마 전부를 「추가」로 올린다.
@@ -148,6 +158,18 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
   if (existing !== null && (ctx.dialect !== undefined || ctx.namingCase !== undefined)) {
     throw new CliError('USAGE', `로컬 프로젝트를 이관할 때는 ${CONFIG_FILE}의 방언·명명 규칙을 씁니다 — --dialect·--case를 빼세요`)
   }
+  // 서버 입력은 strict 스키마(모든 키 필수)다. 이관 쪽은 readConfig 가 옛 config 의 누락 키
+  // (logicalSeparator·템플릿·테이블 옵션)를 이미 채워 두었다.
+  const settings = existing ?? {
+    dialects: [ctx.dialect ?? 'postgresql'] as Dialect[],
+    namingRules: { ...DEFAULT_NAMING_RULES, case: ctx.namingCase ?? DEFAULT_NAMING_RULES.case },
+    tableOptions: { ...DEFAULT_TABLE_OPTIONS },
+  }
+  // readConfig 는 형(문자열·숫자)만 보고 enum·양의 정수는 보지 않는다. 손으로 틀린 값을 적은 config 를
+  // 서버에 보내면 zod 이슈 JSON 이 그대로 오류 문구가 된다 — 서버와 같은 스키마로 먼저 읽을 수 있게 멈춘다.
+  assertServerSettings('namingRules', NamingRulesStrictSchema, settings.namingRules)
+  assertServerSettings('tableOptions', TableOptionsStrictSchema, settings.tableOptions)
+
   // 기준선(빈 모델)과 erdd/ 가 어긋나지 않게 한다. 비어 있으면 빈 서버를 pull 한 것처럼 빈 트리를
   // 쓴다 — 안 쓰면 base 만 파일을 갖고 erdd/ 는 비어, push·diff 가 「erdd/ 아래에 파일이 없습니다」로
   // 막힌다. 파일이 있으면(이관) 한 바이트도 건드리지 않는다. 서버에 만들기 **전에** 읽는다 —
@@ -185,13 +207,6 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
     orgId = await ctx.choose('조직을 고르세요', orgs.map((o) => ({ id: o.id, label: o.name })))
   }
 
-  // 서버 입력은 strict 스키마(모든 키 필수)다. 이관 쪽은 readConfig 가 옛 config 의 누락 키
-  // (logicalSeparator·템플릿·테이블 옵션)를 이미 채워 두었다.
-  const settings = existing ?? {
-    dialects: [ctx.dialect ?? 'postgresql'] as Dialect[],
-    namingRules: { ...DEFAULT_NAMING_RULES, case: ctx.namingCase ?? DEFAULT_NAMING_RULES.case },
-    tableOptions: { ...DEFAULT_TABLE_OPTIONS },
-  }
   let project: { id: string; name: string }
   try {
     project = await client.mutate('project.create', {

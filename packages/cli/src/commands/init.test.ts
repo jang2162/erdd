@@ -351,6 +351,25 @@ describe('init --create', () => {
     expect(yes.calls).toHaveLength(1)
   })
 
+  // readConfig 는 enum·양의 정수를 보지 않는다. 서버 zod 의 400(이슈 JSON 문자열)은 읽기 어렵다.
+  it('이관할 config 의 명명 규칙이 서버 스키마에 맞지 않으면 서버를 부르기 전에 VALIDATION', async () => {
+    for (const [rules, key] of [
+      ['{ case: Foo, separator: _, maxLengthBytes: 30 }', 'case'],
+      ['{ case: UPPER_SNAKE, separator: "-", maxLengthBytes: 30 }', 'separator'],
+      ['{ case: UPPER_SNAKE, separator: _, maxLengthBytes: 0 }', 'maxLengthBytes'],
+    ] as const) {
+      await writeFile(join(dir, 'erdd.config.yaml'), `dialects: [postgresql]\nnamingRules: ${rules}\n`)
+      out.length = 0
+      const { client, calls } = createClient()
+      expect(await init({ ...base, cwd: dir, client })).toBe(1)
+      expect(JSON.parse(out.join('')).error).toEqual({
+        code: 'VALIDATION', message: `erdd.config.yaml의 namingRules.${key}가 올바르지 않습니다`,
+      })
+      expect(calls).toEqual([])
+      expect(client.query).not.toHaveBeenCalled()
+    }
+  })
+
   it('이관에 --dialect·--case 를 주면 USAGE', async () => {
     await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
     const { client, calls } = createClient()
