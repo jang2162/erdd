@@ -286,7 +286,8 @@ erdd init --server https://erdd.example.com --token "$ERDD_TOKEN" --project 018f
 6. `.gitignore` 에 `.erdd/` 를 한 줄 추가한다(이미 있으면 건드리지 않는다).
 
 **같은 서버의 같은 프로젝트로 다시 연결하면**(토큰만 바꿀 때 등) config 의 공용 사전 구독
-(`dictionaries`)을 이어받는다. 다른 프로젝트나 다른 서버로 연결하면 구독을 비운다.
+(`dictionaries`)을 이어받는다. 다른 프로젝트나 다른 서버로 연결하면 서버 구독은 비우지만, 파일 구독
+(`file` 이 있는 줄 — → [5.2](#52-erddconfigyaml))은 저장소 안 파일이라 서버 연결과 무관하므로 남긴다.
 
 **서버에 아직 프로젝트가 없으면 `--create` 로 만들어 연결한다** — 조직 Owner/Admin 만 된다.
 로컬 전용 프로젝트를 서버로 옮기는 것도 이 명령이다(→ [6.1](#61-erdd-init)).

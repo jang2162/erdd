@@ -141,14 +141,18 @@ describe('init', () => {
       expect(await readConfig(dir)).toMatchObject({ dialects: ['postgresql'], dictionaries: [] })
     })
 
-    it('다른 프로젝트나 다른 서버로 연결하면 구독을 비운다', async () => {
-      await subscribed()
+    it('다른 프로젝트나 다른 서버로 연결하면 서버 구독은 비우되 파일 구독(M-9)은 남긴다', async () => {
+      // 서버 구독을 비우는 것은 「다른 프로젝트의 선택」이라는 뜻이지만, 파일 구독은 저장소 안
+      // 파일이라 서버 연결과 무관하다 — 함께 지우면 재-init 마다 file 줄이 조용히 사라진다.
+      const mixed = [{ id: 'L1', name: '표준' }, { id: 'L2', name: '데모', file: 'vendor/std.erdd-lib.yaml' }]
+      await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p1' })
+      await writeConfig(dir, { ...(await readConfig(dir)), dictionaries: mixed })
       expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p2' })).toBe(0)
-      expect((await readConfig(dir)).dictionaries).toEqual([])
+      expect((await readConfig(dir)).dictionaries).toEqual([mixed[1]])
 
-      await subscribed()
+      await writeConfig(dir, { ...(await readConfig(dir)), projectId: 'p1', dictionaries: mixed })
       expect(await init({ ...connect, serverUrl: 'https://other.example.com', cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
-      expect((await readConfig(dir)).dictionaries).toEqual([])
+      expect((await readConfig(dir)).dictionaries).toEqual([mixed[1]])
     })
   })
 })
