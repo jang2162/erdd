@@ -93,9 +93,12 @@ docker compose ps -a
 
 이 명령 하나가 순서대로 다음을 한다.
 
-1. **이미지 빌드.** `migrate` 와 `app` 이 같은 `Dockerfile` 로 빌드한다. 빌드는 두 번 돌지만 두
-   번째는 첫 빌드의 캐시에 전 단계가 적중해 곧바로 끝난다. 첫 빌드는 의존성 설치와 웹 빌드 때문에
-   오래 걸린다.
+1. **이미지 빌드.** `migrate` 와 `app` 이 같은 `Dockerfile`·컨텍스트로 각자 빌드한다. 두 빌드는
+   같은 단계를 공유한다 — classic builder 에서는 두 번째 빌드가 첫 빌드의 캐시로 곧바로 끝나는 것을
+   확인했다(BuildKit 은 부록). 첫 빌드는 의존성 설치와 웹 빌드 때문에 오래 걸린다.
+   ⚠️ **한쪽만 빌드하지 마라**(`docker compose build app` 처럼 서비스를 지정해서). `migrate` 가 옛
+   이미지로 남아 새 마이그레이션을 모른 채 0 으로 끝나고, 새 `app` 이 새 스키마 없이 떠 9.3 의
+   증상이 난다. 빌드는 늘 서비스를 지정하지 않고(`up -d --build`, `docker compose build`) 돌린다.
 2. **`db` 기동.** `pg_isready` healthcheck 가 통과해 healthy 가 될 때까지 기다린다.
 3. **`migrate`.** `pnpm --filter @erdd/server db:migrate`(drizzle-kit)를 한 번 돌고 끝난다. 적용할
    것이 없으면 아무것도 하지 않고 0 으로 끝나므로 `up` 할 때마다 다시 돌아도 무해하다.
@@ -208,9 +211,11 @@ Git 저장소의 compose 파일을 서버에서 빌드·배포해 주는 도구�
   있지만 붙지 않는다. 3.1 의 프로젝트 이름 항목과 같은 함정이다.
 - **HTTPS 와 `/ws`** 는 7절대로 앞에 프록시를 둔다. 프록시가 같은 서버에 있으면 `ERDD_PORT` 를
   `127.0.0.1:3000` 으로 준다(7절).
-- **백업·`exec` 명령에는 `-p <스택 이름>` 을 붙인다.** 도구가 compose 파일을 둔 디렉터리 밖에서
-  `docker compose` 를 부르면 프로젝트를 찾지 못한다. `-p` 를 주면 compose 파일이 없는 디렉터리에서도
-  `exec`·`logs` 가 동작한다.
+- **도구 화면에서 `migrate` 가 종료된 서비스로 보여도 정상이다.** 한 번 돌고 끝나는 서비스라
+  `Exited (0)` 이 정상 상태다(3.2). 비정상은 `Exited (1)` 이고, 그때는 `app` 이 떠 있지 않다.
+- **서버 셸에서 백업·`exec` 명령을 부를 때는 `-p <스택 이름>` 을 붙인다.** 도구는 compose 파일을
+  자기 작업 디렉터리에 두므로, 운영자가 그 밖에서 `docker compose` 를 부르면 프로젝트를 찾지 못한다.
+  `-p` 를 주면 compose 파일이 없는 디렉터리에서도 `exec`·`logs` 가 동작한다.
 
   ```bash
   docker compose -p <스택 이름> exec -T db pg_dump -U postgres erdd > erdd-$(date +%F).sql
@@ -316,7 +321,7 @@ journalctl -u erdd -f      # ERDD server listening on :3000 이 보여야 한다
 |---|---|---|
 | `POSTGRES_PASSWORD` | `erdd` | `db` 의 비밀번호이자 `migrate`·`app` 의 `DATABASE_URL` 에 조립되는 값. **데이터 디렉터리 초기화 시점에만 반영된다**(3.1 의 함정). |
 | `ERDD_PORT` | `3000` | 앱 컨테이너를 호스트 어느 포트에 붙일지. 포트만 주면 모든 인터페이스에 붙고, **`127.0.0.1:3000` 처럼 호스트 주소를 앞에 붙이면 그 주소에만 붙는다**(리버스 프록시 뒤에 둘 때 — 7절). 컨테이너 안쪽은 `3000` 으로 고정이다(포트 매핑과 healthcheck 가 그 값을 쓴다). |
-| `ERDD_DB_PORT` | `5432` | `db` 컨테이너를 호스트 **루프백(`127.0.0.1`)** 의 어느 포트에 붙일지. 호스트에서 `psql` 등을 붙이는 용도이고 앱·`migrate` 는 이 값과 무관하다. 루프백 밖으로 여는 설정은 변수로 할 수 없다 — `docker-compose.yml` 의 `db.ports` 를 고친다(3.2). |
+| `ERDD_DB_PORT` | `5432` | `db` 컨테이너를 호스트 **루프백(`127.0.0.1`)** 의 어느 포트에 붙일지. 호스트에서 `psql` 등을 붙이는 용도이고 앱·`migrate` 는 이 값과 무관하다. 외부 공개는 3.2. |
 | `ERDD_NODE_ENV` | `production` | 앱 컨테이너의 `NODE_ENV`. **이름이 `NODE_ENV` 가 아닌 것은 의도다** — 그러면 운영자 셸에 우연히 남은 `NODE_ENV` 가 흘러들어 쿠키의 `Secure` 가 조용히 꺼진다. |
 
 그 밖에 운영과 무관한 변수:
@@ -555,8 +560,9 @@ PORT=3100 ... pnpm --filter @erdd/server start   # 방법 B
 
 ### 9.3 마이그레이션을 적용하지 않았다
 
-**방법 A** 에서는 `migrate` 가 `app` 보다 먼저 돌고 `app` 은 그것이 0 으로 끝나야 뜨므로, 스키마
-없이 앱이 뜨는 일은 없다. 대신 **`migrate` 가 실패하면 앱이 아예 뜨지 않는다** — `up` 이
+**방법 A** 에서는 `migrate` 가 `app` 보다 먼저 돌고 `app` 은 그것이 0 으로 끝나야 뜨므로, 두
+서비스를 함께 빌드하는 한(3.2) 스키마 없이 앱이 뜨는 일은 없다. `app` 만 빌드했다면 그 예외다 —
+`docker compose up -d --build` 로 둘을 함께 다시 빌드한다. 대신 **`migrate` 가 실패하면 앱이 아예 뜨지 않는다** — `up` 이
 `service "migrate" didn't complete successfully: exit 1` 로 끝나고, `docker compose ps -a` 에서
 `migrate` 는 `Exited (1)`, `app` 은 `Created` 다. 원인 찾는 법과 해결은 3.2 의 실패 항목이다.
 원인을 고친 뒤 같은 명령을 다시 돌린다.
@@ -642,8 +648,8 @@ docker compose exec app printenv NODE_ENV     # development 가 나와야 한다
 **원인:** `apps/web/dist` 가 없다. 서버는 그 디렉터리가 있을 때만 정적 파일과 SPA fallback 을
 등록하고, 없으면 `/trpc` 만 응답한다.
 
-- 방법 A: 이미지 빌드가 웹 빌드를 포함한다. 빌드가 실패했는지 `docker compose build app` 출력을
-  다시 본다.
+- 방법 A: 이미지 빌드가 웹 빌드를 포함한다. 빌드가 실패했는지 `docker compose build` 출력을
+  다시 본다(서비스를 지정하지 않는다 — 3.2).
 - 방법 B: `pnpm --filter @erdd/web build` 를 빠뜨렸다(4.1).
 
 ### 9.8 `POSTGRES_PASSWORD` 를 바꿨더니 앱이 뜨지 않는다
