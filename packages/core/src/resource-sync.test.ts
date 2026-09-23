@@ -355,6 +355,19 @@ describe('adopt', () => {
     }
   })
 
+  it('커스텀 항목은 이름이 같아도 target 이 다르면 대상이 아니다', () => {
+    const m = createEmptyModel()
+    const field = {
+      id: 'f1', name: '비고', target: 'table' as const, type: 'text' as const,
+      options: [], required: false, defaultValue: null, order: 0, origin: null,
+    }
+    m.customFields['f1'] = field
+    const item = customFieldItem('S1', '비고')   // target: 'column'
+    expect(adoptTargetOf(m, planResync(m, 'L1', [item]).entries[0]!)).toBeNull()
+    m.customFields['f1'] = { ...field, target: 'column' }
+    expect(adoptTargetOf(m, planResync(m, 'L1', [item]).entries[0]!)).toBe('f1')
+  })
+
   it('added 가 아닌 항목의 adopt 는 무시한다(keep 으로 새지 않는다)', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } })

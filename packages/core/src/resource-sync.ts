@@ -148,12 +148,15 @@ export function planResync(
  * `adopt` 의 대상 — 같은 종류·같은 표시 이름(trim)·**출처가 없는** 프로젝트 엔티티 중 id 오름차순
  * 첫 것. 이미 출처가 붙은 항목을 빼는 이유: 다른 라이브러리와의 링크를 조용히 갈아치우면 그쪽
  * 재동기화가 영영 「원본에서 사라짐」으로 보인다. 정렬은 planPromote 와 같은 결정성 규칙이다.
+ * 커스텀 항목은 `target` 도 같아야 한다 — 다르면 원본 반영(theirs)이 필드의 대상을 뒤집는다.
  * 단건 후보다 — 여러 원본이 같은 대상을 고를 수 있으므로 배치 배정은 `adoptAssignments` 가 한다.
  */
 export function adoptTargetOf(model: ProjectModel, entry: ResyncEntry): string | null {
   if (entry.status !== 'added') return null
   const hit = resourceEntitiesOf(model, entry.kind)
     .filter((e) => e.origin === null)
+    .filter((e) => entry.kind !== 'customField'
+      || (e as { target?: unknown }).target === entry.sourcePayload.target)
     .filter((e) => resourceDisplayName(entry.kind,
       resourcePayloadOf(entry.kind, e as unknown as Record<string, unknown>)).trim() === entry.name.trim())
     .sort((a, b) => a.id.localeCompare(b.id))[0]
