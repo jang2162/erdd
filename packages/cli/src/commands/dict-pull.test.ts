@@ -395,6 +395,13 @@ describe('dict pull --file', () => {
     expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }])
   })
 
+  it('서버 구독이 이미 있는 라이브러리를 --file 로 받으면 구독 줄이 하나로 유지되고 file 이 붙는다', async () => {
+    await writeConfig(dir, { ...LOCAL_CONFIG, dialects: [...LOCAL_CONFIG.dialects], dictionaries: [{ id: 'L1', name: '옛이름' }] })
+    await writeLib([word('S1', 1, 'CUST')])
+    expect(await dictPull(ctx(noServer, { file: 'vendor/std.erdd-lib.yaml' }))).toBe(0)
+    expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }])
+  })
+
   it('개정 파일을 다시 받으면 3-way 재동기화한다(자동 갱신)', async () => {
     await writeLib([word('S1', 1, 'CUST')])
     await dictPull(ctx(noServer, { file: 'vendor/std.erdd-lib.yaml' }))
