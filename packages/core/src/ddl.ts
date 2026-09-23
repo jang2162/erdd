@@ -23,6 +23,14 @@ function isIntegerType(type: string): boolean {
   return p.ok && INT_KINDS.has(p.type.kind)
 }
 
+/**
+ * 실제로 나가는 자동증가인가 — PK 이고 정수 타입일 때만. DDL 의 컬럼 줄과 변경 기록 투영이
+ * 같은 판정을 쓴다(한쪽만 바꾸면 기록과 내보내기가 다른 컬럼을 자동증가라고 말한다).
+ */
+export function effectiveAutoIncrement(col: Column, logicalType: string): boolean {
+  return col.autoIncrement && col.isPk && isIntegerType(logicalType)
+}
+
 function autoIncrementToken(dialect: Dialect): string {
   switch (dialect) {
     case 'postgresql':
@@ -89,7 +97,7 @@ function needsUnsignedCheck(logicalType: string): boolean {
 function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string {
   const r = resolveColumn(col, model, dialect)
   const parts = [quoteIdentifier(col.physicalName, dialect), r.sql]
-  const auto = col.autoIncrement && col.isPk && isIntegerType(r.logicalType)
+  const auto = effectiveAutoIncrement(col, r.logicalType)
   if (auto) parts.push(autoIncrementToken(dialect))
   if (!col.nullable) parts.push('NOT NULL')
   // MySQL 의 nullable TIMESTAMP 함정을 막는다(판정 근거는 `needsExplicitNullToken`).
@@ -160,6 +168,16 @@ export function hasEmptyPhysicalName(
 }
 
 /**
+ * DDL 로 낼 수 있는 테이블 — 컬럼이 있고 물리명이 비지 않았다. `generateDdl` 과 변경 기록의
+ * 스키마 투영이 같은 판정을 쓴다(guide 「기록 대상 — 스키마 투영」).
+ */
+export function exportableTables(model: ProjectModel, scope: DdlScope, rules: NamingRules): Table[] {
+  return selectTables(model, scope, rules).filter(
+    (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t, rules),
+  )
+}
+
+/**
  * 경고 문구에 쓸 테이블 라벨. 물리명이 비어 있으면 논리명(없으면 id)으로 폴백한다 —
  * 그렇지 않으면 신규 테이블(물리명 '')의 경고가 ": ..." 형태로 이름 없이 뜬다.
  * ⚠️ 폴백도 **최종 이름**이다(설계 D5) — 화면에 없는 부분을 가리키면 안 된다.
@@ -175,30 +193,54 @@ function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): R
   )
 }
 
+export type ConstraintNames = { fk: string; unique: string | null }
+
+/**
+ * 관계 → FK 제약 이름(1:1 이면 UNIQUE 제약 이름도). **순회 순서가 충돌 접미사(_2, _3…)를 정하므로**
+ * DDL 과 변경 기록이 이 함수 하나를 써야 같은 이름이 나온다. 유일성은 원문 기준으로 추적하고
+ * 인용은 출력하는 쪽이 한다.
+ */
+export function relationshipConstraintNames(
+  model: ProjectModel, selectedIds: Set<string>, rules: NamingRules,
+): Map<string, ConstraintNames> {
+  const used = new Set<string>()
+  const out = new Map<string, ConstraintNames>()
+  for (const rel of selectedRelationships(model, selectedIds)) {
+    const parent = model.tables[rel.parentTableId]
+    const child = model.tables[rel.childTableId]
+    if (!parent || !child) continue
+    const childName = composeTablePhysicalName(child, model, rules)
+    const parentName = composeTablePhysicalName(parent, model, rules)
+    const fk = uniqueConstraintName(fkBaseName(rel, childName, parentName), used)
+    let unique: string | null = null
+    if (rel.cardinality === '1:1') {
+      const rawChildCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
+      unique = uniqueConstraintName(`UQ_${childName}_${rawChildCols.join('_')}`, used)
+    }
+    out.set(rel.id, { fk, unique })
+  }
+  return out
+}
+
 function fkStatements(
   model: ProjectModel, selectedIds: Set<string>, dialect: Dialect, rules: NamingRules,
 ): string[] {
   const compose = (t: Table) => composeTablePhysicalName(t, model, rules)
-  const rels = selectedRelationships(model, selectedIds)
+  const names = relationshipConstraintNames(model, selectedIds, rules)
   const statements: string[] = []
-  const used = new Set<string>() // 원문 기준 유일성 추적, 출력 시 인용
   const q = (s: string) => quoteIdentifier(s, dialect)
-  for (const rel of rels) {
+  for (const rel of selectedRelationships(model, selectedIds)) {
     const parent = model.tables[rel.parentTableId]
     const child = model.tables[rel.childTableId]
-    if (!parent || !child) continue
-    const rawChildCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
-    const childCols = rawChildCols.map(q)
+    const n = names.get(rel.id)
+    if (!parent || !child || n === undefined) continue
+    const childCols = rel.columnMappings.map((m) => q(model.columns[m.childColumnId]?.physicalName ?? ''))
     const parentCols = rel.columnMappings.map((m) => q(model.columns[m.parentColumnId]?.physicalName ?? ''))
-    const childName = compose(child)
-    const parentName = compose(parent)
-    const name = uniqueConstraintName(fkBaseName(rel, childName, parentName), used)
     statements.push(
-      `ALTER TABLE ${q(childName)} ADD CONSTRAINT ${q(name)} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${q(parentName)} (${parentCols.join(', ')});`,
+      `ALTER TABLE ${q(compose(child))} ADD CONSTRAINT ${q(n.fk)} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${q(compose(parent))} (${parentCols.join(', ')});`,
     )
-    if (rel.cardinality === '1:1') {
-      const uqName = uniqueConstraintName(`UQ_${childName}_${rawChildCols.join('_')}`, used)
-      statements.push(`ALTER TABLE ${q(childName)} ADD CONSTRAINT ${q(uqName)} UNIQUE (${childCols.join(', ')});`)
+    if (n.unique !== null) {
+      statements.push(`ALTER TABLE ${q(compose(child))} ADD CONSTRAINT ${q(n.unique)} UNIQUE (${childCols.join(', ')});`)
     }
   }
   return statements
@@ -275,9 +317,7 @@ export function generateDdl(
   model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }, rules: NamingRules,
   tableOptions?: TableOptions,
 ): string {
-  const tables = selectTables(model, scope, rules).filter(
-    (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t, rules),
-  )
+  const tables = exportableTables(model, scope, rules)
   const selectedIds = new Set(tables.map((t) => t.id))
 
   const createBlocks = tables.map((table) => createTableBlock(model, table, dialect, rules, tableOptions))
