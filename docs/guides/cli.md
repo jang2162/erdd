@@ -114,6 +114,11 @@
   줄 모르는 경로(출처를 모르는 옛 스냅샷 복원, 옛 드래프트 유지)가 있어서, 떼는 update 가 있으면 확인
   프롬프트 **앞에** `공용 사전 출처를 떼는 변경 N건이 포함됩니다 — 의도하지 않았다면 erdd pull 로
   되돌리세요` 를 stderr 로 내고 성공 봉투에 `detachedOrigins` 를 싣는다(0 이어도 싣는다).
+- **같은 원본을 가리키는 서로 다른 id 는 필드 병합이 보지 못한다** — 병합이 id 단위라서다. 그래서
+  `mergeModels` 가 따로 보고 `duplicate-origin` 충돌로 push·diff 를 막는다. 판정 규칙(로컬이 만든 중복만)과
+  이유는 [shared-resources.md](shared-resources.md) 「같은 원본이 두 번 — 출처 중복 충돌」이 갖는다. 사람용
+  문구가 갈래마다 **무엇을 지울지** 말하고 `erdd pull` 을 권하지 않는 것은 `conflict-report.ts` 의
+  `DUPLICATE_ORIGIN_LABEL` 주석이 이유를 갖는다 — `pull` 은 지울 항목을 다른 로컬 작업과 함께 덮는다.
 
 ### `origins.yaml` 의 판독 규칙
 
@@ -138,18 +143,23 @@
 - **쓰는 파일은 `dict-shared.ts` 의 `DICTIONARY_FILES` 뿐이다** — 그룹·테이블 파일은 쓰지 않는다.
   `modelToFiles` 가 다시 만든 테이블 파일을 쓰면 사람이 다듬은 YAML 이 이유 없이 정규화된다.
   `dict-pull.test.ts` 「사전과 무관한 테이블 파일은 바이트 그대로다」가 잠근다.
-- **사전 내용 파일을 먼저, `origins.yaml` 을 마지막에 쓴다**(`writeDictionaryFiles`). 파일 여럿의 쓰기는
-  원자적이지 않다 — 출처를 먼저 쓰고 내용 전에 끊기면 「출처는 새 버전, 내용은 옛 값」이 되어 다음
-  `dict pull` 이 버전이 같다고 **조용히** 넘기고 그 항목은 영원히 「프로젝트가 고친 항목」으로 남는다.
-  출처가 마지막이면 끊겨도 옛 출처 대비 내용이 달라 다음 실행이 충돌로 **시끄럽게** 알린다.
-  「pull 의 네 단계 쓰기」(아래 한계)와 같은 방향이다.
 - **라이브러리 항목은 id 순으로 정렬해 넘긴다**(`fetchItems` 의 기본 `order: 'id'`). 같은 입력이면 같은
-  계획이 나와야 `--dry-run` 과 실제 실행이 갈리지 않는다.
-- **`--adopt` 의 배정은 core `adoptAssignments` 한 곳에서 한다** — 적용(`applyResyncPlan`)이 부르는 것과
-  같은 함수라 보고가 실제와 갈라지지 않는다. `--adopt` 가 없어도 분류(「건너뜀 — --adopt 로 연결」 /
-  「연결할 수 없음」)에 쓰려고 부른다. 항목별로 `adoptTargetOf` 를 보면 동명 원본 둘이 한 로컬 항목을
-  노릴 때 「건너뜀 2」라 안내하고 `--adopt` 로는 1만 연결되는 거짓 안내가 된다.
+  계획이 나와야 `--dry-run` 과 실제 실행이 갈리지 않는다. 정렬은 **코드 단위 비교**다 — `localeCompare`
+  는 환경 로케일에 따라 대소문자 혼용 id 의 순서가 갈린다.
+- **`--adopt` 의 배정과 내용 판정은 core `planAdoption` 한 곳에서 한다**(`sameContentOnly` 는
+  `--conflicts ours` 가 아닐 때 켠다). 배정되지 않은 adopt 는 `defer` 로 내린 뒤 `applyResyncPlan` 에
+  넘기고, 적용이 부르는 `adoptAssignments` 는 같은 루프의 판정 없는 판이라 남은 adopt 에 같은 대상을
+  준다 — 보고가 실제와 갈라지지 않는다. `--adopt` 가 없어도 분류(「건너뜀 — --adopt 로 연결」 / 「내용이
+  달라 연결하지 않음」 / 「연결할 수 없음」)에 쓰려고 부른다. 그래서 「건너뜀」은 **`--adopt` 를 주면 실제로
+  연결되는 항목만** 센다. 항목별로 `adoptTargetOf` 를 보면 동명 원본 둘이 한 로컬 항목을 노릴 때
+  「건너뜀 2」라 안내하고 `--adopt` 로는 1만 연결되는 거짓 안내가 된다. 내용이 같을 때만 연결하는
+  규칙과 판정의 세부는 [shared-resources.md](shared-resources.md) 「`adopt` 는 내용이 같을 때만 연결한다」.
 - **`--dry-run` 은 파일도 config 도 쓰지 않는다** — `erdd diff` 와 같은 미리보기 계약이다.
+- **파일 쓰기는 `writeTreeChanges` 로 한다** — `origins.yaml` 이 마지막인 것은 그 함수가 보장한다(아래
+  「`origins.yaml` 은 마지막에 쓴다」).
+- **`dict pull`·`dict push` 도 저장하지 않은 편집(`hasDraft`)을 알린다**(`UNSAVED_NOTICE`, stderr). 두 명령의
+  판정은 파일(= 보관함에 올라갈 값) 기준이라 `serve` 화면에 떠 있는 값과 다를 수 있다. 알림일 뿐이라
+  판정·종료 코드·`--json` 봉투는 그대로다 — `push`·`status` 와 같은 규약이다.
 
 ### `dict push` — 서버의 승격 엔진을 부를 뿐이다
 
@@ -175,6 +185,33 @@
   note 로, `--json` 은 모든 봉투의 `behind` 로 알린다. 규칙과 이유는 [shared-resources.md](shared-resources.md)
   「승격 — 가져오기의 반대 방향」이 갖는다.
 - **서버가 전부 건너뛰면 종료 코드 `1` 이다.** 웹의 「선택이 전부 no-op 이면 무반응」을 되풀이하지 않는다.
+  **CLI 쪽 선택(원본 앞섬 제외·동명 제외·`--name` 불일치)으로 0건이면 서버를 부르지 않고 `0`** 이다
+  (`올릴 항목이 없습니다`). 그러니 종료 코드 `0` 은 「올라갔다」가 아니다 — 스크립트·에이전트는 `--json` 의
+  `selected: 0`·`behind` 로 가른다. 매뉴얼이 이 경계를 사용자에게 안내한다.
+- **도메인 연결이 비는 용어는 행마다 알리고 `--json` 의 `danglingDomain` 에 싣는다.** 판정은 core
+  `resource-promote.ts` 의 `danglingDomain` 하나이고 웹 승격 화면의 「도메인 연결 비움」 배지와 같은
+  함수다 — 한쪽만 알리면 다른 쪽에서 조용히 빈다. 판정 집합은 **최종 선택**(`--kind`·`--name`·원본 앞섬
+  제외·동명 제외 뒤)이다 — 도메인이 계획에 있어도 이 필터로 빠지면 연결이 빈다.
+
+### `origins.yaml` 은 마지막에 쓴다
+
+**`writeTreeChanges`(`tree.ts`)가 `ORIGINS_FILE` 을 쓰기든 삭제든 맨 마지막에 한다.** 그 함수를 쓰는
+`dict pull` 과 `serve` 저장(`local/store.ts`)이 이 순서를 따로 챙기지 않아도 된다. `syncDown`·`import`
+가 쓰는 `writeTree` 는 트리의 삽입 순서로 쓰고, `modelToFiles` 가 `origins.yaml` 을 마지막에 넣는다.
+
+- **왜** — 파일 여럿의 쓰기는 원자적이지 않다. 출처를 먼저 쓰고 사전 내용 전에 끊기면 「출처는 새 버전,
+  내용은 옛 값」이 되어 다음 `dict pull` 이 버전이 같다고 **조용히** 넘기고, 그 항목은 영원히 「프로젝트가
+  고친 항목」으로 남는다. 출처가 마지막이면 끊겨도 옛 출처 대비 내용이 달라 다음 실행이 충돌로
+  **시끄럽게** 알린다. 「pull 의 네 단계 쓰기」(아래 한계)와 같은 방향이다.
+- **삭제도 마지막인 이유** — `serve` 의 스냅샷 복원처럼 출처가 0건이 되는 저장은 `origins.yaml` 삭제와
+  사전 내용 쓰기를 함께 한다. 삭제를 먼저 하는 일반 규칙(대소문자 무시 파일시스템의 개명)은 테이블
+  파일의 사정이라 이 파일에는 해당하지 않는다.
+- ⚠️ **`writeTree` 의 삭제 패스는 쓰기보다 먼저 돈다** — `syncDown` 에서 서버 출처가 0건이 되면
+  `origins.yaml` 삭제가 내용 쓰기보다 앞선다. 그 경로는 기준선을 트리 뒤에 쓰므로 중단이 `status` 로
+  드러난다(「pull 의 네 단계 쓰기」).
+- `tree.test.ts` 「origins.yaml 은 쓰기든 삭제든 사전 내용 파일 뒤에 한다」, `dict-pull.test.ts` 「사전 내용
+  파일을 먼저 쓰고 origins.yaml 을 마지막에 쓴다」, `local/store.test.ts` 「사전 내용과 출처가 함께 바뀌는
+  저장은 origins.yaml 을 마지막에 쓴다」가 잠근다.
 
 ### config 를 다시 쓰는 자리는 `dictionaries` 를 보존한다
 
@@ -182,13 +219,19 @@
 통째로 새로 만드는데, 거기서 구독을 빠뜨리면 **pull 할 때마다 구독이 사라지고** 사용자는 인자 없는
 `dict pull` 이 왜 아무것도 받지 않는지 모른다. 옵셔널로 두면 새 쓰기 자리가 빠뜨려도 타입 오류가 없다.
 
-- 지금 config 를 다시 쓰는 자리는 `syncDown`, `init`(연결·`--create`), `dict pull`, `serve` 의
-  `project.update` 다. **새 자리를 만들면 구독을 이어 싣는다.**
+- 지금 config 를 다시 쓰는 자리는 `syncDown`, `init`(연결·`--create`), `dict pull`, `import`(테이블 옵션
+  반영), `serve` 의 `project.update` 다. **새 자리를 만들면 구독을 이어 싣는다.**
 - `init --project` 재연결은 **같은 서버의 같은 프로젝트일 때만** 구독을 잇는다(`keptSubscriptions`).
   다른 프로젝트의 구독은 옛 프로젝트의 선택이라 비운다. 그래서 `serverUrl` 을 정규화해(`trim` + 끝 슬래시
   제거) 저장한다 — 저장값이 갈리면 같은 서버를 다른 서버로 읽어 구독을 지운다.
+- **`serve` 의 `project.update` 는 쓰기 직전에 디스크 config 의 `dictionaries` 를 다시 읽어 싣는다.**
+  화면은 구독을 보내지 않고, 구독은 `dict pull --library` 가 디스크에 더한다. 메모리의 `ctx.config` 를
+  그대로 싣으면 파일 감시가 그것을 맞추기 전(디바운스 폭)에 저장한 설정이 방금 더한 구독을 옛 값으로
+  덮는다. 디스크 config 가 손으로 깨져 있으면 이 저장은 `readConfig` 오류로 실패한다 — 깨진 파일을 조용히
+  덮어 사람의 편집을 날리는 것보다 낫다. `router.test.ts` 「project.update 는 ctx.config 의 구독이 낡았어도
+  디스크의 구독을 보존한다」가 잠근다.
 - `serve` 의 파일 감시는 구독만 바뀐 config 를 reload 사유로 보지 않되, 메모리의 config 는 매번 갱신한다
-  — 낡은 값이 남으면 다음 `project.update` 가 옛 구독으로 config 를 덮는다.
+  — `project.get` 이 낡은 구독을 내지 않게 한다.
 
 ### `init --create` — config 가 커밋 지점이다
 
