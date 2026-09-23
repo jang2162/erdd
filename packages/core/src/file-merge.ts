@@ -1,6 +1,6 @@
 import { deepEqual } from './equal.js'
-import { TOP_LEVEL_FILES, TREE_ROOT, tableFileName } from './file-format.js'
-import { DIFF_KIND_LABEL } from './model-diff.js'
+import { ORIGINS_FILE, TOP_LEVEL_FILES, TREE_ROOT, tableFileName } from './file-format.js'
+import { DIFF_KIND_LABEL, formatOrigin } from './model-diff.js'
 import { createEmptyModel, type Position, type ProjectModel } from './model.js'
 import { COLLECTION_BY_KIND, ENTITY_KINDS, type EntityKind } from './op.js'
 
@@ -19,26 +19,27 @@ export const MERGE_KINDS: readonly MergeKind[] =
  *   2) 충돌 출력에 보여줄 필드 이름(사용자가 파일에서 실제로 보는 이름)
  *   3) FILE_INVISIBLE_FIELDS와 짝을 이뤄 "새 엔티티 필드를 분류하지 않으면 테스트가 깨지는" 게이트
  * 괄호 표기는 파일에 전용 키가 없고 배열 위치·파일 소속으로 표현되는 것들이다.
- * `(출처)`는 사전 파일이 아니라 erdd/origins.yaml 에 실린다.
+ * `출처`는 사전 파일이 아니라 erdd/origins.yaml 의 한 줄이다 — 그 파일에 실제로 있으므로 괄호를
+ * 쓰지 않고, 필드 충돌의 경로도 그 파일로 낸다(mergeModels).
  */
 export const FILE_FIELDS: Record<MergeKind, Record<string, string>> = {
   tableGroup: { name: 'name', color: 'color', comment: 'comment', alias: 'alias' },
   domain: {
     name: 'name', category: 'category', logicalType: 'logicalType',
     dialectTypes: 'dialectTypes', defaultValue: 'defaultValue',
-    allowedValues: 'allowedValues', description: 'description', origin: '(출처)',
+    allowedValues: 'allowedValues', description: 'description', origin: '출처',
   },
   word: {
     logicalName: 'logicalName', abbreviation: 'abbreviation',
-    englishName: 'englishName', description: 'description', origin: '(출처)',
+    englishName: 'englishName', description: 'description', origin: '출처',
   },
   term: {
     logicalName: 'logicalName', physicalName: 'physicalName',
-    domainId: 'domain', description: 'description', origin: '(출처)',
+    domainId: 'domain', description: 'description', origin: '출처',
   },
   customField: {
     name: 'name', target: 'target', type: 'type', options: 'options',
-    required: 'required', defaultValue: 'defaultValue', order: 'order', origin: '(출처)',
+    required: 'required', defaultValue: 'defaultValue', order: 'order', origin: '출처',
   },
   table: {
     physicalName: 'name', logicalName: 'logicalName', comment: 'comment',
@@ -213,10 +214,7 @@ function displayValue(model: ProjectModel, field: string, value: unknown): strin
     if (field === 'domainId') return model.domains[value]?.name ?? value
     return model.tables[value]?.physicalName ?? value
   }
-  if (field === 'origin' && typeof value === 'object') {
-    const o = value as { libraryId: string; sourceId: string; sourceVersion: number }
-    return `${o.libraryId}/${o.sourceId} v${o.sourceVersion}`
-  }
+  if (field === 'origin') return formatOrigin(value)
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }
@@ -288,7 +286,8 @@ export function mergeModels(
         field: string, reason: ConflictReason, modelField: string | null, changed: string[],
       ): void => {
         conflicts.push({
-          path: pathOf(kind, any, models, tableFiles),
+          // 출처 값은 사전 파일이 아니라 origins.yaml 에 있다. 엔티티 단위 충돌(삭제)은 사전 파일이다.
+          path: modelField === 'origin' ? ORIGINS_FILE : pathOf(kind, any, models, tableFiles),
           kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, any, models)}`,
           field, reason, changedFields: changed,
           base: modelField === null

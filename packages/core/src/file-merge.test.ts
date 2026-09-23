@@ -552,10 +552,23 @@ describe('origin 병합', () => {
     expect(ops[0]).toMatchObject({ action: 'update', entity: 'word', entityId: 'w1' })
   })
 
-  it('양쪽이 출처를 다르게 바꾸면 (출처) 필드 충돌이다', () => {
+  it('양쪽이 출처를 다르게 바꾸면 출처 필드 충돌이고, 값이 실린 origins.yaml 을 가리킨다', () => {
     const Y = { ...X, sourceVersion: 3 }
     const { conflicts } = mergeModels(word(null), word(X), fileVisibleModel(word(Y)))
     expect(conflicts).toHaveLength(1)
-    expect(conflicts[0]).toMatchObject({ field: '(출처)', reason: 'field', path: 'erdd/words.yaml' })
+    // 표시 형식은 변경분 표시(formatOrigin)와 같다.
+    expect(conflicts[0]).toMatchObject({
+      field: '출처', reason: 'field', path: 'erdd/origins.yaml',
+      base: null, local: 'v2 · 항목 S1', server: 'v3 · 항목 S1',
+    })
+  })
+
+  it('항목 삭제 충돌은 출처가 아니라 사전 파일을 가리킨다', () => {
+    const server = word(X)
+    server.words['w1']!.abbreviation = 'CSTM'
+    const { conflicts } = mergeModels(word(X), createEmptyModel(), fileVisibleModel(server))
+    expect(conflicts).toEqual([expect.objectContaining({
+      path: 'erdd/words.yaml', reason: 'local-delete', changedFields: ['abbreviation'],
+    })])
   })
 })
