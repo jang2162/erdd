@@ -12,7 +12,7 @@ import { requireProjectAccess } from '../services/perm.js'
 import {
   parsePayload, requireLibraryRead, requireLibraryWrite, requireScopeRead, requireScopeWrite,
 } from '../services/resource-library.js'
-import { emptyOutcome, runPromoteInTx } from '../services/promote.js'
+import { emptyOutcome, loadLibraryItems, runPromoteInTx } from '../services/promote.js'
 import { mutateAndPublish } from '../services/mutate-publish.js'
 import { apiProcedure, authedProcedure, router } from '../trpc.js'
 
@@ -120,14 +120,9 @@ export const resourceRouter = router({
       .input(z.object({ libraryId: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
         await requireLibraryRead(ctx.db, input.libraryId, ctx.user)
-        return ctx.db
-          .select({
-            id: resourceItems.id, kind: resourceItems.kind,
-            payload: resourceItems.payload, version: resourceItems.version,
-          })
-          .from(resourceItems)
-          .where(eq(resourceItems.libraryId, input.libraryId))
-          .orderBy(asc(resourceItems.createdAt))
+        // CLI dict push 가 이 결과로 planPromote 를 돌려 expected* 를 채운다 — 서버 재계산과 같은
+        // 조회·정렬이어야 하므로 loadLibraryItems 를 쓴다(guides/shared-resources.md 「요청·승인 큐」).
+        return loadLibraryItems(ctx.db, input.libraryId)
       }),
 
     create: authedProcedure
