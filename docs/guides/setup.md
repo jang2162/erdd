@@ -101,6 +101,21 @@ pnpm -r typecheck; echo "EXIT=$?"
 없으면 대부분의 케이스가 skip 되고 **초록색으로 끝난다.** 실패로 보이지 않으니
 **출력의 `skipped` 수를 확인해라** — skip 이 0 이어야 실제로 돈 것이다.
 
+### CI 의 서버 테스트
+
+`.github/workflows/ci.yml` 의 `server` 잡이 `apps/server` 스위트를 돈다. 잡마다 새로 뜨는
+`postgres:17` 서비스에 test DB `erdd_test` 를 만들고, 잡 환경의 `DATABASE_URL` 로 **원시 호출**
+`pnpm -C apps/server exec drizzle-kit migrate` 를 적용한 뒤 테스트를 돌린다(`pnpm db:migrate` 를 쓰지
+않는 이유는 위 「마이그레이션」의 🔥 항목이다).
+
+- **통과만으로 판정하지 않는다.** vitest 의 JSON 리포트에서 skip·todo 수를 읽어 **0 이 아니면 잡을
+  떨어뜨린다** — 위 「`DATABASE_URL` 이 없으면 조용히 건너뛴다」 때문이다. DB 배선이 끊기면 전건
+  skip 인 초록 대신 빨강이 된다.
+- ⚠️ **서버 스위트에 의도된 skip 을 새로 넣으면 이 판정에 걸린다.** 넣어야 한다면 판정 조건을 함께
+  고쳐라 — skip 을 허용하는 쪽으로 무르면 DB 배선이 끊긴 상태를 다시 구분하지 못한다.
+- 이 잡은 `release.yml` 이 `ci.yml` 을 부를 때도 돈다 — 게시 전 검증에 들어간다
+  ([release.md](release.md) 「CI — 검증과 게시」).
+
 ### ⚠️ `pnpm -s -r typecheck` 의 출력만 보고 판정하지 마라
 
 `-s` 가 자식 출력을 삼켜서 **타입 오류가 있어도 출력이 0바이트이고 종료코드만 1** 이다.

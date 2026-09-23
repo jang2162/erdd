@@ -40,7 +40,7 @@
   🔥 **`.env` 를 로드해 `pnpm verify` 를 돌리면 개발 DB 가 통째로 날아간다** ·
   `pnpm -s -r typecheck` 는 오류가 있어도 출력이 비고 종료코드만 1 이다 · 브라우저 스모크 준비
 - **CLI 패키지를 게시할 때 → [docs/guides/release.md](docs/guides/release.md)**
-  (태그 규약, 게시를 막는 가드 다섯, core 버전 가드, 웹 번들·매뉴얼 동봉)
+  (태그 규약, 게시를 막는 가드 넷, core 버전 가드, 게시 경로·trusted publishing·첫 게시, 웹 번들·매뉴얼 동봉)
 - **새 op 엔티티나 엔티티 필드를 추가할 때 → [docs/guides/data-layer.md](docs/guides/data-layer.md)**
   (등록처 여섯 + 일곱 번째, `ENTITY_KINDS` 순서가 정확성 제약인 이유, 하위호환, op 상한, diff 함수 둘)
 - **명명 규칙·사전·형식 템플릿·경고를 건드릴 때 → [docs/guides/naming.md](docs/guides/naming.md)**
