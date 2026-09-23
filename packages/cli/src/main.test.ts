@@ -95,6 +95,23 @@ describe('main', () => {
     }
   })
 
+  it('dict pull 은 배선돼 있고, --conflicts·--library 값이 잘못되면 USAGE로 끝난다', async () => {
+    const out: string[] = []
+    vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    expect(await main(['dict', 'pull', '--json'], '/tmp/erdd-does-not-exist')).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+    for (const argv of [
+      ['dict', 'pull', '--conflicts', 'mine', '--json'],
+      ['dict', 'pull', '--conflicts', '--json'],
+      ['dict', 'pull', '--library', '--json'],
+    ]) {
+      out.length = 0
+      expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(2)
+      expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
+    }
+  })
+
   it('serve --port 에 값이 빠지면 조용히 기본 포트로 떨어지지 않고 USAGE로 끝난다', async () => {
     const out: string[] = []
     vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })

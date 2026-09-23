@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import { DIALECTS, type Dialect, type NamingRules } from '@erdd/core'
 import { dictList } from './commands/dict-list.js'
+import { dictPull } from './commands/dict-pull.js'
 import { diff } from './commands/diff.js'
 import { exportCommand, type ExportFormat } from './commands/export.js'
 import { importCommand } from './commands/import.js'
@@ -48,7 +49,10 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --dialect <방언>       export·import·init --local 전용
                         export·import는 기본이 erdd.config.yaml의 dialects[0], init --local은 postgresql
   -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
-  --dry-run             import 전용 — 계획만 보고 파일을 쓰지 않는다
+  --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
+  --library <이름|id>   dict pull 전용 — 받을 라이브러리(구독에 없으면 더한다). 없으면 구독 전부
+  --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다
+  --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
   --port <번호>          serve 전용 — 기본 4300
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
   --help                이 도움말`
@@ -215,6 +219,17 @@ export async function main(argv: string[], cwd: string): Promise<number> {
       // 하위 명령 자리에 플래그가 오면 하위 명령이 빠진 것이다(`erdd dict --json`).
       const sub = argv[1]?.startsWith('-') === true ? undefined : argv[1]
       if (sub === 'list') return dictList(ctx)
+      if (sub === 'pull') {
+        const conflicts = enumFlag<'theirs' | 'ours'>(argv, 'conflicts', ['theirs', 'ours'] as const)
+        if (!conflicts.ok) return usageError(json, conflicts.message)
+        if (argv.includes('--library') && flagValue(argv, 'library') === undefined) {
+          return usageError(json, '--library 값이 올바르지 않습니다: (값 없음)')
+        }
+        return dictPull({
+          ...ctx, library: flagValue(argv, 'library'), adopt: argv.includes('--adopt'),
+          conflicts: conflicts.value, dryRun: argv.includes('--dry-run'),
+        })
+      }
       return usageError(json, `알 수 없는 dict 하위 명령: ${sub ?? '(없음)'} — list | pull | push | requests`)
     }
     case 'skill': return skill({
