@@ -53,10 +53,19 @@ export function listLibraries(client: ApiClient, projectId: string): Promise<Lib
   return guardFeature(() => client.query<LibraryRow[]>('resource.library.listForProject', { projectId }))
 }
 
-/** id 순으로 정렬해 넘긴다 — planResync 의 순회 순서가 결과를 흔들지 않게(결정성). */
-export async function fetchItems(client: ApiClient, libraryId: string): Promise<LibraryItem[]> {
+/**
+ * 기본은 id 순으로 정렬해 넘긴다 — planResync 의 순회 순서가 결과를 흔들지 않게(결정성).
+ *
+ * `order: 'server'` 는 서버가 준 순서(`loadLibraryItems` 의 createdAt 오름차순)를 그대로 둔다 —
+ * dict push 전용이다. 서버의 `resource.promote`·`promotion.create` 는 그 순서로 `planPromote` 를
+ * **다시 계산**하고, 동명 항목이 둘이면 먼저 나온 쪽이 `name-match` 대상이 된다. CLI 가 id 순으로
+ * 계산하면 `expectedTargetItemId` 가 서버와 어긋나 그 항목이 `plan-changed` 로 조용히 건너뛰어진다.
+ */
+export async function fetchItems(
+  client: ApiClient, libraryId: string, opts: { order: 'id' | 'server' } = { order: 'id' },
+): Promise<LibraryItem[]> {
   const items = await guardFeature(() => client.query<LibraryItem[]>('resource.items.list', { libraryId }))
-  return [...items].sort((a, b) => a.id.localeCompare(b.id))
+  return opts.order === 'server' ? items : [...items].sort((a, b) => a.id.localeCompare(b.id))
 }
 
 /** id 가 정확히 맞으면 그것, 아니면 이름. 이름이 여럿에 맞으면 고르지 않는다 — 엉뚱한 사전을 받는다. */

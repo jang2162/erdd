@@ -3,9 +3,11 @@ import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
-import { DIALECTS, type Dialect, type NamingRules } from '@erdd/core'
+import { DIALECTS, RESOURCE_KINDS, type Dialect, type NamingRules, type ResourceKind } from '@erdd/core'
 import { dictList } from './commands/dict-list.js'
 import { dictPull } from './commands/dict-pull.js'
+import { dictPush } from './commands/dict-push.js'
+import { REQUEST_STATUSES, dictRequests, type RequestStatus } from './commands/dict-requests.js'
 import { diff } from './commands/diff.js'
 import { exportCommand, type ExportFormat } from './commands/export.js'
 import { importCommand } from './commands/import.js'
@@ -37,7 +39,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --json                기계용 JSON 출력
   --yes                 확인 프롬프트를 건너뛴다
   --strict              validate·diff에서 경고·충돌도 실패로 본다
-  -m, --message <요약>  push의 Revision 요약
+  -m, --message <요약>  push의 Revision 요약, dict push의 승격 요청 메모
   --dir <경로>          skill install 전용 — 설치 위치
   --force               skill install 전용 — 기존 파일 덮어쓰기
   --server <url>        init 전용
@@ -50,9 +52,14 @@ const USAGE = `사용법: erdd <명령> [옵션]
                         export·import는 기본이 erdd.config.yaml의 dialects[0], init --local은 postgresql
   -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
   --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
-  --library <이름|id>   dict pull 전용 — 받을 라이브러리(구독에 없으면 더한다). 없으면 구독 전부
+  --library <이름|id>   dict pull·push 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
+                        push는 올릴 라이브러리(필수)
   --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다
   --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
+  --kind <종류,…>        dict push 전용 — domain·word·term·customField 중 올릴 종류
+  --name <이름>          dict push 전용 — 올릴 항목 이름(반복 가능)
+  --include-name-match  dict push 전용 — 라이브러리에 같은 이름이 있는 항목도 올린다(기본 제외)
+  --status <상태>        dict requests 전용 — pending·resolved·rejected·cancelled
   --port <번호>          serve 전용 — 기본 4300
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
   --help                이 도움말`
@@ -229,6 +236,31 @@ export async function main(argv: string[], cwd: string): Promise<number> {
           ...ctx, library: flagValue(argv, 'library'), adopt: argv.includes('--adopt'),
           conflicts: conflicts.value, dryRun: argv.includes('--dry-run'),
         })
+      }
+      if (sub === 'push') {
+        if (argv.includes('--library') && flagValue(argv, 'library') === undefined) {
+          return usageError(json, '--library 값이 올바르지 않습니다: (값 없음)')
+        }
+        const kinds = argv.includes('--kind') ? (flagValue(argv, 'kind') ?? '').split(',').filter(Boolean) : undefined
+        if (kinds !== undefined && (kinds.length === 0 || !kinds.every((k) => (RESOURCE_KINDS as readonly string[]).includes(k)))) {
+          return usageError(json, `--kind 값이 올바르지 않습니다: ${flagValue(argv, 'kind') ?? '(값 없음)'} — ${RESOURCE_KINDS.join(' | ')}`)
+        }
+        // --name 은 반복할 수 있다. 값이 빠진 --name 은 조용히 무시하지 않는다 — 전부 올라간다.
+        const nameAt = argv.flatMap((a, i) => (a === '--name' ? [i] : []))
+        if (nameAt.some((i) => argv[i + 1] === undefined || argv[i + 1]!.startsWith('--'))) {
+          return usageError(json, '--name 값이 올바르지 않습니다: (값 없음)')
+        }
+        const names = nameAt.map((i) => argv[i + 1]!)
+        return dictPush({
+          ...ctx, library: flagValue(argv, 'library'), kinds: kinds as ResourceKind[] | undefined,
+          names: names.length > 0 ? names : undefined, includeNameMatch: argv.includes('--include-name-match'),
+          message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm'),
+        })
+      }
+      if (sub === 'requests') {
+        const status = enumFlag<RequestStatus>(argv, 'status', REQUEST_STATUSES)
+        if (!status.ok) return usageError(json, status.message)
+        return dictRequests({ ...ctx, status: status.value })
       }
       return usageError(json, `알 수 없는 dict 하위 명령: ${sub ?? '(없음)'} — list | pull | push | requests`)
     }
