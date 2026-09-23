@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { TOP_LEVEL_FILES, TREE_ROOT, type LibraryItem } from '@erdd/core'
 import type { ApiClient } from '../client.js'
 import { writeConfig } from '../config.js'
 import { CliError } from '../output.js'
 import { TEST_CONFIG } from '../testing/harness.js'
 import { dictList } from './dict-list.js'
-import { guardFeature, resolveLibrary, type LibraryRow } from './dict-shared.js'
+import { DICTIONARY_FILES, fetchItems, guardFeature, resolveLibrary, type LibraryRow } from './dict-shared.js'
 
 const row = (id: string, name: string, scope: 'org' | 'global' = 'org'): LibraryRow =>
   ({ id, scope, orgId: scope === 'org' ? 'o1' : null, name, description: '', itemCount: 0, canWrite: false })
@@ -56,6 +57,29 @@ describe('guardFeature', () => {
   })
 })
 
+describe('DICTIONARY_FILES', () => {
+  it('최상위 파일 중 그룹 파일만 뺀다', () => {
+    expect(DICTIONARY_FILES).toEqual(TOP_LEVEL_FILES.filter((p) => p !== `${TREE_ROOT}/groups.yaml`))
+    expect(DICTIONARY_FILES).toHaveLength(TOP_LEVEL_FILES.length - 1)
+  })
+})
+
+describe('fetchItems', () => {
+  const item = (id: string): LibraryItem =>
+    ({ id, kind: 'word', version: 1, payload: { logicalName: id, abbreviation: id, englishName: null, description: null } })
+  // 서버가 id 역순으로 준다고 치자 — 기본은 결정성을 위해 id 순으로 다시 세운다.
+  const reversed: ApiClient = {
+    query: (async () => [item('S3'), item('S2'), item('S1')]) as ApiClient['query'],
+    mutate: (async () => { throw new Error('unexpected mutate') }) as ApiClient['mutate'],
+  }
+  it('기본은 id 오름차순이다', async () => {
+    expect((await fetchItems(reversed, 'L1')).map((i) => i.id)).toEqual(['S1', 'S2', 'S3'])
+  })
+  it("order: 'server' 는 서버 순서를 그대로 둔다", async () => {
+    expect((await fetchItems(reversed, 'L1', { order: 'server' })).map((i) => i.id)).toEqual(['S3', 'S2', 'S1'])
+  })
+})
+
 describe('dict list', () => {
   let dir: string
   let out: string[]
@@ -96,6 +120,19 @@ describe('dict list', () => {
       '  표준 — 조직 · 항목 0 · L1',
       '* 확장 — 조직 · 항목 0 · L2',
     ])
+  })
+
+  // guardFeature 를 거치는 배선 잠금 — listLibraries 가 그것을 벗으면 옛 서버의 거절이 날것으로 나간다.
+  it('옛 서버의 세션 전용 거절은 업그레이드 안내로 나간다', async () => {
+    await writeConfig(dir, { ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects] })
+    const old: ApiClient = {
+      query: (async () => { throw new CliError('UNAUTHORIZED', '이 작업은 액세스 토큰으로 할 수 없습니다') }) as ApiClient['query'],
+      mutate: (async () => { throw new Error('unexpected mutate') }) as ApiClient['mutate'],
+    }
+    expect(await dictList({ cwd: dir, json: true, yes: false, strict: false, client: old })).toBe(1)
+    expect(JSON.parse(out.join(''))).toMatchObject({
+      error: { code: 'UNAUTHORIZED', message: expect.stringContaining('서버를 업그레이드') },
+    })
   })
 
   it('서버에 연결되지 않은 프로젝트는 NO_CONFIG 로 init --create 를 가리킨다', async () => {

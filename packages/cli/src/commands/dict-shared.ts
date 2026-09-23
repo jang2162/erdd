@@ -1,5 +1,5 @@
 import {
-  TOP_LEVEL_FILES, filesToModel,
+  TOP_LEVEL_FILES, TREE_ROOT, filesToModel,
   type FileTree, type LibraryItem, type ProjectModel,
 } from '@erdd/core'
 import { uuidv7 } from 'uuidv7'
@@ -17,7 +17,7 @@ export type LibraryRow = {
  * 사전 동기화가 쓰는 파일. 그룹·테이블 파일은 재동기화가 건드리지 않으므로 쓰지 않는다 —
  * modelToFiles 가 다시 만든 테이블 파일을 쓰면 손으로 다듬은 YAML 이 이유 없이 정규화된다.
  */
-export const DICTIONARY_FILES: readonly string[] = TOP_LEVEL_FILES.filter((p) => p !== 'erdd/groups.yaml')
+export const DICTIONARY_FILES: readonly string[] = TOP_LEVEL_FILES.filter((p) => p !== `${TREE_ROOT}/groups.yaml`)
 
 /** 사전 명령의 연결 관문. 로컬 전용 프로젝트에는 서버 프로젝트를 만들어 붙이는 길을 가리킨다. */
 export function requireDictConnection(config: ErddConfig): Connection {
