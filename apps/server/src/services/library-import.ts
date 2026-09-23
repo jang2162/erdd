@@ -47,6 +47,16 @@ export function libraryStateHash(items: readonly { id: string; version: number }
  * 한 번의 가져오기는 한 트랜잭션이고 전부 아니면 전무다.
  */
 export async function runLibraryImport(db: Db, actor: Actor, input: LibraryImportInput): Promise<LibraryImportResponse> {
+  // 권한 확인을 파일 파싱보다 먼저 한다 — 그러지 않으면 토큰만 있는 권한 없는 계정도 최대 16MiB
+  // YAML 을 동기 파싱(이벤트 루프 점유)시킬 수 있다. 권한 판정에는 파일 내용이 필요 없다.
+  if ('create' in input.target) {
+    const create = input.target.create
+    if (create.scope === 'org' && !create.orgId) throw new TRPCError({ code: 'BAD_REQUEST', message: '조직 id가 필요합니다' })
+    await requireScopeWrite(db, create.scope, create.orgId ?? null, actor)
+  } else {
+    await requireLibraryWrite(db, input.target.libraryId, actor)
+  }
+
   const parsed = parseLibraryFile(input.text, 'source')
   if (!parsed.ok) {
     throw new TRPCError({
@@ -59,8 +69,6 @@ export async function runLibraryImport(db: Db, actor: Actor, input: LibraryImpor
 
   if ('create' in input.target) {
     const create = input.target.create
-    if (create.scope === 'org' && !create.orgId) throw new TRPCError({ code: 'BAD_REQUEST', message: '조직 id가 필요합니다' })
-    await requireScopeWrite(db, create.scope, create.orgId ?? null, actor)
     const plan = planLibraryImport([], doc, null)
     const response = { stateHash: libraryStateHash([]), summary: summarizeLibraryImport(plan, []) }
     if (input.dryRun) return { libraryId: null, applied: false, ...response }
@@ -76,7 +84,6 @@ export async function runLibraryImport(db: Db, actor: Actor, input: LibraryImpor
   }
 
   const libraryId = input.target.libraryId
-  await requireLibraryWrite(db, libraryId, actor)
   if (input.dryRun) {
     const items = await loadLibraryItems(db, libraryId)
     const plan = planLibraryImport(items, doc, libraryId)

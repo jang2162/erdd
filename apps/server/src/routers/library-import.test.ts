@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { uuidv7 } from 'uuidv7'
-import { resourceItems, resourceLibraries } from '../db/schema.js'
+import { members, organizations, resourceItems, resourceLibraries } from '../db/schema.js'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { waitForLockWaiter } from '../testing/locks.js'
@@ -47,8 +47,13 @@ describe.skipIf(!url)('resource.library.import', () => {
     expect(await items(data.libraryId)).toEqual([expect.objectContaining({ kind: 'word', version: 1 })])
   })
 
-  it('다른 조직 orgId 로는 만들 수 없다', async () => {
+  it('다른 조직(비멤버) orgId 로는 만들 수 없다', async () => {
+    // 실재하지 않는 조직 id 는 getOrgMember 가 "멤버 없음"이라는 다른 이유로도 403 을 낼 수 있어
+    // 구분력이 약하다 — 실재하는 남의 조직(요청자는 비멤버)으로 잠근다.
+    const owner = await createAccount(app.db!, { email: 'owner@t.dev', name: 'O', password: 'pw-123456', role: 'user' })
     const orgId = uuidv7()
+    await app.db!.insert(organizations).values({ id: orgId, name: '남의 조직', kind: 'team' })
+    await app.db!.insert(members).values([{ id: uuidv7(), orgId, userId: owner.id, role: 'owner' }])
     const res = await post(user, { target: { create: { scope: 'org', orgId, name: 'x' } }, text: wordsFile('{ logicalName: 고객 }') })
     expect(res.statusCode).toBe(403)
   })
@@ -58,6 +63,18 @@ describe.skipIf(!url)('resource.library.import', () => {
     const res = await post(admin, { target: { libraryId }, text: wordsFile('{ logicalName: 고객 }'), dryRun: true })
     expect(res.json().result.data).toMatchObject({ applied: false, summary: { counts: { add: 1 } }, stateHash: expect.any(String) })
     expect(await items(libraryId)).toEqual([])
+  })
+
+  it('쓰기 권한이 없는 사용자의 dryRun 은 403 이다(계획·변경 내역을 노출하지 않는다)', async () => {
+    const libraryId = await createGlobal()
+    const res = await post(user, { target: { libraryId }, text: wordsFile('{ logicalName: 고객 }'), dryRun: true })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('권한 확인이 파일 파싱보다 먼저다 — 권한 없는 사용자가 깨진 파일을 보내도 400 이 아니라 403', async () => {
+    const libraryId = await createGlobal()
+    const res = await post(user, { target: { libraryId }, text: '이건 라이브러리 파일이 아니다' })
+    expect(res.statusCode).toBe(403)
   })
 
   it('갱신은 버전을 올리고, 같은 내용 재가져오기는 버전·updatedAt 을 건드리지 않는다', async () => {
