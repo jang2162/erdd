@@ -105,6 +105,17 @@ describe('planLibraryImport — 병합·상태', () => {
       .toEqual({ inserts: [], updates: [], removes: [] })
   })
 
+  it('옛 행(englishName 없음)을 내보낸 파일을 다시 가져오면 unchanged 다', () => {
+    const oldWord: LibraryItem = { id: 'w1', kind: 'word', version: 1, payload: { logicalName: '고객', abbreviation: 'CUST', description: null } }
+    const existing = [oldWord]
+    const parsed = parseLibraryFile(exportLibraryFile({ id: LIB, name: 'x', description: '' }, existing).text, 'source')
+    if (!parsed.ok) throw new Error('parse')
+    const plan = planLibraryImport(existing, parsed.doc, LIB)
+    expect(plan.entries).toEqual([expect.objectContaining({ status: 'unchanged', changedFields: [] })])
+    expect(materializeLibraryImport(plan, { prune: true, includeStale: true }, newId))
+      .toEqual({ inserts: [], updates: [], removes: [] })
+  })
+
   it('다른 라이브러리에서 온 파일도 재매핑 뒤 같으면 unchanged 다(용어의 도메인 참조)', () => {
     const existing = [domain('d1', '금액'), term('t1', '금액합계', 'd1')]
     const plan = planLibraryImport(existing, source({

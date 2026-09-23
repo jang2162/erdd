@@ -76,12 +76,16 @@ describe.skipIf(!url)('resource.library.import', () => {
   it('내보낸 파일을 그대로 다시 가져오면 바뀌는 것이 없다', async () => {
     const libraryId = await createGlobal()
     await post(admin, { target: { libraryId }, text: wordsFile('{ logicalName: 고객, abbreviation: CUST }', '{ logicalName: 주문, abbreviation: ORD }') })
+    // 옛 행(키 누락) — 스키마 도입 전 직접 INSERT 된 행을 흉내낸다. englishName 키가 아예 없다(I-1).
+    await app.db!.insert(resourceItems).values([
+      { id: uuidv7(), libraryId, kind: 'word', payload: { logicalName: '배송', abbreviation: 'DLV', description: null } },
+    ])
     const exported = (await app.inject({
       method: 'GET', url: `/trpc/resource.library.export?input=${encodeURIComponent(JSON.stringify({ libraryId }))}`,
       cookies: { erdd_session: admin },
     })).json().result.data.text
     const res = await post(admin, { target: { libraryId }, text: exported, prune: true })
-    expect(res.json().result.data.summary.counts).toMatchObject({ unchanged: 2, add: 0, update: 0, remove: 0 })
+    expect(res.json().result.data.summary.counts).toMatchObject({ unchanged: 3, add: 0, update: 0, remove: 0 })
   })
 
   it('미리보기 해시가 달라지면 409 로 거절하고 아무것도 쓰지 않는다', async () => {

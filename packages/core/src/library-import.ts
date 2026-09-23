@@ -1,6 +1,6 @@
 import { deepEqual } from './equal.js'
 import type { LibraryFileDoc, LibraryFileEntry } from './library-file.js'
-import { RESOURCE_KINDS, RESOURCE_KIND_LABEL, resourceDisplayName, type ResourceKind } from './resource.js'
+import { RESOURCE_KINDS, RESOURCE_KIND_LABEL, RESOURCE_PAYLOAD_SCHEMAS, resourceDisplayName, type ResourceKind } from './resource.js'
 import type { LibraryItem } from './resource-sync.js'
 
 /**
@@ -62,6 +62,15 @@ function matchKey(kind: ResourceKind, payload: Record<string, unknown>): string 
 function changedKeys(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
   return [...new Set([...Object.keys(before), ...Object.keys(after)])]
     .filter((k) => !deepEqual(before[k], after[k]))
+}
+
+/**
+ * 옛 행(키 누락)을 종류별 스키마로 완전값 정규화한다 — exportLibraryFile 이 파일에 쓰는 것과 같은 기준.
+ * 정규화 없이 비교하면 파일의 완전값(예: englishName: null)과 옛 행의 누락 키가 달라 보여 unchanged 가 update 로 잘못 판정된다.
+ */
+function normalizedPayload(kind: ResourceKind, payload: Record<string, unknown>): Record<string, unknown> {
+  const parsed = RESOURCE_PAYLOAD_SCHEMAS[kind].safeParse(payload)
+  return parsed.success ? parsed.data as Record<string, unknown> : payload
 }
 
 export function planLibraryImport(
@@ -147,13 +156,14 @@ export function planLibraryImport(
       })
       continue
     }
-    const payload = merge(f.kind, hit.payload, fields)
-    const changedFields = changedKeys(hit.payload, payload)
+    const currentPayload = normalizedPayload(f.kind, hit.payload)
+    const payload = merge(f.kind, currentPayload, fields)
+    const changedFields = changedKeys(currentPayload, payload)
     const status: LibraryImportStatus = changedFields.length === 0 ? 'unchanged'
       : matchedById.has(f.ref) && fileVersion !== null && fileVersion < hit.version ? 'stale' : 'update'
     entries.push({
       status, kind: f.kind, name: resourceDisplayName(f.kind, payload), targetId: hit.id, fileRef: f.ref,
-      currentVersion: hit.version, fileVersion, currentPayload: hit.payload, payload, changedFields, referencedBy: 0,
+      currentVersion: hit.version, fileVersion, currentPayload, payload, changedFields, referencedBy: 0,
     })
   }
 
