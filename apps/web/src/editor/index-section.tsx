@@ -79,7 +79,7 @@ function IndexRow(props: {
   return (
     <li className="grid gap-2 rounded-md border p-2">
       <div className="flex items-center gap-2">
-        <Input aria-label="인덱스명" defaultValue={ix.name} key={ix.name} className="h-8 font-mono"
+        <Input id={`ix-${ix.id}-name`} aria-label="인덱스명" defaultValue={ix.name} key={ix.name} className="h-8 font-mono"
           readOnly={!canEdit}
           onBlur={(e) => { const v = e.target.value; if (v !== ix.name && v.trim() !== '') props.onPatch({ name: v }) }} />
         {canEdit && (

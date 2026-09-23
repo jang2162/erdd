@@ -310,7 +310,7 @@ function ColumnRow(props: {
         <Input aria-label="타입" className="font-mono" disabled readOnly
           value={domain ? `${domain.logicalType} (도메인: ${domain.name})` : c.type} />
       ) : (
-        <CommitInput label="타입" value={c.type} mono readOnly={!canEdit} onCommit={(v) => props.onPatch({ type: v })} />
+        <CommitInput id={`col-${c.id}-type`} label="타입" value={c.type} mono readOnly={!canEdit} onCommit={(v) => props.onPatch({ type: v })} />
       )}
       <div className="flex items-center gap-3 text-xs">
         <label className="flex items-center gap-1">

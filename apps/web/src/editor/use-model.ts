@@ -17,6 +17,11 @@ export function serializeMutation<T>(fn: () => Promise<T>): Promise<T> {
   return run
 }
 
+// `useModelMutation` 이 `error` 로 끝난 횟수. 로컬 저장이 자기가 기다린 편집 중 거절된 것이 있는지를
+// 앞뒤 값 비교로 안다 — 체인의 각 결과는 그것을 부른 쪽만 받으므로 저장이 직접 볼 수 없다.
+let failedMutations = 0
+export function failedMutationCount(): number { return failedMutations }
+
 export function useModelLoader(projectId: string) {
   const trpc = useTRPC()
   const setLoaded = useEditorStore((s) => s.setLoaded)
@@ -162,7 +167,11 @@ export function useModelMutation(projectId: string) {
     (
       producer: (model: ProjectModel) => ProjectModel, opts?: { summary?: string },
     ): Promise<ModelMutationResult> =>
-      serializeMutation(() => submit(producer, { summary: opts?.summary, record: true })),
+      serializeMutation(async () => {
+        const r = await submit(producer, { summary: opts?.summary, record: true })
+        if (r === 'error') failedMutations += 1
+        return r
+      }),
     [submit],
   )
 }
