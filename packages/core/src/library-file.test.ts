@@ -36,6 +36,19 @@ describe('exportLibraryFile / parseLibraryFile', () => {
     expect(exportLibraryFile(LIB, shuffled).text).toBe(a)
   })
 
+  it('종류 안에서 id 코드 단위 오름차순으로 쓴다 — 종류당 1개뿐이면 못 잡는 회귀(kind-내부 정렬)를 고정', () => {
+    // word 가 2개, 종류 순서(domain→word)와 id 순서가 어긋난다(도메인 id 가 word 항목들 사이에 낀다).
+    const domain5: LibraryItem = { id: '0005', kind: 'domain', version: 1, payload: DOMAIN_PAYLOAD }
+    const word9: LibraryItem = { id: '0009', kind: 'word', version: 1, payload: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } }
+    const word2: LibraryItem = { id: '0002', kind: 'word', version: 1, payload: { logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null } }
+    const a = exportLibraryFile(LIB, [domain5, word9, word2]).text
+    const b = exportLibraryFile(LIB, [word2, domain5, word9]).text
+    expect(b).toBe(a)   // 입력 순서가 달라도 바이트가 같다
+    const parsed = parseLibraryFile(a, 'distribution')
+    if (!parsed.ok) throw new Error('parse')
+    expect(parsed.doc.kinds.word!.map((e) => e.id)).toEqual(['0002', '0009'])   // 실제로 id 오름차순
+  })
+
   it('네 종류 키를 언제나 모두 쓴다(빈 종류는 [])', () => {
     const text = exportLibraryFile(LIB, [ITEMS[1]!]).text
     const parsed = parseLibraryFile(text, 'distribution')
@@ -182,5 +195,23 @@ describe('stringifyLibraryFile', () => {
     const parsed = parseLibraryFile(stringifyLibraryFile(doc), 'source')
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues))
     expect(parsed.doc).toEqual(doc)
+  })
+})
+
+describe('libraryItemsOf', () => {
+  it('종류·입력(문서 안) 순서와 무관하게 id 코드 단위 오름차순으로 합친다 — 전역 정렬 고정', () => {
+    // exportLibraryFile 을 거치지 않고 문서를 직접 구성한다 — libraryItemsOf 자체의 정렬만 단독으로 잠근다.
+    // 종류 순서(domain→word)와 id 순서가 어긋난다: domain 0005 가 word 0002·0009 사이에 낀다.
+    const doc: LibraryFileDoc = {
+      library: { id: 'lib-1', name: '표준', description: '' },
+      kinds: {
+        domain: [{ id: '0005', version: 1, fields: DOMAIN_PAYLOAD }],
+        word: [
+          { id: '0009', version: 1, fields: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } },
+          { id: '0002', version: 1, fields: { logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null } },
+        ],
+      },
+    }
+    expect(libraryItemsOf(doc).map((i) => i.id)).toEqual(['0002', '0005', '0009'])
   })
 })
