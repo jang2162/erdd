@@ -16,7 +16,7 @@ const TOKEN_PATHS = [
   'auth.me', 'org.list', 'project.list', 'project.get', 'project.create',
   'model.get', 'model.push',
   'resource.library.listForProject', 'resource.items.list', 'resource.promote',
-  'resource.library.list', 'resource.library.export',
+  'resource.library.list', 'resource.library.export', 'resource.library.import',
   'promotion.create', 'promotion.listForProject',
 ]
 

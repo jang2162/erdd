@@ -14,6 +14,7 @@ import {
 } from '../services/resource-library.js'
 import { emptyOutcome, loadLibraryItems, runPromoteInTx } from '../services/promote.js'
 import { mutateAndPublish } from '../services/mutate-publish.js'
+import { runLibraryImport } from '../services/library-import.js'
 import { apiProcedure, authedProcedure, router } from '../trpc.js'
 
 const KindEnum = z.enum(RESOURCE_KINDS)
@@ -127,6 +128,24 @@ export const resourceRouter = router({
         const items = await loadLibraryItems(ctx.db, input.libraryId)
         return { libraryId: library.id, name: library.name, ...exportLibraryFile(library, items) }
       }),
+
+    // CLI(erdd library import)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
+    import: apiProcedure
+      .input(z.object({
+        target: z.union([
+          z.object({ libraryId: z.string().uuid() }),
+          z.object({ create: z.object({
+            scope: z.enum(['global', 'org']), orgId: z.string().uuid().optional(),
+            name: z.string().min(1).max(100), description: z.string().max(500).default(''),
+          }) }),
+        ]),
+        text: z.string().max(16 * 1024 * 1024),
+        prune: z.boolean().default(false),
+        includeStale: z.boolean().default(false),
+        dryRun: z.boolean().default(false),
+        expectedStateHash: z.string().optional(),
+      }))
+      .mutation(({ ctx, input }) => runLibraryImport(ctx.db, ctx.user, input)),
   }),
 
   items: router({
