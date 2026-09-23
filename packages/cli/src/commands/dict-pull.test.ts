@@ -3,7 +3,7 @@ import * as fsp from 'node:fs/promises'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createEmptyModel, modelToFiles, type LibraryItem, type ProjectModel } from '@erdd/core'
+import { createEmptyModel, exportLibraryFile, modelToFiles, type LibraryItem, type ProjectModel } from '@erdd/core'
 import type { ApiClient } from '../client.js'
 import { readConfig, writeConfig } from '../config.js'
 import { TEST_CONFIG } from '../testing/harness.js'
@@ -369,5 +369,72 @@ describe('dict pull', () => {
     await writeConfig(dir, { ...(await readConfig(dir)), serverUrl: null, projectId: null })
     expect(await dictPull(ctx(client([LIB], {}), { library: 'L1' }))).toBe(1)
     expect(out.join('')).toContain('--create')
+  })
+})
+
+const LOCAL_CONFIG = { ...TEST_CONFIG, serverUrl: null, projectId: null }
+const writeLib = async (items: LibraryItem[], id = 'L1', name = '표준') => {
+  await mkdir(join(dir, 'vendor'), { recursive: true })
+  await writeFile(join(dir, 'vendor/std.erdd-lib.yaml'), exportLibraryFile({ id, name, description: '' }, items).text)
+}
+const noServer: ApiClient = {
+  query: (async (path: string) => { throw new Error(`서버를 부르면 안 된다: ${path}`) }) as ApiClient['query'],
+  mutate: (async (path: string) => { throw new Error(`서버를 부르면 안 된다: ${path}`) }) as ApiClient['mutate'],
+}
+
+describe('dict pull --file', () => {
+  beforeEach(async () => {
+    await writeConfig(dir, { ...LOCAL_CONFIG, dialects: [...LOCAL_CONFIG.dialects], dictionaries: [] })
+    await seed(createEmptyModel())
+  })
+
+  it('로컬 전용 프로젝트에서 배포 파일을 받아 출처를 남기고 구독에 file 을 적는다', async () => {
+    await writeLib([word('S1', 1, 'CUST')])
+    expect(await dictPull(ctx(noServer, { file: 'vendor/std.erdd-lib.yaml' }))).toBe(0)
+    expect(await origins()).toEqual([expect.objectContaining({ library: 'L1', item: 'S1', version: 1 })])
+    expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }])
+  })
+
+  it('개정 파일을 다시 받으면 3-way 재동기화한다(자동 갱신)', async () => {
+    await writeLib([word('S1', 1, 'CUST')])
+    await dictPull(ctx(noServer, { file: 'vendor/std.erdd-lib.yaml' }))
+    await writeLib([word('S1', 2, 'CSTMR')])
+    await dictPull(ctx(noServer))
+    expect(JSON.parse(out.at(-1)!).libraries[0]).toMatchObject({ autoUpdated: 1, file: 'vendor/std.erdd-lib.yaml' })
+    const words = ((await readTree(dir))['erdd/words.yaml'] as { words: { abbreviation: string }[] }).words
+    expect(words.map((w) => w.abbreviation)).toEqual(['CSTMR'])
+  })
+
+  it('구독 id 와 파일의 library.id 가 다르면 멈춘다', async () => {
+    await writeLib([word('S1', 1, 'CUST')])
+    await dictPull(ctx(noServer, { file: 'vendor/std.erdd-lib.yaml' }))
+    await writeLib([word('S9', 1, 'X')], 'OTHER')
+    expect(await dictPull(ctx(noServer))).toBe(1)
+    expect(out.join('')).toContain('다른 라이브러리')
+  })
+
+  it('로컬 전용이면 서버 구독 줄은 건너뛰고 파일 줄은 받는다', async () => {
+    await writeLib([word('S1', 1, 'CUST')])
+    await writeConfig(dir, { ...LOCAL_CONFIG, dialects: [...LOCAL_CONFIG.dialects], dictionaries: [
+      { id: 'SRV', name: '서버표준' }, { id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' },
+    ] })
+    expect(await dictPull(ctx(noServer))).toBe(0)
+    const reports = JSON.parse(out.at(-1)!).libraries
+    expect(reports[0]).toMatchObject({ id: 'SRV', missing: true, missingReason: 'not-connected' })
+    expect(reports[1]).toMatchObject({ id: 'L1', added: 1 })
+  })
+
+  it('--file 과 --library 는 함께 못 쓴다', async () => {
+    expect(await dictPull(ctx(noServer, { file: 'vendor/std.erdd-lib.yaml', library: 'L1' }))).toBe(2)
+  })
+
+  it('파일 구독에서 서버 구독으로 이어가면 추가 0 · 유지 N 이다', async () => {
+    const items = [word('S1', 1, 'CUST')]
+    await writeLib(items)
+    await dictPull(ctx(noServer, { file: 'vendor/std.erdd-lib.yaml' }))
+    // 서버에 붙은 뒤 구독 줄의 file 을 지웠다
+    await writeConfig(dir, { ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects], dictionaries: [{ id: 'L1', name: '표준' }] })
+    await dictPull(ctx(client([{ ...LIB, id: 'L1' }], { L1: items })))
+    expect(JSON.parse(out.at(-1)!).libraries[0]).toMatchObject({ added: 0, autoUpdated: 0, kept: 1 })
   })
 })

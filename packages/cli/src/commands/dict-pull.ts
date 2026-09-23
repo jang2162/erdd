@@ -1,13 +1,14 @@
 import { uuidv7 } from 'uuidv7'
 import {
-  RESOURCE_KIND_LABEL, applyResyncPlan, modelToFiles, planAdoption, planResync,
-  type FileTree, type ProjectModel, type ResyncDecision, type ResyncEntry, type ResyncPlan,
+  RESOURCE_KIND_LABEL, applyResyncPlan, libraryItemsOf, modelToFiles, planAdoption, planResync,
+  type FileTree, type LibraryFileDoc, type ProjectModel, type ResyncDecision, type ResyncEntry, type ResyncPlan,
 } from '@erdd/core'
 import { readConfig, writeConfig, type DictionaryRef } from '../config.js'
 import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { CliError, emit, note } from '../output.js'
 import { writeTreeChanges } from '../tree.js'
 import { clientFor, run, type CommandCtx } from './context.js'
+import { readDistributionFile, subscriptionPath } from './dict-file.js'
 import {
   DICTIONARY_FILES, fetchItems, listLibraries, readLocalModel, requireDictConnection, resolveLibrary,
   type LibraryRow,
@@ -15,6 +16,7 @@ import {
 
 export type DictPullCtx = CommandCtx & {
   library?: string
+  file?: string
   adopt: boolean
   conflicts?: 'theirs' | 'ours'
   dryRun: boolean
@@ -26,7 +28,11 @@ type LibraryReport = {
   id: string
   name: string
   scope: LibraryRow['scope'] | null
+  /** 파일 구독이면 그 경로, 서버 구독이면 null. */
+  file: string | null
   missing: boolean
+  /** `missing` 일 때만 뜻이 있다 — 서버 목록에 없거나(`not-found`) 서버에 연결되지 않았다(`not-connected`). */
+  missingReason: 'not-found' | 'not-connected' | null
   added: number
   autoUpdated: number
   adopted: number
@@ -75,13 +81,13 @@ function decide(model: ProjectModel, plan: ResyncPlan, ctx: DictPullCtx): {
 }
 
 function report(
-  lib: LibraryRow, plan: ResyncPlan, decisions: Record<string, ResyncDecision>,
-  linkable: ReadonlyMap<string, string>, differs: ReadonlyMap<string, string[]>,
+  lib: { id: string; name: string; scope: LibraryRow['scope'] | null }, plan: ResyncPlan, decisions: Record<string, ResyncDecision>,
+  linkable: ReadonlyMap<string, string>, differs: ReadonlyMap<string, string[]>, file: string | null,
 ): LibraryReport {
   const named = (e: ResyncEntry): Named => ({ kind: RESOURCE_KIND_LABEL[e.kind], name: e.name })
   const clashDeferred = plan.entries.filter((e) => e.status === 'added' && e.nameClash && decisions[e.sourceId] === 'defer')
   return {
-    id: lib.id, name: lib.name, scope: lib.scope, missing: false,
+    id: lib.id, name: lib.name, scope: lib.scope, file, missing: false, missingReason: null,
     added: plan.entries.filter((e) => e.status === 'added' && decisions[e.sourceId] === 'apply').length,
     autoUpdated: plan.entries.filter((e) => e.status === 'auto-update').length,
     adopted: plan.entries.filter((e) => decisions[e.sourceId] === 'adopt').length,
@@ -113,8 +119,13 @@ function writeDictionaryFiles(
 function render(reports: LibraryReport[], files: { written: string[]; deleted: string[] }, dryRun: boolean): string {
   const lines: string[] = []
   for (const r of reports) {
-    if (r.missing) { lines.push(`${r.name} — 찾을 수 없어 건너뛰었습니다`); continue }
-    lines.push(`${r.name} (${r.scope === 'global' ? '전역' : '조직'})`)
+    if (r.missing) {
+      lines.push(r.missingReason === 'not-connected'
+        ? `${r.name} — 서버에 연결되지 않아 건너뛰었습니다`
+        : `${r.name} — 찾을 수 없어 건너뛰었습니다`)
+      continue
+    }
+    lines.push(`${r.name} (${r.file !== null ? `파일 ${r.file}` : r.scope === 'global' ? '전역' : '조직'})`)
     lines.push(`  추가 ${r.added} · 자동 갱신 ${r.autoUpdated} · 연결 ${r.adopted} · 유지 ${r.kept}`)
     if (r.conflicts.length > 0) {
       // 한 실행의 충돌은 모두 같은 결정이다(--conflicts 하나가 정한다).
@@ -144,50 +155,85 @@ function render(reports: LibraryReport[], files: { written: string[]; deleted: s
 
 export function dictPull(ctx: DictPullCtx): Promise<number> {
   return run(ctx, async () => {
+    if (ctx.file !== undefined && ctx.library !== undefined) {
+      throw new CliError('USAGE', '--file 과 --library 는 함께 쓸 수 없습니다')
+    }
     const config = await readConfig(ctx.cwd)
-    const { projectId } = requireDictConnection(config)
+    // --library 는 서버에서 고르는 것이라 연결이 필요하다. --file 과 인자 없는 pull 은 줄마다 판단한다.
+    if (ctx.library !== undefined) requireDictConnection(config)
+    const connected = config.serverUrl !== null && config.projectId !== null
     // 재동기화는 파일(= 저장된 값)을 기준으로 한다 — serve 화면의 저장 안 된 편집은 보지 않는다.
     // 알림만 낸다(stderr 라 `--json` 봉투를 건드리지 않고, 판정·종료 코드도 그대로다 — push 와 같다).
     if (await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
-    const client = await clientFor(ctx)
     const { tree, model: initial } = await readLocalModel(ctx.cwd)
-    const libraries = await listLibraries(client, projectId)
 
     let subscriptions: DictionaryRef[] = config.dictionaries
+    const docs = new Map<string, LibraryFileDoc>()   // 구독 id → 읽은 배포 파일
     let targets: DictionaryRef[]
+    if (ctx.file !== undefined) {
+      const path = subscriptionPath(ctx.cwd, ctx.file)
+      const doc = await readDistributionFile(ctx.cwd, path)
+      const ref: DictionaryRef = { id: doc.library.id!, name: doc.library.name, file: path }
+      docs.set(ref.id, doc)
+      // 같은 라이브러리의 구독 줄이 있으면 그 줄을 파일 구독으로 바꾼다(명시적 전환) — 같은 id 두 줄은 config 가 거절한다.
+      subscriptions = subscriptions.some((s) => s.id === ref.id)
+        ? subscriptions.map((s) => (s.id === ref.id ? ref : s))
+        : [...subscriptions, ref]
+      targets = [ref]
+    } else if (ctx.library !== undefined) {
+      targets = []   // 아래에서 서버 목록으로 채운다
+    } else {
+      if (subscriptions.length === 0) {
+        throw new CliError('USAGE', '구독한 라이브러리가 없습니다 — --library <이름|id> 또는 --file <경로> 로 지정하세요 (목록: erdd dict list)')
+      }
+      targets = subscriptions
+    }
+
+    const needsServer = ctx.library !== undefined || targets.some((t) => t.file === undefined)
+    const client = needsServer && connected ? await clientFor(ctx) : null
+    const libraries = client !== null ? await listLibraries(client, config.projectId!) : []
     if (ctx.library !== undefined) {
       const lib = resolveLibrary(libraries, ctx.library)
       if (!subscriptions.some((s) => s.id === lib.id)) subscriptions = [...subscriptions, { id: lib.id, name: lib.name }]
       targets = [{ id: lib.id, name: lib.name }]
-    } else {
-      if (subscriptions.length === 0) {
-        throw new CliError('USAGE', '구독한 라이브러리가 없습니다 — --library <이름|id> 로 지정하세요 (목록: erdd dict list)')
-      }
-      targets = subscriptions
     }
 
     let model = initial
     const reports: LibraryReport[] = []
     for (const target of targets) {
-      const lib = libraries.find((l) => l.id === target.id)
+      if (target.file !== undefined) {
+        const doc = docs.get(target.id) ?? await readDistributionFile(ctx.cwd, target.file)
+        if (doc.library.id !== target.id) {
+          throw new CliError('VALIDATION',
+            `구독 ${target.name}(${target.id}) 의 파일 ${target.file} 은 다른 라이브러리(${doc.library.id})입니다 — 다른 라이브러리로 바꾸려면 구독 줄을 지우고 --file 로 다시 받으세요`)
+        }
+        docs.set(target.id, doc)
+        const plan = planResync(model, target.id, libraryItemsOf(doc))
+        const { decisions, linkable, differs } = decide(model, plan, ctx)
+        reports.push(report({ id: target.id, name: doc.library.name, scope: null }, plan, decisions, linkable, differs, target.file))
+        model = applyResyncPlan(model, plan, decisions, uuidv7)
+        continue
+      }
+      const lib = client === null ? undefined : libraries.find((l) => l.id === target.id)
       if (lib === undefined) {
-        note(`경고: 라이브러리 ${target.name}(${target.id})을(를) 찾을 수 없어 건너뜁니다 — 삭제됐거나 권한이 없습니다`)
+        const reason = client === null ? 'not-connected' : 'not-found'
+        if (reason === 'not-found') note(`경고: 라이브러리 ${target.name}(${target.id})을(를) 찾을 수 없어 건너뜁니다 — 삭제됐거나 권한이 없습니다`)
         reports.push({
-          id: target.id, name: target.name, scope: null, missing: true, added: 0, autoUpdated: 0, adopted: 0,
-          nameClashSkipped: [], adoptDiffers: [], unlinkable: [], conflicts: [], kept: 0, detached: 0,
+          id: target.id, name: target.name, scope: null, file: null, missing: true, missingReason: reason,
+          added: 0, autoUpdated: 0, adopted: 0, nameClashSkipped: [], adoptDiffers: [], unlinkable: [], conflicts: [], kept: 0, detached: 0,
         })
         continue
       }
-      const plan = planResync(model, lib.id, await fetchItems(client, lib.id))
+      const plan = planResync(model, lib.id, await fetchItems(client!, lib.id))
       const { decisions, linkable, differs } = decide(model, plan, ctx)
-      reports.push(report(lib, plan, decisions, linkable, differs))
+      reports.push(report(lib, plan, decisions, linkable, differs, null))
       model = applyResyncPlan(model, plan, decisions, uuidv7)
     }
 
-    // 표시 이름은 서버를 따른다(개명 추종). 사라진 구독은 그대로 둔다 — 권한이 일시적으로 없을 수 있다.
+    // 표시 이름은 원본(서버 목록·파일)을 따른다. file 은 보존한다 — 떨어뜨리면 다음 pull 이 서버로 간다.
     subscriptions = subscriptions.map((s) => {
-      const lib = libraries.find((l) => l.id === s.id)
-      return lib === undefined ? s : { id: s.id, name: lib.name }
+      const name = s.file !== undefined ? docs.get(s.id)?.library.name : libraries.find((l) => l.id === s.id)?.name
+      return name === undefined ? s : { ...s, name }
     })
 
     let files = { written: [] as string[], deleted: [] as string[] }

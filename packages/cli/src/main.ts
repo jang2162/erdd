@@ -62,6 +62,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --dry-run             import·dict pull·library import 전용 — 계획만 보고 파일을 쓰지 않는다
   --library <이름|id>   dict pull·push·library import 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
                         push·library import 는 올릴/가져올 라이브러리
+  --file <경로>          dict pull 전용 — 서버에서 내보낸 라이브러리 파일에서 받는다(서버 연결 불필요)
   --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다(내용이 같을 때만)
                         내용이 달라도 로컬 값을 유지한 채 연결하려면 --conflicts ours 를 함께 준다
   --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
@@ -261,8 +262,11 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         if (argv.includes('--library') && flagValue(argv, 'library') === undefined) {
           return usageError(json, '--library 값이 올바르지 않습니다: (값 없음)')
         }
+        if (argv.includes('--file') && flagValue(argv, 'file') === undefined) {
+          return usageError(json, '--file 값이 올바르지 않습니다: (값 없음)')
+        }
         return dictPull({
-          ...ctx, library: flagValue(argv, 'library'), adopt: argv.includes('--adopt'),
+          ...ctx, library: flagValue(argv, 'library'), file: flagValue(argv, 'file'), adopt: argv.includes('--adopt'),
           conflicts: conflicts.value, dryRun: argv.includes('--dry-run'),
         })
       }

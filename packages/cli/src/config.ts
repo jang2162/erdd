@@ -28,7 +28,8 @@ export type ErddConfig = {
    */
   dictionaries: DictionaryRef[]
 }
-export type DictionaryRef = { id: string; name: string }
+/** `file` 이 있으면 그 배포 파일에서 받는다(프로젝트 루트 기준 POSIX 상대 경로 — `erdd dict pull --file`). */
+export type DictionaryRef = { id: string; name: string; file?: string }
 export type SyncState = { revisionSeq: number; pulledAt: string }
 
 // 정의는 core 에 있다(웹도 같은 값을 쓴다). 여기서는 CLI 안에서 짧게 쓰기 위해 넘겨만 준다.
@@ -108,10 +109,12 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   // — 구독을 다 지우며 키만 남긴 것이라 모호함이 없다. 잘못 적은 값은 삼키지 않는다 — 조용히 빈
   // 구독으로 돌면 사용자는 인자 없는 dict pull 이 왜 아무것도 받지 않는지 모른다.
   if (rawDicts != null && (!Array.isArray(rawDicts) || !rawDicts.every(
-    (d) => isRec(d) && typeof d['id'] === 'string' && typeof d['name'] === 'string'))) {
-    throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries는 {id, name} 목록이어야 합니다`)
+    (d) => isRec(d) && typeof d['id'] === 'string' && typeof d['name'] === 'string'
+      && (d['file'] === undefined || typeof d['file'] === 'string')))) {
+    throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries는 {id, name, file?} 목록이어야 합니다`)
   }
-  const dictionaries = ((rawDicts ?? []) as DictionaryRef[]).map((d) => ({ id: d.id, name: d.name }))
+  const dictionaries = ((rawDicts ?? []) as DictionaryRef[]).map((d) =>
+    (d.file === undefined ? { id: d.id, name: d.name } : { id: d.id, name: d.name, file: d.file }))
   // 같은 사전을 두 번 적으면 dict pull 이 그 사전을 두 번 처리한다 — 어느 줄이 맞는지 고를 수 없다.
   const dup = dictionaries.find((d, i) => dictionaries.findIndex((e) => e.id === d.id) !== i)
   if (dup !== undefined) {

@@ -353,4 +353,17 @@ describe('구독(dictionaries)', () => {
     }))
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('L1') })
   })
+
+  it('dictionaries[].file 을 읽고 다시 쓸 때 보존한다', async () => {
+    await writeConfig(dir, { ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects], dictionaries: [{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }, { id: 'L2', name: '팀' }] })
+    const config = await readConfig(dir)
+    expect(config.dictionaries).toEqual([{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }, { id: 'L2', name: '팀' }])
+    await writeConfig(dir, config)
+    expect((await readConfig(dir)).dictionaries[0]).toHaveProperty('file', 'vendor/std.erdd-lib.yaml')
+  })
+
+  it('dictionaries[].file 이 문자열이 아니면 거절한다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: 3 }] }))
+    await expect(readConfig(dir)).rejects.toThrow(/dictionaries/)
+  })
 })
