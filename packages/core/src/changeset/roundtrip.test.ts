@@ -40,7 +40,10 @@ function initial(): ProjectModel {
   return m
 }
 
-function mutate(state: State, rand: () => number, counter: { n: number }): State {
+/** 편집 사이에 이어지는 생성기 상태 — 새 이름 번호와 방금 버려진 이름(이름 재사용 편집이 쓴다). */
+type Gen = { n: number; freedTables: string[]; freedColumns: { tableId: string; name: string }[] }
+
+function mutate(state: State, rand: () => number, counter: Gen): State {
   let m: ProjectModel = structuredClone(state.model)
   let rules = state.rules
   const pick = <T,>(xs: readonly T[]): T | undefined => (xs.length === 0 ? undefined : xs[Math.floor(rand() * xs.length)])
@@ -54,7 +57,7 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
     comment: null, domainId: null, custom: {},
   })
 
-  switch (Math.floor(rand() * 15)) {
+  switch (Math.floor(rand() * 16)) {
     case 0: {
       const id = fresh('t')
       m.tables[id] = { id, logicalName: '', physicalName: fresh('TB_'), comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
@@ -66,8 +69,8 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
       }
       break
     }
-    case 1: { const t = pick(tables()); if (t) m = deleteTableCascade(m, t.id); break }
-    case 2: { const t = pick(tables()); if (t) m.tables[t.id] = { ...t, physicalName: fresh('RN_') }; break }
+    case 1: { const t = pick(tables()); if (t) { counter.freedTables.push(t.physicalName); m = deleteTableCascade(m, t.id) } break }
+    case 2: { const t = pick(tables()); if (t) { counter.freedTables.push(t.physicalName); m.tables[t.id] = { ...t, physicalName: fresh('RN_') } } break }
     case 3: {
       const t = pick(tables())
       if (t) {
@@ -79,8 +82,16 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
       }
       break
     }
-    case 4: { const c = pick(Object.values(m.columns)); if (c) m = deleteColumnCascade(m, c.id); break }
-    case 5: { const c = pick(Object.values(m.columns)); if (c) m.columns[c.id] = { ...c, physicalName: fresh('RC_') }; break }
+    case 4: {
+      const c = pick(Object.values(m.columns))
+      if (c) { counter.freedColumns.push({ tableId: c.tableId, name: c.physicalName }); m = deleteColumnCascade(m, c.id) }
+      break
+    }
+    case 5: {
+      const c = pick(Object.values(m.columns))
+      if (c) { counter.freedColumns.push({ tableId: c.tableId, name: c.physicalName }); m.columns[c.id] = { ...c, physicalName: fresh('RC_') } }
+      break
+    }
     case 6: {
       const c = pick(Object.values(m.columns))
       if (c) {
@@ -165,6 +176,22 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
       if (t) m.tables[t.id] = { ...t, comment: pick(COMMENTS)!, logicalName: pick(['', '회원', '주문 상세'])! }
       break
     }
+    // 이름 재사용 — 다른 테이블(컬럼)이 방금 버린 이름으로 바꾼다. 개명 사슬·맞바꾸기가 한 기록에 들어간다.
+    // 그 순간 같은 이름이 모델에 없을 때만 쓴다(같은 이름 둘은 기록할 수 없는 상태다).
+    case 15: {
+      if (rand() < 0.5) {
+        const t = pick(tables())
+        const name = pick(counter.freedTables.filter((n) => tables().every((x) => x.physicalName !== n)))
+        if (t && name !== undefined) { counter.freedTables.push(t.physicalName); m.tables[t.id] = { ...t, physicalName: name } }
+      } else {
+        const c = pick(Object.values(m.columns))
+        const name = c && pick(counter.freedColumns
+          .filter((f) => f.tableId === c.tableId && cols(c.tableId).every((x) => x.physicalName !== f.name))
+          .map((f) => f.name))
+        if (c && name !== undefined) { counter.freedColumns.push({ tableId: c.tableId, name: c.physicalName }); m.columns[c.id] = { ...c, physicalName: name } }
+      }
+      break
+    }
   }
   return { model: m, rules }
 }
@@ -172,7 +199,7 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
 describe('왕복 불변식 — 기록을 쌓아 재생하면 매 시점의 투영이 된다', () => {
   it.each([1, 2, 3, 4, 5, 6, 7, 8])('시드 %i', (seed) => {
     const rand = rng(seed)
-    const counter = { n: 0 }
+    const counter: Gen = { n: 0, freedTables: [], freedColumns: [] }
     let state: State = { model: initial(), rules: DEFAULT_NAMING_RULES }
     const replayed = emptyProjection()
     for (let step = 0; step < 60; step += 1) {

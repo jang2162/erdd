@@ -174,6 +174,47 @@ describe('diffProjection', () => {
   })
 })
 
+describe('diffProjection — 개명의 SQL 순서', () => {
+  const renames = (st: Statement[]) => st.flatMap((s) =>
+    s.kind === 'renameTable' || s.kind === 'renameIndex' ? [`${s.from}->${s.to}`]
+      : s.kind === 'alterTable' ? s.actions.flatMap((a) => (a.kind === 'renameColumn' ? [`${a.from}->${a.to}`] : []))
+        : [])
+
+  it('인덱스를 지우고 다른 인덱스를 그 이름으로 바꾸면 drop index 가 rename index 보다 앞선다', () => {
+    const a = buildSampleModel()
+    a.indexes['i2'] = { id: 'i2', tableId: 't2', name: 'IX_Z', columns: [{ columnId: 'c4', direction: 'asc' }], unique: false }
+    a.indexes['i3'] = { id: 'i3', tableId: 't2', name: 'IX_B', columns: [{ columnId: 'c2', direction: 'asc' }], unique: false }
+    const b = structuredClone(a)
+    delete b.indexes['i2']
+    b.indexes['i3'] = { ...b.indexes['i3']!, name: 'IX_Z' }
+    const st = diff(a, b)
+    expect(kinds(st)).toEqual(['dropIndex', 'renameIndex'])
+    expect(st[0]).toMatchObject({ kind: 'dropIndex', index: { name: 'IX_Z' } })
+    expect(st[1]).toMatchObject({ kind: 'renameIndex', from: 'IX_B', to: 'IX_Z' })
+  })
+
+  it('테이블 개명 사슬(MBR→MBR_GRD, MBR_GRD→GRD)은 비워지는 이름부터 낸다', () => {
+    const b = buildSampleModel()
+    b.tables['t2'] = { ...b.tables['t2']!, physicalName: 'MBR_GRD' }
+    b.tables['t1'] = { ...b.tables['t1']!, physicalName: 'GRD' }
+    expect(renames(diff(buildSampleModel(), b))).toEqual(['MBR_GRD->GRD', 'MBR->MBR_GRD'])
+  })
+
+  it('컬럼 개명 사슬(MBR_NM→GRD_CD, GRD_CD→GRD_CODE)도 비워지는 이름부터 낸다', () => {
+    const b = buildSampleModel()
+    b.columns['c3'] = { ...b.columns['c3']!, physicalName: 'GRD_CD' }
+    b.columns['c4'] = { ...b.columns['c4']!, physicalName: 'GRD_CODE' }
+    expect(renames(diff(buildSampleModel(), b))).toEqual(['GRD_CD->GRD_CODE', 'MBR_NM->GRD_CD'])
+  })
+
+  it('맞바꾸기는 순환이라 개명 두 줄로 나온다(「알려진 한계」)', () => {
+    const b = buildSampleModel()
+    b.columns['c3'] = { ...b.columns['c3']!, physicalName: 'GRD_CD' }
+    b.columns['c4'] = { ...b.columns['c4']!, physicalName: 'MBR_NM' }
+    expect([...renames(diff(buildSampleModel(), b))].sort()).toEqual(['GRD_CD->MBR_NM', 'MBR_NM->GRD_CD'])
+  })
+})
+
 describe('longestCommonSubsequence', () => {
   it('최장 공통 부분열을 순서대로 돌려준다', () => {
     expect(longestCommonSubsequence(['a', 'b', 'c', 'd'], ['b', 'a', 'c', 'd'])).toHaveLength(3)

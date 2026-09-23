@@ -27,25 +27,31 @@ export function diffProjection(base: SchemaProjection, target: SchemaProjection)
     const next = target.foreignKeys[fk.id]
     if (next === undefined || !deepEqual(fk, next)) out.push({ kind: 'dropForeignKey', fk: foreignKeyDef(base, fk) })
   }
-  // 2. 인덱스 삭제·개명 — 사라지는 테이블의 인덱스는 3번 drop table 블록이 싣는다.
+  // 2. 인덱스 삭제 → 인덱스 개명 — 사라지는 테이블의 인덱스는 3번 drop table 블록이 싣는다.
+  // 삭제를 전부 먼저 내야 「지운 인덱스의 이름으로 개명」이 SQL 에서 충돌하지 않는다.
+  const indexRenames: Extract<Statement, { kind: 'renameIndex' }>[] = []
   for (const ix of sortedIndexes(base)) {
     if (target.tables[ix.tableId] === undefined) continue
     const next = target.indexes[ix.id]
     if (next === undefined || !sameIndexContent(ix, next)) {
       out.push({ kind: 'dropIndex', index: indexDef(base, ix) })
     } else if (next.name !== ix.name) {
-      out.push({ kind: 'renameIndex', id: ix.id, table: base.tables[ix.tableId]!.name, from: ix.name, to: next.name })
+      indexRenames.push({ kind: 'renameIndex', id: ix.id, table: base.tables[ix.tableId]!.name, from: ix.name, to: next.name })
     }
   }
+  // 인덱스 이름은 PostgreSQL 에서 스키마 전역이다 — 테이블을 가로질러 정렬한다.
+  out.push(...renameOrder(indexRenames))
   // 3. 테이블 삭제 — 개명·생성보다 먼저여야 「지운 테이블의 이름」을 곧바로 쓸 수 있다.
   for (const t of sortedTables(base)) {
     if (target.tables[t.id] === undefined) out.push({ kind: 'dropTable', table: tableDef(base, t, true) })
   }
   // 4. 테이블 개명
+  const tableRenames: Extract<Statement, { kind: 'renameTable' }>[] = []
   for (const t of sortedTables(base)) {
     const next = target.tables[t.id]
-    if (next !== undefined && next.name !== t.name) out.push({ kind: 'renameTable', id: t.id, from: t.name, to: next.name })
+    if (next !== undefined && next.name !== t.name) tableRenames.push({ kind: 'renameTable', id: t.id, from: t.name, to: next.name })
   }
+  out.push(...renameOrder(tableRenames))
   // 5. 테이블 생성
   for (const t of sortedTables(target)) {
     if (base.tables[t.id] === undefined) out.push({ kind: 'createTable', table: tableDef(target, t, false) })
@@ -107,12 +113,14 @@ function alterActions(base: SchemaProjection, target: SchemaProjection, prev: Pr
   for (const id of prev.columnIds) {
     if (!inNext.has(id)) actions.push({ kind: 'dropColumn', column: columnDef(base.columns[id]!) })
   }
+  const renames: Extract<AlterAction, { kind: 'renameColumn' }>[] = []
   for (const id of next.columnIds) {
     if (!inPrev.has(id)) continue
     const a = base.columns[id]!
     const b = target.columns[id]!
-    if (a.name !== b.name) actions.push({ kind: 'renameColumn', id, from: a.name, to: b.name })
+    if (a.name !== b.name) renames.push({ kind: 'renameColumn', id, from: a.name, to: b.name })
   }
+  actions.push(...renameOrder(renames))
   // 옮겨진 컬럼 = 양쪽에 다 있지만 최장 공통 부분열에 들지 못한 것(guide 「`after` 는 최종 순서의 바로 앞 컬럼이다」).
   const stable = new Set(longestCommonSubsequence(
     prev.columnIds.filter((id) => inNext.has(id)),
@@ -148,6 +156,23 @@ function columnChanges(a: ProjColumn, b: ProjColumn): ColumnChange[] {
   if (a.increment !== b.increment) out.push({ field: 'increment', from: a.increment, to: b.increment })
   if (a.comment !== b.comment) out.push({ field: 'comment', from: a.comment, to: b.comment })
   if (!deepEqual(a.check, b.check)) out.push({ field: 'check', from: [...a.check], to: [...b.check] })
+  return out
+}
+
+/**
+ * 개명을 SQL 로 옮겨도 이름이 부딪치지 않는 순서로 둔다(guide 「문장 순서」). 내 `to` 가 아직
+ * 개명 전인 다른 항목의 `from` 이면 그 항목을 먼저 낸다 — `MEMBER→USER` 가 `ACCOUNT→MEMBER` 보다
+ * 앞선다. 그 밖에는 들어온 순서를 지킨다. 순환(맞바꾸기)은 어떤 순서로도 풀리지 않으므로 들어온
+ * 순서대로 낸다(「알려진 한계」).
+ */
+export function renameOrder<T extends { from: string; to: string }>(items: readonly T[]): T[] {
+  const rest = [...items]
+  const out: T[] = []
+  while (rest.length > 0) {
+    const pendingFrom = new Set(rest.map((x) => x.from))
+    const i = rest.findIndex((x) => !pendingFrom.has(x.to))
+    out.push(...rest.splice(i === -1 ? 0 : i, 1))
+  }
   return out
 }
 
