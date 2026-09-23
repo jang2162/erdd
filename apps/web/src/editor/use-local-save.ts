@@ -4,6 +4,20 @@ import {
   LOCAL_DISCARD_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, type LocalSaveResult,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
+import { serializeMutation } from './use-model.js'
+
+/**
+ * 편집 중인 입력을 모델에 반영하고, **그 편집이 서버에 닿을 때까지** 기다린다 — 입력란은 blur 에서
+ * 커밋하므로 이것 없이 저장하면 방금 친 값이 빠진 채 성공 토스트가 뜬다. 세 단계(blur · 한 틱 ·
+ * 체인 대기)가 각각 무엇을 막는지는 `docs/guides/editor-state.md`
+ * 「저장은 편집 중인 입력을 먼저 반영한다(로컬 모드)」.
+ */
+async function flushPendingEdits(): Promise<void> {
+  const el = document.activeElement
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.blur()
+  await new Promise((r) => setTimeout(r, 0))
+  await serializeMutation(() => Promise.resolve())
+}
 
 /**
  * 로컬 모드의 저장·버리기·유지와 `Cmd+S`.
@@ -39,6 +53,7 @@ export function useLocalSave() {
     if (store.localSave.saving) return
     store.setSaving(true)
     try {
+      await flushPendingEdits()
       const r = await post(LOCAL_SAVE_PATH) as LocalSaveResult
       if (r.ok) {
         useEditorStore.getState().setLocalSaveStatus({ dirty: false, external: false })
