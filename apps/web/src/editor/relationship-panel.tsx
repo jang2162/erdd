@@ -86,7 +86,7 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
 
         <div className="grid gap-1.5">
           <Label>관계명</Label>
-          <input className="h-9 rounded-md border bg-background px-2 text-sm" defaultValue={rel.name ?? ''}
+          <input id={`rel-${relId}-name`} className="h-9 rounded-md border bg-background px-2 text-sm" defaultValue={rel.name ?? ''}
             key={rel.name ?? ''} readOnly={!canEdit}
             onBlur={(e) => {
               const v = e.target.value.trim() === '' ? null : e.target.value

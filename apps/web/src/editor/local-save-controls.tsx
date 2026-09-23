@@ -42,6 +42,10 @@ export function LocalSaveControls() {
         // 파일이 깨져 편집이 잠긴 동안에는 저장도 막힌다 — 성한 화면으로 깨진 파일을 덮어쓰면
         // 손으로 고치던 내용이 사라진다.
         disabled={!dirty || saving || blocked !== null}
+        // 포커스를 가져가지 않는다 — 입력란에 남겨야 저장이 Cmd+S 와 같은 길(blur → 대기 → 포커스 복원)을
+        // 탄다. 가져가면 저장 중 disabled 가 그 포커스를 body 로 떨궈, 이어 친 Backspace 가 선택
+        // 테이블을 지운다(docs/guides/editor-state.md 「저장은 편집 중인 입력을 먼저 반영한다(로컬 모드)」).
+        onMouseDown={(e) => { e.preventDefault() }}
         onClick={() => { void save() }}
       >
         <Save />
