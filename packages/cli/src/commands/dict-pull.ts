@@ -1,6 +1,6 @@
 import { uuidv7 } from 'uuidv7'
 import {
-  ORIGINS_FILE, RESOURCE_KIND_LABEL, applyResyncPlan, modelToFiles, planAdoption, planResync,
+  RESOURCE_KIND_LABEL, applyResyncPlan, modelToFiles, planAdoption, planResync,
   type FileTree, type ProjectModel, type ResyncDecision, type ResyncEntry, type ResyncPlan,
 } from '@erdd/core'
 import { readConfig, writeConfig, type DictionaryRef } from '../config.js'
@@ -99,25 +99,14 @@ function pick(tree: FileTree, files: readonly string[]): FileTree {
   return Object.fromEntries(files.filter((p) => p in tree).map((p) => [p, tree[p]]))
 }
 
-/** 사전 파일만 — 테이블·그룹 파일은 재동기화와 무관하다(`DICTIONARY_FILES` 참조). */
-const CONTENT_FILES = DICTIONARY_FILES.filter((p) => p !== ORIGINS_FILE)
-
 /**
- * 사전 내용 파일을 먼저, `ORIGINS_FILE` 을 **마지막**에 쓴다. 파일 여럿의 쓰기는 원자적이지 않다 —
- * 출처를 먼저 쓰고 내용 전에 끊기면 출처는 새 버전·내용은 옛 값이 되어 다음 pull 이 「버전이 같다」로
- * **조용히** 넘기고, 로컬은 영원히 「프로젝트가 고친 항목」으로 남는다. 출처가 마지막이면 끊겨도
- * 옛 출처 대비 내용이 달라 다음 pull 이 충돌로 **시끄럽게** 알린다(`pull` 의 쓰기 순서와 같은 방향).
+ * 사전 파일만 쓴다 — 테이블·그룹 파일은 재동기화와 무관하다(`DICTIONARY_FILES` 참조).
+ * `ORIGINS_FILE` 이 마지막인 것은 `writeTreeChanges` 가 보장한다(그 함수 주석의 이유).
  */
-async function writeDictionaryFiles(
+function writeDictionaryFiles(
   cwd: string, base: FileTree, next: FileTree,
 ): Promise<{ written: string[]; deleted: string[] }> {
-  const content = await writeTreeChanges(cwd, pick(base, CONTENT_FILES), pick(next, CONTENT_FILES))
-  const origins = await writeTreeChanges(cwd, pick(base, [ORIGINS_FILE]), pick(next, [ORIGINS_FILE]))
-  // 보고는 쓰기 순서와 무관하게 정렬해 둔다 — 출력이 흔들리지 않게.
-  return {
-    written: [...content.written, ...origins.written].sort(),
-    deleted: [...content.deleted, ...origins.deleted].sort(),
-  }
+  return writeTreeChanges(cwd, pick(base, DICTIONARY_FILES), pick(next, DICTIONARY_FILES))
 }
 
 function render(reports: LibraryReport[], files: { written: string[]; deleted: string[] }, dryRun: boolean): string {

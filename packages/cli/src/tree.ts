@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import type { Dirent } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { TOP_LEVEL_FILES, TREE_ROOT, type FileTree } from '@erdd/core'
+import { ORIGINS_FILE, TOP_LEVEL_FILES, TREE_ROOT, type FileTree } from '@erdd/core'
 import { CliError } from './output.js'
 
 const TABLES_DIR = `${TREE_ROOT}/tables`
@@ -110,24 +110,34 @@ export async function writeTree(
  * 삭제를 쓰기보다 먼저 하는 이유는 `writeTree` 와 같다(대소문자 무시 파일시스템의 개명).
  * 이미 없는 파일의 삭제는 성공으로 본다 — 앞선 flush 가 중간에 실패해 `base` 가 디스크보다
  * 앞서 있을 수 있다.
+ *
+ * **`ORIGINS_FILE` 은 쓰기든 삭제든 맨 마지막이다**(`syncDown` 의 `writeTree`·`dict pull` 과 같은
+ * 불변식). 파일 여럿의 쓰기는 원자적이지 않다 — 출처를 먼저 쓰고 사전 내용 전에 끊기면 출처는 새
+ * 버전·내용은 옛 값이 되어 다음 `dict pull` 이 「버전이 같다」로 **조용히** 넘기고, 로컬은 영원히
+ * 「프로젝트가 고친 항목」으로 남는다. 출처가 마지막이면 끊겨도 옛 출처 대비 내용이 달라 다음
+ * `dict pull` 이 충돌로 **시끄럽게** 알린다. 반환 목록은 쓰기 순서와 무관하게 정렬해 둔다.
  */
 export async function writeTreeChanges(
   cwd: string, base: FileTree, next: FileTree,
 ): Promise<{ written: string[]; deleted: string[] }> {
   const { added, modified, deleted } = diffTrees(base, next)
-  for (const rel of deleted) {
+  const remove = async (rel: string): Promise<void> => {
     try {
       await rm(join(cwd, rel))
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
     }
   }
-  const written = [...added, ...modified].sort()
-  for (const rel of written) {
+  const write = async (rel: string): Promise<void> => {
     const abs = join(cwd, rel)
     await mkdir(dirname(abs), { recursive: true })
     await writeFile(abs, stringifyYaml(next[rel]), 'utf8')
   }
+  const written = [...added, ...modified].sort()
+  for (const rel of deleted) if (rel !== ORIGINS_FILE) await remove(rel)
+  for (const rel of written) if (rel !== ORIGINS_FILE) await write(rel)
+  if (written.includes(ORIGINS_FILE)) await write(ORIGINS_FILE)
+  else if (deleted.includes(ORIGINS_FILE)) await remove(ORIGINS_FILE)
   return { written, deleted }
 }
 
