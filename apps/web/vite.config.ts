@@ -2,6 +2,7 @@ import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { erddVersion } from './erdd-version'
 
 // 워크트리를 병렬로 돌릴 때 서버 포트를 트랙마다 달리 잡는다(→ CLAUDE.md "워크트리").
 // 하드코딩이면 워크트리의 web dev가 조용히 최상위 서버(3000)에 붙는다.
@@ -21,6 +22,7 @@ function webPort(): number {
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: { __ERDD_VERSION__: JSON.stringify(erddVersion()) },
   resolve: { alias: { '@': path.resolve(import.meta.dirname, './src') } },
   server: {
     // 기본값을 비우면 vite가 IPv6 `[::1]`에만 바인딩돼 Chrome이 접속을 못 한다

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -8,6 +8,7 @@ import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { createEmptyModel, DEFAULT_TABLE_OPTIONS } from '@erdd/core'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { CLI_VERSION } from '@/testing/cli-version'
 import { RequireAuth } from '@/components/require-auth'
 import { useEditorStore } from '@/editor/store'
 import { ProjectPage } from './project.js'
@@ -98,5 +99,14 @@ describe('ProjectPage 의 로컬 가드', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('파일이 밖에서 바뀌었습니다')
     expect(screen.getByRole('button', { name: /저장$/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '저장 옵션' })).toBeInTheDocument()
+  })
+})
+
+describe('ProjectPage 의 헤더', () => {
+  // 로컬 모드에는 사용자 메뉴가 없다 — 버전은 메뉴가 아니라 헤더 자체에 붙어 있어야 보인다.
+  it('로컬 모드에서도 헤더에 제품 버전이 보인다', async () => {
+    renderProject('local')
+    await screen.findByRole('button', { name: /버전/ })
+    expect(within(screen.getByRole('banner')).getByText(`v${CLI_VERSION}`)).toBeInTheDocument()
   })
 })

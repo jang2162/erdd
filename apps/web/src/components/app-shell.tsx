@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+import { AppVersion } from '@/components/app-version'
 import { BrandWordmark } from '@/components/brand-mark'
 import { PendingPromotionsBadge } from '@/components/pending-promotions-badge'
 
@@ -18,9 +19,12 @@ export function AppShell({ children, userMenu, isLocal }: {
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b bg-card">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link to="/" aria-label="홈으로">
-            <BrandWordmark />
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/" aria-label="홈으로">
+              <BrandWordmark />
+            </Link>
+            <AppVersion />
+          </div>
           <div className="flex items-center gap-3">
             {/* 승격 배지는 promotion.pendingCount 를 60초마다 폴링한다 — 로컬 라우터에 없는 프로시저다. */}
             {!isLocal && <PendingPromotionsBadge />}

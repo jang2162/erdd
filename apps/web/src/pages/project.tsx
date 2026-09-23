@@ -13,6 +13,7 @@ import { EditPanel } from '@/editor/edit-panel'
 import { HeaderTools } from '@/editor/header-tools'
 import { LocalSaveBanner, LocalSaveControls } from '@/editor/local-save-controls'
 import { TableTree } from '@/editor/table-tree'
+import { AppVersion } from '@/components/app-version'
 import { BrandWordmark } from '@/components/brand-mark'
 import { UserMenu } from '@/components/user-menu'
 import { useIsLocal, useMe } from '@/components/require-auth'
@@ -38,7 +39,10 @@ export function ProjectPage() {
     <div className="flex h-dvh flex-col">
       <ReactFlowProvider>
         <header className="flex h-12 shrink-0 items-center justify-between border-b bg-card px-4">
-          <Link to="/" aria-label="홈으로"><BrandWordmark /></Link>
+          <div className="flex items-center gap-2">
+            <Link to="/" aria-label="홈으로"><BrandWordmark /></Link>
+            <AppVersion />
+          </div>
           <div className="flex items-center gap-2">
             {loaded && !isLocal && <PresenceBar selfUserId={me.id} />}
             {/* 저장은 문서 수준 동작이라 도구 모음(HeaderTools) 앞에 둔다. 서버 모드에서는

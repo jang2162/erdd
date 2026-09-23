@@ -1,11 +1,12 @@
 import { describe, expect, it, afterEach, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { MemoryRouter } from 'react-router'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
+import { CLI_VERSION } from '@/testing/cli-version'
 import { AppShell } from './app-shell'
 
 function renderShell(handlers: Parameters<typeof mockTrpcFetch>[0]) {
@@ -51,5 +52,10 @@ describe('AppShell', () => {
     await new Promise((done) => { setTimeout(done, 20) })
     expect(screen.queryByRole('link', { name: /승격 요청/ })).toBeNull()
     expect(screen.getByText('내 메뉴')).toBeTruthy()
+  })
+
+  it('헤더에 제품 버전이 보인다', () => {
+    renderShell({ 'promotion.pendingCount': () => ({ data: { total: 0, byOrg: [] } }) })
+    expect(within(screen.getByRole('banner')).getByText(`v${CLI_VERSION}`)).toBeInTheDocument()
   })
 })

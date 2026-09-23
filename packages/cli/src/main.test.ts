@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -50,6 +51,74 @@ describe('main', () => {
     const err = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
     expect(await main(['pull', '--help'], '/tmp/erdd-none')).toBe(0)
     expect(err.mock.calls.map((c) => String(c[0])).join('')).toContain('사용법')
+  })
+
+  describe('--version', () => {
+    // 기대값은 package.json 에서 읽는다 — 버전을 적어 두면 다음 릴리스에 테스트가 깨진다.
+    const expected = (JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version: string }).version
+
+    function capture() {
+      const out: string[] = []
+      const err: string[] = []
+      vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+      vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+      return { out, err }
+    }
+
+    it('--version·-v 는 stdout 에 버전 한 줄만 내고 0으로 끝난다', async () => {
+      for (const flag of ['--version', '-v']) {
+        const { out, err } = capture()
+        expect(await main([flag], '/tmp/erdd-none')).toBe(0)
+        expect(out.join('')).toBe(`${expected}\n`)
+        expect(err).toEqual([])
+        vi.restoreAllMocks()
+      }
+    })
+
+    it('--json 과 함께면 {version} 객체를 낸다', async () => {
+      const { out } = capture()
+      expect(await main(['--json', '--version'], '/tmp/erdd-none')).toBe(0)
+      expect(JSON.parse(out.join(''))).toEqual({ version: expected })
+    })
+
+    it('--json 은 --version 앞뒤 어디에 와도 된다', async () => {
+      const { out } = capture()
+      expect(await main(['--version', '--json'], '/tmp/erdd-none')).toBe(0)
+      expect(JSON.parse(out.join(''))).toEqual({ version: expected })
+    })
+
+    it('명령 뒤의 --version·-v 는 버전으로 가로채지 않고 명령을 돈다', async () => {
+      // config 가 없는 곳이라 명령이 돌면 NO_CONFIG(1)다.
+      const { out } = capture()
+      for (const argv of [['status', '-v', '--json'], ['status', '--version', '--json'], ['push', '-m', '-v', '--json']]) {
+        out.length = 0
+        expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(1)
+        expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+      }
+    })
+
+    it('값 자리의 -v 는 값이다 — export -o -v 는 파일 -v 를 쓴다', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'erdd-main-version-'))
+      capture()
+      expect(await main(['init', '--local', '--json'], dir)).toBe(0)
+      expect(await main(['export', '-o', '-v', '--json'], dir)).toBe(0)
+      expect(await readFile(join(dir, '-v'), 'utf8')).toBeTypeOf('string')
+    })
+
+    it('--help 와 함께면 --help 가 이긴다', async () => {
+      const { out, err } = capture()
+      expect(await main(['--version', '--help'], '/tmp')).toBe(0)
+      expect(out).toEqual([])
+      expect(err.join('')).toContain('사용법')
+    })
+
+    it('도움말에 -v, --version 이 나온다', async () => {
+      const { err } = capture()
+      expect(await main(['--help'], '/tmp')).toBe(0)
+      expect(err.join('')).toContain('-v, --version')
+    })
   })
 
   it('값 없는 플래그의 다음 플래그를 값으로 삼키지 않는다', async () => {
