@@ -329,9 +329,21 @@ describe('init --create', () => {
     expect(await init({ ...base, cwd: dir, client })).toBe(1)
     const err = JSON.parse(out.join('')).error
     expect(err.code).toBe('FORBIDDEN')
-    expect(err.message).toContain('--project <id>')
+    expect(err.message).toBe('프로젝트 생성 권한이 없습니다 — 조직 관리자에게 프로젝트를 만들어 달라고 한 뒤 erdd init --project <id> 로 연결하세요')
     expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
     expect(existsSync(join(dir, '.erdd'))).toBe(false)
+  })
+
+  // 이관 중이면 --project 로 연결한 뒤의 pull 이 erdd/ 를 덮는다 — 커밋과 수동 절차로 보낸다.
+  it('이관 중 생성 권한이 없으면 erdd/ 를 커밋하고 수동 절차를 따르라고 안내한다', async () => {
+    await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+    out.length = 0
+    const { client } = createClient({ forbid: true })
+    expect(await init({ ...base, cwd: dir, client })).toBe(1)
+    const err = JSON.parse(out.join('')).error
+    expect(err.code).toBe('FORBIDDEN')
+    expect(err.message).toBe('프로젝트 생성 권한이 없습니다 — 조직 관리자에게 빈 프로젝트를 만들어 달라고 한 뒤, erdd/ 를 git 에 커밋하고 매뉴얼 「로컬로 시작한 프로젝트를 서버로 옮기기」의 수동 절차를 따르세요')
+    expect((await readConfig(dir)).projectId).toBeNull()
   })
 
   it('사람용 출력은 새 디렉터리와 이관을 구분해 다음 할 일을 안내한다', async () => {

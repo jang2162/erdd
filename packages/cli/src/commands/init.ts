@@ -189,7 +189,11 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
     })
   } catch (err) {
     if (err instanceof CliError && err.code === 'FORBIDDEN') {
-      throw new CliError('FORBIDDEN', '프로젝트 생성 권한이 없습니다 — 조직 관리자에게 프로젝트를 만들어 달라고 한 뒤 erdd init --project <id> 로 연결하세요')
+      // 이관 중에는 --project 로 연결하라고 보내지 않는다 — 그 연결에는 기준선이 없어 다음 pull 이
+      // erdd/ 를 서버의 빈 상태로 덮는다. 커밋해 두고 되얹는 수동 절차가 그 함정을 피한다.
+      throw new CliError('FORBIDDEN', existing !== null
+        ? '프로젝트 생성 권한이 없습니다 — 조직 관리자에게 빈 프로젝트를 만들어 달라고 한 뒤, erdd/ 를 git 에 커밋하고 매뉴얼 「로컬로 시작한 프로젝트를 서버로 옮기기」의 수동 절차를 따르세요'
+        : '프로젝트 생성 권한이 없습니다 — 조직 관리자에게 프로젝트를 만들어 달라고 한 뒤 erdd init --project <id> 로 연결하세요')
     }
     throw err
   }
