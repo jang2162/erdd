@@ -6,6 +6,8 @@ import fastifyStatic from '@fastify/static'
 import { fastifyTRPCPlugin, type CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import {
   LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, type LocalEvent,
+  LOCAL_CHANGES_PATH, LOCAL_CHANGES_CREATE_PATH, LOCAL_CHANGES_UNSAVED_MESSAGE,
+  type LocalChangesCreateResult, type LocalChangesStatus,
 } from '@erdd/core'
 import { LOCAL_PROJECT_ID, readConfig } from '../config.js'
 import { note } from '../output.js'
@@ -14,6 +16,7 @@ import { createLocalRouter, type LocalContext } from './router.js'
 import { watchProject } from './watch.js'
 import { migrateSnapshots } from './snapshot-migrate.js'
 import { SNAPSHOTS_DIR } from './snapshots.js'
+import { loadChangesPlan, toLocalStatus, writeChange } from './changes.js'
 
 /** SSE 로 내보낼 페이로드. 정상이면 reload, 파일이 깨져 편집이 잠겼으면 blocked. */
 const eventPayload = (state: StoreState): LocalEvent =>
@@ -213,6 +216,31 @@ export async function startLocalServer(opts: {
     await store.keep()
     broadcastStatus()
     return { ok: true as const }
+  })
+
+  /**
+   * 변경 기록(guide 「변경 기록 — `.erddc` 문법과 재생 규칙」). 상태는 **화면 모델 기준**이다 —
+   * 미저장 편집이 있으면 미리보기에 포함되고 `unsaved` 가 켜진다. 생성은 저장된 상태에서만 한다
+   * (스냅샷과 같은 규칙 — 파일 어디에도 없는 상태를 가리키는 기록이 생기면 안 된다).
+   * ⚠️ `dirty` 가 아니라 `unsaved` 를 본다 — 스냅샷 생성 가드와 같은 이유(디바운스 창).
+   */
+  const BLOCKED_MESSAGE = '파일이 깨져 편집이 잠겨 있습니다 — 파일을 고친 뒤 다시 하세요'
+  app.post(LOCAL_CHANGES_PATH, async (): Promise<LocalChangesStatus> => {
+    const state = store.state
+    if (!state.ok) {
+      return { records: [], pending: null, warnings: [], error: { file: null, line: null, message: BLOCKED_MESSAGE }, unsaved: store.unsaved }
+    }
+    const { plan } = await loadChangesPlan({ cwd, model: state.model, config })
+    return toLocalStatus(plan, store.unsaved)
+  })
+  app.post<{ Body: unknown }>(LOCAL_CHANGES_CREATE_PATH, async (req): Promise<LocalChangesCreateResult> => {
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const name = typeof body['name'] === 'string' ? body['name'] : ''
+    const baseline = body['baseline'] === true
+    const state = store.state
+    if (!state.ok) return { ok: false, reason: 'blocked', message: BLOCKED_MESSAGE }
+    if (store.unsaved) return { ok: false, reason: 'unsaved', message: LOCAL_CHANGES_UNSAVED_MESSAGE }
+    return writeChange({ cwd, model: state.model, config }, { name, baseline })
   })
 
   let configSignature = JSON.stringify(config)
