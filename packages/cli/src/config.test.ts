@@ -341,4 +341,16 @@ describe('구독(dictionaries)', () => {
     await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: 'L1' }))
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
   })
+
+  it('값 없는 dictionaries: 키(null)는 빈 구독으로 읽는다 — 구독을 다 지운 사람의 모든 명령을 막지 않는다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), `${stringifyYaml({ ...TEST_CONFIG, dictionaries: undefined })}dictionaries:\n`)
+    expect((await readConfig(dir)).dictionaries).toEqual([])
+  })
+
+  it('같은 id 를 두 번 구독하면 VALIDATION — dict pull 이 같은 사전을 두 번 처리한다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({
+      ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: '표준' }, { id: 'L1', name: '표준(옛 이름)' }],
+    }))
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('L1') })
+  })
 })

@@ -104,13 +104,19 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   if (!parsedOptions.success) {
     throw new CliError('VALIDATION', `${CONFIG_FILE}의 tableOptions 는 방언별 문자열이어야 합니다`)
   }
-  // 옛 config 에는 없다 — 누락만 빈 목록으로 읽는다. 잘못 적은 값은 삼키지 않는다 — 조용히 빈
+  // 옛 config 에는 없다 — 누락만 빈 목록으로 읽는다. 값 없는 키(`dictionaries:` = null)도 빈 목록이다
+  // — 구독을 다 지우며 키만 남긴 것이라 모호함이 없다. 잘못 적은 값은 삼키지 않는다 — 조용히 빈
   // 구독으로 돌면 사용자는 인자 없는 dict pull 이 왜 아무것도 받지 않는지 모른다.
-  if (rawDicts !== undefined && (!Array.isArray(rawDicts) || !rawDicts.every(
+  if (rawDicts != null && (!Array.isArray(rawDicts) || !rawDicts.every(
     (d) => isRec(d) && typeof d['id'] === 'string' && typeof d['name'] === 'string'))) {
     throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries는 {id, name} 목록이어야 합니다`)
   }
   const dictionaries = ((rawDicts ?? []) as DictionaryRef[]).map((d) => ({ id: d.id, name: d.name }))
+  // 같은 사전을 두 번 적으면 dict pull 이 그 사전을 두 번 처리한다 — 어느 줄이 맞는지 고를 수 없다.
+  const dup = dictionaries.find((d, i) => dictionaries.findIndex((e) => e.id === d.id) !== i)
+  if (dup !== undefined) {
+    throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries에 같은 사전(${dup.id})이 두 번 있습니다`)
+  }
   return {
     serverUrl: hasServer ? serverUrl : null,
     projectId: hasProject ? projectId : null,
