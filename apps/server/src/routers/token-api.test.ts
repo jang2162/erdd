@@ -191,7 +191,7 @@ describe.skipIf(!url)('CLI 사전 동기화가 토큰으로 부르는 프로시�
     expect(list.json().result.data).toEqual([expect.objectContaining({ note: 'CLI 요청', status: 'pending' })])
   })
 
-  it('토큰으로 부를 수 있는 프로시저가 정확히 이 열넷(+공개 표면)이다', async () => {
+  it('토큰으로 부를 수 있는 프로시저가 정확히 이 열다섯(+공개 표면)이다', async () => {
     // 표본 몇 개로는 이웃 프로시저(promotion.resolve·project.delete 등)가 실수로 apiProcedure 가
     // 되어도 모른다. 라우터 전수를 돌아 토큰 표면을 잠근다 — 공개 표면 전수 테스트(admin.test.ts)와
     // 같은 방식이다. 입력은 비운다: 인증 미들웨어가 입력 파싱보다 먼저라 세션 전용은 401,
