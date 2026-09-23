@@ -90,6 +90,13 @@ type ImportResponse = { libraryId: string | null; applied: boolean; stateHash: s
 
 const num = (n: number): string => n.toLocaleString('en-US')
 
+/** 실제로 반영될 것의 수 — render()의 요약 줄과 같은 기준(추가+갱신+옵션에 달린 오래된 파일·삭제). */
+function changeCount(s: LibraryImportSummary, opts: { prune: boolean; includeStale: boolean }): number {
+  const c = s.counts
+  const removable = c.remove - c.removeBlocked
+  return c.add + c.update + (opts.includeStale ? c.stale : 0) + (opts.prune ? removable : 0)
+}
+
 function render(title: string, s: LibraryImportSummary, opts: { prune: boolean; includeStale: boolean }): string {
   const c = s.counts
   const removable = c.remove - c.removeBlocked
@@ -183,6 +190,10 @@ export function libraryImport(ctx: LibraryImportCtx): Promise<number> {
     const preview = await call({ dryRun: true })
     if (ctx.dryRun) {
       emit(ctx.json, `${render(title, preview.summary, opts)}\n미리보기입니다 — 반영하지 않았습니다`, preview)
+      return 0
+    }
+    if (changeCount(preview.summary, opts) === 0) {
+      emit(ctx.json, `${render(title, preview.summary, opts)}\n바뀐 항목이 없습니다`, preview)
       return 0
     }
     note(render(title, preview.summary, opts))

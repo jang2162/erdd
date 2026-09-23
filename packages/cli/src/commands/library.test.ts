@@ -113,6 +113,23 @@ describe('erdd library', () => {
     expect(await libraryImport({ ...common, create: 'b', scope: 'org' })).toBe(2)   // --org 없음
   })
 
+  it('import — 미리보기가 0건이면 묻지 않고 「바뀐 항목이 없습니다」로 끝난다(적용 호출 없음)', async () => {
+    const path = join(dir, 'a.erdd-lib.yaml')
+    await writeFile(path, 'format: erdd-library\nformatVersion: 1\nlibrary: { name: x }\nwords: []\n')
+    // remove 는 있지만 --prune 이 없어 실제로 바뀔 것은 없다 — render()의 "남김" 경로와 같은 조건이다.
+    const { client, calls } = stub({ onImport: () => ({ libraryId: 'g1', applied: false, stateHash: 'h', summary: SUMMARY({ remove: 2 }) }) })
+    const confirm = vi.fn(async () => true)
+    const ctx: LibraryImportCtx = {
+      ...base, cwd: dir, client, file: path, library: 'g1', prune: false, includeStale: false, dryRun: false, confirm,
+    }
+    expect(await libraryImport(ctx)).toBe(0)
+    const imports = calls.filter((c) => c.path === 'resource.library.import')
+    expect(imports).toHaveLength(1)
+    expect(imports[0]!.input).toMatchObject({ dryRun: true })
+    expect(confirm).not.toHaveBeenCalled()
+    expect(out.join('')).toContain('바뀐 항목이 없습니다')
+  })
+
   it('import --dry-run — 미리보기만 하고 적용하지 않는다', async () => {
     const path = join(dir, 'a.erdd-lib.yaml')
     await writeFile(path, 'format: erdd-library\nformatVersion: 1\nlibrary: { name: x }\nwords: []\n')
