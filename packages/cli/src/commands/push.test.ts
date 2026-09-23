@@ -1085,6 +1085,30 @@ describe('push', () => {
     )
   })
 
+  /**
+   * 🔥 같은 원본을 서버가 먼저 받았고(id-A) 로컬 dict pull 이 새 id 로 또 받았다(id-B). 3-way 는 둘 다
+   * 남기고 무결성 검사도 통과해, 이후 재동기화가 한쪽만 보는 상태가 조용히 서버에 올라간다.
+   */
+  it('로컬이 추가한 항목이 서버 항목과 같은 공용 사전 원본을 가리키면 충돌로 막는다', async () => {
+    const origin = { libraryId: 'L1', sourceId: 'item-1', sourceVersion: 1, base: { logicalName: '고객' } }
+    const word = (id: string) => ({ id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin })
+    await seed(createEmptyModel())
+    const local = createEmptyModel()
+    local.words['018f6b0e-0000-7000-8000-0000000000b2'] = word('018f6b0e-0000-7000-8000-0000000000b2')
+    await writeTree(dir, modelToFiles(local).tree)
+    const server = createEmptyModel()
+    server.words['018f6b0e-0000-7000-8000-0000000000a1'] = word('018f6b0e-0000-7000-8000-0000000000a1')
+
+    const { client, pushCalls } = stub(server)
+    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
+    expect(plan.conflicts).toEqual([expect.objectContaining({
+      reason: 'duplicate-origin', entityId: '018f6b0e-0000-7000-8000-0000000000b2', path: 'erdd/words.yaml',
+    })])
+    expect(plan.ops).toEqual([])
+    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
+    expect(pushCalls).toHaveLength(0)
+  })
+
   it('업그레이드 직후 출처 있는 단어를 로컬에서 지우면 충돌 없이 delete op 1건이다', async () => {
     const id = '018f6b0e-0000-7000-8000-0000000000a1'
     const server = createEmptyModel()

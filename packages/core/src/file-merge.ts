@@ -92,7 +92,12 @@ export function fileVisibleModel(model: ProjectModel): ProjectModel {
   }
 }
 
-export type ConflictReason = 'field' | 'local-delete' | 'server-delete' | 'both-added'
+/**
+ * `duplicate-origin` — 서로 다른 id 의 두 엔티티가 같은 공용 사전 원본(종류·라이브러리·원본 id)을
+ * 가리키고, 그중 하나를 **로컬이** 만들었다(새로 추가했거나 기존 항목에 출처를 붙였다). field 가 '*' 면
+ * 로컬이 추가한 항목이고(지워야 한다), '출처' 면 로컬이 기존 항목에 붙인 출처다(연결을 풀어야 한다).
+ */
+export type ConflictReason = 'field' | 'local-delete' | 'server-delete' | 'both-added' | 'duplicate-origin'
 
 export type MergeConflict = {
   /** 사용자가 열어야 할 파일. */
@@ -336,7 +341,73 @@ export function mergeModels(
     }
   }
 
+  conflicts.push(...duplicateOriginConflicts(base, local, merged, models, tableFiles))
   return { merged, conflicts }
+}
+
+type OriginRef = { libraryId: string; sourceId: string }
+
+function originKey(kind: MergeKind, origin: unknown): string | null {
+  if (origin === null || origin === undefined) return null
+  const o = origin as OriginRef
+  return `${kind}\0${o.libraryId}\0${o.sourceId}`
+}
+
+/**
+ * 병합 결과에서 서로 다른 id 가 같은 원본을 가리키는데 그중 하나를 로컬이 만들었으면 충돌로 세운다.
+ *
+ * 필요한 이유: `dict pull` 은 새 항목에 **로컬에서** id 를 발급한다. 같은 원본을 서버가 먼저 받았으면
+ * (다른 사람의 `dict pull`+push, 웹 가져오기) 3-way 는 id 가 다른 두 엔티티를 각각 「로컬 추가」·
+ * 「서버 전용 유지」로 보고 둘 다 남긴다. 무결성 검사도 통과하지만 이후 재동기화는 한쪽만 보고
+ * 다른 쪽은 영원히 옛 값으로 남는다. 필드 병합은 id 단위라 이것을 볼 수 없어 여기서 따로 본다.
+ *
+ * 「로컬이 만들었다」 = 로컬의 출처가 병합 결과에 실렸고 base 의 출처와 다르다. 로컬이 만들지 않은
+ * 중복(서버에 이미 둘)은 막지 않는다 — 이 push 가 고칠 수 없는 상태로 모든 push 를 막게 된다.
+ */
+function duplicateOriginConflicts(
+  base: ProjectModel, local: ProjectModel, merged: ProjectModel,
+  models: readonly ProjectModel[], tableFiles: Record<string, string>,
+): MergeConflict[] {
+  const out: MergeConflict[] = []
+  for (const kind of MERGE_KINDS) {
+    if (!('origin' in FILE_FIELDS[kind])) continue
+    const bCol = collectionOf(base, kind)
+    const lCol = collectionOf(local, kind)
+    const mCol = collectionOf(merged, kind)
+    const byOrigin = new Map<string, string[]>()
+    for (const id of Object.keys(mCol).sort()) {
+      const key = originKey(kind, mCol[id]!['origin'])
+      if (key !== null) byOrigin.set(key, [...(byOrigin.get(key) ?? []), id])
+    }
+    for (const [key, ids] of byOrigin) {
+      if (ids.length < 2) continue
+      const introduced = (id: string): boolean => {
+        const l = lCol[id]
+        return l !== undefined && originKey(kind, l['origin']) === key
+          && originKey(kind, bCol[id]?.['origin']) !== key
+      }
+      for (const id of ids.filter(introduced)) {
+        const other = ids.find((o) => o !== id && !introduced(o)) ?? ids.find((o) => o !== id)!
+        const mine = mCol[id]!
+        const b = bCol[id]
+        // 표시는 이름·id·출처 — 두 항목은 이름이 같기 쉬워 id 가 있어야 어느 쪽을 지울지 안다.
+        const show = (e: Entity): string =>
+          `${entityDisplayName(kind, e, models)} (id ${e.id}) · ${formatOrigin(e['origin'])}`
+        const added = b === undefined
+        out.push({
+          path: added ? pathOf(kind, mine, models, tableFiles) : ORIGINS_FILE,
+          kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, mine, models)}`,
+          field: added ? '*' : FILE_FIELDS[kind]['origin']!,
+          reason: 'duplicate-origin',
+          base: added ? null : displayValue(base, 'origin', b['origin']),
+          local: show(mine),
+          server: show(mCol[other]!),
+          changedFields: [],
+        })
+      }
+    }
+  }
+  return out
 }
 
 export type PrunedRef = { kind: MergeKind; entityId: string; label: string; reason: string }

@@ -565,6 +565,49 @@ describe('origin 병합', () => {
     })
   })
 
+  describe('출처 중복', () => {
+    function words(...rows: [id: string, origin: typeof X | null][]): ProjectModel {
+      const m = createEmptyModel()
+      for (const [id, origin] of rows) {
+        m.words[id] = { id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin }
+      }
+      return m
+    }
+
+    /**
+     * 🔥 dict pull 은 로컬에서 새 id 를 발급한다. 같은 원본을 서버가 먼저 받았으면 id 가 다른 두 엔티티가
+     * 각각 「로컬 추가」·「서버 전용 유지」가 되어 둘 다 남고, 이후 재동기화는 한쪽만 본다.
+     */
+    it('로컬이 추가한 항목이 서버 항목과 같은 원본을 가리키면 충돌이다', () => {
+      const { conflicts } = mergeModels(createEmptyModel(), words(['id-B', X]), fileVisibleModel(words(['id-A', X])))
+      expect(conflicts).toEqual([expect.objectContaining({
+        kind: 'word', entityId: 'id-B', reason: 'duplicate-origin', field: '*', path: 'erdd/words.yaml',
+        base: null, local: '고객 (id id-B) · v2 · 항목 S1', server: '고객 (id id-A) · v2 · 항목 S1',
+      })])
+    })
+
+    it('로컬이 기존 항목에 붙인 출처가 서버 항목과 같은 원본이면 출처 충돌이다 — 연결을 풀라고 가리킨다', () => {
+      const { conflicts } = mergeModels(
+        words(['id-B', null]), words(['id-B', X]), fileVisibleModel(words(['id-B', null], ['id-A', X])),
+      )
+      expect(conflicts).toEqual([expect.objectContaining({
+        entityId: 'id-B', reason: 'duplicate-origin', field: '출처', path: 'erdd/origins.yaml', base: null,
+      })])
+    })
+
+    it('로컬이 만들지 않은 중복(서버에 이미 둘)은 push 를 막지 않는다', () => {
+      const both = words(['id-A', X], ['id-B', X])
+      expect(mergeModels(both, both, fileVisibleModel(both)).conflicts).toEqual([])
+    })
+
+    it('원본 id 가 같아도 라이브러리가 다르면 중복이 아니다', () => {
+      const { conflicts } = mergeModels(
+        createEmptyModel(), words(['id-B', { ...X, libraryId: 'L2' }]), fileVisibleModel(words(['id-A', X])),
+      )
+      expect(conflicts).toEqual([])
+    })
+  })
+
   it('항목 삭제 충돌은 출처가 아니라 사전 파일을 가리킨다', () => {
     const server = word(X)
     server.words['w1']!.abbreviation = 'CSTM'
