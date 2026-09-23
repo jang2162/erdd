@@ -525,14 +525,14 @@ describe('origin 병합', () => {
   }
 
   it('하위호환 — base·local 에 출처가 없고 서버에만 있으면 서버 값을 채택하고 충돌이 없다', () => {
-    const { merged, conflicts } = mergeModels(word(null), word(null), word(X))
+    const { merged, conflicts } = mergeModels(word(null), word(null), fileVisibleModel(word(X)))
     expect(conflicts).toEqual([])
     expect(merged.words['w1']!.origin).toEqual(X)
   })
 
   it('로컬이 붙인 출처(dict pull)는 서버로 올라간다', () => {
     const server = word(null)
-    const { merged } = mergeModels(word(null), word(X), server)
+    const { merged } = mergeModels(word(null), word(X), fileVisibleModel(server))
     const { model } = applyMerge(server, merged)
     const ops = diffModels(server, model)
     expect(ops).toHaveLength(1)
@@ -541,7 +541,7 @@ describe('origin 병합', () => {
 
   it('양쪽이 출처를 다르게 바꾸면 (출처) 필드 충돌이다', () => {
     const Y = { ...X, sourceVersion: 3 }
-    const { conflicts } = mergeModels(word(null), word(X), word(Y))
+    const { conflicts } = mergeModels(word(null), word(X), fileVisibleModel(word(Y)))
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({ field: '(출처)', reason: 'field', path: 'erdd/words.yaml' })
   })
