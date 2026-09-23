@@ -139,4 +139,11 @@ describe('ResourceLibraryManager', () => {
       payload: { logicalName: '회원신규', abbreviation: 'MBR', description: null },
     }))
   })
+
+  it('쓰기 권한이 없어도 내보내기 버튼이 보이고, 가져오기·파일에서 만들기는 관리자에게만 보인다', async () => {
+    renderManager({ 'resource.library.list': () => ({ data: LIBS }) }, { canManage: false })
+    expect(await screen.findByRole('button', { name: '표준 사전(예시) 내보내기' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: '표준 사전(예시) 가져오기' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /파일에서 만들기/ })).toBeNull()
+  })
 })

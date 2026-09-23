@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Pencil } from 'lucide-react'
+import { Download, FileUp, Plus, Trash2, Pencil, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  RESOURCE_KINDS, RESOURCE_KIND_LABEL, resourceDisplayName, type ResourceKind,
+  LIBRARY_FILE_EXTENSION, RESOURCE_KINDS, RESOURCE_KIND_LABEL, resourceDisplayName, type ResourceKind,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
+import { LibraryImportDialog, type LibraryImportTarget } from '@/components/library-import-dialog'
 import { ResourceItemForm, type DomainOption } from '@/components/resource-item-form'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,6 +33,7 @@ export function ResourceLibraryManager({
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [editing, setEditing] = useState<{ kind: ResourceKind; item: ItemRow | null } | null>(null)
+  const [importTarget, setImportTarget] = useState<LibraryImportTarget | null>(null)
 
   const items = useQuery({
     ...trpc.resource.items.list.queryOptions({ libraryId: selectedId ?? '' }),
@@ -45,6 +47,20 @@ export function ResourceLibraryManager({
       queryKey: trpc.resource.items.list.queryKey({ libraryId: selectedId ?? '' }),
     })
   const onError = (err: { message: string }) => toast.error(err.message)
+
+  /** 배포 파일을 내려받는다 — 읽을 수 있으면 누구나(배포 목적). */
+  const onExport = async (lib: { id: string; name: string }) => {
+    try {
+      const res = await queryClient.fetchQuery(trpc.resource.library.export.queryOptions({ libraryId: lib.id }))
+      const url = URL.createObjectURL(new Blob([res.text], { type: 'application/yaml' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${lib.name.replace(/[\\/:*?"<>|]/g, '_')}${LIBRARY_FILE_EXTENSION}`
+      a.click()
+      URL.revokeObjectURL(url)
+      if (res.danglingDomainRefs > 0) toast.info(`삭제된 도메인을 가리키던 용어 ${res.danglingDomainRefs}건은 도메인 없이 내보냈습니다`)
+    } catch (err) { onError(err as { message: string }) }
+  }
 
   const createLibrary = useMutation(trpc.resource.library.create.mutationOptions({
     onSuccess: async () => {
@@ -80,9 +96,14 @@ export function ResourceLibraryManager({
           {scope === 'global' ? '전역 공용 리소스' : '조직 공용 리소스'}
         </h2>
         {canManage && (
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus /> 라이브러리 만들기
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus /> 라이브러리 만들기
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setImportTarget(scope === 'global' ? { kind: 'create', scope } : { kind: 'create', scope, orgId: orgId! })}>
+              <FileUp /> 파일에서 만들기
+            </Button>
+          </div>
         )}
       </div>
       <p className="text-sm text-muted-foreground">
@@ -105,6 +126,15 @@ export function ResourceLibraryManager({
                   {lib.description || '설명 없음'} · 항목 {lib.itemCount}개
                 </span>
               </button>
+              <Button size="icon" variant="ghost" className="size-7" aria-label={`${lib.name} 내보내기`} onClick={() => void onExport(lib)}>
+                <Download className="size-4" />
+              </Button>
+              {canManage && (
+                <Button size="icon" variant="ghost" className="size-7" aria-label={`${lib.name} 가져오기`}
+                  onClick={() => setImportTarget({ kind: 'existing', libraryId: lib.id, name: lib.name })}>
+                  <Upload className="size-4" />
+                </Button>
+              )}
               {canManage && (
                 <Button size="icon" variant="ghost" className="size-7 text-destructive"
                   aria-label={`${lib.name} 삭제`}
@@ -230,6 +260,11 @@ export function ResourceLibraryManager({
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {importTarget && (
+        <LibraryImportDialog target={importTarget} onClose={() => setImportTarget(null)}
+          onDone={() => { setImportTarget(null); void invalidateLibraries(); void invalidateItems() }} />
       )}
     </section>
   )
