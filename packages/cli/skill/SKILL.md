@@ -19,14 +19,14 @@ grep '^serverUrl:' erdd.config.yaml
 | grep 결과 | 모드 | 진실 원천 |
 |---|---|---|
 | 값이 있다(`projectId`도 있다) | **서버 모드** | ERDD 서버. `erdd/`는 작업 사본이다 |
-| 값이 있는데 `projectId`가 없다 | **설정 오류** | **config를 읽는 명령**(`status`·`validate`·`diff`·`pull`·`push`·`serve`)이 종료 `1`로 거절한다 — `erdd.config.yaml에 serverUrl과 projectId는 함께 있어야 합니다(둘 다 없으면 로컬 전용입니다)`. 하나만 적은 것은 오타로 본다. **복구는 막히지 않는다** — `erdd init`은 config를 읽지 않아 이 오류에 걸리지 않으니, 빠진 키를 채우거나 `erdd.config.yaml`을 지우고 `erdd init`(서버 연결) 또는 `erdd init --local`로 다시 쓴다. `erdd skill install`과 `--help`도 그대로 된다 |
+| 값이 있는데 `projectId`가 없다 | **설정 오류** | **config를 읽는 명령**(`status`·`validate`·`diff`·`pull`·`push`·`serve`·`dict`)이 종료 `1`로 거절한다 — `erdd.config.yaml에 serverUrl과 projectId는 함께 있어야 합니다(둘 다 없으면 로컬 전용입니다)`. 하나만 적은 것은 오타로 본다. **복구는 막히지 않는다** — `erdd init`은 config를 읽지 않아 이 오류에 걸리지 않으니, 빠진 키를 채우거나 `erdd.config.yaml`을 지우고 `erdd init`(서버 연결) 또는 `erdd init --local`로 다시 쓴다. `erdd skill install`과 `--help`도 그대로 된다 |
 | `serverUrl: null` | **로컬 모드** | `erdd/` 파일 자체. 이력은 git 커밋이 남긴다. `erdd init --local`이 쓰는 형태라 `projectId`도 함께 `null`이다 |
 | 아무것도 안 나온다(키 자체가 없다 — grep이 종료 `1`) | **로컬 모드** | 위와 같다. `serverUrl`·`projectId`가 **함께** 없으면(둘 다 `null`이든, 키 자체가 없든) 로컬 전용이다 |
 
 ## 구조
 
 ```
-erdd.config.yaml       서버·프로젝트(로컬 모드는 둘 다 null — 키 자체가 없어도 같다)·방언·명명 규칙
+erdd.config.yaml       서버·프로젝트(로컬 모드는 둘 다 null — 키 자체가 없어도 같다)·방언·명명 규칙·공용 사전 구독(dictionaries)
 erdd/
 ├─ tables/MBR.yaml     테이블 하나당 파일 하나(파일명 = 물리명)
 ├─ groups.yaml         테이블 그룹
@@ -34,6 +34,7 @@ erdd/
 ├─ terms.yaml          용어 사전(논리명 → 물리명)
 ├─ domains.yaml        도메인(타입 표준)
 ├─ custom-fields.yaml  커스텀 항목 정의
+├─ origins.yaml        공용 사전 출처(서버 모드) — `erdd dict`·`pull`이 쓴다. **손으로 고치지 않는다**
 ├─ layout.yaml         배치 좌표·메모 본문 — **`erdd serve`로 편집하면 모드와 무관하게 생긴다**
 └─ snapshots/          스냅샷(`erdd serve`가 만든다). 커밋 대상이다
 .erdd/                 내부 상태(git-ignore). 열지도 고치지도 않는다.
@@ -191,7 +192,40 @@ erdd validate                        # 반영 뒤 항상 검사한다
 | | 서버 모드 | 로컬 모드 |
 |---|---|---|
 | `erdd/layout.yaml` | **서버와 오가지 않는 로컬 산출물이다** — `push`가 보내지도 `pull`이 덮어쓰지도 않는다. 서버 DB의 배치·메모는 따로 있고 둘은 서로 모른다. 서버 쪽 배치를 손보려면 웹 에디터로 한다 | 배치 좌표·메모의 **유일한 자리**다 |
-| 공용 리소스 출처(`origin`) | 도메인·단어·용어·커스텀 항목의 `origin`은 **파일에 담기지 않는다.** push가 절대 건드리지 않는다 | 해당 없다 — 공용 리소스 자체가 없다 |
+| 공용 리소스 출처(`origin`) | `erdd/origins.yaml`에 있다 — **손으로 고치지 않는다.** 사전 항목을 지우면 다음 저장에서 그 줄이 정리된다. 이 파일에서 줄을 지우고 push하면 서버의 출처도 떨어진다(push가 경고 한 줄을 낸다) | 해당 없다 — 공용 리소스 자체가 없다 |
+
+## 공용 사전 — `erdd dict` (서버 모드만)
+
+조직·전역 공용 사전(표준 단어·용어·도메인·커스텀 항목)을 받고 올린다. 로컬 모드에서는 종료 `1`로 멈춘다.
+
+```bash
+erdd dict list                                  # 보이는 라이브러리(* 구독 중, 「쓰기 가능」 여부)
+erdd dict pull --library "<이름|id>" --dry-run  # 먼저 계획만 본다
+erdd dict pull                                  # 구독 전부를 받는다 — 사전 파일과 origins.yaml이 바뀐다
+erdd dict push --library "<이름|id>" --yes      # 공용으로 올린다 — 쓰기 권한이 없으면 승격 요청이 된다
+erdd dict requests                              # 승격 요청의 상태·처리 메모
+```
+
+- **`dict push` 전에 `erdd push`로 로컬 변경을 서버에 올려 둔다.** 로컬 변경이 있거나 마지막 pull 뒤에
+  서버가 바뀌었으면 종료 `1`로 멈춘다 — 안내대로 `erdd push`나 `erdd pull`을 먼저 한다.
+- **라이브러리가 공유 자원이다.** `dict push`는 다른 프로젝트가 쓰는 표준을 바꾼다 — 사람이 시키지 않았으면
+  돌리지 말고, 돌릴 때는 계획(stderr의 `+`·`~`·`=` 목록)을 사람에게 보인다.
+- **`dict push`가 `라이브러리 원본이 마지막 dict pull 이후 바뀐 항목 N건은 제외했습니다`라고 하면** 남이 그
+  항목을 먼저 고친 것이다. 그대로 두면 올라가지 않는다(`--name`으로 지정해도 빠진다). `erdd dict pull`로 먼저
+  받고, 로컬에서도 고친 항목이라 충돌이 나면 어느 값을 남길지 사람에게 묻는다.
+- `dict pull`의 충돌은 기본이 보류다(파일을 바꾸지 않는다). 원본 값으로 맞추거나(`--conflicts theirs`)
+  로컬 값을 지키는(`--conflicts ours`) 것은 사람이 정한다.
+- **`dict pull --adopt`는 내용이 같은 이름 중복만 연결한다.** `이름 중복 N — 내용이 달라 연결하지 않음`이 나오면
+  어느 값을 남길지 사람에게 묻는다 — 로컬 값을 남기며 연결은 `--adopt --conflicts ours`, 원본 값으로 바꾸기는
+  그 로컬 항목을 지우고 다시 `dict pull`. `--conflicts ours`로 연결한 항목은 다음 `dict push`에서 원본 갱신으로
+  잡혀 라이브러리 값을 덮으므로, 그것이 사람의 뜻일 때만 쓴다. 그 외의 연결은 위 `dict push --yes`에 끌려가지 않는다.
+- `dict push` 계획의 용어 행에 `(도메인 연결 비움 — …)`이 붙으면 라이브러리 용어의 도메인이 비어 들어간다 —
+  도메인도 함께 올릴지 사람에게 묻는다.
+- **`dict push`의 종료 `0`은 「올라갔다」가 아니다.** 제외로 올릴 것이 없으면 `올릴 항목이 없습니다`로 `0`이다 —
+  `--json`의 `selected: 0`·`behind`로 확인한다.
+- `push`가 `같은 공용 사전 항목이 두 번 들어왔습니다 — …`로 멈추면 **`erdd pull`하지 말고** 문구대로 그 항목
+  (또는 `origins.yaml`의 그 줄)만 지우고 다시 `push`한다. `pull`은 지울 항목을 다른 로컬 작업과 함께 덮는다.
+- 새 단어를 만들기 전에 사전 파일에 같은 이름이 있는지 먼저 본다 — 공용 사전에서 받은 단어가 이미 있을 수 있다.
 
 ## 자동화
 

@@ -15,6 +15,30 @@
 토큰은 `erdd_pat_` 접두의 평문을 사용자에게 한 번 보여 주고 **SHA-256 해시만 저장**한다.
 권한은 조직·프로젝트 역할에서 그대로 파생된다(새 축이 아니다). **만료가 없고 폐기만 가능하다.**
 
+**지금 토큰에 열린 프로시저는 `apiProcedure` 를 grep 하면 나온다** —
+`grep -rn "apiProcedure" apps/server/src/routers | grep -v "test\|import"`. 각각을 부르는 CLI 명령은 이렇다.
+
+| 프로시저 | 쓰는 명령 |
+|---|---|
+| `auth.me` · `org.list` · `project.list` · `project.get` | `init`(연결 확인·선택), `pull` |
+| `model.get` · `model.push` | `pull`·`push`·`diff`, `dict push`(계획) |
+| `project.create` | `init --create` |
+| `resource.library.listForProject` · `resource.items.list` | `dict list`·`dict pull`·`dict push` |
+| `resource.promote` · `promotion.create` | `dict push`(쓰기 권한이면 앞, 아니면 뒤) |
+| `promotion.listForProject` | `dict requests` |
+
+- **토큰의 폭발 반경은 발급자의 역할과 같다.** 조직 Owner/Admin 의 토큰은 **프로젝트를 만들고
+  조직 라이브러리에 직접 쓴다**(`project.create`·`resource.promote`), 서비스 관리자의 토큰은 **전역
+  라이브러리에도 쓴다.** 에이전트·CI 에 줄 토큰은 편집자 계정으로 발급하라고 매뉴얼이 안내한다
+  (`cli-guide.md` 「개인 액세스 토큰 발급」). 역할 밖의 쓰기는 서버가 그대로 거절한다 — 토큰 경로라고
+  권한 판정을 따로 두지 않는다.
+- **`resource.promote` 는 토큰 경로면 Revision `source` 를 `'cli'` 로 남긴다**(`model.push` 와 같다).
+- **새 서버 기능을 CLI 에서 부를 때는 `dict-shared.ts` 의 `guardFeature` 로 감싼다.** 옛 서버는 그
+  프로시저를 세션 전용 거절(401 「액세스 토큰으로 할 수 없습니다」)이나 프로시저 부재(404)로 막는데,
+  사용자가 고칠 수 있는 것은 서버 업그레이드뿐이라 둘을 「서버가 이 기능을 지원하지 않습니다 — 서버를
+  업그레이드하세요」로 번역한다. 감싸지 않으면 사용자는 토큰이 틀린 줄 알고 재발급한다. 토큰 자체가
+  틀린 401 은 문구가 달라 이 번역에 걸리지 않는다.
+
 ## push 의 낙관적 동시성
 
 - **`runMutation` 의 `deriveOps` 가 `(model, seq)` 를 받는다.** `currentSeq` 조회를 `deriveOps` 호출
@@ -39,6 +63,12 @@
   갈려도 아무 테스트가 안 잡는다** — 실제로 그 상태였고, 되쓰기를 완전히 다른 id 로 바꿔도 core
   스위트가 전부 통과했다. 그런 구현이면 다음 push 가 파일의 id 를 서버에서 못 찾아 원래 버그 그대로
   사본을 만든다.
+- **사전 파일에 id 를 고정하는 경로가 하나 더 있다 — `dict pull`.** `dict-shared.ts` 의
+  `readLocalModel` 이 `filesToModel(tree, { newId: uuidv7 })` 로 **실제 uuid** 를 발급하고 그 모델을
+  `modelToFiles` 로 다시 쓰므로, 사람이 id 없이 적은 단어가 이 명령을 지나면 id 를 갖는다. ⚠️ **`newId`
+  없이 조립하면 임시 id(`new:…`)가 사전 파일에 그대로 새어 나간다** — 다음 `push` 는 그 문자열을 서버
+  id 로 보낸다. `dict-pull.test.ts` 「id 없는 로컬 단어가 있어도 파일에 new: 임시 id 를 쓰지 않는다」가
+  잠근다.
 - **`push` 는 `confirmDeletes` 뒤·`model.push` 앞에서만 `reserveIds` 를 부른다.** 앞에 두면 삭제
   확인에서 **취소한 사용자의 파일이 바뀌고**, 뒤에 두면 응답 유실 시 id 가 안 남아 사이클 전체가
   무의미해진다. 그리고 **`reserveIds` 의 호출처가 하나인 것이 `erdd diff` 가 파일을 건드리지 않는다는
@@ -59,6 +89,163 @@
   - **공유 참조를 끊는 재귀 복사는 채택하지 않았다** — `yaml.stringify` 가 공유를 다시 anchor/alias 로
     내보내므로, 참조를 끊으면 `reserveIds` 가 사용자의 alias 파일을 전개형으로 덮어써
     **조용한 데이터 손실이 조용한 파일 파괴로 바뀐다.**
+
+---
+
+## 공용 사전 — `erdd/origins.yaml` 과 `erdd dict`
+
+사전 4종(도메인·단어·용어·커스텀 항목)을 조직·전역 라이브러리와 주고받는 CLI 층이다. 라이브러리 쪽
+규칙(`origin.base` 투영, 승격 엔진, 요청 큐)은 [shared-resources.md](shared-resources.md) 가 갖는다.
+
+### `origin` 은 파일이 진실인 일반 병합 필드다
+
+- **사전 4종의 `origin` 은 `erdd/origins.yaml` 에 실린다.** `file-merge.ts` 의 `FILE_FIELDS` 에 `출처`
+  라벨로 들어 있고 `FILE_INVISIBLE_FIELDS` 에는 없다 — `push` 는 파일의 출처를 op 로 올리고 `pull` 은
+  서버의 출처를 파일로 쓴다. 비교는 객체 전체를 한 값으로 본다.
+- **출처를 모르는 옛 기준선(`origins.yaml` 이 없던 base)에서도 서버의 출처를 지우지 않는다.** base·로컬
+  둘 다 출처가 없고 서버에만 있으면 3-way 가 「서버만 바뀜」으로 판정해 서버 값을 채택한다 — 첫 `pull`
+  에서 `origins.yaml` 이 생기고, 첫 `pull` 전의 `push` 도 출처를 지우는 op 를 내지 않는다.
+  `push.test.ts` 「업그레이드 직후(base·로컬에 origins.yaml 이 없음) push 는 서버의 origin 을 지우지
+  않는다」가 잠근다.
+- **삭제 판정은 출처를 빼고 본다**(`file-merge.ts` 의 `deleteJudgeFields`). 넣으면 옛 기준선에서 로컬이
+  지운 항목이 「서버가 출처만 가졌다」는 이유로 삭제 충돌이 된다 — 사용자가 한 일은 삭제뿐인데 push 가
+  막힌다. 대칭으로, 로컬이 출처만 바꾼 항목을 서버가 지우면 충돌 없이 지워진다.
+- **파일이 진실이므로 `origins.yaml` 에서 줄이 사라지면 `push` 는 서버의 출처도 뗀다.** 사용자가 그런
+  줄 모르는 경로(출처를 모르는 옛 스냅샷 복원, 옛 드래프트 유지)가 있어서, 떼는 update 가 있으면 확인
+  프롬프트 **앞에** `공용 사전 출처를 떼는 변경 N건이 포함됩니다 — 의도하지 않았다면 erdd pull 로
+  되돌리세요` 를 stderr 로 내고 성공 봉투에 `detachedOrigins` 를 싣는다(0 이어도 싣는다).
+- **같은 원본을 가리키는 서로 다른 id 는 필드 병합이 보지 못한다** — 병합이 id 단위라서다. 그래서
+  `mergeModels` 가 따로 보고 `duplicate-origin` 충돌로 push·diff 를 막는다. 판정 규칙(로컬이 만든 중복만)과
+  이유는 [shared-resources.md](shared-resources.md) 「같은 원본이 두 번 — 출처 중복 충돌」이 갖는다. 사람용
+  문구가 갈래마다 **무엇을 지울지** 말하고 `erdd pull` 을 권하지 않는 것은 `conflict-report.ts` 의
+  `DUPLICATE_ORIGIN_LABEL` 주석이 이유를 갖는다 — `pull` 은 지울 항목을 다른 로컬 작업과 함께 덮는다.
+
+### `origins.yaml` 의 판독 규칙
+
+`file-format.ts` 의 `filesToModel` 이 판정한다.
+
+| 상황 | 처리 | 이유 |
+|---|---|---|
+| 형식 불일치(필수 키 누락·`kind` 가 4종 밖·`version` 이 정수가 아님·`base` 가 객체가 아님), 비객체 줄 | **파일 오류** — `serve` 편집 잠금, `push`·`dict` 거절, `validate` 가 가리킨다 | 오류 좌표 `origins[i]` 는 거르기 **전** 번호다 — 사람이 파일에서 그 줄을 찾는다 |
+| 같은 `(kind, id)` 가 두 번 | 파일 오류 | 어느 줄이 맞는지 고를 수 없다. 키에 종류를 넣는 것은 단어와 용어가 같은 id 를 쓸 수 있어서다 |
+| 가리키는 엔티티가 다른 종류로 있음 | 파일 오류(`kind가 …로 적혀 있지만 실제로는 …입니다`) | 조용히 무시하면 출처가 엉뚱한 엔티티에 붙을 자리를 남긴다 |
+| 가리키는 엔티티가 없음(댕글링) | **조용히 무시**하고 다음 쓰기(`modelToFiles`)에서 정리된다 | 출처는 부속 정보다 — 사람이 `words.yaml` 에서 항목을 지운 것만으로 편집을 잠그면 과잉이다 |
+| 파일 없음 | 출처 0건 | 출처가 0건이면 **파일을 쓰지 않는다**(없음 = 0건) |
+
+`TOP_LEVEL_FILES` 에서 이 파일이 마지막 원소여야 하는 이유는 [data-layer.md](data-layer.md)
+「이미 등록된 엔티티에 필드를 추가할 때」.
+
+### `dict pull` — 로컬 파일 모델에 재동기화를 돌린다
+
+- **서버 프로젝트 모델은 건드리지 않는다.** 라이브러리 항목을 받아 **로컬 파일 모델**에 core
+  `planResync` → `applyResyncPlan` 을 돌리고 파일에 쓴다. 보관함(서버 프로젝트)은 다음 `erdd push` 때
+  따라온다.
+- **쓰는 파일은 `dict-shared.ts` 의 `DICTIONARY_FILES` 뿐이다** — 그룹·테이블 파일은 쓰지 않는다.
+  `modelToFiles` 가 다시 만든 테이블 파일을 쓰면 사람이 다듬은 YAML 이 이유 없이 정규화된다.
+  `dict-pull.test.ts` 「사전과 무관한 테이블 파일은 바이트 그대로다」가 잠근다.
+- **라이브러리 항목은 id 순으로 정렬해 넘긴다**(`fetchItems` 의 기본 `order: 'id'`). 같은 입력이면 같은
+  계획이 나와야 `--dry-run` 과 실제 실행이 갈리지 않는다. 정렬은 **코드 단위 비교**다 — `localeCompare`
+  는 환경 로케일에 따라 대소문자 혼용 id 의 순서가 갈린다.
+- **`--adopt` 의 배정과 내용 판정은 core `planAdoption` 한 곳에서 한다**(`sameContentOnly` 는
+  `--conflicts ours` 가 아닐 때 켠다). 배정되지 않은 adopt 는 `defer` 로 내린 뒤 `applyResyncPlan` 에
+  넘기고, 적용이 부르는 `adoptAssignments` 는 같은 루프의 판정 없는 판이라 남은 adopt 에 같은 대상을
+  준다 — 보고가 실제와 갈라지지 않는다. `--adopt` 가 없어도 분류(「건너뜀 — --adopt 로 연결」 / 「내용이
+  달라 연결하지 않음」 / 「연결할 수 없음」)에 쓰려고 부른다. 그래서 「건너뜀」은 **`--adopt` 를 주면 실제로
+  연결되는 항목만** 센다. 항목별로 `adoptTargetOf` 를 보면 동명 원본 둘이 한 로컬 항목을 노릴 때
+  「건너뜀 2」라 안내하고 `--adopt` 로는 1만 연결되는 거짓 안내가 된다. 내용이 같을 때만 연결하는
+  규칙과 판정의 세부는 [shared-resources.md](shared-resources.md) 「`adopt` 는 내용이 같을 때만 연결한다」.
+- **`--dry-run` 은 파일도 config 도 쓰지 않는다** — `erdd diff` 와 같은 미리보기 계약이다.
+- **파일 쓰기는 `writeTreeChanges` 로 한다** — `origins.yaml` 이 마지막인 것은 그 함수가 보장한다(아래
+  「`origins.yaml` 은 마지막에 쓴다」).
+- **`dict pull`·`dict push` 도 저장하지 않은 편집(`hasDraft`)을 알린다**(`UNSAVED_NOTICE`, stderr). 두 명령의
+  판정은 파일(= 보관함에 올라갈 값) 기준이라 `serve` 화면에 떠 있는 값과 다를 수 있다. 알림일 뿐이라
+  판정·종료 코드·`--json` 봉투는 그대로다 — `push`·`status` 와 같은 규약이다.
+
+### `dict push` — 서버의 승격 엔진을 부를 뿐이다
+
+승격 판정과 쓰기는 서버의 기존 엔진이 **서버 프로젝트 모델** 기준으로 한다. CLI 는 core `planPromote`
+로 같은 계획을 보이고 보낼 항목을 고른다([shared-resources.md](shared-resources.md) 「요청·승인 큐」).
+
+- **전제가 둘이다 — 로컬 변경이 없고(`requireClean`), 서버 seq 가 마지막 `pull` 의 seq 와 같다.**
+  승격 대상은 서버 엔티티라, 로컬에서 고친 값이 서버에 없으면 **보던 값이 아니라 보관함의 옛 값이**
+  라이브러리에 올라간다. 서버가 앞서 나간 경우는 로컬이 깨끗해도 남의 새 값이 올라간다 — 로컬이
+  깨끗하므로 `pull` 은 무해하니 받고 다시 보게 한다. **자동으로 `push` 하지 않는 이유**는 push 의 삭제
+  확인·충돌 중단이 끌려와 두 명령의 실패 모드가 섞이기 때문이다.
+- **계획은 서버가 준 순서 그대로 계산한다**(`fetchItems(…, { order: 'server' })`). 서버의
+  `resource.promote`·`promotion.create` 는 `loadLibraryItems`(createdAt, 동률은 id) 순서로 `planPromote` 를
+  **다시 계산**하고 동명 항목이 둘이면 먼저 나온 쪽이 `name-match` 대상이다. CLI 가 id 순으로 계산하면
+  `expectedTargetItemId` 가 서버와 어긋나 그 항목이 `plan-changed` 로 조용히 건너뛰어진다.
+- **승격이 커밋된 뒤의 실패는 「승격은 됐다」로 구분한다.** 성공하면 암묵적 pull(`syncDown`)로
+  `origins.yaml` 을 받는데, 그 전에 로컬이 여전히 깨끗한지 **한 번 더** 본다 — 확인 프롬프트는 무기한
+  기다리므로 그 사이 사람이 고친 파일을 `syncDown` 이 조용히 덮을 수 있다. 재확인이나 `syncDown` 이
+  실패하면 재시도하지 않고 `{ mode: 'promote', ok: false, committed: true, syncError }` 로 끝낸다
+  (`push.ts` 의 「반영됨 + 파일 갱신 실패」와 같은 규약 — 승격 실패로 보이면 사람도 에이전트도 다시
+  올리려 든다).
+- **라이브러리 원본이 앞선 항목(`sourceBehind`)은 `--name` 으로 지정해도 선택에서 뺀다** — 계획 뒤에
+  note 로, `--json` 은 모든 봉투의 `behind` 로 알린다. 규칙과 이유는 [shared-resources.md](shared-resources.md)
+  「승격 — 가져오기의 반대 방향」이 갖는다.
+- **서버가 전부 건너뛰면 종료 코드 `1` 이다.** 웹의 「선택이 전부 no-op 이면 무반응」을 되풀이하지 않는다.
+  **CLI 쪽 선택(원본 앞섬 제외·동명 제외·`--name` 불일치)으로 0건이면 서버를 부르지 않고 `0`** 이다
+  (`올릴 항목이 없습니다`). 그러니 종료 코드 `0` 은 「올라갔다」가 아니다 — 스크립트·에이전트는 `--json` 의
+  `selected: 0`·`behind` 로 가른다. 매뉴얼이 이 경계를 사용자에게 안내한다.
+- **도메인 연결이 비는 용어는 행마다 알리고 `--json` 의 `danglingDomain` 에 싣는다.** 판정은 core
+  `resource-promote.ts` 의 `danglingDomain` 하나이고 웹 승격 화면의 「도메인 연결 비움」 배지와 같은
+  함수다 — 한쪽만 알리면 다른 쪽에서 조용히 빈다. 판정 집합은 **최종 선택**(`--kind`·`--name`·원본 앞섬
+  제외·동명 제외 뒤)이다 — 도메인이 계획에 있어도 이 필터로 빠지면 연결이 빈다.
+
+### `origins.yaml` 은 마지막에 쓴다
+
+**`writeTreeChanges`(`tree.ts`)가 `ORIGINS_FILE` 을 쓰기든 삭제든 맨 마지막에 한다.** 그 함수를 쓰는
+`dict pull` 과 `serve` 저장(`local/store.ts`)이 이 순서를 따로 챙기지 않아도 된다. `syncDown`·`import`
+가 쓰는 `writeTree` 는 트리의 삽입 순서로 쓰고, `modelToFiles` 가 `origins.yaml` 을 마지막에 넣는다.
+
+- **왜** — 파일 여럿의 쓰기는 원자적이지 않다. 출처를 먼저 쓰고 사전 내용 전에 끊기면 「출처는 새 버전,
+  내용은 옛 값」이 되어 다음 `dict pull` 이 버전이 같다고 **조용히** 넘기고, 그 항목은 영원히 「프로젝트가
+  고친 항목」으로 남는다. 출처가 마지막이면 끊겨도 옛 출처 대비 내용이 달라 다음 실행이 충돌로
+  **시끄럽게** 알린다. 「pull 의 네 단계 쓰기」(아래 한계)와 같은 방향이다.
+- **삭제도 마지막인 이유** — `serve` 의 스냅샷 복원처럼 출처가 0건이 되는 저장은 `origins.yaml` 삭제와
+  사전 내용 쓰기를 함께 한다. 삭제를 먼저 하는 일반 규칙(대소문자 무시 파일시스템의 개명)은 테이블
+  파일의 사정이라 이 파일에는 해당하지 않는다.
+- ⚠️ **`writeTree` 의 삭제 패스는 쓰기보다 먼저 돈다** — `syncDown` 에서 서버 출처가 0건이 되면
+  `origins.yaml` 삭제가 내용 쓰기보다 앞선다. 그 경로는 기준선을 트리 뒤에 쓰므로 중단이 `status` 로
+  드러난다(「pull 의 네 단계 쓰기」).
+- `tree.test.ts` 「origins.yaml 은 쓰기든 삭제든 사전 내용 파일 뒤에 한다」, `dict-pull.test.ts` 「사전 내용
+  파일을 먼저 쓰고 origins.yaml 을 마지막에 쓴다」, `local/store.test.ts` 「사전 내용과 출처가 함께 바뀌는
+  저장은 origins.yaml 을 마지막에 쓴다」가 잠근다.
+
+### config 를 다시 쓰는 자리는 `dictionaries` 를 보존한다
+
+**`ErddConfig.dictionaries` 는 필수 필드다 — 그것이 가드다.** `pull`(`syncDown`)은 서버 값으로 config 를
+통째로 새로 만드는데, 거기서 구독을 빠뜨리면 **pull 할 때마다 구독이 사라지고** 사용자는 인자 없는
+`dict pull` 이 왜 아무것도 받지 않는지 모른다. 옵셔널로 두면 새 쓰기 자리가 빠뜨려도 타입 오류가 없다.
+
+- 지금 config 를 다시 쓰는 자리는 `syncDown`, `init`(연결·`--create`), `dict pull`, `import`(테이블 옵션
+  반영), `serve` 의 `project.update` 다. **새 자리를 만들면 구독을 이어 싣는다.**
+- `init --project` 재연결은 **같은 서버의 같은 프로젝트일 때만** 구독을 잇는다(`keptSubscriptions`).
+  다른 프로젝트의 구독은 옛 프로젝트의 선택이라 비운다. 그래서 `serverUrl` 을 정규화해(`trim` + 끝 슬래시
+  제거) 저장한다 — 저장값이 갈리면 같은 서버를 다른 서버로 읽어 구독을 지운다.
+- **`serve` 의 `project.update` 는 쓰기 직전에 디스크 config 의 `dictionaries` 를 다시 읽어 싣는다.**
+  화면은 구독을 보내지 않고, 구독은 `dict pull --library` 가 디스크에 더한다. 메모리의 `ctx.config` 를
+  그대로 싣으면 파일 감시가 그것을 맞추기 전(디바운스 폭)에 저장한 설정이 방금 더한 구독을 옛 값으로
+  덮는다. 디스크 config 가 손으로 깨져 있으면 이 저장은 `readConfig` 오류로 실패한다 — 깨진 파일을 조용히
+  덮어 사람의 편집을 날리는 것보다 낫다. `router.test.ts` 「project.update 는 ctx.config 의 구독이 낡았어도
+  디스크의 구독을 보존한다」가 잠근다.
+- `serve` 의 파일 감시는 구독만 바뀐 config 를 reload 사유로 보지 않되, 메모리의 config 는 매번 갱신한다
+  — `project.get` 이 낡은 구독을 내지 않게 한다.
+
+### `init --create` — config 가 커밋 지점이다
+
+- **config 를 마지막에 쓴다.** 먼저 쓰면 그 뒤에서 끊겼을 때 **기준선 없이 연결된 config** 가 남고,
+  사용자의 자연스러운 다음 수(`erdd pull`)가 `erdd/` 를 서버의 빈 상태로 덮는다. 이 순서면 중간 실패는
+  「로컬 전용(또는 없는) config + 쓸모없는 base」로 남고 재실행이 전부 다시 쓴다.
+- **기준선은 빈 모델·seq 0 이다.** `pull` 없이 `push` 가 요구하는 base 를 세우므로, 이관이면 `erdd diff`
+  가 로컬 스키마 전부를 「추가」로 보인다. **`erdd/` 가 비어 있으면 빈 트리를 함께 쓴다** — 안 쓰면
+  base 만 파일을 갖고 `erdd/` 는 비어 `push`·`diff` 가 「erdd/ 아래에 파일이 없습니다」 가드에 막힌다.
+  파일이 하나라도 있으면(이관) 한 바이트도 건드리지 않는다.
+- **로컬 트리와 config 규칙을 서버 호출 전에 읽고 검사한다.** YAML 오류나 서버 strict 스키마에 안 맞는
+  명명 규칙으로 서버 호출 뒤에 멈추면 반쯤 만들어진 서버 프로젝트가 남는다.
+- **이관 중 생성 권한이 없으면 `--project` 연결을 권하지 않는다.** 그 연결에는 기준선이 없어 다음 `pull`
+  이 `erdd/` 를 덮는다 — 커밋해 두고 되얹는 수동 절차(로컬 모드 매뉴얼)를 가리킨다.
 
 ---
 
@@ -96,9 +283,10 @@
 
 - **`erdd.config.yaml` 의 방언·명명 규칙·테이블 옵션은 pull 시점 사본이다.** 서버에서 바꾸면 다음 pull 전까지
   로컬 `validate` 결과가 서버와 다를 수 있다.
-- **파일에 `notes`·배치 좌표·`origin` 을 담지 않는다.** `push` 는 「파일에 없는 것은 서버에서
+- **서버와 오가는 파일에 `notes`·배치 좌표를 담지 않는다.** `push` 는 「파일에 없는 것은 서버에서
   건드리지 않는다」를 계약으로 지킨다(`applyMerge` 가 서버 값을 그대로 통과시킨다) — 그래서
-  **파일에서 메모를 관리할 수 없다.**
+  **파일에서 서버의 메모를 관리할 수 없다.** 공용 사전 출처는 이 한계에 들지 않는다(`origins.yaml`,
+  위 「공용 사전」).
 - **CLI 파일에는 최종 이름이 아니라 부분만 싣는다.** 파일 형식은 그대로 유지하기로 했고, 같은 마찰은
   **출력 쪽에서** 없앴다 — `erdd validate` 의 경고가 좌표(`erdd/tables/MBR.yaml  MBR.MBR_NO`)를 함께
   내므로 최종 이름을 말하는 경고에서도 한 줄에 부분 이름과 최종 이름이 같이 보인다.
@@ -126,6 +314,29 @@
   `status` 가 오탐한다. **순서를 뒤집으면 낡은 트리를 숨기게 되어 더 나쁘므로 「시끄럽게 틀리는」
   쪽을 의도적으로 골랐다.** `pull --yes` 재실행으로 수렴한다.
 - **`skill install` 은 Claude Code 형식만 낸다**(`AGENTS.md` 는 범위 밖이다).
+
+### 공용 사전·`init --create`
+
+- **`origins.yaml` 에 「손으로 고치지 않는다」는 머리 주석이 없다.** 쓰기가 `modelToFiles` 의 plain
+  object → CLI 의 YAML 직렬화(`tree.ts` 의 `stringifyYaml`)라 파일별 주석을 실을 자리가 없다. 안내는
+  매뉴얼·스킬 문서에만 있다. 고친다면 자리는 직렬화 층이고, 주석을 달면 `pull` 마다 재작성돼도 같은
+  바이트가 나와야 `status` 가 오탐하지 않는다.
+- **출처의 이름이 표시 자리마다 다르다.** `erdd diff`·웹 비교·Excel 은 `model-diff.ts` 의 `FIELD_LABEL`
+  (「원본 참조」)을, push 충돌 보고는 `file-merge.ts` 의 `FILE_FIELDS`(「출처」)를 쓴다. 값 표시는
+  `formatOrigin` 하나로 같다. 한쪽으로 맞추면 웹 문구가 함께 바뀌므로 사용자 가이드 인용을 같이 고친다.
+- **`dict pull` 의 충돌 줄은 필드 키 그대로다**(`단어 고객  (abbreviation)`) — 값의 전후를 보이지
+  않는다. 무엇이 바뀌었는지는 `--dry-run` 뒤 라이브러리 화면이나 `--conflicts theirs` 후 `git diff` 로 본다.
+- **대형 사전의 첫 `dict pull` 은 다음 `push` 에서 op 상한(5000)에 걸릴 수 있다.** 로컬 적용에는
+  상한이 없고 보관함으로 올리는 `push` 에만 있다(위 「push·병합」의 청크 한계와 같은 뿌리다).
+- **`dict requests` 에 요청 항목의 이름이 없다** — 서버 행은 엔티티 id 만 갖고, 이름을 풀려면 모델이
+  필요하다. `promotion.create` 가 돌려주는 `dropped` 는 사람용 출력에 건수로만 보인다(`--json` 에는 id 가
+  실린다).
+- **`init --create` 는 서버 생성과 로컬 쓰기가 원자적이지 않다.** `project.create` 뒤 로컬 쓰기가 실패하면
+  서버에 빈 프로젝트가 남고, config 는 연결되지 않은 채라 재실행은 **새 프로젝트를 또 만든다.** config 를
+  마지막에 쓰는 순서(위 「init --create」)가 로컬 쪽 피해는 막지만 서버 쪽 잔재는 웹에서 지운다.
+- **이관 직후 `erdd status` 가 빈 최상위 파일을 `-`(삭제)로 보인다.** 기준선이 빈 모델의 트리(최상위
+  다섯 파일)라 `erdd/` 에 없는 파일이 삭제로 잡힌다. 내용이 빈 목록이라 `erdd diff` 는 추가만 보이고,
+  `push` 한 번으로 사라진다.
 
 ### 멱등성 잔여
 

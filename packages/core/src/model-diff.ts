@@ -161,6 +161,20 @@ function formatColumnMappings(value: unknown, model: ProjectModel): string {
 }
 
 /**
+ * 공용 사전 출처(`origin`)의 사람용 표시 — `v3 · 항목 …0000abcd`.
+ * `base` 는 라이브러리 payload 사본이라 풀어 쓰면 한 줄이 항목 전체만큼 길어지고, id 는 UUID 라
+ * 통째로 읽히지 않는다. 사람이 대조할 것은 **버전**이고, 항목은 끝자리로 구별하면 충분하다.
+ * 변경분 표시와 CLI 충돌 리포트가 이 함수 하나를 쓴다 — 두 화면의 표기가 갈리지 않게.
+ */
+export function formatOrigin(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  const o = value as { sourceId?: unknown; sourceVersion?: unknown }
+  if (typeof o.sourceId !== 'string' || typeof o.sourceVersion !== 'number') return formatValue(value)
+  const item = o.sourceId.length > 8 ? `…${o.sourceId.slice(-8)}` : o.sourceId
+  return `v${o.sourceVersion} · 항목 ${item}`
+}
+
+/**
  * 필드 값을 셀 문자열로 — 표시 전용이다.
  * id를 값으로 갖는 속성(도메인·그룹·테이블·컬럼 참조)은 사람이 읽는 이름으로 바꾼다.
  * 실데이터 id는 UUIDv7이라 원문 그대로는 감사 문서로 쓸 수 없다. 참조가 끊겼으면
@@ -180,6 +194,7 @@ function formatFieldValue(field: string, value: unknown, model: ProjectModel): s
     case 'custom': return formatCustomField(value, model)
     case 'columns': return formatIndexColumns(value, model)
     case 'columnMappings': return formatColumnMappings(value, model)
+    case 'origin': return formatOrigin(value)
     default: return formatValue(value)
   }
 }

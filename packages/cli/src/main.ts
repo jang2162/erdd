@@ -3,7 +3,11 @@ import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
-import { DIALECTS, type Dialect, type NamingRules } from '@erdd/core'
+import { DIALECTS, RESOURCE_KINDS, type Dialect, type NamingRules, type ResourceKind } from '@erdd/core'
+import { dictList } from './commands/dict-list.js'
+import { dictPull } from './commands/dict-pull.js'
+import { dictPush } from './commands/dict-push.js'
+import { REQUEST_STATUSES, dictRequests, type RequestStatus } from './commands/dict-requests.js'
 import { diff } from './commands/diff.js'
 import { exportCommand, type ExportFormat } from './commands/export.js'
 import { importCommand } from './commands/import.js'
@@ -32,24 +36,37 @@ const USAGE = `사용법: erdd <명령> [옵션]
   skill install 에이전트 스킬 문서를 프로젝트에 설치한다
   changes      변경 기록 상태 — 미기록 변경 미리보기(로컬 모드 전용)
   changes new <이름> 미기록 변경을 erdd/changes/ 에 기록한다
+  dict <list|pull|push|requests>  공용 사전을 주고받는다
 
 옵션
   --json                기계용 JSON 출력
   --yes                 확인 프롬프트를 건너뛴다
   --strict              validate·diff에서 경고·충돌도 실패로 본다
-  -m, --message <요약>  push의 Revision 요약
+  -m, --message <요약>  push의 Revision 요약, dict push의 승격 요청 메모
   --dir <경로>          skill install 전용 — 설치 위치
   --force               skill install 전용 — 기존 파일 덮어쓰기
   --server <url>        init 전용
   --token <token>       init 전용
   --project <id>        init 전용
   --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
-  --case <대소문자>      init --local 전용 — UPPER_SNAKE(기본) 또는 lower_snake
+  --create              init 전용 — 서버에 프로젝트를 만들어 연결한다(로컬 전용 프로젝트면 이관한다)
+  --org <이름|id>        init --create 전용 — 프로젝트를 만들 조직
+  --case <대소문자>      init --local·--create 전용 — UPPER_SNAKE(기본) 또는 lower_snake
   --format <ddl|dbml>   export·import 전용 — export 기본 ddl, import 기본 확장자 판별
-  --dialect <방언>       export·import·init --local 전용
-                        export·import는 기본이 erdd.config.yaml의 dialects[0], init --local은 postgresql
+  --dialect <방언>       export·import·init --local·--create 전용
+                        export·import는 기본이 erdd.config.yaml의 dialects[0], init --local·--create는 postgresql
   -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
-  --dry-run             import 전용 — 계획만 보고 파일을 쓰지 않는다
+  --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
+  --library <이름|id>   dict pull·push 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
+                        push는 올릴 라이브러리(필수)
+  --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다(내용이 같을 때만)
+                        내용이 달라도 로컬 값을 유지한 채 연결하려면 --conflicts ours 를 함께 준다
+  --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
+  --kind <종류,…>        dict push 전용 — domain·word·term·customField 중 올릴 종류
+  --name <이름>          dict push 전용 — 올릴 항목 이름(반복 가능)
+                        init --create 전용 — 서버에 만들 프로젝트 이름
+  --include-name-match  dict push 전용 — 라이브러리에 같은 이름이 있는 항목도 올린다(기본 제외)
+  --status <상태>        dict requests 전용 — pending·resolved·rejected·cancelled
   --port <번호>          serve 전용 — 기본 4300
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
   --check               changes 전용 — 미기록 변경이 있으면 종료 코드 1
@@ -152,14 +169,24 @@ export async function main(argv: string[], cwd: string): Promise<number> {
   switch (command) {
     case 'init': {
       const local = argv.includes('--local')
+      const create = argv.includes('--create')
+      if (create && argv.includes('--project')) return usageError(json, '--create와 --project는 함께 쓸 수 없습니다')
+      if (create && local) return usageError(json, '--create와 --local은 함께 쓸 수 없습니다')
+      // 값이 빠진 --org·--name 이 조용히 대화형 선택·입력으로 흐르면 사용자는 자기가 적은 것이
+      // 무시된 줄 모른다.
+      for (const name of ['org', 'name']) {
+        if (argv.includes(`--${name}`) && flagValue(argv, name) === undefined) {
+          return usageError(json, `--${name} 값이 빠졌습니다`)
+        }
+      }
       const dialect = enumFlag<Dialect>(argv, 'dialect', DIALECTS)
       if (!dialect.ok) return usageError(json, dialect.message)
       const namingCase = enumFlag<NamingRules['case']>(argv, 'case', NAMING_CASES)
       if (!namingCase.ok) return usageError(json, namingCase.message)
       // 연결 모드에서는 서버 프로젝트 설정이 진실이다 — 그 둘을 여기서 받으면 init이 만든
       // config가 첫 pull에 곧바로 덮여, 사용자는 자기가 준 값이 왜 사라졌는지 알 수 없다.
-      if (!local && (dialect.value !== undefined || namingCase.value !== undefined)) {
-        return usageError(json, '--dialect·--case는 init --local 전용입니다 — 연결 모드에서는 서버 프로젝트 설정을 따릅니다')
+      if (!local && !create && (dialect.value !== undefined || namingCase.value !== undefined)) {
+        return usageError(json, '--dialect·--case는 init --local·--create 전용입니다 — 기존 프로젝트에 연결할 때는 서버 프로젝트 설정을 따릅니다')
       }
       return init({
         ...ctx,
@@ -169,6 +196,9 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         local,
         dialect: dialect.value,
         namingCase: namingCase.value,
+        create,
+        org: flagValue(argv, 'org'),
+        name: flagValue(argv, 'name'),
       })
     }
     case 'pull': return pull(ctx)
@@ -213,6 +243,48 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         }
       }
       return serve({ ...ctx, port, open: !argv.includes('--no-open') })
+    }
+    case 'dict': {
+      // 하위 명령 자리에 플래그가 오면 하위 명령이 빠진 것이다(`erdd dict --json`).
+      const sub = argv[1]?.startsWith('-') === true ? undefined : argv[1]
+      if (sub === 'list') return dictList(ctx)
+      if (sub === 'pull') {
+        const conflicts = enumFlag<'theirs' | 'ours'>(argv, 'conflicts', ['theirs', 'ours'] as const)
+        if (!conflicts.ok) return usageError(json, conflicts.message)
+        if (argv.includes('--library') && flagValue(argv, 'library') === undefined) {
+          return usageError(json, '--library 값이 올바르지 않습니다: (값 없음)')
+        }
+        return dictPull({
+          ...ctx, library: flagValue(argv, 'library'), adopt: argv.includes('--adopt'),
+          conflicts: conflicts.value, dryRun: argv.includes('--dry-run'),
+        })
+      }
+      if (sub === 'push') {
+        if (argv.includes('--library') && flagValue(argv, 'library') === undefined) {
+          return usageError(json, '--library 값이 올바르지 않습니다: (값 없음)')
+        }
+        const kinds = argv.includes('--kind') ? (flagValue(argv, 'kind') ?? '').split(',').filter(Boolean) : undefined
+        if (kinds !== undefined && (kinds.length === 0 || !kinds.every((k) => (RESOURCE_KINDS as readonly string[]).includes(k)))) {
+          return usageError(json, `--kind 값이 올바르지 않습니다: ${flagValue(argv, 'kind') ?? '(값 없음)'} — ${RESOURCE_KINDS.join(' | ')}`)
+        }
+        // --name 은 반복할 수 있다. 값이 빠진 --name 은 조용히 무시하지 않는다 — 전부 올라간다.
+        const nameAt = argv.flatMap((a, i) => (a === '--name' ? [i] : []))
+        if (nameAt.some((i) => argv[i + 1] === undefined || argv[i + 1]!.startsWith('--'))) {
+          return usageError(json, '--name 값이 올바르지 않습니다: (값 없음)')
+        }
+        const names = nameAt.map((i) => argv[i + 1]!)
+        return dictPush({
+          ...ctx, library: flagValue(argv, 'library'), kinds: kinds as ResourceKind[] | undefined,
+          names: names.length > 0 ? names : undefined, includeNameMatch: argv.includes('--include-name-match'),
+          message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm'),
+        })
+      }
+      if (sub === 'requests') {
+        const status = enumFlag<RequestStatus>(argv, 'status', REQUEST_STATUSES)
+        if (!status.ok) return usageError(json, status.message)
+        return dictRequests({ ...ctx, status: status.value })
+      }
+      return usageError(json, `알 수 없는 dict 하위 명령: ${sub ?? '(없음)'} — list | pull | push | requests`)
     }
     case 'skill': return skill({
       ...ctx, sub: argv[1], dir: flagValue(argv, 'dir'), force: argv.includes('--force'),

@@ -7,6 +7,8 @@ import {
   resolveToken, writeToken, ensureGitignore, requireConnection, LOCAL_PROJECT_ID, CONFIG_FILE,
 } from './config.js'
 import type { ErddConfig } from './config.js'
+import { stringify as stringifyYaml } from 'yaml'
+import { TEST_CONFIG } from './testing/harness.js'
 
 let dir: string
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'erdd-cli-')) })
@@ -21,6 +23,7 @@ const CONFIG: ErddConfig = {
     tablePhysicalTemplate: '', tableLogicalTemplate: '',
   },
   tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
+  dictionaries: [],
 }
 
 describe('config', () => {
@@ -297,6 +300,7 @@ describe('연결 설정이 없는 config', () => {
         tablePhysicalTemplate: '', tableLogicalTemplate: '',
       },
       tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
+      dictionaries: [],
     })).toThrow(/erdd init/)
   })
 
@@ -308,10 +312,45 @@ describe('연결 설정이 없는 config', () => {
         tablePhysicalTemplate: '', tableLogicalTemplate: '',
       },
       tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
+      dictionaries: [],
     })).toEqual({ serverUrl: 'https://e.example.com', projectId: 'p1' })
   })
 
   it('config 모듈이 LOCAL_PROJECT_ID 를 넘겨준다', () => {
     expect(LOCAL_PROJECT_ID).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+  })
+})
+
+describe('구독(dictionaries)', () => {
+  it('dictionaries 가 없는 옛 config 는 빈 구독으로 읽고, 빈 구독은 파일에 쓰지 않는다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: undefined }))
+    expect((await readConfig(dir)).dictionaries).toEqual([])
+    await writeConfig(dir, await readConfig(dir))
+    expect(await readFile(join(dir, 'erdd.config.yaml'), 'utf8')).not.toContain('dictionaries')
+  })
+
+  it('구독을 쓰고 읽으면 같다', async () => {
+    const config = { ...CONFIG, dictionaries: [{ id: 'L1', name: '표준' }, { id: 'L2', name: '확장' }] }
+    await writeConfig(dir, config)
+    expect(await readConfig(dir)).toEqual(config)
+  })
+
+  it('dictionaries 가 배열이 아니거나 항목에 id·name 이 없으면 VALIDATION', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1' }] }))
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: 'L1' }))
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
+  })
+
+  it('값 없는 dictionaries: 키(null)는 빈 구독으로 읽는다 — 구독을 다 지운 사람의 모든 명령을 막지 않는다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), `${stringifyYaml({ ...TEST_CONFIG, dictionaries: undefined })}dictionaries:\n`)
+    expect((await readConfig(dir)).dictionaries).toEqual([])
+  })
+
+  it('같은 id 를 두 번 구독하면 VALIDATION — dict pull 이 같은 사전을 두 번 처리한다', async () => {
+    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({
+      ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: '표준' }, { id: 'L1', name: '표준(옛 이름)' }],
+    }))
+    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('L1') })
   })
 })

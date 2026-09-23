@@ -21,7 +21,14 @@ export type ErddConfig = {
    * `namingRules` 가 이미 갖고 있는 성질이라 이 사이클이 새로 만드는 문제가 아니다.
    */
   tableOptions: TableOptions
+  /**
+   * 구독한 공용 사전(`erdd dict pull` 이 인자 없이 받는 목록). 순서 = 처리 순서.
+   * ⚠️ **config 를 다시 쓰는 모든 자리가 이 값을 보존해야 한다** — pull(`syncDown`)이 서버 값으로
+   * config 를 새로 만들 때 빠뜨리면 pull 할 때마다 구독이 사라진다. 필수 필드로 둔 것이 그 가드다.
+   */
+  dictionaries: DictionaryRef[]
 }
+export type DictionaryRef = { id: string; name: string }
 export type SyncState = { revisionSeq: number; pulledAt: string }
 
 // 정의는 core 에 있다(웹도 같은 값을 쓴다). 여기서는 CLI 안에서 짧게 쓰기 위해 넘겨만 준다.
@@ -54,7 +61,7 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   }
   const parsed: unknown = parseYaml(raw)
   if (!isRec(parsed)) throw new CliError('VALIDATION', `${CONFIG_FILE}의 최상위가 객체가 아닙니다`)
-  const { serverUrl, projectId, dialects, namingRules, tableOptions } = parsed
+  const { serverUrl, projectId, dialects, namingRules, tableOptions, dictionaries: rawDicts } = parsed
   const hasServer = typeof serverUrl === 'string'
   const hasProject = typeof projectId === 'string'
   // 둘 다 없으면 로컬 전용이다. **하나만 있는 것은 오타로 본다** — 삼키면 사용자는 서버에 붙은
@@ -97,6 +104,19 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   if (!parsedOptions.success) {
     throw new CliError('VALIDATION', `${CONFIG_FILE}의 tableOptions 는 방언별 문자열이어야 합니다`)
   }
+  // 옛 config 에는 없다 — 누락만 빈 목록으로 읽는다. 값 없는 키(`dictionaries:` = null)도 빈 목록이다
+  // — 구독을 다 지우며 키만 남긴 것이라 모호함이 없다. 잘못 적은 값은 삼키지 않는다 — 조용히 빈
+  // 구독으로 돌면 사용자는 인자 없는 dict pull 이 왜 아무것도 받지 않는지 모른다.
+  if (rawDicts != null && (!Array.isArray(rawDicts) || !rawDicts.every(
+    (d) => isRec(d) && typeof d['id'] === 'string' && typeof d['name'] === 'string'))) {
+    throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries는 {id, name} 목록이어야 합니다`)
+  }
+  const dictionaries = ((rawDicts ?? []) as DictionaryRef[]).map((d) => ({ id: d.id, name: d.name }))
+  // 같은 사전을 두 번 적으면 dict pull 이 그 사전을 두 번 처리한다 — 어느 줄이 맞는지 고를 수 없다.
+  const dup = dictionaries.find((d, i) => dictionaries.findIndex((e) => e.id === d.id) !== i)
+  if (dup !== undefined) {
+    throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries에 같은 사전(${dup.id})이 두 번 있습니다`)
+  }
   return {
     serverUrl: hasServer ? serverUrl : null,
     projectId: hasProject ? projectId : null,
@@ -106,11 +126,15 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
       logicalSeparator, tablePhysicalTemplate, tableLogicalTemplate,
     },
     tableOptions: parsedOptions.data,
+    dictionaries,
   }
 }
 
 export async function writeConfig(cwd: string, config: ErddConfig): Promise<void> {
-  await writeFile(join(cwd, CONFIG_FILE), stringifyYaml(config), 'utf8')
+  // 빈 구독은 쓰지 않는다 — 사전을 쓰지 않는 프로젝트의 config 에 빈 키가 생겨 diff 가 시끄러워진다.
+  const { dictionaries, ...rest } = config
+  const out = dictionaries.length > 0 ? { ...rest, dictionaries } : rest
+  await writeFile(join(cwd, CONFIG_FILE), stringifyYaml(out), 'utf8')
 }
 
 export async function readSync(cwd: string): Promise<SyncState | null> {

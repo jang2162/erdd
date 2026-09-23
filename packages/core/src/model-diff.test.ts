@@ -154,6 +154,27 @@ describe('diffModelsForDisplay', () => {
     expect(f.after).toBe('Y, N')
   })
 
+  it('출처는 base payload 를 풀어 쓰지 않고 버전과 항목 id 끝자리로 짧게 보여 준다', () => {
+    const base = createEmptyModel()
+    base.words['w1'] = {
+      id: 'w1', logicalName: '고객', abbreviation: 'CUST',
+      englishName: null, description: null, origin: null,
+    }
+    const origin = {
+      libraryId: '0191c0de-0000-7000-8000-000000000001', sourceId: '0191c0ff-0000-7000-8000-00000000abcd',
+      sourceVersion: 3, base: { logicalName: '고객', abbreviation: 'CUST' },
+    }
+    const attached = clone(base)
+    attached.words['w1']!.origin = origin
+    const bumped = clone(attached)
+    bumped.words['w1']!.origin = { ...origin, sourceVersion: 4 }
+
+    const f1 = diffModelsForDisplay(base, attached).entries[0]!.fields.find((x) => x.field === 'origin')!
+    expect(f1).toMatchObject({ label: '원본 참조', before: '', after: 'v3 · 항목 …0000abcd' })
+    const f2 = diffModelsForDisplay(attached, bumped).entries[0]!.fields.find((x) => x.field === 'origin')!
+    expect(f2).toMatchObject({ before: 'v3 · 항목 …0000abcd', after: 'v4 · 항목 …0000abcd' })
+  })
+
   it('사람이 읽는 순서로 정렬한다(테이블 → 컬럼 → 사전)', () => {
     const base = createEmptyModel()
     const target = clone(base)

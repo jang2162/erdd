@@ -617,3 +617,92 @@ describe('변경 기록 엔드포인트', () => {
     await reader.cancel()
   }, 10_000)
 })
+
+/**
+ * `erdd dict pull` 은 사전 파일과 config(구독)를 한 번에 쓴다 — 감시 디바운스 안에서 두 쓰기가
+ * 한 콜백으로 합쳐진다. 그 콜백이 config 갈래로 빠져도 미저장 편집의 「밖에서 바뀌었습니다」
+ * 배너는 떠야 한다. 방어가 둘(구독은 config 서명 밖, config 갈래도 status 를 보냄)이라 각각을
+ * 단독으로 잡는 테스트를 둔다.
+ */
+describe('감시 콜백 — config 와 파일이 함께 바뀔 때', () => {
+  const CONFIG = [
+    'dialects: [postgresql]',
+    'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+  ]
+  const WORDS = [
+    'words:',
+    '  - id: 018f6b0e-0000-7000-8000-0000000000a1',
+    '    logicalName: 고객',
+    '    abbreviation: CUST',
+    '    englishName: null',
+    '    description: null',
+    '',
+  ].join('\n')
+
+  async function listen(url: string): Promise<{ text: () => string; stop: () => Promise<void> }> {
+    const res = await fetch(`${url}${LOCAL_EVENTS_PATH}`)
+    const reader = res.body!.getReader()
+    const messages: string[] = []
+    void (async () => {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        messages.push(new TextDecoder().decode(value))
+      }
+    })()
+    return { text: () => messages.join(''), stop: () => reader.cancel() }
+  }
+  const count = (text: string, needle: string) => text.split(needle).length - 1
+
+  /** 미저장 편집을 하나 만들어 둔다 — 그 뒤의 밖 변경은 채택되지 않고 external 이 선다. */
+  async function dirtyServer(): Promise<{ cwd: string; s: LocalServer }> {
+    const cwd = await project()
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
+    const s = await start(cwd)
+    await mutate(s.url, [{
+      action: 'update', entity: 'table', entityId: T1,
+      changes: { logicalName: { from: '회원', to: '멤버' } },
+    }])
+    await sleep(500)
+    return { cwd, s }
+  }
+
+  it('미저장 편집 중 사전 파일과 config(구독만)가 함께 바뀌면 status external 이 나간다', async () => {
+    const { cwd, s } = await dirtyServer()
+    const ev = await listen(s.url)
+    await sleep(100)
+    await writeFile(join(cwd, 'erdd/words.yaml'), WORDS, 'utf8')
+    await writeFile(join(cwd, 'erdd.config.yaml'),
+      [...CONFIG, 'dictionaries: [{ id: L1, name: 표준 }]', ''].join('\n'), 'utf8')
+    for (let i = 0; i < 50 && !ev.text().includes('"external":true'); i += 1) await sleep(20)
+    expect(ev.text()).toContain('"external":true')
+    await ev.stop()
+  }, 10_000)
+
+  it('구독만 바뀐 config 는 reload 사유가 아니다 — 서명에서 dictionaries 를 뺀다', async () => {
+    const cwd = await project()
+    const s = await start(cwd)
+    const ev = await listen(s.url)
+    for (let i = 0; i < 50 && count(ev.text(), '"reload"') === 0; i += 1) await sleep(20)
+    expect(count(ev.text(), '"reload"')).toBe(1)
+    await writeFile(join(cwd, 'erdd.config.yaml'),
+      [...CONFIG, 'dictionaries: [{ id: L1, name: 표준 }]', ''].join('\n'), 'utf8')
+    await sleep(600)
+    expect(count(ev.text(), '"reload"')).toBe(1)
+    await ev.stop()
+  }, 10_000)
+
+  it('웹 계약 안의 config 값과 파일이 함께 바뀌어도 미저장 편집이면 status external 이 나간다', async () => {
+    const { cwd, s } = await dirtyServer()
+    const ev = await listen(s.url)
+    await sleep(100)
+    await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE.replace('회원', '고객'), 'utf8')
+    await writeFile(join(cwd, 'erdd.config.yaml'),
+      ['dialects: [mysql]', CONFIG[1], ''].join('\n'), 'utf8')
+    for (let i = 0; i < 50 && !ev.text().includes('"external":true'); i += 1) await sleep(20)
+    expect(ev.text()).toContain('"external":true')
+    // config 가 바뀌었으니 reload 도 나간다(방언 등 project.get 을 다시 읽어야 한다).
+    expect(count(ev.text(), '"reload"')).toBe(2)
+    await ev.stop()
+  }, 10_000)
+})

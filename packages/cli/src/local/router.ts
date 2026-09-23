@@ -4,7 +4,7 @@ import { z } from 'zod'
 import {
   parseOps, DIALECTS, NamingRulesStrictSchema, OpParseError, TableOptionsStrictSchema, type RunMode,
 } from '@erdd/core'
-import { writeConfig, type ErddConfig } from '../config.js'
+import { readConfig, writeConfig, type ErddConfig } from '../config.js'
 import { FileStore, LocalStoreError } from './store.js'
 import {
   SnapshotCorruptError, deleteSnapshot, listSnapshots, readSnapshot, writeSnapshot,
@@ -130,11 +130,15 @@ export function createLocalRouter() {
         .mutation(async ({ ctx, input }) => {
           // 이름·설명은 config 에 담을 자리가 없다(로컬 프로젝트에는 이름이 없다).
           // 방언·명명 규칙만 되쓴다.
+          // 구독은 화면이 보내지 않고 `dict pull --library` 가 디스크 config 에 더한다 — 감시가
+          // `ctx.config` 를 맞추기 전에 저장하면 그 옛 구독으로 덮어 방금 더한 구독이 사라진다.
+          // 그래서 쓰기 직전에 디스크의 것을 다시 읽어 싣는다.
           const next: ErddConfig = {
             ...ctx.config,
             dialects: input.dialects ?? ctx.config.dialects,
             namingRules: input.namingRules ?? ctx.config.namingRules,
             tableOptions: input.tableOptions ?? ctx.config.tableOptions,
+            dictionaries: (await readConfig(ctx.cwd)).dictionaries,
           }
           await writeConfig(ctx.cwd, next)
           // ⚠️ 파일만 되쓰면 안 된다 — 컨텍스트가 들고 있는 config 는 서버가 뜰 때 읽은 것이라

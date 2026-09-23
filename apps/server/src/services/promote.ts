@@ -32,8 +32,8 @@ export function emptyOutcome(): PromoteOutcome {
 /**
  * planPromote의 입력이 되는 라이브러리 항목을 읽는다.
  *
- * 요청 시점(promotion.create)과 승인 시점(runPromoteInTx)이 **같은 값**을 계산해야 하므로 조회를
- * 한 곳에 둔다. orderBy는 장식이 아니라 planPromote의 동명 선점 순서를 정한다 — 한쪽만 바뀌면
+ * 요청 시점(promotion.create)과 승인 시점(runPromoteInTx), 그리고 CLI 가 계획을 세우는 데 읽는
+ * resource.items.list 가 **같은 값**을 계산해야 하므로 조회를 한 곳에 둔다. orderBy는 장식이 아니라 planPromote의 동명 선점 순서를 정한다 — 한쪽만 바뀌면
  * 두 시점의 판정이 갈린다. 트랜잭션 안에서 잠글 때는 반환값에 .for('update')를 이어 붙인다.
  */
 export function loadLibraryItems(dbOrTx: Db | MutationTx, libraryId: string) {
@@ -44,7 +44,9 @@ export function loadLibraryItems(dbOrTx: Db | MutationTx, libraryId: string) {
     })
     .from(resourceItems)
     .where(eq(resourceItems.libraryId, libraryId))
-    .orderBy(asc(resourceItems.createdAt))
+    // 동률은 id 로 깬다 — 한 트랜잭션의 승격이 넣은 행은 createdAt(트랜잭션 시작 시각)이 전부 같아
+    // 순서가 비결정적이면 두 시점의 동명 선점이 갈린다.
+    .orderBy(asc(resourceItems.createdAt), asc(resourceItems.id))
 }
 
 /**

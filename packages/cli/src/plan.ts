@@ -11,7 +11,7 @@ import { readTree } from './tree.js'
 export type PushPlan = {
   /** model.get 시점의 서버 리비전 — model.push의 expectedSeq가 된다. */
   seq: number
-  /** 정규화하지 않은 서버 모델. applyMerge가 좌표·origin·메모를 여기서 가져온다. */
+  /** 정규화하지 않은 서버 모델. applyMerge가 좌표·메모를 여기서 가져온다. */
   server: ProjectModel
   /** 파일 가시 공간의 셋 — diff의 표시가 이 셋을 쓴다. */
   base: ProjectModel

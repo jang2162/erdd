@@ -13,12 +13,17 @@ import { apiProcedure, authedProcedure, router } from '../trpc.js'
 const dialectSchema = z.array(z.enum(DIALECTS)).min(1)
 
 export const projectRouter = router({
-  create: authedProcedure
+  // CLI(erdd init --create)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
+  create: apiProcedure
     .input(z.object({
       orgId: z.string().uuid(),
       name: z.string().min(1),
       description: z.string().default(''),
       dialects: dialectSchema,
+      // CLI(init --create)가 로컬 config 의 규칙을 한 호출로 싣는다 — 생성 후 update 를 따로 부르면
+      // 반쯤 만들어진 프로젝트가 남을 수 있다. update 와 같은 이유로 strict 다.
+      namingRules: NamingRulesStrictSchema.optional(),
+      tableOptions: TableOptionsStrictSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const me = await getOrgMember(ctx.db, input.orgId, ctx.user.id)
@@ -30,6 +35,8 @@ export const projectRouter = router({
           await tx.insert(projects).values({
             id: uuidv7(), orgId: input.orgId, name: input.name,
             description: input.description, dialects: input.dialects,
+            ...(input.namingRules ? { namingRules: input.namingRules } : {}),
+            ...(input.tableOptions ? { tableOptions: input.tableOptions } : {}),
           }).returning()
         )[0]!
         await tx.insert(projectMembers).values({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type Domain, type ProjectModel, type Term, type Word } from './model.js'
-import { applyPromotePlan, planPromote } from './resource-promote.js'
+import { applyPromotePlan, danglingDomain, planPromote, type PromoteEntry } from './resource-promote.js'
 import { RESOURCE_KINDS } from './resource.js'
 import { planResync, type LibraryItem } from './resource-sync.js'
 import { diffModels } from './diff.js'
@@ -88,6 +88,47 @@ describe('planPromote — 분류', () => {
     expect(plan.entries[0]).toMatchObject({
       status: 'update', targetItemId: 's1', targetVersion: 3, changedFields: ['abbreviation'],
     })
+  })
+
+  /**
+   * 링크된 엔티티의 payload 비교만으로는 「프로젝트가 고쳤다」와 「원본이 앞서 나갔다」를 가를 수 없다.
+   * 원본이 앞선 항목을 그대로 올리면 남이 고친 값이 프로젝트의 옛 값으로 되돌아간다.
+   */
+  it('로컬 무변경 + 라이브러리가 앞서면 update 이고 sourceBehind 다', () => {
+    const model: ProjectModel = {
+      ...createEmptyModel(), words: { w1: forkedWord('w1', 's1', '고객', 'CSTMR', 2) },
+    }
+    const plan = planPromote(model, LIB, [wordItem('s1', '고객', 'CSTM', 3)])
+    expect(plan.entries[0]).toMatchObject({
+      status: 'update', targetVersion: 3, changedFields: ['abbreviation'], sourceBehind: true,
+    })
+  })
+
+  it('로컬 수정 + 라이브러리 그대로면 sourceBehind 가 아니다', () => {
+    const forked = forkedWord('w1', 's1', '고객', 'CSTMR', 2)
+    const model: ProjectModel = {
+      ...createEmptyModel(), words: { w1: { ...forked, abbreviation: 'CST' } },
+    }
+    const plan = planPromote(model, LIB, [wordItem('s1', '고객', 'CSTMR', 2)])
+    expect(plan.entries[0]).toMatchObject({ status: 'update', sourceBehind: false })
+  })
+
+  it('로컬 수정 + 라이브러리 앞섬이면 sourceBehind 다', () => {
+    const forked = forkedWord('w1', 's1', '고객', 'CSTMR', 2)
+    const model: ProjectModel = {
+      ...createEmptyModel(), words: { w1: { ...forked, abbreviation: 'CST' } },
+    }
+    const plan = planPromote(model, LIB, [wordItem('s1', '고객', 'CSTM', 3)])
+    expect(plan.entries[0]).toMatchObject({ status: 'update', sourceBehind: true })
+  })
+
+  it('new·name-match 는 sourceBehind 가 아니다', () => {
+    const model: ProjectModel = {
+      ...createEmptyModel(),
+      words: { w1: localWord('w1', '회원', 'MBR'), w2: localWord('w2', '고객', 'CST') },
+    }
+    const plan = planPromote(model, LIB, [wordItem('s9', '고객', 'CSTM', 7)])
+    expect(plan.entries.map((e) => [e.status, e.sourceBehind])).toEqual([['name-match', false], ['new', false]])
   })
 
   it('링크는 없고 같은 종류에 같은 이름이 있으면 name-match', () => {
@@ -392,5 +433,38 @@ describe('applyPromotePlan', () => {
     const plan = planPromote(model, LIB, [])
     applyPromotePlan(model, plan, new Set(['w1']), makeNewId())
     expect(model).toEqual(before)
+  })
+})
+
+describe('danglingDomain', () => {
+  function entry(over: Partial<PromoteEntry> & Pick<PromoteEntry, 'entityId' | 'status'>): PromoteEntry {
+    return {
+      kind: 'word', name: '이름', targetItemId: null, targetVersion: null,
+      payload: {}, changedFields: [], domainRef: null, sourceBehind: false, ...over,
+    }
+  }
+  const term = entry({
+    entityId: 't1', status: 'new', kind: 'term',
+    domainRef: { entityId: 'd1', targetItemId: null },
+  })
+
+  it('도메인이 라이브러리에 없고 함께 선택되지도 않으면 연결이 빈다', () => {
+    expect(danglingDomain(term, new Set(['t1']))).toBe(true)
+  })
+
+  it('도메인을 함께 선택하면 연결된다', () => {
+    expect(danglingDomain(term, new Set(['t1', 'd1']))).toBe(false)
+  })
+
+  it('도메인이 이미 라이브러리에 있으면 선택과 무관하다', () => {
+    const linked = entry({
+      entityId: 't1', status: 'new', kind: 'term',
+      domainRef: { entityId: 'd1', targetItemId: 'sd' },
+    })
+    expect(danglingDomain(linked, new Set(['t1']))).toBe(false)
+  })
+
+  it('도메인 참조가 없으면 false', () => {
+    expect(danglingDomain(entry({ entityId: 'w1', status: 'new' }), new Set(['w1']))).toBe(false)
   })
 })
