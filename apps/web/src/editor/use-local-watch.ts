@@ -5,6 +5,7 @@ import { LOCAL_EVENTS_PATH, parseLocalEvent } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
 import { serializeMutation } from './use-model.js'
+import { LOCAL_CHANGES_QUERY_KEY } from './use-local-changes.js'
 
 /**
  * 로컬 서버의 파일 감시 알림을 받아 모델을 되맞춘다.
@@ -32,6 +33,8 @@ export function useLocalWatch(projectId: string, enabled: boolean): void {
       // 움직이므로 새 이벤트가 옛 웹에 도착하는 것이 정상 동선이다.
       const payload = parseLocalEvent(e.data as string)
       if (payload === null) return
+      // 저장·재읽기·잠김은 변경 기록의 미리보기·목록을 바꾼다. 조회 중인 탭이 없으면 무효화는 비용이 없다.
+      void queryClient.invalidateQueries({ queryKey: LOCAL_CHANGES_QUERY_KEY })
       if (payload.type === 'status') {
         // **모델을 나르지 않는다** — 드래그 중에 도착해도 화면이 튀지 않는다. 서버가 진실이라
         // 낙관적으로 켜 둔 값이 있어도 이것이 이긴다.
