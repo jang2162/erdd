@@ -1,6 +1,6 @@
 {
   "name": "@erdd/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ERDD 의 ER 모델·명명 규칙·DDL 생성/파싱을 담은 코어 라이브러리",
   "keywords": [
     "erd",
