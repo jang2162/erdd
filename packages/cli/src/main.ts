@@ -1,5 +1,5 @@
 #!/usr/bin/env -S npx tsx
-import { realpathSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
@@ -20,7 +20,7 @@ import { skill } from './commands/skill.js'
 import { status } from './commands/status.js'
 import { validate } from './commands/validate.js'
 import { changes } from './commands/changes.js'
-import { CliError, emitError, note } from './output.js'
+import { CliError, emit, emitError, note } from './output.js'
 
 const USAGE = `사용법: erdd <명령> [옵션]
 
@@ -79,6 +79,7 @@ const USAGE = `사용법: erdd <명령> [옵션]
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
   --check               changes 전용 — 미기록 변경이 있으면 종료 코드 1
   --baseline            changes new 전용 — 첫 기록을 「이미 DB 에 있음」으로 표시
+  -v, --version         버전을 출력한다
   --help                이 도움말`
 
 export function flagValue(argv: string[], name: string): string | undefined {
@@ -93,9 +94,9 @@ export function flagValue(argv: string[], name: string): string | undefined {
 /**
  * -m 같은 한 글자 플래그. flagValue와 같은 규칙 — 값 자리에 다음 "긴" 플래그(--로 시작)가
  * 오면 값이 빠진 것이다. 단일 대시로 시작하는 값(예: "-fix column")은 그대로 삼킨다 — 이
- * CLI의 단일 대시 토큰은 -m·-h뿐이고 -h는 배차 전에 이미 short-circuit되므로 혼동될 여지가
- * 없다. (한때 next.startsWith('-')로 단일 대시까지 거절했는데, 그러면 `-m "-fix column"`처럼
- * 하이픈으로 시작하는 요약이 조용히 사라지고 자동 요약으로 대체됐다.)
+ * CLI의 단일 대시 토큰은 -m·-o·-h·-v뿐이고 -h·-v는 배차 전에 이미 short-circuit되므로 혼동될
+ * 여지가 없다(값 자리에 `-h`·`-v` 를 그대로 적으면 도움말·버전으로 끝난다). 단일 대시를 거절하면
+ * `-m "-fix column"`처럼 하이픈으로 시작하는 요약이 조용히 사라지고 자동 요약으로 대체된다.
  */
 export function shortFlagValue(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(`-${name}`)
@@ -162,10 +163,24 @@ function usageError(json: boolean, message: string): number {
   return 2
 }
 
+/**
+ * 제품 버전 — `@erdd/cli` 의 package.json 을 런타임에 읽는다. CLI 는 빌드 없이 src/main.ts 를
+ * 그대로 실행하고 게시본에도 src/ 와 package.json 이 함께 들어가므로 `../package.json` 은
+ * 저장소와 설치본 양쪽에서 같은 파일이다. 소스에 적어 두면 릴리스 때 올릴 곳이 둘이 된다.
+ */
+function cliVersion(): string {
+  return (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version
+}
+
 export async function main(argv: string[], cwd: string): Promise<number> {
   const json = argv.includes('--json')
   if (argv.includes('--help') || argv.includes('-h')) {
     note(USAGE)
+    return 0
+  }
+  if (argv.includes('--version') || argv.includes('-v')) {
+    const version = cliVersion()
+    emit(json, version, { version })
     return 0
   }
   const command = argv[0]
