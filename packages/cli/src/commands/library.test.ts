@@ -59,6 +59,13 @@ describe('erdd library', () => {
     expect(err.join('')).toContain('삭제된 도메인을 가리키던 용어 1건')
   })
 
+  it('export — 없는 이름이면 erdd library list 로 확인하라고 안내한다', async () => {
+    const { client } = stub()
+    expect(await libraryExport({ ...base, cwd: dir, client, ref: '없음' })).toBe(1)
+    expect(err.join('')).toContain('erdd library list')
+    expect(err.join('')).not.toContain('erdd dict list')
+  })
+
   it('import — 미리보기 후 확인을 받고, 미리보기의 해시를 실어 적용한다', async () => {
     const path = join(dir, 'a.erdd-lib.yaml')
     await writeFile(path, 'format: erdd-library\nformatVersion: 1\nlibrary: { name: x }\nwords:\n  - { logicalName: 고객 }\n')

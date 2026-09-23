@@ -60,7 +60,7 @@ export function libraryExport(ctx: LibraryCtx & { ref: string | undefined; out?:
   return run(ctx, async () => {
     if (ctx.ref === undefined) throw new CliError('USAGE', '사용법: erdd library export <이름|id> [-o 파일]')
     const client = await libraryClient(ctx)
-    const lib = resolveLibrary(await listAll(client), ctx.ref)
+    const lib = resolveLibrary(await listAll(client), ctx.ref, { listCommand: 'erdd library list' })
     const res = await guardFeature(() => client.query<{ libraryId: string; name: string; text: string; danglingDomainRefs: number }>(
       'resource.library.export', { libraryId: lib.id }))
     if (res.danglingDomainRefs > 0) note(`삭제된 도메인을 가리키던 용어 ${res.danglingDomainRefs}건은 도메인 없이 내보냈습니다`)
@@ -151,7 +151,7 @@ export function libraryImport(ctx: LibraryImportCtx): Promise<number> {
     let title: string
     let libraryId: string | null = null
     if (ctx.library !== undefined) {
-      const lib = resolveLibrary(await listAll(client), ctx.library)
+      const lib = resolveLibrary(await listAll(client), ctx.library, { listCommand: 'erdd library list' })
       if (!lib.canWrite) throw new CliError('FORBIDDEN', `${lib.name} 에 쓸 권한이 없습니다`)
       libraryId = lib.id
       target = { libraryId: lib.id }
