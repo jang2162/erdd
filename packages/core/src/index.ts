@@ -117,5 +117,31 @@ export type { LayoutData, TableLayout } from './layout.js'
 export { LOCAL_PROJECT_ID, type RunMode } from './local.js'
 export {
   LOCAL_EVENTS_PATH, LOCAL_SAVE_PATH, LOCAL_DISCARD_PATH, LOCAL_KEEP_PATH, parseLocalEvent,
+  LOCAL_CHANGES_PATH, LOCAL_CHANGES_CREATE_PATH, LOCAL_CHANGES_UNSAVED_MESSAGE,
 } from './local-protocol.js'
-export type { LocalEvent, LocalLoadFailure, LocalSaveResult } from './local-protocol.js'
+export type {
+  LocalEvent, LocalLoadFailure, LocalSaveResult, LocalChangesStatus, LocalChangesCreateResult,
+} from './local-protocol.js'
+export { projectSchema } from './changeset/projection.js'
+export type { ProjectionSettings } from './changeset/projection.js'
+export { diffProjection, longestCommonSubsequence } from './changeset/diff.js'
+export type { DiffProjectionResult } from './changeset/diff.js'
+export { formatChangeset, formatStatements, CHANGESET_BANNER } from './changeset/format.js'
+export { parseChangeset } from './changeset/parse.js'
+export type { ParseChangesetResult } from './changeset/parse.js'
+export { applyChangeset, replay, ReplayFailure } from './changeset/replay.js'
+export type { ChangesetRecord, ReplayResult, ReplayWarning } from './changeset/replay.js'
+export {
+  planChanges, composeChangeset, changesetStamp, changesetFileName, stampToIso, formatChangeIssue,
+  CHANGESET_EXT,
+} from './changeset/plan.js'
+export type {
+  ChangesetSource, ChangeRecordSummary, ChangesPlan, PlanInput, ComposeOptions, ComposeResult,
+  ComposeFailureReason,
+} from './changeset/plan.js'
+export { CHANGESET_FORMAT, emptyProjection, compareCodeUnits } from './changeset/types.js'
+export type {
+  SchemaProjection, ProjTable, ProjColumn, ProjIndex, ProjForeignKey, DialectTypes, ColumnDef,
+  IndexDef as ChangesetIndexDef, ForeignKeyDef, TableDef, ColumnChange, AlterAction, Statement,
+  Changeset, ChangesetHeader, ChangeIssue,
+} from './changeset/types.js'

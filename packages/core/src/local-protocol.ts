@@ -11,10 +11,34 @@
  * 있었다 — 로컬 라우터의 계약 표류와 같은 종류의 위험이다. `realtime-protocol.ts` 와 같은
  * 형태이고 같은 이유로 IO 가 없다.
  */
+import type { ChangeIssue } from './changeset/types.js'
+import type { ChangeRecordSummary, ComposeFailureReason } from './changeset/plan.js'
+
 export const LOCAL_EVENTS_PATH = '/local/events'
 export const LOCAL_SAVE_PATH = '/local/save'
 export const LOCAL_DISCARD_PATH = '/local/discard'
 export const LOCAL_KEEP_PATH = '/local/keep'
+
+/** 변경 기록 상태(POST — 로컬 전용 라우트는 전부 POST 다). */
+export const LOCAL_CHANGES_PATH = '/local/changes'
+/** 변경 기록 생성. 본문 JSON `{ name, baseline? }`. */
+export const LOCAL_CHANGES_CREATE_PATH = '/local/changes/create'
+
+/** 미저장 편집이 있을 때 서버 거절과 웹 안내가 같은 문구를 쓴다. */
+export const LOCAL_CHANGES_UNSAVED_MESSAGE = '저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 변경 기록을 만드세요'
+
+export type LocalChangesStatus = {
+  records: ChangeRecordSummary[]
+  /** 오류가 있으면 null. `text` 는 문장만(머릿말 없이). */
+  pending: { text: string; count: number } | null
+  warnings: ChangeIssue[]
+  error: ChangeIssue | null
+  unsaved: boolean
+}
+
+export type LocalChangesCreateResult =
+  | { ok: true; file: string; statementCount: number }
+  | { ok: false; reason: 'unsaved' | 'blocked' | ComposeFailureReason; message: string }
 
 export type LocalLoadFailure = { path: string; message: string }
 
