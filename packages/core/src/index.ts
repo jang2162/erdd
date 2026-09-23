@@ -153,3 +153,7 @@ export {
 export type {
   LibraryFileEntry, LibraryFileMeta, LibraryFileDoc, LibraryFileStrictness, LibraryFileIssue,
 } from './library-file.js'
+export { planLibraryImport, materializeLibraryImport, summarizeLibraryImport } from './library-import.js'
+export type {
+  LibraryImportStatus, LibraryImportEntry, LibraryImportPlan, LibraryImportWrites, LibraryImportSummary,
+} from './library-import.js'
