@@ -8,6 +8,7 @@ import type { ApiClient } from '../client.js'
 import { readConfig, writeConfig } from '../config.js'
 import { TEST_CONFIG } from '../testing/harness.js'
 import { readTree, writeTree } from '../tree.js'
+import { DRAFT_FILE, UNSAVED_NOTICE } from '../local/draft.js'
 import { dictPull, type DictPullCtx } from './dict-pull.js'
 import type { LibraryRow } from './dict-shared.js'
 
@@ -345,6 +346,18 @@ describe('dict pull', () => {
     await writeConfig(dir, { ...(await readConfig(dir)), dictionaries: [{ id: 'L1', name: '옛 이름' }] })
     await dictPull(ctx(client([LIB], { L1: [] })))
     expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+  })
+
+  it('저장하지 않은 편집(serve 드래프트)이 있으면 push 와 같은 문구로 알린다 — 판정·종료 코드는 그대로', async () => {
+    await seed(createEmptyModel())
+    const c = client([LIB], { L1: [word('S1', 1, 'CUST')] })
+    expect(await dictPull(ctx(c, { library: 'L1', dryRun: true }))).toBe(0)
+    expect(err.join('')).not.toContain(UNSAVED_NOTICE)
+    await mkdir(join(dir, DRAFT_FILE, '..'), { recursive: true })
+    await writeFile(join(dir, DRAFT_FILE), '{}')
+    expect(await dictPull(ctx(c, { library: 'L1', dryRun: true }))).toBe(0)
+    expect(err.join('')).toContain(UNSAVED_NOTICE)
+    expect(JSON.parse(out.at(-1)!)).toMatchObject({ dryRun: true, libraries: [{ added: 1 }] })
   })
 
   it('구독도 --library 도 없으면 USAGE', async () => {

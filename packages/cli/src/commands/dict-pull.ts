@@ -4,6 +4,7 @@ import {
   type FileTree, type ProjectModel, type ResyncDecision, type ResyncEntry, type ResyncPlan,
 } from '@erdd/core'
 import { readConfig, writeConfig, type DictionaryRef } from '../config.js'
+import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { CliError, emit, note } from '../output.js'
 import { writeTreeChanges } from '../tree.js'
 import { clientFor, run, type CommandCtx } from './context.js'
@@ -145,6 +146,9 @@ export function dictPull(ctx: DictPullCtx): Promise<number> {
   return run(ctx, async () => {
     const config = await readConfig(ctx.cwd)
     const { projectId } = requireDictConnection(config)
+    // 재동기화는 파일(= 저장된 값)을 기준으로 한다 — serve 화면의 저장 안 된 편집은 보지 않는다.
+    // 알림만 낸다(stderr 라 `--json` 봉투를 건드리지 않고, 판정·종료 코드도 그대로다 — push 와 같다).
+    if (await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
     const client = await clientFor(ctx)
     const { tree, model: initial } = await readLocalModel(ctx.cwd)
     const libraries = await listLibraries(client, projectId)
