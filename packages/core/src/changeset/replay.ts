@@ -172,6 +172,18 @@ function applyAction(
       delete p.columns[col.id]
       t.columnIds = t.columnIds.filter((id) => id !== col.id)
       t.primaryKey = t.primaryKey.filter((id) => id !== col.id)
+      // 다른 기록이 이 컬럼에 붙인 인덱스·FK 는 이 기록이 모른다 — drop table 과 같이 함께 지우고 경고한다
+      // (guide 「경합은 경고다」 — DB 도 컬럼을 지우면 그 인덱스를 함께 지운다).
+      for (const ix of Object.values(p.indexes)) {
+        if (!ix.columns.some((c) => c.columnId === col.id)) continue
+        delete p.indexes[ix.id]
+        warn(`${t.name}.${col.name} 컬럼과 함께 인덱스 ${ix.name} 도 지웠습니다 — 앞선 기록이 그 인덱스를 지우지 않았습니다`)
+      }
+      for (const fk of Object.values(p.foreignKeys)) {
+        if (!fk.childColumnIds.includes(col.id) && !fk.parentColumnIds.includes(col.id)) continue
+        delete p.foreignKeys[fk.id]
+        warn(`${t.name}.${col.name} 컬럼과 함께 FK ${fk.name} 도 지웠습니다 — 앞선 기록이 그 FK 를 지우지 않았습니다`)
+      }
       return
     }
     case 'renameColumn': {

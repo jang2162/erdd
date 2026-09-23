@@ -99,9 +99,13 @@ add foreign key FK_MBR_MBR_GRD MBR(GRD_CD) -> MBR_GRD(GRD_CD) [1:1, unique: UQ_M
 
 ## 문장 순서
 
-1. `drop foreign key` 2. `drop index` 전부 → `rename index` 전부 3. `drop table` 4. `rename table`
-5. `create table` 6. `alter table`(블록 안: `drop column` → `rename column` → `add column` →
-   `modify column` → `primary key` → `comment`) 7. `add index` 8. `add foreign key`
+1. `drop foreign key` 2. `drop index` 3. `drop table` 4. `rename index` 5. `rename table`
+6. `create table` 7. `alter table`(블록 안: `drop column` → `rename column` → `add column` →
+   `modify column` → `primary key` → `comment`) 8. `add index` 9. `add foreign key`
+
+- ⚠️ 인덱스 개명(`rename index`)을 테이블 삭제(`drop table`)보다 앞에 두면, 「지워지는 테이블의
+  인덱스 이름으로 다른 인덱스를 개명」이 SQL 에서 부딪친다 — 인덱스 이름은 PostgreSQL 에서 스키마
+  전역이다.
 
 같은 순번 안에서는 테이블 물리명 → 컬럼 순서 → 이름의 코드 단위 사전순이다. 다만 개명(`rename index`·
 `rename table`·`rename column`)은 **비워지는 이름부터** 낸다 — 새 이름이 아직 개명 전인 다른 항목의 옛
@@ -145,6 +149,7 @@ FK·인덱스·PK·`after` 의 참조만 그 시점의 이름으로 푼다. 대�
 |---|---|
 | `rename`·`modify`·`primary key`·`comment` 의 `이전` 값이 그 시점 기준선과 다르다 | 경고하고 `이후` 값으로 계속한다. `position` 의 이전 값은 참고용이라 판정에 쓰지 않는다 |
 | 지우고·바꾸고·고칠 `@id` 대상이 없다(`drop foreign key`·`drop index`·`rename index`·`drop table`·`rename table`·`alter table`·`drop column`·`rename column`·`modify column`) — 두 브랜치가 같은 것을 지웠다 | 경고하고 그 문장(동작)을 건너뛴다. `alter table` 의 대상이 없으면 블록 전체 |
+| `drop column` 이 지우는 컬럼을 다른 기록이 붙인 인덱스·FK 가 쓴다 — 이 기록은 그 인덱스·FK 를 모른다 | `drop table` 처럼 그 인덱스·FK 도 함께 지우고 경고한다(DB 도 컬럼을 지우면 그 인덱스를 함께 지운다) |
 | `add index`·`add foreign key` 의 테이블·컬럼 이름이 없거나 둘 이상이다 — 한쪽이 바꾼 이름을 다른 쪽이 참조했다 | 그 인덱스·FK 를 추가하지 않고 경고 |
 | `primary key`(`create table`·`alter table`)의 이름이 풀리지 않는다 | 풀리는 이름만 남기고 경고 |
 | `after`·`position` 이 가리키는 컬럼이 없거나 둘 이상이다 | 그 컬럼을 테이블 끝에 두고 경고 |

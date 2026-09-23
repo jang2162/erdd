@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildSampleModel } from '../testing/fixtures.js'
 import { DEFAULT_NAMING_RULES } from '../naming.js'
+import { deleteColumnCascade } from '../relationship.js'
 import type { Column, ProjectModel } from '../model.js'
 import { projectSchema } from './projection.js'
 import { diffProjection } from './diff.js'
@@ -168,5 +169,106 @@ describe('replay', () => {
     expect(r.warnings).toHaveLength(1)
     expect(r.warnings[0]).toMatchObject({ file: '3', message: 'MBR.NICK_NM 컬럼을 테이블 끝에 두었습니다 — MBR 테이블에 MBR_NM 컬럼이 없습니다(after)' })
     expect(r.projection.tables['t2']!.columnIds).toEqual(['c2', 'c4', 'c9'])
+  })
+})
+
+describe('drop column 은 그 컬럼을 쓰는 인덱스·FK 도 함께 지운다(결함 1 — 병합 잔재)', () => {
+  it('B 가 c3 에 인덱스를 붙인 뒤(파일명 앞) A 가 c3 를 지우면(파일명 뒤) — 그 인덱스도 지우고 경고한다', () => {
+    const base = buildSampleModel()
+    const withIndex = structuredClone(base)
+    withIndex.indexes['i9'] = { id: 'i9', tableId: 't2', name: 'IX_MBR_NM_02', columns: [{ columnId: 'c3', direction: 'asc' }], unique: false }
+    const dropped = deleteColumnCascade(base, 'c3')
+    const r = replay([
+      { file: '1', changeset: changesetOf(emptyProjection(), base) },
+      { file: '2_b', changeset: changesetOf(proj(base), withIndex) },
+      { file: '3_a', changeset: changesetOf(proj(base), dropped) },
+    ])
+    expect(r.error).toBeNull()
+    expect(r.warnings.some((w) => w.file === '3_a' && w.message.includes('IX_MBR_NM_02'))).toBe(true)
+    expect(r.projection).toEqual(proj(dropped))
+  })
+
+  it('A 가 c3 를 먼저 지우면(파일명 앞) B 의 인덱스 추가는(파일명 뒤) 경고하고 건너뛴다', () => {
+    const base = buildSampleModel()
+    const withIndex = structuredClone(base)
+    withIndex.indexes['i9'] = { id: 'i9', tableId: 't2', name: 'IX_MBR_NM_02', columns: [{ columnId: 'c3', direction: 'asc' }], unique: false }
+    const dropped = deleteColumnCascade(base, 'c3')
+    const r = replay([
+      { file: '1', changeset: changesetOf(emptyProjection(), base) },
+      { file: '2_a', changeset: changesetOf(proj(base), dropped) },
+      { file: '3_b', changeset: changesetOf(proj(base), withIndex) },
+    ])
+    expect(r.error).toBeNull()
+    expect(r.warnings.some((w) => w.file === '3_b' && w.message.includes('추가하지 않았습니다'))).toBe(true)
+    expect(r.projection).toEqual(proj(dropped))
+  })
+
+  it('B 가 c3 를 FK 자식 컬럼으로 쓰는 관계를 만든 뒤(파일명 앞) A 가 c3 를 지우면(파일명 뒤) — 그 FK 도 지우고 경고한다', () => {
+    const base = structuredClone(buildSampleModel())
+    base.tables['t3'] = { id: 't3', logicalName: '참조', physicalName: 'REF', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+    base.columns['c9'] = {
+      id: 'c9', tableId: 't3', logicalName: '참조번호', physicalName: 'REF_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    }
+    const withFk = structuredClone(base)
+    withFk.relationships['r9'] = {
+      id: 'r9', parentTableId: 't3', childTableId: 't2',
+      columnMappings: [{ childColumnId: 'c3', parentColumnId: 'c9' }], cardinality: '1:1', identifying: false, name: null,
+    }
+    const dropped = deleteColumnCascade(base, 'c3')
+    const r = replay([
+      { file: '1', changeset: changesetOf(emptyProjection(), base) },
+      { file: '2_b', changeset: changesetOf(proj(base), withFk) },
+      { file: '3_a', changeset: changesetOf(proj(base), dropped) },
+    ])
+    expect(r.error).toBeNull()
+    expect(r.warnings.some((w) => w.file === '3_a' && w.message.includes('FK') && w.message.includes('REF'))).toBe(true)
+    expect(r.projection).toEqual(proj(dropped))
+  })
+
+  it('A 가 c3 를 먼저 지우면(파일명 앞) B 의 FK 추가는(파일명 뒤) 경고하고 건너뛴다', () => {
+    const base = structuredClone(buildSampleModel())
+    base.tables['t3'] = { id: 't3', logicalName: '참조', physicalName: 'REF', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+    base.columns['c9'] = {
+      id: 'c9', tableId: 't3', logicalName: '참조번호', physicalName: 'REF_NO', type: 'BIGINT',
+      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    }
+    const withFk = structuredClone(base)
+    withFk.relationships['r9'] = {
+      id: 'r9', parentTableId: 't3', childTableId: 't2',
+      columnMappings: [{ childColumnId: 'c3', parentColumnId: 'c9' }], cardinality: '1:1', identifying: false, name: null,
+    }
+    const dropped = deleteColumnCascade(base, 'c3')
+    const r = replay([
+      { file: '1', changeset: changesetOf(emptyProjection(), base) },
+      { file: '2_a', changeset: changesetOf(proj(base), dropped) },
+      { file: '3_b', changeset: changesetOf(proj(base), withFk) },
+    ])
+    expect(r.error).toBeNull()
+    expect(r.warnings.some((w) => w.file === '3_b' && w.message.includes('추가하지 않았습니다'))).toBe(true)
+    expect(r.projection).toEqual(proj(dropped))
+  })
+
+  it('B 가 c3 를 FK 부모 컬럼으로 쓰는 관계를 만든 뒤(파일명 앞) A 가 c3 를 지우면(파일명 뒤) — 그 FK 도 지우고 경고한다', () => {
+    const base = structuredClone(buildSampleModel())
+    base.tables['t3'] = { id: 't3', logicalName: '참조', physicalName: 'REF', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+    base.columns['c9'] = {
+      id: 'c9', tableId: 't3', logicalName: '참조명', physicalName: 'REF_NM', type: 'VARCHAR(100)',
+      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    }
+    const withFk = structuredClone(base)
+    withFk.relationships['r9'] = {
+      id: 'r9', parentTableId: 't2', childTableId: 't3',
+      columnMappings: [{ childColumnId: 'c9', parentColumnId: 'c3' }], cardinality: '1:1', identifying: false, name: null,
+    }
+    const dropped = deleteColumnCascade(base, 'c3')
+    const r = replay([
+      { file: '1', changeset: changesetOf(emptyProjection(), base) },
+      { file: '2_b', changeset: changesetOf(proj(base), withFk) },
+      { file: '3_a', changeset: changesetOf(proj(base), dropped) },
+    ])
+    expect(r.error).toBeNull()
+    expect(r.warnings.some((w) => w.file === '3_a' && w.message.includes('FK') && w.message.includes('REF'))).toBe(true)
+    expect(r.projection).toEqual(proj(dropped))
   })
 })
