@@ -10,6 +10,7 @@ import {
   type DictionaryRef,
 } from '../config.js'
 import { CliError, emit, note } from '../output.js'
+import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { readTree, writeTree } from '../tree.js'
 import { run, type CommandCtx } from './context.js'
 
@@ -225,6 +226,8 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
     dictionaries: existing?.dictionaries ?? [],
   })
 
+  // push 는 저장된 파일만 올린다 — 미저장 편집은 serve 에서 저장해야 이관에 실린다.
+  if (existing !== null && await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
   emit(ctx.json, existing !== null
     ? `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.`
     : `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd serve로 편집을 시작하세요.`,

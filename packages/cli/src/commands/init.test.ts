@@ -8,6 +8,7 @@ import { createEmptyModel, DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS, modelToF
 import { readConfig, writeConfig } from '../config.js'
 import { readTree } from '../tree.js'
 import { CliError } from '../output.js'
+import { UNSAVED_NOTICE } from '../local/draft.js'
 import { init } from './init.js'
 
 async function tmpdir(): Promise<string> {
@@ -16,11 +17,12 @@ async function tmpdir(): Promise<string> {
 
 let dir: string
 let out: string[]
+let err: string[]
 beforeEach(async () => {
   dir = await tmpdir()
-  out = []
+  out = []; err = []
   vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
-  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -387,6 +389,22 @@ describe('init --create', () => {
     expect(err.code).toBe('FORBIDDEN')
     expect(err.message).toBe('프로젝트 생성 권한이 없습니다 — 조직 관리자에게 빈 프로젝트를 만들어 달라고 한 뒤, erdd/ 를 git 에 커밋하고 매뉴얼 「로컬로 시작한 프로젝트를 서버로 옮기기」의 수동 절차를 따르세요')
     expect((await readConfig(dir)).projectId).toBeNull()
+  })
+
+  // push 는 저장된 파일만 올린다 — serve 에서 저장한 뒤 push 해야 하는 줄 알게 한다.
+  it('이관할 때 미저장 편집(.erdd/draft.json)이 있으면 알린다', async () => {
+    await init({ cwd: dir, json: true, yes: false, strict: false, local: true })
+    await mkdir(join(dir, '.erdd'), { recursive: true })
+    await writeFile(join(dir, '.erdd/draft.json'), '{}')
+    err.length = 0
+    expect(await init({ ...base, cwd: dir, client: createClient().client })).toBe(0)
+    expect(err.join('')).toContain(UNSAVED_NOTICE)
+
+    const dir2 = await tmpdir()
+    await init({ cwd: dir2, json: true, yes: false, strict: false, local: true })
+    err.length = 0
+    expect(await init({ ...base, cwd: dir2, client: createClient().client })).toBe(0)
+    expect(err.join('')).not.toContain(UNSAVED_NOTICE)
   })
 
   it('사람용 출력은 새 디렉터리와 이관을 구분해 다음 할 일을 안내한다', async () => {
