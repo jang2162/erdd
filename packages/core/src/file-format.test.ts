@@ -649,6 +649,7 @@ describe('origins.yaml', () => {
     const r = filesToModel(tree)
     expect(r.ok).toBe(true)
     if (!r.ok) return
+    expect(r.warnings).toEqual([])
     expect(modelToFiles(r.model).tree).not.toHaveProperty('erdd/origins.yaml')
   })
 
@@ -732,6 +733,14 @@ describe('origins.yaml', () => {
     tree['erdd/origins.yaml'] = { origins: [{ ...o, version: '3' }] }
     expect(filesToModel(tree).ok).toBe(false)
     tree['erdd/origins.yaml'] = { origins: [{ ...o, base: undefined }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, library: undefined }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, item: undefined }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, kind: 'foo' }] }
+    expect(filesToModel(tree).ok).toBe(false)
+    tree['erdd/origins.yaml'] = { origins: [{ ...o, base: [] }] }
     expect(filesToModel(tree).ok).toBe(false)
   })
 })

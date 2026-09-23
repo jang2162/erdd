@@ -333,7 +333,8 @@ describe('gridPositions', () => {
 })
 
 describe('applyMerge', () => {
-  it('메모·좌표·origin을 서버 값 그대로 보존한다', () => {
+  it('메모·좌표는 서버 값 그대로 보존하고, 출처는 병합 결과를 싣는다', () => {
+    // 출처는 비가시 필드가 아니라 병합 필드다 — 여기서는 base·local·server 가 같아 서버 값과 같다.
     const server = fullModel()
     server.domains['d1']!.origin = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 3, base: {} }
     const base = fileVisibleModel(server)
@@ -550,6 +551,7 @@ describe('origin 병합', () => {
     const ops = diffModels(server, model)
     expect(ops).toHaveLength(1)
     expect(ops[0]).toMatchObject({ action: 'update', entity: 'word', entityId: 'w1' })
+    expect(ops[0]!.action === 'update' && ops[0]!.changes['origin']).toEqual({ from: null, to: X })
   })
 
   it('양쪽이 출처를 다르게 바꾸면 출처 필드 충돌이고, 값이 실린 origins.yaml 을 가리킨다', () => {
