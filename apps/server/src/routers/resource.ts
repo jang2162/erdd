@@ -3,12 +3,12 @@ import { and, asc, count, eq, isNull, or, type SQL } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  deepEqual, diffModels, MAX_OPS_PER_MUTATION, OpApplyError,
+  deepEqual, diffModels, exportLibraryFile, MAX_OPS_PER_MUTATION, OpApplyError,
   RESOURCE_KINDS, type ProjectModel,
 } from '@erdd/core'
 import type { Db } from '../db/client.js'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
-import { requireProjectAccess } from '../services/perm.js'
+import { getOrgMember, requireProjectAccess } from '../services/perm.js'
 import {
   parsePayload, requireLibraryRead, requireLibraryWrite, requireScopeRead, requireScopeWrite,
 } from '../services/resource-library.js'
@@ -36,7 +36,8 @@ async function listWithCounts(db: Db, where: SQL | undefined) {
 
 export const resourceRouter = router({
   library: router({
-    list: authedProcedure
+    // CLI(erdd library)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
+    list: apiProcedure
       .input(z.object({ scope: z.enum(['global', 'org']), orgId: z.string().uuid().optional() }))
       .query(async ({ ctx, input }) => {
         if (input.scope === 'org' && !input.orgId) {
@@ -46,7 +47,12 @@ export const resourceRouter = router({
         const where = input.scope === 'global'
           ? eq(resourceLibraries.scope, 'global')
           : and(eq(resourceLibraries.scope, 'org'), eq(resourceLibraries.orgId, input.orgId!))
-        return listWithCounts(ctx.db, where)
+        // 클라가 역할 조합식을 재현하지 않도록 쓰기 가능 여부를 서버가 판정해 싣는다(listForProject 와 같다).
+        const me = input.scope === 'org' ? await getOrgMember(ctx.db, input.orgId!, ctx.user.id) : undefined
+        const canWrite = input.scope === 'global'
+          ? ctx.user.role === 'admin'
+          : me?.role === 'owner' || me?.role === 'admin'
+        return (await listWithCounts(ctx.db, where)).map((row) => ({ ...row, canWrite }))
       }),
 
     // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
@@ -111,6 +117,15 @@ export const resourceRouter = router({
         await requireLibraryWrite(ctx.db, input.libraryId, ctx.user)
         await ctx.db.delete(resourceLibraries).where(eq(resourceLibraries.id, input.libraryId))
         return { ok: true as const }
+      }),
+
+    // 배포 파일로 내보낸다 — 읽을 수 있으면 누구나(배포 목적). CLI(erdd library export)가 토큰으로 부른다.
+    export: apiProcedure
+      .input(z.object({ libraryId: z.string().uuid() }))
+      .query(async ({ ctx, input }) => {
+        const library = await requireLibraryRead(ctx.db, input.libraryId, ctx.user)
+        const items = await loadLibraryItems(ctx.db, input.libraryId)
+        return { libraryId: library.id, name: library.name, ...exportLibraryFile(library, items) }
       }),
   }),
 
