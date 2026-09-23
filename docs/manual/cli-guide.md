@@ -1505,7 +1505,7 @@ $ erdd dict push --library "플랫폼팀 표준 사전"
 | 구역 | 뜻 | 기본 |
 |---|---|---|
 | 신규 추가 | 라이브러리에 없는 항목 | 보낸다 |
-| 원본 갱신 | 이미 연결된 라이브러리 항목을 이 프로젝트 값으로 올린다 | 보낸다 |
+| 원본 갱신 | 이미 연결된 라이브러리 항목을 이 프로젝트 값으로 올린다 | 보낸다 — **단, 라이브러리 원본이 마지막 `dict pull` 이후 바뀐 항목은 뺀다**(아래) |
 | 동명 발견 | 같은 이름의 다른 항목이 라이브러리에 있다 | **보내지 않는다** — `--include-name-match` 로 포함(그 항목을 이 프로젝트 값으로 갱신하고 연결한다) |
 
 - **`--kind <종류,…>`**(`domain`·`word`·`term`·`customField`)와 **`--name <이름>`**(반복 가능)으로 올릴
@@ -1516,6 +1516,50 @@ $ erdd dict push --library "플랫폼팀 표준 사전"
 - 확인은 `--yes` 로 건너뛴다. 비대화형(`--json`)에서는 `--yes` 가 필수다 —
   `확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요`(`1`).
 - `--library` 는 필수다(`--library <이름|id> 가 필요합니다`, `2`).
+
+**라이브러리 원본이 마지막 `dict pull` 이후 바뀐 항목은 올리지 않는다.** 받아 온 뒤 다른 사람이 라이브러리의
+그 항목을 고쳤다면(`origins.yaml` 의 `version` 보다 라이브러리 버전이 크다), 이 프로젝트의 값은 **그 사람의
+새 값보다 오래된 값**이다 — 로컬에서 손대지 않았어도 값이 다르니 「원본 갱신」으로 잡히고, 그대로 올리면
+남이 고친 원본이 옛 값으로 되돌아간다. 그래서 그런 항목은 **`--name` 으로 지정해도** 선택에서 빼고,
+계획 목록 뒤(확인 질문 앞)에 따로 알린다.
+
+```bash
+$ erdd dict push --library "플랫폼팀 표준 사전" --yes
+신규 추가 1 · 원본 갱신 0 · 동명 발견 0(제외 — --include-name-match)
+  + 단어 결제
+라이브러리 원본이 마지막 dict pull 이후 바뀐 항목 2건은 제외했습니다 — erdd dict pull 로 먼저 받으세요
+  ~ 단어 고객  (abbreviation)
+  ~ 단어 번호  (abbreviation)
+승격했습니다 — 신규 1 · 갱신 0
+```
+
+**이런 항목을 올리려면 먼저 `erdd dict pull` 로 받는다.** 로컬에서 손대지 않은 항목은 자동 갱신으로 원본
+값이 되어 올릴 것이 사라지고, 로컬에서도 고친 항목은 충돌로 보류된다. 로컬 값을 공용으로 올리는 것이
+의도라면 `--conflicts ours` 로 정리한 뒤 `push` → `dict push` 하면 그때는 원본 갱신으로 올라간다
+(원본의 최신 값을 **보고 나서** 덮는 것이기 때문이다).
+
+```bash
+$ erdd dict pull
+플랫폼팀 표준 사전 (조직)
+  추가 0 · 자동 갱신 1 · 연결 0 · 유지 3
+  충돌 1 — 보류(--conflicts theirs|ours 로 정리):
+    단어 번호  (abbreviation)
+반영했습니다 — erdd/origins.yaml, erdd/words.yaml
+$ erdd dict pull --conflicts ours
+플랫폼팀 표준 사전 (조직)
+  추가 0 · 자동 갱신 0 · 연결 0 · 유지 4
+  충돌 1 — 로컬 유지:
+    단어 번호  (abbreviation)
+반영했습니다 — erdd/origins.yaml
+$ erdd push -m "사전 정리"
+반영했습니다 (리비전 4, 변경 2건)
+$ erdd dict push --library "플랫폼팀 표준 사전" --yes
+신규 추가 0 · 원본 갱신 1 · 동명 발견 0(제외 — --include-name-match)
+  ~ 단어 번호  (abbreviation)
+승격했습니다 — 신규 0 · 갱신 1
+```
+
+제외로 올릴 것이 0건이 되면 `올릴 항목이 없습니다`(`0`)이고, 제외 안내 두 줄은 그대로 stderr 에 나온다.
 
 **권한에 따라 결과가 갈린다** — `erdd dict list` 의 「쓰기 가능」.
 
@@ -1812,17 +1856,27 @@ $ erdd dict pull --json
 **`dict push` 의 JSON.** `mode` 로 갈린다.
 
 ```bash
-$ erdd dict push --library "플랫폼팀 표준 사전" --json --yes --include-name-match
-{"mode":"promote","ok":true,"seq":7,"inserted":2,"updated":2,"skipped":[]}
+$ erdd dict push --library "플랫폼팀 표준 사전" --json --yes
+{"mode":"promote","ok":true,"seq":3,"inserted":1,"updated":0,"skipped":[],
+ "behind":[{"kind":"word","name":"고객","entityId":"01a0cc74-e6c9-7367-a79d-81162824677e"}]}
 ```
 
 | 경우 | 봉투 |
 |---|---|
-| 직접 승격 성공 | `{ mode: "promote", ok: true, seq, inserted, updated, skipped }` |
+| 직접 승격 성공 | `{ mode: "promote", ok: true, seq, inserted, updated, skipped, behind }` |
 | 전부 건너뜀(종료 `1`) | `{ mode: "promote", ok: false, … }` |
 | 승격됨 + 자동 pull 실패(종료 `1`) | `{ mode: "promote", ok: false, committed: true, syncError, … }` — **다시 올리지 말고 `erdd pull`** |
 | 승격 요청 | `{ mode: "request", id, requested, dropped }` |
 | 올릴 것이 없음 | `{ libraryId, selected: 0 }` |
+
+어느 봉투에나 **`behind`** 가 실린다 — 라이브러리 원본이 앞서 있어 뺀 항목의 `[{ kind, name, entityId }]`
+(없으면 `[]`).
+
+```bash
+$ erdd dict push --library "플랫폼팀 표준 사전" --name 고객 --json --yes
+{"libraryId":"01a0cc72-fdd9-7a07-8d16-75937f36cd3d","selected":0,
+ "behind":[{"kind":"word","name":"고객","entityId":"01a0cc73-5ea4-7256-94f1-4864bf41a9c9"}]}
+```
 
 `dict list --json` 은 라이브러리 배열(`canWrite`·`subscribed` 포함), `dict requests --json` 은 요청 배열
 (`status`·`note`·`resolutionNote`·`approvedEntityIds` 포함)이다. `init --create` 의 JSON 은
@@ -2010,6 +2064,11 @@ npm 에 게시된 판을 빈 프로젝트에 2.2 의 절차 그대로(`pnpm add 
 - 기준선 없이 연결된 디렉터리(`erdd/` 에 파일 있음)의 `pull` 이 대화형이면 묻고, `--json` 이면
   `CANCELLED` 로 멈추고, `--yes` 면 받는 것.
 - 편집자의 전역 라이브러리 `dict push` 가 서버를 부르기 전에 거절되는 것.
+- **라이브러리 원본이 앞선 항목의 제외** — 받아 온 뒤 라이브러리에서 두 단어를 고친 상태에서 `dict push` 가
+  두 항목을 제외 안내와 함께 빼고 새 단어만 올리며, DB 의 라이브러리 값·버전이 그대로인 것. `--name` 으로
+  지정해도 `selected: 0`·`behind` 로 빠지는 것. `dict pull`(자동 갱신 / `--conflicts ours`) 뒤에는 로컬에서
+  고친 값이 원본 갱신으로 올라가는 것. 같은 상태에서 제외 동작이 없는 CLI 는 라이브러리 값을 옛 값으로
+  되돌리는 것(대조군).
 
 **확인하지 않은 것.** 옛 서버에 새 CLI 를 붙였을 때의 「서버가 이 기능을 지원하지 않습니다」(단위 테스트로만
 확인), `erdd serve` 화면에서의 사전 편집(파일 직접 편집으로 대신했다), `init --create` 의 대화형 조직 선택.
