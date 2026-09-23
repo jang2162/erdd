@@ -14,7 +14,7 @@ export type LibraryItem = {
 }
 
 export type ResyncStatus = 'added' | 'auto-update' | 'conflict'
-export type ResyncDecision = 'apply' | 'keep' | 'defer'
+export type ResyncDecision = 'apply' | 'keep' | 'defer' | 'adopt'
 
 export type ResyncEntry = {
   kind: ResourceKind
@@ -141,6 +141,21 @@ export function planResync(
   return { libraryId, entries, keptLocal, keptSynced, keptDetached }
 }
 
+/**
+ * `adopt` 의 대상 — 같은 종류·같은 표시 이름(trim)·**출처가 없는** 프로젝트 엔티티 중 id 오름차순
+ * 첫 것. 이미 출처가 붙은 항목을 빼는 이유: 다른 라이브러리와의 링크를 조용히 갈아치우면 그쪽
+ * 재동기화가 영영 「원본에서 사라짐」으로 보인다. 정렬은 planPromote 와 같은 결정성 규칙이다.
+ */
+export function adoptTargetOf(model: ProjectModel, entry: ResyncEntry): string | null {
+  if (entry.status !== 'added') return null
+  const hit = resourceEntitiesOf(model, entry.kind)
+    .filter((e) => e.origin === null)
+    .filter((e) => resourceDisplayName(entry.kind,
+      resourcePayloadOf(entry.kind, e as unknown as Record<string, unknown>)).trim() === entry.name.trim())
+    .sort((a, b) => a.id.localeCompare(b.id))[0]
+  return hit?.id ?? null
+}
+
 function maxCustomFieldOrder(model: ProjectModel, target: string): number {
   let max = -1
   for (const field of Object.values(model.customFields)) {
@@ -170,6 +185,18 @@ export function applyResyncPlan(
     for (const entity of resourceEntitiesOf(model, kind)) {
       if (entity.origin) idBySource.set(keyOf(kind, entity.origin.sourceId), entity.id)
     }
+  }
+  // adopt 대상도 색인에 먼저 넣는다 — 같은 배치의 용어가 연결된 도메인을 참조할 수 있어야 한다.
+  // 두 원본이 같은 엔티티를 고르면 먼저 온 쪽만 인정한다.
+  const adopted = new Map<string, string>()
+  const claimed = new Set<string>()
+  for (const entry of selected) {
+    if (decisions[entry.sourceId] !== 'adopt') continue
+    const target = adoptTargetOf(model, entry)
+    if (target === null || claimed.has(target)) continue
+    claimed.add(target)
+    adopted.set(entry.sourceId, target)
+    idBySource.set(keyOf(entry.kind, entry.sourceId), target)
   }
   const allocated = new Map<string, string>()
   for (const entry of selected) {
@@ -204,6 +231,12 @@ export function applyResyncPlan(
       Record<string, Record<string, unknown>>
 
     if (entry.status === 'added') {
+      if (decision === 'adopt') {
+        const target = adopted.get(entry.sourceId)
+        if (target === undefined) continue
+        collection[target] = { ...collection[target]!, origin }   // 내용은 그대로, 출처만
+        continue
+      }
       if (decision !== 'apply') continue
       const id = allocated.get(entry.sourceId)!
       const extra = entry.kind === 'customField'
@@ -213,6 +246,7 @@ export function applyResyncPlan(
       continue
     }
 
+    if (decision === 'adopt') continue   // added 가 아니면 의미가 없다 — keep 으로 새면 안 된다
     const id = entry.projectEntityId!
     const current = collection[id]
     if (!current) continue   // 계획 계산 후 삭제된 경우 방어
