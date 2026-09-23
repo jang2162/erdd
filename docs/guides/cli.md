@@ -171,6 +171,9 @@
   실패하면 재시도하지 않고 `{ mode: 'promote', ok: false, committed: true, syncError }` 로 끝낸다
   (`push.ts` 의 「반영됨 + 파일 갱신 실패」와 같은 규약 — 승격 실패로 보이면 사람도 에이전트도 다시
   올리려 든다).
+- **라이브러리 원본이 앞선 항목(`sourceBehind`)은 `--name` 으로 지정해도 선택에서 뺀다** — 계획 뒤에
+  note 로, `--json` 은 모든 봉투의 `behind` 로 알린다. 규칙과 이유는 [shared-resources.md](shared-resources.md)
+  「승격 — 가져오기의 반대 방향」이 갖는다.
 - **서버가 전부 건너뛰면 종료 코드 `1` 이다.** 웹의 「선택이 전부 no-op 이면 무반응」을 되풀이하지 않는다.
 
 ### config 를 다시 쓰는 자리는 `dictionaries` 를 보존한다

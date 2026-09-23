@@ -61,6 +61,21 @@
   expectedTargetVersion}` 만 보내고 서버가 락 안에서 계획을 재계산해 어긋난 항목만 건너뛴다
   (`missing`/`plan-changed`). **`expectedTargetVersion` 이 없으면** 다이얼로그를 연 사이 남이 고친
   원본을 낡은 미리보기 기준으로 덮어쓴다.
+- **`sourceBehind` 인 항목은 기본 선택하지 않는다.** `planPromote` 의 `status` 는 payload 비교라
+  「프로젝트가 고쳤다」와 「프로젝트가 가져온 뒤 **남이 원본을 고쳤다**」를 둘 다 `update` 로 낸다.
+  뒤쪽을 올리면 남이 고친 원본이 이 프로젝트의 옛 값(요청 시점 값)으로 **조용히 되돌아간다** —
+  `expectedTargetVersion` 은 계획 **이후**의 변경만 막으므로 이 경우를 잡지 못한다. 그래서
+  `PromoteEntry.sourceBehind`(링크 항목이고 `origin.sourceVersion < targetVersion`)를 싣고, 소비처가
+  기본 선택에서 뺀다 — 웹 `promote-selection.ts` 의 `initialSelection`(승격 탭·승인 다이얼로그 공통,
+  배지는 `PromoteEntryList` 의 `audience` 로 화면별 문구), CLI `dict push`(`--name` 으로 지정해도 빼고
+  `behind` 로 알린다). **새 소비처가 `status !== 'name-match'` 만으로 기본 선택을 만들면 이 결함이 되살아난다.**
+  정상 경로는 재동기화로 원본을 먼저 보는 것이다 — 「프로젝트 유지」(`keep`)가 `origin` 을 원본의 새 버전으로
+  올리므로 그 뒤에는 `sourceBehind` 가 풀리고 의도한 덮어쓰기가 `update` 로 올라간다.
+  - **`PromoteStatus` 에 새 값을 두지 않고 필드로 둔 이유** — 상태는 서버 계약이다. 클라가 보내는
+    `expectedStatus`(`resource.promote`·`promotion.resolve` 입력 스키마의 enum)를 서버가 락 안에서 다시 계산한
+    상태와 대조한다. 새 상태를 만들면 입력 스키마가 바뀌어 옛 클라이언트(새 서버 + 옛 CLI)가 거절되고, 사람이
+    알고 체크한 덮어쓰기도 쓰기는 똑같은 `update`(`targetVersion + 1`)인데 다른 이름으로 보내야 한다. 표시·기본
+    선택만의 신호라 계약 밖의 필드로 둔다 — 서버는 이 필드를 보지 않는다.
 
 ---
 
