@@ -7,8 +7,17 @@ import { revisions } from '../db/schema.js'
 import { resetDb } from '../testing/db.js'
 import { createTestApp, loginAs } from '../testing/helpers.js'
 import { createAccount } from '../services/accounts.js'
+import { PUBLIC_PATHS, procedureEntries } from '../testing/procedures.js'
 
 const url = process.env.DATABASE_URL
+
+/** 액세스 토큰으로 부를 수 있는 프로시저 전부(공개 표면 제외) — guides/cli.md 「액세스 토큰 인증」. */
+const TOKEN_PATHS = [
+  'auth.me', 'org.list', 'project.list', 'project.get', 'project.create',
+  'model.get', 'model.push',
+  'resource.library.listForProject', 'resource.items.list', 'resource.promote',
+  'promotion.create', 'promotion.listForProject',
+]
 
 describe.skipIf(!url)('CLI 사전 동기화가 토큰으로 부르는 프로시저', () => {
   let app: FastifyInstance
@@ -107,9 +116,18 @@ describe.skipIf(!url)('CLI 사전 동기화가 토큰으로 부르는 프로시�
     expect(list.json().result.data).toEqual([expect.objectContaining({ note: 'CLI 요청', status: 'pending' })])
   })
 
-  it('목록 밖의 프로시저는 여전히 토큰을 거절한다', async () => {
-    expect((await tPost('resource.library.create', { scope: 'org', orgId, name: 'X' })).statusCode).toBe(401)
-    expect((await tPost('resource.items.create', { libraryId, kind: 'word', payload: {} })).statusCode).toBe(401)
-    expect((await tGet('resource.library.list', { scope: 'org', orgId })).statusCode).toBe(401)
+  it('토큰으로 부를 수 있는 프로시저가 정확히 이 열둘(+공개 표면)이다', async () => {
+    // 표본 몇 개로는 이웃 프로시저(promotion.resolve·project.delete 등)가 실수로 apiProcedure 가
+    // 되어도 모른다. 라우터 전수를 돌아 토큰 표면을 잠근다 — 공개 표면 전수 테스트(admin.test.ts)와
+    // 같은 방식이다. 입력은 비운다: 인증 미들웨어가 입력 파싱보다 먼저라 세션 전용은 401,
+    // 토큰 허용은 400·200 이 된다. 공개 프로시저는 토큰(=로그인 사용자)에도 401 이 아니므로 빼고 비교한다.
+    const reachable: string[] = []
+    for (const [path, type] of procedureEntries()) {
+      const res = type === 'query'
+        ? await app.inject({ method: 'GET', url: `/trpc/${path}`, headers: { authorization: `Bearer ${token}` } })
+        : await tPost(path, {})
+      if (res.statusCode !== 401) reachable.push(path)
+    }
+    expect(reachable.filter((p) => !PUBLIC_PATHS.includes(p)).sort()).toEqual([...TOKEN_PATHS].sort())
   })
 })
