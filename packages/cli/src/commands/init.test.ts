@@ -130,6 +130,17 @@ describe('init', () => {
       expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
     })
 
+    // 재-init 은 깨진 config 를 덮어 고치는 길이다 — 옛 config 를 읽지 못해도 막지 않고, 이을 구독도 없다.
+    it('옛 config 가 깨져 있으면 재-init 은 성공하고 구독은 비운다', async () => {
+      await writeFile(join(dir, 'erdd.config.yaml'), [
+        'serverUrl: https://erdd.example.com', 'projectId: p1', 'dialects: [nope]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        'dictionaries: [{ id: L1, name: 표준 }]', '',
+      ].join('\n'))
+      expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
+      expect(await readConfig(dir)).toMatchObject({ dialects: ['postgresql'], dictionaries: [] })
+    })
+
     it('다른 프로젝트나 다른 서버로 연결하면 구독을 비운다', async () => {
       await subscribed()
       expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p2' })).toBe(0)
@@ -189,12 +200,12 @@ describe('init --local', () => {
 describe('init --create', () => {
   const ORG = '018f6b0e-0000-7000-8000-00000000000a'
   const CREATED = '018f6b0e-0000-7000-8000-0000000000f1'
-  function createClient(opts: { forbid?: boolean } = {}) {
+  function createClient(opts: { forbid?: boolean; orgs?: { id: string; name: string }[] } = {}) {
     const calls: { path: string; input: unknown }[] = []
     const c: ApiClient = {
       query: vi.fn(async (path: string) => {
         if (path === 'auth.me') return { id: 'u1', email: 'u1@test.dev', name: '사용자1', role: 'user' }
-        if (path === 'org.list') return [{ id: ORG, name: '플랫폼팀', role: 'owner' }]
+        if (path === 'org.list') return opts.orgs ?? [{ id: ORG, name: '플랫폼팀', role: 'owner' }]
         throw new Error(`unexpected ${path}`)
       }) as ApiClient['query'],
       mutate: vi.fn(async (path: string, input: unknown) => {
@@ -264,6 +275,29 @@ describe('init --create', () => {
     const { client, calls } = createClient()
     expect(await init({ ...base, org: '없는팀', cwd: dir, client })).toBe(1)
     expect(JSON.parse(out.join('')).error.code).toBe('NOT_FOUND')
+    expect(calls).toEqual([])
+    expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
+  })
+
+  it('같은 이름의 조직이 여럿이면 USAGE 로 id 를 요구한다', async () => {
+    const { client, calls } = createClient({
+      orgs: [{ id: ORG, name: '플랫폼팀' }, { id: '018f6b0e-0000-7000-8000-00000000000b', name: '플랫폼팀' }],
+    })
+    expect(await init({ ...base, cwd: dir, client })).toBe(2)
+    expect(JSON.parse(out.join('')).error).toEqual({
+      code: 'USAGE', message: '이름이 플랫폼팀인 조직이 여럿입니다 — id로 지정하세요',
+    })
+    expect(calls).toEqual([])
+  })
+
+  // readTree 를 서버에 만들기 **전에** 한다 — 뒤에서 YAML 오류로 멈추면 빈 서버 프로젝트가 남는다.
+  it('erdd/ 의 YAML 이 깨져 있으면 서버를 부르기 전에 VALIDATION', async () => {
+    await mkdir(join(dir, 'erdd'), { recursive: true })
+    await writeFile(join(dir, 'erdd/words.yaml'), 'a: [')
+    const { client, calls } = createClient()
+    expect(await init({ ...base, cwd: dir, client })).toBe(1)
+    expect(JSON.parse(out.join('')).error.code).toBe('VALIDATION')
+    expect(client.query).not.toHaveBeenCalled()
     expect(calls).toEqual([])
     expect(existsSync(join(dir, 'erdd.config.yaml'))).toBe(false)
   })
