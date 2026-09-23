@@ -7,7 +7,7 @@ import { fastifyTRPCPlugin, type CreateFastifyContextOptions } from '@trpc/serve
 import {
   LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, type LocalEvent,
 } from '@erdd/core'
-import { LOCAL_PROJECT_ID, readConfig } from '../config.js'
+import { LOCAL_PROJECT_ID, readConfig, type ErddConfig } from '../config.js'
 import { note } from '../output.js'
 import { FileStore, type StoreState } from './store.js'
 import { createLocalRouter, type LocalContext } from './router.js'
@@ -215,7 +215,10 @@ export async function startLocalServer(opts: {
     return { ok: true as const }
   })
 
-  let configSignature = JSON.stringify(config)
+  // 웹이 보는 config 만 서명한다. 구독(`dictionaries`)은 `erdd dict pull` 만 읽는 값이라
+  // project.get 에 나가지 않는다 — 그것만 바뀐 것은 브라우저가 다시 읽을 사유가 아니다.
+  const signatureOf = (c: ErddConfig) => JSON.stringify({ ...c, dictionaries: undefined })
+  let configSignature = signatureOf(config)
 
   const watcher = watchProject(cwd, () => {
     void (async () => {
@@ -226,10 +229,12 @@ export async function startLocalServer(opts: {
       let configChanged = false
       try {
         const nextConfig = await readConfig(cwd)
-        const nextSignature = JSON.stringify(nextConfig)
+        const nextSignature = signatureOf(nextConfig)
+        // 서명이 같아도 갈아 끼운다 — 구독만 바뀐 경우에도 ctx 의 값이 낡으면 다음 project.update 가
+        // 옛 구독으로 config 를 덮는다.
+        Object.assign(config, nextConfig)
         if (nextSignature !== configSignature) {
           configSignature = nextSignature
-          Object.assign(config, nextConfig)
           configChanged = true
         }
       } catch (err) {
@@ -248,10 +253,13 @@ export async function startLocalServer(opts: {
       if (!state.ok) { broadcast(); return }
       // config 만 바뀐 경우도 모델 서명은 그대로라 위 modelChanged 필터에 걸리지 않는다 —
       // 자기 쓰기 판정과 무관하게(그 판정은 모델/레이아웃 서명만 본다) 여기서 직접 내보낸다.
-      if (configChanged) { broadcast(); return }
+      if (configChanged) broadcast()
       // 미저장 편집이 있는데 밖이 바뀌었다 — 모델을 채택하지 않았으므로 reload 가 아니라
-      // 배너를 띄우는 status 다(설계 D2).
+      // 배너를 띄우는 status 다(설계 D2). ⚠️ config 갈래에서도 보내야 한다 — config 와 파일이
+      // 한 디바운스 창에 함께 바뀌면(`dict pull`, `git checkout`) 콜백이 하나로 합쳐지고,
+      // external 플래그 변화는 onStatusChange 를 부르지 않아 여기 말고는 알릴 경로가 없다.
       if (store.external) { broadcastStatus(); return }
+      if (configChanged) return
       // 디스크를 실제로 채택했을 때만 브라우저가 다시 읽는다.
       if (adopted) broadcast()
     })().catch((err) => { console.warn('[local server] 감시 처리 중 오류:', err) })
