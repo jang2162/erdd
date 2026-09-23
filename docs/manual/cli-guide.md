@@ -29,7 +29,7 @@ ERDD 서버의 스키마를 **코드베이스 안의 YAML 파일**로 내려받�
 | 전제 | 뜻 |
 |---|---|
 | 서버가 진실 원천이다 | 로컬 파일은 작업 사본이다. `pull` 은 서버 상태로 로컬을 덮어쓴다. |
-| 파일은 **스키마의 의미 정보만** 담는다 | 배치 좌표·메모·공용 리소스 출처는 **스키마 파일**(`erdd/tables/*.yaml` 과 최상위 5개)에 없다(→ [8절](#8-파일에-담기지-않는-것)). |
+| 파일은 **스키마의 의미 정보만** 담는다 | 배치 좌표·메모는 **스키마 파일**(`erdd/tables/*.yaml` 과 최상위 사전 파일)에 없다(→ [8절](#8-파일에-담기지-않는-것)). 공용 사전 출처는 따로 `erdd/origins.yaml` 에 있다(→ [5.8](#58-erddoriginsyaml--공용-사전-출처)). |
 | 모든 명령은 **현재 디렉터리 기준**이다 | `erdd.config.yaml` 이 있는 프로젝트 루트에서 실행한다. |
 
 **실행 형태가 둘이다 — 위 전제 중 앞의 둘은 「서버에 연결된 프로젝트」 기준이다.** `erdd serve` 로 여는
@@ -169,20 +169,40 @@ $ erdd --help
   diff         로컬 파일과 서버의 차이를 미리 본다
   status       연결 정보와 로컬 변경을 보여준다
   validate     서버 없이 파일을 검사한다
+  export       로컬 파일을 DDL·DBML로 내보낸다(stdout 또는 -o 파일)
+  import <파일> DDL·DBML 파일을 로컬 파일에 가져온다(머지 — 서버 반영은 push)
   serve        로컬 서버를 띄워 브라우저에서 편집한다(서버 연결 불필요)
   skill install 에이전트 스킬 문서를 프로젝트에 설치한다
+  dict <list|pull|push|requests>  공용 사전을 주고받는다
 
 옵션
   --json                기계용 JSON 출력
   --yes                 확인 프롬프트를 건너뛴다
   --strict              validate·diff에서 경고·충돌도 실패로 본다
-  -m, --message <요약>  push의 Revision 요약
+  -m, --message <요약>  push의 Revision 요약, dict push의 승격 요청 메모
   --dir <경로>          skill install 전용 — 설치 위치
   --force               skill install 전용 — 기존 파일 덮어쓰기
   --server <url>        init 전용
   --token <token>       init 전용
   --project <id>        init 전용
   --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
+  --create              init 전용 — 서버에 프로젝트를 만들어 연결한다(로컬 전용 프로젝트면 이관한다)
+  --org <이름|id>        init --create 전용 — 프로젝트를 만들 조직
+  --case <대소문자>      init --local·--create 전용 — UPPER_SNAKE(기본) 또는 lower_snake
+  --format <ddl|dbml>   export·import 전용 — export 기본 ddl, import 기본 확장자 판별
+  --dialect <방언>       export·import·init --local·--create 전용
+                        export·import는 기본이 erdd.config.yaml의 dialects[0], init --local·--create는 postgresql
+  -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
+  --dry-run             import·dict pull 전용 — 계획만 보고 파일을 쓰지 않는다
+  --library <이름|id>   dict pull·push 전용 — pull은 받을 라이브러리(구독에 없으면 더한다, 없으면 구독 전부)
+                        push는 올릴 라이브러리(필수)
+  --adopt               dict pull 전용 — 이름이 같은 로컬 항목에 출처를 연결한다
+  --conflicts <theirs|ours>  dict pull 전용 — 충돌을 원본(theirs)·로컬(ours)로 정리한다(기본 보류)
+  --kind <종류,…>        dict push 전용 — domain·word·term·customField 중 올릴 종류
+  --name <이름>          dict push 전용 — 올릴 항목 이름(반복 가능)
+                        init --create 전용 — 서버에 만들 프로젝트 이름
+  --include-name-match  dict push 전용 — 라이브러리에 같은 이름이 있는 항목도 올린다(기본 제외)
+  --status <상태>        dict requests 전용 — pending·resolved·rejected·cancelled
   --port <번호>          serve 전용 — 기본 4300
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
   --help                이 도움말
@@ -208,9 +228,16 @@ $ erdd --help
 Viewer 가 만든 토큰은 Viewer 권한만 갖고, 그 사용자가 프로젝트 멤버에서 빠지면 토큰도 자동으로 그
 프로젝트에 닿지 못한다 — 토큰을 따로 회수할 필요가 없다. 만료는 없고 폐기만 있다.
 
-**토큰으로 호출할 수 있는 서버 기능은 명시적으로 열린 6개뿐이다** — `auth.me`, `org.list`,
-`project.list`, `project.get`, `model.get`, `model.push`. 웹 UI 의 나머지 기능(내보내기·스냅샷·멤버
-관리 등)은 세션 전용이라 토큰으로 부를 수 없다.
+**토큰으로 호출할 수 있는 서버 기능은 CLI 가 쓰는 것뿐이다** — 연결·동기화(`auth.me`, `org.list`,
+`project.list`, `project.get`, `model.get`, `model.push`), 프로젝트 생성(`project.create` —
+`init --create`), 공용 사전(`resource.library.listForProject`, `resource.items.list`,
+`resource.promote`, `promotion.create`, `promotion.listForProject` — `erdd dict`). 웹 UI 의 나머지
+기능(내보내기·스냅샷·멤버 관리·승격 요청 승인 등)은 세션 전용이라 토큰으로 부를 수 없다.
+
+⚠️ **토큰은 발급한 사람이 웹에서 할 수 있는 쓰기를 그대로 한다.** 조직 Owner/Admin 의 토큰은 조직에
+**프로젝트를 만들고**(`erdd init --create`) 조직 라이브러리에 **승인 없이 바로 올린다**(`erdd dict push`).
+서비스 관리자의 토큰은 전역 라이브러리까지 쓴다. 에이전트·CI 에 줄 토큰은 **편집자(Editor) 계정**으로
+발급한다 — 그러면 `dict push` 는 승격 **요청**이 되고 조직 관리자가 웹에서 승인해야 반영된다.
 
 ### 3.2 `erdd init`
 
@@ -245,6 +272,17 @@ erdd init --server https://erdd.example.com --token "$ERDD_TOKEN" --project 018f
 4. 프로젝트의 방언·명명 규칙을 받아 `erdd.config.yaml` 을 쓴다.
 5. `.erdd/credentials.json` 에 토큰을 쓴다 — **파일 권한 `0600`**(이미 있던 파일도 매번 좁힌다).
 6. `.gitignore` 에 `.erdd/` 를 한 줄 추가한다(이미 있으면 건드리지 않는다).
+
+**같은 서버의 같은 프로젝트로 다시 연결하면**(토큰만 바꿀 때 등) config 의 공용 사전 구독
+(`dictionaries`)을 이어받는다. 다른 프로젝트나 다른 서버로 연결하면 구독을 비운다.
+
+**서버에 아직 프로젝트가 없으면 `--create` 로 만들어 연결한다** — 조직 Owner/Admin 만 된다.
+로컬 전용 프로젝트를 서버로 옮기는 것도 이 명령이다(→ [6.1](#61-erdd-init)).
+
+```bash
+$ erdd init --server https://erdd.example.com --token "$ERDD_TOKEN" --create --org 플랫폼팀 --name 주문시스템 --yes
+서버 프로젝트 주문시스템을(를) 만들어 연결했습니다. erdd serve로 편집을 시작하세요.
+```
 
 ### 3.3 토큰을 두는 곳
 
@@ -327,10 +365,13 @@ namingRules:
   로컬 서버는 어느 경우든 **파일만** 본다 — 서버와의 왕래는 여전히 `pull`·`push` 가 한다. `pull` 로
   받은 프로젝트를 `serve` 로 열어 그림으로 확인하고 고쳐 `push` 하는 흐름이 그대로 된다. GUI 가 떠
   있는 채로 `erdd pull` 을 돌려도 감시가 그것을 잡아 화면이 따라온다.
-- ⚠️ **로컬로 시작한 프로젝트를 서버로 옮기는 전용 명령은 없고, 연결 설정을 적는 것만으로는 부족하다.**
-  `push` 는 마지막 pull 기준선(`.erdd/base.json`)을 요구하므로 `기준 시점이 없습니다. 먼저 erdd
-  pull을 실행하세요` 로 멈춘다. 커밋해 둔 `erdd/` 를 git 에서 되살려 얹는 순서가 필요하다 —
-  [로컬 모드 매뉴얼 7.2](local-guide.md#72-로컬로-시작한-프로젝트를-서버로-옮기기) 에 명령 순서가 있다.
+- **로컬로 시작한 프로젝트를 서버로 옮기는 것은 `erdd init --server … --create` 한 줄이다.** 서버에 빈
+  프로젝트를 만들고 기준선을 **빈 모델**로 세우므로 `erdd/` 는 그대로 남고, `erdd diff` 가 전부
+  「추가」로 보인 뒤 `erdd push` 로 올라간다(→ [6.1](#61-erdd-init)). ⚠️ **연결 설정을 손으로 적는
+  것만으로는 안 된다** — `push` 는 마지막 pull 기준선(`.erdd/base.json`)을 요구하므로 `기준 시점이
+  없습니다. 먼저 erdd pull을 실행하세요` 로 멈추고, 그 상태에서 `pull` 을 하면 `erdd/` 가 서버의 빈
+  상태로 덮인다. 프로젝트 생성 권한이 없을 때의 수동 절차는
+  [로컬 모드 매뉴얼 7.2](local-guide.md#72-로컬로-시작한-프로젝트를-서버로-옮기기) 에 있다.
 
 ---
 
@@ -360,6 +401,9 @@ git add erdd erdd.config.yaml && git commit -m "스키마: 회원 등급 컬럼"
 - **`export`·`import` 도 서버를 부르지 않는다** — `erdd/` 파일만 읽고 쓴다(→ [6.9](#69-erdd-export) ·
   [6.10](#610-erdd-import-파일)). `import` 는 **파일만** 고치므로 서버 모드라면 그 뒤에 `diff` → `push` 가
   이어진다. 서버의 최신 상태를 내보내려면 `export` 앞에 `pull` 을 둔다.
+- **조직 공용 사전(단어·용어·도메인·커스텀 항목)은 `erdd dict` 로 주고받는다** — 받기는 `dict pull`,
+  새 단어를 공용으로 올리기는 `push` 뒤 `dict push` 다(→ [6.11](#611-erdd-dict--공용-사전)).
+  서버에 연결된 프로젝트에서만 된다.
 
 ---
 
@@ -378,6 +422,7 @@ erdd/                                                             ← 커밋한�
 ├─ terms.yaml               # 용어 사전
 ├─ domains.yaml             # 도메인(타입 표준)
 ├─ custom-fields.yaml       # 커스텀 항목 정의
+├─ origins.yaml             # 공용 사전 출처 — erdd dict·pull 이 쓴다. 손으로 고치지 않는다(→ 5.8)
 └─ layout.yaml              # 배치 좌표·메모 — erdd serve 가 읽고 쓴다(→ 5.7)
 .erdd/                                                            ← 커밋하지 않는다
 ├─ base.json                # 마지막 pull 시점 모델 — 3-way 병합의 기준선
@@ -430,6 +475,22 @@ tableOptions:                               # 선택 — 없으면 네 방언 �
 
 ⚠️ **`COMMENT=` 를 적지 마라** — 옵션이 테이블 코멘트보다 앞에 나가므로, 되읽을 때 파서가 그것을
 테이블 코멘트로 읽는다.
+
+**`dictionaries` 는 공용 사전 구독이다** — `erdd dict pull --library …` 가 처음 받을 때 적고, 인자
+없는 `erdd dict pull` 이 이 목록을 **적힌 순서대로** 처리한다(→ [6.11](#611-erdd-dict--공용-사전)).
+
+```yaml
+dictionaries:
+  - id: 01a0cc5e-eeb8-7f2e-b3d5-eff88cffe341
+    name: 플랫폼팀 표준 사전      # 표시용. 서버에서 이름이 바뀌면 다음 dict pull 이 고쳐 쓴다
+```
+
+- 구독이 없으면 키 자체를 쓰지 않는다. 키가 없거나 값이 비어 있으면(`dictionaries:`) 구독 0건이다.
+- `pull`·`push`·`init`(같은 프로젝트로 재연결)이 config 를 다시 써도 구독은 남는다.
+- 형태가 틀리면(`{id, name}` 목록이 아님) 종료 코드 `1` —
+  `erdd.config.yaml의 dictionaries는 {id, name} 목록이어야 합니다`. 같은 id 가 두 번 있어도 `1` —
+  `erdd.config.yaml의 dictionaries에 같은 사전(<id>)이 두 번 있습니다`.
+- 구독을 끊으려면 그 줄을 지운다. 이미 받아 온 항목과 `origins.yaml` 의 출처는 그대로 남는다.
 
 ### 5.3 테이블 파일
 
@@ -607,6 +668,44 @@ notes:
   (해당 테이블은 격자로 떨어진다) 나머지는 그대로 열린다. 파일이 아예 없거나 비어 있는 것도
   손상이 아니다.
 
+### 5.8 `erdd/origins.yaml` — 공용 사전 출처
+
+**공용 사전에서 받아 온 항목이 어느 라이브러리의 어느 항목·몇 번째 버전에서 왔는지**를 적는 파일이다.
+`erdd dict pull`·`dict push` 가 쓰고, `pull`·`push` 가 서버와 주고받는다. **커밋 대상이다.**
+
+```yaml
+origins:
+  - id: 01a0cc5f-58b5-712a-8cd1-8fcda45c2b5c      # 이 프로젝트의 단어 id (words.yaml 의 id)
+    kind: word                                    # domain | word | term | customField
+    library: 01a0cc5e-eeb8-7f2e-b3d5-eff88cffe341 # 라이브러리 id
+    item: 01a0cc5e-eedc-7919-8f5d-f0301716e827    # 라이브러리 항목 id
+    version: 1                                    # 받아 온 항목 버전
+    base:                                         # 받아 온 시점의 값 — 「내가 고쳤는가」의 기준
+      description: null
+      englishName: Customer
+      logicalName: 고객
+      abbreviation: CUST
+```
+
+(주석은 설명용이다 — 실제 파일에는 주석이 없다.)
+
+- ⚠️ **손으로 고치지 않는다.** 사전 파일(`words.yaml` 등)의 값을 고치는 것은 괜찮다 — `base` 와 달라져
+  「프로젝트가 고친 항목」이 되고, 원본이 바뀌면 `dict pull` 이 충돌로 알린다. 용어의 `base.domainId` 는
+  이름이 아니라 **이 프로젝트의 도메인 id** 다(기계용 파일이라 id 를 쓴다).
+- **사전 파일에서 항목을 지우면 그 출처 줄은 조용히 무시되고 다음 쓰기에서 정리된다.** 오류가 아니다.
+- **출처가 0건이면 파일이 없다.** 파일이 없는 것도 출처 0건이다.
+- **이 파일에서 줄을 지우고 `push` 하면 서버의 출처도 떨어진다** — 파일이 진실이다. 그래서 `push` 가
+  확인 전에 한 줄로 알린다(→ [6.6](#66-erdd-push)). 의도하지 않았으면 `erdd pull` 로 되돌린다.
+- **형식이 틀리면 파일 오류다** — `serve` 는 편집이 잠기고 `push`·`dict` 는 거절하며 `erdd validate` 가
+  가리킨다. 틀린 줄은 `origins[i]` 번호로 나온다.
+
+  | 메시지 | 원인 |
+  |---|---|
+  | `origins[N]의 형식이 올바르지 않습니다 — id·kind·library·item·version(정수)·base(객체)가 필요합니다` | 키가 빠졌거나 `kind` 가 넷 밖이거나 `version` 이 정수가 아니다 |
+  | `origins[N]가 객체가 아닙니다` | 목록 원소가 객체가 아니다 |
+  | `id <id>의 출처가 두 번 적혀 있습니다` | 같은 항목의 줄이 둘이다 |
+  | `id <id>의 kind가 word로 적혀 있지만 실제로는 term입니다` | `kind` 가 실제 항목 종류와 다르다 |
+
 ---
 
 ## 6. 명령 레퍼런스
@@ -634,16 +733,16 @@ notes:
 
 | | |
 |---|---|
-| 전용 옵션 | `--server <url>` · `--token <token>` · `--project <id>` · `--local` · `--dialect <방언>` · `--case <UPPER_SNAKE\|lower_snake>` |
-| 서버 호출 | `auth.me`, (선택 시) `org.list`·`project.list`, `project.get` |
-| 쓰는 파일 | `erdd.config.yaml` · `.erdd/credentials.json` · `.gitignore` |
+| 전용 옵션 | `--server <url>` · `--token <token>` · `--project <id>` · `--local` · `--create` · `--org <이름\|id>` · `--name <이름>` · `--dialect <방언>` · `--case <UPPER_SNAKE\|lower_snake>` |
+| 서버 호출 | `auth.me`, (선택 시) `org.list`·`project.list`, `project.get`. `--create` 는 `auth.me`·`org.list`·`project.create` |
+| 쓰는 파일 | `erdd.config.yaml` · `.erdd/credentials.json` · `.gitignore`. `--create` 는 여기에 `.erdd/base.json`·`.erdd/sync.json`(빈 기준선) |
 
 **`--local` 은 서버 연결 없이 로컬 전용 프로젝트를 만든다** → [3.4](#34-로컬-모드--서버-없이-쓰기).
 서버를 한 번도 부르지 않고 `.erdd/credentials.json` 도 쓰지 않는다(`erdd.config.yaml` 과 `.gitignore`
 뿐이다). 다른 인자와 달리 **기존 config 를 `--yes` 로도 덮어쓰지 않는다.**
 
-**`--dialect` 와 `--case` 는 `--local` 전용이다.** 로컬 전용 프로젝트에는 설정을 받아 올 서버가
-없어서 이 둘만 여기서 정하고, 나머지 명명 규칙(`separator`·`logicalSeparator`·`maxLengthBytes`·
+**`--dialect` 와 `--case` 는 `--local`·`--create` 전용이다.** 로컬 전용 프로젝트에는 설정을 받아 올 서버가
+없고 `--create` 는 서버에 만들 값을 정해야 해서 이 둘만 여기서 정하고, 나머지 명명 규칙(`separator`·`logicalSeparator`·`maxLengthBytes`·
 템플릿)은 기본값으로 시작해 `erdd.config.yaml` 을 직접 고쳐 바꾼다.
 
 | 옵션 | 기본값 | 값 |
@@ -669,9 +768,82 @@ namingRules:
   tableLogicalTemplate: ""
 ```
 
-⚠️ **연결 모드(`--local` 없이)에서 이 둘을 주면 사용법 오류(`2`)다** —
-`--dialect·--case는 init --local 전용입니다 — 연결 모드에서는 서버 프로젝트 설정을 따릅니다`.
+⚠️ **기존 프로젝트에 연결할 때(`--local`·`--create` 없이) 이 둘을 주면 사용법 오류(`2`)다** —
+`--dialect·--case는 init --local·--create 전용입니다 — 기존 프로젝트에 연결할 때는 서버 프로젝트 설정을 따릅니다`.
 서버 프로젝트의 방언·명명 규칙이 진실 원천이라, 여기서 받아 봐야 첫 `pull` 이 곧바로 덮어쓴다.
+
+#### `--create` — 서버에 프로젝트를 만들어 연결한다
+
+```bash
+erdd init --server <url> --token <토큰> --create --org <조직 이름|id> --name <프로젝트 이름> [--yes]
+```
+
+**조직 Owner/Admin 만 된다**(웹에서 프로젝트를 만들 수 있는 사람과 같다). 시작 상태에 따라 셋으로 갈린다.
+
+| 시작 상태 | 하는 일 |
+|---|---|
+| `erdd.config.yaml` 이 없다 | 서버에 빈 프로젝트를 만들고(`--dialect`·`--case` 가 생성값, 기본 `postgresql`·`UPPER_SNAKE`) 연결한다. `erdd/` 가 비어 있으면 빈 사전 파일 다섯을 함께 쓴다 — 빈 서버를 `pull` 한 것과 같은 상태다 |
+| **로컬 전용 config**(`serverUrl: null`) — **이관** | 확인을 받은 뒤, 로컬 config 의 방언·명명 규칙·테이블 옵션으로 서버 프로젝트를 만들고 config 에 `serverUrl`·`projectId` 를 채워 다시 쓴다(구독도 그대로). **`erdd/` 는 한 바이트도 건드리지 않는다** |
+| 이미 서버에 연결된 config | 거절(`1`) — 기존 서버 프로젝트를 고아로 만들지 않는다 |
+
+**기준선은 빈 모델이다.** `pull` 없이 `push` 가 요구하는 기준선(`.erdd/base.json`)을 세우므로,
+`erdd/` 에 파일이 있으면(이관이거나, config 만 없던 디렉터리) **다음 `erdd diff` 가 전부 「추가」로 보이고
+`erdd push` 로 올라간다.** 그때는 안내도 다르다.
+
+```bash
+# 빈 디렉터리
+$ erdd init --server http://127.0.0.1:3004 --token "$T" --create --org 플랫폼팀 --name 스모크 --yes
+서버 프로젝트 스모크을(를) 만들어 연결했습니다. erdd serve로 편집을 시작하세요.
+
+# 로컬 전용 프로젝트(erdd/words.yaml 에 단어 둘)
+$ erdd init --server http://127.0.0.1:3004 --token "$T" --create --org 플랫폼팀 --name 이관 --yes
+서버 프로젝트 이관을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.
+$ erdd diff
+올릴 변경 2건
+  + 단어 결제
+  + 단어 고객
+
+내려올 변경 없음
+
+충돌 없음
+$ erdd push -m 이관
+반영했습니다 (리비전 1, 변경 2건)
+```
+
+- **이관은 확인을 받는다** — `이 로컬 프로젝트를 서버 프로젝트 "이관"로 연결합니다. 계속할까요? [y/N]`.
+  `--yes` 로 건너뛴다. 비대화형(`--json`)에서 `--yes` 가 없으면
+  `확인이 필요합니다 — 비대화형(--json)에서는 --yes를 함께 주세요`(`1`).
+- **이관은 저장된 파일만 올린다.** `erdd serve` 에 저장하지 않은 편집이 있으면 안내 앞에
+  `⚠️ 저장하지 않은 편집이 있습니다 — erdd serve 화면에서 저장해야 파일에 반영됩니다` 가 나온다.
+- 이관 직후 `erdd status` 에는 `erdd/` 에 없던 빈 사전 파일이 `-` 로 보일 수 있다. 내용이 빈 목록이라
+  `diff`·`push` 에는 영향이 없고 `push` 한 번으로 사라진다.
+- `erdd/layout.yaml`(배치 좌표·메모)은 서버로 올라가지 않는다. 서버 쪽 배치는 웹 에디터의 「자동 정렬」로
+  새로 잡는다.
+- `--org` 는 조직 이름이나 id 다. 없으면 대화형으로 고르게 하고, 비대화형이면 사용법 오류(`2`) —
+  `--org를 주거나 대화형으로 실행하세요`. `--name` 이 없으면 `서버에 만들 프로젝트 이름을 입력하세요` 로
+  묻는다. 공백뿐인 이름은 `프로젝트 이름이 비었습니다`(`2`).
+- `--create` 는 `--project`·`--local` 과 함께 쓸 수 없다(`2`). **이관할 때는 `--dialect`·`--case` 도 줄 수
+  없다**(`2`) — `로컬 프로젝트를 이관할 때는 erdd.config.yaml의 방언·명명 규칙을 씁니다 — --dialect·--case를 빼세요`.
+- 로컬 config 의 명명 규칙·테이블 옵션이 서버 형식에 맞지 않으면 **서버를 부르기 전에** 멈춘다(`1`) —
+  `erdd.config.yaml의 namingRules.case가 올바르지 않습니다` 처럼 키를 가리킨다. `erdd/` 의 YAML 이 깨져
+  있어도 서버를 부르기 전에 멈춘다. 반쯤 만들어진 서버 프로젝트를 남기지 않기 위해서다.
+
+**막히는 경우.**
+
+| 상황 | 메시지 | 종료 코드 |
+|---|---|---|
+| 권한 없음(새 디렉터리) | `프로젝트 생성 권한이 없습니다 — 조직 관리자에게 프로젝트를 만들어 달라고 한 뒤 erdd init --project <id> 로 연결하세요` | `1` |
+| 권한 없음(이관) | `프로젝트 생성 권한이 없습니다 — 조직 관리자에게 빈 프로젝트를 만들어 달라고 한 뒤, erdd/ 를 git 에 커밋하고 매뉴얼 「로컬로 시작한 프로젝트를 서버로 옮기기」의 수동 절차를 따르세요` | `1` |
+| 이미 연결됨 | `이미 서버 프로젝트에 연결돼 있습니다 — 다른 프로젝트로 바꾸려면 erdd init --project <id> --yes` | `1` |
+| 조직 없음 | `조직 <이름>을(를) 찾지 못했습니다` | `1` |
+| 같은 이름의 조직이 여럿 | `이름이 <이름>인 조직이 여럿입니다 — id로 지정하세요` | `2` |
+
+권한이 없을 때 이관 쪽 안내가 `--project` 연결을 권하지 않는 이유 — 그 연결에는 빈 기준선이 없어서
+다음 `pull` 이 `erdd/` 를 서버의 빈 상태로 덮는다. 수동 절차는
+[로컬 모드 매뉴얼 7.2](local-guide.md#72-로컬로-시작한-프로젝트를-서버로-옮기기) 에 있다.
+
+`--json` 은 `{ configPath, projectId, projectName, migrated, hasLocalFiles }` 를 낸다 — `migrated` 는 로컬 전용
+config 를 이관했는가, `hasLocalFiles` 는 `erdd/` 에 올릴 파일이 있었는가(= 다음에 `diff`·`push` 할 것이 있는가)다.
 
 ### 6.2 `erdd pull`
 
@@ -682,7 +854,7 @@ $ erdd pull
 커머스: 테이블 24개를 받았습니다 (리비전 42)
 ```
 
-로컬에 변경이 있으면 먼저 목록을 보이고 확인을 받는다(최초 `pull` 은 기준선이 없어 묻지 않는다).
+로컬에 변경이 있으면 먼저 목록을 보이고 확인을 받는다.
 
 ```
 로컬 변경 2건이 덮어쓰기 됩니다:
@@ -691,7 +863,29 @@ $ erdd pull
 계속할까요? [y/N]
 ```
 
-거절하면 `사용자가 취소했습니다` 와 함께 종료 코드 `1`. `--yes` 로 건너뛴다.
+거절하면 `사용자가 취소했습니다` 와 함께 종료 코드 `1`. `--yes` 로 건너뛴다. 비대화형(`--json`)에서
+`--yes` 가 없으면 묻지 못하므로 멈춘다 — `확인이 필요합니다 — 비대화형(--json)에서는 --yes를 함께
+주세요`(코드 `CANCELLED`, 종료 코드 `1`).
+
+⚠️ **기준선(`.erdd/base.json`)이 없어도 `erdd/` 에 파일이 있으면 묻는다.** 저장소를 클론한 직후나
+연결 설정만 적은 직후가 그렇다 — 비교할 기준이 없으니 `erdd/` 의 파일 **전부**를 덮어쓸 변경으로 보인다.
+묻지 않는 것은 `erdd/` 가 비어 있을 때(진짜 최초 `pull`)뿐이다.
+
+```
+$ erdd pull
+로컬 변경 6건이 덮어쓰기 됩니다:
+  erdd/custom-fields.yaml
+  erdd/domains.yaml
+  erdd/groups.yaml
+  erdd/origins.yaml
+  erdd/terms.yaml
+  erdd/words.yaml
+계속할까요? [y/N]
+```
+
+클론한 파일이 서버와 같다면 `--yes` 로 받아도 잃는 것이 없다(받은 뒤 `erdd status` 가 「로컬 변경 없음」이다).
+**로컬 전용으로 만든 스키마를 서버에 붙이는 중이라면 `pull` 하지 않는다** — 서버가 비어 있으면 그 스키마가
+지워진다. `erdd init --create` 를 쓴다(→ [6.1](#61-erdd-init)).
 
 **서버에서 사라진 테이블의 파일은 지워진다.** `erdd/tables/*.yaml` 중 서버에 없는 것과, 최상위 5개
 파일 중 서버가 내려주지 않은 것이 삭제 대상이다.
@@ -700,6 +894,9 @@ $ erdd pull
 않은 파일을 "로컬 변경"으로 오탐할 수 있다. `erdd pull --yes` 를 한 번 더 돌리면 수렴한다.
 
 `--json` 은 `{ revisionSeq, written, deleted, tables, warnings }` 를 낸다.
+
+**공용 사전 출처(`erdd/origins.yaml`)도 받는다.** 웹에서 가져오기·승격을 했거나 승격 요청이 승인되면
+서버 항목에 출처가 붙고, 다음 `pull` 이 그것을 `origins.yaml` 로 쓴다(→ [5.8](#58-erddoriginsyaml--공용-사전-출처)).
 
 ### 6.3 `erdd status`
 
@@ -823,6 +1020,15 @@ $ erdd push -m "회원 등급 컬럼 추가"
 
 ⚠️ **비대화형(`--json`)에서 삭제가 있으면 `--yes` 를 함께 줘야 한다.** 아니면 이렇게 멈춘다 —
 `확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요`(종료 코드 `1`).
+
+**공용 사전 출처를 떼는 변경이 있으면 확인 전에 한 줄로 알린다**(stderr). `erdd/origins.yaml` 에서 줄이
+사라진 채 `push` 하면 서버의 출처도 떨어진다 — 파일이 진실이기 때문이다.
+
+```
+공용 사전 출처를 떼는 변경 1건이 포함됩니다 — 의도하지 않았다면 erdd pull 로 되돌리세요
+```
+
+막지는 않는다(의도한 분리일 수 있다). `--json` 성공 봉투의 `detachedOrigins` 가 그 건수다(0 이어도 실린다).
 
 **막는 것 셋.**
 
@@ -1141,6 +1347,216 @@ CREATE TABLE ORD (
 ⚠️ **그 `CHECK` 는 되읽히지 않는다** — 파서가 컬럼 인라인 `CHECK` 를 보지 않으므로 PostgreSQL
 덤프를 다시 가져오면 그냥 `INT` 다. 부호 없음이 본문으로 왕복하는 것은 **MySQL DDL 뿐**이다.
 
+### 6.11 `erdd dict` — 공용 사전
+
+조직·전역 **공용 사전 라이브러리**(단어·용어·도메인·커스텀 항목)를 로컬 파일과 주고받는다. 라이브러리를
+만들고 항목을 관리하는 것, 승격 요청을 승인하는 것은 웹에서 한다([사용자 가이드 13절](user-guide.md#13-공용-리소스)).
+
+```bash
+erdd dict list                                        # 이 프로젝트에서 보이는 라이브러리
+erdd dict pull --library "플랫폼팀 표준 사전"          # 처음 받기 — 구독에 더한다
+erdd dict pull                                        # 이후로는 구독 전부
+erdd push -m "…"                                      # 새 단어를 보관함(서버 프로젝트)에 먼저 올리고
+erdd dict push --library "플랫폼팀 표준 사전" -m "…"   # 공용으로 올린다(권한이 없으면 승격 요청)
+erdd dict requests                                    # 내 프로젝트의 승격 요청과 처리 결과
+```
+
+**서버에 연결된 프로젝트에서만 된다.** 로컬 전용 프로젝트에서는 이렇게 멈춘다(`1`) —
+
+```
+오류: 서버에 연결되지 않은 프로젝트입니다. erdd init --server <url> --create 로 연결하세요 (erdd.config.yaml)
+```
+
+| 명령 | 서버 호출 | 쓰는 파일 |
+|---|---|---|
+| `dict list` | `resource.library.listForProject` | 없음 |
+| `dict pull` | `resource.library.listForProject`·`resource.items.list` | 사전 파일 넷(`words`·`terms`·`domains`·`custom-fields`)·`origins.yaml`·`erdd.config.yaml`(구독) |
+| `dict push` | 위 둘 + `model.get`, `resource.promote` 또는 `promotion.create` | 직접 승격이면 `pull` 과 같다(암묵적 pull) |
+| `dict requests` | `resource.library.listForProject`·`promotion.listForProject` | 없음 |
+
+#### `erdd dict list`
+
+```bash
+$ erdd dict list
+  표준 사전(예시) — 전역 · 항목 14 · 쓰기 가능 · 01a0cc5e-c4a0-7402-b99c-fd41fb2cb350
+* 플랫폼팀 표준 사전 — 조직 · 항목 5 · 쓰기 가능 · 01a0cc5e-eeb8-7f2e-b3d5-eff88cffe341
+```
+
+- 앞의 `*` 는 구독 중이라는 표시다(`erdd.config.yaml` 의 `dictionaries`).
+- **「쓰기 가능」이 있으면 `dict push` 가 바로 승격하고, 없으면 승격 요청이 된다.** 조직 라이브러리는
+  조직 Owner/Admin, 전역 라이브러리는 서비스 관리자만 쓸 수 있다.
+- 보이는 라이브러리가 없으면 `이 프로젝트에서 보이는 라이브러리가 없습니다`.
+
+#### `erdd dict pull`
+
+라이브러리 항목을 **로컬 파일**에 받는다. 처음이면 전부 복사하고, 이후로는 **재동기화**(3-way)다 —
+웹의 「가져오기」와 같은 계산을 로컬 파일에 돌린다. **서버 프로젝트는 건드리지 않는다** — 받은 것은 다음
+`erdd push` 때 보관함에 올라간다.
+
+```bash
+$ erdd dict pull --library "플랫폼팀 표준 사전"
+플랫폼팀 표준 사전 (조직)
+  추가 4 · 자동 갱신 0 · 연결 0 · 유지 0
+반영했습니다 — erdd/domains.yaml, erdd/origins.yaml, erdd/terms.yaml, erdd/words.yaml
+
+$ erdd dict pull
+플랫폼팀 표준 사전 (조직)
+  추가 0 · 자동 갱신 0 · 연결 0 · 유지 4
+바뀐 파일이 없습니다
+```
+
+- **`--library <이름|id>`** — 그 라이브러리만 받고, 구독에 없으면 더한다. 이름이 여럿에 맞으면 후보를
+  보이고 멈춘다(`2`) — `이름이 <이름>인 라이브러리가 여럿입니다 — id로 지정하세요`. 없으면
+  `라이브러리 <이름>을(를) 찾지 못했습니다 — erdd dict list 로 확인하세요`(`1`).
+- **인자가 없으면 구독 전부를 적힌 순서대로** 처리한다. 구독이 없으면
+  `구독한 라이브러리가 없습니다 — --library <이름|id> 로 지정하세요 (목록: erdd dict list)`(`2`).
+- 구독한 라이브러리가 사라졌거나 권한이 없어졌으면 **그것만 건너뛰고** 나머지를 받는다(stderr 에
+  `경고: 라이브러리 <이름>(<id>)을(를) 찾을 수 없어 건너뜁니다 — 삭제됐거나 권한이 없습니다`, 보고에는
+  `<이름> — 찾을 수 없어 건너뛰었습니다`). 구독은 지우지 않는다.
+- **`--dry-run`** — 계획만 보이고 파일도 config 도 쓰지 않는다. 마지막 줄이 `미리보기입니다 — 파일을
+  쓰지 않았습니다` 다.
+- **다시 돌려도 바뀐 것이 없으면 아무 파일도 쓰지 않는다**(`바뀐 파일이 없습니다`).
+- 사전과 무관한 테이블·그룹 파일은 건드리지 않는다. 사람이 `id` 없이 적은 사전 항목에는 이 명령이
+  `id` 를 채운다(`push` 가 채우는 것과 같다).
+- 로컬 파일이 깨져 있으면 거절한다(`erdd validate` 로 확인하라는 문구와 함께 `1`).
+- `erdd serve` 가 떠 있어도 된다 — 파일 감시가 받는다. 저장하지 않은 편집이 있으면 화면에 「파일이
+  밖에서 바뀌었습니다」 배너가 뜬다.
+
+**항목마다 어떻게 되나 — 기본값은 웹 「가져오기」의 기본 선택과 같다.**
+
+| 상태 | 뜻 | 기본 | 바꾸는 옵션 |
+|---|---|---|---|
+| 추가 | 로컬에 없는 원본 항목 | 받는다 | — |
+| 자동 갱신 | 받은 뒤 로컬에서 안 고쳤는데 원본이 바뀌었다 | 원본 값으로 바꾼다 | — |
+| 충돌 | 로컬에서도 고쳤고 원본도 바뀌었다 | **보류**(파일을 바꾸지 않고 다음에 다시 알린다) | `--conflicts theirs`(원본 반영) · `--conflicts ours`(로컬 유지 — 이 변경을 검토했다고 기록해 다시 뜨지 않는다) |
+| 이름 중복 | 원본과 같은 이름의 항목이 로컬에 이미 있다(출처 없음) | **건너뜀** | `--adopt` — 그 로컬 항목에 출처를 연결한다(내용은 그대로) |
+| 유지 | 이미 최신이거나 로컬 자체 항목 | 그대로 | — |
+| 원본에서 사라짐 | 원본 항목이 지워졌다 | 로컬에 남겨 둔다 | — |
+
+```bash
+# 원본(라이브러리)에서 「번호」 약어가 바뀌고, 로컬이 고쳐 둔 「고객」도 원본이 바뀌었을 때
+$ erdd dict pull
+플랫폼팀 표준 사전 (조직)
+  추가 0 · 자동 갱신 1 · 연결 0 · 유지 4
+  충돌 1 — 보류(--conflicts theirs|ours 로 정리):
+    단어 고객  (abbreviation)
+반영했습니다 — erdd/origins.yaml, erdd/words.yaml
+
+$ erdd dict pull --conflicts theirs
+플랫폼팀 표준 사전 (조직)
+  추가 0 · 자동 갱신 0 · 연결 0 · 유지 5
+  충돌 1 — 원본 반영:
+    단어 고객  (abbreviation)
+반영했습니다 — erdd/origins.yaml, erdd/words.yaml
+```
+
+충돌 줄은 `종류 이름  (바뀐 필드 키)` 다 — 필드는 파일의 키 이름 그대로이고 값의 전후는 보이지 않는다.
+`--conflicts ours` 면 머리줄이 `충돌 N — 로컬 유지:` 다.
+
+**`--adopt` — 로컬로 시작해 이미 자기 단어가 있는 프로젝트가 사전에 합류할 때.**
+
+```bash
+$ erdd dict pull --library "플랫폼팀 표준 사전"
+플랫폼팀 표준 사전 (조직)
+  추가 5 · 자동 갱신 0 · 연결 0 · 유지 0
+  이름 중복 1 — 건너뜀 (--adopt 로 연결)
+반영했습니다 — erdd/domains.yaml, erdd/origins.yaml, erdd/terms.yaml, erdd/words.yaml
+
+$ erdd dict pull --adopt
+플랫폼팀 표준 사전 (조직)
+  추가 0 · 자동 갱신 0 · 연결 1 · 유지 5
+반영했습니다 — erdd/origins.yaml
+```
+
+- **내용은 바꾸지 않고 출처만 붙인다.** 로컬 값이 원본과 다르면 그 항목은 「로컬에서 고친 항목」이 되어,
+  나중에 원본이 바뀌면 자동 갱신이 아니라 **충돌**로 알린다(로컬 값을 조용히 덮지 않는다).
+- 연결 대상은 같은 종류·같은 이름(앞뒤 공백 무시)이고 **아직 출처가 없는** 로컬 항목이다. 커스텀 항목은
+  적용 대상(`target`)도 같아야 한다. 연결할 수 없는 이름 중복은 따로 센다 —
+  `이름 중복 N — 연결할 수 없음 (같은 이름 항목을 다른 원본이 차지했거나 커스텀 항목의 적용 대상이 다릅니다)`.
+
+#### `erdd dict push`
+
+로컬에서 만든 사전 항목을 공용 라이브러리로 올린다. 판정과 쓰기는 **서버의 승격 엔진**이 **서버
+프로젝트(보관함)의 값**으로 한다 — 웹 「조직으로 승격」과 같은 계산이다.
+
+**전제 — 올리기 전에 `erdd push` 로 보관함을 최신으로 만든다.** 승격 대상은 서버에 있는 값이라, 로컬에서
+고친 값이 서버에 없으면 **보던 값이 아니라 보관함의 옛 값이** 올라간다. 그래서 둘을 확인하고 멈춘다(`1`).
+
+| 상황 | 메시지 | 할 일 |
+|---|---|---|
+| push 하지 않은 로컬 변경이 있다 | `push 하지 않은 로컬 변경이 있습니다. erdd push 로 보관함을 먼저 갱신하세요` | `erdd push` |
+| 마지막 pull 뒤에 서버가 바뀌었다 | `서버가 마지막 pull 이후 앞서 나갔습니다 — erdd pull 로 받은 뒤 다시 실행하세요` | `erdd pull` (로컬 변경이 없으므로 잃는 것이 없다) |
+| 기준선이 없다 | `기준 시점이 없습니다. 먼저 erdd pull을 실행하세요` | `erdd pull` |
+
+```bash
+$ erdd push -m "배송 추가·고객 약어"
+반영했습니다 (리비전 3, 변경 2건)
+$ erdd dict push --library "플랫폼팀 표준 사전"
+신규 추가 1 · 원본 갱신 1 · 동명 발견 0(제외 — --include-name-match)
+  ~ 단어 고객  (abbreviation)
+  + 단어 배송
+계속할까요? [y/N] y
+승격했습니다 — 신규 1 · 갱신 1
+```
+
+계획 목록(`+` 신규 추가 · `~` 원본 갱신 · `=` 동명 발견, 괄호 안은 라이브러리 값과 다른 필드)과 확인
+질문은 stderr, 결과 한 줄은 stdout 이다.
+
+| 구역 | 뜻 | 기본 |
+|---|---|---|
+| 신규 추가 | 라이브러리에 없는 항목 | 보낸다 |
+| 원본 갱신 | 이미 연결된 라이브러리 항목을 이 프로젝트 값으로 올린다 | 보낸다 |
+| 동명 발견 | 같은 이름의 다른 항목이 라이브러리에 있다 | **보내지 않는다** — `--include-name-match` 로 포함(그 항목을 이 프로젝트 값으로 갱신하고 연결한다) |
+
+- **`--kind <종류,…>`**(`domain`·`word`·`term`·`customField`)와 **`--name <이름>`**(반복 가능)으로 올릴
+  항목을 좁힌다. 요약의 `동명 발견 N` 은 이 필터를 적용한 뒤 센다.
+- 올릴 것이 없으면 `올릴 항목이 없습니다`(`0`). 그때 `--name` 에 맞는 항목이 없었거나 동명 발견을 뺐으면
+  stderr 에 `--name 에 맞는 항목이 없습니다: <이름, …>` / `동명 발견 N건은 제외했습니다 — 올리려면
+  --include-name-match` 가 함께 나온다.
+- 확인은 `--yes` 로 건너뛴다. 비대화형(`--json`)에서는 `--yes` 가 필수다 —
+  `확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요`(`1`).
+- `--library` 는 필수다(`--library <이름|id> 가 필요합니다`, `2`).
+
+**권한에 따라 결과가 갈린다** — `erdd dict list` 의 「쓰기 가능」.
+
+- **쓰기 가능 → 바로 승격한다.** 서버가 확인 뒤 다시 계산해 그 사이 어긋난 항목만 건너뛰고, 성공하면
+  자동으로 `pull` 해 `erdd/origins.yaml` 을 받는다(새로 올린 항목에 출처가 붙는다).
+  - 건너뛴 항목은 `  건너뜀 단어 주문 (그 사이 계획이 바뀜)`(또는 `(대상이 사라짐)`)처럼 나열하고 종료 코드는 `0`
+    이다. **전부 건너뛰면** `승격된 항목이 없습니다 — 전부 건너뛰었습니다` 와 함께 `1` 이다.
+  - 승격은 됐는데 자동 `pull` 이 실패하면 `승격했습니다 — 신규 N · 갱신 M. 파일 갱신에 실패했습니다 —
+    erdd pull을 실행하세요 (<사유>)`(`1`). **다시 `dict push` 하지 말고 `erdd pull` 한다.** 확인을 기다리는
+    사이 로컬 파일을 고쳤으면 사유가 `확인하는 사이 로컬 파일이 바뀌어 덮어쓰지 않았습니다` 다.
+- **쓰기 불가 + 조직 라이브러리 → 승격 요청을 만든다.** `-m` 이 요청 메모다. 로컬 파일은 바뀌지 않는다.
+
+  ```bash
+  $ erdd dict push --library "플랫폼팀 표준 사전" -m "스모크 요청" --yes
+  신규 추가 1 · 원본 갱신 0 · 동명 발견 0(제외 — --include-name-match)
+    + 단어 주문
+  승격 요청을 만들었습니다 (1건). 조직 관리자가 웹에서 승인하면 반영됩니다
+  ```
+
+  그 사이 지워진 항목이 있으면 둘째 줄에 `(N건은 그 사이 사라져 빠졌습니다)` 가 붙는다.
+  **승인되면 서버 항목에 출처가 붙고, 다음 `erdd pull` 이 `origins.yaml` 에 받아 온다** — 서버만 바뀐
+  것이라 충돌하지 않는다.
+- **쓰기 불가 + 전역 라이브러리 → 서버를 부르기 전에 거절한다**(`1`) —
+  `전역 라이브러리로는 승격을 요청할 수 없습니다 — 서비스 관리자만 전역 라이브러리에 올릴 수 있습니다`.
+
+#### `erdd dict requests`
+
+이 프로젝트의 승격 요청을 오래된 것부터 보인다. 날짜는 로컬 날짜다.
+
+```bash
+$ erdd dict requests
+[승인] 2026-09-23 플랫폼팀 표준 사전 — 1건 · 멤버
+  메모: 스모크 요청
+  처리 메모: 승인 — 스모크
+```
+
+- 상태는 `[대기]`·`[승인]`·`[반려]`·`[취소]` 다. **처리 메모**(승인자가 남긴 사유 — 반려 사유 포함)는
+  웹 프로젝트 화면에는 없고 여기서 볼 수 있다.
+- `--status pending|resolved|rejected|cancelled` 로 거른다. 요청이 없으면 `승격 요청이 없습니다`.
+- 요청 취소와 승인은 웹에서 한다. 요청 항목의 이름은 보이지 않는다(건수만 보인다).
+
 ---
 
 ## 7. 동기화와 충돌
@@ -1226,7 +1642,9 @@ diff 를 깨끗하게 유지한다. 다음은 그 파일들에 없고, `pull`·`
 |---|---|
 | 테이블 배치 좌표(캔버스 위치, 그룹 뷰 좌표) | 서버 DB 쪽은 웹 에디터. `erdd serve` 로 옮긴 것은 **모드와 무관하게 `erdd/layout.yaml`**(→ [5.7](#57-erddlayoutyaml--배치-좌표와-메모)) |
 | 메모(note) | 위와 같다 |
-| 도메인·단어·용어·커스텀 항목의 **공용 리소스 출처(origin)** | 웹의 공용 리소스 화면(로컬 모드에는 공용 리소스가 없어 항상 비어 있다) |
+
+**공용 사전 출처는 여기 들지 않는다** — 사전 파일 옆의 `erdd/origins.yaml` 에 담기고 `pull`·`push` 가
+서버와 주고받는다(→ [5.8](#58-erddoriginsyaml--공용-사전-출처)).
 
 ⚠️ **`erdd/layout.yaml` 도 서버와 오가지 않는다.** `erdd serve` 로 옮긴 좌표는 `push` 해도 서버에
 반영되지 않고, `pull` 이 그 파일을 덮어쓰지도 않는다 — **서버 모드에서도 마찬가지다.** 서버 쪽
@@ -1273,7 +1691,8 @@ erdd skill install --dir .agent/skills/erdd --force
 - **`erdd/layout.yaml` 은 `erdd serve` 로 편집하면 모드와 무관하게 생기는 커밋 대상**이고 메모 본문이
   함께 들어 있다 — 잔재로 보고 지우지 않는다. 다만 서버와 오가지는 않는다.
 - **`id` 는 두 모드 모두 CLI 가 발급한다** — 서버가 발급하는 것이 아니다.
-- **모드별로 갈리는 것** — 공용 리소스 `origin` 은 서버 모드에만 해당한다.
+- **모드별로 갈리는 것** — 공용 사전 출처(`erdd/origins.yaml`)와 `erdd dict` 는 서버 모드에만 해당한다.
+  출처 파일은 **손으로 고치지 않는다**고 지시한다(사전 항목을 지우면 그 줄은 다음 저장에서 정리된다).
 
 ### 9.2 에이전트에게 쥐여 줄 때의 요령
 
@@ -1283,7 +1702,8 @@ erdd skill install --dir .agent/skills/erdd --force
 - **`validate` 를 push 전에 반드시 돌리게 한다.** 서버를 부르지 않으므로 비용이 없고, 명명 규칙
   위반을 사전에 잡는다.
 - 권한은 토큰 발급자의 역할을 그대로 따른다 — 에이전트에게 읽기만 시키려면 **Viewer 계정으로 발급한
-  토큰**을 준다.
+  토큰**을 준다. **조직 관리자의 토큰을 에이전트에게 주지 않는다** — 그 토큰으로는 `erdd dict push` 가
+  승인 없이 조직 라이브러리를 고치고 `erdd init --create` 가 프로젝트를 만든다(→ [3.1](#31-개인-액세스-토큰-발급)).
 
 ---
 
@@ -1310,7 +1730,7 @@ $ echo $?
 | `NO_CONFIG` | `erdd.config.yaml` 이 없다 | `1` |
 | `UNAUTHORIZED` | 토큰이 없거나 통하지 않는다 | `1` |
 | `FORBIDDEN` | 권한이 없다 | `1` |
-| `NOT_FOUND` | 조직·프로젝트를 찾지 못했다 | `1` |
+| `NOT_FOUND` | 조직·프로젝트·라이브러리를 찾지 못했다 | `1` |
 | `VALIDATION` | 파일·입력이 잘못됐다 | `1` |
 | `CONFLICT` | 서버가 앞서 나갔다(재시도 후에도) | `1` |
 | `CANCELLED` | 사용자가 취소했거나 확인이 필요하다 | `1` |
@@ -1368,6 +1788,45 @@ $ erdd import ../a/schema.sql --yes --json
 | `skipped` | 이름이 겹쳐 **건너뛴** 테이블 이름들(가져오는 파일의 원문 이름) |
 | `warnings` | `{kind, target, message}` 배열 — `table-conflict`·`unknown-type`·`unknown-word`·`unresolved-fk`·`unresolved-index` 등 |
 | `written`·`deleted` | 실제로 쓰거나 지운 파일 경로(저장소 상대) |
+
+**`dict pull` 의 JSON.** 라이브러리마다 보고 하나다. 보류된 충돌이 있어도 종료 코드는 `0` 이다 —
+충돌은 오류가 아니라 계획 결과다.
+
+```bash
+$ erdd dict pull --json
+{"libraries":[{"id":"01a0cc5e-eeb8-7f2e-b3d5-eff88cffe341","name":"플랫폼팀 표준 사전","scope":"org",
+  "missing":false,"added":0,"autoUpdated":0,"adopted":0,"nameClashSkipped":[],"unlinkable":[],
+  "conflicts":[{"kind":"단어","name":"고객","fields":["abbreviation"],"decision":"defer"}],
+  "kept":5,"detached":0}],
+ "written":[],"deleted":[],"dryRun":false}
+```
+
+| 키 | 뜻 |
+|---|---|
+| `libraries[].missing` | 구독했지만 찾을 수 없어 건너뛰었다(`scope` 는 `null`) |
+| `added`·`autoUpdated`·`adopted`·`kept`·`detached` | 추가·자동 갱신·연결·유지·원본에서 사라짐 건수 |
+| `nameClashSkipped`·`unlinkable` | 이름 중복으로 건너뛴 이름 / 연결할 수 없는 이름 |
+| `conflicts[].decision` | `defer`(보류) · `apply`(`--conflicts theirs`) · `keep`(`--conflicts ours`) |
+| `written`·`deleted` | 실제로 쓰거나 지운 파일. `dryRun` 이면 항상 `[]` |
+
+**`dict push` 의 JSON.** `mode` 로 갈린다.
+
+```bash
+$ erdd dict push --library "플랫폼팀 표준 사전" --json --yes --include-name-match
+{"mode":"promote","ok":true,"seq":7,"inserted":2,"updated":2,"skipped":[]}
+```
+
+| 경우 | 봉투 |
+|---|---|
+| 직접 승격 성공 | `{ mode: "promote", ok: true, seq, inserted, updated, skipped }` |
+| 전부 건너뜀(종료 `1`) | `{ mode: "promote", ok: false, … }` |
+| 승격됨 + 자동 pull 실패(종료 `1`) | `{ mode: "promote", ok: false, committed: true, syncError, … }` — **다시 올리지 말고 `erdd pull`** |
+| 승격 요청 | `{ mode: "request", id, requested, dropped }` |
+| 올릴 것이 없음 | `{ libraryId, selected: 0 }` |
+
+`dict list --json` 은 라이브러리 배열(`canWrite`·`subscribed` 포함), `dict requests --json` 은 요청 배열
+(`status`·`note`·`resolutionNote`·`approvedEntityIds` 포함)이다. `init --create` 의 JSON 은
+[6.1](#61-erdd-init), `push` 의 `detachedOrigins` 는 [6.6](#66-erdd-push).
 
 ⚠️ 파일 파싱 오류일 때는 `export`·`import` 둘 다 **`validate` 와 같은 봉투**
 (`{ok:false, parseErrors, integrityIssues, warnings}`)를 내고 종료 코드 `1` 이다 — 오류 봉투
@@ -1436,6 +1895,16 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 | `포트 4300이 이미 사용 중입니다 …` | 다른 `erdd serve` 나 다른 프로그램이 그 포트를 물고 있다 | `--port` 로 다른 포트를 준다 |
 | 브라우저 상단에 「파일을 읽을 수 없어 편집이 잠겼습니다」 배너가 뜨고 편집이 안 된다 | `erdd/` 안의 YAML 이 깨졌다 | 배너가 가리키는 파일을 고친다. 고치면 자동으로 풀린다 |
 | `erdd serve` 화면에서 테이블이 격자로 나란히 놓여 있다(모드를 가리지 않는다) | `erdd/layout.yaml` 이 없거나 그 테이블 항목이 없다 | 정상이다. 옮기거나 「자동 정렬」을 하면 좌표가 그 파일에 저장된다 |
+| `서버가 이 기능을 지원하지 않습니다 — 서버를 업그레이드하세요` | 서버가 CLI 보다 옛 버전이라 `erdd dict`·`init --create` 가 부르는 기능을 토큰에 열지 않았다 | 서버 관리자에게 서버 업그레이드를 요청한다. 토큰을 재발급해도 풀리지 않는다 |
+| `서버에 연결되지 않은 프로젝트입니다. erdd init --server <url> --create 로 연결하세요 …` | 로컬 전용 프로젝트에서 `erdd dict` 를 돌렸다 | `erdd init --server … --create` (→ [6.1](#61-erdd-init)) |
+| `push 하지 않은 로컬 변경이 있습니다. erdd push 로 보관함을 먼저 갱신하세요` | `dict push` 전에 로컬 변경이 서버에 없다 | `erdd push` 뒤 다시 `dict push` |
+| `서버가 마지막 pull 이후 앞서 나갔습니다 — erdd pull 로 받은 뒤 다시 실행하세요` | `dict push` 전에 서버가 바뀌었다(다른 사람의 편집·승격 승인 등) | `erdd pull` 뒤 다시 `dict push` |
+| `구독한 라이브러리가 없습니다 …` | 인자 없는 `dict pull` 인데 구독이 없다 | `erdd dict pull --library <이름\|id>` |
+| `dict pull` 이 충돌을 계속 「보류」로 보인다 | 로컬에서도 고쳤고 원본도 바뀌었다 | `--conflicts theirs`(원본 값으로) 또는 `--conflicts ours`(로컬 값 유지) |
+| `프로젝트 생성 권한이 없습니다 — …` | `init --create` 는 조직 Owner/Admin 만 된다 | 안내대로 관리자에게 프로젝트를 만들어 달라고 한다(→ [6.1](#61-erdd-init)) |
+| `이미 서버 프로젝트에 연결돼 있습니다 …` | 연결된 프로젝트에서 `init --create` 를 돌렸다 | 다른 프로젝트로 바꾸려면 `erdd init --project <id> --yes` |
+| `확인이 필요합니다 — 비대화형(--json)에서는 --yes를 함께 주세요` | `pull`·`init --create`(이관)이 확인을 요구했는데 `--json` 이라 물을 수 없다 | 무엇이 덮이는지 stderr 목록을 보고 `--yes` |
+| `origins[N]의 형식이 올바르지 않습니다 …` 등 | `erdd/origins.yaml` 을 손으로 고쳤다 | `erdd pull` 로 되받는다(→ [5.8](#58-erddoriginsyaml--공용-사전-출처)) |
 
 ---
 
@@ -1518,3 +1987,29 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 **공개 npm 에서 설치해 확인하지는 않았다.** 위 항목은 전부 `pnpm pack` 한 tarball 을 설치한 것이다.
 npm 에 게시된 판을 빈 프로젝트에 2.2 의 절차 그대로(`pnpm add -D @erdd/cli tsx`) 깔아 `erdd --help`·
 `init --local`·`validate` 의 종료 코드와 `erdd serve` 의 `/p/<id>` 응답을 확인하는 것이 남아 있다.
+
+### 공용 사전·서버 프로젝트 생성 — 실서버
+
+**실제 서버에 붙여 확인한 것.** 이 저장소의 서버를 격리 DB 로 띄우고, 조직·조직 라이브러리(도메인 1·단어 2·
+용어 1)·관리자 토큰·편집자 토큰을 tRPC 로 만든 뒤, 저장소 밖 스크래치 디렉터리에서 CLI 를 돌렸다
+(`npx tsx <ERDD>/packages/cli/src/main.ts …`). 본문 3.2·6.1·6.2·6.11·10.1 의 출력 인용은 그 실물이다.
+
+- `init --create` 의 두 안내(빈 디렉터리 / 이관), 빈 디렉터리에서 빈 사전 파일 다섯이 생기는 것, 편집자
+  토큰의 생성 권한 안내, 이미 연결된 config 의 거절.
+- `dict list` 의 구독 표시·쓰기 가능 표시, `dict pull` 의 첫 수신·재실행(아무 파일도 쓰지 않음)·
+  `--dry-run`, 구독이 config 에 남고 `push`·`pull` 뒤에도 유지되는 것.
+- 사전 파일에 id 없이 적은 단어가 `push` 로 id 를 받고, 라이브러리에서 받은 항목과 출처가 `push` 로 서버에
+  올라가 다른 사용자의 `pull` 에서 `origins.yaml` 로 내려오는 것.
+- 편집자 토큰의 `dict push` 가 승격 요청이 되고, 웹 승인(`promotion.resolve`) 뒤 편집자의 `pull` 이
+  승격 항목의 출처를 `origins.yaml` 에 쓰는 것, `dict requests` 의 대기·승인·처리 메모.
+- 관리자 토큰의 `dict push` 가 바로 승격하고 암묵적 pull 로 `origins.yaml` 을 갱신하는 것, 그 전제 두 가지
+  (로컬 변경 있음 / 서버가 앞서 나감)의 거절.
+- 이관 — `init --local` → 단어 추가 → `init --create` → `diff` 가 전부 「추가」 → `push`. 이어서 `dict pull`
+  의 이름 중복 건너뜀 → `--adopt` 연결, 라이브러리 수정 뒤의 자동 갱신·충돌 보류·`--conflicts theirs`,
+  `dict pull --json` 봉투.
+- 기준선 없이 연결된 디렉터리(`erdd/` 에 파일 있음)의 `pull` 이 대화형이면 묻고, `--json` 이면
+  `CANCELLED` 로 멈추고, `--yes` 면 받는 것.
+- 편집자의 전역 라이브러리 `dict push` 가 서버를 부르기 전에 거절되는 것.
+
+**확인하지 않은 것.** 옛 서버에 새 CLI 를 붙였을 때의 「서버가 이 기능을 지원하지 않습니다」(단위 테스트로만
+확인), `erdd serve` 화면에서의 사전 편집(파일 직접 편집으로 대신했다), `init --create` 의 대화형 조직 선택.
