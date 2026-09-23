@@ -509,6 +509,9 @@ dictionaries:
 - **`file` 은 `erdd dict pull --file <경로>` 가 처음 받을 때 적는다** — 그 뒤로는 인자 없는
   `erdd dict pull` 도 서버가 아니라 이 경로의 파일에서 받는다(→ [6.11 의 `--file`](#611-erdd-dict--공용-사전)).
   경로는 프로젝트 안의 POSIX 상대 경로이고 `erdd/` 아래일 수 없다. 없는 키와 같은 뜻이다(서버 구독).
+  이 규칙은 손으로 고친 값도 다시 검사한다 — 어기면 `dict pull`·`dict list` 를 포함해 config 를
+  읽는 모든 명령이 종료 코드 `1` 로 멈춘다 —
+  `erdd.config.yaml의 dictionaries(<id>).file 이 규칙을 어깁니다 — …`.
 
 ### 5.3 테이블 파일
 

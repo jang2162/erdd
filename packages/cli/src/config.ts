@@ -5,6 +5,7 @@ import {
   DIALECTS, TableOptionsSchema,
   type Dialect, type FileTree, type NamingRules, type TableOptions,
 } from '@erdd/core'
+import { subscriptionPath } from './commands/dict-file.js'
 import { CliError } from './output.js'
 
 export type ErddConfig = {
@@ -115,6 +116,18 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   }
   const dictionaries = ((rawDicts ?? []) as DictionaryRef[]).map((d) =>
     (d.file === undefined ? { id: d.id, name: d.name } : { id: d.id, name: d.name, file: d.file }))
+  // dict pull --file 입구(subscriptionPath)의 규칙은 그 입구를 거칠 때만 적용된다 — 손으로 고친
+  // dictionaries[].file 은 인자 없는 dict pull·dict list 가 검사 없이 그대로 읽는다. 여기서
+  // 다시 검증해 erdd/ 안·프로젝트 밖 경로를 파일을 읽기 전에 막는다.
+  for (const d of dictionaries) {
+    if (d.file === undefined) continue
+    try {
+      subscriptionPath(cwd, d.file)
+    } catch (err) {
+      const reason = err instanceof CliError ? err.message : String(err)
+      throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries(${d.id}).file 이 규칙을 어깁니다 — ${reason}`)
+    }
+  }
   // 같은 사전을 두 번 적으면 dict pull 이 그 사전을 두 번 처리한다 — 어느 줄이 맞는지 고를 수 없다.
   const dup = dictionaries.find((d, i) => dictionaries.findIndex((e) => e.id === d.id) !== i)
   if (dup !== undefined) {
