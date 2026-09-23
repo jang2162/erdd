@@ -7,7 +7,7 @@ import { diffProjection } from './diff.js'
 import { formatChangeset } from './format.js'
 import { parseChangeset } from './parse.js'
 import { applyChangeset } from './replay.js'
-import { CHANGESET_FORMAT, emptyProjection } from './types.js'
+import { CHANGESET_FORMAT, emptyProjection, type SchemaProjection, type Statement } from './types.js'
 
 /**
  * 왕복 불변식 — 재생이 기준선의 유일한 원천이므로(guide 「재생은 `@id` 로 대상을 찾는다」)
@@ -40,10 +40,7 @@ function initial(): ProjectModel {
   return m
 }
 
-/** 편집 사이에 이어지는 생성기 상태 — 새 이름 번호와 방금 버려진 이름(이름 재사용 편집이 쓴다). */
-type Gen = { n: number; freedTables: string[]; freedColumns: { tableId: string; name: string }[] }
-
-function mutate(state: State, rand: () => number, counter: Gen): State {
+function mutate(state: State, rand: () => number, counter: { n: number }): State {
   let m: ProjectModel = structuredClone(state.model)
   let rules = state.rules
   const pick = <T,>(xs: readonly T[]): T | undefined => (xs.length === 0 ? undefined : xs[Math.floor(rand() * xs.length)])
@@ -69,8 +66,8 @@ function mutate(state: State, rand: () => number, counter: Gen): State {
       }
       break
     }
-    case 1: { const t = pick(tables()); if (t) { counter.freedTables.push(t.physicalName); m = deleteTableCascade(m, t.id) } break }
-    case 2: { const t = pick(tables()); if (t) { counter.freedTables.push(t.physicalName); m.tables[t.id] = { ...t, physicalName: fresh('RN_') } } break }
+    case 1: { const t = pick(tables()); if (t) m = deleteTableCascade(m, t.id); break }
+    case 2: { const t = pick(tables()); if (t) m.tables[t.id] = { ...t, physicalName: fresh('RN_') }; break }
     case 3: {
       const t = pick(tables())
       if (t) {
@@ -82,16 +79,8 @@ function mutate(state: State, rand: () => number, counter: Gen): State {
       }
       break
     }
-    case 4: {
-      const c = pick(Object.values(m.columns))
-      if (c) { counter.freedColumns.push({ tableId: c.tableId, name: c.physicalName }); m = deleteColumnCascade(m, c.id) }
-      break
-    }
-    case 5: {
-      const c = pick(Object.values(m.columns))
-      if (c) { counter.freedColumns.push({ tableId: c.tableId, name: c.physicalName }); m.columns[c.id] = { ...c, physicalName: fresh('RC_') } }
-      break
-    }
+    case 4: { const c = pick(Object.values(m.columns)); if (c) m = deleteColumnCascade(m, c.id); break }
+    case 5: { const c = pick(Object.values(m.columns)); if (c) m.columns[c.id] = { ...c, physicalName: fresh('RC_') }; break }
     case 6: {
       const c = pick(Object.values(m.columns))
       if (c) {
@@ -176,19 +165,25 @@ function mutate(state: State, rand: () => number, counter: Gen): State {
       if (t) m.tables[t.id] = { ...t, comment: pick(COMMENTS)!, logicalName: pick(['', '회원', '주문 상세'])! }
       break
     }
-    // 이름 재사용 — 다른 테이블(컬럼)이 방금 버린 이름으로 바꾼다. 개명 사슬·맞바꾸기가 한 기록에 들어간다.
-    // 그 순간 같은 이름이 모델에 없을 때만 쓴다(같은 이름 둘은 기록할 수 없는 상태다).
+    // 이름 재사용 — 한 테이블(컬럼)이 버린 이름을 다른 테이블(컬럼)이 곧바로 받는다. 한 기록에 개명 사슬이
+    // 들어간다. 버린 쪽이 새 이름을 먼저 받으므로 그 순간 같은 이름이 모델에 둘 생기지 않는다.
     case 15: {
       if (rand() < 0.5) {
-        const t = pick(tables())
-        const name = pick(counter.freedTables.filter((n) => tables().every((x) => x.physicalName !== n)))
-        if (t && name !== undefined) { counter.freedTables.push(t.physicalName); m.tables[t.id] = { ...t, physicalName: name } }
+        const x = pick(tables())
+        const y = pick(tables().filter((t) => t.id !== x?.id))
+        if (x && y) {
+          m.tables[x.id] = { ...x, physicalName: fresh('RN_') }
+          m.tables[y.id] = { ...y, physicalName: x.physicalName }
+        }
       } else {
-        const c = pick(Object.values(m.columns))
-        const name = c && pick(counter.freedColumns
-          .filter((f) => f.tableId === c.tableId && cols(c.tableId).every((x) => x.physicalName !== f.name))
-          .map((f) => f.name))
-        if (c && name !== undefined) { counter.freedColumns.push({ tableId: c.tableId, name: c.physicalName }); m.columns[c.id] = { ...c, physicalName: name } }
+        const t = pick(tables())
+        const list = t ? cols(t.id) : []
+        const x = pick(list)
+        const y = pick(list.filter((c) => c.id !== x?.id))
+        if (x && y) {
+          m.columns[x.id] = { ...x, physicalName: fresh('RC_') }
+          m.columns[y.id] = { ...y, physicalName: x.physicalName }
+        }
       }
       break
     }
@@ -196,10 +191,71 @@ function mutate(state: State, rand: () => number, counter: Gen): State {
   return { model: m, rules }
 }
 
+/**
+ * 문장을 위에서 아래로 SQL 로 옮겼을 때 이름이 부딪치는 첫 문장(guide 「문장 순서」). 테이블 이름,
+ * 테이블별 컬럼 이름, 스키마 전역 인덱스 이름을 흉내 낸다. 순환 개명(맞바꾸기)은 알려진 한계라 뺀다.
+ */
+function sqlNameClash(base: SchemaProjection, statements: readonly Statement[]): string | null {
+  const tables = new Map(Object.values(base.tables).map((t) => [t.id, t.name]))
+  const columns = new Map(Object.values(base.tables).map((t) => [t.id, new Set(t.columnIds.map((id) => base.columns[id]!.name))]))
+  const indexes = new Set(Object.values(base.indexes).map((ix) => ix.name))
+  const tableNames = () => new Set(tables.values())
+  const inCycle = (pairs: { from: string; to: string }[], x: { from: string; to: string }) => {
+    let cur = x
+    for (let k = 0; k < pairs.length; k += 1) {
+      const next = pairs.find((p) => p.from === cur.to)
+      if (next === undefined) return false
+      if (next === x) return true
+      cur = next
+    }
+    return false
+  }
+  const tableRenames = statements.flatMap((s) => (s.kind === 'renameTable' ? [s] : []))
+  const indexRenames = statements.flatMap((s) => (s.kind === 'renameIndex' ? [s] : []))
+  for (const s of statements) {
+    switch (s.kind) {
+      case 'dropIndex': indexes.delete(s.index.name); break
+      case 'renameIndex':
+        if (indexes.has(s.to) && !inCycle(indexRenames, s)) return `rename index ${s.from} -> ${s.to}`
+        indexes.delete(s.from); indexes.add(s.to); break
+      case 'dropTable':
+        tables.delete(s.table.id); columns.delete(s.table.id)
+        for (const ix of s.table.indexes) indexes.delete(ix.name)
+        break
+      case 'renameTable':
+        if (tableNames().has(s.to) && !inCycle(tableRenames, s)) return `rename table ${s.from} -> ${s.to}`
+        tables.set(s.id, s.to); break
+      case 'createTable':
+        if (tableNames().has(s.table.name)) return `create table ${s.table.name}`
+        tables.set(s.table.id, s.table.name); columns.set(s.table.id, new Set(s.table.columns.map((c) => c.name))); break
+      case 'alterTable': {
+        const set = columns.get(s.id)!
+        const renames = s.actions.flatMap((a) => (a.kind === 'renameColumn' ? [a] : []))
+        for (const a of s.actions) {
+          if (a.kind === 'dropColumn') set.delete(a.column.name)
+          else if (a.kind === 'renameColumn') {
+            if (set.has(a.to) && !inCycle(renames, a)) return `${s.name}: rename column ${a.from} -> ${a.to}`
+            set.delete(a.from); set.add(a.to)
+          } else if (a.kind === 'addColumn') {
+            if (set.has(a.column.name)) return `${s.name}: add column ${a.column.name}`
+            set.add(a.column.name)
+          }
+        }
+        break
+      }
+      case 'addIndex':
+        if (indexes.has(s.index.name)) return `add index ${s.index.name}`
+        indexes.add(s.index.name); break
+      default: break
+    }
+  }
+  return null
+}
+
 describe('왕복 불변식 — 기록을 쌓아 재생하면 매 시점의 투영이 된다', () => {
   it.each([1, 2, 3, 4, 5, 6, 7, 8])('시드 %i', (seed) => {
     const rand = rng(seed)
-    const counter: Gen = { n: 0, freedTables: [], freedColumns: [] }
+    const counter = { n: 0 }
     let state: State = { model: initial(), rules: DEFAULT_NAMING_RULES }
     const replayed = emptyProjection()
     for (let step = 0; step < 60; step += 1) {
@@ -210,6 +266,7 @@ describe('왕복 불변식 — 기록을 쌓아 재생하면 매 시점의 투�
       const b = projectSchema(next.model, { rules: next.rules, dialects: DIALECTS })
       const d = diffProjection(a, b)
       if (!d.ok) throw new Error(`시드 ${seed} 단계 ${step}: ${d.message}`)
+      expect(sqlNameClash(a, d.statements), `시드 ${seed} 단계 ${step}`).toBeNull()
       const text = formatChangeset({ header: { format: CHANGESET_FORMAT, name: `s${step}`, created: '2026-09-23T00:00:00Z', baseline: false }, statements: d.statements })
       const parsed = parseChangeset(text)
       if (!parsed.ok) throw new Error(`시드 ${seed} 단계 ${step} ${parsed.line}행: ${parsed.message}\n${text}`)
