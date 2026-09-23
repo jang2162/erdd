@@ -84,7 +84,7 @@ npm 평면 배치는 캐시가 없으면 `ENOTCACHED` 로 죽는다. **되기도
 
 ### 2.2 방법 A: npm 에서 설치 (권장)
 
-`@erdd/cli` 와 `@erdd/core` 는 **공개 npm**(registry.npmjs.org)에 올라간다. 따로 할 레지스트리 설정도,
+`@erdd/cli` 와 `@erdd/core` 는 **공개 npm**(registry.npmjs.org)에 있다. 따로 할 레지스트리 설정도,
 토큰도 필요 없다. 스키마를 둘 프로젝트에서 바로 설치한다.
 
 ```bash
@@ -2179,9 +2179,24 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
   대신 해결하려던 시도는 **pnpm 소비처를 오히려 회귀시켜**(되던 것이 `127` 로) 되돌렸다.
 - **웹 번들 없이 팩하면 `prepack` 가드가 종료 코드 `1` 로 막는 것**(`pnpm pack`·`npm pack` 양쪽).
 
-**공개 npm 에서 설치해 확인하지는 않았다.** 위 항목은 전부 `pnpm pack` 한 tarball 을 설치한 것이다.
-npm 에 게시된 판을 빈 프로젝트에 2.2 의 절차 그대로(`pnpm add -D @erdd/cli tsx`) 깔아 `erdd --help`·
-`init --local`·`validate` 의 종료 코드와 `erdd serve` 의 `/p/<id>` 응답을 확인하는 것이 남아 있다.
+**공개 npm 에서 설치해 확인한 것.** 위 항목(`pnpm pack` 한 tarball)과 달리 npm 에 게시된 판
+(`@erdd/cli@0.4.0`·`@erdd/core@0.3.0`)을 빈 디렉터리에 2.2 의 절차 그대로 `pnpm add -D @erdd/cli tsx`
+(pnpm 10.33.0)로 깔았다. 레지스트리 설정·토큰 없이 받아진다.
+
+- `pnpm exec erdd --help` 가 명령 목록을 낸다(본문 [2.5](#25-실행-확인)).
+- `erdd init --local` 이 `로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요` 를 내고 종료 코드 `0`.
+- `erdd validate` 가 `정합성 문제 없음`·`명명 경고 없음` 을 내고 종료 코드 `0`.
+- `erdd serve --port 4391 --no-open` 이 아래 두 줄을 내고, `/` 가 `/p/00000000-0000-7000-8000-000000000000`
+  으로 **302**, 그 주소가 **200 + HTML**(`<!doctype html>`·`<html lang="ko">`)이다 — 웹을 빌드하지 않은
+  프로젝트에서 설치본에 동봉된 웹 번들이 서빙된다.
+
+  ```
+  http://127.0.0.1:4391 에서 실행 중 (프로젝트: …)
+  중지하려면 Ctrl+C
+  ```
+
+**확인하지 않은 조합** — npm 으로 설치(`npm install -D @erdd/cli tsx` + `npx erdd`), 전역 설치,
+설치 없이 `npx @erdd/cli`, Windows.
 
 ### 공용 사전·서버 프로젝트 생성 — 실서버
 
