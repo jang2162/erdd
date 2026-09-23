@@ -128,8 +128,9 @@
   기본 선택에서 뺀다 — 웹 `promote-selection.ts` 의 `initialSelection`(승격 탭·승인 다이얼로그 공통,
   배지는 `PromoteEntryList` 의 `audience` 로 화면별 문구), CLI `dict push`(`--name` 으로 지정해도 빼고
   `behind` 로 알린다). **새 소비처가 `status !== 'name-match'` 만으로 기본 선택을 만들면 이 결함이 되살아난다.**
-  정상 경로는 재동기화로 원본을 먼저 보는 것이다 — 「프로젝트 유지」(`keep`)가 `origin` 을 원본의 새 버전으로
-  올리므로 그 뒤에는 `sourceBehind` 가 풀리고 의도한 덮어쓰기가 `update` 로 올라간다.
+  **덮어쓰기는 원본의 최신 값을 보고 나서 한다** — 정상 경로는 재동기화로 원본을 먼저 보는 것이고,
+  「프로젝트 유지」(`keep`)가 `origin` 을 원본의 새 버전으로 올리므로 그 뒤에는 `sourceBehind` 가 풀리고
+  의도한 덮어쓰기가 `update` 로 올라간다.
   - **`PromoteStatus` 에 새 값을 두지 않고 필드로 둔 이유** — 상태는 서버 계약이다. 클라가 보내는
     `expectedStatus`(`resource.promote`·`promotion.resolve` 입력 스키마의 enum)를 서버가 락 안에서 다시 계산한
     상태와 대조한다. 새 상태를 만들면 입력 스키마가 바뀌어 옛 클라이언트(새 서버 + 옛 CLI)가 거절되고, 사람이
