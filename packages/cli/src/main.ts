@@ -94,8 +94,8 @@ export function flagValue(argv: string[], name: string): string | undefined {
 /**
  * -m 같은 한 글자 플래그. flagValue와 같은 규칙 — 값 자리에 다음 "긴" 플래그(--로 시작)가
  * 오면 값이 빠진 것이다. 단일 대시로 시작하는 값(예: "-fix column")은 그대로 삼킨다 — 이
- * CLI의 단일 대시 토큰은 -m·-o·-h·-v뿐이고 -h·-v는 배차 전에 이미 short-circuit되므로 혼동될
- * 여지가 없다(값 자리에 `-h`·`-v` 를 그대로 적으면 도움말·버전으로 끝난다). 단일 대시를 거절하면
+ * CLI의 단일 대시 토큰은 -m·-o·-h·-v뿐이다. -h 는 어디에 있든 배차 전에 도움말로 끝나고(값 자리에
+ * `-h` 를 적어도 도움말이다), -v 는 명령 자리에서만 버전이라 값 자리의 `-v` 는 값으로 삼킨다. 단일 대시를 거절하면
  * `-m "-fix column"`처럼 하이픈으로 시작하는 요약이 조용히 사라지고 자동 요약으로 대체된다.
  */
 export function shortFlagValue(argv: string[], name: string): string | undefined {
@@ -178,7 +178,10 @@ export async function main(argv: string[], cwd: string): Promise<number> {
     note(USAGE)
     return 0
   }
-  if (argv.includes('--version') || argv.includes('-v')) {
+  // --version·-v 는 명령 자리(--json 을 뺀 첫 토큰)에서만 받는다. 명령 뒤의 -v 는 값(`-o -v`)이거나
+  // 다른 도구의 verbose 로 적은 것이라, 가로채면 명령이 돌지 않은 채 성공(0)으로 끝난다.
+  const head = argv.find((a) => a !== '--json')
+  if (head === '--version' || head === '-v') {
     const version = cliVersion()
     emit(json, version, { version })
     return 0

@@ -83,11 +83,28 @@ describe('main', () => {
       expect(JSON.parse(out.join(''))).toEqual({ version: expected })
     })
 
-    it('명령보다 먼저 처리한다 — 명령 뒤에 와도 명령을 실행하지 않는다', async () => {
+    it('--json 은 --version 앞뒤 어디에 와도 된다', async () => {
+      const { out } = capture()
+      expect(await main(['--version', '--json'], '/tmp/erdd-none')).toBe(0)
+      expect(JSON.parse(out.join(''))).toEqual({ version: expected })
+    })
+
+    it('명령 뒤의 --version·-v 는 버전으로 가로채지 않고 명령을 돈다', async () => {
       // config 가 없는 곳이라 명령이 돌면 NO_CONFIG(1)다.
       const { out } = capture()
-      expect(await main(['status', '-v'], '/tmp/erdd-does-not-exist')).toBe(0)
-      expect(out.join('')).toBe(`${expected}\n`)
+      for (const argv of [['status', '-v', '--json'], ['status', '--version', '--json'], ['push', '-m', '-v', '--json']]) {
+        out.length = 0
+        expect(await main(argv, '/tmp/erdd-does-not-exist')).toBe(1)
+        expect(JSON.parse(out.join('')).error.code).toBe('NO_CONFIG')
+      }
+    })
+
+    it('값 자리의 -v 는 값이다 — export -o -v 는 파일 -v 를 쓴다', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'erdd-main-version-'))
+      capture()
+      expect(await main(['init', '--local', '--json'], dir)).toBe(0)
+      expect(await main(['export', '-o', '-v', '--json'], dir)).toBe(0)
+      expect(await readFile(join(dir, '-v'), 'utf8')).toBeTypeOf('string')
     })
 
     it('--help 와 함께면 --help 가 이긴다', async () => {

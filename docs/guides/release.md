@@ -464,8 +464,6 @@ npm 은 `files` 와 무관하게 **패키지 루트의** `LICENSE` 를 tarball �
   지나서 「Re-run failed jobs」를 누르면 download 단계가 죽는다(시끄럽게) — 그때는 실행 전체를 다시 돌린다.
 - **태그 필터가 빌드 메타데이터를 잡지 않는다.** `cli-v0.1.0+build.1` 형태는 워크플로를 띄우지
   않는다. 의도라면 그대로 둬도 된다.
-- **`erdd --version` 이 없다.** 게시되는 CLI 인데 버전을 물을 방법이 없다(`--version` 은
-  `알 수 없는 명령` 이다).
 - **Linux 에서 `erdd serve` 의 파일 감시가 조용히 죽는다.** `fs.watch(dir, { recursive: true })` 는
   Linux 에서 퍼미션 `0o000` 인 디렉터리에도 **던지지 않고 `'error'` 이벤트도 내지 않는다** —
   같은 디렉터리에 **비재귀** watch 는 EACCES 로 던지고 `readdirSync` 도 EACCES 다(재귀만 다르다).
