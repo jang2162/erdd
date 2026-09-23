@@ -143,6 +143,26 @@ describe('로컬 라우터', () => {
     expect(after.dictionaries).toEqual([{ id: 'L1', name: '표준' }])
   })
 
+  /**
+   * `dict pull --library` 가 디스크 config 에 구독을 더한 직후, 감시 디바운스가 `ctx.config` 를 맞추기
+   * 전에 설정을 저장하는 창 — `ctx.config` 의 옛 구독으로 덮으면 방금 더한 구독이 조용히 사라진다.
+   */
+  it('project.update 는 ctx.config 의 구독이 낡았어도 디스크의 구독을 보존한다', async () => {
+    const c = await ctx()
+    expect(c.config.dictionaries).toEqual([])
+    await writeFile(join(c.cwd, 'erdd.config.yaml'), [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      'dictionaries: [{ id: L1, name: 표준 }]',
+      '',
+    ].join('\n'), 'utf8')
+    await createLocalRouter().createCaller(c).project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })
+    const after = await readConfig(c.cwd)
+    expect(after.dialects).toEqual(['mysql'])
+    expect(after.dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+    expect(c.config.dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+  })
+
   it('project.update 뒤의 project.get 이 새 값을 낸다', async () => {
     const call = createLocalRouter().createCaller(await ctx())
     await call.project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })
