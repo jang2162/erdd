@@ -1063,4 +1063,22 @@ describe('push', () => {
     expect(plan.conflicts).toEqual([])
     expect(plan.ops).toEqual([])
   })
+
+  it('업그레이드 직후 출처 있는 단어를 로컬에서 지우면 충돌 없이 delete op 1건이다', async () => {
+    const id = '018f6b0e-0000-7000-8000-0000000000a1'
+    const server = createEmptyModel()
+    server.words[id] = {
+      id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null,
+      origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
+    }
+    // 옛 CLI 가 쓴 base — origins.yaml 이 없다. 로컬은 그 단어를 지웠다.
+    const { tree } = modelToFiles(server)
+    delete tree['erdd/origins.yaml']
+    await writeBase(dir, tree)
+    await writeTree(dir, { ...tree, 'erdd/words.yaml': { words: [] } })
+    const { client } = stub(server)
+    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
+    expect(plan.conflicts).toEqual([])
+    expect(plan.ops).toEqual([expect.objectContaining({ action: 'delete', entity: 'word', entityId: id })])
+  })
 })

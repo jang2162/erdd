@@ -232,6 +232,17 @@ function sameVisible(a: Entity, b: Entity, fields: Record<string, string>): bool
   return Object.keys(fields).every((f) => deepEqual(a[f], b[f]))
 }
 
+/**
+ * 삭제 판정(한쪽이 지운 항목을 상대가 고쳤는가)에 쓰는 필드 — `origin` 을 뺀다.
+ * 항목을 지우는 쪽이 출처만 바뀐 상대 변경(재동기화 keep·승격)을 이겨도 잃는 것이 없다 —
+ * 항목과 함께 출처도 사라질 뿐이다. 반대로 `origin` 을 넣으면 출처를 모르는 옛 base
+ * (`origins.yaml` 이 없는 트리)에서 서버에만 출처가 있어 **서버가 아무것도 고치지 않았는데도**
+ * 삭제가 충돌이 된다. 필드 단위 병합과 `both-added` 는 여전히 `origin` 을 비교한다.
+ */
+function deleteJudgeFields(fields: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(fields).filter(([f]) => f !== 'origin'))
+}
+
 export type MergeOptions = {
   /**
    * 테이블 id → **로컬 디스크의 실제 파일 경로**(`filesToModel`의 `tableFiles`).
@@ -260,6 +271,7 @@ export function mergeModels(
 
   for (const kind of MERGE_KINDS) {
     const fields = FILE_FIELDS[kind]
+    const deleteFields = deleteJudgeFields(fields)
     const bCol = collectionOf(base, kind)
     const lCol = collectionOf(local, kind)
     const sCol = collectionOf(server, kind)
@@ -294,8 +306,8 @@ export function mergeModels(
       if (l === undefined && b === undefined) continue          // 서버 전용 → 유지
       if (l === undefined) {
         if (s === undefined) { delete out[id]; continue }        // 양쪽 삭제
-        if (sameVisible(b!, s, fields)) { delete out[id]; continue }   // 로컬 삭제
-        conflict('*', 'local-delete', null, changedKeys(fields, b, s))
+        if (sameVisible(b!, s, deleteFields)) { delete out[id]; continue }   // 로컬 삭제
+        conflict('*', 'local-delete', null, changedKeys(deleteFields, b, s))
         continue
       }
       if (b === undefined) {
@@ -308,8 +320,8 @@ export function mergeModels(
         continue
       }
       if (s === undefined) {
-        if (sameVisible(b, l, fields)) continue                  // 서버 삭제 수용(out에 이미 없다)
-        conflict('*', 'server-delete', null, changedKeys(fields, b, l))
+        if (sameVisible(b, l, deleteFields)) continue            // 서버 삭제 수용(out에 이미 없다)
+        conflict('*', 'server-delete', null, changedKeys(deleteFields, b, l))
         continue
       }
 

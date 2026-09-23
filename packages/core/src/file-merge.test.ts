@@ -530,6 +530,19 @@ describe('origin 병합', () => {
     expect(merged.words['w1']!.origin).toEqual(X)
   })
 
+  it('업그레이드 직후 — 옛 base(출처 없음)에서 로컬이 지운 항목은 서버에 출처만 있어도 충돌 없이 지워진다', () => {
+    // 옛 base 는 출처를 모른다. 서버는 아무것도 고치지 않았으므로 로컬 삭제가 이긴다.
+    const { merged, conflicts } = mergeModels(word(null), createEmptyModel(), fileVisibleModel(word(X)))
+    expect(conflicts).toEqual([])
+    expect(merged.words['w1']).toBeUndefined()
+  })
+
+  it('서버가 지운 항목은 로컬이 출처만 바꿨어도 충돌 없이 지워진다', () => {
+    const { merged, conflicts } = mergeModels(word(null), word(X), createEmptyModel())
+    expect(conflicts).toEqual([])
+    expect(merged.words['w1']).toBeUndefined()
+  })
+
   it('로컬이 붙인 출처(dict pull)는 서버로 올라간다', () => {
     const server = word(null)
     const { merged } = mergeModels(word(null), word(X), fileVisibleModel(server))
