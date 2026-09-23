@@ -1,8 +1,17 @@
 # ERDD
 
-웹에서 ERD를 실시간 협업으로 설계하고, 한국 실무의 명명 체계(단어·용어·도메인 사전)와 산출물까지 관리하며, CLI로 코드베이스와 AI agent에 연결되는 상용 SaaS.
+웹에서 ERD를 실시간 협업으로 설계하고, 한국 실무의 명명 체계(단어·용어·도메인 사전)와 산출물까지 관리하며, CLI로 코드베이스와 AI agent에 연결되는 오픈소스 ERD 도구.
 
-에디터·실시간 협업·명명 체계·CLI·가져오기/내보내기가 구현되어 동작한다.
+에디터·실시간 협업·명명 체계·CLI·가져오기/내보내기가 구현되어 동작한다. 서버를 직접 세워 여러 사람이
+함께 쓰는 **서버 모드**와, 서버 없이 저장소 안의 YAML 파일만으로 같은 에디터를 여는 **로컬 모드**가 있다.
+
+## 시작하기
+
+- **혼자 쓴다(로컬 모드)** — 스키마를 둘 프로젝트에서 `pnpm add -D @erdd/cli tsx` 후 `pnpm exec erdd init --local`,
+  `pnpm exec erdd serve`. 자세한 것은 [로컬 모드 매뉴얼](docs/manual/local-guide.md).
+- **여럿이 쓴다(서버 모드)** — 자체 서버에 올리는 절차는 [설치·운영 매뉴얼](docs/manual/install.md).
+- **CLI 레퍼런스** — [CLI 매뉴얼](docs/manual/cli-guide.md). 패키지는 공개 npm 의
+  [`@erdd/cli`](https://www.npmjs.com/package/@erdd/cli) · [`@erdd/core`](https://www.npmjs.com/package/@erdd/core) 다.
 
 ## 문서
 
@@ -18,3 +27,7 @@
 
 **처음 이 저장소를 여는 사람은 [CLAUDE.md](CLAUDE.md) 의 「필수 참조 문서」부터 본다** —
 「~할 때 → 어느 문서」 목차다.
+
+## 라이선스
+
+[MIT](LICENSE) © 2026 장병현

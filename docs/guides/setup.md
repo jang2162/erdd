@@ -1,7 +1,7 @@
 # 개발 환경 — DB·서버·테스트·스모크
 
 이 문서는 **개발자·에이전트가 이 저장소를 돌릴 때** 필요한 것을 갖는다.
-제품을 사내 서버에 올리는 절차는 [../manual/install.md](../manual/install.md) 다.
+제품을 자체 서버에 올리는 절차는 [../manual/install.md](../manual/install.md) 다.
 
 ---
 

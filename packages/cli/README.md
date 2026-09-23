@@ -8,23 +8,19 @@ ERDD 는 **ER 모델을 저장소 안의 YAML 파일로 두고 브라우저 GUI 
 
 ## 설치
 
-`@erdd/cli` 와 `@erdd/core` 는 **사내 GitLab 의 패키지 레지스트리**에 있다. 공개 npm 에는 없으므로
-스코프 `@erdd` 만 그 레지스트리로 보내는 설정을 한 번 해 준다. **Node.js 22 이상**이 필요하다
-(두 패키지 모두 `engines.node: ">=22"` 라, 맞지 않는 Node 면 패키지 관리자가 경고하거나 막는다).
+`@erdd/cli` 와 `@erdd/core` 는 **공개 npm**(registry.npmjs.org)에 있다. 따로 할 레지스트리 설정은 없다.
+**Node.js 22 이상**이 필요하다(두 패키지 모두 `engines.node: ">=22"` 라, 맞지 않는 Node 면 패키지
+관리자가 경고하거나 막는다).
 
 ```bash
-# ① 머신마다 한 번 — 토큰을 홈(~/.npmrc)에 등록한다
-pnpm config set "//gitlab.develma.com/:_authToken" "<GitLab 개인 액세스 토큰>"
-
-# ② 프로젝트마다 한 번 — 프로젝트 루트의 .npmrc 에 한 줄. 커밋한다(토큰은 여기 없다)
-echo '@erdd:registry=https://gitlab.develma.com/api/v4/projects/45/packages/npm/' >> .npmrc
-
-# ③ 설치 — tsx 를 함께 적는다(아래 ⚠️)
+# tsx 를 함께 적는다(아래 ⚠️)
 pnpm add -D @erdd/cli tsx
+# npm 이면
+npm install -D @erdd/cli tsx
 ```
 
-설치하면 `node_modules/.bin/erdd` 가 생겨 `pnpm exec erdd …` 로 부른다. `@erdd/core` 는 의존성으로
-따라 들어온다. `45` 는 ERDD 의 **Project ID** 로, 사내 GitLab 을 옮기면 바뀐다.
+설치하면 `node_modules/.bin/erdd` 가 생겨 `pnpm exec erdd …`(npm 이면 `npx erdd …`)로 부른다.
+`@erdd/core` 는 의존성으로 따라 들어온다.
 
 > ⚠️ **소비처 tsconfig 의 `target` 은 `ES2022` 이상이어야 한다.** `@erdd/core` 도 원본 TypeScript 를
 > 그대로 배포하므로, 그 패키지를 `import` 하면 소비처가 그 `.ts` 소스를 자기 tsconfig 로
@@ -41,9 +37,6 @@ pnpm add -D @erdd/cli tsx
 > `tsx` 를 받아 와 대개는 그냥 돈다** — 대신 첫 실행이 느려지고 레지스트리 접근에 기댄다. 네트워크가
 > 없으면 죽고, npm 평면 배치는 캐시가 없으면 `ENOTCACHED` 로 죽는다. **명시 선언이 어느 패키지
 > 관리자에서나 보증되는 유일한 경로다.**
-
-> ⚠️ **토큰을 프로젝트 `.npmrc` 에 적지 마라.** 그 파일은 커밋 대상이라 토큰이 저장소에 남는다.
-> **레지스트리 주소는 프로젝트에, 토큰은 홈에** 둔다.
 
 ## 두 갈래로 쓴다
 
@@ -124,7 +117,7 @@ erdd skill install                 # → .claude/skills/erdd/SKILL.md
 ## 더 읽을 것
 
 이 패키지에 매뉴얼 네 편이 함께 들어 있다. 아래 링크는 **설치본의 파일 트리
-(`node_modules/@erdd/cli/docs/`)에서만** 열린다 — GitLab 레지스트리의 README 페이지나 저장소에서는
+(`node_modules/@erdd/cli/docs/`)에서만** 열린다 — npmjs.com 의 패키지 페이지나 GitHub 저장소에서는
 그 경로가 비어 있는 것이 정상이다(문서는 팩할 때 저장소의 `docs/manual/` 에서 복사해 넣는다).
 
 - [로컬 모드 매뉴얼](./docs/local-guide.md) — 서버 없이 쓰는 길을 처음부터 끝까지. **로컬 모드로만

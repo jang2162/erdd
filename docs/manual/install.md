@@ -1,6 +1,6 @@
 # ERDD 설치·운영 매뉴얼
 
-사내 서버에 ERDD 를 올리고 운영하는 담당자를 위한 문서다. 화면 사용법은
+자체 서버에 ERDD 를 올리고 운영하는 담당자를 위한 문서다. 화면 사용법은
 [사용자 가이드](user-guide.md), 명령줄 도구는 [CLI 매뉴얼](cli-guide.md), 개발 기여자용 워크플로는
 [개발 환경 가이드](../guides/setup.md) 에 있다.
 
@@ -62,7 +62,7 @@ cp .env.example .env
 
 ```dotenv
 POSTGRES_PASSWORD=<DB 비밀번호>
-ADMIN_EMAIL=admin@사내도메인
+ADMIN_EMAIL=admin@your-domain.example
 ADMIN_PASSWORD=<충분히 긴 임시 비밀번호>
 ```
 
@@ -131,7 +131,7 @@ docker compose logs app
 기대 출력 두 줄:
 
 ```
-부트스트랩 관리자 계정 생성: admin@사내도메인
+부트스트랩 관리자 계정 생성: admin@your-domain.example
 ERDD server listening on :3000
 ```
 
@@ -191,7 +191,7 @@ pnpm --filter @erdd/server db:migrate
 ```bash
 NODE_ENV=production \
 DATABASE_URL='postgres://<user>:<pass>@<host>:5432/<db>' \
-ADMIN_EMAIL='admin@사내도메인' \
+ADMIN_EMAIL='admin@your-domain.example' \
 ADMIN_PASSWORD='<임시 비밀번호>' \
 pnpm --filter @erdd/server start
 ```
