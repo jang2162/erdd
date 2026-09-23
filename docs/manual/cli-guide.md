@@ -488,14 +488,20 @@ tableOptions:                               # 선택 — 없으면 네 방언 �
 dictionaries:
   - id: 01a0cc5e-eeb8-7f2e-b3d5-eff88cffe341
     name: 플랫폼팀 표준 사전      # 표시용. 서버에서 이름이 바뀌면 다음 dict pull 이 고쳐 쓴다
+  - id: 01a0cf70-8bb2-7bf8-9635-821049933b45
+    name: 데모 사전
+    file: standard.erdd-lib.yaml  # 있으면 서버 대신 이 배포 파일에서 받는다(erdd dict pull --file)
 ```
 
 - 구독이 없으면 키 자체를 쓰지 않는다. 키가 없거나 값이 비어 있으면(`dictionaries:`) 구독 0건이다.
 - `pull`·`push`·`init`(같은 프로젝트로 재연결)이 config 를 다시 써도 구독은 남는다.
-- 형태가 틀리면(`{id, name}` 목록이 아님) 종료 코드 `1` —
-  `erdd.config.yaml의 dictionaries는 {id, name} 목록이어야 합니다`. 같은 id 가 두 번 있어도 `1` —
+- 형태가 틀리면(`{id, name, file?}` 목록이 아님) 종료 코드 `1` —
+  `erdd.config.yaml의 dictionaries는 {id, name, file?} 목록이어야 합니다`. 같은 id 가 두 번 있어도 `1` —
   `erdd.config.yaml의 dictionaries에 같은 사전(<id>)이 두 번 있습니다`.
 - 구독을 끊으려면 그 줄을 지운다. 이미 받아 온 항목과 `origins.yaml` 의 출처는 그대로 남는다.
+- **`file` 은 `erdd dict pull --file <경로>` 가 처음 받을 때 적는다** — 그 뒤로는 인자 없는
+  `erdd dict pull` 도 서버가 아니라 이 경로의 파일에서 받는다(→ [6.11 의 `--file`](#611-erdd-dict--공용-사전)).
+  경로는 프로젝트 안의 POSIX 상대 경로이고 `erdd/` 아래일 수 없다. 없는 키와 같은 뜻이다(서버 구독).
 
 ### 5.3 테이블 파일
 
@@ -1512,6 +1518,51 @@ $ erdd dict pull --adopt
 - `--adopt --conflicts ours` 로 연결한 항목은 로컬 값이 원본과 다른 「로컬에서 고친 항목」이라, 나중에
   원본이 바뀌면 자동 갱신이 아니라 **충돌**로 알린다(로컬 값을 조용히 덮지 않는다).
 
+**`--file <경로>` — 서버가 내보낸 파일에서 받는다. 서버 연결이 필요 없다.**
+
+```bash
+$ erdd init --local
+로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요
+$ erdd dict pull --file standard.erdd-lib.yaml
+데모 사전 (파일 standard.erdd-lib.yaml)
+  추가 14 · 자동 갱신 0 · 연결 0 · 유지 0
+반영했습니다 — erdd/custom-fields.yaml, erdd/domains.yaml, erdd/origins.yaml, erdd/terms.yaml, erdd/words.yaml
+
+$ erdd dict pull
+데모 사전 (파일 standard.erdd-lib.yaml)
+  추가 0 · 자동 갱신 0 · 연결 0 · 유지 14
+바뀐 파일이 없습니다
+```
+
+- **서버에 연결되지 않은(로컬 전용) 프로젝트에서도 된다.** `--library` 는 서버 목록에서 골라야 하므로
+  연결이 필요하지만, `--file` 은 그 파일을 그대로 읽을 뿐이라 서버를 부르지 않는다(→
+  [로컬 모드 매뉴얼 7.3](local-guide.md#73-공용-사전을-받아-쓰기--erdd-dict)).
+- **파일은 배포 파일이어야 한다** — 서버가 내보낸 파일처럼 `library.id`·항목 `id`·`version` 이 모두
+  있어야 한다. 사람이 적은 원천 파일이나 `library import`·웹 가져오기가 받는 Excel 은 여기 쓸 수
+  없다(`1`) —
+
+  ```
+  오류: <경로>: 서버에서 내보낸 파일만 받을 수 있습니다(library.id·항목 id·version 필요) — 오류 N건
+    library.id — 배포 파일에는 필수입니다 — 서버에서 내보낸 파일만 받을 수 있습니다
+    …
+  ```
+
+- **처음 받으면 그 라이브러리를 파일 구독으로 config 에 남긴다**(`erdd.config.yaml` 의
+  `dictionaries[].file`, → [5.2](#52-erddconfigyaml)). 인자 없는 `erdd dict pull` 은 그 경로를 다시
+  읽는다 — 배포 파일을 새 버전으로 다시 받아 그 자리에 덮어써 두면 다음 `dict pull` 이 그 변경을 본다.
+  **같은 라이브러리 id 로 `--file` 을 다시 주면 그 구독 줄이 파일 구독으로 바뀐다**(서버 구독이었어도).
+- **구독이 가리키는 라이브러리와 다른 파일을 주면 거절한다**(`1`) —
+
+  ```
+  오류: 구독 <이름>(<id>) 의 파일 <경로> 은 다른 라이브러리(<다른 id>)입니다 — 다른 라이브러리로
+  바꾸려면 구독 줄을 지우고 --file 로 다시 받으세요
+  ```
+
+  다른 라이브러리로 바꾸려면 `erdd.config.yaml` 에서 그 구독 줄을 지우고 `--file` 로 다시 받는다.
+- **그 밖의 판정(추가·자동 갱신·충돌·이름 중복·`--adopt`)은 서버 구독과 완전히 같다** — 위 표와 규칙을
+  그대로 따른다. `--library` 와 `--file` 은 함께 줄 수 없다(`--file 과 --library 는 함께 쓸 수
+  없습니다`, `2`).
+
 #### `erdd dict push`
 
 로컬에서 만든 사전 항목을 공용 라이브러리로 올린다. 판정과 쓰기는 **서버의 승격 엔진**이 **서버
@@ -1661,7 +1712,136 @@ $ erdd dict requests
 - `--status pending|resolved|rejected|cancelled` 로 거른다. 요청이 없으면 `승격 요청이 없습니다`.
 - 요청 취소와 승인은 웹에서 한다. 요청 항목의 이름은 보이지 않는다(건수만 보인다).
 
-### 6.12 `erdd changes`
+### 6.12 `erdd library` — 라이브러리 관리
+
+공용 라이브러리를 **파일로** 내보내고 가져온다(`.erdd-lib.yaml`, `format: erdd-library`). 라이브러리
+쓰기 권한이 있는 사람(조직 Owner/Admin, 전역은 서비스 관리자)만 가져올 수 있고, 내보내기는 읽을 수
+있으면 누구나 된다. 가져오기의 판정 규칙은
+[../guides/shared-resources.md](../guides/shared-resources.md) 「파일 내보내기·가져오기」에 있다.
+
+**프로젝트 없이 돈다** — 관리자가 빈 디렉터리나 CI 에서 부르는 명령이다. 서버 주소는 `--server <url>`,
+없으면(서버에 연결된 프로젝트 안에서 실행할 때) `erdd.config.yaml` 의 `serverUrl`. 둘 다 없으면
+멈춘다(`2`) —
+
+```
+오류: 서버 주소가 필요합니다 — --server <url> 을 주거나 서버에 연결된 프로젝트에서 실행하세요
+```
+
+토큰은 다른 명령과 같은 순서(`ERDD_TOKEN` → `.erdd/credentials.json`)로 찾는다.
+
+```bash
+erdd library list                                                   # 보이는 라이브러리
+erdd library export "표준 사전(예시)" -o standard.erdd-lib.yaml    # 배포 파일로 내보내기
+erdd library import standard.erdd-lib.yaml --library "표준 사전(예시)"          # 그 라이브러리에 반영
+erdd library import standard.erdd-lib.yaml --create "새 라이브러리" --scope global   # 새로 만들며 가져오기
+```
+
+#### `erdd library list`
+
+```bash
+$ erdd library list --server http://127.0.0.1:3001
+  표준 사전(예시) — 전역 · 항목 14 · 쓰기 가능 · 019fff92-8724-7f9e-88f4-627da6a47f20
+  데모 사전 — 전역 · 항목 14 · 쓰기 가능 · 01a0cf70-8bb2-7bf8-9635-821049933b45
+```
+
+토큰이 속한 조직을 모두 돌며 전역 + 조직 라이브러리를 모은다. 「쓰기 가능」이 없으면 `library import` 가
+그 라이브러리를 거절한다. 보이는 라이브러리가 없으면 `볼 수 있는 라이브러리가 없습니다`.
+
+#### `erdd library export <이름|id> [-o 파일]`
+
+```bash
+$ erdd library export "표준 사전(예시)" -o standard.erdd-lib.yaml --server http://127.0.0.1:3001
+내보냈습니다 — standard.erdd-lib.yaml
+```
+
+- `-o` 가 없으면 stdout(`--json` 이면 JSON 봉투 하나)에 낸다.
+- 삭제된 도메인을 가리키던 용어가 있으면(도메인 없이 내보낸다) stderr 에 `삭제된 도메인을 가리키던
+  용어 N건은 도메인 없이 내보냈습니다`.
+- 이름이 여럿에 맞거나 라이브러리를 못 찾으면 `dict pull`(→ [6.11](#611-erdd-dict--공용-사전))과 같은
+  오류 문구이되 안내 명령만 `erdd library list` 다 — 예: `라이브러리 없는사전을(를) 찾지 못했습니다 —
+  erdd library list 로 확인하세요`(`1`).
+- `<이름|id>` 없이 부르면 `사용법: erdd library export <이름|id> [-o 파일]`(`2`).
+
+#### `erdd library import <파일> (--library <이름|id> | --create <이름> --scope <global|org>)`
+
+라이브러리 파일이나 손으로 적은 원천 파일·Excel(`.xlsx`, 헤더는
+[사용자 가이드 16절 Excel 사전 가져오기](user-guide.md#16-가져오기)와 같다)을 읽어 기존 라이브러리에
+반영하거나 새 라이브러리를 만들며 반영한다. **`--library`·`--create` 중 정확히 하나**가 필요하다 — 둘
+다 없거나 둘 다 있으면 `--library 와 --create 중 정확히 하나를 주세요`(`2`).
+
+| 상태 | 뜻 | 기본 | 바꾸는 옵션 |
+|---|---|---|---|
+| 추가 | 라이브러리에 없는 항목 | 반영 | — |
+| 갱신 | 이미 매칭된 항목을 파일 값으로 바꾼다 | 반영 | — |
+| 그대로 | 파일과 라이브러리 값이 같다 | 손대지 않는다 | — |
+| 오래된 파일 | 항목 id 로 매칭됐고 파일의 `version` 이 서버보다 낮다(이 라이브러리에서 내보낸 뒤 서버가 앞서 나갔다) | **건너뜀** | `--include-stale` — 서버의 새 값을 파일의 옛 값으로 덮는다 |
+| 파일에 없음 | 파일이 그 종류를 말했는데(빈 목록이어도) 그 안에 없는 기존 항목 — 종류 자체가 파일에 없으면 대상이 아니다 | **남긴다** | `--prune` — 지운다(남는 항목이 가리키는 도메인은 지우지 않고 경고한다) |
+
+```bash
+$ erdd library import demo-edit.erdd-lib.yaml --library "데모 사전" --server http://127.0.0.1:3001 --dry-run
+데모 사전 (전역)
+  추가 0 · 갱신 1 · 그대로 11 · 삭제 0 (--prune 이 없어 파일에 없는 1건은 남김)
+  오래된 파일 1 — 건너뜀 (--include-stale 로 덮어쓰기):
+    단어 번호  (서버 v2, 파일 v1)
+미리보기입니다 — 반영하지 않았습니다
+
+$ erdd library import demo-edit.erdd-lib.yaml --library "데모 사전" --server http://127.0.0.1:3001 --prune --include-stale --dry-run
+데모 사전 (전역)
+  추가 0 · 갱신 2 · 그대로 11 · 삭제 1
+  오래된 파일 1 — 덮어씀:
+    단어 번호  (서버 v2, 파일 v1)
+미리보기입니다 — 반영하지 않았습니다
+```
+
+- **`--dry-run`** — 계획만 보이고 아무것도 쓰지 않는다.
+- **`--yes`** — 미리보기 없이 바로 반영한다. 결과 줄에 「반영했습니다」가 붙지 않는다(확인을 거치는
+  경로에는 붙는다) — 반영 여부는 종료 코드(`0`)와 위 요약 숫자로 본다.
+- **`--yes` 도 `--dry-run` 도 없으면** 계획을 보인 뒤 `가져올까요? [y/N]` 로 한 번 묻고, 승낙하면 같은
+  요약 뒤에 `반영했습니다` 가 붙는다.
+
+  ```bash
+  $ erdd library import demo-edit.erdd-lib.yaml --library "데모 사전" --server http://127.0.0.1:3001 --include-stale
+  데모 사전 (전역)
+    추가 0 · 갱신 1 · 그대로 12 · 삭제 0
+    오래된 파일 1 — 덮어씀:
+      단어 번호  (서버 v2, 파일 v1)
+  가져올까요? [y/N] y
+  데모 사전 (전역)
+    추가 0 · 갱신 1 · 그대로 12 · 삭제 0
+    오래된 파일 1 — 덮어씀:
+      단어 번호  (서버 v2, 파일 v1)
+  반영했습니다
+  ```
+
+  **이 확인을 기다리는 사이 남이 먼저 반영했으면** `CONFLICT` 로 거절되고(`미리보기 이후 라이브러리가
+  바뀌었습니다 — 다시 미리보기 하세요 — 아무것도 반영하지 않았습니다`, `1`) 다시 실행해 새 미리보기부터
+  본다. `--yes` 로 미리보기 없이 바로 반영하는 경로에는 이 확인이 없다.
+- **`--create <이름> --scope <global|org>`** — 새 라이브러리를 만들며 파일 전체를 「추가」로 반영한다
+  (`init --create` 와는 다른 명령이다). `--scope org` 면 `--org <이름|id>` 가 필요하다
+  (`--scope org 에는 --org <이름|id> 가 필요합니다`, `2`).
+
+  ```bash
+  $ erdd library import standard.erdd-lib.yaml --create "데모 사전" --scope global --server http://127.0.0.1:3001 --yes
+  데모 사전 (전역, 새로 만듦)
+    추가 14 · 갱신 0 · 그대로 0 · 삭제 0
+  ```
+
+- **`--prune`** — 파일이 말한 종류인데 파일에 없는 기존 항목을 지운다. 주지 않으면 그 항목은 남고
+  요약 줄에 `(--prune 이 없어 파일에 없는 N건은 남김)` 이 붙는다. 남는 용어가 가리키는 도메인은
+  `--prune` 이어도 지우지 않고 경고가 함께 뜬다.
+- **`--include-stale`** — 「오래된 파일」 항목도 파일 값으로 덮는다. 서버가 더 앞서 나간 값을 되돌리는
+  것이므로 기본은 꺼져 있다.
+- **파일이 잘못됐으면 서버를 부르기 전에 거절한다**(`1`) — 라이브러리 파일이면
+  `라이브러리 파일 오류 N건 — 아무것도 반영하지 않았습니다` 뒤에 문제 줄, Excel 이면
+  `Excel 오류 N건 — 아무것도 반영하지 않았습니다` 뒤에 시트·행과 함께.
+- `--library` 로 지정한 라이브러리에 쓸 권한이 없으면 서버를 부르기 전에 거절한다(`1`, `<이름> 에 쓸
+  권한이 없습니다`).
+
+**제약** — 반영은 한 트랜잭션이다(전부 아니면 전무). 갱신은 항목마다 `UPDATE` 한 번이라 대량 갱신은
+느릴 수 있다. 자세한 목록은 [../guides/shared-resources.md](../guides/shared-resources.md) 「알려진
+한계」의 「파일 내보내기·가져오기」.
+
+### 6.13 `erdd changes`
 
 로컬 모드 전용. 스키마 수정 내역(변경 기록)을 `erdd/changes/` 에 남긴다. 무엇이고 어떻게 쓰는지는
 [로컬 모드 매뉴얼 5.6](local-guide.md#56-변경-기록--마이그레이션을-쓰기-위한-수정-내역), 문법은
@@ -2090,11 +2270,15 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 | `변경 기록은 로컬 모드 전용입니다 …` | 서버에 연결된 프로젝트에서 `erdd changes` 를 돌렸다 | 서버 모드에는 변경 기록이 없다 |
 | `서버가 이 기능을 지원하지 않습니다 — 서버를 업그레이드하세요` | 서버가 CLI 보다 옛 버전이라 `erdd dict`·`init --create` 가 부르는 기능을 토큰에 열지 않았다 | 서버 관리자에게 서버 업그레이드를 요청한다. 토큰을 재발급해도 풀리지 않는다 |
 | `서버에 연결되지 않은 프로젝트입니다. erdd init --server <url> --create 로 연결하세요 …` | 로컬 전용 프로젝트에서 `erdd dict` 를 돌렸다 | `erdd init --server … --create` (→ [6.1](#61-erdd-init)) |
+| `서버 주소가 필요합니다 — --server <url> 을 주거나 서버에 연결된 프로젝트에서 실행하세요` | `erdd library` 명령에 `--server` 도 없고 연결된 프로젝트 안도 아니다 | `--server <url>` 을 주거나 서버에 연결된 프로젝트 디렉터리에서 실행한다(→ [6.12](#612-erdd-library--라이브러리-관리)) |
 | `push 하지 않은 로컬 변경이 있습니다. erdd push 로 보관함을 먼저 갱신하세요` | `dict push` 전에 로컬 변경이 서버에 없다 | `erdd push` 뒤 다시 `dict push` |
 | `서버가 마지막 pull 이후 앞서 나갔습니다 — erdd pull 로 받은 뒤 다시 실행하세요` | `dict push` 전에 서버가 바뀌었다(다른 사람의 편집·승격 승인 등) | `erdd pull` 뒤 다시 `dict push` |
+| `파일에서 받은 사전은 올릴 수 없습니다 — 서버에 연결된 뒤 구독의 file 을 지우세요` | `dict push` 의 대상 라이브러리가 파일 구독(`dictionaries[].file`)이다 | `erdd.config.yaml` 에서 그 구독의 `file` 줄을 지우고 `erdd dict pull --library` 로 서버 구독으로 다시 받은 뒤 `dict push` (→ [5.2](#52-erddconfigyaml)) |
 | `구독한 라이브러리가 없습니다 …` | 인자 없는 `dict pull` 인데 구독이 없다 | `erdd dict pull --library <이름\|id>` |
 | `dict pull` 이 충돌을 계속 「보류」로 보인다 | 로컬에서도 고쳤고 원본도 바뀌었다 | `--conflicts theirs`(원본 값으로) 또는 `--conflicts ours`(로컬 값 유지) |
 | `dict pull --adopt` 가 `이름 중복 N — 내용이 달라 연결하지 않음 …` 을 보이고 연결하지 않는다 | 같은 이름의 로컬 항목이 원본과 내용이 다르다 | 로컬 값을 살리려면 `--adopt --conflicts ours`, 원본 값으로 바꾸려면 로컬 항목을 지우고 다시 `dict pull` (→ [6.11](#611-erdd-dict--공용-사전)) |
+| `dict pull --file` 이 `서버에서 내보낸 파일만 받을 수 있습니다(library.id·항목 id·version 필요) …` 로 거절한다 | 사람이 적은 원천 파일이나 Excel 변환 파일을 줬다 | `library export`·웹 「내보내기」가 만든 배포 파일을 쓴다(→ [6.12](#612-erdd-library--라이브러리-관리)) |
+| `dict pull` 이 `구독 <이름>(<id>) 의 파일 <경로> 은 다른 라이브러리(<id>)입니다 …` 로 거절한다 | 파일 구독의 경로에 다른 라이브러리를 내보낸 파일을 덮어썼다 | `erdd.config.yaml` 에서 그 구독 줄을 지우고 `erdd dict pull --file <경로>` 로 다시 받는다 |
 | push·diff 가 `같은 공용 사전 항목이 두 번 들어왔습니다 — …` 로 멈춘다 | 서버가 이미 받은 라이브러리 항목을 로컬도 따로 받았다 | 문구대로 그 항목(또는 `origins.yaml` 의 그 줄)만 지우고 다시 `push`. **먼저 `pull` 하지 않는다**(→ [7.2](#72-충돌이-나면)) |
 | `프로젝트 생성 권한이 없습니다 — …` | `init --create` 는 조직 Owner/Admin 만 된다 | 안내대로 관리자에게 프로젝트를 만들어 달라고 한다(→ [6.1](#61-erdd-init)) |
 | `이미 서버 프로젝트에 연결돼 있습니다 …` | 연결된 프로젝트에서 `init --create` 를 돌렸다 | 다른 프로젝트로 바꾸려면 `erdd init --project <id> --yes` |
@@ -2202,7 +2386,7 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 
 **실제 서버에 붙여 확인한 것.** 이 저장소의 서버를 격리 DB 로 띄우고, 조직·조직 라이브러리(도메인 1·단어 2·
 용어 1)·관리자 토큰·편집자 토큰을 tRPC 로 만든 뒤, 저장소 밖 스크래치 디렉터리에서 CLI 를 돌렸다
-(`npx tsx <ERDD>/packages/cli/src/main.ts …`). 본문 3.2·6.1·6.2·6.11·10.1 의 출력 인용은 그 실물이다.
+(`npx tsx <ERDD>/packages/cli/src/main.ts …`). 본문 3.2·6.1·6.2·6.11·6.12·10.1 의 출력 인용은 그 실물이다.
 
 - `init --create` 의 두 안내(빈 디렉터리 / 이관), 빈 디렉터리에서 빈 사전 파일 다섯이 생기는 것, 편집자
   토큰의 생성 권한 안내, 이미 연결된 config 의 거절.
@@ -2212,6 +2396,10 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
   올라가 다른 사용자의 `pull` 에서 `origins.yaml` 로 내려오는 것.
 - 편집자 토큰의 `dict push` 가 승격 요청이 되고, 웹 승인(`promotion.resolve`) 뒤 편집자의 `pull` 이
   승격 항목의 출처를 `origins.yaml` 에 쓰는 것, `dict requests` 의 대기·승인·처리 메모.
+- `library list`·`export`·`import`(`--library`·`--create`·`--dry-run`·`--yes`·확인 프롬프트·`--prune`·
+  `--include-stale`), 내보낸 파일을 그대로 다시 가져오면 전부 「그대로」인 것, 서버에서 항목을 고쳐
+  「오래된 파일」로 잡히는 것, `dict pull --file`(첫 수신·재실행·다른 라이브러리 거절·원천 파일 거절)과
+  연결된 프로젝트에서 파일 구독을 `dict push` 하면 거절되는 것.
 - 관리자 토큰의 `dict push` 가 바로 승격하고 암묵적 pull 로 `origins.yaml` 을 갱신하는 것, 그 전제 두 가지
   (로컬 변경 있음 / 서버가 앞서 나감)의 거절.
 - 이관 — `init --local` → 단어 추가 → `init --create` → `diff` 가 전부 「추가」 → `push`. 이어서 `dict pull`

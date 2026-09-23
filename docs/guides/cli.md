@@ -26,10 +26,13 @@
 | `resource.library.listForProject` · `resource.items.list` | `dict list`·`dict pull`·`dict push` |
 | `resource.promote` · `promotion.create` | `dict push`(쓰기 권한이면 앞, 아니면 뒤) |
 | `promotion.listForProject` | `dict requests` |
+| `resource.library.list` · `resource.library.export` · `resource.library.import` | `library list`·`library export`·`library import` |
 
-- **토큰의 폭발 반경은 발급자의 역할과 같다.** 조직 Owner/Admin 의 토큰은 **프로젝트를 만들고
-  조직 라이브러리에 직접 쓴다**(`project.create`·`resource.promote`), 서비스 관리자의 토큰은 **전역
-  라이브러리에도 쓴다.** 에이전트·CI 에 줄 토큰은 편집자 계정으로 발급하라고 매뉴얼이 안내한다
+- **토큰의 폭발 반경은 발급자의 역할과 같다.** 조직 Owner/Admin 의 토큰은 **프로젝트를 만들고, 조직
+  라이브러리를 만들거나 그 안에 직접 쓴다**(`project.create`·`resource.promote`·
+  `resource.library.import`(`--create --scope org`)), 서비스 관리자의 토큰은 **전역 라이브러리도 만들고
+  그 안에 쓴다**(`resource.library.import`(`--create --scope global`)). 에이전트·CI 에 줄 토큰은
+  편집자 계정으로 발급하라고 매뉴얼이 안내한다
   (`cli-guide.md` 「개인 액세스 토큰 발급」). 역할 밖의 쓰기는 서버가 그대로 거절한다 — 토큰 경로라고
   권한 판정을 따로 두지 않는다.
 - **`resource.promote` 는 토큰 경로면 Revision `source` 를 `'cli'` 로 남긴다**(`model.push` 와 같다).
@@ -140,6 +143,9 @@
 - **서버 프로젝트 모델은 건드리지 않는다.** 라이브러리 항목을 받아 **로컬 파일 모델**에 core
   `planResync` → `applyResyncPlan` 을 돌리고 파일에 쓴다. 보관함(서버 프로젝트)은 다음 `erdd push` 때
   따라온다.
+- **`--file <경로>` 는 서버를 부르지 않는다.** 서버가 내보낸 라이브러리 파일을 그대로 항목 원천으로
+  써서, 서버에 연결되지 않은(로컬 전용) 프로젝트에서도 받을 수 있다(→
+  [shared-resources.md](shared-resources.md) 「파일 내보내기·가져오기」).
 - **쓰는 파일은 `dict-shared.ts` 의 `DICTIONARY_FILES` 뿐이다** — 그룹·테이블 파일은 쓰지 않는다.
   `modelToFiles` 가 다시 만든 테이블 파일을 쓰면 사람이 다듬은 YAML 이 이유 없이 정규화된다.
   `dict-pull.test.ts` 「사전과 무관한 테이블 파일은 바이트 그대로다」가 잠근다.
