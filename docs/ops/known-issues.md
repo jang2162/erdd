@@ -59,6 +59,13 @@ nullable 쪽은 `NULL` 명시로 막았다(정본은 [export-format.md](../guide
 
 ---
 
+## 변경 기록 — 미룬 것
+
+- **서버 모드의 변경 기록.** 문법·재생 엔진은 core 에 있어 재사용할 수 있다. 서버에는 기록을 둘
+  테이블·프로시저·권한·실시간 전파가 새로 필요하다.
+- **테이블 옵션 기록.** `tableOptions`(MySQL ENGINE 등)는 기록에 싣지 않는다.
+  ([../guides/changeset-format.md](../guides/changeset-format.md) 「알려진 한계」)
+
 ## 기획에 있으나 구현되지 않은 것
 
 매뉴얼을 쓰면서 전수 확인했고, **확인되지 않은 것은 매뉴얼에서 뺐다**(그래서 매뉴얼은 구현된 것만

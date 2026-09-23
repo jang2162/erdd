@@ -169,8 +169,12 @@ $ erdd --help
   diff         로컬 파일과 서버의 차이를 미리 본다
   status       연결 정보와 로컬 변경을 보여준다
   validate     서버 없이 파일을 검사한다
+  export       로컬 파일을 DDL·DBML로 내보낸다(stdout 또는 -o 파일)
+  import <파일> DDL·DBML 파일을 로컬 파일에 가져온다(머지 — 서버 반영은 push)
   serve        로컬 서버를 띄워 브라우저에서 편집한다(서버 연결 불필요)
   skill install 에이전트 스킬 문서를 프로젝트에 설치한다
+  changes      변경 기록 상태 — 미기록 변경 미리보기(로컬 모드 전용)
+  changes new <이름> 미기록 변경을 erdd/changes/ 에 기록한다
 
 옵션
   --json                기계용 JSON 출력
@@ -183,8 +187,16 @@ $ erdd --help
   --token <token>       init 전용
   --project <id>        init 전용
   --local               init 전용 — 서버 연결 없이 로컬 전용 프로젝트를 만든다
+  --case <대소문자>      init --local 전용 — UPPER_SNAKE(기본) 또는 lower_snake
+  --format <ddl|dbml>   export·import 전용 — export 기본 ddl, import 기본 확장자 판별
+  --dialect <방언>       export·import·init --local 전용
+                        export·import는 기본이 erdd.config.yaml의 dialects[0], init --local은 postgresql
+  -o <경로>             export 전용 — 산출물을 쓸 파일(없으면 stdout)
+  --dry-run             import 전용 — 계획만 보고 파일을 쓰지 않는다
   --port <번호>          serve 전용 — 기본 4300
   --no-open             serve 전용 — 브라우저를 자동으로 열지 않는다
+  --check               changes 전용 — 미기록 변경이 있으면 종료 코드 1
+  --baseline            changes new 전용 — 첫 기록을 「이미 DB 에 있음」으로 표시
   --help                이 도움말
 ```
 
@@ -1141,6 +1153,51 @@ CREATE TABLE ORD (
 ⚠️ **그 `CHECK` 는 되읽히지 않는다** — 파서가 컬럼 인라인 `CHECK` 를 보지 않으므로 PostgreSQL
 덤프를 다시 가져오면 그냥 `INT` 다. 부호 없음이 본문으로 왕복하는 것은 **MySQL DDL 뿐**이다.
 
+### 6.11 `erdd changes`
+
+로컬 모드 전용. 스키마 수정 내역(변경 기록)을 `erdd/changes/` 에 남긴다. 무엇이고 어떻게 쓰는지는
+[로컬 모드 매뉴얼 5.6](local-guide.md#56-변경-기록--마이그레이션을-쓰기-위한-수정-내역), 문법은
+[변경 기록 문법](../guides/changeset-format.md).
+
+```
+erdd changes [--check] [--json]
+erdd changes new <이름> [--baseline] [--json]
+```
+
+| 형태 | 하는 일 | 종료 코드 |
+|---|---|---|
+| `erdd changes` | 기록 수·경합 경고·미기록 변경 미리보기 | `0`, 기록이 깨졌으면 `1` |
+| `erdd changes --check` | 위와 같고, 미기록 변경이 있으면 실패 | 미기록이 있으면 `1` |
+| `erdd changes new <이름>` | 미기록 변경을 `erdd/changes/<시각>_<이름>.erddc` 로 기록 | `0`, 거절이면 `1` |
+| `… --baseline` | 첫 기록에 「이미 DB 에 있음」 표시 | 기록이 이미 있으면 `1` |
+
+```bash
+$ erdd changes
+변경 기록 0건 (erdd/changes/)
+미기록 변경 1문장 — erdd changes new <이름> 으로 기록합니다
+
+  create table MBR [comment: '회원'] {                              @018f6b0e-0000-7000-8000-000000000001
+    column MBR_NO BIGINT [not null, comment: '회원번호']              @018f6b0e-0000-7000-8000-000000000002
+    primary key (MBR_NO)
+  }
+
+$ erdd changes new "초기 스키마"
+기록했습니다: erdd/changes/20260923061230_초기-스키마.erddc (문장 1개)
+
+$ erdd changes
+변경 기록 1건 (erdd/changes/)
+미기록 변경 1문장 — erdd changes new <이름> 으로 기록합니다
+
+  alter table MBR {                                               @018f6b0e-0000-7000-8000-000000000001
+    add column MBR_NM VARCHAR(100) [null, comment: '회원명', after: MBR_NO]  @018f6b0e-0000-7000-8000-000000000003
+  }
+```
+
+- 보는 것은 **디스크의 `erdd/`** 다. 미저장 편집은 포함하지 않고, 있으면 `new` 가 거절한다.
+- `--json` 은 `{ records, pending, warnings, error, unsaved }`(상태) / `{ ok, file, statementCount }`
+  (생성)이다. 거절은 오류 봉투에 `reason`(`name`·`empty`·`baseline`·`invalid`)이 실린다.
+- 서버에 연결된 프로젝트에서는 `변경 기록은 로컬 모드 전용입니다 …` 로 멈춘다(`1`).
+
 ---
 
 ## 7. 동기화와 충돌
@@ -1436,6 +1493,7 @@ erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 | `포트 4300이 이미 사용 중입니다 …` | 다른 `erdd serve` 나 다른 프로그램이 그 포트를 물고 있다 | `--port` 로 다른 포트를 준다 |
 | 브라우저 상단에 「파일을 읽을 수 없어 편집이 잠겼습니다」 배너가 뜨고 편집이 안 된다 | `erdd/` 안의 YAML 이 깨졌다 | 배너가 가리키는 파일을 고친다. 고치면 자동으로 풀린다 |
 | `erdd serve` 화면에서 테이블이 격자로 나란히 놓여 있다(모드를 가리지 않는다) | `erdd/layout.yaml` 이 없거나 그 테이블 항목이 없다 | 정상이다. 옮기거나 「자동 정렬」을 하면 좌표가 그 파일에 저장된다 |
+| `변경 기록은 로컬 모드 전용입니다 …` | 서버에 연결된 프로젝트에서 `erdd changes` 를 돌렸다 | 서버 모드에는 변경 기록이 없다 |
 
 ---
 
