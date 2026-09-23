@@ -117,7 +117,7 @@ export function composeChangeset(plan: ChangesPlan, input: PlanInput, opts: Comp
 
 // ── 파일 이름 — guide 「파일 이름과 재생 순서」 ──
 
-const STAMP = /^(\d{14})_/
+const STAMP = /^(\d{14})_.*\.erddc$/
 
 function timeToStamp(ms: number): string {
   const d = new Date(ms)
@@ -153,6 +153,7 @@ export function changesetFileName(stamp: string, name: string): string {
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '')
     .replace(/^[-.]+|[-.]+$/g, '')
     .slice(0, 60)
+    .replace(/^[-.]+|[-.]+$/g, '')
   return `${stamp}_${slug === '' ? 'changes' : slug}${CHANGESET_EXT}`
 }
 

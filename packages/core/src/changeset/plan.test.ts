@@ -149,6 +149,7 @@ describe('파일명 규칙', () => {
     expect(changesetStamp(now, [])).toBe('20260923041200')
     expect(changesetStamp(now, ['erdd/changes/20260923041200_a.erddc'])).toBe('20260923041201')
     expect(changesetStamp(now, ['erdd/changes/29990101000000_future.erddc', 'README.md'])).toBe('29990101000001')
+    expect(changesetStamp(now, ['erdd/changes/29990101000000_note.txt'])).toBe('20260923041200')
   })
   it('시각을 ISO 로 바꾼다', () => {
     expect(stampToIso('20260923041200')).toBe('2026-09-23T04:12:00Z')
@@ -157,6 +158,7 @@ describe('파일명 규칙', () => {
     expect(changesetFileName('20260923041200', '회원 등급 추가')).toBe('20260923041200_회원-등급-추가.erddc')
     expect(changesetFileName('20260923041200', '../a/b: c*?')).toBe('20260923041200_ab-c.erddc')
     expect(changesetFileName('20260923041200', ' ./ ')).toBe('20260923041200_changes.erddc')
+    expect(changesetFileName('20260923041200', `${'a'.repeat(59)} b`)).toBe(`20260923041200_${'a'.repeat(59)}.erddc`)
   })
   it('오류 위치는 「파일 줄행: 메시지」', () => {
     expect(formatChangeIssue({ file: 'a.erddc', line: 3, message: 'm' })).toBe('a.erddc 3행: m')
