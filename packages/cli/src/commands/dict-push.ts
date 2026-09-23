@@ -4,6 +4,7 @@ import {
 } from '@erdd/core'
 import { readBase, readConfig, readSync } from '../config.js'
 import { CliError, emit, note } from '../output.js'
+import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { diffTrees, readTree } from '../tree.js'
 import { clientFor, run, type CommandCtx } from './context.js'
 import { fetchItems, guardFeature, listLibraries, requireDictConnection, resolveLibrary } from './dict-shared.js'
@@ -51,6 +52,8 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
     if (ctx.library === undefined) throw new CliError('USAGE', '--library <이름|id> 가 필요합니다')
     const config = await readConfig(ctx.cwd)
     const connection = requireDictConnection(config)
+    // 승격은 서버 엔티티를 올린다 — serve 화면에 떠 있는 미저장 편집은 실리지 않는다(push 와 같은 알림).
+    if (await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
     await requireClean(ctx.cwd)
     const client = await clientFor(ctx)
     const lib = resolveLibrary(await listLibraries(client, connection.projectId), ctx.library)

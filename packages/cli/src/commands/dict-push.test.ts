@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { MAX_OPS_PER_MUTATION, createEmptyModel, type LibraryItem, type ProjectModel } from '@erdd/core'
 import type { ApiClient } from '../client.js'
 import { readConfig, writeConfig, writeSync } from '../config.js'
+import { UNSAVED_NOTICE } from '../local/draft.js'
 import { TEST_CONFIG, seedPulled } from '../testing/harness.js'
 import { readTree } from '../tree.js'
 import { dictPush, type DictPushCtx } from './dict-push.js'
@@ -457,6 +458,21 @@ describe('dict push', () => {
       expect(await dictPush(ctx(c))).toBe(0)
       expect(JSON.parse(out.at(-1)!)).toMatchObject({ mode: 'request', danglingDomain: [] })
     })
+  })
+
+  // serve 화면에 고친 값이 떠 있어도 올라가는 것은 파일(=보관함)의 값이다 — push 와 같은 알림을 낸다.
+  it('미저장 편집(.erdd/draft.json)이 있으면 알린다', async () => {
+    await seed(serverModel())
+    await mkdir(join(dir, '.erdd'), { recursive: true })
+    await writeFile(join(dir, '.erdd/draft.json'), '{}')
+    expect(await dictPush(ctx(client(serverModel(), true).client))).toBe(0)
+    expect(err.join('')).toContain(UNSAVED_NOTICE)
+  })
+
+  it('미저장 편집이 없으면 알리지 않는다', async () => {
+    await seed(serverModel())
+    expect(await dictPush(ctx(client(serverModel(), true).client))).toBe(0)
+    expect(err.join('')).not.toContain(UNSAVED_NOTICE)
   })
 
   it('일부만 건너뛰면 종료 0 이고 건너뛴 항목과 사유를 보인다', async () => {
