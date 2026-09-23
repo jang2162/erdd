@@ -33,6 +33,14 @@ export type InitCtx = CommandCtx & {
   choose?: (question: string, options: { id: string; label: string }[]) => Promise<string>
 }
 
+/**
+ * config 에 쓰는 서버 URL 의 한 모양. `createClient` 가 끝 슬래시를 떼므로 `https://x/` 와 `https://x` 는
+ * 같은 서버다 — 저장값이 갈리면 재-init 이 같은 서버를 다른 서버로 읽어 구독을 지운다.
+ */
+function normalizeServerUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '')
+}
+
 async function ask(ctx: InitCtx, question: string): Promise<string> {
   if (ctx.prompt === undefined) throw new CliError('USAGE', `${question} — 비대화형에서는 인자로 주세요`)
   return (await ctx.prompt(question)).trim()
@@ -70,7 +78,7 @@ export function init(ctx: InitCtx): Promise<number> {
       return 0
     }
 
-    const serverUrl = ctx.serverUrl ?? await ask(ctx, '서버 URL을 입력하세요')
+    const serverUrl = normalizeServerUrl(ctx.serverUrl ?? await ask(ctx, '서버 URL을 입력하세요'))
     const token = ctx.token ?? await ask(ctx, '액세스 토큰을 입력하세요')
     const client: ApiClient = ctx.client ?? createClient(serverUrl, token)
 
@@ -121,7 +129,9 @@ async function keptSubscriptions(cwd: string, serverUrl: string, projectId: stri
     if (err instanceof CliError) return []
     throw err
   }
-  return old.serverUrl === serverUrl && old.projectId === projectId ? old.dictionaries : []
+  // 옛 config 는 정규화 전에 저장됐을 수 있어 양쪽을 같은 모양으로 맞춰 비교한다.
+  const sameServer = old.serverUrl !== null && normalizeServerUrl(old.serverUrl) === serverUrl
+  return sameServer && old.projectId === projectId ? old.dictionaries : []
 }
 
 /**
@@ -153,7 +163,7 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
     }
   }
 
-  const serverUrl = ctx.serverUrl ?? await ask(ctx, '서버 URL을 입력하세요')
+  const serverUrl = normalizeServerUrl(ctx.serverUrl ?? await ask(ctx, '서버 URL을 입력하세요'))
   const token = ctx.token ?? await ask(ctx, '액세스 토큰을 입력하세요')
   const client: ApiClient = ctx.client ?? createClient(serverUrl, token)
   // 토큰이 실제로 통하는지 먼저 확인한다 — 잘못된 토큰으로 config를 만들지 않는다.

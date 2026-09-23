@@ -114,6 +114,20 @@ describe('init', () => {
       expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
     })
 
+    // createClient 가 끝 슬래시를 떼므로 두 URL 은 같은 서버다 — 구독이 끊기면 안 된다.
+    it('끝 슬래시·앞뒤 공백만 다른 같은 서버로 다시 연결하면 구독을 잇고, 정규화한 URL 을 쓴다', async () => {
+      await subscribed()
+      expect(await init({ ...connect, serverUrl: ' https://erdd.example.com/ ', cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
+      expect(await readConfig(dir)).toMatchObject({
+        serverUrl: 'https://erdd.example.com', dictionaries: [{ id: 'L1', name: '표준' }],
+      })
+
+      // 정규화 전에 저장된 옛 config(끝 슬래시)도 같은 서버로 본다.
+      await writeConfig(dir, { ...(await readConfig(dir)), serverUrl: 'https://erdd.example.com//' })
+      expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p1' })).toBe(0)
+      expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
+    })
+
     it('다른 프로젝트나 다른 서버로 연결하면 구독을 비운다', async () => {
       await subscribed()
       expect(await init({ ...connect, cwd: dir, client: stubClient(), projectId: 'p2' })).toBe(0)
@@ -228,6 +242,12 @@ describe('init --create', () => {
     expect(JSON.parse(out.join(''))).toEqual({
       configPath: 'erdd.config.yaml', projectId: CREATED, projectName: '주문시스템', migrated: false,
     })
+  })
+
+  it('서버 URL 은 앞뒤 공백·끝 슬래시를 떼고 config 에 쓴다', async () => {
+    const { client } = createClient()
+    expect(await init({ ...base, serverUrl: ' https://erdd.example.com/ ', cwd: dir, client })).toBe(0)
+    expect((await readConfig(dir)).serverUrl).toBe('https://erdd.example.com')
   })
 
   it('--case 를 명명 규칙에 싣고, 조직은 id 로도 고른다', async () => {
