@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PromoteEntry } from '@erdd/core'
 import {
-  danglingDomain, initialSelection, promoteSummary, setAllForStatus,
+  initialSelection, promoteSummary, setAllForStatus,
 } from './promote-selection.js'
 
 function entry(over: Partial<PromoteEntry> & Pick<PromoteEntry, 'entityId' | 'status'>): PromoteEntry {
@@ -39,33 +39,6 @@ describe('setAllForStatus', () => {
     expect([...on]).toEqual(['c'])
     const off = setAllForStatus(new Set(['a', 'c']), entries, 'new', false)
     expect([...off]).toEqual(['c'])
-  })
-})
-
-describe('danglingDomain', () => {
-  const term = entry({
-    entityId: 't1', status: 'new', kind: 'term',
-    domainRef: { entityId: 'd1', targetItemId: null },
-  })
-
-  it('도메인이 라이브러리에 없고 함께 선택되지도 않으면 연결이 빈다', () => {
-    expect(danglingDomain(term, new Set(['t1']))).toBe(true)
-  })
-
-  it('도메인을 함께 선택하면 연결된다', () => {
-    expect(danglingDomain(term, new Set(['t1', 'd1']))).toBe(false)
-  })
-
-  it('도메인이 이미 라이브러리에 있으면 선택과 무관하다', () => {
-    const linked = entry({
-      entityId: 't1', status: 'new', kind: 'term',
-      domainRef: { entityId: 'd1', targetItemId: 'sd' },
-    })
-    expect(danglingDomain(linked, new Set(['t1']))).toBe(false)
-  })
-
-  it('도메인 참조가 없으면 false', () => {
-    expect(danglingDomain(entry({ entityId: 'w1', status: 'new' }), new Set(['w1']))).toBe(false)
   })
 })
 

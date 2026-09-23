@@ -1,5 +1,4 @@
-import { RESOURCE_KIND_LABEL, type PromoteEntry, type PromoteStatus } from '@erdd/core'
-import { danglingDomain } from '@/lib/promote-selection'
+import { RESOURCE_KIND_LABEL, danglingDomain, type PromoteEntry, type PromoteStatus } from '@erdd/core'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 

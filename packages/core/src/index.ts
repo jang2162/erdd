@@ -97,7 +97,7 @@ export { planResync, applyResyncPlan, adoptTargetOf, adoptAssignments } from './
 export type {
   LibraryItem, ResyncStatus, ResyncDecision, ResyncEntry, ResyncPlan,
 } from './resource-sync.js'
-export { planPromote, applyPromotePlan } from './resource-promote.js'
+export { planPromote, applyPromotePlan, danglingDomain } from './resource-promote.js'
 export type { PromoteStatus, PromoteEntry, PromotePlan, PromoteWrite } from './resource-promote.js'
 export {
   modelToFiles, filesToModel, tableFileName, unsafeFileName, TREE_ROOT, TOP_LEVEL_FILES, ORIGINS_FILE,

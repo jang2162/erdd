@@ -27,16 +27,6 @@ export function setAllForStatus(
   return out
 }
 
-/**
- * 이 용어를 지금 올리면 도메인 연결이 비는가.
- * 도메인이 이미 라이브러리에 있거나 같은 배치에서 함께 올라가면 연결된다.
- */
-export function danglingDomain(entry: PromoteEntry, selected: ReadonlySet<string>): boolean {
-  const ref = entry.domainRef
-  if (!ref || ref.targetItemId !== null) return false
-  return !selected.has(ref.entityId)
-}
-
 export function promoteSummary(
   result: { inserted: number; updated: number; skipped: readonly unknown[] },
 ): string {

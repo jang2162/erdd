@@ -1,5 +1,5 @@
 import {
-  MAX_OPS_PER_MUTATION, RESOURCE_KIND_LABEL, planPromote,
+  MAX_OPS_PER_MUTATION, RESOURCE_KIND_LABEL, danglingDomain, planPromote,
   type FileTree, type ProjectModel, type PromoteEntry, type ResourceKind,
 } from '@erdd/core'
 import { readBase, readConfig, readSync } from '../config.js'
@@ -79,6 +79,22 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
     const nameMatches = eligible.filter((e) => e.status === 'name-match')
     const selected = eligible.filter((e) => e.status !== 'name-match' || ctx.includeNameMatch)
     const behindJson = behind.map((e) => ({ kind: e.kind, name: e.name, entityId: e.entityId }))
+    // 라이브러리에 없는 도메인을 함께 올리지 않는 용어 — 라이브러리 용어의 도메인이 null 로 들어간다.
+    // --kind·--name·원본 앞섬 제외가 도메인을 빠뜨리기 쉬워 행마다 알린다(웹 승격 화면과 같은 판정).
+    const selectedIds = new Set(selected.map((e) => e.entityId))
+    const domainNameOf = new Map(selected.flatMap((e) => {
+      if (!danglingDomain(e, selectedIds)) return []
+      const id = e.domainRef!.entityId
+      return [[e.entityId, model.domains[id]?.name ?? id] as const]
+    }))
+    const danglingJson = selected.flatMap((e) => {
+      const domain = domainNameOf.get(e.entityId)
+      return domain === undefined ? [] : [{ name: e.name, domain }]
+    })
+    const danglingOf = (e: PromoteEntry) => {
+      const domain = domainNameOf.get(e.entityId)
+      return domain === undefined ? '' : `  (도메인 연결 비움 — ${domain}을(를) 함께 올리면 연결됩니다)`
+    }
     const noteBehind = () => {
       if (behind.length === 0) return
       note(`라이브러리 원본이 마지막 dict pull 이후 바뀐 항목 ${behind.length}건은 제외했습니다 — erdd dict pull 로 먼저 받으세요`)
@@ -100,7 +116,7 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
 
     const count = (s: PromoteEntry['status']) => selected.filter((e) => e.status === s).length
     note(`신규 추가 ${count('new')} · 원본 갱신 ${count('update')} · 동명 발견 ${ctx.includeNameMatch ? count('name-match') : `${nameMatches.length}(제외 — --include-name-match)`}`)
-    for (const e of selected) note(`  ${STATUS_MARK[e.status]} ${RESOURCE_KIND_LABEL[e.kind]} ${e.name}${fieldsOf(e)}`)
+    for (const e of selected) note(`  ${STATUS_MARK[e.status]} ${RESOURCE_KIND_LABEL[e.kind]} ${e.name}${fieldsOf(e)}${danglingOf(e)}`)
     noteBehind()
     if (!ctx.yes) {
       if (ctx.confirm === undefined) {
@@ -118,7 +134,7 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
         `승격 요청을 만들었습니다 (${r.requested}건). 조직 관리자가 웹에서 승인하면 반영됩니다`,
         // 계획을 계산한 뒤 요청 사이에 엔티티가 지워지면 서버가 걸러 낸다 — 조용히 줄지 않게.
         ...(r.dropped.length > 0 ? [`(${r.dropped.length}건은 그 사이 사라져 빠졌습니다)`] : []),
-      ].join('\n'), { mode: 'request', ...r, behind: behindJson })
+      ].join('\n'), { mode: 'request', ...r, behind: behindJson, danglingDomain: danglingJson })
       return 0
     }
 
@@ -134,7 +150,7 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
       return `  건너뜀 ${e === undefined ? s.entityId : `${RESOURCE_KIND_LABEL[e.kind]} ${e.name}`} (${s.reason === 'missing' ? '대상이 사라짐' : '그 사이 계획이 바뀜'})`
     })
     if (r.inserted + r.updated === 0) {
-      emit(ctx.json, ['승격된 항목이 없습니다 — 전부 건너뛰었습니다', ...skippedLines].join('\n'), { mode: 'promote', ok: false, ...r, behind: behindJson })
+      emit(ctx.json, ['승격된 항목이 없습니다 — 전부 건너뛰었습니다', ...skippedLines].join('\n'), { mode: 'promote', ok: false, ...r, behind: behindJson, danglingDomain: danglingJson })
       return 1
     }
     const done = `승격했습니다 — 신규 ${r.inserted} · 갱신 ${r.updated}`
@@ -152,10 +168,10 @@ export function dictPush(ctx: DictPushCtx): Promise<number> {
       const detail = (err as Error).message
       emit(ctx.json,
         [`${done}. 파일 갱신에 실패했습니다 — erdd pull을 실행하세요 (${detail})`, ...skippedLines].join('\n'),
-        { mode: 'promote', ok: false, committed: true, syncError: detail, ...r, behind: behindJson })
+        { mode: 'promote', ok: false, committed: true, syncError: detail, ...r, behind: behindJson, danglingDomain: danglingJson })
       return 1
     }
-    emit(ctx.json, [done, ...skippedLines].join('\n'), { mode: 'promote', ok: true, ...r, behind: behindJson })
+    emit(ctx.json, [done, ...skippedLines].join('\n'), { mode: 'promote', ok: true, ...r, behind: behindJson, danglingDomain: danglingJson })
     return 0
   })
 }

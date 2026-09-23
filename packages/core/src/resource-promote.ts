@@ -176,6 +176,17 @@ function domainRefOf(
   return { entityId: domainId, targetItemId: linkedItemId.get(domainId) ?? null }
 }
 
+/**
+ * 이 용어를 지금 올리면 라이브러리 용어의 도메인 연결이 비는가.
+ * 도메인이 이미 라이브러리에 있거나(`targetItemId`) 같은 배치에서 함께 올라가면 연결된다.
+ * 웹 승격 화면과 CLI `dict push` 가 같은 판정으로 알린다 — 한쪽만 알리면 다른 쪽에서 조용히 빈다.
+ */
+export function danglingDomain(entry: PromoteEntry, selected: ReadonlySet<string>): boolean {
+  const ref = entry.domainRef
+  if (!ref || ref.targetItemId !== null) return false
+  return !selected.has(ref.entityId)
+}
+
 export type PromoteWrite = {
   mode: 'insert' | 'update'
   itemId: string

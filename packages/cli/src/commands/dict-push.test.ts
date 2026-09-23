@@ -410,6 +410,55 @@ describe('dict push', () => {
     })
   })
 
+  /**
+   * 라이브러리에 없는 도메인을 쓰는 용어만 올리면 라이브러리 용어의 domainId 가 null 로 들어간다.
+   * --kind·--name 은 도메인을 빠뜨리기 쉬운 필터라 그 결과를 행마다 보인다(웹 승격 화면의 배지와 같은 판정).
+   */
+  describe('도메인 연결이 비는 용어', () => {
+    const D1 = '018f6b0e-0000-7000-8000-0000000000d1'
+    const T1 = '018f6b0e-0000-7000-8000-0000000000e1'
+    function withTerm(): ProjectModel {
+      const m = serverModel()
+      m.domains[D1] = {
+        id: D1, name: '금액', category: null, logicalType: 'DECIMAL',
+        dialectTypes: { postgresql: 'NUMERIC(18,2)', mysql: null, oracle: null, mssql: null },
+        defaultValue: null, allowedValues: [], description: null, origin: null,
+      }
+      m.terms[T1] = { id: T1, logicalName: '주문금액', physicalName: 'ORD_AMT', domainId: D1, description: null, origin: null }
+      return m
+    }
+
+    it('도메인을 함께 올리지 않으면 용어 행에 연결이 빈다고 알리고 --json 에 싣는다', async () => {
+      const m = withTerm()
+      await seed(m)
+      const { client: c } = client(m, false)
+      expect(await dictPush(ctx(c, { json: false, kinds: ['term'] }))).toBe(0)
+      expect(err.join('')).toBe([
+        '신규 추가 1 · 원본 갱신 0 · 동명 발견 0(제외 — --include-name-match)',
+        '  + 용어 주문금액  (도메인 연결 비움 — 금액을(를) 함께 올리면 연결됩니다)',
+        '',
+      ].join('\n'))
+
+      out = []
+      expect(await dictPush(ctx(c, { kinds: ['term'] }))).toBe(0)
+      expect(JSON.parse(out.at(-1)!)).toMatchObject({
+        mode: 'request', danglingDomain: [{ name: '주문금액', domain: '금액' }],
+      })
+    })
+
+    it('도메인을 함께 올리면 알리지 않는다', async () => {
+      const m = withTerm()
+      await seed(m)
+      const { client: c } = client(m, false)
+      expect(await dictPush(ctx(c, { json: false }))).toBe(0)
+      expect(err.join('')).not.toContain('도메인 연결 비움')
+
+      out = []
+      expect(await dictPush(ctx(c))).toBe(0)
+      expect(JSON.parse(out.at(-1)!)).toMatchObject({ mode: 'request', danglingDomain: [] })
+    })
+  })
+
   it('일부만 건너뛰면 종료 0 이고 건너뛴 항목과 사유를 보인다', async () => {
     await seed(serverModel())
     const { client: c } = client(serverModel(), true, {
