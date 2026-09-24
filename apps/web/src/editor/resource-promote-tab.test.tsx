@@ -4,7 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { toast } from 'sonner'
-import { createEmptyModel, type Domain, type ProjectModel, type Term, type Word } from '@erdd/core'
+import {
+  createEmptyModel, MAX_LIBRARY_FILE_ITEMS, type Domain, type ProjectModel, type Term, type Word,
+} from '@erdd/core'
+import { formatCount } from '@/lib/format'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
@@ -410,4 +413,21 @@ describe('ResourcePromoteTab', () => {
     expect(modelGet).toHaveBeenCalled()
     expect(toast.success).not.toHaveBeenCalled()
   }, 30000)
+
+  it(`승격 요청이 ${MAX_LIBRARY_FILE_ITEMS}건을 넘으면 서버에 보내지 않고 나눠 선택하라고 알린다`, async () => {
+    const create = vi.fn(() => ({ data: { id: 'r1', requested: 1, dropped: [] } }))
+    const model = bigModel(MAX_LIBRARY_FILE_ITEMS)             // 도메인 1 + 단어 N = N + 1건
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
+      'resource.items.list': () => ({ data: [] }),
+      'promotion.listForProject': () => ({ data: [] }),
+      'promotion.create': create,
+    }, model)
+    await openPromoteTab()
+    await screen.findByText(`신규 추가 (${formatCount(MAX_LIBRARY_FILE_ITEMS + 1)})`, undefined, { timeout: 30000 })
+    await userEvent.click(screen.getByRole('button', { name: '승격 요청' }))
+    expect(toast.error).toHaveBeenCalledWith('한 번에 요청할 수 있는 항목은 50,000건까지입니다. 나눠 선택해 주세요.')
+    await settle()
+    expect(create).not.toHaveBeenCalled()
+  }, 60000)
 })

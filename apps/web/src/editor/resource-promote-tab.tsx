@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { planPromote, type LibraryItem, type PromotePlan } from '@erdd/core'
+import { MAX_LIBRARY_FILE_ITEMS, planPromote, type LibraryItem, type PromotePlan } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
 import { carrySelection, initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
@@ -96,6 +96,11 @@ export function ResourcePromoteTab({
   const onRequest = () => {
     const entries = plan.entries.filter((entry) => selected.has(entry.entityId))
     if (entries.length === 0) return
+    // 요청은 나눠 부르지 않는다 — 서버 `promotion.create` 의 입력 상한을 넘기면 zod 원문 대신 여기서 막는다.
+    if (entries.length > MAX_LIBRARY_FILE_ITEMS) {
+      toast.error(`한 번에 요청할 수 있는 항목은 ${formatCount(MAX_LIBRARY_FILE_ITEMS)}건까지입니다. 나눠 선택해 주세요.`)
+      return
+    }
     request.mutate({
       projectId, libraryId: library.id,
       entityIds: entries.map((entry) => entry.entityId),
