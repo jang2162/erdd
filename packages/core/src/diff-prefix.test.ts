@@ -14,6 +14,11 @@ import { buildSampleModel } from './testing/fixtures.js'
  * 웹은 5,000 op 를 넘는 편집을 `diffModels` 가 낸 순서 그대로 잘라 조각마다 따로 서버에 보낸다
  * (guides/data-layer.md 「한 요청의 op 상한은 …」). 서버는 조각 하나를 독립된 mutation 으로 적용하므로
  * **모든 조각 경계의 중간 상태가 무결해야 한다.** 여기서 그것을 잠근다.
+ *
+ * 잠그지 않는 경우가 하나 있다 — **기존 컬럼의 `tableId` 를 바꾸는 diff.** 컬럼 update 가 관계·인덱스
+ * update 보다 먼저 나가므로, 경계가 그 사이에 오면 조각이 「매핑(인덱스) 컬럼이 없거나 소속 테이블이 다름」으로
+ * 거절된다. 방어선은 웹 `column-edits.ts` 의 `updateColumn` 이 patch 타입에서 `tableId` 를 빼 둔 것이다. 컬럼을
+ * 다른 테이블로 옮기는 편집을 더하려면 이 파일에 그 경우를 먼저 더한다.
  */
 
 const pad = (prefix: string, i: number) => `${prefix}-${String(i).padStart(6, '0')}`
@@ -113,7 +118,7 @@ describe('diffModels — 모든 접두사 무결성(나눠 보내기의 정확�
     expect(expectEveryPrefixValid(after, diffModels(after, before))).toEqual(before)
   })
 
-  it('모든 종류가 든 샘플 모델을 통째로 만들고 지우는 diff 의 모든 접두사가 무결하다', () => {
+  it('샘플 모델(그룹·테이블·컬럼·관계·인덱스·메모)을 통째로 만들고 지우는 diff 의 모든 접두사가 무결하다', () => {
     const sample = buildSampleModel()
     const empty = createEmptyModel()
     expectEveryPrefixValid(empty, diffModels(empty, sample))

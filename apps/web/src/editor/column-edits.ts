@@ -20,6 +20,8 @@ export function addColumn(
   return { ...model, columns: { ...model.columns, [id]: column } }
 }
 
+// patch 에서 `tableId` 를 빼 둔 것이 나눠 보내기의 접두사 무결성 방어선이다 — 컬럼의 소속을 바꾸는 diff 는
+// 조각 경계에서 관계·인덱스 참조가 깨질 수 있다(core `diff-prefix.test.ts` 머리 주석).
 export function updateColumn(
   model: ProjectModel, id: string,
   patch: Partial<Omit<Column, 'id' | 'tableId'>>,
