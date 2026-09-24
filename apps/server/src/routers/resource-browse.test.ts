@@ -177,3 +177,59 @@ describe.skipIf(!url)('resource.items.page', () => {
     expect((await get(app, 'resource.items.page', null, { libraryId, kind: 'word', offset: 0, limit: 50 })).statusCode).toBe(401)
   })
 })
+
+describe.skipIf(!url)('library.list·listForProject — countsByKind', () => {
+  let app: FastifyInstance
+  let token: string
+  beforeAll(async () => { app = await createTestApp() })
+  afterAll(async () => { await app.close() })
+  beforeEach(async () => {
+    await resetDb(app.pgPool!)
+    await createAccount(app.db!, { email: 'u@t.dev', name: 'U', password: 'pw-123456', role: 'user' })
+    token = await loginAs(app, 'u@t.dev', 'pw-123456')
+  })
+
+  type Row = { id: string; itemCount: number; countsByKind: Record<Kind, number> }
+  const sum = (c: Record<Kind, number>) => c.domain + c.word + c.term + c.customField
+
+  it('종류별 개수를 싣고 그 합이 itemCount 와 같다 — 빈 라이브러리는 전부 0', async () => {
+    const { libraryId } = await seedLibrary(app, [
+      word('a', 'A'), word('b', 'B'), term('c', 'C'), domain('d'),
+    ])
+    const empty = await seedLibrary(app, [])
+    const rows = (await get(app, 'resource.library.list', token, { scope: 'global' })).json().result.data as Row[]
+    const full = rows.find((r) => r.id === libraryId)!
+    expect(full.countsByKind).toEqual({ domain: 1, word: 2, term: 1, customField: 0 })
+    expect(sum(full.countsByKind)).toBe(full.itemCount)
+    const blank = rows.find((r) => r.id === empty.libraryId)!
+    expect(blank.countsByKind).toEqual({ domain: 0, word: 0, term: 0, customField: 0 })
+    expect(blank.itemCount).toBe(0)
+  })
+
+  it('listForProject 도 같은 공통 조회라 countsByKind 를 싣는다', async () => {
+    const { libraryId } = await seedLibrary(app, [customField('x'), customField('y'), word('a', 'A')])
+    const orgId = (await post(app, 'org.create', token, { name: '팀' })).json().result.data.id as string
+    const projectId = (await post(app, 'project.create', token, {
+      orgId, name: 'P', dialects: ['postgresql'],
+    })).json().result.data.id as string
+    const rows = (await get(app, 'resource.library.listForProject', token, { projectId })).json().result.data as Row[]
+    const row = rows.find((r) => r.id === libraryId)!
+    expect(row.countsByKind).toEqual({ domain: 0, word: 1, term: 0, customField: 2 })
+    expect(sum(row.countsByKind)).toBe(row.itemCount)
+  })
+})
+
+describe.skipIf(!url)('resource_items 인덱스', () => {
+  let app: FastifyInstance
+  beforeAll(async () => { app = await createTestApp() })
+  afterAll(async () => { await app.close() })
+
+  it('(library_id, kind) 복합 인덱스가 있고 library_id 단일 인덱스는 없다', async () => {
+    const { rows } = await app.pgPool!.query<{ indexname: string; indexdef: string }>(
+      "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'resource_items'",
+    )
+    const byName = new Map(rows.map((r) => [r.indexname, r.indexdef]))
+    expect(byName.has('ix_resource_items_library_id')).toBe(false)
+    expect(byName.get('ix_resource_items_library_kind')).toMatch(/\(library_id, kind\)/)
+  })
+})

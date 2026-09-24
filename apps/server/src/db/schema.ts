@@ -268,7 +268,11 @@ export const resourceItems = pgTable('resource_items', {
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('ix_resource_items_library_id').on(t.libraryId)])
+}, (t) => [
+  // 조회 모달이 (라이브러리, 종류)로 좁혀 페이지를 자른다. 기존 library_id 단일 인덱스는 이 인덱스의 앞 열과
+  // 겹쳐 지웠다 — library_id 만으로 거르는 조회(items.list·loadLibraryItems)도 이 인덱스를 탄다.
+  index('ix_resource_items_library_kind').on(t.libraryId, t.kind),
+])
 
 /**
  * 승격 요청 큐 — op 로그 밖의 일반 테이블이다(resource_libraries와 같은 계층).
