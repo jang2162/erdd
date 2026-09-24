@@ -27,7 +27,7 @@ export async function fetchAllDomainOptions(
 }
 
 /**
- * 라이브러리 도메인 전체 — 용어 폼의 도메인 선택지, 용어 표의 도메인 칸, Excel 가져오기의 도메인 이름 해석이 쓴다.
+ * 라이브러리 도메인 전체 — 용어 폼의 도메인 선택지와 용어 표의 도메인 칸이 쓴다.
  * 항목 전체(`items.list`)를 받지 않는다.
  */
 export function useLibraryDomains(libraryId: string | null, enabled: boolean) {

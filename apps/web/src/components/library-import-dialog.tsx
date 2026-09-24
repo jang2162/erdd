@@ -7,7 +7,6 @@ import {
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { formatCount } from '@/lib/format'
-import { useLibraryDomains } from '@/lib/library-domains'
 import { readDictSheets } from '@/editor/excel-file'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -30,11 +29,6 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
   target: LibraryImportTarget; onClose: () => void; onDone: () => void
 }) {
   const trpc = useTRPC()
-  // 대상 라이브러리의 도메인 이름 — Excel 을 라이브러리 문서로 바꿀 때 용어의 도메인을 이름으로 푸는 데만 쓴다.
-  // 항목 전체(items.list)를 받지 않는다(설계 3절 — 이 쓰임은 dryRun 응답·countsByKind 로 대신할 수 없다).
-  const existingDomains = useLibraryDomains(
-    target.kind === 'existing' ? target.libraryId : null, target.kind === 'existing',
-  )
   const importLibrary = useMutation(trpc.resource.library.import.mutationOptions())
   type ImportSummary = Awaited<ReturnType<typeof importLibrary.mutateAsync>>['summary']
   type Preview = { stateHash: string; summary: ImportSummary }
@@ -80,8 +74,10 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
     try {
       let t: string
       if (file.name.toLowerCase().endsWith('.xlsx')) {
-        const domainNames = (existingDomains.data ?? []).map((d) => d.name)
-        const r = libraryDocFromDictSheets(await readDictSheets(file), { name: file.name.replace(/\.xlsx$/i, ''), targetDomainNames: domainNames })
+        // 대상 라이브러리의 도메인 이름은 넘기지 않는다 — 그 이름은 변환 결과(문서)를 바꾸지 않고 「기본 도메인을
+        // 찾을 수 없다」 경고(r.warnings)에만 쓰이는데, 화면은 그 경고 대신 서버 dryRun 의 경고를 보인다.
+        // 용어의 도메인은 문서에 이름으로 실려 서버가 대상 라이브러리에서 푼다.
+        const r = libraryDocFromDictSheets(await readDictSheets(file), { name: file.name.replace(/\.xlsx$/i, ''), targetDomainNames: [] })
         if (genRef.current !== gen) return
         if (!r.ok) { setIssues(r.issues.slice(0, 20).map(dictIssueText)); return }
         t = stringifyLibraryFile(r.doc)
@@ -128,17 +124,17 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
     if (rows.length === 0) return null
     return (
       <div className="grid gap-1">
-        <p className="text-sm font-medium">{title} {rows.length}건</p>
+        <p className="text-sm font-medium">{title} {formatCount(rows.length)}건</p>
         <ul className="grid gap-0.5 text-xs">
           {rows.slice(0, SHOWN).map((e, i) => (
             <li key={`${e.kind}:${e.name}:${i}`}>
               {RESOURCE_KIND_LABEL[e.kind]} {e.name}
               {e.status === 'stale' && ` (서버 v${e.currentVersion}, 파일 v${e.fileVersion})`}
-              {e.status === 'remove' && e.referencedBy > 0 && ` — 용어 ${e.referencedBy}건이 가리켜 지우지 않음`}
+              {e.status === 'remove' && e.referencedBy > 0 && ` — 용어 ${formatCount(e.referencedBy)}건이 가리켜 지우지 않음`}
               {e.changes.map((c) => <span key={c.field} className="ml-2 text-muted-foreground">{c.field}: {text(c.from)} → {text(c.to)}</span>)}
             </li>
           ))}
-          {rows.length > SHOWN && <li className="text-muted-foreground">외 {rows.length - SHOWN}건</li>}
+          {rows.length > SHOWN && <li className="text-muted-foreground">외 {formatCount(rows.length - SHOWN)}건</li>}
         </ul>
       </div>
     )
@@ -175,20 +171,20 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
               {s.warnings.map((w) => <p key={w} className="text-xs text-amber-600">{w}</p>)}
               {section('추가', 'add')}
               {section('갱신', 'update')}
-              <p className="text-sm">그대로 {s.counts.unchanged}건</p>
+              <p className="text-sm">그대로 {formatCount(s.counts.unchanged)}건</p>
               {section('오래된 파일', 'stale')}
               {section('파일에 없음', 'remove')}
               {removable > 0 && (
                 <label className="flex items-start gap-2 text-sm">
                   <input type="checkbox" checked={prune} disabled={busy} onChange={(e) => setPrune(e.target.checked)} />
-                  <span>파일에 없는 항목 {removable}건 삭제
+                  <span>파일에 없는 항목 {formatCount(removable)}건 삭제
                     {prune && <span className="block text-xs text-muted-foreground">이미 가져간 프로젝트의 사본은 그대로 남습니다</span>}</span>
                 </label>
               )}
               {s.counts.stale > 0 && (
                 <label className="flex items-start gap-2 text-sm">
                   <input type="checkbox" checked={includeStale} disabled={busy} onChange={(e) => setIncludeStale(e.target.checked)} />
-                  <span>오래된 파일 항목 {s.counts.stale}건 덮어쓰기
+                  <span>오래된 파일 항목 {formatCount(s.counts.stale)}건 덮어쓰기
                     {includeStale && <span className="block text-xs text-muted-foreground">서버의 더 새 값을 파일의 옛 값으로 되돌립니다</span>}</span>
                 </label>
               )}
