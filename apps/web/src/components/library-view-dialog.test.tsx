@@ -97,6 +97,18 @@ describe('LibraryViewDialog', () => {
     expect(Date.now() - typedAt).toBeGreaterThanOrEqual(250)
   })
 
+  it('검색어는 서버 상한 200자를 넘겨 입력되지 않는다', async () => {
+    const page = pageHandler(() => words(3))
+    renderDialog({ 'resource.items.page': page })
+    await screen.findByText('w000')
+    const box = screen.getByRole('textbox', { name: '단어 검색' })
+    await userEvent.click(box)
+    await userEvent.paste('가'.repeat(250))
+    expect(box).toHaveValue('가'.repeat(200))
+    await waitFor(() => expect(page).toHaveBeenCalledWith(expect.objectContaining({ query: '가'.repeat(200) })))
+    expect(page).not.toHaveBeenCalledWith(expect.objectContaining({ query: '가'.repeat(250) }))
+  })
+
   it('검색 결과가 여러 쪽이어도 검색어를 바꾸면 1쪽으로 간다', async () => {
     const page = pageHandler(() => words(200))
     renderDialog({ 'resource.items.page': page })

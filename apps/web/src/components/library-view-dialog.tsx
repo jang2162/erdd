@@ -27,6 +27,8 @@ export type ViewedLibrary = { id: string; name: string; countsByKind: Record<Res
 export const VIEW_KINDS = ['word', 'term', 'domain', 'customField'] as const satisfies readonly ResourceKind[]
 
 const SEARCH_DEBOUNCE_MS = 300
+/** 서버 `items.page` 의 검색어 상한(zod `max(200)`). 넘기면 zod 원문이 오류로 뜨므로 입력에서 막는다. */
+const SEARCH_MAX_LENGTH = 200
 type TabState = { query: string; page: number }
 const INITIAL_TABS: Record<ResourceKind, TabState> = {
   word: { query: '', page: 1 }, term: { query: '', page: 1 },
@@ -211,7 +213,7 @@ function KindTab({
     <div className="grid gap-2">
       <div className="flex items-center gap-2">
         <Input aria-label={`${label} 검색`} placeholder="논리명·물리명 검색" value={state.query}
-          onChange={(e) => onQueryChange(e.target.value)} />
+          maxLength={SEARCH_MAX_LENGTH} onChange={(e) => onQueryChange(e.target.value)} />
         {canManage && (
           <Button type="button" size="sm" variant="outline" onClick={onAdd}><Plus /> 추가</Button>
         )}
