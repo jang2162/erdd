@@ -375,7 +375,7 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
       </ReactFlow>
       {/*
         Delete 단축키가 다중 선택을 겨눴을 때의 확인 다이얼로그. 툴바·일괄 패널과 같은 컴포넌트라
-        문구·op 상한 가드가 세 진입점에서 한 벌이다(설계 §7).
+        문구·진행 표시가 세 진입점에서 한 벌이다(설계 §7).
       */}
       <BulkDeleteDialog
         projectId={projectId}

@@ -258,7 +258,7 @@ export function planTermPropagation(
 
 /**
  * 계획을 모델에 적용한다. 순수 함수.
- * updateTerm과 같은 producer 안에서 연달아 호출해 단일 mutation(Revision 1건)으로 만든다.
+ * updateTerm과 같은 producer 안에서 연달아 호출해 편집 1건(실행 취소 1회)으로 만든다.
  * 계획을 세운 뒤 대상이 사라졌거나(남이 삭제) 그 필드를 남이 먼저 고쳤으면 건너뛴다 —
  * 확인 다이얼로그에서 보여준 것만 정확히 적용한다(원격 변경을 혼종으로 덮어쓰지 않는다).
  */

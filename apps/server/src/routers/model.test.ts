@@ -183,8 +183,9 @@ describe.skipIf(!url)('model', () => {
     })
   })
 
-  // Excel 사전 가져오기는 undo 1회로 원복되도록 전체를 mutation 1건으로 보낸다. 옛 상한 500과
-  // Fastify 기본 본문 한도 1 MiB로는 수백 행짜리 단어사전 한 장이 통째로 거절됐다.
+  // 요청 하나는 op 를 MAX_OPS_PER_MUTATION 까지 받는다 — 웹은 그 이하의 편집(Excel 사전 가져오기 등)을 요청
+  // 하나로 보내고 넘는 것만 나눈다. Fastify 기본 본문 한도 1 MiB 로는 수백 행짜리 단어사전 한 장이 통째로
+  // 거절된다.
   it('op 600건·본문 1 MiB 초과 배치를 받아들이고 상한을 넘으면 400으로 막는다', async () => {
     const padding = 'x'.repeat(2000)
     const bulk = Array.from({ length: 600 }, (_, i) => {

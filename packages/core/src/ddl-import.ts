@@ -50,8 +50,8 @@ export type DdlImportPlan = {
   /**
    * 다수결로 채택한 **프로젝트 수준** 테이블 옵션. 아무 테이블도 옵션을 적지 않았으면 null 이다.
    *
-   * ⚠️ **적용은 `applyDdlImport` 밖이다.** 프로젝트 설정은 op 로그 밖이라 「Revision 1건 =
-   * undo 1회」 규약이 닿지 않는다 — 모델 변경에 섞으면 되돌리기가 반쪽이 된다(설계 §5.5-3).
+   * ⚠️ **적용은 `applyDdlImport` 밖이다.** 프로젝트 설정은 op 로그 밖이라 실행 취소가
+   * 닿지 않는다 — 모델 변경에 섞으면 되돌리기가 반쪽이 된다(설계 §5.5-3).
    * 웹은 체크박스 + `project.update`, CLI 는 `erdd.config.yaml` 되쓰기로 **따로** 반영한다.
    */
   tableOptions: string | null

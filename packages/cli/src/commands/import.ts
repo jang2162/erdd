@@ -197,7 +197,7 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
     }
 
     // ⚠️ **설정 반영은 `applyDdlImport` 밖의 두 번째 동작이다** — 프로젝트 설정은 op 로그 밖이라
-    // 「Revision 1건 = undo 1회」 규약이 닿지 않는다(설계 §5.5-3).
+    // 실행 취소·되돌리기가 닿지 않는다(설계 §5.5-3).
     if (tableOptionsApplied) {
       await writeConfig(ctx.cwd, {
         ...config,
