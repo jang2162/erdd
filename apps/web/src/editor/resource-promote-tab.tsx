@@ -125,7 +125,7 @@ export function ResourcePromoteTab({
           toast.error('서버 상태를 불러오지 못했습니다. 새로고침해 주세요.')
         }
       }
-      if (run.error === null) toast.success(promoteSummary(run.outcome))
+      if (run.error === null) toast.success(promoteSummary(run.outcome, run.total))
       else toast.error(promoteFailureMessage(entries.length, run))
     } finally {
       setPromoting(false)

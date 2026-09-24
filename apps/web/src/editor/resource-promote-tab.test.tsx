@@ -369,6 +369,29 @@ describe('ResourcePromoteTab', () => {
     expect(chunks[1]![0]!.entityId).toBe('w04999')
   }, 30000)
 
+  it('나눠 부른 승격에서 뒤 조각의 건너뜀은 「이미 반영됐거나」로 알린다 — 앞 조각이 이미 원하는 상태로 만든 항목일 수 있다', async () => {
+    const promoted = vi.fn((input: unknown) => {
+      const n = (input as { entries: unknown[] }).entries.length
+      return promoted.mock.calls.length === 1
+        ? { data: { seq: 1, inserted: n, updated: 0, skipped: [] } }
+        : { data: { seq: 2, inserted: 0, updated: 0, skipped: [{ entityId: 'w05000', reason: 'missing' }] } }
+    })
+    const model = bigModel(5000)
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+      'resource.promote': promoted,
+      'model.get': () => ({ data: { model, seq: 3 } }),
+    }, model)
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (5,001)', undefined, { timeout: 10000 })
+    await userEvent.click(screen.getByRole('button', { name: '승격' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(
+      '추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다',
+    ))
+    expect(promoted).toHaveBeenCalledTimes(2)
+  }, 30000)
+
   it('중간 조각이 실패하면 몇 건 올렸는지 알리고 계획을 다시 불러온다', async () => {
     const promoted = vi.fn((input: unknown) => (promoted.mock.calls.length === 1
       ? { data: { seq: 1, inserted: (input as { entries: unknown[] }).entries.length, updated: 0, skipped: [] } }

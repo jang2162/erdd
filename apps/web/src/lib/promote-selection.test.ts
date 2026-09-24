@@ -49,6 +49,14 @@ describe('promoteSummary', () => {
     expect(promoteSummary({ inserted: 0, updated: 0, skipped: [{ entityId: 'a', reason: 'missing' }] }))
       .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다')
   })
+
+  it('나눠 부른 승격의 건너뜀은 앞 조각이 이미 반영했을 수 있다고 말한다 — 한 조각이면 기존 문구 그대로', () => {
+    const result = { inserted: 5000, updated: 0, skipped: [{ entityId: 't', reason: 'missing' }] }
+    expect(promoteSummary(result, 2))
+      .toBe('추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다')
+    expect(promoteSummary(result, 1))
+      .toBe('추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다')
+  })
 })
 
 describe('carrySelection', () => {

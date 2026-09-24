@@ -50,11 +50,19 @@ export function setAllForStatus(
   return out
 }
 
+/**
+ * 승격 결과 토스트. 나눠 부른 승격(`chunkCount` ≥ 2)의 건너뜀은 뒤 조각이 앞 조각이 이미 원하는 상태로 만든
+ * 항목일 수 있다 — 앞 조각이 도메인을 링크하면 그 도메인을 가리키는 뒤 조각의 용어가 서버 재계산에서 최신이
+ * 되어 빠진다. 「그 사이 상태가 바뀌었다」만 말하면 아무도 안 바꿨는데 실패로 읽히므로 문구를 넓힌다.
+ */
 export function promoteSummary(
   result: { inserted: number; updated: number; skipped: readonly unknown[] },
+  chunkCount = 1,
 ): string {
   const head = `추가 ${formatCount(result.inserted)}건 · 갱신 ${formatCount(result.updated)}건을 올렸습니다`
-  return result.skipped.length === 0
-    ? head
-    : `${head} — ${formatCount(result.skipped.length)}건은 그 사이 상태가 바뀌어 건너뛰었습니다`
+  if (result.skipped.length === 0) return head
+  const skipped = formatCount(result.skipped.length)
+  return chunkCount > 1
+    ? `${head} — ${skipped}건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다`
+    : `${head} — ${skipped}건은 그 사이 상태가 바뀌어 건너뛰었습니다`
 }
