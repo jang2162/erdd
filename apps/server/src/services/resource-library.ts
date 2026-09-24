@@ -179,6 +179,9 @@ function payloadText(field: string): SQL {
 /**
  * 관리 화면 조회 모달의 한 페이지 — 종류 하나, 검색어로 거른 뒤 논리명 칸 오름차순·동률 id 순.
  * 동률 깨기가 없으면 같은 이름이 많을 때 페이지를 넘기며 항목이 겹치거나 빠진다.
+ * 정렬은 `COLLATE "C"`(코드 포인트 순)다 — DB 기본 로캘(compose 의 postgres 는 en_US.utf8)에서는 한글이 글자 수
+ * 먼저로 늘어선다(「가, 값, 국, 가감」). "C" 는 어느 Postgres 에나 있고 한글 음절을 가나다순으로 둔다. ICU
+ * 콜레이션은 빌드에 따라 없을 수 있어 쓰지 않는다(guides/shared-resources.md 「알려진 한계」).
  * 이름이 jsonb 안에 있어 정렬·검색은 인덱스를 타지 않는다 — (library_id, kind) 인덱스로 좁힌 뒤 거른다.
  */
 export async function loadLibraryItemPage(
@@ -202,7 +205,7 @@ export async function loadLibraryItemPage(
     })
       .from(resourceItems)
       .where(where)
-      .orderBy(asc(payloadText(NAME_FIELD[input.kind])), asc(resourceItems.id))
+      .orderBy(asc(sql`${payloadText(NAME_FIELD[input.kind])} COLLATE "C"`), asc(resourceItems.id))
       .limit(input.limit)
       .offset(input.offset),
     db.select({ total: count() }).from(resourceItems).where(where),
