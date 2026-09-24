@@ -33,7 +33,7 @@ export function countCascade(model: ProjectModel, ids: readonly string[]): {
 }
 
 /**
- * 그룹 배정과 좌표 재배치를 **한 producer**에 담는다 — Revision 1건, undo 1회.
+ * 그룹 배정과 좌표 재배치를 **한 producer**에 담는다 — 편집 1건 · 실행 취소 1회.
  *
  * `planGroupMove`에 **그룹 변경 전** 모델(`m`)을 넘기는 것은 읽기 좋음의 관례다 — 정확성 요건이
  * 아니다. `planGroupMove`가 이동 집합을 기준 bbox에서 스스로 제외하므로 `next`를 넘겨도 결과가 같다.
