@@ -24,4 +24,14 @@ describe('Tabs', () => {
     expect(screen.getByRole('tab', { name: '나' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tabpanel')).toHaveTextContent('내용 나')
   })
+
+  it('탭 줄은 부모 폭 안에 묶이고 넘치면 다음 줄로 넘긴다 — 좁은 화면의 다이얼로그 밖으로 삐져나오지 않는다', () => {
+    // jsdom 은 배치를 계산하지 않는다 — 줄바꿈을 만드는 클래스를 잠근다(실제 배치는 빌드한 CSS 로 브라우저에서 확인).
+    render(
+      <Tabs defaultValue="a">
+        <TabsList aria-label="종류"><TabsTrigger value="a">가</TabsTrigger></TabsList>
+      </Tabs>,
+    )
+    expect(screen.getByRole('tablist', { name: '종류' })).toHaveClass('max-w-full', 'flex-wrap')
+  })
 })
