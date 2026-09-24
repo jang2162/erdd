@@ -124,6 +124,24 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
     expect(useEditorStore.getState().undoStack[0]).toHaveLength(2 * MAX + 1)
   })
 
+  it('진행 콜백이 던져도 적용은 그대로 끝까지 간다 — 낙관적 상태가 남거나 실패로 갈리지 않는다', async () => {
+    const { sent, freshCalls } = serverStub()
+    const { result } = setup()
+    const progress = vi.fn(() => { throw new Error('boom') })
+    let outcome: string | undefined
+    await act(async () => {
+      outcome = await result.current.mutate((m) => withNotes(m, MAX + 1), { summary: '메모 추가', onProgress: progress })
+    })
+    expect(outcome).toBe('applied')
+    expect(progress.mock.calls).toEqual([[0, 2], [1, 2], [2, 2]])
+    expect(sent.map((s) => s.ops.length)).toEqual([MAX, 1])
+    expect(freshCalls).toHaveLength(0)
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(Object.keys(useEditorStore.getState().model.notes)).toHaveLength(MAX + 1)
+    expect(useEditorStore.getState().seq).toBe(3)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
   it('조각은 diffModels 순서 그대로다 — 부모(도메인)가 앞 조각, 그것을 가리키는 용어가 뒤 조각', async () => {
     const { sent } = serverStub()
     const { result } = setup()

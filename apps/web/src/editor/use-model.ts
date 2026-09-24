@@ -129,7 +129,12 @@ function useSubmit(projectId: string) {
       let lastSeq = seqBefore
       let interleaved = false
       let done = 0
-      if (total > 1) opts.onProgress?.(0, total)
+      // 진행 표시는 화면 일이다 — 콜백이 던져도 낙관적 상태가 남거나 적용이 실패로 갈리지 않게 삼킨다.
+      const report = (n: number) => {
+        if (total <= 1) return
+        try { opts.onProgress?.(n, total) } catch { /* 진행 표시 실패는 적용을 좌우하지 않는다 */ }
+      }
+      report(0)
       try {
         for (const chunk of chunks) {
           const { seq } = await mutation.mutateAsync({
@@ -142,7 +147,7 @@ function useSubmit(projectId: string) {
           if (seq !== lastSeq + 1) interleaved = true
           lastSeq = seq
           done += 1
-          if (total > 1) opts.onProgress?.(done, total)
+          report(done)
         }
         if (interleaved) {
           // 끼어든 op 는 use-realtime 의 seq 체인에서 "이미 지나간 것"으로 오인돼 버려지므로,
