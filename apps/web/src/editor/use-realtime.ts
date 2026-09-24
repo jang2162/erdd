@@ -7,6 +7,7 @@ import {
   type ClientMessage, type Op, type PeerSelection, type ProjectModel, type ServerMessage,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
+import { formatCount } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { serializeMutation } from './use-model.js'
 
@@ -153,7 +154,7 @@ export function useRealtime(projectId: string): void {
         toast.info(after > 0
           ? '다른 사용자가 선택 항목 중 일부를 삭제했습니다'
           : before > 1
-            ? `다른 사용자가 선택한 ${before}개 항목을 삭제했습니다`
+            ? `다른 사용자가 선택한 ${formatCount(before)}개 항목을 삭제했습니다`
             : '다른 사용자가 이 항목을 삭제했습니다')
       } else if (impact === 'changed') {
         toast.info('다른 사용자가 이 항목을 수정했습니다')

@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import {
   LOCAL_DISCARD_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, type LocalSaveResult,
 } from '@erdd/core'
+import { formatCount } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { failedMutationCount, serializeMutation } from './use-model.js'
 
@@ -82,7 +83,7 @@ export function useLocalSave() {
         useEditorStore.getState().setLocalSaveStatus({ dirty: false, external: false })
         toast.success(r.written.length + r.deleted.length === 0
           ? '저장할 변경이 없습니다'
-          : `저장했습니다 (파일 ${r.written.length + r.deleted.length}개)`)
+          : `저장했습니다 (파일 ${formatCount(r.written.length + r.deleted.length)}개)`)
         return
       }
       // 거절의 두 갈래를 그대로 상태에 옮긴다 — external 이면 배너가 뜨고, blocked 면 이미

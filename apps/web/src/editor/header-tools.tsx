@@ -11,6 +11,7 @@ import { NamingCheck } from './naming-check.js'
 import { DdlImportDialog } from './ddl-import-dialog.js'
 import { ExportDialog } from './export-dialog.js'
 import { Button } from '@/components/ui/button'
+import { formatCount } from '@/lib/format'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -65,7 +66,7 @@ export function HeaderTools({ projectId }: { projectId: string }) {
 
       <Button variant="ghost" size="sm" onClick={() => setTool('namingCheck')}>
         <ListChecks />
-        {`모델 검사${warnings.length > 0 ? ` (${warnings.length})` : ''}`}
+        {`모델 검사${warnings.length > 0 ? ` (${formatCount(warnings.length)})` : ''}`}
       </Button>
 
       <DropdownMenu>

@@ -6,7 +6,7 @@ import {
   planDdlImport, type Dialect, type ParsedDbml,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
-import { formatProgress } from '@/lib/format'
+import { formatCount, formatProgress } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { applyDdlImport } from './ddl-import-edits.js'
@@ -166,15 +166,15 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
         {shown !== null && (
           <>
             <p className="text-sm">
-              테이블 {shown.tables.length}개 · 컬럼 {columnCount}개 · 관계 {shown.relationships.length}개
-              {' '}· 인덱스 {indexCount}개
-              {shown.groups.length > 0 && ` · 그룹 ${shown.groups.length}개`}
+              테이블 {formatCount(shown.tables.length)}개 · 컬럼 {formatCount(columnCount)}개 · 관계 {formatCount(shown.relationships.length)}개
+              {' '}· 인덱스 {formatCount(indexCount)}개
+              {shown.groups.length > 0 && ` · 그룹 ${formatCount(shown.groups.length)}개`}
               {/* ⚠️ 여기 나열되는 것은 **DDL 원문 이름**이다. 머릿말이 이름을 되돌리면 실제로
                   부딪힌 이름은 그것과 다르므로(TB_MBR_ORD → ORD) 「이미 있는 이름」이라고 적으면
                   거짓이 된다 — 사용자가 사이드바에서 그 이름을 못 찾는다. 겹쳤다는 사실만 적고
                   무엇과 겹쳤는지는 아래 경고 목록이 테이블마다 정확히 말한다. */}
               {shown.skippedTables.length > 0
-                && ` · 건너뜀 ${shown.skippedTables.length}개 (이름이 겹침: ${shown.skippedTables.join(', ')})`}
+                && ` · 건너뜀 ${formatCount(shown.skippedTables.length)}개 (이름이 겹침: ${shown.skippedTables.join(', ')})`}
             </p>
             {shown.warnings.length > 0 && (
               <ul aria-label="가져오기 경고" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs text-key">
@@ -208,7 +208,7 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
               <Button type="button" disabled={applying !== null} onClick={() => { void onApply() }}>
                 {applying?.progress
                   ? formatProgress(applying.progress.done, applying.progress.total)
-                  : `${shown.tables.length}개 테이블 만들기`}
+                  : `${formatCount(shown.tables.length)}개 테이블 만들기`}
               </Button>
             </DialogFooter>
           </>

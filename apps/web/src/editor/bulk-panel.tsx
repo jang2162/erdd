@@ -70,7 +70,7 @@ export function applyGroupMove(
       next = moveTable(next, move.id, move.position)
     }
     return next
-  }, { summary: `그룹 이동 (${ids.length}개)` })
+  }, { summary: `그룹 이동 (${formatCount(ids.length)}개)` })
 }
 
 /**
@@ -156,7 +156,7 @@ export function BulkPanel({ projectId }: { projectId: string }) {
         ⚠️ 한계: 이 패널은 2개 이상일 때 새로 마운트되므로 1→2 전환은 "리전 안의 내용 변경"이
         아니라 리전 자체의 삽입이라 낭독이 보장되지 않는다. 2→3처럼 이미 떠 있는 동안의 변경은 읽힌다.
       */}
-      <h2 aria-live="polite" className="mb-3 text-sm font-semibold">{ids.length}개 테이블 선택됨</h2>
+      <h2 aria-live="polite" className="mb-3 text-sm font-semibold">{formatCount(ids.length)}개 테이블 선택됨</h2>
 
       <ul className="mb-4 max-h-48 overflow-y-auto rounded border">
         {tables.map((t) => (

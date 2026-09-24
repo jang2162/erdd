@@ -93,6 +93,18 @@ describe('PromotionRequestsSection', () => {
     expect(screen.getByText(/1건은 이미 반영됐거나 삭제되어 처리할 수 없습니다/)).toBeTruthy()
   })
 
+  it('처리할 수 없는 항목 수를 천 단위로 끊는다', async () => {
+    renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => ({ data: {
+        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+        entries: [ENTRY], unavailable: Array.from({ length: 1234 }, (_, i) => `gone${i}`),
+      } }),
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    expect(await screen.findByText(/1,234건은 이미 반영됐거나 삭제되어 처리할 수 없습니다/)).toBeTruthy()
+  })
+
   /**
    * 요청 뒤 원본이 앞서 나간 항목 — 승인하면 남이 고친 최신 원본이 요청 시점 값으로 되돌아간다.
    * 승인자는 요청 프로젝트를 재동기화할 수 없으므로 문구가 요청자 화면과 달라야 한다.

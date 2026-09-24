@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Building2, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTRPC } from '@/lib/trpc'
+import { formatCount } from '@/lib/format'
 import { useMe } from '@/components/require-auth'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -87,7 +88,7 @@ export function HomePage() {
                   <CardTitle className="flex-1 text-base">{org.name}</CardTitle>
                   {org.kind === 'personal' && <Badge variant="secondary">개인 공간</Badge>}
                   {pendingCount > 0 && (
-                    <Badge variant="outline">승격 요청 {pendingCount}건</Badge>
+                    <Badge variant="outline">승격 요청 {formatCount(pendingCount)}건</Badge>
                   )}
                   <ChevronRight className="size-4 text-muted-foreground" />
                 </CardHeader>

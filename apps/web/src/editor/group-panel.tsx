@@ -5,6 +5,7 @@ import { updateGroup, deleteGroup, generatePhysicalName } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { Button } from '@/components/ui/button'
+import { formatCount } from '@/lib/format'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
@@ -47,7 +48,7 @@ export function GroupPanel({ projectId }: { projectId: string }) {
           </Button>
         )}
       </div>
-      <p className="mb-4 text-xs text-muted-foreground">소속 테이블 {memberCount}개</p>
+      <p className="mb-4 text-xs text-muted-foreground">소속 테이블 {formatCount(memberCount)}개</p>
       <Button size="sm" variant="outline" className="mb-4 w-full" onClick={() => enterGroupView(groupId)}>
         이 그룹 뷰 열기
       </Button>

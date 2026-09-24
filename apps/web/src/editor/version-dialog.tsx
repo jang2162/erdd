@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTRPC } from '@/lib/trpc'
-import { formatCreatedAt } from '@/lib/format'
+import { formatCount, formatCreatedAt } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { HistoryView } from './history-view.js'
 import { SnapshotDiff } from './snapshot-diff.js'
@@ -102,7 +102,7 @@ function SnapshotRow({
           {detail.isError && <p className="text-destructive">{detail.error.message}</p>}
           {detail.data && (
             <>
-              <p>테이블 {tables.length}개</p>
+              <p>테이블 {formatCount(tables.length)}개</p>
               {tables.length > 0 && (
                 <p className="text-muted-foreground">
                   {tables.slice(0, 5).map((t) => t.physicalName).join(', ')}

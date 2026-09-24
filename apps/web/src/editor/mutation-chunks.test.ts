@@ -22,6 +22,13 @@ describe('chunkSummary', () => {
     expect(s).toHaveLength(200)
     expect(s.endsWith(' (1/12)')).toBe(true)
   })
+
+  it('조각 번호도 천 단위로 끊고, 끊은 뒤에도 200자를 넘지 않는다', () => {
+    expect(chunkSummary('메모 추가', 1000, 1234)).toBe('메모 추가 (1,000/1,234)')
+    const s = chunkSummary('가'.repeat(200), 1000, 1234)!
+    expect(s).toHaveLength(200)
+    expect(s.endsWith(' (1,000/1,234)')).toBe(true)
+  })
 })
 
 describe('chunkFailureMessage', () => {

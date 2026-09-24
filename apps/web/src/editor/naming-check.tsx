@@ -4,6 +4,7 @@ import { type Warning } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useWarnings } from './use-warnings.js'
 import { Button } from '@/components/ui/button'
+import { formatCount } from '@/lib/format'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -77,7 +78,7 @@ export function NamingCheck({ projectId: _projectId, open, onOpenChange }: {
           {groups.map(([kind, items]) => (
             <div key={kind} className="grid gap-1.5">
               <h4 className="text-xs font-semibold text-muted-foreground">
-                {KIND_LABEL[kind]} ({items.length})
+                {KIND_LABEL[kind]} ({formatCount(items.length)})
               </h4>
               <ul className="grid gap-1">
                 {items.map((w, i) => (

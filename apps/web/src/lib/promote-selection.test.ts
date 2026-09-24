@@ -57,6 +57,14 @@ describe('promoteSummary', () => {
     expect(promoteSummary(result, 1))
       .toBe('추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다')
   })
+
+  it('건너뛴 건수도 천 단위로 끊는다', () => {
+    const skipped = Array.from({ length: 1234 }, (_, i) => ({ entityId: `s${i}`, reason: 'missing' }))
+    expect(promoteSummary({ inserted: 0, updated: 0, skipped }, 2))
+      .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1,234건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다')
+    expect(promoteSummary({ inserted: 0, updated: 0, skipped }))
+      .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1,234건은 그 사이 상태가 바뀌어 건너뛰었습니다')
+  })
 })
 
 describe('carrySelection', () => {

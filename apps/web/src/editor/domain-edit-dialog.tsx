@@ -5,6 +5,7 @@ import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { createDomain, updateDomain, usageOf } from './domain-edits.js'
 import { DIALECT_LABEL } from '@/lib/labels'
+import { formatCount } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -93,7 +94,7 @@ export function DomainEditDialog({
 
     const domainId = domain.id
     const affected = usageOf(model, domainId).length
-    if (affected > 0 && !window.confirm(`${affected}개 컬럼에 영향을 줍니다. 계속할까요?`)) return
+    if (affected > 0 && !window.confirm(`${formatCount(affected)}개 컬럼에 영향을 줍니다. 계속할까요?`)) return
     void mutate((m) => updateDomain(m, domainId, {
       name: trimmedName,
       category: trimmedCategory === '' ? null : trimmedCategory,

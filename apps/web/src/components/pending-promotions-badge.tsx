@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Inbox } from 'lucide-react'
 import { useTRPC } from '@/lib/trpc'
+import { formatCount } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 
 /**
@@ -24,10 +25,10 @@ export function PendingPromotionsBadge() {
   const to = byOrg.length === 1 ? `/org/${byOrg[0]!.orgId}` : '/'
 
   return (
-    <Link to={to} aria-label={`승격 요청 ${total}건 검토`}>
+    <Link to={to} aria-label={`승격 요청 ${formatCount(total)}건 검토`}>
       <Badge variant="secondary" className="gap-1">
         <Inbox className="size-3.5" />
-        승격 요청 {total}건
+        승격 요청 {formatCount(total)}건
       </Badge>
     </Link>
   )

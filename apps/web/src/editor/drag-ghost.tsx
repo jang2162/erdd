@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { formatCount } from '@/lib/format'
 import { useDragStore } from './drag-store.js'
 
 /** 커서에서 살짝 비켜 그린다 — 커서 바로 밑에 겹치면 무엇을 조준하는지 가려진다. */
@@ -45,7 +46,7 @@ export function DragGhost() {
         font-medium text-popover-foreground shadow-md"
       // 첫 pointermove가 자리를 잡을 때까지 화면 밖에 둔다 — 좌상단(0,0)에 한 프레임 번쩍이지 않게.
       style={{ pointerEvents: 'none', transform: 'translate(-9999px, -9999px)' }}>
-      {count}개 테이블
+      {formatCount(count)}개 테이블
     </div>
   )
 }

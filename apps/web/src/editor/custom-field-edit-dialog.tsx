@@ -5,6 +5,7 @@ import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { createCustomField, updateCustomField } from './custom-field-edits.js'
 import { Button } from '@/components/ui/button'
+import { formatCount } from '@/lib/format'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -81,7 +82,7 @@ export function CustomFieldEditDialog({
     const removed = field.options.filter((o) => !nextOptions.includes(o))
     const affected = removed.reduce((sum, o) => sum + customOptionUsageCount(model, fieldId, o), 0)
     if (affected > 0
-      && !window.confirm(`삭제하는 선택지를 ${affected}곳에서 사용 중입니다. 값은 유지됩니다. 계속할까요?`)) {
+      && !window.confirm(`삭제하는 선택지를 ${formatCount(affected)}곳에서 사용 중입니다. 값은 유지됩니다. 계속할까요?`)) {
       return
     }
     void mutate((m) => updateCustomField(m, fieldId, {
@@ -167,7 +168,7 @@ export function CustomFieldEditDialog({
           )}
           {isEdit && customFieldUsageCount(model, field.id) > 0 && (
             <p className="text-xs text-muted-foreground">
-              현재 {customFieldUsageCount(model, field.id)}곳에서 값을 사용 중입니다.
+              현재 {formatCount(customFieldUsageCount(model, field.id))}곳에서 값을 사용 중입니다.
             </p>
           )}
         </div>

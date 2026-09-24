@@ -126,7 +126,7 @@ function ReviewDialog({
           )}
           {unavailable.length > 0 && (
             <p className="text-sm text-muted-foreground">
-              {unavailable.length}건은 이미 반영됐거나 삭제되어 처리할 수 없습니다.
+              {formatCount(unavailable.length)}건은 이미 반영됐거나 삭제되어 처리할 수 없습니다.
             </p>
           )}
           {detail.isPending && (

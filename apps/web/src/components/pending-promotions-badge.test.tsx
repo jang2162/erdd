@@ -50,4 +50,12 @@ describe('PendingPromotionsBadge', () => {
     const link = await screen.findByRole('link', { name: /승격 요청 5건/ })
     expect(link.getAttribute('href')).toBe('/')
   })
+
+  it('대기 건수를 천 단위로 끊는다', async () => {
+    renderBadge({ 'promotion.pendingCount': () => ({
+      data: { total: 1234, byOrg: [{ orgId: 'o1', count: 1234 }] },
+    }) })
+    const link = await screen.findByRole('link', { name: '승격 요청 1,234건 검토' })
+    expect(link.textContent).toContain('승격 요청 1,234건')
+  })
 })
