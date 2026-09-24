@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -161,6 +161,37 @@ describe('PromotionRequestsSection', () => {
     })
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
     expect(await screen.findByRole('button', { name: '1,234건 승격' })).toBeInTheDocument()
+  })
+
+  it('계획을 다시 받아도 승인자가 해제한 선택은 유지되고, 새 항목·상태가 바뀐 항목만 기본값을 받는다', async () => {
+    let calls = 0
+    const request = { ...ROW, projectName: '회원 시스템', requesterName: '에디터' }
+    const queryClient = renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => {
+        calls += 1
+        return { data: calls === 1
+          ? { request, entries: [ENTRY, { ...ENTRY, entityId: 'w2', name: '고객' }], unavailable: [] }
+          : {
+              request, unavailable: [],
+              entries: [
+                ENTRY,
+                { ...ENTRY, entityId: 'w2', name: '고객', status: 'update', targetItemId: 's2', targetVersion: 1 },
+                { ...ENTRY, entityId: 'w3', name: '상품' },
+              ],
+            } }
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    await userEvent.click(await screen.findByLabelText('회원 선택'))
+    await userEvent.click(screen.getByLabelText('고객 선택'))
+    expect(screen.getByRole('button', { name: '반려' })).toBeInTheDocument()
+    await act(async () => { await queryClient.invalidateQueries() })
+    expect(await screen.findByLabelText('상품 선택')).toBeChecked()
+    expect(screen.getByLabelText('회원 선택')).not.toBeChecked()
+    // new → update 로 상태가 바뀌었다 — 승인자가 본 선택지가 달라졌으므로 해제를 잇지 않는다.
+    expect(screen.getByLabelText('고객 선택')).toBeChecked()
+    expect(screen.getByRole('button', { name: '2건 승격' })).toBeInTheDocument()
   })
 
   it('승인 성공 후 같은 화면의 라이브러리 목록·항목 캐시를 무효화한다', async () => {

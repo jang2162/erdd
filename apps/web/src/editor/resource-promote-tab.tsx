@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { planPromote, type LibraryItem, type PromotePlan } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
-import { initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
+import { carrySelection, initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
 import { formatCount, formatProgress } from '@/lib/format'
 import { promoteFailureMessage, promoteInChunks, toPromoteRequest } from '@/lib/promote-chunks'
 import type { LibraryRow } from './resource-panel.js'
@@ -38,7 +38,16 @@ export function ResourcePromoteTab({
     () => (items.data ? planPromote(model, library.id, items.data as LibraryItem[]) : EMPTY_PLAN),
     [model, library.id, items.data],
   )
-  useEffect(() => { setSelected(initialSelection(plan.entries)) }, [plan])
+  // 계획이 다시 계산되면(모델 변경·항목 재조회) 사용자가 정한 선택은 잇고 새 항목만 기본값을 받는다.
+  // 라이브러리가 바뀌면 처음부터다 — 같은 엔티티라도 다른 라이브러리로 올리는 것은 다른 결정이다.
+  const prevPlanRef = useRef<PromotePlan | null>(null)
+  useEffect(() => {
+    const prevPlan = prevPlanRef.current
+    prevPlanRef.current = plan
+    setSelected((prev) => (prevPlan !== null && prevPlan.libraryId === plan.libraryId
+      ? carrySelection(prevPlan.entries, prev, plan.entries)
+      : initialSelection(plan.entries)))
+  }, [plan])
 
   // 조각마다 부르므로 onSuccess/onError 를 쓰지 않고 promoteInChunks 가 결과를 모은다.
   const promote = useMutation(trpc.resource.promote.mutationOptions())

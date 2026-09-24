@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -99,6 +99,53 @@ describe('ResourcePromoteTab', () => {
     await screen.findByText('신규 추가 (60)')
     expect(section().getByRole('textbox', { name: '신규 추가 검색' })).toHaveValue('')
     expect(section().getByText('1 / 2')).toBeInTheDocument()
+  })
+
+  const manyWords = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => {
+    const id = String(i).padStart(3, '0')
+    return [`w${id}`, word(`w${id}`, `단어${id}`, `W${id}`)]
+  }))
+
+  it('모델이 바뀌어 계획이 다시 계산돼도 3쪽에서 해제한 체크가 유지되고, 새 항목만 기본 선택된다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+    }, { ...createEmptyModel(), words: manyWords(120) })
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (120)')
+    const section = within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    await userEvent.click(section.getByRole('checkbox', { name: '단어105 선택' }))
+    expect(screen.getByText('올릴 항목 119건')).toBeInTheDocument()
+    act(() => {
+      useEditorStore.setState((s) => ({ model: { ...s.model, words: { ...s.model.words, w999: word('w999', '단어999', 'W999') } } }))
+    })
+    expect(await screen.findByText('신규 추가 (121)')).toBeInTheDocument()
+    expect(section.getByRole('checkbox', { name: '단어105 선택' })).not.toBeChecked()
+    expect(section.getByRole('checkbox', { name: '단어106 선택' })).toBeChecked()
+    expect(screen.getByText('올릴 항목 120건')).toBeInTheDocument()
+  })
+
+  it('다른 라이브러리로 옮겼다 돌아오면 선택은 처음부터다 — 같은 엔티티라도 다른 라이브러리의 결정을 잇지 않는다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [
+        ...LIBS, { id: 'l3', scope: 'org', orgId: 'o1', name: '부서 사전', description: '', itemCount: 0, canWrite: true },
+      ] }),
+      'resource.items.list': () => ({ data: [] }),
+    }, { ...createEmptyModel(), words: manyWords(3) })
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (3)')
+    await userEvent.click(screen.getByRole('checkbox', { name: '단어000 선택' }))
+    await userEvent.click(screen.getByRole('button', { name: /부서 사전/ }))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '단어000 선택' })).toBeChecked())
+    await userEvent.click(screen.getByRole('checkbox', { name: '단어001 선택' }))
+    expect(screen.getByText('올릴 항목 2건')).toBeInTheDocument()
+    // 조직 표준의 항목은 이미 캐시에 있어 계획이 곧바로(빈 계획을 거치지 않고) 다시 계산된다.
+    await userEvent.click(screen.getByRole('button', { name: /조직 표준/ }))
+    await waitFor(() => expect(screen.getByText('올릴 항목 3건')).toBeInTheDocument())
+    expect(screen.getByRole('checkbox', { name: '단어000 선택' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '단어001 선택' })).toBeChecked()
   })
 
   it('프로젝트 자체 항목이 "신규 추가"로 뜨고 기본 선택된다', async () => {

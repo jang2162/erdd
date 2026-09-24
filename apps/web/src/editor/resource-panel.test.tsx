@@ -358,6 +358,29 @@ describe('ResourcePanel', () => {
     expect(section().getByText('1 / 2')).toBeInTheDocument()
   })
 
+  it('모델이 바뀌어 계획이 다시 계산돼도 3쪽에서 해제한 체크가 유지된다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: manyItems(120) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (120)')
+    const section = within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    await userEvent.click(section.getByRole('checkbox', { name: '단어105 선택' }))
+    expect(screen.getByText('처리 대상 119건')).toBeInTheDocument()
+    // 다른 사용자의 실시간 편집이 도착한 것처럼 모델을 바꾼다 — 라이브러리와 무관한 프로젝트 자체 단어 하나.
+    const local: Word = {
+      id: 'wx', logicalName: '무관', abbreviation: 'MG', englishName: null, description: null, origin: null,
+    }
+    act(() => { useEditorStore.setState((s) => ({ model: { ...s.model, words: { ...s.model.words, wx: local } } })) })
+    expect(await screen.findByText(/프로젝트 자체 항목 1건/)).toBeInTheDocument()
+    expect(section.getByRole('checkbox', { name: '단어105 선택' })).not.toBeChecked()
+    expect(section.getByRole('checkbox', { name: '단어106 선택' })).toBeChecked()
+    expect(screen.getByText('처리 대상 119건')).toBeInTheDocument()
+  })
+
   it('검색 중 「모두 해제」는 보이는 행이 아니라 구역 전체에 적용된다', async () => {
     renderPanel({
       'resource.library.listForProject': () => ({ data: LIBS }),

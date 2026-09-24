@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { PromoteEntry, PromoteStatus } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
-import { initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
+import { carrySelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
 import { formatCount } from '@/lib/format'
 import { libraryDomainsQueryKey } from '@/lib/library-domains'
 import { PromoteEntryList } from '@/components/promote-entry-list'
@@ -59,11 +59,15 @@ function ReviewDialog({
   const entries: PromoteEntry[] = detail.data?.entries ?? []
   const unavailable = detail.data?.unavailable ?? []
 
+  const prevEntriesRef = useRef<readonly PromoteEntry[]>([])
   useEffect(() => {
-    // 기본 선택 규칙은 승격 탭과 같다 — name-match만 사람이 확인하도록 꺼 둔다.
+    // 기본 선택 규칙은 승격 탭과 같다 — name-match만 사람이 확인하도록 꺼 둔다. 계획을 다시 받으면
+    // 승인자가 정한 선택은 잇고 새로 생겼거나 상태가 바뀐 항목만 기본값을 받는다(carrySelection).
     // 의존성이 entries가 아니라 detail.data인 것은 의도다. entries는 `?? []`라 매 렌더 새
     // 배열이고, [entries]로 두면 setSelected가 다시 렌더를 부르는 무한 루프가 된다.
-    setSelected(initialSelection(entries))
+    const prevEntries = prevEntriesRef.current
+    prevEntriesRef.current = entries
+    setSelected((prev) => carrySelection(prevEntries, prev, entries))
   }, [detail.data])
 
   const resolve = useMutation(trpc.promotion.resolve.mutationOptions({

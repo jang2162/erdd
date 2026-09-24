@@ -14,6 +14,28 @@ export function initialSelection(entries: readonly PromoteEntry[]): Set<string> 
   return out
 }
 
+/**
+ * 계획이 다시 계산됐을 때(모델 변경·계획 재조회) 사용자가 정한 선택을 잇는다. 같은 엔티티(`entityId`)가 같은
+ * 상태·같은 대상 항목·같은 `sourceBehind` 로 남아 있으면 그 선택을 두고, 새로 생겼거나 상태가 바뀐 항목은 기본
+ * 선택(`initialSelection`)을 받는다 — 상태가 바뀌면 사용자가 본 선택지 자체가 달라진다.
+ * 다른 라이브러리의 계획에는 쓰지 않는다(엔티티 id 가 같아도 다른 결정이다) — 호출자가 가린다.
+ */
+export function carrySelection(
+  prevEntries: readonly PromoteEntry[], prev: ReadonlySet<string>, next: readonly PromoteEntry[],
+): Set<string> {
+  const out = initialSelection(next)
+  const before = new Map(prevEntries.map((entry) => [entry.entityId, entry]))
+  for (const entry of next) {
+    const old = before.get(entry.entityId)
+    if (old === undefined) continue
+    if (old.status !== entry.status || old.targetItemId !== entry.targetItemId
+      || old.sourceBehind !== entry.sourceBehind) continue
+    if (prev.has(entry.entityId)) out.add(entry.entityId)
+    else out.delete(entry.entityId)
+  }
+  return out
+}
+
 /** 특정 상태의 항목 전부를 한 번에 켜거나 끈다(구역 일괄 버튼). */
 export function setAllForStatus(
   selected: ReadonlySet<string>, entries: readonly PromoteEntry[],

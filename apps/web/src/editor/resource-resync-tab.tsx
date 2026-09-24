@@ -10,7 +10,7 @@ import { formatCount, formatProgress } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
-import { countActive, initialDecisions, setAllForStatus, type Decisions } from './resource-decisions.js'
+import { carryDecisions, countActive, setAllForStatus, type Decisions } from './resource-decisions.js'
 import type { LibraryRow } from './resource-panel.js'
 import { PagedSection } from '@/components/paged-section'
 import { Badge } from '@/components/ui/badge'
@@ -107,8 +107,14 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
     return planResync(model, library.id, items.data as LibraryItem[])
   }, [model, library.id, items.data])
 
-  // 계획이 다시 계산되면(모델 변경·라이브러리 전환·항목 재조회) 결정을 초기값으로 되돌린다.
-  useEffect(() => { setDecisions(initialDecisions(plan)) }, [plan])
+  // 계획이 다시 계산되면(모델 변경·라이브러리 전환·항목 재조회) 사용자가 정한 결정은 잇고 새 항목만 기본값을 받는다.
+  // 실시간 편집이 도착할 때마다 보이지 않는 쪽의 체크가 조용히 되살아나면 안 된다. 라이브러리가 바뀌면 처음부터다.
+  const prevPlanRef = useRef<ResyncPlan | null>(null)
+  useEffect(() => {
+    const prevPlan = prevPlanRef.current
+    prevPlanRef.current = plan
+    setDecisions((prev) => carryDecisions(prevPlan, prev, plan))
+  }, [plan])
 
   const sections = useMemo(() => ({
     added: plan.entries.filter((e) => e.status === 'added'),
