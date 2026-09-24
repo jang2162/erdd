@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -83,6 +83,29 @@ describe('ResourcePromoteTab', () => {
     await userEvent.click(await screen.findByRole('tab', { name: '조직으로 승격' }))
     expect(screen.queryByRole('button', { name: /표준 사전/ })).toBeNull()
     expect(screen.getByRole('button', { name: /조직 표준/ })).toBeDefined()
+  })
+
+  it('라이브러리를 바꾸면 구역의 검색어와 쪽이 처음으로 돌아간다', async () => {
+    const words = Object.fromEntries(Array.from({ length: 60 }, (_, i) => {
+      const n = String(i).padStart(3, '0')
+      return [`w${n}`, word(`w${n}`, `단어${n}`, `W${n}`)]
+    }))
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [
+        ...LIBS, { id: 'l3', scope: 'org', orgId: 'o1', name: '부서 사전', description: '', itemCount: 0, canWrite: true },
+      ] }),
+      'resource.items.list': () => ({ data: [] }),
+    }, { ...createEmptyModel(), words })
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (60)')
+    const section = () => within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.type(section().getByRole('textbox', { name: '신규 추가 검색' }), '단어')
+    await userEvent.click(section().getByRole('button', { name: '다음' }))
+    expect(section().getByText('2 / 2')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /부서 사전/ }))
+    await screen.findByText('신규 추가 (60)')
+    expect(section().getByRole('textbox', { name: '신규 추가 검색' })).toHaveValue('')
+    expect(section().getByText('1 / 2')).toBeInTheDocument()
   })
 
   it('프로젝트 자체 항목이 "신규 추가"로 뜨고 기본 선택된다', async () => {

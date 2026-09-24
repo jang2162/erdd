@@ -135,7 +135,9 @@ export function ResourcePromoteTab({
         </section>
       )}
 
+      {/* 구역의 검색어·쪽은 라이브러리마다 처음부터다 — key 로 라이브러리를 바꿀 때 목록 상태를 버린다. */}
       <PromoteEntryList
+        key={library.id}
         audience="promote"
         entries={plan.entries}
         selected={selected}

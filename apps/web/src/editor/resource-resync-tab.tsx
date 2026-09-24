@@ -185,7 +185,8 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
 
   return (
     <>
-      <PagedSection title="신규 추가" rows={sections.added} fields={ENTRY_FIELDS} renderRow={checkboxRow}
+      {/* 구역의 검색어·쪽은 라이브러리마다 처음부터다 — key 로 라이브러리를 바꿀 때 구역 상태를 버린다. */}
+      <PagedSection key={`added:${library.id}`} title="신규 추가" rows={sections.added} fields={ENTRY_FIELDS} renderRow={checkboxRow}
         actions={canEdit ? (
           <>
             <Button size="sm" variant="ghost" onClick={() => setAll('added', 'apply')}>모두 선택</Button>
@@ -193,7 +194,7 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
           </>
         ) : undefined} />
 
-      <PagedSection title="자동 갱신" rows={sections.autoUpdate} fields={ENTRY_FIELDS} renderRow={checkboxRow}
+      <PagedSection key={`auto-update:${library.id}`} title="자동 갱신" rows={sections.autoUpdate} fields={ENTRY_FIELDS} renderRow={checkboxRow}
         actions={canEdit ? (
           <>
             <Button size="sm" variant="ghost" onClick={() => setAll('auto-update', 'apply')}>모두 선택</Button>
@@ -201,7 +202,7 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
           </>
         ) : undefined} />
 
-      <PagedSection title="충돌" rows={sections.conflicts} fields={ENTRY_FIELDS} renderRow={conflictRow}
+      <PagedSection key={`conflicts:${library.id}`} title="충돌" rows={sections.conflicts} fields={ENTRY_FIELDS} renderRow={conflictRow}
         actions={canEdit ? (
           <>
             <Button size="sm" variant="ghost" onClick={() => setAll('conflict', 'apply')}>모두 원본 반영</Button>

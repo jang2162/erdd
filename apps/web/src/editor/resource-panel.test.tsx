@@ -317,6 +317,25 @@ describe('ResourcePanel', () => {
     expect(screen.getByText('처리 대상 59건')).toBeInTheDocument()
   })
 
+  it('라이브러리를 바꾸면 구역의 검색어와 쪽이 처음으로 돌아간다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [
+        ...LIBS, { id: 'l2', scope: 'global', orgId: null, name: '부서 사전', description: '', itemCount: 60, canWrite: false },
+      ] }),
+      'resource.items.list': () => ({ data: manyItems(60) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (60)')
+    const section = () => within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.type(section().getByRole('textbox', { name: '신규 추가 검색' }), '단어')
+    await userEvent.click(section().getByRole('button', { name: '다음' }))
+    expect(section().getByText('2 / 2')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /부서 사전/ }))
+    await screen.findByText('신규 추가 (60)')
+    expect(section().getByRole('textbox', { name: '신규 추가 검색' })).toHaveValue('')
+    expect(section().getByText('1 / 2')).toBeInTheDocument()
+  })
+
   it('검색 중 「모두 해제」는 보이는 행이 아니라 구역 전체에 적용된다', async () => {
     renderPanel({
       'resource.library.listForProject': () => ({ data: LIBS }),
