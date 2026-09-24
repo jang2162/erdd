@@ -12,6 +12,67 @@
 
 ---
 
+## 릴리스할지는 사용자에게 묻는다
+
+**공개 npm 의 최신 게시본과 `origin/main` 사이에 게시물에 들어가는 차이가 생기면, 에이전트는 릴리스할지
+사용자에게 묻는다.** 차이가 생겼다고 스스로 릴리스하지 않는다 — 기능 여럿을 모아 한 번에 낼지는 사용자가
+정한다. 확인을 받은 뒤에만 「절차」의 버전 올리기·태그 push 로 간다.
+
+**언제 묻는가.** 게시물에 들어가는 경로를 바꾼 작업을 main 에 병합해 `origin` 에 push 했을 때, 그리고
+사용자가 게시본과 main 의 차이를 물었을 때다. 게시물에 들어가는 경로는 다음과 같다.
+
+| 경로 | 게시물에 드는 까닭 |
+|---|---|
+| `packages/cli` | tarball 그 자체다 — `src`(테스트 제외)·`skill`·`package.json`·`README.md`·`LICENSE` |
+| `packages/core` | tarball 그 자체이고, `apps/web` 이 의존하므로 웹 번들에도 든다 |
+| `apps/web` | 빌드 산출물이 `packages/cli/web/` 로 동봉된다(→ 「웹 번들 — `packages/cli/web/`」) |
+| `docs/manual/` | 네 편이 `prepack` 에서 `packages/cli/docs/` 로 복사돼 동봉된다(→ 「매뉴얼 — `packages/cli/docs/`」) |
+
+- **패키지 README 는 들고 루트 README 는 안 든다.** npm 은 패키지 디렉터리 밖을 팩하지 않는다 —
+  `packages/cli/README.md`·`packages/core/README.md` 는 위 표의 경로에 이미 들어 있고, 저장소 루트의
+  `README.md` 는 어느 tarball 에도 없다. 루트 `LICENSE` 는 두 패키지에 커밋된 사본으로만 들어가므로
+  사본의 변경으로 잡힌다(→ 「라이선스 — `packages/*/LICENSE`」).
+- **그 밖만 바뀌었으면 묻지 않는다** — `apps/server`(서버 배포물이지 npm 게시물이 아니다),
+  `docs/guides`·`docs/ops`·`docs/superpowers`, 루트 `README.md`, `.github/` 의 CI 설정.
+
+**차이를 판정한다.** 직전 게시 태그와 `origin/main` 을 비교한다.
+
+```bash
+git fetch origin --tags                                         # origin 이 GitHub 원격이 아니면 그 이름으로
+npm view @erdd/cli dist-tags.latest                             # 직전 태그의 버전과 같아야 한다
+TAG=$(git describe --tags --match 'cli-v*' --abbrev=0 origin/main)
+git diff --stat "$TAG" origin/main -- packages/cli packages/core apps/web docs/manual ':!*.test.ts' ':!*.test.tsx'
+git log --oneline "$TAG"..origin/main -- packages/cli packages/core apps/web docs/manual ':!*.test.ts' ':!*.test.tsx'
+```
+
+출력이 비면 게시물 차이가 없다. 판정은 **직전 태그가 레지스트리의 `latest` 와 같다**는 전제에 선다 —
+`dist-tags.latest` 가 태그의 버전과 다르면(게시가 죽었거나 반영 전이다 — 「게시 직후 확인 — 레지스트리 반영은
+늦을 수 있다」) 비교 기준부터 사용자에게 알린다.
+
+- ⚠️ **이 목록은 넓게 잡는다.** 테스트 보조 파일(`apps/web/src/testing/`)·`vitest.config.ts`·
+  `packages/cli/scripts/` 처럼 tarball 에 들지 않는 것도 섞여 나온다 — 무엇이 사용자에게 보이는
+  변경인지는 목록을 읽고 가른다.
+- ⚠️ **이 목록이 보지 않는 것이 있다.** `pnpm-lock.yaml` 만 바뀐 의존성 갱신도 웹 번들에 드는 라이브러리
+  판본을 바꾼다. 출력이 비어도 lockfile 이 바뀌었으면 그 사실을 함께 알린다.
+
+**물을 때 보여 줄 것.**
+
+- **게시물에 들어가는 변경의 요지** — 커밋 목록이 아니라 사용자가 체감하는 단위(새 명령·화면 변화·고친
+  버그·매뉴얼 변경)로 적는다. 같은 구간의 `apps/server` 변경은 따로 표시한다 — 서버 배포가 필요한지와
+  CLI 가 새 서버 프로시저를 부르게 됐는지(→ 「서버를 먼저 배포한다」)가 여기서 갈린다.
+- **권장 버전** — cli 는 항상 올리고, `packages/core` 가 바뀌었으면 core 도 올린다
+  (→ 「core 를 고쳤으면 `packages/core/package.json` 의 `version` 을 반드시 올려라」).
+- **선택지** — 「지금 릴리스」와 「더 모아서 나중에」.
+
+**하지 않는 것.** 확인 없이 `version` 을 올리거나 `cli-v*` 태그를 push 하지 않는다. **받은 확인은 그
+릴리스 하나에만 유효하다** — 다음에 차이가 생기면 다시 묻는다.
+
+**어기면 무엇이 깨지는가.** 사용자가 모아서 내려던 기능이 쪼개져 나간다. 그리고 공개 레지스트리에 올린
+버전은 되돌리기 어렵다 — npm 은 게시 뒤 72시간이 지나면 의존 패키지가 없고 주간 내려받기가 적은 등의
+조건을 채울 때만 unpublish 를 허락하고, 내려도 **같은 버전 번호는 다시 쓸 수 없다.**
+
+---
+
 ## 절차
 
 ```bash
