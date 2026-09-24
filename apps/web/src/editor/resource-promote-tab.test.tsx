@@ -395,7 +395,7 @@ describe('ResourcePromoteTab', () => {
     expect(promoted).toHaveBeenCalledTimes(2)
   }, 30000)
 
-  it('중간 조각이 실패하면 몇 건 올렸는지 알리고 계획을 다시 불러온다', async () => {
+  it('중간 조각이 실패하면 몇 건 올렸는지 알리고 계획을 다시 불러온 뒤 버튼 잠금을 푼다', async () => {
     const promoted = vi.fn((input: unknown) => (promoted.mock.calls.length === 1
       ? { data: { seq: 1, inserted: (input as { entries: unknown[] }).entries.length, updated: 0, skipped: [] } }
       : { error: { code: -32600, message: '거절' } }))
@@ -412,6 +412,8 @@ describe('ResourcePromoteTab', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('5,001건 중 5,000건 승격했습니다 — 거절'))
     expect(modelGet).toHaveBeenCalled()
     expect(toast.success).not.toHaveBeenCalled()
+    // 실패로 끝나도 진행 표시를 걷고 버튼을 다시 연다 — 남은 항목을 다시 올릴 수 있어야 한다.
+    await waitFor(() => expect(screen.getByRole('button', { name: '승격' })).toBeEnabled())
   }, 30000)
 
   it(`승격 요청이 ${MAX_LIBRARY_FILE_ITEMS}건을 넘으면 서버에 보내지 않고 나눠 선택하라고 알린다`, async () => {
