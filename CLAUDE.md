@@ -208,6 +208,8 @@
   ```bash
   git commit -m "..." -- <경로1> <경로2>
   ```
+  **새로 만든(untracked) 파일은 경로 지정 커밋이 「pathspec 이 일치하지 않는다」로 실패한다** —
+  `git add <경로> && git commit -m "..." -- <경로>` 로 한 명령에 붙인다.
 - **`add` 와 `commit` 사이에 틈을 두지 마라.** index는 저장소 전체가 공유하는 **단일 자원**이다.
   스테이징해 두고 다른 일을 하면, 그 사이 다른 작업이 `add -A`/`commit -a` 로 커밋할 때 내 staged
   파일이 그 커밋에 통째로 딸려 들어간다. 굳이 `add` 를 쓴다면 `git add <경로들> && git commit ...` 로
