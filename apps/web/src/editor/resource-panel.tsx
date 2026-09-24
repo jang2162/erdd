@@ -5,7 +5,7 @@ import { useEditorStore } from './store.js'
 import { ResourceResyncTab } from './resource-resync-tab.js'
 import { ResourcePromoteTab } from './resource-promote-tab.js'
 import { formatCount } from '@/lib/format'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -56,55 +56,63 @@ export function ResourcePanel({ projectId, open, onOpenChange }: {
     }
   }
 
+  const body = (
+    <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_1fr]">
+      <div className="grid content-start gap-1">
+        <h4 className="text-xs font-semibold text-muted-foreground">라이브러리</h4>
+        {libraries.isError && (
+          <p role="alert" className="text-destructive">{libraries.error.message}</p>
+        )}
+        {!libraries.isError && !libraries.isPending && visible.length === 0 && (
+          <p className="text-sm text-muted-foreground">사용할 수 있는 라이브러리가 없습니다</p>
+        )}
+        {visible.map((lib) => (
+          <button key={lib.id} type="button"
+            className={`rounded border px-2 py-1.5 text-left text-sm ${libraryId === lib.id ? 'border-primary' : ''}`}
+            onClick={() => setLibraryId(lib.id)}>
+            <span className="block">{lib.name}</span>
+            <span className="block text-xs text-muted-foreground">
+              {lib.scope === 'global' ? '전역' : '조직'} · 항목 {formatCount(lib.itemCount)}개
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid max-h-[60vh] content-start gap-4 overflow-y-auto">
+        {library === null && (
+          <p className="text-sm text-muted-foreground">
+            {tab === 'resync'
+              ? '라이브러리를 선택하면 가져올 항목과 갱신 내역을 보여줍니다.'
+              : '올릴 라이브러리를 선택하면 승격할 항목을 보여줍니다.'}
+          </p>
+        )}
+        {library !== null && tab === 'resync' && (
+          <ResourceResyncTab projectId={projectId} library={library} />
+        )}
+        {library !== null && tab === 'promote' && (
+          <ResourcePromoteTab projectId={projectId} library={library} />
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader><DialogTitle>공용 리소스</DialogTitle></DialogHeader>
-        {canPromote && (
-          <Tabs value={tab} onValueChange={(value) => switchTab(value as Tab)}>
-            <TabsList aria-label="공용 리소스 방향">
-              <TabsTrigger value="resync">가져오기</TabsTrigger>
-              <TabsTrigger value="promote">조직으로 승격</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_1fr]">
-          <div className="grid content-start gap-1">
-            <h4 className="text-xs font-semibold text-muted-foreground">라이브러리</h4>
-            {libraries.isError && (
-              <p role="alert" className="text-destructive">{libraries.error.message}</p>
-            )}
-            {!libraries.isError && !libraries.isPending && visible.length === 0 && (
-              <p className="text-sm text-muted-foreground">사용할 수 있는 라이브러리가 없습니다</p>
-            )}
-            {visible.map((lib) => (
-              <button key={lib.id} type="button"
-                className={`rounded border px-2 py-1.5 text-left text-sm ${libraryId === lib.id ? 'border-primary' : ''}`}
-                onClick={() => setLibraryId(lib.id)}>
-                <span className="block">{lib.name}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {lib.scope === 'global' ? '전역' : '조직'} · 항목 {formatCount(lib.itemCount)}개
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="grid max-h-[60vh] content-start gap-4 overflow-y-auto">
-            {library === null && (
-              <p className="text-sm text-muted-foreground">
-                {tab === 'resync'
-                  ? '라이브러리를 선택하면 가져올 항목과 갱신 내역을 보여줍니다.'
-                  : '올릴 라이브러리를 선택하면 승격할 항목을 보여줍니다.'}
-              </p>
-            )}
-            {library !== null && tab === 'resync' && (
-              <ResourceResyncTab projectId={projectId} library={library} />
-            )}
-            {library !== null && tab === 'promote' && (
-              <ResourcePromoteTab projectId={projectId} library={library} />
-            )}
-          </div>
-        </div>
+        {/* 탭이 있으면 본문을 TabsContent 에 담는다 — 트리거의 aria-controls 가 실제 패널을 가리킨다. */}
+        {canPromote
+          ? (
+              <Tabs value={tab} onValueChange={(value) => switchTab(value as Tab)} className="gap-4">
+                <TabsList aria-label="공용 리소스 방향">
+                  <TabsTrigger value="resync">가져오기</TabsTrigger>
+                  <TabsTrigger value="promote">조직으로 승격</TabsTrigger>
+                </TabsList>
+                <TabsContent value="resync">{body}</TabsContent>
+                <TabsContent value="promote">{body}</TabsContent>
+              </Tabs>
+            )
+          : body}
       </DialogContent>
     </Dialog>
   )

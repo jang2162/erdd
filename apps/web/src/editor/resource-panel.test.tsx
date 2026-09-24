@@ -255,6 +255,28 @@ describe('ResourcePanel', () => {
     expect(screen.queryByRole('tab', { name: '조직으로 승격' })).toBeNull()
   })
 
+  it('방향 탭의 트리거는 실제로 있는 탭 패널을 가리킨다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [
+        ...LIBS, { id: 'l2', scope: 'org', orgId: 'o1', name: '조직 표준', description: '', itemCount: 0, canWrite: true },
+      ] }),
+      'resource.items.list': () => ({ data: ITEMS }),
+      'promotion.listForProject': () => ({ data: [] }),
+    }, createEmptyModel())
+    const panelOf = (name: string) => {
+      const trigger = screen.getByRole('tab', { name })
+      const panel = screen.getByRole('tabpanel')
+      expect(trigger).toHaveAttribute('aria-selected', 'true')
+      expect(panel.id).not.toBe('')
+      expect(trigger.getAttribute('aria-controls')).toBe(panel.id)
+      return panel
+    }
+    await screen.findByRole('tab', { name: '가져오기' })
+    expect(within(panelOf('가져오기')).getByRole('button', { name: /표준 사전/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: '조직으로 승격' }))
+    expect(within(panelOf('조직으로 승격')).getByRole('button', { name: /조직 표준/ })).toBeInTheDocument()
+  })
+
   it('라이브러리 조회가 끝나기 전에는 "사용할 수 있는 라이브러리가 없습니다"가 뜨지 않는다', async () => {
     // rows는 libraries.data ?? []라 조회가 pending인 동안도 빈 배열이다 — isPending을
     // 함께 보지 않으면 결국 데이터가 차는 라이브러리 목록에서도 로딩 중 잠깐 빈 상태
