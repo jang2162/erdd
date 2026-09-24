@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { createEmptyModel } from '@erdd/core'
 import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { createDomain } from './domain-edits.js'
@@ -84,5 +85,39 @@ describe('DomainPanel', () => {
     expect(labelText('기본값')).toBe('기본값')
     expect(labelText('허용값 (쉼표로 구분)')).toBe('허용값 (쉼표로 구분)')
     expect(labelText('설명')).toBe('설명')
+  })
+
+  function loadManyDomains(n: number, splitAt: number) {
+    let m = createEmptyModel()
+    for (let i = 0; i < n; i++) {
+      m = createDomain(m, {
+        id: `d${i}`, name: `도메인${String(i).padStart(2, '0')}`, category: i < splitAt ? '가분류' : '나분류',
+        logicalType: 'INT', dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+        defaultValue: null, allowedValues: [], description: null, origin: null,
+      })
+    }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+  }
+
+  it('50건씩 나뉘고 묶음 제목은 그 쪽에 나온 분류만 그린다', async () => {
+    loadManyDomains(55, 50)
+    renderPanel()
+    expect(screen.getByText('가분류')).toBeInTheDocument()
+    expect(screen.queryByText('나분류')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '다음' }))
+    expect(screen.getByText('나분류')).toBeInTheDocument()
+    expect(screen.queryByText('가분류')).toBeNull()
+  })
+
+  it('이름으로 찾고, 없으면 알린다', async () => {
+    loadManyDomains(55, 50)
+    renderPanel()
+    await userEvent.type(screen.getByRole('textbox', { name: '도메인 검색' }), '도메인07')
+    expect(screen.getByText('도메인07')).toBeInTheDocument()
+    expect(screen.queryByText('도메인08')).toBeNull()
+    await userEvent.clear(screen.getByRole('textbox', { name: '도메인 검색' }))
+    await userEvent.type(screen.getByRole('textbox', { name: '도메인 검색' }), '없는이름')
+    expect(screen.getByText('검색 결과가 없습니다')).toBeInTheDocument()
   })
 })
