@@ -3,14 +3,17 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   applyResyncPlan, planResync, RESOURCE_COLLECTION_BY_KIND, RESOURCE_KIND_LABEL, resourcePayloadOf,
-  type LibraryItem, type ProjectModel, type ResyncEntry, type ResyncPlan,
+  resourceSecondaryName,
+  type LibraryItem, type ProjectModel, type ResyncDecision, type ResyncEntry, type ResyncPlan,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
+import { formatCount } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { countActive, initialDecisions, overLimitMessage, setAllForStatus, type Decisions } from './resource-decisions.js'
 import type { LibraryRow } from './resource-panel.js'
+import { PagedSection } from '@/components/paged-section'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -18,12 +21,17 @@ const EMPTY_PLAN: ResyncPlan = {
   libraryId: '', entries: [], keptLocal: 0, keptSynced: 0, keptDetached: 0,
 }
 
+/** 구역 검색 칸 — 논리명 칸과 물리명 칸(core resourceSecondaryName). */
+const ENTRY_FIELDS = (entry: ResyncEntry) => [entry.name, resourceSecondaryName(entry.kind, entry.nextPayload)]
+
 function EntryLabel({ entry }: { entry: ResyncEntry }) {
+  const physical = resourceSecondaryName(entry.kind, entry.nextPayload)
   return (
     <span className="grid gap-0.5">
       <span className="flex items-center gap-1 text-sm">
         <span className="text-xs text-muted-foreground">{RESOURCE_KIND_LABEL[entry.kind]}</span>
         <span>{entry.name}</span>
+        {physical !== null && <span className="font-mono text-xs text-muted-foreground">{physical}</span>}
       </span>
       {entry.status !== 'added' && (
         <span className="text-xs text-muted-foreground">
@@ -77,6 +85,9 @@ function ConflictValueDiff({ entry, model }: { entry: ResyncEntry; model: Projec
  * "공용 리소스" 다이얼로그의 가져오기(재동기화) 탭: 전역·조직 라이브러리를 프로젝트로
  * 가져오고 재동기화한다. 최초 가져오기는 "전 항목이 신규인 재동기화"라 코드 경로가 하나다.
  * 적용은 단일 producer → diffModels → model.mutate라 Revision 1건·undo 1회로 원복된다.
+ *
+ * 구역마다 검색·50건 페이지가 있고(`PagedSection`), 결정(`decisions`)은 구역 전체에 대해 여기 있다 —
+ * 쪽을 넘겨도 체크가 남고 일괄 버튼은 구역 전체에 적용된다.
  */
 export function ResourceResyncTab({ projectId, library }: { projectId: string; library: LibraryRow }) {
   const trpc = useTRPC()
@@ -95,11 +106,14 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
   // 계획이 다시 계산되면(모델 변경·라이브러리 전환·항목 재조회) 결정을 초기값으로 되돌린다.
   useEffect(() => { setDecisions(initialDecisions(plan)) }, [plan])
 
-  const byStatus = (status: ResyncEntry['status']) => plan.entries.filter((e) => e.status === status)
-  const added = byStatus('added')
-  const autoUpdate = byStatus('auto-update')
-  const conflicts = byStatus('conflict')
+  const sections = useMemo(() => ({
+    added: plan.entries.filter((e) => e.status === 'added'),
+    autoUpdate: plan.entries.filter((e) => e.status === 'auto-update'),
+    conflicts: plan.entries.filter((e) => e.status === 'conflict'),
+  }), [plan])
   const active = countActive(decisions)
+  const setAll = (status: ResyncEntry['status'], decision: ResyncDecision) =>
+    setDecisions((prev) => setAllForStatus(prev, plan, status, decision))
 
   const onApply = () => {
     if (active === 0) return
@@ -133,109 +147,77 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
     </li>
   )
 
+  const conflictRow = (entry: ResyncEntry) => (
+    <li key={entry.sourceId} className="grid gap-1 rounded border px-2 py-1.5">
+      <EntryLabel entry={entry} />
+      <ConflictValueDiff entry={entry} model={model} />
+      {canEdit && (
+        <div className="flex flex-wrap gap-3 text-sm">
+          {([
+            ['defer', '보류'], ['keep', '프로젝트 유지'], ['apply', '원본 반영'],
+          ] as const).map(([value, label]) => (
+            <label key={value} className="flex items-center gap-1">
+              <input type="radio" aria-label={`${entry.name} ${label}`}
+                name={`conflict-${entry.sourceId}`}
+                checked={(decisions[entry.sourceId] ?? 'defer') === value}
+                onChange={() =>
+                  setDecisions((prev) => ({ ...prev, [entry.sourceId]: value }))} />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
+    </li>
+  )
+
   if (items.isError) {
     return <p role="alert" className="text-destructive">{items.error.message}</p>
   }
 
   return (
     <>
-      <section className="grid gap-1.5">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">신규 추가 ({added.length})</h4>
-          {canEdit && added.length > 0 && (
-            <span className="flex gap-1">
-              <Button size="sm" variant="ghost"
-                onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'added', 'apply'))}>
-                모두 선택
-              </Button>
-              <Button size="sm" variant="ghost"
-                onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'added', 'defer'))}>
-                모두 해제
-              </Button>
-            </span>
-          )}
-        </div>
-        <ul className="grid gap-1">{added.map(checkboxRow)}</ul>
-      </section>
+      <PagedSection title="신규 추가" rows={sections.added} fields={ENTRY_FIELDS} renderRow={checkboxRow}
+        actions={canEdit ? (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setAll('added', 'apply')}>모두 선택</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAll('added', 'defer')}>모두 해제</Button>
+          </>
+        ) : undefined} />
 
-      <section className="grid gap-1.5">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">자동 갱신 ({autoUpdate.length})</h4>
-          {canEdit && autoUpdate.length > 0 && (
-            <span className="flex gap-1">
-              <Button size="sm" variant="ghost"
-                onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'auto-update', 'apply'))}>
-                모두 선택
-              </Button>
-              <Button size="sm" variant="ghost"
-                onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'auto-update', 'defer'))}>
-                모두 해제
-              </Button>
-            </span>
-          )}
-        </div>
-        <ul className="grid gap-1">{autoUpdate.map(checkboxRow)}</ul>
-      </section>
+      <PagedSection title="자동 갱신" rows={sections.autoUpdate} fields={ENTRY_FIELDS} renderRow={checkboxRow}
+        actions={canEdit ? (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setAll('auto-update', 'apply')}>모두 선택</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAll('auto-update', 'defer')}>모두 해제</Button>
+          </>
+        ) : undefined} />
 
-      <section className="grid gap-1.5">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">충돌 ({conflicts.length})</h4>
-          {canEdit && conflicts.length > 0 && (
-            <span className="flex gap-1">
-              <Button size="sm" variant="ghost"
-                onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'conflict', 'apply'))}>
-                모두 원본 반영
-              </Button>
-              <Button size="sm" variant="ghost"
-                onClick={() => setDecisions((p) => setAllForStatus(p, plan, 'conflict', 'keep'))}>
-                모두 프로젝트 유지
-              </Button>
-            </span>
-          )}
-        </div>
-        {canEdit && conflicts.length > 0 && (
+      <PagedSection title="충돌" rows={sections.conflicts} fields={ENTRY_FIELDS} renderRow={conflictRow}
+        actions={canEdit ? (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setAll('conflict', 'apply')}>모두 원본 반영</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAll('conflict', 'keep')}>모두 프로젝트 유지</Button>
+          </>
+        ) : undefined}>
+        {canEdit && sections.conflicts.length > 0 && (
           <p className="text-xs text-muted-foreground">
             "프로젝트 유지"는 내용을 그대로 두고 이 변경을 검토했다고 기록합니다(다음에 다시 뜨지 않습니다).
             "보류"는 아무것도 기록하지 않아 다음에 다시 뜹니다.
           </p>
         )}
-        <ul className="grid gap-1">
-          {conflicts.map((entry) => (
-            <li key={entry.sourceId} className="grid gap-1 rounded border px-2 py-1.5">
-              <EntryLabel entry={entry} />
-              <ConflictValueDiff entry={entry} model={model} />
-              {canEdit && (
-                <div className="flex flex-wrap gap-3 text-sm">
-                  {([
-                    ['defer', '보류'], ['keep', '프로젝트 유지'], ['apply', '원본 반영'],
-                  ] as const).map(([value, label]) => (
-                    <label key={value} className="flex items-center gap-1">
-                      <input type="radio" aria-label={`${entry.name} ${label}`}
-                        name={`conflict-${entry.sourceId}`}
-                        checked={(decisions[entry.sourceId] ?? 'defer') === value}
-                        onChange={() =>
-                          setDecisions((prev) => ({ ...prev, [entry.sourceId]: value }))} />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
+      </PagedSection>
 
       <section className="grid gap-1 text-xs text-muted-foreground">
         <h4 className="text-sm font-semibold text-foreground">유지</h4>
-        <span>최신 상태 {plan.keptSynced}건 · 프로젝트 자체 항목 {plan.keptLocal}건</span>
+        <span>최신 상태 {formatCount(plan.keptSynced)}건 · 프로젝트 자체 항목 {formatCount(plan.keptLocal)}건</span>
         {plan.keptDetached > 0 && (
-          <span>원본에서 삭제된 항목 {plan.keptDetached}건 — 프로젝트 사본은 그대로 둡니다.</span>
+          <span>원본에서 삭제된 항목 {formatCount(plan.keptDetached)}건 — 프로젝트 사본은 그대로 둡니다.</span>
         )}
       </section>
 
       {canEdit && (
         <div className="flex items-center justify-end gap-2 border-t pt-2">
-          <span className="text-xs text-muted-foreground">처리 대상 {active}건</span>
+          <span className="text-xs text-muted-foreground">처리 대상 {formatCount(active)}건</span>
           <Button type="button" disabled={active === 0} onClick={onApply}>적용</Button>
         </div>
       )}

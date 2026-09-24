@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -164,8 +164,9 @@ describe('ResourcePanel', () => {
     }, { ...createEmptyModel(), words: { w1: forked } })
     await openLibrary()
     expect(await screen.findByText('충돌 (1)')).toBeDefined()
-    expect(screen.getByText('MB')).toBeDefined()
-    expect(screen.getByText('MEMBER')).toBeDefined()
+    // 행 이름 옆 물리명도 원본 약어(MEMBER)를 보이므로 비교 줄 하나로 좁혀 두 값을 본다.
+    const diff = screen.getByText('abbreviation').closest('li')
+    expect(diff?.textContent).toBe('abbreviation: 현재 MB → 원본 MEMBER')
   })
 
   it('충돌에 "모두 프로젝트 유지"를 적용하면 내용은 그대로, origin.sourceVersion만 올라간다', async () => {
@@ -303,5 +304,55 @@ describe('ResourcePanel', () => {
     }))
     await waitFor(() =>
       expect(screen.getByText('사용할 수 있는 라이브러리가 없습니다')).toBeDefined())
+  })
+
+  const manyItems = (n: number) => Array.from({ length: n }, (_, i) => ({
+    id: `s${i}`, kind: 'word', version: 1,
+    payload: {
+      logicalName: `단어${String(i).padStart(3, '0')}`, abbreviation: `W${String(i).padStart(3, '0')}`,
+      englishName: null, description: null,
+    },
+  }))
+
+  it('라이브러리 목록의 항목 수를 천 단위로 보인다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [{ ...LIBS[0], itemCount: 16565 }] }),
+    }, createEmptyModel())
+    expect(await screen.findByText(/항목 16,565개/)).toBeInTheDocument()
+  })
+
+  it('신규 추가는 50건씩 나뉘고, 행에 물리명(약어)이 보이며, 쪽을 넘겨도 선택이 남는다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: manyItems(60) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (60)')
+    const section = within(screen.getByRole('region', { name: '신규 추가' }))
+    expect(section.getByText('W000')).toBeInTheDocument()
+    await userEvent.click(section.getByRole('checkbox', { name: '단어000 선택' }))
+    expect(section.getByRole('checkbox', { name: '단어000 선택' })).not.toBeChecked()
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    expect(section.queryByRole('checkbox', { name: '단어000 선택' })).toBeNull()
+    expect(section.getByRole('checkbox', { name: '단어050 선택' })).toBeChecked()
+    await userEvent.click(section.getByRole('button', { name: '이전' }))
+    expect(section.getByRole('checkbox', { name: '단어000 선택' })).not.toBeChecked()
+    expect(screen.getByText('처리 대상 59건')).toBeInTheDocument()
+  })
+
+  it('검색 중 「모두 해제」는 보이는 행이 아니라 구역 전체에 적용된다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: manyItems(60) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (60)')
+    const section = within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.type(section.getByRole('textbox', { name: '신규 추가 검색' }), '단어05')
+    expect(section.getAllByRole('checkbox')).toHaveLength(10)
+    expect(section.getByText('구역 전체 60건에 적용')).toBeInTheDocument()
+    await userEvent.click(section.getByRole('button', { name: '모두 해제' }))
+    expect(screen.getByText('처리 대상 0건')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '적용' })).toBeDisabled()
   })
 })

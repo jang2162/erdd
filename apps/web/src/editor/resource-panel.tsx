@@ -4,7 +4,9 @@ import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
 import { ResourceResyncTab } from './resource-resync-tab.js'
 import { ResourcePromoteTab } from './resource-promote-tab.js'
+import { formatCount } from '@/lib/format'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -60,15 +62,12 @@ export function ResourcePanel({ projectId, open, onOpenChange }: {
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader><DialogTitle>공용 리소스</DialogTitle></DialogHeader>
         {canPromote && (
-          <div role="tablist" aria-label="공용 리소스 방향" className="flex gap-1 border-b pb-2">
-            {([['resync', '가져오기'], ['promote', '조직으로 승격']] as const).map(([value, label]) => (
-              <button key={value} type="button" role="tab" aria-selected={tab === value}
-                className={`rounded px-2 py-1 text-sm ${tab === value ? 'bg-muted font-semibold' : ''}`}
-                onClick={() => switchTab(value)}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <Tabs value={tab} onValueChange={(value) => switchTab(value as Tab)}>
+            <TabsList aria-label="공용 리소스 방향">
+              <TabsTrigger value="resync">가져오기</TabsTrigger>
+              <TabsTrigger value="promote">조직으로 승격</TabsTrigger>
+            </TabsList>
+          </Tabs>
         )}
         <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_1fr]">
           <div className="grid content-start gap-1">
@@ -85,7 +84,7 @@ export function ResourcePanel({ projectId, open, onOpenChange }: {
                 onClick={() => setLibraryId(lib.id)}>
                 <span className="block">{lib.name}</span>
                 <span className="block text-xs text-muted-foreground">
-                  {lib.scope === 'global' ? '전역' : '조직'} · 항목 {lib.itemCount}개
+                  {lib.scope === 'global' ? '전역' : '조직'} · 항목 {formatCount(lib.itemCount)}개
                 </span>
               </button>
             ))}
