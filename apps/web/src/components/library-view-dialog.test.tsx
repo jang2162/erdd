@@ -78,6 +78,18 @@ describe('LibraryViewDialog', () => {
     expect(screen.queryByRole('button', { name: '다음' })).toBeNull()   // 10건 — 한 쪽이라 페이지 이동이 숨는다
   })
 
+  it('검색 결과가 여러 쪽이어도 검색어를 바꾸면 1쪽으로 간다', async () => {
+    const page = pageHandler(() => words(200))
+    renderDialog({ 'resource.items.page': page })
+    await screen.findByText('w000')
+    await userEvent.click(screen.getByRole('button', { name: '다음' }))
+    expect(await screen.findByText('w050')).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: '단어 검색' }), 'w1')   // w100~w199 — 100건, 두 쪽
+    expect(await screen.findByText('w100')).toBeInTheDocument()
+    expect(screen.getByText('1 / 2')).toBeInTheDocument()
+    expect(page).not.toHaveBeenCalledWith(expect.objectContaining({ query: 'w1', offset: 50 }))
+  })
+
   it('탭을 옮겼다 돌아와도 그 탭의 검색어가 남는다', async () => {
     renderDialog({ 'resource.items.page': pageHandler(() => words(3)) })
     await screen.findByText('w000')
