@@ -77,9 +77,7 @@ export function useLocalSave() {
         toast.error('반영되지 않은 편집이 있어 저장하지 않았습니다')
         return
       }
-      // 저장 요청도 체인 안에서 보낸다 — 저장이 서버에 가 있는 동안 시작한 조각 적용이 그 사이에
-      // 끼면 조각 사이의 중간 상태가 파일로 나간다(`docs/guides/editor-state.md` 같은 절).
-      const r = await serializeMutation(() => post(LOCAL_SAVE_PATH)) as LocalSaveResult
+      const r = await post(LOCAL_SAVE_PATH) as LocalSaveResult
       if (r.ok) {
         useEditorStore.getState().setLocalSaveStatus({ dirty: false, external: false })
         toast.success(r.written.length + r.deleted.length === 0

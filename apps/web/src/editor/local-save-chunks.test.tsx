@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -41,18 +41,17 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 
 /**
  * 로컬 서버를 흉내 낸다. `events` 에 요청이 서버에 닿은 순서를 남기고, 저장은 **응답하는 순간**
  * 서버에 반영돼 있던 조각 수를 `saved` 에 남긴다 — 그 값이 0 도 전부도 아니면 조각 사이의 중간 상태가
- * 파일로 나간 것이다. `holdSave` 면 저장 응답을 `releaseSave()` 까지 붙잡는다.
+ * 파일로 나간 것이다. ⚠️ 실제 `FileStore` 와 달리 요청을 **직렬화하지 않는다** — 그래서 웹 쪽 순서만으로
+ * 저장이 조각 뒤에 서는지를 본다(서버 쪽 방어선은 cli `store.test.ts` 가 따로 잠근다).
  */
-function mockLocalServer(opts: { holdSave?: boolean } = {}) {
+function mockLocalServer() {
   const events: string[] = []
   const saved: number[] = []
   let applied = 0
-  let release: (() => void) | null = null
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url)
     if (u === LOCAL_SAVE_PATH) {
       events.push('save')
-      if (opts.holdSave) await new Promise<void>((r) => { release = r })
       saved.push(applied)
       events.push('save-done')
       return json({ ok: true, seq: 1, written: ['erdd/notes.yaml'], deleted: [] })
@@ -66,7 +65,7 @@ function mockLocalServer(opts: { holdSave?: boolean } = {}) {
     }
     throw new Error(`unexpected fetch ${u}`)
   }))
-  return { events, saved, releaseSave: () => release?.() }
+  return { events, saved }
 }
 
 function setup() {
@@ -83,11 +82,11 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().re
 /**
  * 조각 사이의 중간 상태는 참조 무결성은 지키지만 **이름 유일성은 보장하지 않는다**(같은 이름 도메인을
  * 새 id 로 바꾸는 편집이면 create 조각과 delete 조각 사이에 같은 이름이 둘이다). 로컬 모드의 저장은
- * 그 모델을 `modelToFiles` 로 파일에 쓰므로, 저장이 조각 사이에 끼면 다시 읽을 수 없는 파일이 나간다.
- * 저장은 조각 적용 전부의 앞이나 뒤에만 서야 한다.
+ * 그 모델을 `modelToFiles` 로 파일에 쓰므로, 저장이 조각 사이에 끼면 다시 읽을 수 없는 파일이 나간다
+ * (guides/editor-state.md 「저장은 편집 중인 입력을 먼저 반영한다(로컬 모드)」).
  */
 describe('로컬 저장은 조각 적용과 교차하지 않는다', () => {
-  it('조각 적용 도중 누른 저장은 모든 조각이 끝난 뒤에 나간다', async () => {
+  it('조각 적용 도중 누른 저장은 flushPendingEdits 가 모델 변경 체인을 기다려 모든 조각 뒤에 나간다', async () => {
     const { events, saved } = mockLocalServer()
     const { result } = setup()
     await act(async () => {
@@ -97,22 +96,5 @@ describe('로컬 저장은 조각 적용과 교차하지 않는다', () => {
     })
     expect(events).toEqual(['메모 추가 (1/2)', '메모 추가 (2/2)', 'save', 'save-done'])
     expect(saved).toEqual([2])
-  })
-
-  it('저장 요청이 서버에 가 있는 동안 시작한 조각 적용은 저장이 끝난 뒤에 첫 조각을 보낸다', async () => {
-    const { events, saved, releaseSave } = mockLocalServer({ holdSave: true })
-    const { result } = setup()
-    await act(async () => {
-      const saving = result.current.local.save()
-      await waitFor(() => { expect(events).toContain('save') })
-      const applying = result.current.mutate((m) => withNotes(m, MAX_OPS_PER_MUTATION + 1), { summary: '메모 추가' })
-      // 체인이 저장에 잡혀 있지 않으면 이 사이에 조각이 서버에 닿는다.
-      await new Promise((r) => setTimeout(r, 30))
-      releaseSave()
-      await saving
-      await applying
-    })
-    expect(events).toEqual(['save', 'save-done', '메모 추가 (1/2)', '메모 추가 (2/2)'])
-    expect(saved).toEqual([0])
   })
 })
