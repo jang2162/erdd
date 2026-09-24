@@ -47,7 +47,7 @@ function domain(id: string): Domain {
   }
 }
 
-type Sent = { ops: Op[]; summary?: string }
+type Sent = { projectId: string; ops: Op[]; summary?: string }
 
 /**
  * model.mutate 스텁. 기본은 seq 를 1씩 올린다. `seqs` 를 주면 i번째 호출에 그 seq 를 돌려주고,
@@ -214,9 +214,11 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
     expect(useEditorStore.getState().undoStack).toHaveLength(1)
   })
 
-  it('조각 사이에 프로젝트를 떠나면 남은 조각을 보내지 않는다', async () => {
-    const { sent } = serverStub({
-      onCall: (i) => { if (i === 0) useEditorStore.getState().setLoaded(createEmptyModel(), 0, OTHER) },
+  it('조각 사이에 프로젝트를 떠나도 남은 조각은 끝까지 옛 프로젝트로 보내고, 새 프로젝트의 store 는 건드리지 않는다', async () => {
+    const { sent, freshCalls } = serverStub({
+      // 조각 사이에 이탈과 끼어든 revision 을 함께 흉내 낸다 — 간극이 있어도 새 프로젝트를 되맞추지 않는다.
+      seqs: [2, 5, 6],
+      onCall: (i) => { if (i === 0) useEditorStore.getState().setLoaded(createEmptyModel(), 7, OTHER) },
     })
     const { result } = setup()
     let outcome: string | undefined
@@ -224,8 +226,31 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
       outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), { summary: '메모 추가' })
     })
     expect(outcome).toBe('error')
-    expect(sent).toHaveLength(1)
-    expect(useEditorStore.getState().loadedProjectId).toBe(OTHER)
+    expect(sent.map((s) => [s.projectId, s.ops.length])).toEqual([[PID, MAX], [PID, MAX], [PID, 1]])
+    expect(freshCalls).toHaveLength(0)
+    expect(toast.error).not.toHaveBeenCalled()
+    const s = useEditorStore.getState()
+    expect(s.loadedProjectId).toBe(OTHER)
+    expect(s.model.notes).toEqual({})
+    expect(s.seq).toBe(7)
+    expect(s.undoStack).toHaveLength(0)
+  })
+
+  it('떠난 뒤 남은 조각이 실패하면 몇 묶음이 들어갔는지 알리되 새 프로젝트를 되맞추지 않는다', async () => {
+    const { sent, freshCalls } = serverStub({
+      fail: 2,
+      onCall: (i) => { if (i === 0) useEditorStore.getState().setLoaded(createEmptyModel(), 7, OTHER) },
+    })
+    const { result } = setup()
+    let outcome: string | undefined
+    await act(async () => {
+      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), { summary: '메모 추가' })
+    })
+    expect(outcome).toBe('error')
+    expect(sent.map((s) => s.projectId)).toEqual([PID, PID, PID])
+    expect(toast.error).toHaveBeenCalledWith('3개 묶음 중 2개를 적용했고 나머지는 적용하지 못했습니다 — 거절됨')
+    expect(freshCalls).toHaveLength(0)
+    expect(useEditorStore.getState().seq).toBe(7)
     expect(useEditorStore.getState().model.notes).toEqual({})
   })
 

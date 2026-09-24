@@ -129,6 +129,10 @@ function useSubmit(projectId: string) {
       let lastSeq = seqBefore
       let interleaved = false
       let done = 0
+      // 조각을 보내는 사이 다른 프로젝트로 옮겼는가. 한 번 떠났으면 돌아와도 되돌리지 않는다 — 그 사이
+      // setLoaded 가 서버 상태로 새로 받았으므로 이 편집의 seq·실행 취소 기록을 얹으면 어긋난다.
+      let left = false
+      const stillHere = () => !left && useEditorStore.getState().loadedProjectId === projectId
       // 진행 표시는 화면 일이다 — 콜백이 던져도 낙관적 상태가 남거나 적용이 실패로 갈리지 않게 삼킨다.
       const report = (n: number) => {
         if (total <= 1) return
@@ -140,8 +144,10 @@ function useSubmit(projectId: string) {
           const { seq } = await mutation.mutateAsync({
             projectId, ops: chunk, summary: chunkSummary(opts.summary, done + 1, total),
           })
-          // await 사이 프로젝트가 바뀌었으면 남은 조각을 보내지 않고, 새 프로젝트의 seq/히스토리도 오염시키지 않는다.
-          if (useEditorStore.getState().loadedProjectId !== projectId) return 'error'
+          // await 사이 프로젝트가 바뀌어도 남은 조각은 끝까지 옛 프로젝트로 보낸다 — ops 는 옛 모델에서 이미 다
+          // 계산됐고, 나누지 않는 경로도 요청이 떠난 뒤라 서버가 편집 전체를 적용한다. 멈추면 반쪽만 서버에
+          // 남는다. 다만 새 프로젝트의 store(모델·seq·실행 취소·선택)는 건드리지 않는다.
+          if (!stillHere()) left = true
           // 내 조각이 서버 락에 대기하는 동안 다른 사용자의 revision 이 끼어들었다. 남은 조각은 계속 보낸다 —
           // 조각은 op 단위로 적용되고, 남의 편집과 겹쳐 거절되면 아래 catch 의 중간 실패로 간다.
           if (seq !== lastSeq + 1) interleaved = true
@@ -149,13 +155,12 @@ function useSubmit(projectId: string) {
           done += 1
           report(done)
         }
+        if (!stillHere()) return 'error'
         if (interleaved) {
           // 끼어든 op 는 use-realtime 의 seq 체인에서 "이미 지나간 것"으로 오인돼 버려지므로,
           // 낙관적 로컬 상태를 버리고 서버의 최신 모델로 통째 되맞춘다.
           const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
-          if (useEditorStore.getState().loadedProjectId === projectId) {
-            useEditorStore.getState().resync(fresh.model, fresh.seq)
-          }
+          if (stillHere()) useEditorStore.getState().resync(fresh.model, fresh.seq)
         } else {
           useEditorStore.getState().setSeq(lastSeq)
         }
@@ -168,11 +173,12 @@ function useSubmit(projectId: string) {
         // 반쯤 들어간 편집을 「한 번에 되돌리기」로 기록하지 않는다(되돌릴 op 가 서버 상태와 어긋난다).
         // 아래 resync 가 실행 취소 기록을 비운다.
         toast.error(chunkFailureMessage(done, total, err instanceof Error ? err.message : '변경을 저장하지 못했습니다'))
+        // 떠난 뒤 남은 조각이 실패해도 이 토스트는 띄운다 — 옛 프로젝트에 반쪽이 남았다는 유일한 알림이다.
         // 여전히 이 프로젝트를 보고 있을 때만 서버 상태로 복구한다(다른 프로젝트 화면 덮어쓰기 방지).
-        if (useEditorStore.getState().loadedProjectId === projectId) {
+        if (stillHere()) {
           try {
             const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
-            if (useEditorStore.getState().loadedProjectId === projectId) {
+            if (stillHere()) {
               // setLoaded가 아니라 **resync**다 — 같은 프로젝트를 서버 상태로 되맞추는 것이므로
               // 위 seq 간극 경로와 같은 함수여야 한다. 셋이 갈린다:
               // ① 그룹 뷰: 편집 하나가 거절됐다고 그룹 뷰에서 튕기면 안 된다(setLoaded는 튕긴다).
