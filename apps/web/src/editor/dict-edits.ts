@@ -142,6 +142,59 @@ export function termUsage(model: ProjectModel, termId: string): DictUsageEntry[]
   return entries
 }
 
+/** 사전 목록의 사용처 색인 — 단어·용어 id → 사용처. 모든 id 가 키로 있다(없으면 빈 배열). */
+export type UsageIndex = { words: Map<string, DictUsageEntry[]>; terms: Map<string, DictUsageEntry[]> }
+
+/**
+ * 모델을 **한 번** 훑어 모든 단어·용어의 사용처를 만든다. 사전 목록이 행마다 `wordUsage`/`termUsage` 를 부르면
+ * 비용이 사전 행 수 × (테이블 + 컬럼)이라 대용량 사전에서 패널이 멈춘다.
+ *
+ * ⚠️ **결과는 같은 모델·규칙의 `wordUsage`/`termUsage` 와 같아야 한다**(순서까지). 삭제 확인·용어 수정 전파처럼
+ * 한 건만 필요한 곳은 기존 함수를 계속 쓰므로, 두 경로가 갈리면 목록의 사용 수와 경고가 다른 수를 말한다.
+ * 그래서 두 판정의 차이를 그대로 옮긴다 — 용어 사용처는 **평문 trim 완전일치**(`termUsage`), 단어 분해를 건너뛸
+ * 용어 완전일치는 **양쪽 구분자를 벗겨** 비교한다(`matchesTermExactly`). `dict-edits.test.ts` 의
+ * 「buildUsageIndex — 목록의 사용 수는…」 블록이 모든 id 에서 두 경로가 같음을 잠근다.
+ */
+export function buildUsageIndex(model: ProjectModel, rules: NamingRules): UsageIndex {
+  const words = new Map<string, DictUsageEntry[]>()
+  const terms = new Map<string, DictUsageEntry[]>()
+  for (const id of Object.keys(model.words)) words.set(id, [])
+  for (const id of Object.keys(model.terms)) terms.set(id, [])
+
+  // termUsage: 논리명 trim 평문 → 용어 id 들.
+  const termIdsByName = new Map<string, string[]>()
+  for (const [id, term] of Object.entries(model.terms)) {
+    const key = term.logicalName.trim()
+    const ids = termIdsByName.get(key)
+    if (ids) ids.push(id)
+    else termIdsByName.set(key, [id])
+  }
+  // matchesTermExactly: 양쪽 구분자를 벗긴 용어 논리명 집합.
+  const bareTermNames = new Set(
+    Object.values(model.terms).map((t) => stripLogicalSeparator(t.logicalName.trim(), rules)))
+
+  // 같은 논리명의 테이블·컬럼이 많으므로 분해 결과를 이름으로 캐시한다.
+  const wordIdsByName = new Map<string, ReadonlySet<string>>()
+  const wordIdsOf = (name: string): ReadonlySet<string> => {
+    const cached = wordIdsByName.get(name)
+    if (cached) return cached
+    const ids = name === '' || bareTermNames.has(stripLogicalSeparator(name, rules))
+      ? new Set<string>()
+      : new Set(decomposeByWords(name, model.words, rules).flatMap((s) => (s.word ? [s.word.id] : [])))
+    wordIdsByName.set(name, ids)
+    return ids
+  }
+
+  const visit = (entry: DictUsageEntry) => {
+    const name = entry.entity.logicalName.trim()
+    for (const id of termIdsByName.get(name) ?? []) terms.get(id)!.push(entry)
+    for (const id of wordIdsOf(name)) words.get(id)?.push(entry)
+  }
+  for (const t of Object.values(model.tables)) visit({ kind: 'table', entity: t })
+  for (const c of Object.values(model.columns)) visit({ kind: 'column', entity: c })
+  return { words, terms }
+}
+
 /** 전파로 바뀌는 필드 1건. 실제로 값이 달라지는 것만 만든다. */
 export type TermPropagationChange = {
   field: 'logicalName' | 'physicalName' | 'domainId'

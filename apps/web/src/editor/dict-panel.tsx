@@ -5,21 +5,28 @@ import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import {
-  canRegisterWord,
-  createTerm, createWord, removeTerm, removeWord, termUsage, unregisteredAbbreviations, unregisteredWords,
+  buildUsageIndex, canRegisterWord,
+  createTerm, createWord, removeTerm, removeWord, unregisteredAbbreviations, unregisteredWords,
   updateTerm, updateWord,
   planTermPropagation, applyTermPropagation, type TermPropagationPlan,
-  wordUsage,
 } from './dict-edits.js'
 import { DictImportSection } from './dict-import-section.js'
+import { formatCount } from '@/lib/format'
+import { useListPage } from '@/lib/use-list-page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Pagination } from '@/components/ui/pagination'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FieldLabel } from '@/components/field-label'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
 type Section = 'words' | 'terms' | 'unregistered' | 'import'
+
+/** 검색 칸 — 서버 `items.page` 와 같은 필드다(guides/shared-resources.md 「관리 화면의 항목 조회」). */
+const WORD_FIELDS = (w: Word) => [w.logicalName, w.abbreviation, w.englishName]
+const TERM_FIELDS = (t: Term) => [t.logicalName, t.physicalName]
 
 /** 헤더의 "사전": 물리명 자동 생성에 쓰이는 단어·용어 사전의 목록·추가·편집·삭제, 사용처, 미등록 단어 모아보기. */
 export function DictPanel({ projectId, open, onOpenChange }: {
@@ -38,13 +45,23 @@ export function DictPanel({ projectId, open, onOpenChange }: {
   const [editingTerm, setEditingTerm] = useState<Term | null>(null)
   const [termEditorOpen, setTermEditorOpen] = useState(false)
 
-  const words = Object.values(model.words).sort((a, b) => a.logicalName.localeCompare(b.logicalName))
-  const terms = Object.values(model.terms).sort((a, b) => a.logicalName.localeCompare(b.logicalName))
+  const words = useMemo(
+    () => Object.values(model.words).sort((a, b) => a.logicalName.localeCompare(b.logicalName)), [model.words])
+  const terms = useMemo(
+    () => Object.values(model.terms).sort((a, b) => a.logicalName.localeCompare(b.logicalName)), [model.terms])
+  const wordList = useListPage(words, WORD_FIELDS)
+  const termList = useListPage(terms, TERM_FIELDS)
+  // 사용 수는 모델을 한 번 훑은 색인에서 읽는다(행마다 wordUsage/termUsage 를 부르지 않는다). 다이얼로그가
+  // 닫혀 있거나 사용 수를 보이지 않는 탭이면 만들지 않는다 — 이 패널은 늘 마운트돼 있어 편집마다 다시 만들게 된다.
+  const usage = useMemo(
+    () => (open && (section === 'words' || section === 'terms') ? buildUsageIndex(model, namingRules) : null),
+    [open, section, model, namingRules])
   const candidates = useMemo(
     () => unregisteredWords(model, namingRules), [model, namingRules])
   // 물리명 분해에서 나온 미등록 약어(위 candidates의 대칭 — 논리명 분해 vs 물리명 분해).
   const abbrCandidates = useMemo(
     () => unregisteredAbbreviations(model, namingRules), [model, namingRules])
+  const unregisteredCount = candidates.length + abbrCandidates.length
 
   const onAddWord = () => { setEditingWord(null); setWordEditorOpen(true) }
   const onEditWord = (w: Word) => { setEditingWord(w); setWordEditorOpen(true) }
@@ -59,153 +76,93 @@ export function DictPanel({ projectId, open, onOpenChange }: {
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader><DialogTitle>단어·용어 사전</DialogTitle></DialogHeader>
-          <div className="flex gap-2">
-            <Button
-              type="button" size="sm" variant={section === 'words' ? 'default' : 'outline'}
-              onClick={() => setSection('words')}
-            >
-              단어
-            </Button>
-            <Button
-              type="button" size="sm" variant={section === 'terms' ? 'default' : 'outline'}
-              onClick={() => setSection('terms')}
-            >
-              용어
-            </Button>
-            <Button
-              type="button" size="sm" variant={section === 'unregistered' ? 'default' : 'outline'}
-              onClick={() => setSection('unregistered')}
-            >
-              미등록 항목{
-                (candidates.length + abbrCandidates.length) > 0
-                  ? ` (${candidates.length + abbrCandidates.length})` : ''
-              }
-            </Button>
-            <Button
-              type="button" size="sm" variant={section === 'import' ? 'default' : 'outline'}
-              onClick={() => setSection('import')}
-            >
-              가져오기
-            </Button>
-          </div>
+          <Tabs value={section} onValueChange={(value) => setSection(value as Section)}>
+            <TabsList aria-label="사전 구역">
+              <TabsTrigger value="words">단어 ({formatCount(words.length)})</TabsTrigger>
+              <TabsTrigger value="terms">용어 ({formatCount(terms.length)})</TabsTrigger>
+              <TabsTrigger value="unregistered">
+                미등록 항목{unregisteredCount > 0 ? ` (${formatCount(unregisteredCount)})` : ''}
+              </TabsTrigger>
+              <TabsTrigger value="import">가져오기</TabsTrigger>
+            </TabsList>
 
-          {section === 'words' && (
-            <div className="grid gap-2">
+            <TabsContent value="words" className="grid gap-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm text-muted-foreground">
                   단어의 표준 약어를 등록해 물리명 자동 생성에 사용합니다
                 </p>
                 {canEdit && <Button size="sm" onClick={onAddWord}><Plus /> 단어 추가</Button>}
               </div>
+              {words.length > 0 && (
+                <Input aria-label="단어 검색" placeholder="논리명·약어·영문명 검색" value={wordList.query}
+                  onChange={(e) => wordList.setQuery(e.target.value)} />
+              )}
               <ul className="grid max-h-96 gap-2 overflow-y-auto">
                 {words.length === 0 && <p className="text-sm text-muted-foreground">아직 단어가 없습니다</p>}
-                {words.map((w) => {
-                  const usage = wordUsage(model, w.id, namingRules)
-                  return (
-                    <li key={w.id} className="flex items-center justify-between gap-2 rounded-md border p-2">
-                      <div className="grid gap-0.5">
-                        <span className="font-medium">{w.logicalName}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{w.abbreviation}</span>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {usage.length > 0 && (
-                          <span className="text-xs text-muted-foreground">사용처 {usage.length}개</span>
-                        )}
-                        {canEdit && (
-                          <>
-                            <Button
-                              size="icon" variant="ghost" className="size-7" aria-label={`${w.logicalName} 편집`}
-                              onClick={() => onEditWord(w)}
-                            >
-                              <Pencil className="size-4" />
-                            </Button>
-                            <Button
-                              size="icon" variant="ghost" className="size-7 text-destructive"
-                              aria-label={`${w.logicalName} 삭제`}
-                              onClick={() => onRemoveWord(w.id)}
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </li>
-                  )
-                })}
+                {words.length > 0 && wordList.view.total === 0 && (
+                  <p className="text-sm text-muted-foreground">검색 결과가 없습니다</p>
+                )}
+                {wordList.view.rows.map((w) => (
+                  <DictRow key={w.id} logical={w.logicalName} physical={w.abbreviation}
+                    usage={usage?.words.get(w.id)?.length ?? 0} canEdit={canEdit}
+                    onEdit={() => onEditWord(w)} onRemove={() => onRemoveWord(w.id)} />
+                ))}
               </ul>
-            </div>
-          )}
+              <Pagination label="단어" page={wordList.view.page} pageCount={wordList.view.pageCount}
+                total={wordList.view.total} onPageChange={wordList.setPage} />
+            </TabsContent>
 
-          {section === 'terms' && (
-            <div className="grid gap-2">
+            <TabsContent value="terms" className="grid gap-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm text-muted-foreground">
                   논리명 전체가 완전일치할 때 우선 적용되는 표준 물리명을 관리합니다
                 </p>
                 {canEdit && <Button size="sm" onClick={onAddTerm}><Plus /> 용어 추가</Button>}
               </div>
+              {terms.length > 0 && (
+                <Input aria-label="용어 검색" placeholder="논리명·물리명 검색" value={termList.query}
+                  onChange={(e) => termList.setQuery(e.target.value)} />
+              )}
               <ul className="grid max-h-96 gap-2 overflow-y-auto">
                 {terms.length === 0 && <p className="text-sm text-muted-foreground">아직 용어가 없습니다</p>}
-                {terms.map((t) => {
-                  const usage = termUsage(model, t.id)
-                  return (
-                    <li key={t.id} className="flex items-center justify-between gap-2 rounded-md border p-2">
-                      <div className="grid gap-0.5">
-                        <span className="font-medium">{t.logicalName}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{t.physicalName}</span>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {usage.length > 0 && (
-                          <span className="text-xs text-muted-foreground">사용처 {usage.length}개</span>
-                        )}
-                        {canEdit && (
-                          <>
-                            <Button
-                              size="icon" variant="ghost" className="size-7" aria-label={`${t.logicalName} 편집`}
-                              onClick={() => onEditTerm(t)}
-                            >
-                              <Pencil className="size-4" />
-                            </Button>
-                            <Button
-                              size="icon" variant="ghost" className="size-7 text-destructive"
-                              aria-label={`${t.logicalName} 삭제`}
-                              onClick={() => onRemoveTerm(t.id)}
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </li>
-                  )
-                })}
+                {terms.length > 0 && termList.view.total === 0 && (
+                  <p className="text-sm text-muted-foreground">검색 결과가 없습니다</p>
+                )}
+                {termList.view.rows.map((t) => (
+                  <DictRow key={t.id} logical={t.logicalName} physical={t.physicalName}
+                    usage={usage?.terms.get(t.id)?.length ?? 0} canEdit={canEdit}
+                    onEdit={() => onEditTerm(t)} onRemove={() => onRemoveTerm(t.id)} />
+                ))}
               </ul>
-            </div>
-          )}
+              <Pagination label="용어" page={termList.view.page} pageCount={termList.view.pageCount}
+                total={termList.view.total} onPageChange={termList.setPage} />
+            </TabsContent>
 
-          {section === 'unregistered' && (
-            <div className="grid gap-3">
+            <TabsContent value="unregistered" className="grid gap-3">
               <div className="flex gap-2">
                 <Button
                   type="button" size="sm" variant={direction === 'toAbbr' ? 'default' : 'outline'}
                   onClick={() => setDirection('toAbbr')}
                 >
-                  논리명 → 약어{candidates.length > 0 ? ` (${candidates.length})` : ''}
+                  논리명 → 약어{candidates.length > 0 ? ` (${formatCount(candidates.length)})` : ''}
                 </Button>
                 <Button
                   type="button" size="sm" variant={direction === 'toLogical' ? 'default' : 'outline'}
                   onClick={() => setDirection('toLogical')}
                 >
-                  물리명 → 논리명{abbrCandidates.length > 0 ? ` (${abbrCandidates.length})` : ''}
+                  물리명 → 논리명{abbrCandidates.length > 0 ? ` (${formatCount(abbrCandidates.length)})` : ''}
                 </Button>
               </div>
               <UnregisteredSection
                 projectId={projectId} canEdit={canEdit} direction={direction}
                 candidates={direction === 'toAbbr' ? candidates : abbrCandidates}
               />
-            </div>
-          )}
-          {section === 'import' && <DictImportSection projectId={projectId} />}
+            </TabsContent>
+
+            <TabsContent value="import">
+              <DictImportSection projectId={projectId} />
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
       {wordEditorOpen && (
@@ -604,4 +561,35 @@ function displayFieldValue(
   if (field !== 'domainId') return value ?? ''
   if (value === null) return '없음'
   return model.domains[value]?.name ?? value
+}
+
+/** 사전 한 행 — 논리명 | 물리명 | 사용 수를 한 줄에 나란히 보인다. */
+function DictRow({ logical, physical, usage, canEdit, onEdit, onRemove }: {
+  logical: string
+  physical: string
+  usage: number
+  canEdit: boolean
+  onEdit: () => void
+  onRemove: () => void
+}) {
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 rounded-md border p-2">
+      <span className="truncate font-medium">{logical}</span>
+      <span className="truncate font-mono text-xs text-muted-foreground">{physical}</span>
+      <div className="flex shrink-0 items-center gap-2">
+        {usage > 0 && <span className="text-xs text-muted-foreground">사용처 {formatCount(usage)}개</span>}
+        {canEdit && (
+          <>
+            <Button size="icon" variant="ghost" className="size-7" aria-label={`${logical} 편집`} onClick={onEdit}>
+              <Pencil className="size-4" />
+            </Button>
+            <Button size="icon" variant="ghost" className="size-7 text-destructive"
+              aria-label={`${logical} 삭제`} onClick={onRemove}>
+              <Trash2 className="size-4" />
+            </Button>
+          </>
+        )}
+      </div>
+    </li>
+  )
 }

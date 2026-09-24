@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { createEmptyModel, DEFAULT_NAMING_RULES, type ProjectModel } from '@erdd/core'
+import { createEmptyModel, DEFAULT_NAMING_RULES, type NamingRules, type ProjectModel } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import {
   createWord, updateWord, removeWord,
   createTerm, updateTerm, removeTerm,
-  wordUsage, termUsage, unregisteredWords, unregisteredAbbreviations,
+  buildUsageIndex, wordUsage, termUsage, unregisteredWords, unregisteredAbbreviations,
   planTermPropagation, applyTermPropagation,
   canRegisterWord, canRegisterTerm,
 } from './dict-edits.js'
@@ -416,5 +416,141 @@ describe('canRegisterTerm', () => {
       base(), { logicalName: '회원_번호', physicalName: 'MBR_NO2' },
       { ...DEFAULT_NAMING_RULES, logicalSeparator: '' },
     )).toEqual({ ok: true })
+  })
+})
+
+describe('buildUsageIndex — 목록의 사용 수는 삭제·수정 경고와 같은 수를 말한다', () => {
+  /**
+   * 두 판정이 갈리는 모양을 전부 넣는다: 구분자가 든 용어(단어 분해 건너뜀 판정만 벗겨 비교), 공백뿐인 용어
+   * (termUsage 는 빈 논리명과 맞춘다), 같은 단어가 두 번 든 이름(한 번만 센다), 앞뒤 공백, 빈 논리명.
+   */
+  function usageFixture(): ProjectModel {
+    let m = buildSampleModel()   // t1 회원등급 · t2 회원, c1·c4 등급코드 · c2 회원번호 · c3 회원명
+    const words: [string, string, string][] = [
+      ['w1', '회원', 'MBR'], ['w2', '번호', 'NO'], ['w3', '등급', 'GRD'], ['w4', '코드', 'CD'], ['w5', '명', 'NM'],
+      ['w6', '주문', 'ORD'],
+    ]
+    for (const [id, logicalName, abbreviation] of words) {
+      m = createWord(m, { id, logicalName, abbreviation, englishName: null, description: null, origin: null })
+    }
+    const terms: [string, string, string][] = [
+      ['tm1', '등급코드', 'GRD_CD'], ['tm2', '회원_번호', 'MBR_NO'], ['tm3', '없는용어', 'NONE'], ['tm4', '  ', 'BLANK'],
+    ]
+    for (const [id, logicalName, physicalName] of terms) {
+      m = createTerm(m, { id, logicalName, physicalName, domainId: null, description: null, origin: null })
+    }
+    const tables = { ...m.tables, t3: { ...m.tables.t1!, id: 't3', logicalName: '회원_등급', physicalName: 'MBR_GRD2' } }
+    const columns = {
+      ...m.columns,
+      c5: { ...m.columns.c3!, id: 'c5', tableId: 't3', logicalName: ' 회원회원 ', physicalName: 'MBR_MBR' },
+      c6: { ...m.columns.c3!, id: 'c6', tableId: 't3', logicalName: '', physicalName: 'EMPTY' },
+      c7: { ...m.columns.c3!, id: 'c7', tableId: 't3', logicalName: '회원번호', physicalName: 'MBR_NO' },
+    }
+    return { ...m, tables, columns }
+  }
+
+  /**
+   * 명명 규칙의 까다로운 갈래를 더 얹는다(guides/naming.md 「논리명 구분자」·「테이블 최종 이름」).
+   * - 여러 단어로 분해되는 이름: 구분자 split(`회원_주문_번호`) · 그리디 폴백(`회원주문번호`) · 섞임(`회원_주문번호`)
+   * - 같은 단어가 두 번: `회원_회원`, 앞뒤·겹 구분자(`_회원__주문_`)
+   * - 용어와 단어가 겹치는 이름: 단어 `주문` 과 같은 이름의 용어 tm5 → `주문` 테이블은 단어 사용처에서 빠진다
+   * - 같은 논리명의 용어 둘(tm6·tm7) → 둘 다 사용처를 받는다
+   * - 용어 쪽에 구분자가 없고 엔티티 쪽에 있는 이름(`주문_코드` vs 용어 `주문코드`)
+   * - 구분자뿐인 이름(`_`) → 벗기면 빈 이름이라 공백 용어와 구분자 비교로 맞는다(평문 비교로는 안 맞는다)
+   * - 동명 단어 둘(w7·w8 `상태`) → 분해는 앞엣것만 잡는다, 빈 논리명 단어(w9)
+   * - 사전에 없는 구간이 낀 이름(`회원XYZ번호`), 영문 단어(`ID`)
+   * - 그룹 별칭·형식 템플릿이 걸린 테이블(`g1`, 별칭 MBR) — 색인은 조합 이름이 아니라 부분을 본다
+   */
+  function trickyFixture(): ProjectModel {
+    let m = usageFixture()
+    const words: [string, string, string][] = [
+      ['w7', '상태', 'STAT'], ['w8', '상태', 'STS'], ['w9', '', 'EMPTYWORD'], ['w10', 'ID', 'ID'],
+    ]
+    for (const [id, logicalName, abbreviation] of words) {
+      m = createWord(m, { id, logicalName, abbreviation, englishName: null, description: null, origin: null })
+    }
+    const terms: [string, string, string][] = [
+      ['tm5', '주문', 'ORD_TERM'], ['tm6', '주문상태', 'ORD_STAT'], ['tm7', '주문상태', 'ORD_STS'], ['tm8', '주문코드', 'ORD_CD'],
+    ]
+    for (const [id, logicalName, physicalName] of terms) {
+      m = createTerm(m, { id, logicalName, physicalName, domainId: null, description: null, origin: null })
+    }
+    const base = m.tables.t1!
+    const tables = {
+      ...m.tables,
+      t4: { ...base, id: 't4', logicalName: '주문', physicalName: 'ORD', groupId: 'g1' },
+      t5: { ...base, id: 't5', logicalName: '회원_주문_번호', physicalName: 'MBR_ORD_NO', groupId: null },
+    }
+    const col = m.columns.c3!
+    const extra: [string, string][] = [
+      ['c8', '회원주문번호'], ['c9', '회원_주문번호'], ['c10', '회원_회원'], ['c11', '_회원__주문_'],
+      ['c12', '주문_코드'], ['c13', '_'], ['c14', '주문상태'], ['c15', '상태'], ['c16', '회원XYZ번호'],
+      ['c17', '회원ID'], ['c18', '주문_상태'], ['c19', '  주문  '],
+    ]
+    const columns = { ...m.columns }
+    for (const [id, logicalName] of extra) columns[id] = { ...col, id, tableId: 't5', logicalName, physicalName: '' }
+    const tableGroups = { ...m.tableGroups, g1: { ...m.tableGroups.g1!, alias: 'MBR' } }
+    return { ...m, tables, columns, tableGroups }
+  }
+
+  const RULES: [string, NamingRules][] = [
+    ['기본 규칙(논리명 구분자 _)', DEFAULT_NAMING_RULES],
+    ['논리명 구분자 없음', { ...DEFAULT_NAMING_RULES, logicalSeparator: '' }],
+    ['형식 템플릿이 걸린 규칙', {
+      ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '{그룹명}_{논리명}',
+    }],
+  ]
+  const FIXTURES: [string, () => ProjectModel][] = [['기본 픽스처', usageFixture], ['까다로운 픽스처', trickyFixture]]
+  for (const [fixtureLabel, fixture] of FIXTURES) {
+    for (const [label, rules] of RULES) {
+      it(`${fixtureLabel} · ${label}: 모든 단어·용어 id 에서 wordUsage·termUsage 와 같은 값이다`, () => {
+        const m = fixture()
+        const index = buildUsageIndex(m, rules)
+        expect([...index.words.keys()].sort()).toEqual(Object.keys(m.words).sort())
+        expect([...index.terms.keys()].sort()).toEqual(Object.keys(m.terms).sort())
+        for (const id of Object.keys(m.words)) expect(index.words.get(id), `단어 ${id}`).toEqual(wordUsage(m, id, rules))
+        for (const id of Object.keys(m.terms)) expect(index.terms.get(id), `용어 ${id}`).toEqual(termUsage(m, id))
+      })
+    }
+  }
+
+  it('픽스처가 갈림길을 실제로 밟는다 — 용어 완전일치 컬럼은 단어 사용처에서 빠지고, 빈 용어는 빈 논리명과 맞는다', () => {
+    const m = usageFixture()
+    const index = buildUsageIndex(m, DEFAULT_NAMING_RULES)
+    // c2·c7(회원번호)은 tm2(회원_번호)와 구분자를 벗겨 같으므로 단어 분해를 건너뛴다 — 회원 단어의 사용처가 아니다.
+    const memberUsers = index.words.get('w1')!.map((u) => u.entity.id)
+    expect(memberUsers).not.toContain('c2')
+    expect(memberUsers).toContain('c5')
+    expect(memberUsers.filter((id) => id === 'c5')).toHaveLength(1)
+    // termUsage 는 평문 비교라 tm2(회원_번호)는 회원번호 컬럼과 맞지 않는다.
+    expect(index.terms.get('tm2')).toEqual([])
+    expect(index.terms.get('tm4')!.map((u) => u.entity.id)).toEqual(['c6'])
+  })
+
+  it('까다로운 픽스처도 갈림길을 실제로 밟는다 — 두 규칙에서 결과가 갈리고, 겹치는 용어·동명 단어가 각자 값을 낸다', () => {
+    const m = trickyFixture()
+    const withSep = buildUsageIndex(m, DEFAULT_NAMING_RULES)
+    const noSep = buildUsageIndex(m, { ...DEFAULT_NAMING_RULES, logicalSeparator: '' })
+    const ids = (index: typeof withSep, kind: 'words' | 'terms', id: string) => index[kind].get(id)!.map((u) => u.entity.id)
+    // 용어 tm5(주문)와 이름이 같은 t4·c19 는 단어 주문의 사용처가 아니고, 용어 쪽은 평문 trim 으로 둘 다 잡는다.
+    expect(ids(withSep, 'words', 'w6')).not.toContain('t4')
+    expect(ids(withSep, 'terms', 'tm5')).toEqual(['t4', 'c19'])
+    // 같은 논리명의 용어 둘은 둘 다 사용처를 받는다.
+    expect(ids(withSep, 'terms', 'tm6')).toEqual(['c14'])
+    expect(ids(withSep, 'terms', 'tm7')).toEqual(['c14'])
+    // 동명 단어는 분해가 앞엣것만 잡는다.
+    expect(ids(withSep, 'words', 'w7')).toContain('c15')
+    expect(ids(withSep, 'words', 'w8')).toEqual([])
+    // 주문_코드(c12)는 구분자를 벗기면 용어 tm8(주문코드)과 같아 단어 분해를 건너뛴다 — 구분자 없는 규칙에서는
+    // 벗기지 않으므로 분해로 내려가 주문 단어의 사용처가 된다(두 규칙에서 실제로 갈린다).
+    expect(ids(withSep, 'words', 'w6')).not.toContain('c12')
+    expect(ids(noSep, 'words', 'w6')).toContain('c12')
+    // 구분자뿐인 이름(c13 `_`)은 벗기면 빈 이름이라 공백 용어와 같다 — 평문 termUsage 는 맞추지 않는다.
+    expect(ids(withSep, 'terms', 'tm4')).not.toContain('c13')
+    // 여러 단어 분해: split·그리디·섞임 모두 회원·주문·번호를 잡는다.
+    for (const id of ['t5', 'c8', 'c9']) {
+      expect(ids(withSep, 'words', 'w1'), id).toContain(id)
+      expect(ids(withSep, 'words', 'w2'), id).toContain(id)
+    }
   })
 })
