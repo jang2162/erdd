@@ -51,6 +51,20 @@ export function resourceDisplayName(
   return typeof value === 'string' ? value : ''
 }
 
+/**
+ * 목록·충돌 화면의 **물리명 칸**. 단어는 약어, 용어는 물리명이고 도메인·커스텀 항목은 없다(null).
+ * 관리 모달·에디터 패널·재동기화·승격 행이 모두 이 함수로 두 번째 칸을 그린다 — 화면마다 payload 를
+ * 따로 읽으면 한쪽만 바뀐다. 논리명 칸은 `resourceDisplayName` 이다.
+ */
+export function resourceSecondaryName(
+  kind: ResourceKind, payload: Record<string, unknown>,
+): string | null {
+  const key = kind === 'word' ? 'abbreviation' : kind === 'term' ? 'physicalName' : null
+  if (key === null) return null
+  const value = payload[key]
+  return typeof value === 'string' ? value : null
+}
+
 /** 공용 리소스 4종의 프로젝트 엔티티 목록. planResync·planPromote가 함께 쓴다. */
 export function resourceEntitiesOf(
   model: ProjectModel, kind: ResourceKind,
