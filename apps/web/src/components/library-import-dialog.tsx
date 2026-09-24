@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   RESOURCE_KIND_LABEL, dictIssueText, formatLibraryFileIssues, libraryDocFromDictSheets, parseLibraryFile,
-  resourceDisplayName, stringifyLibraryFile,
+  stringifyLibraryFile,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
+import { formatCount } from '@/lib/format'
+import { useLibraryDomains } from '@/lib/library-domains'
 import { readDictSheets } from '@/editor/excel-file'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -28,10 +30,11 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
   target: LibraryImportTarget; onClose: () => void; onDone: () => void
 }) {
   const trpc = useTRPC()
-  const existingItems = useQuery({
-    ...trpc.resource.items.list.queryOptions({ libraryId: target.kind === 'existing' ? target.libraryId : '' }),
-    enabled: target.kind === 'existing',
-  })
+  // 대상 라이브러리의 도메인 이름 — Excel 을 라이브러리 문서로 바꿀 때 용어의 도메인을 이름으로 푸는 데만 쓴다.
+  // 항목 전체(items.list)를 받지 않는다(설계 3절 — 이 쓰임은 dryRun 응답·countsByKind 로 대신할 수 없다).
+  const existingDomains = useLibraryDomains(
+    target.kind === 'existing' ? target.libraryId : null, target.kind === 'existing',
+  )
   const importLibrary = useMutation(trpc.resource.library.import.mutationOptions())
   type ImportSummary = Awaited<ReturnType<typeof importLibrary.mutateAsync>>['summary']
   type Preview = { stateHash: string; summary: ImportSummary }
@@ -77,8 +80,7 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
     try {
       let t: string
       if (file.name.toLowerCase().endsWith('.xlsx')) {
-        const domainNames = (existingItems.data ?? []).filter((i) => i.kind === 'domain')
-          .map((i) => resourceDisplayName('domain', i.payload as Record<string, unknown>))
+        const domainNames = (existingDomains.data ?? []).map((d) => d.name)
         const r = libraryDocFromDictSheets(await readDictSheets(file), { name: file.name.replace(/\.xlsx$/i, ''), targetDomainNames: domainNames })
         if (genRef.current !== gen) return
         if (!r.ok) { setIssues(r.issues.slice(0, 20).map(dictIssueText)); return }
@@ -110,7 +112,7 @@ export function LibraryImportDialog({ target, onClose, onDone }: {
         target: targetInput(), text: fileText, prune, includeStale, dryRun: false, expectedStateHash: preview.stateHash,
       })
       const c = res.summary.counts
-      toast.success(`추가 ${c.add} · 갱신 ${c.update + (includeStale ? c.stale : 0)} · 삭제 ${prune ? c.remove - c.removeBlocked : 0}`)
+      toast.success(`추가 ${formatCount(c.add)} · 갱신 ${formatCount(c.update + (includeStale ? c.stale : 0))} · 삭제 ${formatCount(prune ? c.remove - c.removeBlocked : 0)}`)
       onDone()
     } catch (err) {
       const code = (err as { data?: { code?: string } }).data?.code

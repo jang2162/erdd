@@ -14,7 +14,7 @@ const summary = (counts: Record<string, number>, entries: unknown[] = []) => ({
 })
 
 function renderDialog(handlers: Parameters<typeof mockTrpcFetch>[0], onDone = vi.fn()) {
-  mockTrpcFetch({ 'resource.items.list': () => ({ data: [] }), ...handlers })
+  mockTrpcFetch({ 'resource.items.page': () => ({ data: { items: [], total: 0 } }), ...handlers })
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   render(

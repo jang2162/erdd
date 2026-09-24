@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { PromoteEntry, PromoteStatus } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
+import { libraryDomainsQueryKey } from '@/lib/library-domains'
 import { PromoteEntryList } from '@/components/promote-entry-list'
 import { Button } from '@/components/ui/button'
 import {
@@ -71,15 +72,14 @@ function ReviewDialog({
         queryKey: trpc.promotion.listForOrg.queryKey(),
       })
       await queryClient.invalidateQueries({ queryKey: trpc.promotion.pendingCount.queryKey() })
-      // 승격은 같은 화면의 라이브러리 관리 목록도 낡게 만든다 — QueryClient가
-      // refetchOnWindowFocus:false라 자동 회복 트리거가 없어 여기서 직접 지운다.
-      // 항목 수는 library.list가 들고 있으므로 items.list만으로는 부족하다(삭제 확인창이
-      // "항목 0개도 함께 삭제됩니다"라고 거짓을 말하게 된다).
+      // 승격은 같은 화면의 라이브러리 관리 목록(개수)과 조회 모달(항목 페이지·도메인 목록)을 낡게 만든다 —
+      // QueryClient가 refetchOnWindowFocus:false라 자동 회복 트리거가 없어 여기서 직접 지운다.
       const resolvedLibraryId = detail.data?.request.libraryId
       if (resolvedLibraryId !== undefined) {
         await queryClient.invalidateQueries({
-          queryKey: trpc.resource.items.list.queryKey({ libraryId: resolvedLibraryId }),
+          queryKey: trpc.resource.items.page.queryKey({ libraryId: resolvedLibraryId }),
         })
+        await queryClient.invalidateQueries({ queryKey: libraryDomainsQueryKey(resolvedLibraryId) })
       }
       await queryClient.invalidateQueries({
         queryKey: trpc.resource.library.list.queryKey({ scope: 'org', orgId }),

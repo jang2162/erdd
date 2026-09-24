@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, FileUp, Plus, Trash2, Pencil, Upload } from 'lucide-react'
+import { Download, FileUp, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  LIBRARY_FILE_EXTENSION, RESOURCE_KINDS, RESOURCE_KIND_LABEL, resourceDisplayName, type ResourceKind,
-} from '@erdd/core'
+import { LIBRARY_FILE_EXTENSION } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
+import { formatCount } from '@/lib/format'
+import { libraryDomainsQueryKey } from '@/lib/library-domains'
 import { LibraryImportDialog, type LibraryImportTarget } from '@/components/library-import-dialog'
-import { ResourceItemForm, type DomainOption } from '@/components/resource-item-form'
+import { LibraryViewDialog } from '@/components/library-view-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -15,11 +15,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-type ItemRow = { id: string; kind: ResourceKind; payload: Record<string, unknown>; version: number }
-
 /**
  * 전역(/admin)·조직(/org/:orgId) 공용 리소스 라이브러리 관리 화면.
  * 데이터 모델과 로직은 두 스코프가 완전히 같고 권한 판정만 서버에서 갈린다.
+ * 라이브러리 행을 누르면 조회 모달(`LibraryViewDialog`)이 열린다 — 항목은 그 모달이 페이지 단위로 받는다.
  */
 export function ResourceLibraryManager({
   scope, orgId, canManage,
@@ -28,24 +27,18 @@ export function ResourceLibraryManager({
   const queryClient = useQueryClient()
   const listInput = scope === 'global' ? { scope } : { scope, orgId: orgId! }
   const libraries = useQuery(trpc.resource.library.list.queryOptions(listInput))
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [viewingId, setViewingId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
-  const [editing, setEditing] = useState<{ kind: ResourceKind; item: ItemRow | null } | null>(null)
   const [importTarget, setImportTarget] = useState<LibraryImportTarget | null>(null)
-
-  const items = useQuery({
-    ...trpc.resource.items.list.queryOptions({ libraryId: selectedId ?? '' }),
-    enabled: selectedId !== null,
-  })
 
   const invalidateLibraries = () =>
     queryClient.invalidateQueries({ queryKey: trpc.resource.library.list.queryKey(listInput) })
-  const invalidateItems = (libraryId: string | null) =>
-    queryClient.invalidateQueries({
-      queryKey: trpc.resource.items.list.queryKey({ libraryId: libraryId ?? '' }),
-    })
+  const invalidateItems = (libraryId: string) => Promise.all([
+    queryClient.invalidateQueries({ queryKey: trpc.resource.items.page.queryKey({ libraryId }) }),
+    queryClient.invalidateQueries({ queryKey: libraryDomainsQueryKey(libraryId) }),
+  ])
   const onError = (err: { message: string }) => toast.error(err.message)
 
   /** 배포 파일을 내려받는다 — 읽을 수 있으면 누구나(배포 목적). */
@@ -58,7 +51,9 @@ export function ResourceLibraryManager({
       a.download = `${lib.name.replace(/[\\/:*?"<>|]/g, '_')}${LIBRARY_FILE_EXTENSION}`
       a.click()
       URL.revokeObjectURL(url)
-      if (res.danglingDomainRefs > 0) toast.info(`삭제된 도메인을 가리키던 용어 ${res.danglingDomainRefs}건은 도메인 없이 내보냈습니다`)
+      if (res.danglingDomainRefs > 0) {
+        toast.info(`삭제된 도메인을 가리키던 용어 ${formatCount(res.danglingDomainRefs)}건은 도메인 없이 내보냈습니다`)
+      }
     } catch (err) { onError(err as { message: string }) }
   }
 
@@ -71,23 +66,14 @@ export function ResourceLibraryManager({
     onError,
   }))
   const removeLibrary = useMutation(trpc.resource.library.remove.mutationOptions({
-    onSuccess: async () => { setSelectedId(null); await invalidateLibraries() }, onError,
-  }))
-  const createItem = useMutation(trpc.resource.items.create.mutationOptions({
-    onSuccess: async () => { setEditing(null); await invalidateItems(selectedId); await invalidateLibraries() },
+    onSuccess: async (_data, variables) => {
+      if (viewingId === variables.libraryId) setViewingId(null)
+      await invalidateLibraries()
+    },
     onError,
   }))
-  const updateItem = useMutation(trpc.resource.items.update.mutationOptions({
-    onSuccess: async () => { setEditing(null); await invalidateItems(selectedId) }, onError,
-  }))
-  const removeItem = useMutation(trpc.resource.items.remove.mutationOptions({
-    onSuccess: async () => { await invalidateItems(selectedId); await invalidateLibraries() }, onError,
-  }))
 
-  const rows = (items.data ?? []) as ItemRow[]
-  const domainOptions: DomainOption[] = rows
-    .filter((r) => r.kind === 'domain')
-    .map((r) => ({ id: r.id, name: resourceDisplayName('domain', r.payload) }))
+  const viewing = libraries.data?.find((lib) => lib.id === viewingId) ?? null
 
   return (
     <section className="grid gap-3">
@@ -117,94 +103,31 @@ export function ResourceLibraryManager({
 
       <ul className="grid gap-2">
         {libraries.data?.map((lib) => (
-          <li key={lib.id} className="rounded-md border">
-            <div className="flex items-center justify-between gap-2 p-3">
-              <button type="button" className="grid flex-1 gap-0.5 text-left"
-                onClick={() => setSelectedId(selectedId === lib.id ? null : lib.id)}>
-                <span className="font-medium">{lib.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {lib.description || '설명 없음'} · 항목 {lib.itemCount}개
-                </span>
-              </button>
-              <Button size="icon" variant="ghost" className="size-7" aria-label={`${lib.name} 내보내기`} onClick={() => void onExport(lib)}>
-                <Download className="size-4" />
+          <li key={lib.id} className="flex items-center justify-between gap-2 rounded-md border p-3">
+            <button type="button" className="grid flex-1 gap-0.5 text-left" onClick={() => setViewingId(lib.id)}>
+              <span className="font-medium">{lib.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {lib.description || '설명 없음'} · 항목 {formatCount(lib.itemCount)}개
+              </span>
+            </button>
+            <Button size="icon" variant="ghost" className="size-7" aria-label={`${lib.name} 내보내기`} onClick={() => void onExport(lib)}>
+              <Download className="size-4" />
+            </Button>
+            {canManage && (
+              <Button size="icon" variant="ghost" className="size-7" aria-label={`${lib.name} 가져오기`}
+                onClick={() => setImportTarget({ kind: 'existing', libraryId: lib.id, name: lib.name })}>
+                <Upload className="size-4" />
               </Button>
-              {canManage && (
-                <Button size="icon" variant="ghost" className="size-7" aria-label={`${lib.name} 가져오기`}
-                  onClick={() => setImportTarget({ kind: 'existing', libraryId: lib.id, name: lib.name })}>
-                  <Upload className="size-4" />
-                </Button>
-              )}
-              {canManage && (
-                <Button size="icon" variant="ghost" className="size-7 text-destructive"
-                  aria-label={`${lib.name} 삭제`}
-                  onClick={() => {
-                    if (!window.confirm(`"${lib.name}"을(를) 삭제하면 항목 ${lib.itemCount}개도 함께 삭제됩니다. 계속할까요?`)) return
-                    removeLibrary.mutate({ libraryId: lib.id })
-                  }}>
-                  <Trash2 className="size-4" />
-                </Button>
-              )}
-            </div>
-
-            {selectedId === lib.id && (
-              <div className="grid gap-3 border-t p-3">
-                {items.isError && (
-                  <p role="alert" className="text-destructive">{items.error.message}</p>
-                )}
-                {RESOURCE_KINDS.map((kind) => {
-                  const kindRows = rows.filter((r) => r.kind === kind)
-                  return (
-                    <div key={kind} className="grid gap-1.5">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-semibold text-muted-foreground">
-                          {RESOURCE_KIND_LABEL[kind]}
-                        </h3>
-                        {canManage && (
-                          <Button size="sm" variant="ghost"
-                            onClick={() => setEditing({ kind, item: null })}>
-                            <Plus className="size-3" /> 추가
-                          </Button>
-                        )}
-                      </div>
-                      {kindRows.length === 0 && (
-                        <p className="text-xs text-muted-foreground">없음</p>
-                      )}
-                      <ul className="grid gap-1">
-                        {kindRows.map((row) => {
-                          const name = resourceDisplayName(kind, row.payload)
-                          return (
-                            <li key={row.id}
-                              className="flex items-center justify-between gap-2 rounded border px-2 py-1 text-sm">
-                              <span>{name}</span>
-                              <span className="flex items-center gap-1">
-                                <span className="text-xs text-muted-foreground">v{row.version}</span>
-                                {canManage && (
-                                  <>
-                                    <Button size="icon" variant="ghost" className="size-6"
-                                      aria-label={`${name} 편집`}
-                                      onClick={() => setEditing({ kind, item: row })}>
-                                      <Pencil className="size-3" />
-                                    </Button>
-                                    <Button size="icon" variant="ghost" className="size-6 text-destructive"
-                                      aria-label={`${name} 삭제`}
-                                      onClick={() => {
-                                        if (!window.confirm(`"${name}"을(를) 삭제할까요? 이미 가져간 프로젝트의 사본은 그대로 남습니다.`)) return
-                                        removeItem.mutate({ itemId: row.id })
-                                      }}>
-                                      <Trash2 className="size-3" />
-                                    </Button>
-                                  </>
-                                )}
-                              </span>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </div>
-                  )
-                })}
-              </div>
+            )}
+            {canManage && (
+              <Button size="icon" variant="ghost" className="size-7 text-destructive"
+                aria-label={`${lib.name} 삭제`}
+                onClick={() => {
+                  if (!window.confirm(`"${lib.name}"을(를) 삭제하면 항목 ${formatCount(lib.itemCount)}개도 함께 삭제됩니다. 계속할까요?`)) return
+                  removeLibrary.mutate({ libraryId: lib.id })
+                }}>
+                <Trash2 className="size-4" />
+              </Button>
             )}
           </li>
         ))}
@@ -237,29 +160,9 @@ export function ResourceLibraryManager({
         </DialogContent>
       </Dialog>
 
-      {editing && selectedId && (
-        <Dialog open onOpenChange={(open) => { if (!open) setEditing(null) }}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>
-                {RESOURCE_KIND_LABEL[editing.kind]} {editing.item ? '수정' : '추가'}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="max-h-[70vh] overflow-y-auto">
-              <ResourceItemForm
-                key={editing.item?.id ?? `new-${editing.kind}`}
-                kind={editing.kind}
-                payload={editing.item?.payload ?? null}
-                domainOptions={domainOptions}
-                onCancel={() => setEditing(null)}
-                onSubmit={(payload) => {
-                  if (editing.item) updateItem.mutate({ itemId: editing.item.id, payload })
-                  else createItem.mutate({ libraryId: selectedId, kind: editing.kind, payload })
-                }}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
+      {viewing && (
+        <LibraryViewDialog library={viewing} canManage={canManage}
+          onClose={() => setViewingId(null)} onChanged={invalidateLibraries} />
       )}
 
       {importTarget && (
@@ -267,7 +170,7 @@ export function ResourceLibraryManager({
           onDone={() => {
             setImportTarget(null)
             void invalidateLibraries()
-            void invalidateItems(importTarget.kind === 'existing' ? importTarget.libraryId : null)
+            if (importTarget.kind === 'existing') void invalidateItems(importTarget.libraryId)
           }} />
       )}
     </section>
