@@ -10,7 +10,8 @@ import type { Db } from '../db/client.js'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { getOrgMember, requireProjectAccess } from '../services/perm.js'
 import {
-  parsePayload, requireLibraryRead, requireLibraryWrite, requireScopeRead, requireScopeWrite,
+  loadLibraryItemPage, parsePayload, requireLibraryRead, requireLibraryWrite, requireScopeRead,
+  requireScopeWrite,
 } from '../services/resource-library.js'
 import { emptyOutcome, loadLibraryItems, runPromoteInTx } from '../services/promote.js'
 import { mutateAndPublish } from '../services/mutate-publish.js'
@@ -157,6 +158,22 @@ export const resourceRouter = router({
         // CLI dict push 가 이 결과로 planPromote 를 돌려 expected* 를 채운다 — 서버 재계산과 같은
         // 조회·정렬이어야 하므로 loadLibraryItems 를 쓴다(guides/shared-resources.md 「요청·승인 큐」).
         return loadLibraryItems(ctx.db, input.libraryId)
+      }),
+
+    // 관리 화면 조회 모달 전용 — 세션만 받는다. 토큰 소비처가 없으므로 apiProcedure 로 열지 않는다
+    // (guides/cli.md 「액세스 토큰 인증」 — 토큰에 여는 것은 명시적 opt-in).
+    page: authedProcedure
+      .input(z.object({
+        libraryId: z.string().uuid(),
+        kind: KindEnum,
+        query: z.string().max(200).optional(),
+        offset: z.number().int().min(0),
+        limit: z.number().int().min(1).max(200),
+      }))
+      .query(async ({ ctx, input }) => {
+        // items.list 와 같은 판정이다 — 한쪽만 고치면 볼 수 없는 라이브러리가 다른 경로로 샌다.
+        await requireLibraryRead(ctx.db, input.libraryId, ctx.user)
+        return loadLibraryItemPage(ctx.db, input)
       }),
 
     create: authedProcedure

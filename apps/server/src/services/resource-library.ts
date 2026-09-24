@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server'
-import { eq } from 'drizzle-orm'
+import { and, asc, count, eq, or, sql, type SQL } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { RESOURCE_PAYLOAD_SCHEMAS, type ResourceKind } from '@erdd/core'
 import type { Db } from '../db/client.js'
@@ -148,4 +148,64 @@ export async function ensureStarterGlobalLibrary(db: Db): Promise<void> {
     await tx.insert(resourceItems).values(rows)
     console.log(`예시 전역 공용 리소스 라이브러리 생성: ${libraryId}`)
   })
+}
+
+/** LIKE 패턴의 메타 문자(`\`·`%`·`_`)를 글자 그대로 찾게 한다. Postgres LIKE 의 기본 ESCAPE 가 `\` 다. */
+export function escapeLike(text: string): string {
+  return text.replace(/[\\%_]/g, (c) => `\\${c}`)
+}
+
+/** 종류별 논리명 칸 — 정렬 키이고, core `resourceDisplayName` 이 읽는 키와 같다. */
+const NAME_FIELD: Record<ResourceKind, string> = {
+  domain: 'name', word: 'logicalName', term: 'logicalName', customField: 'name',
+}
+
+/**
+ * 조회 모달의 검색 필드. 에디터 사전·도메인·커스텀 패널의 클라이언트 검색도 같은 필드를 쓴다
+ * (guides/shared-resources.md 「관리 화면의 항목 조회」) — 한쪽만 바꾸면 같은 검색어가 화면마다 다르게 걸린다.
+ */
+export const PAGE_SEARCH_FIELDS: Record<ResourceKind, readonly string[]> = {
+  word: ['logicalName', 'abbreviation', 'englishName'],
+  term: ['logicalName', 'physicalName'],
+  domain: ['name'],
+  customField: ['name'],
+}
+
+/** payload 의 문자열 필드. 필드 이름은 위 두 상수에서만 오므로 raw 로 박아도 주입 경로가 없다. */
+function payloadText(field: string): SQL {
+  return sql`(${resourceItems.payload} ->> ${sql.raw(`'${field}'`)})`
+}
+
+/**
+ * 관리 화면 조회 모달의 한 페이지 — 종류 하나, 검색어로 거른 뒤 논리명 칸 오름차순·동률 id 순.
+ * 동률 깨기가 없으면 같은 이름이 많을 때 페이지를 넘기며 항목이 겹치거나 빠진다.
+ * 이름이 jsonb 안에 있어 정렬·검색은 인덱스를 타지 않는다 — (library_id, kind) 인덱스로 좁힌 뒤 거른다.
+ */
+export async function loadLibraryItemPage(
+  db: Db,
+  input: { libraryId: string; kind: ResourceKind; query?: string; offset: number; limit: number },
+): Promise<{
+  items: { id: string; kind: ResourceKind; payload: Record<string, unknown>; version: number }[]
+  total: number
+}> {
+  const q = input.query?.trim() ?? ''
+  const pattern = `%${escapeLike(q)}%`
+  const where = and(
+    eq(resourceItems.libraryId, input.libraryId),
+    eq(resourceItems.kind, input.kind),
+    q === '' ? undefined : or(...PAGE_SEARCH_FIELDS[input.kind].map((f) => sql`${payloadText(f)} ILIKE ${pattern}`)),
+  )
+  const [items, totals] = await Promise.all([
+    db.select({
+      id: resourceItems.id, kind: resourceItems.kind,
+      payload: resourceItems.payload, version: resourceItems.version,
+    })
+      .from(resourceItems)
+      .where(where)
+      .orderBy(asc(payloadText(NAME_FIELD[input.kind])), asc(resourceItems.id))
+      .limit(input.limit)
+      .offset(input.offset),
+    db.select({ total: count() }).from(resourceItems).where(where),
+  ])
+  return { items, total: totals[0]?.total ?? 0 }
 }
