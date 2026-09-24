@@ -1,6 +1,6 @@
 import {
   type Word, type Term, type Table, type Column, type ProjectModel, type NamingRules,
-  generatePhysicalName, decomposeByWords, restoreLogicalName, stripLogicalSeparator,
+  generatePhysicalName, decomposeByWords, restoreLogicalName, findTermByLogicalName,
 } from '@erdd/core'
 
 export function createWord(model: ProjectModel, word: Word): ProjectModel {
@@ -67,9 +67,7 @@ export function canRegisterTerm(
   const logicalName = t.logicalName.trim()
   const physicalName = t.physicalName.trim()
   if (logicalName === '' || physicalName === '') return { ok: false, reason: 'empty' }
-  const bare = stripLogicalSeparator(logicalName, rules)
-  if (Object.values(model.terms).some(
-    (x) => stripLogicalSeparator(x.logicalName.trim(), rules) === bare)) {
+  if (findTermByLogicalName(logicalName, model.terms, rules) !== undefined) {
     return { ok: false, reason: 'duplicate' }
   }
   return { ok: true }
@@ -90,9 +88,7 @@ export type DictUsageEntry =
 function matchesTermExactly(
   name: string, terms: Record<string, Term>, rules: NamingRules,
 ): boolean {
-  const bare = stripLogicalSeparator(name.trim(), rules)
-  return Object.values(terms).some(
-    (t) => stripLogicalSeparator(t.logicalName.trim(), rules) === bare)
+  return findTermByLogicalName(name, terms, rules) !== undefined
 }
 
 /**
@@ -169,16 +165,12 @@ export function buildUsageIndex(model: ProjectModel, rules: NamingRules): UsageI
     if (ids) ids.push(id)
     else termIdsByName.set(key, [id])
   }
-  // matchesTermExactly: 양쪽 구분자를 벗긴 용어 논리명 집합.
-  const bareTermNames = new Set(
-    Object.values(model.terms).map((t) => stripLogicalSeparator(t.logicalName.trim(), rules)))
-
   // 같은 논리명의 테이블·컬럼이 많으므로 분해 결과를 이름으로 캐시한다.
   const wordIdsByName = new Map<string, ReadonlySet<string>>()
   const wordIdsOf = (name: string): ReadonlySet<string> => {
     const cached = wordIdsByName.get(name)
     if (cached) return cached
-    const ids = name === '' || bareTermNames.has(stripLogicalSeparator(name, rules))
+    const ids = name === '' || matchesTermExactly(name, model.terms, rules)
       ? new Set<string>()
       : new Set(decomposeByWords(name, model.words, rules).flatMap((s) => (s.word ? [s.word.id] : [])))
     wordIdsByName.set(name, ids)

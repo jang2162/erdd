@@ -1,6 +1,6 @@
 import type { ProjectModel, Term } from './model.js'
 import {
-  decomposeByWords, generatePhysicalName, stripLogicalSeparator, type NamingRules,
+  decomposeByWords, findTermByLogicalName, generatePhysicalName, type NamingRules,
 } from './naming.js'
 import { isReservedWord } from './identifier.js'
 import type { Dialect } from './dialect.js'
@@ -30,13 +30,12 @@ export type Warning = {
 /**
  * terms에서 논리명이 정확히 일치하는 Term을 찾는다(naming.ts의 용어 완전일치 규칙과 동일).
  * 양쪽에서 구분자를 벗겨 비교한다 — generatePhysicalName 의 1단계와 같은 정책이어야 한다(설계 D4).
+ * 그래서 조회를 `findTermByLogicalName` 한 곳에 맡긴다(사전 레코드당 한 번 만든 조회표를 쓴다).
  */
 function findMatchingTerm(
   logicalName: string, terms: Record<string, Term>, rules: NamingRules,
 ): Term | undefined {
-  const bare = stripLogicalSeparator(logicalName.trim(), rules)
-  return Object.values(terms).find(
-    (t) => stripLogicalSeparator(t.logicalName.trim(), rules) === bare)
+  return findTermByLogicalName(logicalName, terms, rules)
 }
 
 export function computeWarnings(

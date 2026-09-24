@@ -76,7 +76,7 @@ export { resolveColumn } from './domain-resolve.js'
 export type { ResolvedColumn } from './domain-resolve.js'
 export {
   generatePhysicalName, decomposeByWords, restoreLogicalName, DEFAULT_NAMING_RULES, suggestCompletions,
-  NamingRulesSchema, NamingRulesStrictSchema, stripLogicalSeparator, withLogicalSeparator,
+  NamingRulesSchema, NamingRulesStrictSchema, stripLogicalSeparator, withLogicalSeparator, findTermByLogicalName,
 } from './naming.js'
 export type {
   NamingRules, GenResult, WordSegment, RestoreLogicalResult, Completion, CompletionResult,
