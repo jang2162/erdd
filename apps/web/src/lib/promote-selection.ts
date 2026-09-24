@@ -1,4 +1,5 @@
 import type { PromoteEntry, PromoteStatus } from '@erdd/core'
+import { formatCount } from '@/lib/format'
 
 /**
  * 기본 선택: 신규·원본 갱신은 켜고, 동명 발견은 사람이 확인해야 하므로 끈다.
@@ -30,8 +31,8 @@ export function setAllForStatus(
 export function promoteSummary(
   result: { inserted: number; updated: number; skipped: readonly unknown[] },
 ): string {
-  const head = `추가 ${result.inserted}건 · 갱신 ${result.updated}건을 올렸습니다`
+  const head = `추가 ${formatCount(result.inserted)}건 · 갱신 ${formatCount(result.updated)}건을 올렸습니다`
   return result.skipped.length === 0
     ? head
-    : `${head} — ${result.skipped.length}건은 그 사이 상태가 바뀌어 건너뛰었습니다`
+    : `${head} — ${formatCount(result.skipped.length)}건은 그 사이 상태가 바뀌어 건너뛰었습니다`
 }

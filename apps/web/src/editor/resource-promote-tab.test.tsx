@@ -12,7 +12,6 @@ import { grantEditPermission } from '@/testing/editor-store'
 import { settle } from '@/testing/settle'
 import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
-import { overLimitMessage } from './resource-decisions.js'
 
 const PROJECT_ID = 'p1'
 const LIBS = [
@@ -41,12 +40,6 @@ function term(id: string, logicalName: string, domainId: string | null): Term {
 
 vi.mock('./use-model.js', () => ({ useModelMutation: () => vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
-// overLimitMessage는 실제 구현으로 통과시키되(다른 테스트는 그대로 동작), op 상한 가드
-// 테스트에서만 mockReturnValueOnce로 값을 강제해 수천 행을 렌더하지 않고 가드를 트리거한다.
-vi.mock('./resource-decisions.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./resource-decisions.js')>()
-  return { ...actual, overLimitMessage: vi.fn(actual.overLimitMessage) }
-})
 
 function renderPanel(
   handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel,
@@ -116,24 +109,6 @@ describe('ResourcePromoteTab', () => {
     await openPromoteTab()
     expect(await screen.findByText('신규 추가 (1)')).toBeDefined()
     expect(screen.getByRole('checkbox', { name: '회원 선택' })).toHaveProperty('checked', true)
-  })
-
-  it('op 상한 가드가 걸리면 승격을 눌러도 mutate를 부르지 않고 오류 토스트를 띄운다', async () => {
-    // 리팩터가 onPromote에서 overLimitMessage 호출을 지워도 다른 테스트는 모두 통과한다 —
-    // 이 테스트만 그 규약을 직접 지킨다. 수천 행을 렌더해 실제로 상한을 넘기는 대신
-    // overLimitMessage 자체를 이번 호출 한 번만 상한 초과로 흉내 낸다.
-    vi.mocked(overLimitMessage).mockReturnValueOnce('한 번에 너무 많은 항목입니다')
-    const promoted = vi.fn(() => ({ data: { seq: 1, inserted: 1, updated: 0, skipped: [] } }))
-    renderPanel({
-      'resource.library.listForProject': () => ({ data: LIBS }),
-      'resource.items.list': () => ({ data: [] }),
-      'resource.promote': promoted,
-    }, { ...createEmptyModel(), words: { w1: word('w1', '회원', 'MBR') } })
-    await openPromoteTab()
-    await screen.findByText('신규 추가 (1)')
-    await userEvent.click(screen.getByRole('button', { name: '승격' }))
-    expect(promoted).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith('한 번에 너무 많은 항목입니다')
   })
 
   it('동명 항목은 "동명 발견"으로 뜨고 기본 미선택이다', async () => {
@@ -304,4 +279,65 @@ describe('ResourcePromoteTab', () => {
     await userEvent.click(screen.getByRole('button', { name: /요청 취소/ }))
     await waitFor(() => expect(cancel).toHaveBeenCalledWith({ requestId: 'r1' }))
   })
+
+  /**
+   * 도메인 하나 + 단어 n 개 — 계획 항목 순서는 도메인 → 단어다. 같은 종류 안에서 planPromote 는 이름순이므로
+   * 논리명을 id 와 같은 폭으로 채워 이름순 = id 순으로 맞춘다(채우지 않으면 `단어999` 가 맨 끝이 된다).
+   */
+  function bigModel(n: number): ProjectModel {
+    const words: Record<string, Word> = {}
+    for (let i = 0; i < n; i++) {
+      const pad = String(i).padStart(5, '0')
+      words[`w${pad}`] = word(`w${pad}`, `단어${pad}`, `W${i}`)
+    }
+    return { ...createEmptyModel(), domains: { d0: domain('d0', '금액') }, words }
+  }
+
+  it('5,000건을 넘는 승격은 계획 순서 그대로 나눠 부르고 결과를 토스트 하나로 합친다 — 도중에 진행을 보인다', async () => {
+    let release!: () => void
+    const promoted = vi.fn((input: unknown) => {
+      const n = (input as { entries: unknown[] }).entries.length
+      const reply = { data: { seq: 1, inserted: n, updated: 0, skipped: [] } }
+      return promoted.mock.calls.length === 1
+        ? reply
+        : new Promise<typeof reply>((resolve) => { release = () => resolve(reply) })
+    })
+    const model = bigModel(5000)
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+      'resource.promote': promoted,
+      'model.get': () => ({ data: { model, seq: 3 } }),
+    }, model)
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (5,001)', undefined, { timeout: 10000 })
+    await userEvent.click(screen.getByRole('button', { name: '승격' }))
+    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
+    release()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('추가 5,001건 · 갱신 0건을 올렸습니다'))
+    expect(promoted).toHaveBeenCalledTimes(2)
+    const chunks = promoted.mock.calls.map(([input]) => (input as { entries: { entityId: string }[] }).entries)
+    expect(chunks.map((c) => c.length)).toEqual([5000, 1])
+    expect(chunks[0]![0]!.entityId).toBe('d0')                   // 도메인이 앞 조각
+    expect(chunks[1]![0]!.entityId).toBe('w04999')
+  }, 30000)
+
+  it('중간 조각이 실패하면 몇 건 올렸는지 알리고 계획을 다시 불러온다', async () => {
+    const promoted = vi.fn((input: unknown) => (promoted.mock.calls.length === 1
+      ? { data: { seq: 1, inserted: (input as { entries: unknown[] }).entries.length, updated: 0, skipped: [] } }
+      : { error: { code: -32600, message: '거절' } }))
+    const modelGet = vi.fn(() => ({ data: { model: bigModel(5000), seq: 3 } }))
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+      'resource.promote': promoted,
+      'model.get': modelGet,
+    }, bigModel(5000))
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (5,001)', undefined, { timeout: 10000 })
+    await userEvent.click(screen.getByRole('button', { name: '승격' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('5,001건 중 5,000건 승격했습니다 — 거절'))
+    expect(modelGet).toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+  }, 30000)
 })
