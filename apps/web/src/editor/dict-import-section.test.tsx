@@ -251,6 +251,22 @@ describe('DictImportSection', () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
   })
 
+  it('조각 적용이 실패로 끝나면 진행 표시가 걷히고 가져오기 버튼이 다시 열린다', async () => {
+    const pending = deferred<ModelMutationResult>()
+    mutate.mockImplementationOnce((_producer, opts) => {
+      opts?.onProgress?.(1, 2)
+      return pending.promise
+    })
+    await uploadOneWord()
+    await userEvent.click(importButton())
+    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
+    await act(async () => { pending.resolve('error') })
+    await waitFor(() => expect(importButton()).toBeEnabled())
+    expect(screen.queryByText(/적용 중…/)).toBeNull()
+    expect(fileInput()).toBeEnabled()
+    expect(toastSuccess).not.toHaveBeenCalled()
+  })
+
   it('중복 처리 라디오를 덮어쓰기로 바꿀 수 있다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()

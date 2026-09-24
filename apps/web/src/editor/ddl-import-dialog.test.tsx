@@ -172,6 +172,37 @@ describe('DdlImportDialog', () => {
     expect(calls.map((c) => c.ops.length)).toEqual([5000, 2])
     expect(calls.map((c) => c.summary)).toEqual(['DDL 가져오기 (1/2)', 'DDL 가져오기 (2/2)'])
   }, 60000)
+
+  it('조각 적용이 실패로 끝나면 진행 표시가 걷히고 적용 버튼이 다시 열린다', async () => {
+    // 첫 조각이 거절된다 — 서버에 바뀐 것이 없어 되맞춘 모델도 비어 있고 미리보기가 그대로 남는다.
+    const calls: unknown[] = []
+    let fail!: () => void
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return new Promise((resolve) => {
+          fail = () => resolve({ error: { code: -32009, message: '다른 편집과 겹쳤습니다' } })
+        })
+      },
+      'model.get': () => ({ data: { model: createEmptyModel(), seq: 1 } }),
+    })
+    const onOpenChange = vi.fn()
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderDialog(onOpenChange)
+    const columns = Array.from({ length: 5001 }, (_, i) => `C${i} int`).join(', ')
+    fireEvent.change(screen.getByRole('textbox', { name: 'DDL' }), { target: { value: `CREATE TABLE T (${columns});` } })
+    await userEvent.click(await screen.findByRole('button', { name: '1개 테이블 만들기' }, { timeout: 30000 }))
+    expect(await screen.findByRole('button', { name: '적용 중… 0 / 2' }, { timeout: 30000 })).toBeDisabled()
+    fail()
+    await waitFor(
+      () => expect(screen.getByRole('button', { name: '1개 테이블 만들기' })).toBeEnabled(),
+      { timeout: 30000 },
+    )
+    expect(screen.queryByText(/적용 중…/)).toBeNull()
+    expect(calls).toHaveLength(1)
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  }, 60000)
 })
 
 describe('DdlImportDialog — DBML 형식', () => {
