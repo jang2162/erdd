@@ -78,6 +78,22 @@ describe('LibraryViewDialog', () => {
     expect(screen.queryByRole('button', { name: '다음' })).toBeNull()   // 10건 — 한 쪽이라 페이지 이동이 숨는다
   })
 
+  it('검색은 입력이 300ms 멎은 뒤 마지막 검색어로 한 번만 부른다', async () => {
+    const page = pageHandler(() => words(120))
+    renderDialog({ 'resource.items.page': page })
+    await screen.findByText('w000')
+    const queried = () => page.mock.calls.flatMap(([input]) => {
+      const q = (input as PageInput).query
+      return q === undefined ? [] : [q]
+    })
+    await userEvent.type(screen.getByRole('textbox', { name: '단어 검색' }), 'w11')
+    const typedAt = Date.now()
+    expect(queried()).toEqual([])   // 치는 동안에는 부르지 않는다
+    await waitFor(() => expect(queried()).toEqual(['w11']))
+    // 타이머는 일찍 울리지 않는다 — 마지막 키 입력에서 300ms 가까이 지나서야 불린다.
+    expect(Date.now() - typedAt).toBeGreaterThanOrEqual(250)
+  })
+
   it('검색 결과가 여러 쪽이어도 검색어를 바꾸면 1쪽으로 간다', async () => {
     const page = pageHandler(() => words(200))
     renderDialog({ 'resource.items.page': page })
