@@ -1261,7 +1261,7 @@ describe('planDdlImport — unsigned-dropped', () => {
 /**
  * 테이블 옵션은 **프로젝트 수준**이라 테이블마다 다르면 다수결로 하나를 고르고 알린다
  * (설계 D2·§5.5-2). 적용은 `applyDdlImport` **밖**이다 — 설정은 op 로그 밖이라
- * 「Revision 1건 = undo 1회」 규약이 닿지 않는다.
+ * 실행 취소가 닿지 않는다.
  */
 describe('planDdlImport — 테이블 옵션 다수결', () => {
   const plan = (ddl: string) =>

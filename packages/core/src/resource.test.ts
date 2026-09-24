@@ -4,7 +4,7 @@ import {
 } from './model.js'
 import {
   RESOURCE_KINDS, RESOURCE_COLLECTION_BY_KIND, RESOURCE_KIND_LABEL,
-  RESOURCE_PAYLOAD_SCHEMAS, resourceDisplayName, resourcePayloadOf,
+  RESOURCE_PAYLOAD_SCHEMAS, resourceDisplayName, resourcePayloadOf, resourceSecondaryName,
 } from './resource.js'
 
 describe('resource kinds', () => {
@@ -79,5 +79,22 @@ describe('resourceDisplayName', () => {
 
   it('이름 필드가 없으면 빈 문자열', () => {
     expect(resourceDisplayName('word', {})).toBe('')
+  })
+})
+
+describe('resourceSecondaryName — 물리명 칸', () => {
+  it('단어는 약어, 용어는 물리명이다', () => {
+    expect(resourceSecondaryName('word', { logicalName: '회원', abbreviation: 'MBR' })).toBe('MBR')
+    expect(resourceSecondaryName('term', { logicalName: '회원번호', physicalName: 'MBR_NO' })).toBe('MBR_NO')
+  })
+
+  it('도메인·커스텀 항목은 물리명 칸이 없다 — 같은 이름의 키가 있어도 null', () => {
+    expect(resourceSecondaryName('domain', { name: '금액', physicalName: 'X' })).toBeNull()
+    expect(resourceSecondaryName('customField', { name: '개인정보여부', abbreviation: 'X' })).toBeNull()
+  })
+
+  it('값이 없거나 문자열이 아니면 null 이다', () => {
+    expect(resourceSecondaryName('word', { logicalName: '회원' })).toBeNull()
+    expect(resourceSecondaryName('term', { physicalName: 3 })).toBeNull()
   })
 })

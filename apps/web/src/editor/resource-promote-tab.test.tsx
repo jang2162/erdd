@@ -1,10 +1,13 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { toast } from 'sonner'
-import { createEmptyModel, type Domain, type ProjectModel, type Term, type Word } from '@erdd/core'
+import {
+  createEmptyModel, MAX_LIBRARY_FILE_ITEMS, type Domain, type ProjectModel, type Term, type Word,
+} from '@erdd/core'
+import { formatCount } from '@/lib/format'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
@@ -12,7 +15,6 @@ import { grantEditPermission } from '@/testing/editor-store'
 import { settle } from '@/testing/settle'
 import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
-import { overLimitMessage } from './resource-decisions.js'
 
 const PROJECT_ID = 'p1'
 const LIBS = [
@@ -41,12 +43,6 @@ function term(id: string, logicalName: string, domainId: string | null): Term {
 
 vi.mock('./use-model.js', () => ({ useModelMutation: () => vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
-// overLimitMessage는 실제 구현으로 통과시키되(다른 테스트는 그대로 동작), op 상한 가드
-// 테스트에서만 mockReturnValueOnce로 값을 강제해 수천 행을 렌더하지 않고 가드를 트리거한다.
-vi.mock('./resource-decisions.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./resource-decisions.js')>()
-  return { ...actual, overLimitMessage: vi.fn(actual.overLimitMessage) }
-})
 
 function renderPanel(
   handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel,
@@ -85,6 +81,76 @@ describe('ResourcePromoteTab', () => {
     expect(screen.getByRole('button', { name: /조직 표준/ })).toBeDefined()
   })
 
+  it('라이브러리를 바꾸면 구역의 검색어와 쪽이 처음으로 돌아간다', async () => {
+    const words = Object.fromEntries(Array.from({ length: 60 }, (_, i) => {
+      const n = String(i).padStart(3, '0')
+      return [`w${n}`, word(`w${n}`, `단어${n}`, `W${n}`)]
+    }))
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [
+        ...LIBS, { id: 'l3', scope: 'org', orgId: 'o1', name: '부서 사전', description: '', itemCount: 0, canWrite: true },
+      ] }),
+      'resource.items.list': () => ({ data: [] }),
+    }, { ...createEmptyModel(), words })
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (60)')
+    const section = () => within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.type(section().getByRole('textbox', { name: '신규 추가 검색' }), '단어')
+    await userEvent.click(section().getByRole('button', { name: '다음' }))
+    expect(section().getByText('2 / 2')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /부서 사전/ }))
+    await screen.findByText('신규 추가 (60)')
+    expect(section().getByRole('textbox', { name: '신규 추가 검색' })).toHaveValue('')
+    expect(section().getByText('1 / 2')).toBeInTheDocument()
+  })
+
+  const manyWords = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => {
+    const id = String(i).padStart(3, '0')
+    return [`w${id}`, word(`w${id}`, `단어${id}`, `W${id}`)]
+  }))
+
+  it('모델이 바뀌어 계획이 다시 계산돼도 3쪽에서 해제한 체크가 유지되고, 새 항목만 기본 선택된다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+    }, { ...createEmptyModel(), words: manyWords(120) })
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (120)')
+    const section = within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    await userEvent.click(section.getByRole('checkbox', { name: '단어105 선택' }))
+    expect(screen.getByText('올릴 항목 119건')).toBeInTheDocument()
+    act(() => {
+      useEditorStore.setState((s) => ({ model: { ...s.model, words: { ...s.model.words, w999: word('w999', '단어999', 'W999') } } }))
+    })
+    expect(await screen.findByText('신규 추가 (121)')).toBeInTheDocument()
+    expect(section.getByRole('checkbox', { name: '단어105 선택' })).not.toBeChecked()
+    expect(section.getByRole('checkbox', { name: '단어106 선택' })).toBeChecked()
+    expect(screen.getByText('올릴 항목 120건')).toBeInTheDocument()
+  })
+
+  it('다른 라이브러리로 옮겼다 돌아오면 선택은 처음부터다 — 같은 엔티티라도 다른 라이브러리의 결정을 잇지 않는다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [
+        ...LIBS, { id: 'l3', scope: 'org', orgId: 'o1', name: '부서 사전', description: '', itemCount: 0, canWrite: true },
+      ] }),
+      'resource.items.list': () => ({ data: [] }),
+    }, { ...createEmptyModel(), words: manyWords(3) })
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (3)')
+    await userEvent.click(screen.getByRole('checkbox', { name: '단어000 선택' }))
+    await userEvent.click(screen.getByRole('button', { name: /부서 사전/ }))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: '단어000 선택' })).toBeChecked())
+    await userEvent.click(screen.getByRole('checkbox', { name: '단어001 선택' }))
+    expect(screen.getByText('올릴 항목 2건')).toBeInTheDocument()
+    // 조직 표준의 항목은 이미 캐시에 있어 계획이 곧바로(빈 계획을 거치지 않고) 다시 계산된다.
+    await userEvent.click(screen.getByRole('button', { name: /조직 표준/ }))
+    await waitFor(() => expect(screen.getByText('올릴 항목 3건')).toBeInTheDocument())
+    expect(screen.getByRole('checkbox', { name: '단어000 선택' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '단어001 선택' })).toBeChecked()
+  })
+
   it('프로젝트 자체 항목이 "신규 추가"로 뜨고 기본 선택된다', async () => {
     renderPanel({
       'resource.library.listForProject': () => ({ data: LIBS }),
@@ -93,24 +159,6 @@ describe('ResourcePromoteTab', () => {
     await openPromoteTab()
     expect(await screen.findByText('신규 추가 (1)')).toBeDefined()
     expect(screen.getByRole('checkbox', { name: '회원 선택' })).toHaveProperty('checked', true)
-  })
-
-  it('op 상한 가드가 걸리면 승격을 눌러도 mutate를 부르지 않고 오류 토스트를 띄운다', async () => {
-    // 리팩터가 onPromote에서 overLimitMessage 호출을 지워도 다른 테스트는 모두 통과한다 —
-    // 이 테스트만 그 규약을 직접 지킨다. 수천 행을 렌더해 실제로 상한을 넘기는 대신
-    // overLimitMessage 자체를 이번 호출 한 번만 상한 초과로 흉내 낸다.
-    vi.mocked(overLimitMessage).mockReturnValueOnce('한 번에 너무 많은 항목입니다')
-    const promoted = vi.fn(() => ({ data: { seq: 1, inserted: 1, updated: 0, skipped: [] } }))
-    renderPanel({
-      'resource.library.listForProject': () => ({ data: LIBS }),
-      'resource.items.list': () => ({ data: [] }),
-      'resource.promote': promoted,
-    }, { ...createEmptyModel(), words: { w1: word('w1', '회원', 'MBR') } })
-    await openPromoteTab()
-    await screen.findByText('신규 추가 (1)')
-    await userEvent.click(screen.getByRole('button', { name: '승격' }))
-    expect(promoted).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith('한 번에 너무 많은 항목입니다')
   })
 
   it('동명 항목은 "동명 발견"으로 뜨고 기본 미선택이다', async () => {
@@ -281,4 +329,107 @@ describe('ResourcePromoteTab', () => {
     await userEvent.click(screen.getByRole('button', { name: /요청 취소/ }))
     await waitFor(() => expect(cancel).toHaveBeenCalledWith({ requestId: 'r1' }))
   })
+
+  /**
+   * 도메인 하나 + 단어 n 개 — 계획 항목 순서는 도메인 → 단어다. 같은 종류 안에서 planPromote 는 이름순이므로
+   * 논리명을 id 와 같은 폭으로 채워 이름순 = id 순으로 맞춘다(채우지 않으면 `단어999` 가 맨 끝이 된다).
+   */
+  function bigModel(n: number): ProjectModel {
+    const words: Record<string, Word> = {}
+    for (let i = 0; i < n; i++) {
+      const pad = String(i).padStart(5, '0')
+      words[`w${pad}`] = word(`w${pad}`, `단어${pad}`, `W${i}`)
+    }
+    return { ...createEmptyModel(), domains: { d0: domain('d0', '금액') }, words }
+  }
+
+  it('5,000건을 넘는 승격은 계획 순서 그대로 나눠 부르고 결과를 토스트 하나로 합친다 — 도중에 진행을 보인다', async () => {
+    let release!: () => void
+    const promoted = vi.fn((input: unknown) => {
+      const n = (input as { entries: unknown[] }).entries.length
+      const reply = { data: { seq: 1, inserted: n, updated: 0, skipped: [] } }
+      return promoted.mock.calls.length === 1
+        ? reply
+        : new Promise<typeof reply>((resolve) => { release = () => resolve(reply) })
+    })
+    const model = bigModel(5000)
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+      'resource.promote': promoted,
+      'model.get': () => ({ data: { model, seq: 3 } }),
+    }, model)
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (5,001)', undefined, { timeout: 10000 })
+    await userEvent.click(screen.getByRole('button', { name: '승격' }))
+    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
+    release()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('추가 5,001건 · 갱신 0건을 올렸습니다'))
+    expect(promoted).toHaveBeenCalledTimes(2)
+    const chunks = promoted.mock.calls.map(([input]) => (input as { entries: { entityId: string }[] }).entries)
+    expect(chunks.map((c) => c.length)).toEqual([5000, 1])
+    expect(chunks[0]![0]!.entityId).toBe('d0')                   // 도메인이 앞 조각
+    expect(chunks[1]![0]!.entityId).toBe('w04999')
+  }, 30000)
+
+  it('나눠 부른 승격에서 뒤 조각의 건너뜀은 「이미 반영됐거나」로 알린다 — 앞 조각이 이미 원하는 상태로 만든 항목일 수 있다', async () => {
+    const promoted = vi.fn((input: unknown) => {
+      const n = (input as { entries: unknown[] }).entries.length
+      return promoted.mock.calls.length === 1
+        ? { data: { seq: 1, inserted: n, updated: 0, skipped: [] } }
+        : { data: { seq: 2, inserted: 0, updated: 0, skipped: [{ entityId: 'w05000', reason: 'missing' }] } }
+    })
+    const model = bigModel(5000)
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+      'resource.promote': promoted,
+      'model.get': () => ({ data: { model, seq: 3 } }),
+    }, model)
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (5,001)', undefined, { timeout: 10000 })
+    await userEvent.click(screen.getByRole('button', { name: '승격' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(
+      '추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다',
+    ))
+    expect(promoted).toHaveBeenCalledTimes(2)
+  }, 30000)
+
+  it('중간 조각이 실패하면 몇 건 올렸는지 알리고 계획을 다시 불러온 뒤 버튼 잠금을 푼다', async () => {
+    const promoted = vi.fn((input: unknown) => (promoted.mock.calls.length === 1
+      ? { data: { seq: 1, inserted: (input as { entries: unknown[] }).entries.length, updated: 0, skipped: [] } }
+      : { error: { code: -32600, message: '거절' } }))
+    const modelGet = vi.fn(() => ({ data: { model: bigModel(5000), seq: 3 } }))
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: [] }),
+      'resource.promote': promoted,
+      'model.get': modelGet,
+    }, bigModel(5000))
+    await openPromoteTab()
+    await screen.findByText('신규 추가 (5,001)', undefined, { timeout: 10000 })
+    await userEvent.click(screen.getByRole('button', { name: '승격' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('5,001건 중 5,000건 승격했습니다 — 거절'))
+    expect(modelGet).toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    // 실패로 끝나도 진행 표시를 걷고 버튼을 다시 연다 — 남은 항목을 다시 올릴 수 있어야 한다.
+    await waitFor(() => expect(screen.getByRole('button', { name: '승격' })).toBeEnabled())
+  }, 30000)
+
+  it(`승격 요청이 ${MAX_LIBRARY_FILE_ITEMS}건을 넘으면 서버에 보내지 않고 나눠 선택하라고 알린다`, async () => {
+    const create = vi.fn(() => ({ data: { id: 'r1', requested: 1, dropped: [] } }))
+    const model = bigModel(MAX_LIBRARY_FILE_ITEMS)             // 도메인 1 + 단어 N = N + 1건
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS_NO_WRITE }),
+      'resource.items.list': () => ({ data: [] }),
+      'promotion.listForProject': () => ({ data: [] }),
+      'promotion.create': create,
+    }, model)
+    await openPromoteTab()
+    await screen.findByText(`신규 추가 (${formatCount(MAX_LIBRARY_FILE_ITEMS + 1)})`, undefined, { timeout: 30000 })
+    await userEvent.click(screen.getByRole('button', { name: '승격 요청' }))
+    expect(toast.error).toHaveBeenCalledWith('한 번에 요청할 수 있는 항목은 50,000건까지입니다. 나눠 선택해 주세요.')
+    await settle()
+    expect(create).not.toHaveBeenCalled()
+  }, 60000)
 })

@@ -1078,7 +1078,7 @@ $ erdd push -m "회원 등급 컬럼 추가"
 |---|---|---|
 | 충돌 | `충돌 N건 — push를 중단했습니다.` | 서버는 그대로다(→ [7절](#7-동기화와-충돌)) |
 | `erdd/` 가 통째로 비었는데 기준선에는 파일이 있음 | `erdd/ 아래에 파일이 없습니다. 전체 삭제가 의도라면 파일을 개별로 지우고, 아니라면 erdd pull로 되돌리세요` | `rm -rf` 사고를 "전부 삭제"로 해석하지 않는다 |
-| 변경 5,000건 초과 | `변경이 N건으로 한 번에 반영할 수 있는 5000건을 넘습니다. 나눠서 반영하세요` | 단일 Revision = 되돌리기 1회 계약 |
+| 변경 5,000건 초과 | `변경이 N건으로 한 번에 반영할 수 있는 5000건을 넘습니다. 나눠서 반영하세요` | 서버가 요청 하나에 받는 상한 — push 는 나눠 보내지 않는다 |
 
 **성공하면 자동으로 pull 한다** — 신규 `id` 가 파일에 채워지고 자동 병합된 서버 변경도 내려온다.
 
@@ -2228,7 +2228,8 @@ $ erdd dict push --library "플랫폼팀 표준 사전" --name 고객 --json --y
  "behind":[{"kind":"word","name":"고객","entityId":"01a0cc73-5ea4-7256-94f1-4864bf41a9c9"}]}
 ```
 
-`dict list --json` 은 라이브러리 배열(`canWrite`·`subscribed` 포함), `dict requests --json` 은 요청 배열
+`dict list --json` 은 라이브러리 배열(`canWrite`·`subscribed` 포함, 서버 라이브러리 행은 종류별 항목 수
+`countsByKind` 도 싣는다), `dict requests --json` 은 요청 배열
 (`status`·`note`·`resolutionNote`·`approvedEntityIds` 포함)이다. `init --create` 의 JSON 은
 [6.1](#61-erdd-init), `push` 의 `detachedOrigins` 는 [6.6](#66-erdd-push).
 

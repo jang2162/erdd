@@ -3,7 +3,7 @@ import { and, asc, count, eq, inArray } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  MAX_OPS_PER_MUTATION, OpApplyError, diffModels, planPromote, type ProjectModel,
+  MAX_LIBRARY_FILE_ITEMS, OpApplyError, diffModels, planPromote, type ProjectModel,
 } from '@erdd/core'
 import { members, projects, promotionRequests, resourceLibraries, users } from '../db/schema.js'
 import { loadProjectModel } from '../services/model-store.js'
@@ -44,7 +44,10 @@ export const promotionRouter = router({
     .input(z.object({
       projectId: z.string().uuid(),
       libraryId: z.string().uuid(),
-      entityIds: z.array(z.string().uuid()).min(1).max(MAX_OPS_PER_MUTATION),
+      // 요청은 엔티티 id 목록을 저장할 뿐이고 승인은 서버가 한 트랜잭션으로 반영하므로 모델 op 상한
+      // (MAX_OPS_PER_MUTATION)과 무관하다. 나누지 않는다 — 요청을 쪼개면 승인자가 같은 요청을 여러 번
+      // 검토한다. 상한은 라이브러리 파일 상한과 같은 공유 상수다(guides/shared-resources.md 「요청·승인 큐」).
+      entityIds: z.array(z.string().uuid()).min(1).max(MAX_LIBRARY_FILE_ITEMS),
       note: z.string().max(500).default(''),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -237,7 +240,7 @@ export const promotionRouter = router({
         expectedStatus: z.enum(['new', 'update', 'name-match']),
         expectedTargetItemId: z.string().uuid().nullable(),
         expectedTargetVersion: z.number().int().nullable(),
-      })).max(MAX_OPS_PER_MUTATION),
+      })).max(MAX_LIBRARY_FILE_ITEMS),
       note: z.string().max(500).default(''),
     }))
     .mutation(async ({ ctx, input }) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -93,6 +93,18 @@ describe('PromotionRequestsSection', () => {
     expect(screen.getByText(/1건은 이미 반영됐거나 삭제되어 처리할 수 없습니다/)).toBeTruthy()
   })
 
+  it('처리할 수 없는 항목 수를 천 단위로 끊는다', async () => {
+    renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => ({ data: {
+        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+        entries: [ENTRY], unavailable: Array.from({ length: 1234 }, (_, i) => `gone${i}`),
+      } }),
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    expect(await screen.findByText(/1,234건은 이미 반영됐거나 삭제되어 처리할 수 없습니다/)).toBeTruthy()
+  })
+
   /**
    * 요청 뒤 원본이 앞서 나간 항목 — 승인하면 남이 고친 최신 원본이 요청 시점 값으로 되돌아간다.
    * 승인자는 요청 프로젝트를 재동기화할 수 없으므로 문구가 요청자 화면과 달라야 한다.
@@ -148,6 +160,52 @@ describe('PromotionRequestsSection', () => {
     expect(modelGet).not.toHaveBeenCalled()
   })
 
+  it('승격 버튼의 건수를 천 단위로 보인다', async () => {
+    const entries = Array.from({ length: 1234 }, (_, i) => ({
+      ...ENTRY, entityId: `w${String(i).padStart(4, '0')}`, name: `단어${String(i).padStart(4, '0')}`,
+    }))
+    renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => ({ data: {
+        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+        entries, unavailable: [],
+      } }),
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    expect(await screen.findByRole('button', { name: '1,234건 승격' })).toBeInTheDocument()
+  })
+
+  it('계획을 다시 받아도 승인자가 해제한 선택은 유지되고, 새 항목·상태가 바뀐 항목만 기본값을 받는다', async () => {
+    let calls = 0
+    const request = { ...ROW, projectName: '회원 시스템', requesterName: '에디터' }
+    const queryClient = renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => {
+        calls += 1
+        return { data: calls === 1
+          ? { request, entries: [ENTRY, { ...ENTRY, entityId: 'w2', name: '고객' }], unavailable: [] }
+          : {
+              request, unavailable: [],
+              entries: [
+                ENTRY,
+                { ...ENTRY, entityId: 'w2', name: '고객', status: 'update', targetItemId: 's2', targetVersion: 1 },
+                { ...ENTRY, entityId: 'w3', name: '상품' },
+              ],
+            } }
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    await userEvent.click(await screen.findByLabelText('회원 선택'))
+    await userEvent.click(screen.getByLabelText('고객 선택'))
+    expect(screen.getByRole('button', { name: '반려' })).toBeInTheDocument()
+    await act(async () => { await queryClient.invalidateQueries() })
+    expect(await screen.findByLabelText('상품 선택')).toBeChecked()
+    expect(screen.getByLabelText('회원 선택')).not.toBeChecked()
+    // new → update 로 상태가 바뀌었다 — 승인자가 본 선택지가 달라졌으므로 해제를 잇지 않는다.
+    expect(screen.getByLabelText('고객 선택')).toBeChecked()
+    expect(screen.getByRole('button', { name: '2건 승격' })).toBeInTheDocument()
+  })
+
   it('승인 성공 후 같은 화면의 라이브러리 목록·항목 캐시를 무효화한다', async () => {
     // 같은 org-detail 화면의 ResourceLibraryManager가 두 쿼리를 들고 있다. QueryClient가
     // refetchOnWindowFocus:false라 자동 회복 트리거가 없어, 무효화를 빠뜨리면 화면이 낡은
@@ -170,7 +228,8 @@ describe('PromotionRequestsSection', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
 
     const keys = invalidatedKeys(invalidate)
-    expect(keys.some((k) => k.includes('"items"') && k.includes('"l2"'))).toBe(true)
+    expect(keys).toContain(JSON.stringify([['resource', 'items', 'page'], { input: { libraryId: 'l2' }, type: 'query' }]))
+    expect(keys).toContain(JSON.stringify(['library-domain-options', 'l2']))
     expect(keys.some((k) => k.includes('"library"') && k.includes('"list"'))).toBe(true)
   })
 
@@ -256,6 +315,18 @@ describe('PromotionRequestsSection', () => {
     expect(await screen.findByText('2건')).toBeTruthy()
     expect(askedStatuses(listForOrg)).toContain('cancelled')
     expect(screen.queryByRole('button', { name: '검토' })).toBeNull()
+  })
+
+  it('항목 칸의 개수는 천 단위로 끊는다 — 대기와 승인 모두', async () => {
+    const many = Array.from({ length: 16565 }, (_, i) => `w${i}`)
+    renderSection({ 'promotion.listForOrg': (input: unknown) => ({ data: [
+      (input as { status?: string } | undefined)?.status === 'resolved'
+        ? { ...ROW, id: 'r9', status: 'resolved', entityIds: many, itemCount: 16565, approvedEntityIds: many }
+        : { ...ROW, entityIds: many, itemCount: 16565 },
+    ] }) })
+    expect(await screen.findByText('16,565건')).toBeTruthy()
+    await pickStatus('승인됨')
+    expect(await screen.findByText('16,565/16,565건 승격')).toBeTruthy()
   })
 
   it('선택을 모두 풀면 버튼이 반려로 바뀌고 빈 approve를 보낸다', async () => {

@@ -1,8 +1,11 @@
 import { useCallback, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { applyOps, diffModels, invertOps, validateModelIntegrity, type ProjectModel } from '@erdd/core'
+import {
+  applyOps, diffModels, invertOps, MAX_OPS_PER_MUTATION, validateModelIntegrity, type ProjectModel,
+} from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
+import { chunkFailureMessage, chunkOps, chunkSummary } from './mutation-chunks.js'
 import { useEditorStore } from './store.js'
 
 // 모든 모델 mutation(정상 편집·undo·redo)을 전역으로 직렬화한다. 낙관적 갱신과 undo/redo
@@ -60,7 +63,13 @@ export function useModelLoader(projectId: string) {
  */
 export type ModelMutationResult = 'applied' | 'noop' | 'error'
 
-/** 모델 변경의 저수준 단일 경로. record=true면 undo 스택에 기록. */
+/** 진행 콜백. 조각이 둘 이상일 때만 불린다 — 보내기 전 (0, n), 조각이 끝날 때마다 (i, n). */
+export type MutationProgress = (done: number, total: number) => void
+
+/** 저수준 경로의 선택지. record=true면 undo 스택에 기록. */
+type SubmitOptions = { summary?: string; record: boolean; onProgress?: MutationProgress }
+
+/** 모델 변경의 저수준 단일 경로. */
 function useSubmit(projectId: string) {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
@@ -69,7 +78,7 @@ function useSubmit(projectId: string) {
   return useCallback(
     async (
       producer: (model: ProjectModel) => ProjectModel,
-      opts: { summary?: string; record: boolean },
+      opts: SubmitOptions,
     ): Promise<ModelMutationResult> => {
       // mutation은 직렬화로 지연 실행될 수 있다. 프로젝트가 전환된 뒤 큐에 남은 producer가
       // 새 프로젝트의 모델을 읽거나(옛 프로젝트로 전송) 새 프로젝트 상태를 오염시키는 것을 막는다.
@@ -109,30 +118,67 @@ function useSubmit(projectId: string) {
       // ⚠️ 위 `store`는 producer 실행 전에 뜬 스냅샷이다. pruneSelection이 읽어야 하는 것은
       // **지금 살아 있는** 선택이므로 반드시 getState()로 다시 집는다.
       useEditorStore.getState().pruneSelection(next)
+      // 5,000건을 넘으면 diffModels 가 낸 순서 그대로 잘라 차례로 보낸다(guides/data-layer.md 「한 요청의 op
+      // 상한은 …」). 서버는 조각 하나를 독립된 mutation 으로 적용하므로 각 조각까지의 중간 상태가 무결해야
+      // 하고, diffModels 순서의 모든 접두사가 무결하다는 것이 이 자름이 기대는 불변식이다(core
+      // diff-prefix.test.ts). 자르기 전에 op 를 재정렬·필터하지 마라. 낙관적 반영은 위에서 전체 다음 모델로
+      // 한 번 했고, 전부 이 체인(serializeMutation) 안에서 보내므로 그 사이 내 다른 편집·실행 취소·실시간
+      // 수신은 뒤에 줄을 선다.
+      const chunks = chunkOps(ops, MAX_OPS_PER_MUTATION)
+      const total = chunks.length
+      let lastSeq = seqBefore
+      let interleaved = false
+      let done = 0
+      // 조각을 보내는 사이 다른 프로젝트로 옮겼는가. 한 번 떠났으면 돌아와도 되돌리지 않는다 — 그 사이
+      // setLoaded 가 서버 상태로 새로 받았으므로 이 편집의 seq·실행 취소 기록을 얹으면 어긋난다.
+      let left = false
+      const stillHere = () => !left && useEditorStore.getState().loadedProjectId === projectId
+      // 진행 표시는 화면 일이다 — 콜백이 던져도 낙관적 상태가 남거나 적용이 실패로 갈리지 않게 삼킨다.
+      const report = (n: number) => {
+        if (total <= 1) return
+        try { opts.onProgress?.(n, total) } catch { /* 진행 표시 실패는 적용을 좌우하지 않는다 */ }
+      }
+      report(0)
       try {
-        const { seq } = await mutation.mutateAsync({ projectId, ops, summary: opts.summary })
-        // await 사이 프로젝트가 바뀌었으면 새 프로젝트의 seq/히스토리를 오염시키지 않는다.
-        if (useEditorStore.getState().loadedProjectId !== projectId) return 'error'
-        if (seq !== seqBefore + 1) {
-          // 내 mutation이 서버 락에 대기하는 동안 다른 사용자의 revision이 끼어들었다.
-          // 그 op는 use-realtime의 seq 체인에서 "이미 지나간 것"으로 오인돼 버려지므로,
+        for (const chunk of chunks) {
+          const { seq } = await mutation.mutateAsync({
+            projectId, ops: chunk, summary: chunkSummary(opts.summary, done + 1, total),
+          })
+          // await 사이 프로젝트가 바뀌어도 남은 조각은 끝까지 옛 프로젝트로 보낸다 — ops 는 옛 모델에서 이미 다
+          // 계산됐고, 나누지 않는 경로도 요청이 떠난 뒤라 서버가 편집 전체를 적용한다. 멈추면 반쪽만 서버에
+          // 남는다. 다만 새 프로젝트의 store(모델·seq·실행 취소·선택)는 건드리지 않는다.
+          if (!stillHere()) left = true
+          // 내 조각이 서버 락에 대기하는 동안 다른 사용자의 revision 이 끼어들었다. 남은 조각은 계속 보낸다 —
+          // 조각은 op 단위로 적용되고, 남의 편집과 겹쳐 거절되면 아래 catch 의 중간 실패로 간다.
+          if (seq !== lastSeq + 1) interleaved = true
+          lastSeq = seq
+          done += 1
+          report(done)
+        }
+        if (!stillHere()) return 'error'
+        if (interleaved) {
+          // 끼어든 op 는 use-realtime 의 seq 체인에서 "이미 지나간 것"으로 오인돼 버려지므로,
           // 낙관적 로컬 상태를 버리고 서버의 최신 모델로 통째 되맞춘다.
           const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
-          if (useEditorStore.getState().loadedProjectId === projectId) {
-            useEditorStore.getState().resync(fresh.model, fresh.seq)
-          }
+          if (stillHere()) useEditorStore.getState().resync(fresh.model, fresh.seq)
         } else {
-          useEditorStore.getState().setSeq(seq)
+          useEditorStore.getState().setSeq(lastSeq)
         }
+        // 조각이 몇 개였든 편집 1건 = 실행 취소 1회다 — 전체 Op[] 하나를 기록한다. 실행 취소·다시 실행은 그
+        // 역연산을 이 경로로 다시 보내므로 역시 조각으로 나뉘어 간다.
         if (opts.record) useEditorStore.getState().recordEdit(ops)
         return 'applied'
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : '변경을 저장하지 못했습니다')
+        // 첫 조각의 실패는 지금의 단일 실패와 같다. 중간 실패는 원자적이지 않다 — 앞 조각은 서버에 남는다.
+        // 반쯤 들어간 편집을 「한 번에 되돌리기」로 기록하지 않는다(되돌릴 op 가 서버 상태와 어긋난다).
+        // 아래 resync 가 실행 취소 기록을 비운다.
+        toast.error(chunkFailureMessage(done, total, err instanceof Error ? err.message : '변경을 저장하지 못했습니다'))
+        // 떠난 뒤 남은 조각이 실패해도 이 토스트는 띄운다 — 옛 프로젝트에 반쪽이 남았다는 유일한 알림이다.
         // 여전히 이 프로젝트를 보고 있을 때만 서버 상태로 복구한다(다른 프로젝트 화면 덮어쓰기 방지).
-        if (useEditorStore.getState().loadedProjectId === projectId) {
+        if (stillHere()) {
           try {
             const fresh = await queryClient.fetchQuery(trpc.model.get.queryOptions({ projectId }))
-            if (useEditorStore.getState().loadedProjectId === projectId) {
+            if (stillHere()) {
               // setLoaded가 아니라 **resync**다 — 같은 프로젝트를 서버 상태로 되맞추는 것이므로
               // 위 seq 간극 경로와 같은 함수여야 한다. 셋이 갈린다:
               // ① 그룹 뷰: 편집 하나가 거절됐다고 그룹 뷰에서 튕기면 안 된다(setLoaded는 튕긴다).
@@ -165,10 +211,11 @@ export function useModelMutation(projectId: string) {
   const submit = useSubmit(projectId)
   return useCallback(
     (
-      producer: (model: ProjectModel) => ProjectModel, opts?: { summary?: string },
+      producer: (model: ProjectModel) => ProjectModel,
+      opts?: { summary?: string; onProgress?: MutationProgress },
     ): Promise<ModelMutationResult> =>
       serializeMutation(async () => {
-        const r = await submit(producer, { summary: opts?.summary, record: true })
+        const r = await submit(producer, { summary: opts?.summary, onProgress: opts?.onProgress, record: true })
         if (r === 'error') failedMutations += 1
         return r
       }),

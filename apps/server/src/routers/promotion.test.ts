@@ -3,7 +3,8 @@ import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import {
-  createEmptyModel, diffModels, type ProjectModel, type ServerMessage,
+  createEmptyModel, diffModels, MAX_LIBRARY_FILE_ITEMS, MAX_OPS_PER_MUTATION,
+  type ProjectModel, type ServerMessage,
 } from '@erdd/core'
 import { resetDb } from '../testing/db.js'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
@@ -632,5 +633,49 @@ describe.skipIf(!url)('promotion', () => {
       .json().result.data as Array<{ status: string; approvedEntityIds: string[] | null }>
     // 승인 기록이 그대로 남아 있어야 한다 — 덮어쓰였다면 'cancelled'가 된다.
     expect(rows[0]).toMatchObject({ status: 'resolved', approvedEntityIds: [wordId] })
+  })
+
+  it('승격 요청은 5,000건을 넘는 entityIds 를 입력 검증에서 막지 않는다 — 계획에 없는 id 는 빠진다', async () => {
+    // 요청은 id 목록을 저장할 뿐이라 모델 op 상한과 무관하다. 5,001건을 실제로 심지 않고, 유효한 1건과
+    // 계획에 없는 5,000건을 섞어 「zod 가 받았는가」만 본다 — 받았으면 계획에 없는 것만 dropped 로 빠진다.
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const entityIds = [wordId, ...Array.from({ length: MAX_OPS_PER_MUTATION }, () => uuidv7())]
+    const res = await post(app, 'promotion.create', editorSession, { projectId, libraryId, entityIds })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().result.data.requested).toBe(1)
+    expect(res.json().result.data.dropped).toHaveLength(MAX_OPS_PER_MUTATION)
+  })
+
+  it(`승격 요청은 ${MAX_LIBRARY_FILE_ITEMS}건을 넘으면 거절한다`, async () => {
+    const entityIds = Array.from({ length: MAX_LIBRARY_FILE_ITEMS + 1 }, () => uuidv7())
+    const res = await post(app, 'promotion.create', editorSession, { projectId, libraryId, entityIds })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('승인도 5,000건을 넘는 approve 를 입력 검증에서 막지 않는다 — 요청에 없는 항목이라 핸들러가 거절한다', async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id as string
+    const approve = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, () => ({
+      entityId: uuidv7(), expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+    }))
+    const res = await post(app, 'promotion.resolve', ownerSession, { requestId, approve })
+    expect(res.statusCode).toBe(400)
+    // 입력 검증(zod)에서 막혔다면 이 문구가 아니다 — 핸들러까지 들어갔다는 증거다.
+    expect(res.json().error.message).toBe('요청에 없는 항목은 승인할 수 없습니다')
+  })
+
+  it(`승인은 ${MAX_LIBRARY_FILE_ITEMS}건을 넘는 approve 를 입력 검증에서 거절한다`, async () => {
+    const wordId = await seedWord(app, editorSession, projectId, '회원', 'MBR')
+    const requestId = (await post(app, 'promotion.create', editorSession, {
+      projectId, libraryId, entityIds: [wordId],
+    })).json().result.data.id as string
+    const approve = Array.from({ length: MAX_LIBRARY_FILE_ITEMS + 1 }, () => ({
+      entityId: wordId, expectedStatus: 'new', expectedTargetItemId: null, expectedTargetVersion: null,
+    }))
+    const res = await post(app, 'promotion.resolve', ownerSession, { requestId, approve })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error.message).not.toBe('요청에 없는 항목은 승인할 수 없습니다')
   })
 })

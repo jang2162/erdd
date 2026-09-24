@@ -4,9 +4,10 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import type { SheetData } from '@erdd/core'
+import type { SheetData, Word } from '@erdd/core'
 import { MAX_OPS_PER_MUTATION, createEmptyModel } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
+import { formatCount } from '@/lib/format'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
@@ -15,7 +16,10 @@ import type { ModelMutationResult } from './use-model.js'
 import { DictImportSection } from './dict-import-section.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000cc'
-const mutate = vi.fn((): Promise<ModelMutationResult> => Promise.resolve('applied'))
+const mutate = vi.fn(
+  (_producer?: unknown, _opts?: { summary?: string; onProgress?: (done: number, total: number) => void }): Promise<ModelMutationResult> =>
+    Promise.resolve('applied'),
+)
 vi.mock('./use-model.js', () => ({ useModelMutation: () => mutate }))
 
 const { toastSuccess, toastError, toastInfo } = vi.hoisted(
@@ -85,6 +89,25 @@ describe('DictImportSection', () => {
     expect(screen.getByText(/오류 1행/)).toBeInTheDocument()
     expect(screen.getByText('적용 대상 1건')).toBeInTheDocument()
   })
+
+  it('미리보기의 신규·중복·오류와 넘친 이슈 수를 천 단위로 보인다', async () => {
+    const words: Record<string, Word> = {}
+    for (let i = 0; i < 1000; i++) {
+      words[`w${i}`] = { id: `w${i}`, logicalName: `기존${i}`, abbreviation: `OLD${i}`, englishName: null, description: null, origin: null }
+    }
+    useEditorStore.getState().setLoaded({ ...createEmptyModel(), words }, 1, PROJECT_ID)
+    grantEditPermission()
+    renderSection()
+    const rows = [
+      ...Array.from({ length: 1000 }, (_, i) => [`기존${i}`, `OLD${i}`, '', '']),
+      ...Array.from({ length: 1200 }, (_, i) => [`신규${i}`, `NEW${i}`, '', '']),
+      ...Array.from({ length: 1100 }, () => ['', '', '', 'x']),
+    ]
+    await userEvent.upload(fileInput(), await xlsxFile([wordsSheet(rows)]))
+    expect(await screen.findByText(/신규 1,200건 · 중복 1,000건 · 오류 1,100행/, undefined, { timeout: 10000 })).toBeInTheDocument()
+    const issues = screen.getByRole('list', { name: '가져오기 이슈' })
+    expect(issues).toHaveTextContent('외 1,080건')                 // 오류 행 1,100건 − 보이는 20건
+  }, 30000)
 
   it('이슈 목록에 시트 이름과 사유를 보여준다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
@@ -218,21 +241,50 @@ describe('DictImportSection', () => {
     expect(toastSuccess).not.toHaveBeenCalled()
   })
 
-  it('서버 op 한도를 넘으면 가져오기를 막고 파일 분할을 안내한다', async () => {
+  it('5,000건을 넘어도 가져오기를 막지 않는다 — 나눔은 저수준 경로가 한다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderSection()
     const rows = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, (_, i) => [`단어${i}`, `W${i}`, '', ''])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), await xlsxFile([wordsSheet(rows)]))
     await waitFor(
-      () => expect(screen.getByText(`적용 대상 ${MAX_OPS_PER_MUTATION + 1}건`)).toBeInTheDocument(),
+      () => expect(screen.getByText(`적용 대상 ${formatCount(MAX_OPS_PER_MUTATION + 1)}건`)).toBeInTheDocument(),
       { timeout: 20000 },
     )
-    expect(screen.getByRole('alert').textContent)
-      .toBe(`한 번에 보낼 수 있는 최대 ${MAX_OPS_PER_MUTATION}건을 넘습니다. 파일을 나눠서 올려 주세요`)
-    expect(importButton()).toBeDisabled()
-    expect(mutate).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(importButton()).toBeEnabled()
+    await userEvent.click(importButton())
+    await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1))
   }, 60000)
+
+  it('나눠 보내는 동안 버튼이 잠기고 진행을 보인다', async () => {
+    const pending = deferred<ModelMutationResult>()
+    mutate.mockImplementationOnce((_producer, opts) => {
+      opts?.onProgress?.(1, 2)
+      return pending.promise
+    })
+    await uploadOneWord()
+    await userEvent.click(importButton())
+    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
+    await act(async () => { pending.resolve('applied') })
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
+  })
+
+  it('조각 적용이 실패로 끝나면 진행 표시가 걷히고 가져오기 버튼이 다시 열린다', async () => {
+    const pending = deferred<ModelMutationResult>()
+    mutate.mockImplementationOnce((_producer, opts) => {
+      opts?.onProgress?.(1, 2)
+      return pending.promise
+    })
+    await uploadOneWord()
+    await userEvent.click(importButton())
+    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
+    await act(async () => { pending.resolve('error') })
+    await waitFor(() => expect(importButton()).toBeEnabled())
+    expect(screen.queryByText(/적용 중…/)).toBeNull()
+    expect(fileInput()).toBeEnabled()
+    expect(toastSuccess).not.toHaveBeenCalled()
+  })
 
   it('중복 처리 라디오를 덮어쓰기로 바꿀 수 있다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)

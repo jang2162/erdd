@@ -15,9 +15,12 @@
   단어가 되어 물리명 생성이 죽는다.**
 - **용어 매칭은 항상 `stripLogicalSeparator` 를 거친다.** 용어 저장값은 건드리지 않는다 — 전역·조직
   라이브러리에서 fork 로 내려오므로 이 프로젝트의 구분자 정책을 강요할 수 없다. 넣을 때만
-  `withLogicalSeparator` 로 변환한다. **이 정책을 쓰는 자리는 넷이다** — `generatePhysicalName` 1단계 ·
-  `restoreLogicalName` 1단계 · `suggestCompletions` 의 용어 후보 · `warnings.ts` 의 `findMatchingTerm`.
-  **한 곳만 고치면 같은 이름이 경로에 따라 매칭되거나 안 된다.**
+  `withLogicalSeparator` 로 변환한다. **완전일치 조회는 `findTermByLogicalName` 한 곳에서 한다** —
+  `generatePhysicalName` 1단계 · `warnings.ts` 의 `findMatchingTerm` · 웹 `dict-edits.ts` 의
+  `matchesTermExactly`(`buildUsageIndex` 가 쓴다)·`canRegisterTerm` 이 그것을 부른다. 같은 정책을 따로 쓰는
+  자리는 둘 남았다 — `restoreLogicalName` 1단계(물리명 조회) · `suggestCompletions` 의 용어 후보(접두일치라
+  trim 하지 않는다). **이 둘을 고칠 때 완전일치 쪽과 함께 본다** — 한 곳만 고치면 같은 이름이 경로에 따라
+  매칭되거나 안 된다.
 - ⚠️ **기본값이 주입되는 지점은 `project.get` 의 `NamingRulesSchema.parse` 하나뿐이다.**
   DB 컬럼 기본값은 마이그레이션에 구운 키들이라 파싱을 태우지 않으면 새 키가 `undefined` 로
   클라이언트에 도착한다. **`DEFAULT_NAMING_RULES` 에 키를 더하는 순간 이 파싱이 없으면 서버 테스트가
@@ -50,6 +53,20 @@
 그리디로 떨어진다. **①은 용어 완전일치로 끝난 갈래에 `segments` 가 없다는 것을 반드시 처리해야
 한다**(무조건 대체하면 용어로 끝나는 논리명의 구분자 경고가 사라진다).
 **분해 경로를 건드리면 그 모델 형태로 다시 재라.**
+
+**사전 파생 구조는 사전 레코드 객체당 한 번 만든다**(`naming.ts` 「사전 파생 구조」). 용어 조회표(구분자 벗긴
+논리명·물리명)·단어 그리디 후보(첫 글자 칸)·약어 색인을 `words`/`terms` 레코드를 키로 한 `WeakMap` 에 두고,
+규칙에 따라 갈리는 것은 `logicalSeparator` 로 한 번 더 나눈다. 이것이 없으면 대용량 사전에서 `computeWarnings`
+한 번이 9~15초, 사전 패널 첫 렌더가 12~15초 걸린다 — 있으면 10ms 대·100ms 이하다(단어 3,280·용어 13,159·
+테이블 300·컬럼 3,000 모델을 jsdom·vitest 로 잰 값). 엔티티 수 × 사전 크기로 늘기 때문이다.
+
+- ⚠️ **사전 레코드(`words`/`terms`)를 제자리에서 바꾸지 마라.** 캐시 키가 객체 동일성이라 레코드를 제자리에서
+  고친 뒤 같은 객체로 다시 부르면 **낡은 결과가 나온다** — 오류 없이 옛 사전으로 매칭한다. 사전을 바꾸면 새
+  레코드를 넘겨라(편집 producer·`applyOps` 는 이미 그렇게 한다). 이 계약에는 기계적 잠금이 없다 — `ProjectModel`
+  의 `words`/`terms` 는 readonly 타입이 아니다.
+- ⚠️ **조회표는 전부 앞엣것 우선이다**(Map 에 `!has` 일 때만 넣는다) — 캐시 없이 `find` 로 찾던 것과 같은 답을
+  내려는 것이다. 규칙을 키에서 빼거나 `!has` 를 빼면 `naming-index.test.ts` 가 빨개진다(「사전 파생 구조 재사용 —
+  규칙이 바뀌면 같은 레코드에서도 새 답이 나온다」·「… 동률은 여전히 앞엣것이 이긴다」).
 
 ---
 
@@ -231,7 +248,13 @@ const generateDdl = (model, dialect, scope = { kind: 'all' }, rules = DEFAULT_NA
   잠그고 있다.
 - **미등록 칩을 눌러도 포커스가 이름 입력란에 남는다.** 펼친 약어 입력으로 옮기는 편이 타이핑 흐름에
   낫다는 제안이 있으나, 지금은 그것이 의도임을 테스트가 잠그고 있어 바꾸려면 그 기대를 함께 뒤집어야 한다.
-- **`dict-panel.tsx` 의 `wordUsage` 가 렌더마다 재계산된다**(memo 할 자리다).
+- **사전 패널은 열려 있을 때만 미등록·사용처를 계산한다.** 닫혀 있으면 모델이 바뀌어도 돌리지 않고, 닫히는
+  동안에는 마지막으로 열려 있던 때의 값을 그대로 보인다(`dict-panel.test.tsx` 「닫혀 있으면 모델이 바뀌어도
+  미등록·사용처 계산을 돌리지 않는다 — 패널은 늘 마운트돼 있다」). 사용 수는 `buildUsageIndex` 한 번에서
+  읽는다 — 결과는 `wordUsage`/`termUsage` 와 같아야 하고 `dict-edits.test.ts` 「buildUsageIndex — 목록의 사용
+  수는…」 블록이 잠근다(`termUsage` 는 용어 전파가 계속 쓰고, `wordUsage` 는 프로덕션 호출자 없이 그 대조
+  기준으로만 남았다). 열 때마다 모델이 바뀌었으면 다시 계산하므로 대용량 사전에서 여는 비용은 위
+  「분해 경로는 성능이 걸려 있다」의 사전 파생 구조가 좌우한다.
 
 ### 용어 전파
 
@@ -244,8 +267,6 @@ const generateDdl = (model, dialect, scope = { kind: 'all' }, rules = DEFAULT_NA
   사양대로 맞는 동작이지만, 확인 문구가 「일괄 반영」으로 읽혀 경고가 다 사라질 것처럼 보인다.
 - 물리명이 아직 생성되지 않은(빈 문자열) 엔티티는 확인 목록에서 `MBR.` 처럼 어색하게 보인다
   (정상적인 전파 대상은 맞다 — 표시만의 문제다).
-- 사용처가 op 상한을 넘으면 서버가 raw zod 메시지로 거절한다(사전 업로드 경로에는 있는 클라 가드가
-  여기엔 없다). 단일 용어로는 현실적으로 도달 불가하다.
 - **용어 추가 시 기존 동명 엔티티로의 전파가 없고**, 모델 검사 화면에 `term-mismatch` 일괄 해소
   진입점이 없으며, **전파 대상 개별 선택(체크박스)이 없다**(전체 반영/전체 유지 2택이다).
 

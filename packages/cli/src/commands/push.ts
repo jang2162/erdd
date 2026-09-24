@@ -137,7 +137,8 @@ export function push(ctx: PushCtx): Promise<number> {
         return 0
       }
       if (plan.ops.length > MAX_OPS_PER_MUTATION) {
-        // 서버가 거절하기 전에 막는다 — "단일 Revision = undo 1회" 계약 때문에 청크로 못 쪼갠다.
+        // 서버가 거절하기 전에 막는다. push 는 expectedSeq 하나로 지키는 단일 배치라 웹처럼 나눠 보내지 않는다
+        // (guides/cli.md 「알려진 한계」의 「push·병합」).
         throw new CliError(
           'VALIDATION',
           `변경이 ${plan.ops.length}건으로 한 번에 반영할 수 있는 ${MAX_OPS_PER_MUTATION}건을 넘습니다. 나눠서 반영하세요`,

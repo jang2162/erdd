@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { PromoteEntry, PromoteStatus } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
-import { initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
+import { carrySelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
+import { formatCount } from '@/lib/format'
+import { libraryDomainsQueryKey } from '@/lib/library-domains'
 import { PromoteEntryList } from '@/components/promote-entry-list'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,8 +36,8 @@ const STATUS_OPTIONS: { value: RequestStatus; label: string; empty: string }[] =
 function itemCountLabel(
   status: RequestStatus, row: { itemCount: number; approvedEntityIds: string[] | null },
 ): string {
-  if (status !== 'resolved') return `${row.itemCount}건`
-  return `${(row.approvedEntityIds ?? []).length}/${row.itemCount}건 승격`
+  if (status !== 'resolved') return `${formatCount(row.itemCount)}건`
+  return `${formatCount((row.approvedEntityIds ?? []).length)}/${formatCount(row.itemCount)}건 승격`
 }
 
 /**
@@ -57,11 +59,15 @@ function ReviewDialog({
   const entries: PromoteEntry[] = detail.data?.entries ?? []
   const unavailable = detail.data?.unavailable ?? []
 
+  const prevEntriesRef = useRef<readonly PromoteEntry[]>([])
   useEffect(() => {
-    // 기본 선택 규칙은 승격 탭과 같다 — name-match만 사람이 확인하도록 꺼 둔다.
+    // 기본 선택 규칙은 승격 탭과 같다 — name-match만 사람이 확인하도록 꺼 둔다. 계획을 다시 받으면
+    // 승인자가 정한 선택은 잇고 새로 생겼거나 상태가 바뀐 항목만 기본값을 받는다(carrySelection).
     // 의존성이 entries가 아니라 detail.data인 것은 의도다. entries는 `?? []`라 매 렌더 새
     // 배열이고, [entries]로 두면 setSelected가 다시 렌더를 부르는 무한 루프가 된다.
-    setSelected(initialSelection(entries))
+    const prevEntries = prevEntriesRef.current
+    prevEntriesRef.current = entries
+    setSelected((prev) => carrySelection(prevEntries, prev, entries))
   }, [detail.data])
 
   const resolve = useMutation(trpc.promotion.resolve.mutationOptions({
@@ -71,15 +77,14 @@ function ReviewDialog({
         queryKey: trpc.promotion.listForOrg.queryKey(),
       })
       await queryClient.invalidateQueries({ queryKey: trpc.promotion.pendingCount.queryKey() })
-      // 승격은 같은 화면의 라이브러리 관리 목록도 낡게 만든다 — QueryClient가
-      // refetchOnWindowFocus:false라 자동 회복 트리거가 없어 여기서 직접 지운다.
-      // 항목 수는 library.list가 들고 있으므로 items.list만으로는 부족하다(삭제 확인창이
-      // "항목 0개도 함께 삭제됩니다"라고 거짓을 말하게 된다).
+      // 승격은 같은 화면의 라이브러리 관리 목록(개수)과 조회 모달(항목 페이지·도메인 목록)을 낡게 만든다 —
+      // QueryClient가 refetchOnWindowFocus:false라 자동 회복 트리거가 없어 여기서 직접 지운다.
       const resolvedLibraryId = detail.data?.request.libraryId
       if (resolvedLibraryId !== undefined) {
         await queryClient.invalidateQueries({
-          queryKey: trpc.resource.items.list.queryKey({ libraryId: resolvedLibraryId }),
+          queryKey: trpc.resource.items.page.queryKey({ libraryId: resolvedLibraryId }),
         })
+        await queryClient.invalidateQueries({ queryKey: libraryDomainsQueryKey(resolvedLibraryId) })
       }
       await queryClient.invalidateQueries({
         queryKey: trpc.resource.library.list.queryKey({ scope: 'org', orgId }),
@@ -121,7 +126,7 @@ function ReviewDialog({
           )}
           {unavailable.length > 0 && (
             <p className="text-sm text-muted-foreground">
-              {unavailable.length}건은 이미 반영됐거나 삭제되어 처리할 수 없습니다.
+              {formatCount(unavailable.length)}건은 이미 반영됐거나 삭제되어 처리할 수 없습니다.
             </p>
           )}
           {detail.isPending && (
@@ -157,7 +162,7 @@ function ReviewDialog({
             <Button type="button"
               disabled={resolve.isPending || detail.isPending || detail.isError}
               onClick={submit}>
-              {selected.size === 0 ? '반려' : `${selected.size}건 승격`}
+              {selected.size === 0 ? '반려' : `${formatCount(selected.size)}건 승격`}
             </Button>
           </div>
         </div>

@@ -53,8 +53,8 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
    *
    * 다중 삭제는 진입점이 몇 개든 확인을 거친다(사이드바 설계 §7) — undo로 되돌아가긴 하나
    * 실시간으로 남의 화면에도 즉시 반영되는 파괴적 동작이고, 잘못 선택한 채 누르는 것이 다중
-   * 선택에서 훨씬 쉽다. 툴바 버튼·일괄 패널과 **같은 BulkDeleteDialog**를 쓴다(op 상한 가드가
-   * 그 안에 있으므로 이 경로에도 자동으로 따라온다).
+   * 선택에서 훨씬 쉽다. 툴바 버튼·일괄 패널과 **같은 BulkDeleteDialog**를 쓴다(나눠 보낼 때의 진행
+   * 토스트가 그 안에 있으므로 이 경로에도 자동으로 따라온다).
    *
    * 단일 선택은 기존 동작(즉시 삭제) 그대로다. 컬럼 삭제도 그대로다 — §7이 확인을 요구한 것은
    * 테이블 일괄 삭제이고, 컬럼은 테이블 하나 안에서 일어나 되돌리기 범위가 눈에 보인다.
@@ -107,7 +107,8 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
         }
         if (!canEdit || nothingSelected) return
         e.preventDefault()
-        // 복사와 삭제를 한 mutation으로 — Revision 1건 · undo 1회(설계 §3.6)
+        // 복사와 삭제를 한 producer로 — 편집 1건 · 실행 취소 1회(설계 §3.6). 5,000 op 를 넘으면 Revision 은 조각
+        // 수만큼 쌓인다(guides/data-layer.md 「한 요청의 op 상한은 …」).
         void navigator.clipboard.writeText(JSON.stringify(
           copyPayload(model, selectedTableIds, selectedColumnIds)))
         const columnIds = [...selectedColumnIds]

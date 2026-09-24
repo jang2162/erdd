@@ -669,6 +669,26 @@ describe('FileStore.save', () => {
   })
 
   /**
+   * 웹은 5,000 op 를 넘는 편집을 조각 여럿으로 나눠 보내고, 조각 사이의 모델은 이름 유일성을 보장하지 않는다.
+   * 저장과 조각이 같은 `#chain` 을 지나야 저장이 조각 사이의 중간 상태를 파일로 쓰지 않는다.
+   */
+  it('save() 가 #chain 을 지난다 — 저장 도중 온 mutate 는 저장이 파일을 다 쓴 뒤에야 적용된다', async () => {
+    const dir = await project({})
+    const store = new FileStore(dir)
+    await store.load()
+    await store.mutate([createTable('t1', 'A')])
+    const saving = store.save()
+    const mutating = store.mutate([createTable('t2', 'B')])
+    const [r] = await Promise.all([saving, mutating])
+    // save 가 #chain 밖이면 디스크를 다시 읽는 사이 mutate 가 먼저 커밋돼 B 까지 파일로 나간다.
+    expect(r).toMatchObject({ ok: true })
+    await expect(stat(join(dir, 'erdd/tables/A.yaml'))).resolves.toBeDefined()
+    await expect(stat(join(dir, 'erdd/tables/B.yaml'))).rejects.toThrow()
+    expect(store.unsaved).toBe(true)   // B 는 저장 뒤의 편집이라 미저장으로 남는다
+    expect(Object.keys(store.state.model.tables).sort()).toEqual(['t1', 't2'])
+  })
+
+  /**
    * 🔥 출처 파일은 **마지막**에 쓴다(dict pull·syncDown 과 같은 불변식). 먼저 쓰고 내용 파일 전에 끊기면
    * 출처는 새 버전·내용은 옛 값이 되어 다음 dict pull 이 「버전이 같다」로 조용히 넘긴다.
    * 알파벳 순서면 `origins.yaml` 이 `words.yaml` 보다 앞선다 — 그 순서가 이 테스트가 잡는 것이다.

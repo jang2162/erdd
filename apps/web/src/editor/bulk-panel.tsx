@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import {
-  deleteTableCascade, MAX_OPS_PER_MUTATION, setTableGroup, type ProjectModel,
+  deleteTableCascade, setTableGroup, type ProjectModel,
 } from '@erdd/core'
+import { formatCount, formatProgress } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { useModelMutation, type Mutate } from './use-model.js'
 import { clearTableGroupPosition, moveTable } from './model-edits.js'
@@ -31,17 +33,7 @@ export function countCascade(model: ProjectModel, ids: readonly string[]): {
 }
 
 /**
- * 연쇄 삭제가 만들어 낼 op 총수. 엔티티 하나당 delete op 하나다.
- *
- * 모델이 아니라 **이미 센 결과**를 받는다 — 모델을 받으면 호출부가 안내 문구용으로 이미 돌린
- * `countCascade`를 한 번 더 돌게 된다.
- */
-function deleteOpCount(c: ReturnType<typeof countCascade>): number {
-  return c.tables + c.columns + c.indexes + c.relationships
-}
-
-/**
- * 그룹 배정과 좌표 재배치를 **한 producer**에 담는다 — Revision 1건, undo 1회.
+ * 그룹 배정과 좌표 재배치를 **한 producer**에 담는다 — 편집 1건 · 실행 취소 1회.
  *
  * `planGroupMove`에 **그룹 변경 전** 모델(`m`)을 넘기는 것은 읽기 좋음의 관례다 — 정확성 요건이
  * 아니다. `planGroupMove`가 이동 집합을 기준 bbox에서 스스로 제외하므로 `next`를 넘겨도 결과가 같다.
@@ -78,14 +70,15 @@ export function applyGroupMove(
       next = moveTable(next, move.id, move.position)
     }
     return next
-  }, { summary: `그룹 이동 (${ids.length}개)` })
+  }, { summary: `그룹 이동 (${formatCount(ids.length)}개)` })
 }
 
 /**
  * 일괄 삭제 확인. **툴바와 일괄 패널이 함께 쓴다** — 복붙하면 문구·동작이 한쪽만 고쳐질 자리가 생긴다.
  *
- * op 상한 가드도 여기 둔다. 진입점이 둘이므로 트리거 쪽에 두면 한쪽(툴바)이 가드 없이 제출한다.
- * 상한을 넘으면 서버가 거절하는데, 그때는 이미 낙관 반영이 끝나 화면이 되돌려지는 것을 사용자가 본다.
+ * 5,000건을 넘는 삭제도 막지 않는다 — 저수준 경로가 조각으로 나눠 보낸다(guides/data-layer.md 「한 요청의
+ * op 상한은 …」). 이 창은 제출과 함께 닫히고, 이 창을 띄운 일괄 패널도 낙관적 삭제로 선택이 비는 순간
+ * 사라지므로 조각 진행은 창이 아니라 토스트로 알린다.
  */
 export function BulkDeleteDialog({ projectId, ids, open, onOpenChange }: {
   projectId: string; ids: readonly string[]; open: boolean; onOpenChange: (v: boolean) => void
@@ -94,17 +87,21 @@ export function BulkDeleteDialog({ projectId, ids, open, onOpenChange }: {
   const mutate = useModelMutation(projectId)
   const tables = ids.map((id) => model.tables[id]).filter((t) => t !== undefined)
   const cascade = countCascade(model, ids)
-  const opCount = deleteOpCount(cascade)
-  const tooBig = opCount > MAX_OPS_PER_MUTATION
 
   // 선택에서 걷어내는 것은 여기서 하지 않는다 — useSubmit의 낙관적 setModel 직후 pruneSelection이
   // 모든 로컬 쓰기 경로를 덮는다. 여기서 또 비우면 규칙이 두 벌이 되고, 서버가 거절해 아무것도
   // 지워지지 않은 경우에도 선택만 사라진다.
   const onDelete = () => {
     const doomed = [...ids]
+    const progressToast = `bulk-delete-${Date.now()}`
     onOpenChange(false)
-    void mutate((m) => doomed.reduce((acc, id) => deleteTableCascade(acc, id), m),
-      { summary: `테이블 삭제 (${doomed.length}개)` })
+    void mutate((m) => doomed.reduce((acc, id) => deleteTableCascade(acc, id), m), {
+      summary: `테이블 삭제 (${formatCount(doomed.length)}개)`,
+      onProgress: (done, total) => {
+        if (done < total) toast.loading(formatProgress(done, total), { id: progressToast })
+        else toast.dismiss(progressToast)
+      },
+    }).finally(() => toast.dismiss(progressToast))
   }
 
   return (
@@ -113,8 +110,8 @@ export function BulkDeleteDialog({ projectId, ids, open, onOpenChange }: {
         <DialogHeader>
           <DialogTitle>선택한 테이블을 삭제할까요?</DialogTitle>
           <DialogDescription>
-            테이블 {cascade.tables}개와 관계 {cascade.relationships}개가 삭제됩니다.
-            컬럼 {cascade.columns}개와 인덱스 {cascade.indexes}개도 함께 사라집니다.
+            테이블 {formatCount(cascade.tables)}개와 관계 {formatCount(cascade.relationships)}개가 삭제됩니다.
+            컬럼 {formatCount(cascade.columns)}개와 인덱스 {formatCount(cascade.indexes)}개도 함께 사라집니다.
           </DialogDescription>
         </DialogHeader>
         <ul className="max-h-40 overflow-y-auto rounded border p-2">
@@ -122,15 +119,9 @@ export function BulkDeleteDialog({ projectId, ids, open, onOpenChange }: {
             <li key={t.id} className="font-mono text-xs">{t.physicalName}</li>
           ))}
         </ul>
-        {tooBig && (
-          <p className="text-xs text-destructive">
-            한 번에 지우기에 너무 많습니다({opCount}개 항목, 상한 {MAX_OPS_PER_MUTATION}개).
-            나눠서 삭제해 주세요.
-          </p>
-        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-          <Button variant="destructive" disabled={tooBig} onClick={onDelete}>삭제</Button>
+          <Button variant="destructive" onClick={onDelete}>삭제</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -165,7 +156,7 @@ export function BulkPanel({ projectId }: { projectId: string }) {
         ⚠️ 한계: 이 패널은 2개 이상일 때 새로 마운트되므로 1→2 전환은 "리전 안의 내용 변경"이
         아니라 리전 자체의 삽입이라 낭독이 보장되지 않는다. 2→3처럼 이미 떠 있는 동안의 변경은 읽힌다.
       */}
-      <h2 aria-live="polite" className="mb-3 text-sm font-semibold">{ids.length}개 테이블 선택됨</h2>
+      <h2 aria-live="polite" className="mb-3 text-sm font-semibold">{formatCount(ids.length)}개 테이블 선택됨</h2>
 
       <ul className="mb-4 max-h-48 overflow-y-auto rounded border">
         {tables.map((t) => (

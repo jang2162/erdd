@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { LOCAL_CHANGES_UNSAVED_MESSAGE, formatChangeIssue, type ChangeRecordSummary } from '@erdd/core'
-import { formatCreatedAt } from '@/lib/format'
+import { formatCount, formatCreatedAt } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,7 +22,7 @@ function RecordRow({ record }: { record: ChangeRecordSummary }) {
           )}
         </span>
         <span className="text-xs text-muted-foreground">
-          {formatCreatedAt(record.created)} · 문장 {record.statementCount}개 · {record.file}
+          {formatCreatedAt(record.created)} · 문장 {formatCount(record.statementCount)}개 · {record.file}
         </span>
       </button>
       {expanded && <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-muted p-2 text-xs">{record.text}</pre>}

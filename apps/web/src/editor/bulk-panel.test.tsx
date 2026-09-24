@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
+import { toast } from 'sonner'
 import type { ProjectModel } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
@@ -279,10 +280,18 @@ describe('BulkPanel', () => {
     expect(screen.getByRole('button', { name: '선택 테이블 삭제' })).toBeDisabled()
   })
 
-  it('삭제 op가 상한을 넘으면 확인 다이얼로그가 삭제를 막고 이유를 알린다', async () => {
-    // 낙관 반영 후 서버가 거절해 되돌려지는 것을 사용자가 겪지 않도록 제출 전에 막는다.
-    const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+  it('삭제 op 가 상한을 넘어도 막지 않고 조각으로 나눠 보내며 진행을 토스트로 알린다', async () => {
+    // 확인 창은 제출과 함께 닫히고 이 패널도 선택이 비면서 사라지므로 진행은 창이 아니라 토스트로 보인다.
+    const calls: { ops: unknown[]; summary?: string }[] = []
+    let seq = 1
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input as { ops: unknown[]; summary?: string })
+        seq += 1
+        return { data: { seq } }
+      },
+    })
+    const loading = vi.spyOn(toast, 'loading')
     useEditorStore.getState().setLoaded(modelOverOpCap(), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
@@ -290,8 +299,15 @@ describe('BulkPanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '선택 테이블 삭제' }))
     const dialog = within(screen.getByRole('dialog'))
-    expect(dialog.getByText(/한 번에 지우기에 너무 많습니다/)).toBeInTheDocument()
-    expect(dialog.getByRole('button', { name: '삭제' })).toBeDisabled()
-    expect(calls).toHaveLength(0)
+    expect(dialog.queryByText(/한 번에 지우기에 너무 많습니다/)).toBeNull()
+    await userEvent.click(dialog.getByRole('button', { name: '삭제' }))
+    await waitFor(() => expect(calls).toHaveLength(2))
+    await settle()
+    expect(calls).toHaveLength(2)
+    expect(calls.map((c) => c.summary)).toEqual(['테이블 삭제 (2개) (1/2)', '테이블 삭제 (2개) (2/2)'])
+    expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(0)
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+    expect(loading).toHaveBeenCalledWith('적용 중… 1 / 2', expect.objectContaining({ id: expect.any(String) }))
+    loading.mockRestore()
   })
 })

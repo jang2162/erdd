@@ -1,6 +1,6 @@
 import {
   type Word, type Term, type Table, type Column, type ProjectModel, type NamingRules,
-  generatePhysicalName, decomposeByWords, restoreLogicalName, stripLogicalSeparator,
+  generatePhysicalName, decomposeByWords, restoreLogicalName, findTermByLogicalName,
 } from '@erdd/core'
 
 export function createWord(model: ProjectModel, word: Word): ProjectModel {
@@ -67,9 +67,7 @@ export function canRegisterTerm(
   const logicalName = t.logicalName.trim()
   const physicalName = t.physicalName.trim()
   if (logicalName === '' || physicalName === '') return { ok: false, reason: 'empty' }
-  const bare = stripLogicalSeparator(logicalName, rules)
-  if (Object.values(model.terms).some(
-    (x) => stripLogicalSeparator(x.logicalName.trim(), rules) === bare)) {
+  if (findTermByLogicalName(logicalName, model.terms, rules) !== undefined) {
     return { ok: false, reason: 'duplicate' }
   }
   return { ok: true }
@@ -90,9 +88,7 @@ export type DictUsageEntry =
 function matchesTermExactly(
   name: string, terms: Record<string, Term>, rules: NamingRules,
 ): boolean {
-  const bare = stripLogicalSeparator(name.trim(), rules)
-  return Object.values(terms).some(
-    (t) => stripLogicalSeparator(t.logicalName.trim(), rules) === bare)
+  return findTermByLogicalName(name, terms, rules) !== undefined
 }
 
 /**
@@ -110,7 +106,8 @@ function usesWord(
 }
 
 /**
- * 그 단어의 logicalName이 논리명 분해에 실제로 쓰인 테이블/컬럼 목록.
+ * 그 단어의 logicalName이 논리명 분해에 실제로 쓰인 테이블/컬럼 목록. 프로덕션 호출자는 없다 — 사전 목록은
+ * `buildUsageIndex` 를 쓰고, 이 함수는 그 결과를 한 건씩 대조하는 기준(테스트)이다.
  * rules 는 분해 규칙이라 프로젝트의 것을 그대로 넘겨야 한다 — 기본값을 하드코딩하면
  * 구분자를 끈 프로젝트에서 사용처가 실제와 어긋난다.
  */
@@ -140,6 +137,56 @@ export function termUsage(model: ProjectModel, termId: string): DictUsageEntry[]
     if (c.logicalName.trim() === target) entries.push({ kind: 'column', entity: c })
   }
   return entries
+}
+
+/** 사전 목록의 사용처 색인 — 단어·용어 id → 사용처. 모든 id 가 키로 있다(없으면 빈 배열). */
+export type UsageIndex = { words: Map<string, DictUsageEntry[]>; terms: Map<string, DictUsageEntry[]> }
+
+/**
+ * 모델을 **한 번** 훑어 모든 단어·용어의 사용처를 만든다. 사전 목록이 행마다 `wordUsage`/`termUsage` 를 부르면
+ * 비용이 사전 행 수 × (테이블 + 컬럼)이라 대용량 사전에서 패널이 멈춘다.
+ *
+ * ⚠️ **결과는 같은 모델·규칙의 `wordUsage`/`termUsage` 와 같아야 한다**(순서까지). `termUsage` 는 용어 수정
+ * 전파(`planTermPropagation`)가 계속 쓰므로 두 경로가 갈리면 목록의 사용 수와 전파 대상이 다른 수를 말한다.
+ * `wordUsage` 는 프로덕션 호출자 없이 이 함수의 대조 기준(테스트)으로만 남았다.
+ * 그래서 두 판정의 차이를 그대로 옮긴다 — 용어 사용처는 **평문 trim 완전일치**(`termUsage`), 단어 분해를 건너뛸
+ * 용어 완전일치는 **양쪽 구분자를 벗겨** 비교한다(`matchesTermExactly`). `dict-edits.test.ts` 의
+ * 「buildUsageIndex — 목록의 사용 수는…」 블록이 모든 id 에서 두 경로가 같음을 잠근다.
+ */
+export function buildUsageIndex(model: ProjectModel, rules: NamingRules): UsageIndex {
+  const words = new Map<string, DictUsageEntry[]>()
+  const terms = new Map<string, DictUsageEntry[]>()
+  for (const id of Object.keys(model.words)) words.set(id, [])
+  for (const id of Object.keys(model.terms)) terms.set(id, [])
+
+  // termUsage: 논리명 trim 평문 → 용어 id 들.
+  const termIdsByName = new Map<string, string[]>()
+  for (const [id, term] of Object.entries(model.terms)) {
+    const key = term.logicalName.trim()
+    const ids = termIdsByName.get(key)
+    if (ids) ids.push(id)
+    else termIdsByName.set(key, [id])
+  }
+  // 같은 논리명의 테이블·컬럼이 많으므로 분해 결과를 이름으로 캐시한다.
+  const wordIdsByName = new Map<string, ReadonlySet<string>>()
+  const wordIdsOf = (name: string): ReadonlySet<string> => {
+    const cached = wordIdsByName.get(name)
+    if (cached) return cached
+    const ids = name === '' || matchesTermExactly(name, model.terms, rules)
+      ? new Set<string>()
+      : new Set(decomposeByWords(name, model.words, rules).flatMap((s) => (s.word ? [s.word.id] : [])))
+    wordIdsByName.set(name, ids)
+    return ids
+  }
+
+  const visit = (entry: DictUsageEntry) => {
+    const name = entry.entity.logicalName.trim()
+    for (const id of termIdsByName.get(name) ?? []) terms.get(id)!.push(entry)
+    for (const id of wordIdsOf(name)) words.get(id)?.push(entry)
+  }
+  for (const t of Object.values(model.tables)) visit({ kind: 'table', entity: t })
+  for (const c of Object.values(model.columns)) visit({ kind: 'column', entity: c })
+  return { words, terms }
 }
 
 /** 전파로 바뀌는 필드 1건. 실제로 값이 달라지는 것만 만든다. */
@@ -213,7 +260,7 @@ export function planTermPropagation(
 
 /**
  * 계획을 모델에 적용한다. 순수 함수.
- * updateTerm과 같은 producer 안에서 연달아 호출해 단일 mutation(Revision 1건)으로 만든다.
+ * updateTerm과 같은 producer 안에서 연달아 호출해 편집 1건(실행 취소 1회)으로 만든다.
  * 계획을 세운 뒤 대상이 사라졌거나(남이 삭제) 그 필드를 남이 먼저 고쳤으면 건너뛴다 —
  * 확인 다이얼로그에서 보여준 것만 정확히 적용한다(원격 변경을 혼종으로 덮어쓰지 않는다).
  */

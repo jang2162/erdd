@@ -59,4 +59,13 @@ describe('HomePage', () => {
     })
     expect(await screen.findByText('승격 요청 2건')).toBeTruthy()
   })
+
+  it('조직 카드의 대기 건수를 천 단위로 끊는다', async () => {
+    renderHome({
+      'auth.me': () => ({ data: { id: 'u1', name: '나', email: 'me@t.dev', role: 'user' } }),
+      'org.list': () => ({ data: [{ id: 'o1', name: '팀', kind: 'team', role: 'owner' }] }),
+      'promotion.pendingCount': () => ({ data: { total: 1234, byOrg: [{ orgId: 'o1', count: 1234 }] } }),
+    })
+    expect(await screen.findByText('승격 요청 1,234건')).toBeTruthy()
+  })
 })

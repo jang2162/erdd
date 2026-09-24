@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PromoteEntry } from '@erdd/core'
 import {
-  initialSelection, promoteSummary, setAllForStatus,
+  carrySelection, initialSelection, promoteSummary, setAllForStatus,
 } from './promote-selection.js'
 
 function entry(over: Partial<PromoteEntry> & Pick<PromoteEntry, 'entityId' | 'status'>): PromoteEntry {
@@ -48,5 +48,58 @@ describe('promoteSummary', () => {
       .toBe('추가 2건 · 갱신 1건을 올렸습니다')
     expect(promoteSummary({ inserted: 0, updated: 0, skipped: [{ entityId: 'a', reason: 'missing' }] }))
       .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다')
+  })
+
+  it('나눠 부른 승격의 건너뜀은 앞 조각이 이미 반영했을 수 있다고 말한다 — 한 조각이면 기존 문구 그대로', () => {
+    const result = { inserted: 5000, updated: 0, skipped: [{ entityId: 't', reason: 'missing' }] }
+    expect(promoteSummary(result, 2))
+      .toBe('추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다')
+    expect(promoteSummary(result, 1))
+      .toBe('추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다')
+  })
+
+  it('건너뛴 건수도 천 단위로 끊는다', () => {
+    const skipped = Array.from({ length: 1234 }, (_, i) => ({ entityId: `s${i}`, reason: 'missing' }))
+    expect(promoteSummary({ inserted: 0, updated: 0, skipped }, 2))
+      .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1,234건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다')
+    expect(promoteSummary({ inserted: 0, updated: 0, skipped }))
+      .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1,234건은 그 사이 상태가 바뀌어 건너뛰었습니다')
+  })
+})
+
+describe('carrySelection', () => {
+  const before = [
+    entry({ entityId: 'n1', status: 'new' }),
+    entry({ entityId: 'n2', status: 'new' }),
+    entry({ entityId: 'm1', status: 'name-match', targetItemId: 's1' }),
+    entry({ entityId: 'u1', status: 'update', targetItemId: 's2' }),
+  ]
+
+  it('같은 항목이 같은 상태로 남으면 사용자 선택을 잇고, 새 항목만 기본 선택을 받는다', () => {
+    const next = [...before, entry({ entityId: 'n3', status: 'new' })]
+    // 사용자가 n1 을 끄고 m1 을 켰다.
+    const out = carrySelection(before, new Set(['n2', 'm1', 'u1']), next)
+    expect([...out].sort()).toEqual(['m1', 'n2', 'n3', 'u1'])
+  })
+
+  it('상태·대상 항목·sourceBehind 가 바뀐 항목은 기본 선택을 받는다', () => {
+    const next = [
+      entry({ entityId: 'n1', status: 'name-match', targetItemId: 's9' }),
+      entry({ entityId: 'm1', status: 'name-match', targetItemId: 's3' }),
+      entry({ entityId: 'u1', status: 'update', targetItemId: 's2', sourceBehind: true }),
+    ]
+    // n1(new→name-match) 을 사용자가 켜 뒀어도, m1 의 대상이 바뀌었어도, u1 이 원본보다 뒤처졌어도 기본값이다.
+    const out = carrySelection(before, new Set(['n1', 'm1', 'u1']), next)
+    expect([...out]).toEqual([])
+  })
+
+  it('대상 항목이 같아도 상태가 바뀌면 기본 선택을 받는다 — 링크가 끊겨 원본 갱신이 동명 발견이 된 경우', () => {
+    const next = [entry({ entityId: 'u1', status: 'name-match', targetItemId: 's2' })]
+    expect([...carrySelection(before, new Set(['u1']), next)]).toEqual([])
+  })
+
+  it('계획에서 빠진 항목은 선택에서 빠진다 — 올릴 항목 건수에 남지 않는다', () => {
+    const out = carrySelection(before, new Set(['n1', 'n2', 'u1']), [before[0]!])
+    expect([...out]).toEqual(['n1'])
   })
 })

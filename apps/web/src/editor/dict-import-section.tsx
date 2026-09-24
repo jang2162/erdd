@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  DICT_SHEET_KEYS, EXCEL_SHEET_NAME, MAX_OPS_PER_MUTATION, buildDictTemplateSheets, planDictImport,
+  DICT_SHEET_KEYS, EXCEL_SHEET_NAME, buildDictTemplateSheets, planDictImport,
   type DictImportPlan,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
@@ -11,6 +11,7 @@ import { newId } from './uid.js'
 import { downloadExcelWorkbook, readDictSheets } from './excel-file.js'
 import { applyDictImport, countApplied, type DictImportMode } from './dict-import-edits.js'
 import { Button } from '@/components/ui/button'
+import { formatCount, formatProgress } from '@/lib/format'
 
 const MAX_ISSUES_SHOWN = 20
 
@@ -30,6 +31,7 @@ export function DictImportSection({ projectId }: { projectId: string }) {
   // ref는 리렌더 전 재진입까지 막고, state는 화면을 잠근다.
   const importingRef = useRef(false)
   const [importing, setImporting] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
   const onTemplate = () => {
     void downloadExcelWorkbook(buildDictTemplateSheets(), 'erdd_사전양식.xlsx')
@@ -52,9 +54,10 @@ export function DictImportSection({ projectId }: { projectId: string }) {
   }
 
   /**
-   * 사전 전체를 mutation 1건으로 보낸다(undo 한 번으로 원복). 서버가 거절할 수도 있으므로
-   * 결과를 기다렸다가 성공했을 때만 완료를 알리고 미리보기를 치운다 — 실패하면 미리보기를
-   * 남겨 사용자가 그대로 다시 시도할 수 있게 한다.
+   * 사전 전체를 편집 1건으로 보낸다(실행 취소 한 번으로 원복). 5,000건을 넘으면 저수준 경로가 조각으로 나눠
+   * 보내므로 여기서 막지 않는다(guides/data-layer.md 「한 요청의 op 상한은 …」) — 진행만 버튼에 보인다.
+   * 서버가 거절할 수도 있으므로 결과를 기다렸다가 성공했을 때만 완료를 알리고 미리보기를 치운다 — 실패하면
+   * 미리보기를 남겨 사용자가 그대로 다시 시도할 수 있게 한다.
    *
    * 덮어쓰기인데 파일 내용이 사전과 같으면 보낼 op이 없어 mutation이 noop으로 끝난다. 이때는
    * 아무도 알려 주지 않으므로 여기서 안내한다("눌렀는데 아무 일도 없는" 상태 방지).
@@ -64,11 +67,14 @@ export function DictImportSection({ projectId }: { projectId: string }) {
     const current = plan
     const currentMode = mode
     const counts = countApplied(current, currentMode)
-    const summary = `Excel 사전 가져오기 (단어 ${counts.words} · 용어 ${counts.terms} · 도메인 ${counts.domains})`
+    const summary = `Excel 사전 가져오기 (단어 ${formatCount(counts.words)} · 용어 ${formatCount(counts.terms)} · 도메인 ${formatCount(counts.domains)})`
     importingRef.current = true
     setImporting(true)
     try {
-      const result = await mutate((m) => applyDictImport(m, current, currentMode, newId), { summary })
+      const result = await mutate((m) => applyDictImport(m, current, currentMode, newId), {
+        summary,
+        onProgress: (done, total) => setProgress({ done, total }),
+      })
       if (result === 'error') return
       setPlan(null)
       setFileName('')
@@ -77,15 +83,13 @@ export function DictImportSection({ projectId }: { projectId: string }) {
     } finally {
       importingRef.current = false
       setImporting(false)
+      setProgress(null)
     }
   }
 
   const applied = plan ? countApplied(plan, mode) : null
   const appliedTotal = applied === null ? 0 : applied.words + applied.terms + applied.domains
   const nothingToApply = applied !== null && appliedTotal === 0
-  // 서버는 mutation 1건당 op 수를 MAX_OPS_PER_MUTATION으로 제한한다. 항목 1건이 op 1건이므로
-  // 여기서 미리 막지 않으면 낙관적 반영 → 서버 거절 → 되돌림을 사용자가 겪게 된다.
-  const tooManyOps = appliedTotal > MAX_OPS_PER_MUTATION
   const recognizedSheets = plan === null
     ? []
     : DICT_SHEET_KEYS
@@ -122,7 +126,7 @@ export function DictImportSection({ projectId }: { projectId: string }) {
               <p className="text-sm">
                 <span className="font-medium">{fileName}</span>
                 {' — '}
-                신규 {plan.total.created}건 · 중복 {plan.total.duplicated}건 · 오류 {plan.total.errored}행
+                신규 {formatCount(plan.total.created)}건 · 중복 {formatCount(plan.total.duplicated)}건 · 오류 {formatCount(plan.total.errored)}행
               </p>
 
               <fieldset className="grid gap-1.5">
@@ -162,24 +166,20 @@ export function DictImportSection({ projectId }: { projectId: string }) {
                     </li>
                   ))}
                   {plan.issues.length > MAX_ISSUES_SHOWN && (
-                    <li className="text-muted-foreground">외 {plan.issues.length - MAX_ISSUES_SHOWN}건</li>
+                    <li className="text-muted-foreground">외 {formatCount(plan.issues.length - MAX_ISSUES_SHOWN)}건</li>
                   )}
                 </ul>
               )}
 
-              {tooManyOps && (
-                <p role="alert" className="text-sm text-destructive">
-                  한 번에 보낼 수 있는 최대 {MAX_OPS_PER_MUTATION}건을 넘습니다. 파일을 나눠서 올려 주세요
-                </p>
-              )}
-
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm text-muted-foreground">적용 대상 {appliedTotal}건</p>
+                <p className="text-sm text-muted-foreground">적용 대상 {formatCount(appliedTotal)}건</p>
                 <Button
-                  type="button" disabled={nothingToApply || tooManyOps || importing}
+                  type="button" disabled={nothingToApply || importing}
                   onClick={() => { void onImport() }}
                 >
-                  <Upload /> 가져오기 실행
+                  {progress !== null
+                    ? formatProgress(progress.done, progress.total)
+                    : <><Upload /> 가져오기 실행</>}
                 </Button>
               </div>
             </div>

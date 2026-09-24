@@ -17,7 +17,8 @@ export type DictImportApplied = { words: number; terms: number; domains: number 
  * 덮어쓰기는 반드시 기존 id를 유지한다 — 새 id를 발급하면 그 도메인을 쓰던 컬럼의
  * domainId 참조가 끊긴다.
  *
- * 한 producer 안에서 3종을 모두 처리하므로 Revision 1건, undo 한 번으로 원복된다.
+ * 한 producer 안에서 3종을 모두 처리하므로 편집 1건 — 실행 취소 한 번으로 원복된다(5,000건을 넘으면 Revision 은
+ * 조각 수만큼 쌓인다 — guides/data-layer.md 「한 요청의 op 상한은 …」).
  */
 export function applyDictImport(
   model: ProjectModel, plan: DictImportPlan, mode: DictImportMode, newId: () => string,

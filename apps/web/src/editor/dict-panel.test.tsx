@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -9,15 +9,30 @@ import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, createEmptyModel } from '@erdd/core'
 import { useEditorStore } from './store.js'
-import { createWord, createTerm } from './dict-edits.js'
+import {
+  buildUsageIndex, createWord, createTerm, termUsage, unregisteredAbbreviations, unregisteredWords, wordUsage,
+} from './dict-edits.js'
 import { updateTable } from './model-edits.js'
 import { DictPanel } from './dict-panel.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
 
+// 사용 수가 색인에서 오는지, 무거운 계산이 필요할 때만 도는지 잠그려고 스파이를 단다. 동작은 실제 구현 그대로다.
+vi.mock('./dict-edits.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./dict-edits.js')>()
+  return {
+    ...actual,
+    wordUsage: vi.fn(actual.wordUsage),
+    termUsage: vi.fn(actual.termUsage),
+    buildUsageIndex: vi.fn(actual.buildUsageIndex),
+    unregisteredWords: vi.fn(actual.unregisteredWords),
+    unregisteredAbbreviations: vi.fn(actual.unregisteredAbbreviations),
+  }
+})
+
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000bb'
 
-function renderPanel() {
+function renderPanel(open = true) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
@@ -25,7 +40,21 @@ function renderPanel() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<DictPanel projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
+  render(<DictPanel projectId={PROJECT_ID} open={open} onOpenChange={() => {}} />, { wrapper: w })
+}
+
+/** 열림을 바꿔 가며 다시 그릴 때 — 쿼리 클라이언트를 그대로 둔다. */
+function renderPanelWithRerender(open: boolean) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
+  const w = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+    </QueryClientProvider>
+  )
+  const panel = (o: boolean) => <DictPanel projectId={PROJECT_ID} open={o} onOpenChange={() => {}} />
+  const result = render(panel(open), { wrapper: w })
+  return { rerender: (o: boolean) => result.rerender(panel(o)) }
 }
 
 function loadModelWithDict(grant = true) {
@@ -43,7 +72,7 @@ function loadModelWithDict(grant = true) {
   if (grant) grantEditPermission()
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); useEditorStore.getState().reset() })
 
 describe('DictPanel', () => {
   it('단어 탭: 목록과 사용처 개수를 보여준다', async () => {
@@ -58,7 +87,7 @@ describe('DictPanel', () => {
   it('용어 탭으로 전환하면 용어 목록을 보여준다', async () => {
     loadModelWithDict()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: '용어' }))
+    await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
     expect(screen.getByText('등급코드')).toBeInTheDocument()
     expect(screen.getByText('GRD_CD')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '용어 추가' })).toBeInTheDocument()
@@ -67,7 +96,7 @@ describe('DictPanel', () => {
   it('미등록 단어 탭은 사전에 없는 단어 후보를 보여준다', async () => {
     loadModelWithDict()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     // c1 "등급코드"(용어로 정확히 매치되지 않는 t1측 컬럼), c3 "회원명" 등에서 미분해 조각이 남는다.
     expect(screen.getByText('명')).toBeInTheDocument()
   })
@@ -81,7 +110,7 @@ describe('DictPanel', () => {
   it('가져오기 탭에 양식 다운로드와 파일 선택이 있다', async () => {
     loadModelWithDict()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
+    await userEvent.click(screen.getByRole('tab', { name: '가져오기' }))
     expect(screen.getByRole('button', { name: /양식 다운로드/ })).toBeInTheDocument()
     expect(screen.getByLabelText('Excel 파일 선택')).toBeInTheDocument()
   })
@@ -107,22 +136,176 @@ describe('DictPanel', () => {
     expect(screen.queryByRole('button', { name: '회원 삭제' })).toBeNull()
 
     // 용어 탭도 마찬가지다.
-    await userEvent.click(screen.getByRole('button', { name: '용어' }))
+    await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
     expect(screen.getByText('등급코드')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '용어 추가' })).toBeNull()
     expect(screen.queryByRole('button', { name: '등급코드 편집' })).toBeNull()
     expect(screen.queryByRole('button', { name: '등급코드 삭제' })).toBeNull()
 
     // 미등록 항목 탭은 후보는 보이되 등록 입력·버튼은 없다.
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     expect(screen.getByText('명')).toBeInTheDocument()
     expect(screen.queryByLabelText('명 약어')).toBeNull()
     expect(screen.queryByRole('button', { name: '일괄 등록' })).toBeNull()
 
     // 가져오기 탭은 양식 다운로드만 남고 업로드는 숨는다.
-    await userEvent.click(screen.getByRole('button', { name: '가져오기' }))
+    await userEvent.click(screen.getByRole('tab', { name: '가져오기' }))
     expect(screen.getByRole('button', { name: /양식 다운로드/ })).toBeInTheDocument()
     expect(screen.queryByLabelText('Excel 파일 선택')).toBeNull()
+  })
+  it('사용 수는 모델을 한 번 훑은 색인에서 읽는다 — 행마다 wordUsage·termUsage 를 부르지 않는다', async () => {
+    loadModelWithDict()
+    vi.mocked(wordUsage).mockClear()
+    vi.mocked(termUsage).mockClear()
+    renderPanel()
+    expect(screen.getByText(/사용처 \d+개/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
+    expect(screen.getByText('GRD_CD')).toBeInTheDocument()
+    expect(wordUsage).not.toHaveBeenCalled()
+    expect(termUsage).not.toHaveBeenCalled()
+  })
+
+  it('단어는 50건씩 나뉘고 약어로도 찾으며, 탭 제목에 건수가 붙는다', async () => {
+    let m = createEmptyModel()
+    for (let i = 0; i < 60; i++) {
+      const n = String(i).padStart(2, '0')
+      m = createWord(m, { id: `w${i}`, logicalName: `단어${n}`, abbreviation: `AB${n}`, englishName: null, description: null, origin: null })
+    }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    expect(screen.getByRole('tab', { name: '단어 (60)' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('단어49')).toBeInTheDocument()
+    expect(screen.queryByText('단어50')).toBeNull()
+    const list = screen.getByText('단어49').closest('ul')!
+    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
+    await userEvent.click(screen.getByRole('button', { name: '다음' }))
+    expect(screen.getByText('단어50')).toBeInTheDocument()
+    expect(list.scrollTop).toBe(0)
+    await userEvent.type(screen.getByRole('textbox', { name: '단어 검색' }), 'ab05')
+    expect(screen.getByText('단어05')).toBeInTheDocument()
+    expect(screen.getByText('AB05')).toBeInTheDocument()
+    expect(screen.queryByText('단어06')).toBeNull()
+  })
+  it('단어는 영문명으로, 용어는 물리명으로도 찾는다', async () => {
+    let m = createEmptyModel()
+    m = createWord(m, { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'Member', description: null, origin: null })
+    m = createWord(m, { id: 'w2', logicalName: '주문', abbreviation: 'ORD', englishName: 'Order', description: null, origin: null })
+    m = createTerm(m, { id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: null, description: null, origin: null })
+    m = createTerm(m, { id: 't2', logicalName: '주문일자', physicalName: 'ORD_DT', domainId: null, description: null, origin: null })
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.type(screen.getByRole('textbox', { name: '단어 검색' }), 'membe')
+    expect(screen.getByText('회원')).toBeInTheDocument()
+    expect(screen.queryByText('주문')).toBeNull()
+    await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
+    await userEvent.type(screen.getByRole('textbox', { name: '용어 검색' }), 'ord_d')
+    expect(screen.getByText('주문일자')).toBeInTheDocument()
+    expect(screen.queryByText('회원번호')).toBeNull()
+  })
+
+  it('용어 목록도 쪽을 넘기면 맨 위부터 보인다', async () => {
+    let m = createEmptyModel()
+    for (let i = 0; i < 60; i++) {
+      const n = String(i).padStart(2, '0')
+      m = createTerm(m, { id: `t${i}`, logicalName: `용어${n}`, physicalName: `TRM_${n}`, domainId: null, description: null, origin: null })
+    }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('tab', { name: '용어 (60)' }))
+    const list = screen.getByText('용어49').closest('ul')!
+    list.scrollTop = 400
+    await userEvent.click(screen.getByRole('button', { name: '다음' }))
+    expect(screen.getByText('용어50')).toBeInTheDocument()
+    expect(list.scrollTop).toBe(0)
+  })
+
+  it('닫혀 있으면 모델이 바뀌어도 미등록·사용처 계산을 돌리지 않는다 — 패널은 늘 마운트돼 있다', async () => {
+    loadModelWithDict()
+    vi.mocked(unregisteredWords).mockClear()
+    vi.mocked(unregisteredAbbreviations).mockClear()
+    vi.mocked(buildUsageIndex).mockClear()
+    renderPanel(false)
+    act(() => {
+      const m = useEditorStore.getState().model
+      useEditorStore.getState().setLoaded(createWord(m, {
+        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
+      }), 2, PROJECT_ID)
+    })
+    expect(useEditorStore.getState().model.words.w9).toBeDefined()
+    expect(unregisteredWords).not.toHaveBeenCalled()
+    expect(unregisteredAbbreviations).not.toHaveBeenCalled()
+    expect(buildUsageIndex).not.toHaveBeenCalled()
+  })
+
+  it('닫히는 애니메이션 동안 미등록 건수·사용처를 그대로 보이고, 닫힌 동안 모델이 바뀌어도 다시 계산하지 않는다', async () => {
+    // jsdom 에는 애니메이션이 없어 Radix Presence 가 닫자마자 내용을 걷는다. 닫힘 상태에서 애니메이션이 도는 것처럼
+    // 보이게 해 내용이 남아 있는 동안(브라우저의 페이드아웃 약 200ms)의 화면을 본다.
+    const real = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => new Proxy(real(el, pseudo), {
+      get: (target, prop) => {
+        if (prop === 'animationName') return el.getAttribute('data-state') === 'closed' ? 'exit' : 'enter'
+        const value = Reflect.get(target, prop) as unknown
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value
+      },
+    }))
+    loadModelWithDict()
+    const { rerender } = renderPanelWithRerender(true)
+    const unregisteredTab = screen.getByRole('tab', { name: /^미등록 항목 \(\d+\)$/ })
+    const unregisteredTitle = unregisteredTab.textContent
+    expect(screen.getByText(/사용처 \d+개/)).toBeInTheDocument()
+    vi.mocked(unregisteredWords).mockClear()
+    vi.mocked(unregisteredAbbreviations).mockClear()
+    vi.mocked(buildUsageIndex).mockClear()
+
+    rerender(false)
+    act(() => {
+      const m = useEditorStore.getState().model
+      useEditorStore.getState().setLoaded(createWord(m, {
+        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
+      }), 2, PROJECT_ID)
+    })
+    expect(screen.getByRole('dialog', { hidden: true })).toHaveAttribute('data-state', 'closed')
+    expect(screen.getByRole('tab', { name: unregisteredTitle!, hidden: true })).toBeInTheDocument()
+    expect(screen.getByText(/사용처 \d+개/)).toBeInTheDocument()
+    expect(unregisteredWords).not.toHaveBeenCalled()
+    expect(unregisteredAbbreviations).not.toHaveBeenCalled()
+    expect(buildUsageIndex).not.toHaveBeenCalled()
+  })
+
+  it('닫힌 동안 모델이 바뀌었으면 다시 열 때 최신 모델로 미등록 건수와 사용처를 다시 계산한다', async () => {
+    loadModelWithDict()
+    const { rerender } = renderPanelWithRerender(true)
+    const before = Number(/\((\d+)\)/.exec(screen.getByRole('tab', { name: /^미등록 항목/ }).textContent!)![1])
+    expect(screen.queryByText('NO')).toBeNull()
+    rerender(false)
+    act(() => {
+      // 픽스처의 「회원번호」(MBR_NO) 컬럼이 쓰는 미등록 단어 「번호」/약어 「NO」를 등록한다 — 두 방향에서
+      // 하나씩, 미등록이 둘 줄고 새 단어에 사용처가 생긴다.
+      const m = useEditorStore.getState().model
+      useEditorStore.getState().setLoaded(createWord(m, {
+        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
+      }), 2, PROJECT_ID)
+    })
+    rerender(true)
+    expect(before).toBeGreaterThan(2)
+    expect(screen.getByRole('tab', { name: /^미등록 항목/ })).toHaveTextContent(`미등록 항목 (${before - 2})`)
+    const row = screen.getByText('NO').closest('li')!
+    expect(row).toHaveTextContent(/사용처 [1-9]\d*개/)
+  })
+
+  it('단어↔용어 탭을 오가도 사용처 색인을 다시 만들지 않는다', async () => {
+    loadModelWithDict()
+    vi.mocked(buildUsageIndex).mockClear()
+    renderPanel()
+    expect(buildUsageIndex).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
+    expect(screen.getByText('GRD_CD')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /^단어/ }))
+    expect(screen.getByText('MBR')).toBeInTheDocument()
+    expect(buildUsageIndex).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -132,7 +315,7 @@ describe('DictPanel', () => {
  * (논리명 '등급코드'인 테이블은 없으므로 대상은 컬럼 2개다.)
  */
 async function openTermEdit() {
-  await userEvent.click(screen.getByRole('button', { name: '용어' }))
+  await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
   await userEvent.click(screen.getByRole('button', { name: '등급코드 편집' }))
 }
 
@@ -156,6 +339,21 @@ describe('DictPanel 용어 전파', () => {
     expect(screen.getByRole('button', { name: '유지' })).toBeInTheDocument()
     // 무엇이 바뀌는지 대상별로 보여준다
     expect(screen.getAllByText(/GRD_CD → GRADE_CD/)).toHaveLength(2)
+  })
+
+  it('전파 대상 수를 천 단위로 보인다', async () => {
+    loadModelWithDict()
+    const m = useEditorStore.getState().model
+    const base = Object.values(m.columns).find((c) => c.logicalName === '등급코드')!
+    const columns = { ...m.columns }
+    for (let i = 0; i < 1000; i++) columns[`cx${i}`] = { ...base, id: `cx${i}` }
+    useEditorStore.getState().setLoaded({ ...m, columns }, 2, PROJECT_ID)
+    renderPanel()
+    await openTermEdit()
+    await typePhysicalName('GRADE_CD')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    expect(await screen.findByText(/용어를 쓰는 1,002곳을 함께 갱신할까요/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '1,002곳에 반영' })).toBeInTheDocument()
   })
 
   it('확인 목록의 도메인은 UUID가 아니라 이름으로 보여준다', async () => {
@@ -255,7 +453,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     grantEditPermission()
     renderPanel()
     // 실측: 탭 이름은 정확히 "용어"다(브리프의 role="tab" 조회는 이 파일 구조와 맞지 않는다).
-    await userEvent.click(screen.getByRole('button', { name: '용어' }))
+    await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
     await userEvent.click(screen.getByRole('button', { name: /용어 추가/ }))
     const physical = screen.getByLabelText(/물리명/)
     const logical = screen.getByLabelText(/논리명/)
@@ -268,7 +466,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     grantEditPermission()
     renderPanel()
     // 실측: 탭 제목이 "미등록 단어"에서 "미등록 항목"으로 바뀌었다.
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
     const input = screen.getByLabelText('GRD 논리명')
     await userEvent.type(input, '등급')
@@ -284,7 +482,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
     await userEvent.type(screen.getByLabelText('GRD 논리명'), '등급')
     await userEvent.click(screen.getByRole('button', { name: '일괄 등록' }))
@@ -300,7 +498,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
 
     // 기본 탭 — 논리명 → 약어
     expect(screen.getByLabelText('쿠폰 약어')).toBeInTheDocument()
@@ -319,7 +517,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     // 건수는 모델 전체 기준이라 픽스처의 다른 테이블·컬럼도 후보를 낸다 — 정확한 수가 아니라
     // "괄호 안에 수가 붙는다"를 본다.
     expect(screen.getByRole('button', { name: /논리명 → 약어 \(\d+\)/ })).toBeInTheDocument()
@@ -337,7 +535,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     useEditorStore.setState({ namingRules: { case: 'UPPER_SNAKE', separator: '', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' } })
     grantEditPermission()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
     expect(screen.getByLabelText('XXX 논리명')).toBeInTheDocument()
     expect(screen.queryByLabelText('MBRXXX 논리명')).not.toBeInTheDocument()
@@ -350,7 +548,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
     await userEvent.type(screen.getByLabelText('GRD 논리명'), '등급')
     await userEvent.type(screen.getByLabelText('CD 논리명'), '등급')     // 같은 논리명
@@ -370,7 +568,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: /미등록 항목/ }))
+    await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
     await userEvent.type(screen.getByLabelText('GRD 논리명'), '등급')
     expect(screen.getByText('사전에 이미 있습니다')).toBeInTheDocument()

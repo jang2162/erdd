@@ -1,4 +1,5 @@
 import { createGroup, nextGroupColor, setTableGroup } from '@erdd/core'
+import { formatCount } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { clearTableGroupPosition } from './model-edits.js'
 import { newId } from './uid.js'
@@ -43,6 +44,6 @@ export function createGroupWith(mutate: Mutate, tableIds: readonly string[]): st
       next = clearTableGroupPosition(next, tid)
     }
     return next
-  }, { summary: tableIds.length === 0 ? '그룹 추가' : `그룹 추가 (테이블 ${tableIds.length}개)` })
+  }, { summary: tableIds.length === 0 ? '그룹 추가' : `그룹 추가 (테이블 ${formatCount(tableIds.length)}개)` })
   return id
 }

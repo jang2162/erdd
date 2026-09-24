@@ -2,6 +2,7 @@ import { AlertTriangle, KeyRound } from 'lucide-react'
 import { Handle, Position } from '@xyflow/react'
 import type { Column, Table, Warning } from '@erdd/core'
 import { cn } from '@/lib/utils'
+import { formatCount } from '@/lib/format'
 import type { ViewMode } from './store.js'
 import { WarningBadge } from './warning-badge.js'
 import type { PeerMark } from './peer-marks.js'
@@ -135,7 +136,7 @@ export function TableNode({
                 <span
                   className="shrink-0"
                   title={cWarnings.map((w) => w.message).join('\n')}
-                  aria-label={`컬럼 경고 ${cWarnings.length}건: ${cWarnings.map((w) => w.message).join('\n')}`}
+                  aria-label={`컬럼 경고 ${formatCount(cWarnings.length)}건: ${cWarnings.map((w) => w.message).join('\n')}`}
                 >
                   <AlertTriangle className="size-3 text-key" />
                 </span>

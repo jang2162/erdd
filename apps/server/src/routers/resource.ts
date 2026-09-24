@@ -1,16 +1,17 @@
 import { TRPCError } from '@trpc/server'
-import { and, asc, count, eq, isNull, or, type SQL } from 'drizzle-orm'
+import { and, asc, count, eq, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
   deepEqual, diffModels, exportLibraryFile, MAX_OPS_PER_MUTATION, OpApplyError,
-  RESOURCE_KINDS, type ProjectModel,
+  RESOURCE_KINDS, type ProjectModel, type ResourceKind,
 } from '@erdd/core'
 import type { Db } from '../db/client.js'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { getOrgMember, requireProjectAccess } from '../services/perm.js'
 import {
-  parsePayload, requireLibraryRead, requireLibraryWrite, requireScopeRead, requireScopeWrite,
+  loadLibraryItemPage, parsePayload, requireLibraryRead, requireLibraryWrite, requireScopeRead,
+  requireScopeWrite,
 } from '../services/resource-library.js'
 import { emptyOutcome, loadLibraryItems, runPromoteInTx } from '../services/promote.js'
 import { mutateAndPublish } from '../services/mutate-publish.js'
@@ -19,20 +20,36 @@ import { apiProcedure, authedProcedure, router } from '../trpc.js'
 
 const KindEnum = z.enum(RESOURCE_KINDS)
 
-/** 라이브러리 목록 + 항목 수. where 조건은 호출부가 만든다. */
+/** 종류 하나의 항목 수. left join 이라 항목이 없는 라이브러리는 0 이다. */
+function kindCount(kind: ResourceKind) {
+  return sql<number>`count(${resourceItems.id}) filter (where ${resourceItems.kind} = ${kind})`.mapWith(Number)
+}
+
+/**
+ * 라이브러리 목록 + 항목 수. where 조건은 호출부가 만든다.
+ * `itemCount` 는 CLI(`dict list`·`library list`)와 웹의 라이브러리 목록 행(관리 화면·에디터 공용 리소스 패널)이
+ * 쓰고, `countsByKind` 는 관리 화면 조회 모달의 탭 제목·빈 탭 표시가 쓴다. 둘 다 같은 조인·같은 그룹에서 세므로 합이 어긋나지 않는다.
+ */
 async function listWithCounts(db: Db, where: SQL | undefined) {
   const rows = await db
     .select({
       id: resourceLibraries.id, scope: resourceLibraries.scope, orgId: resourceLibraries.orgId,
       name: resourceLibraries.name, description: resourceLibraries.description,
       updatedAt: resourceLibraries.updatedAt, itemCount: count(resourceItems.id),
+      domainCount: kindCount('domain'), wordCount: kindCount('word'),
+      termCount: kindCount('term'), customFieldCount: kindCount('customField'),
     })
     .from(resourceLibraries)
     .leftJoin(resourceItems, eq(resourceItems.libraryId, resourceLibraries.id))
     .where(where)
     .groupBy(resourceLibraries.id)
     .orderBy(asc(resourceLibraries.createdAt))
-  return rows
+  return rows.map(({ domainCount, wordCount, termCount, customFieldCount, ...row }) => ({
+    ...row,
+    countsByKind: {
+      domain: domainCount, word: wordCount, term: termCount, customField: customFieldCount,
+    } satisfies Record<ResourceKind, number>,
+  }))
 }
 
 export const resourceRouter = router({
@@ -157,6 +174,22 @@ export const resourceRouter = router({
         // CLI dict push 가 이 결과로 planPromote 를 돌려 expected* 를 채운다 — 서버 재계산과 같은
         // 조회·정렬이어야 하므로 loadLibraryItems 를 쓴다(guides/shared-resources.md 「요청·승인 큐」).
         return loadLibraryItems(ctx.db, input.libraryId)
+      }),
+
+    // 관리 화면 조회 모달 전용 — 세션만 받는다. 토큰 소비처가 없으므로 apiProcedure 로 열지 않는다
+    // (guides/cli.md 「액세스 토큰 인증」 — 토큰에 여는 것은 명시적 opt-in).
+    page: authedProcedure
+      .input(z.object({
+        libraryId: z.string().uuid(),
+        kind: KindEnum,
+        query: z.string().max(200).optional(),
+        offset: z.number().int().min(0),
+        limit: z.number().int().min(1).max(200),
+      }))
+      .query(async ({ ctx, input }) => {
+        // items.list 와 같은 판정이다 — 한쪽만 고치면 볼 수 없는 라이브러리가 다른 경로로 샌다.
+        await requireLibraryRead(ctx.db, input.libraryId, ctx.user)
+        return loadLibraryItemPage(ctx.db, input)
       }),
 
     create: authedProcedure

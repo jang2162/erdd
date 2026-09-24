@@ -40,7 +40,8 @@ export function moveCustomField(model: ProjectModel, id: string, dir: -1 | 1): P
 
 /**
  * 정의 삭제 + 모든 테이블·컬럼의 해당 값 제거를 한 producer 안에서 수행한다.
- * 단일 뮤테이션 = Revision 1건이라 실행 취소 한 번으로 값까지 되살아난다.
+ * 편집 1건이라 실행 취소 한 번으로 값까지 되살아난다(값이 5,000건을 넘으면 Revision 은 조각 수만큼 쌓인다 —
+ * guides/data-layer.md 「한 요청의 op 상한은 …」).
  */
 export function removeCustomField(model: ProjectModel, id: string): ProjectModel {
   const cur = model.customFields[id]

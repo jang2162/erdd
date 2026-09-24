@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -12,7 +12,6 @@ import { grantEditPermission } from '@/testing/editor-store'
 import { settle } from '@/testing/settle'
 import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
-import { overLimitMessage } from './resource-decisions.js'
 
 const PROJECT_ID = 'p1'
 const LIBS = [
@@ -26,12 +25,6 @@ const ITEMS = [
 const mutate = vi.fn()
 vi.mock('./use-model.js', () => ({ useModelMutation: () => mutate }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
-// overLimitMessage는 실제 구현으로 통과시키되(다른 테스트는 그대로 동작), op 상한 가드
-// 테스트에서만 mockReturnValueOnce로 값을 강제해 수천 행을 렌더하지 않고 가드를 트리거한다.
-vi.mock('./resource-decisions.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./resource-decisions.js')>()
-  return { ...actual, overLimitMessage: vi.fn(actual.overLimitMessage) }
-})
 
 function renderPanel(
   handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel,
@@ -81,22 +74,6 @@ describe('ResourcePanel', () => {
     const [producer] = mutate.mock.calls[0]!
     const next = producer(createEmptyModel()) as ProjectModel
     expect(Object.keys(next.words)).toHaveLength(2)
-  })
-
-  it('op 상한 가드가 걸리면 적용을 눌러도 mutate를 부르지 않고 오류 토스트를 띄운다', async () => {
-    // 리팩터가 onApply에서 overLimitMessage 호출을 지워도 다른 테스트는 모두 통과한다 —
-    // 이 테스트만 그 규약을 직접 지킨다. 수천 행을 렌더해 실제로 상한을 넘기는 대신
-    // overLimitMessage 자체를 이번 호출 한 번만 상한 초과로 흉내 낸다.
-    vi.mocked(overLimitMessage).mockReturnValueOnce('한 번에 너무 많은 항목입니다')
-    renderPanel({
-      'resource.library.listForProject': () => ({ data: LIBS }),
-      'resource.items.list': () => ({ data: ITEMS }),
-    }, createEmptyModel())
-    await openLibrary()
-    await screen.findByText('신규 추가 (2)')
-    await userEvent.click(screen.getByRole('button', { name: '적용' }))
-    expect(mutate).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith('한 번에 너무 많은 항목입니다')
   })
 
   it('처리할 것이 없으면 적용 버튼이 비활성', async () => {
@@ -164,8 +141,9 @@ describe('ResourcePanel', () => {
     }, { ...createEmptyModel(), words: { w1: forked } })
     await openLibrary()
     expect(await screen.findByText('충돌 (1)')).toBeDefined()
-    expect(screen.getByText('MB')).toBeDefined()
-    expect(screen.getByText('MEMBER')).toBeDefined()
+    // 행 이름 옆 물리명도 원본 약어(MEMBER)를 보이므로 비교 줄 하나로 좁혀 두 값을 본다.
+    const diff = screen.getByText('abbreviation').closest('li')
+    expect(diff?.textContent).toBe('abbreviation: 현재 MB → 원본 MEMBER')
   })
 
   it('충돌에 "모두 프로젝트 유지"를 적용하면 내용은 그대로, origin.sourceVersion만 올라간다', async () => {
@@ -277,6 +255,28 @@ describe('ResourcePanel', () => {
     expect(screen.queryByRole('tab', { name: '조직으로 승격' })).toBeNull()
   })
 
+  it('방향 탭의 트리거는 실제로 있는 탭 패널을 가리킨다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [
+        ...LIBS, { id: 'l2', scope: 'org', orgId: 'o1', name: '조직 표준', description: '', itemCount: 0, canWrite: true },
+      ] }),
+      'resource.items.list': () => ({ data: ITEMS }),
+      'promotion.listForProject': () => ({ data: [] }),
+    }, createEmptyModel())
+    const panelOf = (name: string) => {
+      const trigger = screen.getByRole('tab', { name })
+      const panel = screen.getByRole('tabpanel')
+      expect(trigger).toHaveAttribute('aria-selected', 'true')
+      expect(panel.id).not.toBe('')
+      expect(trigger.getAttribute('aria-controls')).toBe(panel.id)
+      return panel
+    }
+    await screen.findByRole('tab', { name: '가져오기' })
+    expect(within(panelOf('가져오기')).getByRole('button', { name: /표준 사전/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: '조직으로 승격' }))
+    expect(within(panelOf('조직으로 승격')).getByRole('button', { name: /조직 표준/ })).toBeInTheDocument()
+  })
+
   it('라이브러리 조회가 끝나기 전에는 "사용할 수 있는 라이브러리가 없습니다"가 뜨지 않는다', async () => {
     // rows는 libraries.data ?? []라 조회가 pending인 동안도 빈 배열이다 — isPending을
     // 함께 보지 않으면 결국 데이터가 차는 라이브러리 목록에서도 로딩 중 잠깐 빈 상태
@@ -303,5 +303,145 @@ describe('ResourcePanel', () => {
     }))
     await waitFor(() =>
       expect(screen.getByText('사용할 수 있는 라이브러리가 없습니다')).toBeDefined())
+  })
+
+  const manyItems = (n: number) => Array.from({ length: n }, (_, i) => ({
+    id: `s${i}`, kind: 'word', version: 1,
+    payload: {
+      logicalName: `단어${String(i).padStart(3, '0')}`, abbreviation: `W${String(i).padStart(3, '0')}`,
+      englishName: null, description: null,
+    },
+  }))
+
+  it('라이브러리 목록의 항목 수를 천 단위로 보인다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [{ ...LIBS[0], itemCount: 16565 }] }),
+    }, createEmptyModel())
+    expect(await screen.findByText(/항목 16,565개/)).toBeInTheDocument()
+  })
+
+  it('신규 추가는 50건씩 나뉘고, 행에 물리명(약어)이 보이며, 쪽을 넘겨도 선택이 남는다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: manyItems(60) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (60)')
+    const section = within(screen.getByRole('region', { name: '신규 추가' }))
+    expect(section.getByText('W000')).toBeInTheDocument()
+    await userEvent.click(section.getByRole('checkbox', { name: '단어000 선택' }))
+    expect(section.getByRole('checkbox', { name: '단어000 선택' })).not.toBeChecked()
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    expect(section.queryByRole('checkbox', { name: '단어000 선택' })).toBeNull()
+    expect(section.getByRole('checkbox', { name: '단어050 선택' })).toBeChecked()
+    await userEvent.click(section.getByRole('button', { name: '이전' }))
+    expect(section.getByRole('checkbox', { name: '단어000 선택' })).not.toBeChecked()
+    expect(screen.getByText('처리 대상 59건')).toBeInTheDocument()
+  })
+
+  it('라이브러리를 바꾸면 구역의 검색어와 쪽이 처음으로 돌아간다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: [
+        ...LIBS, { id: 'l2', scope: 'global', orgId: null, name: '부서 사전', description: '', itemCount: 60, canWrite: false },
+      ] }),
+      'resource.items.list': () => ({ data: manyItems(60) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (60)')
+    const section = () => within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.type(section().getByRole('textbox', { name: '신규 추가 검색' }), '단어')
+    await userEvent.click(section().getByRole('button', { name: '다음' }))
+    expect(section().getByText('2 / 2')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /부서 사전/ }))
+    await screen.findByText('신규 추가 (60)')
+    expect(section().getByRole('textbox', { name: '신규 추가 검색' })).toHaveValue('')
+    expect(section().getByText('1 / 2')).toBeInTheDocument()
+  })
+
+  it('모델이 바뀌어 계획이 다시 계산돼도 3쪽에서 해제한 체크가 유지된다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: manyItems(120) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (120)')
+    const section = within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    await userEvent.click(section.getByRole('button', { name: '다음' }))
+    await userEvent.click(section.getByRole('checkbox', { name: '단어105 선택' }))
+    expect(screen.getByText('처리 대상 119건')).toBeInTheDocument()
+    // 다른 사용자의 실시간 편집이 도착한 것처럼 모델을 바꾼다 — 라이브러리와 무관한 프로젝트 자체 단어 하나.
+    const local: Word = {
+      id: 'wx', logicalName: '무관', abbreviation: 'MG', englishName: null, description: null, origin: null,
+    }
+    act(() => { useEditorStore.setState((s) => ({ model: { ...s.model, words: { ...s.model.words, wx: local } } })) })
+    expect(await screen.findByText(/프로젝트 자체 항목 1건/)).toBeInTheDocument()
+    expect(section.getByRole('checkbox', { name: '단어105 선택' })).not.toBeChecked()
+    expect(section.getByRole('checkbox', { name: '단어106 선택' })).toBeChecked()
+    expect(screen.getByText('처리 대상 119건')).toBeInTheDocument()
+  })
+
+  it('검색 중 「모두 해제」는 보이는 행이 아니라 구역 전체에 적용된다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: manyItems(60) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (60)')
+    const section = within(screen.getByRole('region', { name: '신규 추가' }))
+    await userEvent.type(section.getByRole('textbox', { name: '신규 추가 검색' }), '단어05')
+    expect(section.getAllByRole('checkbox')).toHaveLength(10)
+    expect(section.getByText('구역 전체 60건에 적용')).toBeInTheDocument()
+    await userEvent.click(section.getByRole('button', { name: '모두 해제' }))
+    expect(screen.getByText('처리 대상 0건')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '적용' })).toBeDisabled()
+  })
+
+  it('5,000건을 넘는 선택도 막지 않고 적용한다 — 나눔은 저수준 경로가 한다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: manyItems(5001) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (5,001)', undefined, { timeout: 10000 })
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const [producer] = mutate.mock.calls[0]!
+    expect(Object.keys((producer(createEmptyModel()) as ProjectModel).words)).toHaveLength(5001)
+  }, 30000)
+
+  it('나눠 적용하는 동안 적용 버튼이 잠기고 「적용 중… 1 / 2」를 보인다', async () => {
+    let finish!: (r: string) => void
+    mutate.mockImplementationOnce((_producer: unknown, opts: { onProgress?: (d: number, t: number) => void }) => {
+      opts.onProgress?.(1, 2)
+      return new Promise((resolve) => { finish = resolve })
+    })
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (2)')
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
+    await act(async () => { finish('applied') })
+    expect(await screen.findByRole('button', { name: '적용' })).toBeInTheDocument()
+  })
+
+  it('조각 적용이 실패로 끝나면 진행 표시가 걷히고 적용 버튼이 다시 열린다', async () => {
+    mutate.mockImplementationOnce(async (_producer: unknown, opts: { onProgress?: (d: number, t: number) => void }) => {
+      opts.onProgress?.(1, 2)
+      return 'error'
+    })
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (2)')
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '적용' })).toBeEnabled())
+    expect(screen.queryByText(/적용 중…/)).toBeNull()
   })
 })

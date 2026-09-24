@@ -76,7 +76,7 @@ export { resolveColumn } from './domain-resolve.js'
 export type { ResolvedColumn } from './domain-resolve.js'
 export {
   generatePhysicalName, decomposeByWords, restoreLogicalName, DEFAULT_NAMING_RULES, suggestCompletions,
-  NamingRulesSchema, NamingRulesStrictSchema, stripLogicalSeparator, withLogicalSeparator,
+  NamingRulesSchema, NamingRulesStrictSchema, stripLogicalSeparator, withLogicalSeparator, findTermByLogicalName,
 } from './naming.js'
 export type {
   NamingRules, GenResult, WordSegment, RestoreLogicalResult, Completion, CompletionResult,
@@ -90,7 +90,7 @@ export {
 } from './custom-field.js'
 export {
   RESOURCE_KINDS, RESOURCE_COLLECTION_BY_KIND, RESOURCE_KIND_LABEL, RESOURCE_PAYLOAD_SCHEMAS,
-  resourcePayloadOf, resourceDisplayName, resourceEntitiesOf,
+  resourcePayloadOf, resourceDisplayName, resourceSecondaryName, resourceEntitiesOf,
 } from './resource.js'
 export type { ResourceKind } from './resource.js'
 export { planResync, applyResyncPlan, adoptTargetOf, adoptAssignments, planAdoption } from './resource-sync.js'

@@ -14,7 +14,7 @@ const summary = (counts: Record<string, number>, entries: unknown[] = []) => ({
 })
 
 function renderDialog(handlers: Parameters<typeof mockTrpcFetch>[0], onDone = vi.fn()) {
-  mockTrpcFetch({ 'resource.items.list': () => ({ data: [] }), ...handlers })
+  mockTrpcFetch({ 'resource.items.page': () => ({ data: { items: [], total: 0 } }), ...handlers })
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   render(
@@ -65,6 +65,31 @@ describe('LibraryImportDialog', () => {
     await pick()
     expect(await screen.findByText('파일 내용이 라이브러리와 같아 바뀐 항목이 없습니다')).toBeDefined()
     expect((screen.getByRole('button', { name: '가져오기 실행' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('미리보기의 건수는 천 단위 구분자를 붙여 보인다', async () => {
+    const adds = Array.from({ length: 1234 }, (_, i) => (
+      { status: 'add', kind: 'word', name: `단어${i}`, currentVersion: null, fileVersion: null, referencedBy: 0, changes: [] }))
+    const removes = [{ status: 'remove', kind: 'domain', name: '코드', currentVersion: 1, fileVersion: null, referencedBy: 1500, changes: [] }]
+    renderDialog({ 'resource.library.import': () => ({ data: { libraryId: 'l1', applied: false, stateHash: 'h', summary: summary(
+      { add: 1234, unchanged: 12345, stale: 1500, remove: 2001, removeBlocked: 1 }, [...adds, ...removes],
+    ) } }) })
+    await pick()
+    expect(await screen.findByText('추가 1,234건')).toBeDefined()
+    expect(screen.getByText('외 1,184건')).toBeDefined()
+    expect(screen.getByText('그대로 12,345건')).toBeDefined()
+    expect(screen.getByText(/용어 1,500건이 가리켜 지우지 않음/)).toBeDefined()
+    expect(screen.getByRole('checkbox', { name: /파일에 없는 항목 2,000건 삭제/ })).toBeDefined()
+    expect(screen.getByRole('checkbox', { name: /오래된 파일 항목 1,500건 덮어쓰기/ })).toBeDefined()
+  })
+
+  it('대상 라이브러리의 도메인 목록을 받지 않는다 — 변환 결과에 영향이 없다', async () => {
+    const itemsPage = vi.fn(() => ({ data: { items: [], total: 0 } }))
+    renderDialog({ 'resource.items.page': itemsPage, 'resource.library.import': () => (
+      { data: { libraryId: 'l1', applied: false, stateHash: 'h', summary: summary({ add: 1 }) } }) })
+    await pick()
+    await screen.findByText('그대로 0건')
+    expect(itemsPage).not.toHaveBeenCalled()
   })
 
   it('409 면 다시 미리보기를 권한다', async () => {

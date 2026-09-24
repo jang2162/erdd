@@ -13,7 +13,9 @@
   **`base` 는 가져온 시점에 프로젝트 공간으로 투영해 써넣은 payload** 라, `payloadOf(현재) ≠ base`
   하나로 「프로젝트가 고쳤는지」가 판정되고 **3-way 병합 전체가 core 순수 함수
   (`resource-sync.ts`)로 닫힌다.** 버전 이력 테이블이 없다.
-- 적용은 **새 엔드포인트 없이 기존 `model.mutate` 경로**를 탄다 → Revision 1건, undo 1회로 원복된다.
+- 적용은 **새 엔드포인트 없이 기존 `model.mutate` 경로**를 탄다 → 실행 취소 1회로 원복된다. 5,000 op 를 넘으면
+  웹이 조각으로 나눠 보내 Revision 은 조각 수만큼 쌓인다([data-layer.md](data-layer.md) 「한 요청의 op 상한은
+  `MAX_OPS_PER_MUTATION`(5000)이고, 넘는 편집은 웹이 나눠 보낸다」).
   CLI(`erdd dict pull`)는 같은 core 함수를 **로컬 파일 모델**에 돌리고 서버 모델은 건드리지 않는다
   ([cli.md](cli.md) 「공용 사전」).
 - **원본에서 삭제된 항목은 프로젝트에 그대로 둔다**(삭제 제안 없음 — 프로젝트 독립성 원칙).
@@ -93,6 +95,37 @@
 
 ---
 
+## 관리 화면의 항목 조회 — `resource.items.page`
+
+관리 화면의 조회 모달(`library-view-dialog.tsx`)은 종류 하나·한 페이지만 받는다(`services/resource-library.ts`
+의 `loadLibraryItemPage`). 탭 제목의 개수는 `library.list`·`listForProject` 가 함께 싣는 `countsByKind` 다
+(`itemCount` 는 그대로 두고 CLI 와 웹의 라이브러리 목록 행 — 관리 화면·에디터 공용 리소스 패널 — 이 쓴다).
+
+- **`items.list` 는 전체 조회로 남는다** — CLI(`dict pull`·`dict push`·`library`)와 재동기화·승격 계획이 전체를
+  전제로 `planPromote`·`planResync` 를 돌린다. 형태를 바꾸지 마라.
+- **권한은 `items.list` 와 같은 `requireLibraryRead` 다.** 한쪽만 고치면 볼 수 없는 라이브러리가 다른 경로로 샌다.
+- **정렬은 논리명 칸(`logicalName`/`name`) 오름차순, 동률은 `id`.** 동률 깨기가 없으면 같은 이름이 많을 때
+  페이지를 넘기며 항목이 겹치거나 빠진다.
+- ⚠️ **정렬 식에 `COLLATE "C"` 를 떼지 마라.** 떼면 DB 기본 로캘을 따르는데, compose 의 `postgres` 는 initdb
+  로캘을 지정하지 않아 en_US.utf8(glibc)이고 거기서 한글은 **글자 수 먼저**로 늘어선다(「가, 값, 국, 나, 가감,
+  가격」). `"C"` 는 코드 포인트 순이라 한글 음절이 가나다순이고 어느 Postgres 에나 있다. ICU 콜레이션
+  (`und-x-icu` 등)은 빌드에 따라 없을 수 있어 쓰지 않는다. `resource-browse.test.ts` 「정렬은 DB 로캘이 아니라
+  코드 포인트 순이다…」가 잠근다 — 테스트 DB 도 en_US.utf8 이라 떼면 실패한다.
+- **검색은 대소문자를 무시한 부분 일치이고 `%`·`_`·`\` 를 이스케이프한다**(`escapeLike`). 필드는 단어
+  `logicalName`·`abbreviation`·`englishName`, 용어 `logicalName`·`physicalName`, 도메인·커스텀 `name`
+  (`PAGE_SEARCH_FIELDS`)이다. 에디터 사전·도메인·커스텀 패널의 클라이언트 검색(`paginate.ts` 의
+  `matchesQuery`, 필드는 패널마다의 `WORD_FIELDS`·`TERM_FIELDS` 등)도 같은 필드를 쓴다 — 한쪽만 바꾸면 같은
+  검색어가 화면마다 다르게 걸린다.
+- **세션 전용이다** — `apiProcedure` 가 아니다. 토큰 소비처가 없고 토큰에 여는 것은 명시적 opt-in 이다
+  ([cli.md](cli.md) 「액세스 토큰 인증」).
+- 이름이 jsonb 안에 있어 정렬·검색은 인덱스를 타지 않는다 — `(library_id, kind)` 복합 인덱스로 좁힌 뒤 거른다.
+  용어 폼·용어 표의 도메인은 `items.page({ kind: 'domain', limit: 200 })` 를 끝까지 받아 푼다
+  (`library-domains.ts`). 라이브러리 파일 가져오기 다이얼로그는 Excel 을 변환할 때 대상 라이브러리의 도메인을
+  받지 않는다 — 도메인 이름은 변환 결과를 바꾸지 않고, 「기본 도메인을 찾을 수 없다」 경고는 서버 dryRun 이
+  다시 낸다.
+
+---
+
 ## 파일 내보내기·가져오기
 
 `library-file.ts`(파일 파싱·직렬화) · `library-import.ts`(병합 판정 `planLibraryImport`/
@@ -166,6 +199,13 @@
   expectedTargetVersion}` 만 보내고 서버가 락 안에서 계획을 재계산해 어긋난 항목만 건너뛴다
   (`missing`/`plan-changed`). **`expectedTargetVersion` 이 없으면** 다이얼로그를 연 사이 남이 고친
   원본을 낡은 미리보기 기준으로 덮어쓴다.
+- **선택이 5,000건을 넘으면 웹이 `resource.promote` 를 조각으로 나눠 차례로 부른다**(`promote-chunks.ts` 의
+  `promoteInChunks`) — 입력 `entries` 상한(`MAX_OPS_PER_MUTATION`)은 그대로다. **자르는 순서는 계획의 항목
+  순서(도메인 → 단어 → 용어 → 커스텀)다** — 용어 조각을 서버가 락 안에서 다시 계획할 때 앞 조각에서 올라간
+  도메인을 보게 하려는 것이다. 순서를 바꾸면 용어가 도메인 없이 올라간다. 결과는 조각별 응답을 합쳐 토스트
+  하나로 보이고(`promoteSummary`), 중간 실패면 「N건 중 M건 승격했습니다 — 〈오류〉」(`promoteFailureMessage`)
+  뒤 계획을 다시 불러온다. 조각마다 한 트랜잭션이라 중간 실패는 원자적이지 않다. CLI `dict push` 는 나누지
+  않는다(범위 밖으로 미뤘다 — [../ops/known-issues.md](../ops/known-issues.md)).
 - **`sourceBehind` 인 항목은 기본 선택하지 않는다.** `planPromote` 의 `status` 는 payload 비교라
   「프로젝트가 고쳤다」와 「프로젝트가 가져온 뒤 **남이 원본을 고쳤다**」를 둘 다 `update` 로 낸다.
   뒤쪽을 올리면 남이 고친 원본이 이 프로젝트의 옛 값(요청 시점 값)으로 **조용히 되돌아간다** —
@@ -218,6 +258,12 @@
   트랜잭션이다」가 일반적으로 잠근다. **`promotion` 전용 원자성 테스트는 불필요하고, 만들면 오히려
   가짜 통과가 되기 쉽다** — `promotion_requests` 가 프로젝트·라이브러리 양쪽 cascade 라 실패를
   주입하려 지우면 요청 행도 함께 사라진다.
+- **요청(`promotion.create`)·승인(`promotion.resolve`)의 항목 상한은 `MAX_LIBRARY_FILE_ITEMS`(50,000)다** —
+  라이브러리 파일 상한과 같은 공유 상수다. 요청은 id 목록을 저장할 뿐이고 승인은 한 트랜잭션이라 모델 op
+  상한과 무관하다. **나누지 않는다** — 요청을 쪼개면 승인자가 같은 요청을 여러 번 검토해야 한다. 웹 승격
+  탭은 넘는 선택을 보내지 않고 「한 번에 요청할 수 있는 항목은 50,000건까지입니다. 나눠 선택해 주세요.」를
+  띄운다(`resource-promote-tab.test.tsx` 「승격 요청이 50000건을 넘으면 서버에 보내지 않고 나눠 선택하라고
+  알린다」).
 
 ### 경합 테스트는 경합이 일어났다는 것 자체를 관측해야 한다
 
@@ -250,6 +296,16 @@
   `changedFields` 에 `domainId` 가 허위로 낄 수 있다(표시 전용).
 - customField 의 로컬 순서변경·`origin` 왕복 회귀 테스트가 없다(구조적으로 성립하나 미고정).
 
+### 관리 화면 조회
+
+- **`items.page` 는 항목과 `total` 을 두 쿼리로 읽는다**(`loadLibraryItemPage` 의 `Promise.all`). 한 트랜잭션이
+  아니라 그 사이에 쓰기가 끼면 전체 건수와 페이지 내용이 잠깐 어긋날 수 있다 — 다음 조회에서 맞춰진다. 표시용
+  조회라 스냅샷 격리를 치르지 않았다.
+- **조회 모달의 정렬은 코드 포인트 순이고 에디터 패널은 `localeCompare` 라 순서가 갈린다.** 조회 모달은
+  숫자 → 영문 대문자 → 영문 소문자 → 한글 순이다(`Zeta` 가 `apple` 보다 앞). 에디터 사전 패널은 영문을
+  대소문자 없이 섞어 늘어놓는다. 한글끼리는 둘 다 가나다순이다. 조회 모달을 `localeCompare` 에 맞추려면 ICU
+  콜레이션이 있어야 하는데 환경마다 보장되지 않아 두었다.
+
 ### 파일 내보내기·가져오기
 
 - **가져오기는 라이브러리 행 → 항목 순으로 잠그고, 승격(`runPromoteInTx`)은 항목 → 라이브러리 순이라
@@ -278,6 +334,9 @@
   `nameClash` 가 붙어 기본 미선택이라 중복 생성은 막히지만 매번 남는다 — **「무시」 상태를 기록할
   자리가 모델에 없다.**
 - **undo 는 `origin` 만 되돌린다** — 라이브러리에 쓴 항목은 남고 관리 화면에서 지워야 한다.
+- **나눠 부른 승격의 중간 실패는 원자적이지 않다** — 앞 조각의 라이브러리 쓰기와 `origin` 갱신은 남는다.
+  실행 취소 대상도 아니다(승격의 라이브러리 쓰기는 원래 op 로그 밖이다). 조각 전체를 한 트랜잭션으로 묶으면
+  `resource.promote` 의 입력 상한이 지키려던 트랜잭션 크기를 다시 잃는다.
 - **`planPromote` 의 엔티티 id 정렬(`sortedResourceEntities`)은 아직 `localeCompare` 다.** 재동기화 쪽이 지키는
   「동률 깨기에 로케일을 쓰지 않는다」가 여기서 샌다. 동명 선점을 클라와 서버가 같은 규칙으로 판정해야 하는
   자리라, 로케일이 다른 두 환경에서 대소문자가 섞인 id 가 오면 판정이 갈릴 수 있다. 서버가 발급한 uuid
@@ -304,6 +363,12 @@
 
 ### 요청·승인 큐
 
+- **대량 승인은 한 트랜잭션·한 방송이라 실시간 방송 크기에 상한이 없다.** 승인 반영은 `mutateAndPublish` 로 가며
+  op 수 검사가 없다. 나누면 요청 하나가 여러 Revision 으로 갈라지므로 두었다.
+- **5만 건 승인(`promotion.resolve`)은 한 트랜잭션이라 락을 오래 쥔다** — 프로젝트 행과 대상 라이브러리 항목
+  전부의 `FOR UPDATE`(`runPromoteInTx` 의 `loadLibraryItems(...).for('update')`)를 승인이 끝날 때까지 쥐어, 그동안
+  같은 프로젝트의 편집과 같은 라이브러리의 승격·가져오기가 기다린다. 보유 시간은 재지 않았다 — 재려면 5만 건
+  요청을 만들어 승인하는 동안 `pg_locks` 로 대기자를 본다.
 - **알림이 폴링 배지뿐이다.** 승인자가 로그인해 있지 않으면 모른다. 메일 발송이 선행 결정이다
   (→ [../ops/known-issues.md](../ops/known-issues.md)).
 - **배지는 `bare` 라우트(에디터)에는 뜨지 않는다.** 실제 도달 범위가 「`AppShell` 을 쓰는 화면」이라
@@ -326,5 +391,5 @@
 - 코드 정리 여지: `mutateAndPublish` 스캐폴딩이 `routers/resource.ts` 와 `promotion.ts` 에 축자 중복
   (배선이라 값이 갈리지는 않는다), `resolve` 가 단일 긴 함수, 승인 권한 규칙이 `requireScopeWrite` 와
   `pendingCount` 의 `inArray` 에 따로 표현(공유 상수로 뽑을 자리), `promotion.get` 이 요청 행을 통째로
-  스프레드, `org-detail.tsx` 의 `canManage` 식 중복. 요청 경로의 op 상한 가드·요청 메모·대기 목록의
+  스프레드, `org-detail.tsx` 의 `canManage` 식 중복. 요청 메모·대기 목록의
   `libraryId` 필터·목록의 `isError` 알림·`resolve` 의 `onError` 토스트가 미검증이다.

@@ -18,6 +18,11 @@ docker ps --filter name=erdd-db      # erdd-db-1, postgres:17, :5432
 - 관리자 계정은 `admin@erdd.local` / `Passw0rd!erdd`.
   `ADMIN_EMAIL`·`ADMIN_PASSWORD` 를 export 하고 서버를 띄우면 계정이 없을 때
   `ensureBootstrapAdmin` 이 자동으로 만든다.
+  - 보는 것은 **그 이메일의 계정이 있는가** 하나다(다른 관리자가 있어도 만든다).
+  - ⚠️ **루트 `pnpm dev` 로 띄우면 `.env` 의 `ADMIN_*` 가 인라인으로 준 값을 이긴다**(아래 「워크트리에서는
+    포트·DB 를 트랙별로 가른다」의 `.env` 우선순위). 인라인 `ADMIN_*` 로 다른 계정을 부트스트랩하려면
+    `apps/server` 에서 서버를 직접 띄운다. 스모크 전용 관리자는 `admin.users.invite({ email, role: 'admin' })`
+    → `invitation.accept` 로 따로 만들어도 된다.
 
 ## 서버·웹 띄우기
 
@@ -151,7 +156,10 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
   **띄우기 전에 항상 확인하고 나온 PID 를 `kill -9` 한다.**
   ```bash
   lsof -nP -iTCP:3000 -iTCP:5173 -sTCP:LISTEN
+  lsof -a -p <PID> -d cwd     # 그 프로세스의 작업 디렉터리
   ```
+  ⚠️ **PID 의 작업 디렉터리가 이 저장소가 아니면 죽이지 말고 포트를 옮긴다.** 다른 저장소의 dev 서버가
+  같은 포트(3001 등)를 쓰고 있을 수 있다 — 그것은 좀비가 아니라 남의 작업이다.
   새 서버가 최신인지는 **이번에 추가한 프로시저**가 404 가 아니라 401 을 주는 것으로 확증한다.
   vite 는 `rm -rf apps/web/node_modules/.vite` 후 캐시버스팅 쿼리를 붙여 로드한다.
   스모크 중에는 watch 없이 `./node_modules/.bin/tsx src/main.ts` 로 띄우는 편이 안정적이다.
@@ -162,8 +170,10 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
 - **테스트가 DB 를 TRUNCATE 한다.** 테스트를 돌린 뒤 스모크하려면 계정·조직·프로젝트를 다시
   시드해야 한다. 부트스트랩 관리자는 위의 `ADMIN_EMAIL`/`ADMIN_PASSWORD` 로 자동 생성되고,
   나머지는 node 스크립트에서 `fetch` 로 tRPC 를 때리는 게 빠르다:
-  `auth.login` → `org.create` → `admin.users.invite` → `org.members.add`(`memberId` 를 반환한다) →
-  `project.create`(`dialects` 필요) → Viewer 용 `project.members.add`.
+  `auth.login` → `org.create` → `admin.users.invite` → `org.members.add`(생성된 멤버 행을 반환한다 —
+  `project.members.add` 의 `memberId` 에는 그 `id` 를 넘긴다) → `project.create`(`dialects` 필요) →
+  Viewer 용 `project.members.add`. 조직 라이브러리는 `resource.library.create({ scope: 'org', orgId, name })`
+  다(단수 `library`).
   **호출 사이에 `getSetCookie()` 의 `erdd_session` 쿠키를 이어서 넘겨야 한다.**
 - **React 제어 인풋에 브라우저 도구로 타이핑하지 마라.** 느리고 한글에서 불안정하다.
   네이티브 setter 를 쓴다 —

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { inferRouterInputs, inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@erdd/server/src/router.js'
-import { MAX_OPS_PER_MUTATION, type Op } from '@erdd/core'
+import { MAX_OPS_PER_MUTATION, createEmptyModel, diffModels, type Op } from '@erdd/core'
 import { FileStore } from './store.js'
 import { SNAPSHOTS_DIR } from './snapshots.js'
 import { createLocalRouter, type LocalContext, type LocalRouter } from './router.js'
@@ -259,6 +259,28 @@ describe('로컬 라우터', () => {
     const tooMany = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, () => createTable(T1))
     await expect(call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: tooMany }))
       .rejects.toMatchObject({ code: 'BAD_REQUEST' })
+  })
+
+  it('5,000건을 넘는 편집을 웹처럼 조각으로 나눠 보내면 차례로 적용하고 seq 를 1씩 올린다', async () => {
+    const call = await caller()
+    const target = createEmptyModel()
+    for (let i = 0; i <= MAX_OPS_PER_MUTATION; i += 1) {
+      const id = `018f6b0e-0000-7000-8000-${String(i).padStart(12, '0')}`
+      target.words[id] = {
+        id, logicalName: `단어${i}`, abbreviation: `W${i}`, englishName: null, description: null, origin: null,
+      }
+    }
+    const ops = diffModels(createEmptyModel(), target)
+    expect(ops).toHaveLength(MAX_OPS_PER_MUTATION + 1)
+    const first = await call.model.mutate({
+      projectId: LOCAL_PROJECT_ID, ops: ops.slice(0, MAX_OPS_PER_MUTATION), summary: '단어 등록 (1/2)',
+    })
+    const second = await call.model.mutate({
+      projectId: LOCAL_PROJECT_ID, ops: ops.slice(MAX_OPS_PER_MUTATION), summary: '단어 등록 (2/2)',
+    })
+    expect(second.seq).toBe(first.seq + 1)
+    const after = await call.model.get({ projectId: LOCAL_PROJECT_ID })
+    expect(Object.keys(after.model.words)).toHaveLength(MAX_OPS_PER_MUTATION + 1)
   })
 
   /**

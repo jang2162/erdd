@@ -76,6 +76,161 @@ export type GenResult = {
 /** 논리명 분해 결과 한 조각. word가 null이면 사전에 없는 구간이다. */
 export type WordSegment = { text: string; word: Word | null }
 
+// ─── 사전 파생 구조 ───────────────────────────────────────────────────────────────
+//
+// 이름 하나를 볼 때마다 사전 전체로 같은 조회 구조(정렬·Map)를 다시 만들면, 대용량 사전(단어 3천·용어
+// 1만 건대)에서 경고 계산 한 번이 수 초가 된다 — 엔티티 수 × 사전 크기다. 그래서 **사전 레코드 객체당
+// 한 번** 만들고 재사용한다. 구조마다 처음 필요할 때 만든다(물리명 복원만 부르는 쪽이 논리명 Map 을 치르지 않게).
+//
+// ⚠️ 캐시 키는 레코드 **객체의 동일성**이다. 모델은 불변 갱신이라(편집 producer·`applyOps` 가 새 레코드를
+// 만든다) 참조가 같으면 내용이 같다는 전제에 선다. **같은 레코드를 제자리에서 고친 뒤 다시 부르면 낡은
+// 결과가 나온다** — 사전을 바꿨으면 새 레코드를 넘겨라.
+// ⚠️ 규칙에 따라 달라지는 구조는 **그 구조에 영향을 주는 규칙 필드**로 한 번 더 나눈다(용어 논리명은
+// `logicalSeparator`). 규칙을 키에서 빼면 구분자를 바꾼 직후 옛 구분자의 매칭이 그대로 쓰인다.
+// ⚠️ 모든 구조가 **앞엣것 우선**이다 — 예전 `find`/`some` 과 같은 답을 내려면 `!has` 일 때만 넣는다.
+
+type WordIndex = {
+  /** 논리명(원문) → 단어. 구분자 split 경로와 `logicalQuery` 가 쓴다. */
+  byName?: Map<string, Word>
+  /**
+   * 그리디 후보 — 논리명의 첫 코드 유닛 → 길이 내림차순 단어. 빈 논리명은 없다.
+   * `name.startsWith(w, i)` 이면 `w[0] === name[i]` 이므로 그 칸만 봐도 답이 같다. 칸 안의 순서는
+   * 전체를 길이로 안정 정렬한 순서 그대로다(같은 길이면 레코드 순서 — 앞엣것이 이긴다).
+   */
+  greedy?: Map<string, Word[]>
+  /** 약어(trim·대문자) → 단어. 같은 약어를 가진 단어가 여럿이면 id가 작은 쪽으로 결정론적으로 고른다. */
+  abbreviations?: Map<string, Word>
+  /** 약어 그리디 후보 — 약어 첫 코드 유닛 → 길이 내림차순 [약어, 단어]. */
+  abbreviationGreedy?: Map<string, [string, Word][]>
+}
+
+type TermIndex = {
+  /** `logicalSeparator` → (구분자를 벗긴 trim 논리명 → 용어). 용어 완전일치(설계 D4)의 조회표. */
+  byBareLogical: Map<NamingRules['logicalSeparator'], Map<string, Term>>
+  /** 물리명(trim·대문자) → 용어. `restoreLogicalName` 1단계. */
+  byPhysical?: Map<string, Term>
+  /** `logicalSeparator` → [용어, 구분자를 벗긴 논리명(trim 없음)] 목록. 자동완성의 용어 후보. */
+  bareLogicalList: Map<NamingRules['logicalSeparator'], [Term, string][]>
+}
+
+const wordIndexes = new WeakMap<Record<string, Word>, WordIndex>()
+const termIndexes = new WeakMap<Record<string, Term>, TermIndex>()
+
+function wordIndex(words: Record<string, Word>): WordIndex {
+  let index = wordIndexes.get(words)
+  if (!index) { index = {}; wordIndexes.set(words, index) }
+  return index
+}
+
+function termIndex(terms: Record<string, Term>): TermIndex {
+  let index = termIndexes.get(terms)
+  if (!index) { index = { byBareLogical: new Map(), bareLogicalList: new Map() }; termIndexes.set(terms, index) }
+  return index
+}
+
+function wordsByName(words: Record<string, Word>): Map<string, Word> {
+  const index = wordIndex(words)
+  if (!index.byName) {
+    // ⚠️ 동명 단어가 둘이면 **앞엣것**을 쓴다 — `new Map(entries)` 는 나중 키가 이기는데
+    // greedyDecompose 는 앞엣것이 이긴다. 맞추지 않으면 같은 사전에서 '회원_번호' 와
+    // '회원번호' 가 서로 다른 단어를 잡아 약어(=물리명)까지 갈린다.
+    const byName = new Map<string, Word>()
+    for (const w of Object.values(words)) if (!byName.has(w.logicalName)) byName.set(w.logicalName, w)
+    index.byName = byName
+  }
+  return index.byName
+}
+
+/** 키 함수로 첫 코드 유닛 칸을 나눈다. 목록 순서는 칸 안에서 그대로 유지된다. 빈 키는 버린다. */
+function bucketByFirstUnit<T>(items: readonly T[], key: (item: T) => string): Map<string, T[]> {
+  const buckets = new Map<string, T[]>()
+  for (const item of items) {
+    const k = key(item)
+    if (k === '') continue
+    const bucket = buckets.get(k[0]!)
+    if (bucket) bucket.push(item)
+    else buckets.set(k[0]!, [item])
+  }
+  return buckets
+}
+
+function greedyCandidates(words: Record<string, Word>): Map<string, Word[]> {
+  const index = wordIndex(words)
+  index.greedy ??= bucketByFirstUnit(
+    Object.values(words).slice().sort((a, b) => b.logicalName.length - a.logicalName.length),
+    (w) => w.logicalName)
+  return index.greedy
+}
+
+/** 약어(대문자) → 단어. 같은 약어를 가진 단어가 여럿이면 id가 작은 쪽으로 결정론적으로 고른다. */
+function abbreviationIndex(words: Record<string, Word>): Map<string, Word> {
+  const index = wordIndex(words)
+  if (!index.abbreviations) {
+    const abbreviations = new Map<string, Word>()
+    for (const w of Object.values(words).slice().sort((a, b) => (a.id < b.id ? -1 : 1))) {
+      const key = w.abbreviation.trim().toUpperCase()
+      if (key !== '' && !abbreviations.has(key)) abbreviations.set(key, w)
+    }
+    index.abbreviations = abbreviations
+  }
+  return index.abbreviations
+}
+
+function abbreviationCandidates(words: Record<string, Word>): Map<string, [string, Word][]> {
+  const index = wordIndex(words)
+  index.abbreviationGreedy ??= bucketByFirstUnit(
+    [...abbreviationIndex(words).entries()].sort((a, b) => b[0].length - a[0].length),
+    ([abbr]) => abbr)
+  return index.abbreviationGreedy
+}
+
+function termsByBareLogical(terms: Record<string, Term>, rules: NamingRules): Map<string, Term> {
+  const index = termIndex(terms)
+  let byBare = index.byBareLogical.get(rules.logicalSeparator)
+  if (!byBare) {
+    byBare = new Map()
+    for (const t of Object.values(terms)) {
+      const key = stripLogicalSeparator(t.logicalName.trim(), rules)
+      if (!byBare.has(key)) byBare.set(key, t)
+    }
+    index.byBareLogical.set(rules.logicalSeparator, byBare)
+  }
+  return byBare
+}
+
+function termsByPhysical(terms: Record<string, Term>): Map<string, Term> {
+  const index = termIndex(terms)
+  if (!index.byPhysical) {
+    const byPhysical = new Map<string, Term>()
+    for (const t of Object.values(terms)) {
+      const key = t.physicalName.trim().toUpperCase()
+      if (!byPhysical.has(key)) byPhysical.set(key, t)
+    }
+    index.byPhysical = byPhysical
+  }
+  return index.byPhysical
+}
+
+function termsWithBareLogical(terms: Record<string, Term>, rules: NamingRules): [Term, string][] {
+  const index = termIndex(terms)
+  let list = index.bareLogicalList.get(rules.logicalSeparator)
+  if (!list) {
+    list = Object.values(terms).map((t): [Term, string] => [t, stripLogicalSeparator(t.logicalName, rules)])
+    index.bareLogicalList.set(rules.logicalSeparator, list)
+  }
+  return list
+}
+
+/**
+ * 논리명이 완전일치하는 용어(generatePhysicalName 의 1단계 규칙). 양쪽을 trim 하고 구분자를 벗겨
+ * 비교한다(설계 D4). 같은 이름에 매칭되는 용어가 여럿이면 **레코드 순서의 앞엣것**이다.
+ */
+export function findTermByLogicalName(
+  logicalName: string, terms: Record<string, Term>, rules: NamingRules,
+): Term | undefined {
+  return termsByBareLogical(terms, rules).get(stripLogicalSeparator(logicalName.trim(), rules))
+}
+
 /**
  * 논리명을 단어 세그먼트로 분해한다.
  *
@@ -105,11 +260,7 @@ export function decomposeByWords(
   // **통째로 낭비**다(설계 D3 이 기존 프로젝트 전부를 이 상태로 만든다).
   if (!name.includes(rules.logicalSeparator)) return greedyDecompose(name, words)
 
-  // ⚠️ 동명 단어가 둘이면 **앞엣것**을 쓴다 — `new Map(entries)` 는 나중 키가 이기는데
-  // greedyDecompose 의 `find` 는 앞엣것이 이긴다. 맞추지 않으면 같은 사전에서 '회원_번호' 와
-  // '회원번호' 가 서로 다른 단어를 잡아 약어(=물리명)까지 갈린다.
-  const byName = new Map<string, Word>()
-  for (const w of Object.values(words)) if (!byName.has(w.logicalName)) byName.set(w.logicalName, w)
+  const byName = wordsByName(words)
   const segments: WordSegment[] = []
   for (const token of name.split(rules.logicalSeparator)) {
     if (token === '') continue           // '회원__주문'·'_회원_' 의 빈 토큰
@@ -125,12 +276,12 @@ export function decomposeByWords(
  * 매칭 실패 구간은 연속으로 모아 word: null 세그먼트 하나가 된다.
  */
 function greedyDecompose(name: string, words: Record<string, Word>): WordSegment[] {
-  const byLen = Object.values(words).slice().sort((a, b) => b.logicalName.length - a.logicalName.length)
+  const candidates = greedyCandidates(words)
   const segments: WordSegment[] = []
   let i = 0
   let pending = ''
   while (i < name.length) {
-    const match = byLen.find((w) => w.logicalName.length > 0 && name.startsWith(w.logicalName, i))
+    const match = candidates.get(name[i]!)?.find((w) => name.startsWith(w.logicalName, i))
     if (match) {
       if (pending) { segments.push({ text: pending, word: null }); pending = '' }
       segments.push({ text: match.logicalName, word: match })
@@ -174,9 +325,7 @@ export function generatePhysicalName(
 ): GenResult {
   const name = logicalName.trim()
   // 1) 용어 완전일치 — 양쪽에서 구분자를 벗겨 비교한다(설계 D4).
-  const bare = stripLogicalSeparator(name, rules)
-  const term = Object.values(terms).find(
-    (t) => stripLogicalSeparator(t.logicalName.trim(), rules) === bare)
+  const term = findTermByLogicalName(name, terms, rules)
   if (term) return { physicalName: term.physicalName, unknownWords: [], termId: term.id, domainId: term.domainId }
   // 2) 최장일치 분해조합
   const segments = decomposeByWords(name, words, rules)
@@ -191,16 +340,6 @@ export type RestoreLogicalResult =
   | { ok: true; logicalName: string }
   | { ok: false; unknownTokens: string[] }
 
-/** 약어(대문자) → 단어. 같은 약어를 가진 단어가 여럿이면 id가 작은 쪽으로 결정론적으로 고른다. */
-function abbreviationIndex(words: Record<string, Word>): Map<string, Word> {
-  const index = new Map<string, Word>()
-  for (const w of Object.values(words).slice().sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    const key = w.abbreviation.trim().toUpperCase()
-    if (key !== '' && !index.has(key)) index.set(key, w)
-  }
-  return index
-}
-
 /**
  * generatePhysicalName의 역함수. 모든 토큰이 매칭될 때만 ok:true.
  * ⚠️ generatePhysicalName의 분해 규칙을 고치면 이 함수도 함께 고쳐야 한다 — 그래서 같은 파일에 둔다.
@@ -214,7 +353,7 @@ export function restoreLogicalName(
   // 1) 용어 물리명 완전일치 — generatePhysicalName의 1단계와 대칭.
   //    넣을 때는 구분자 형식으로 변환한다(용어 저장값은 그대로 둔다 — 설계 D4).
   const upper = name.toUpperCase()
-  const term = Object.values(terms).find((t) => t.physicalName.trim().toUpperCase() === upper)
+  const term = termsByPhysical(terms).get(upper)
   if (term) return { ok: true, logicalName: withLogicalSeparator(term.logicalName, words, rules) }
 
   const index = abbreviationIndex(words)
@@ -233,13 +372,13 @@ export function restoreLogicalName(
   }
 
   // 2-b) 구분자가 없으면 최장일치 그리디 — decomposeByWords의 약어판
-  const byLen = [...index.entries()].sort((a, b) => b[0].length - a[0].length)
+  const candidates = abbreviationCandidates(words)
   const parts: string[] = []
   const unknownTokens: string[] = []
   let i = 0
   let pending = ''
   while (i < upper.length) {
-    const hit = byLen.find(([abbr]) => upper.startsWith(abbr, i))
+    const hit = candidates.get(upper[i]!)?.find(([abbr]) => upper.startsWith(abbr, i))
     if (hit) {
       if (pending) { unknownTokens.push(pending); pending = '' }
       parts.push(hit[1].logicalName)
@@ -292,13 +431,13 @@ export function suggestCompletions(
   // 용어 후보가 통째로 죽고, 물리명 쪽은 구분자 덕에 우연히 안 걸려 D2 의 대칭이 깨진다.
   // 용어 먼저 담는 것은 generatePhysicalName 이 용어를 먼저 보는 것과 같은 우선순위다.
   const termItems: Completion[] = []
-  for (const t of Object.values(terms)) {
+  // 논리명 쪽은 입력에도 **용어 저장값에도** 구분자가 있을 수 있으므로 양쪽을 벗겨 비교한다
+  // (설계 D4). ⚠️ 한쪽만 벗기면 구분자가 든 용어가 후보에서 통째로 사라진다 —
+  // 「용어 등록」이 draft 논리명을 그대로 저장하므로 D2 이후 그 모양이 오히려 표준이다.
+  const probe = side === 'logical' ? stripLogicalSeparator(input, rules) : input
+  for (const [t, bareLogical] of termsWithBareLogical(terms, rules)) {
     const target = side === 'logical' ? t.logicalName : t.physicalName
-    // 논리명 쪽은 입력에도 **용어 저장값에도** 구분자가 있을 수 있으므로 양쪽을 벗겨 비교한다
-    // (설계 D4). ⚠️ 한쪽만 벗기면 구분자가 든 용어가 후보에서 통째로 사라진다 —
-    // 「용어 등록」이 draft 논리명을 그대로 저장하므로 D2 이후 그 모양이 오히려 표준이다.
-    const probe = side === 'logical' ? stripLogicalSeparator(input, rules) : input
-    const bare = side === 'logical' ? stripLogicalSeparator(target, rules) : target
+    const bare = side === 'logical' ? bareLogical : target
     if (!startsWithFold(bare, probe, side) || foldEq(bare, probe, side)) continue
     push(termItems, {
       insert: side === 'logical' ? withLogicalSeparator(target, words, rules) : target,
@@ -364,7 +503,7 @@ function logicalQuery(input: string, words: Record<string, Word>, rules: NamingR
     const idx = input.lastIndexOf(rules.logicalSeparator)
     const tail = idx === -1 ? input : input.slice(idx + rules.logicalSeparator.length)
     // 꼬리가 통째로 사전 단어면 더 칠 것이 없다(단어 후보를 열지 않는다).
-    return Object.values(words).some((w) => w.logicalName === tail) ? '' : tail
+    return wordsByName(words).has(tail) ? '' : tail
   }
   const segments = decomposeByWords(input, words, rules)
   const last = segments[segments.length - 1]
@@ -382,13 +521,12 @@ function physicalQuery(input: string, words: Record<string, Word>, rules: Naming
   // 대문자 변환이 길이를 바꾸는 문자(ß→SS 등)가 섞이면 두 인덱스가 어긋나 치환이 원본을 망친다.
   // 그런 입력에서는 후보를 내지 않는다(실사용 빈도는 0에 가깝지만 조용히 틀리는 것보다 낫다).
   if (upper.length !== input.length) return ''
-  const index = abbreviationIndex(words)
-  const byLen = [...index.keys()].sort((a, b) => b.length - a.length)
+  const candidates = abbreviationCandidates(words)
   let i = 0
   let pending = ''
   while (i < upper.length) {
-    const hit = byLen.find((abbr) => upper.startsWith(abbr, i))
-    if (hit) { pending = ''; i += hit.length } else { pending += upper[i]!; i += 1 }
+    const hit = candidates.get(upper[i]!)?.find(([abbr]) => upper.startsWith(abbr, i))
+    if (hit) { pending = ''; i += hit[0].length } else { pending += upper[i]!; i += 1 }
   }
   return pending
 }

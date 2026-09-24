@@ -7,6 +7,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
+import { createEmptyModel } from '@erdd/core'
 import { grantEditPermission } from '@/testing/editor-store'
 import { useEditorStore } from './store.js'
 import { createCustomField, setCustomValue } from './custom-field-edits.js'
@@ -85,6 +86,36 @@ describe('CustomFieldPanel', () => {
     expect(screen.queryByRole('button', { name: '개인정보여부 삭제' })).toBeNull()
     expect(screen.queryByRole('button', { name: '암호화방식 위로' })).toBeNull()
     expect(screen.queryByRole('button', { name: '암호화방식 아래로' })).toBeNull()
+  })
+
+  it('검색 중에는 순서 버튼이 잠긴다 — 걸러진 목록의 이웃은 실제 이웃이 아니다', async () => {
+    loadModelWithFields()
+    renderPanel()
+    expect(screen.getByRole('button', { name: '암호화방식 위로' })).toBeEnabled()
+    await userEvent.type(screen.getByRole('textbox', { name: '커스텀 항목 검색' }), '암호')
+    expect(screen.queryByText('개인정보여부')).toBeNull()
+    expect(screen.getByRole('button', { name: '암호화방식 위로' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '암호화방식 아래로' })).toBeDisabled()
+  })
+
+  it('50건을 넘으면 쪽으로 나뉘고, 첫·끝 판정은 쪽이 아니라 대상 전체 기준이다', async () => {
+    let m = createEmptyModel()
+    for (let i = 0; i < 60; i++) {
+      m = createCustomField(m, {
+        id: `f${i}`, name: `항목${String(i).padStart(2, '0')}`, target: 'column', type: 'text',
+        options: [], required: false, defaultValue: null, origin: null,
+      })
+    }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    expect(screen.getByRole('button', { name: '항목49 아래로' })).toBeEnabled()   // 쪽의 끝이지만 전체의 끝이 아니다
+    const list = screen.getByText('항목49').closest<HTMLElement>('[class*="overflow-y-auto"]')!
+    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
+    await userEvent.click(screen.getByRole('button', { name: '다음' }))
+    expect(list.scrollTop).toBe(0)
+    expect(screen.getByRole('button', { name: '항목50 위로' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '항목59 아래로' })).toBeDisabled()
   })
 })
 

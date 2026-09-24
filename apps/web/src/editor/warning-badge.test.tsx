@@ -25,4 +25,13 @@ describe('WarningBadge', () => {
     const badge = screen.getByLabelText(/경고 2건: 물리명 중복/)
     expect(badge.getAttribute('aria-label')).toBe('경고 2건: 물리명 중복\n매핑 불완전')
   })
+
+  it('경고 수를 천 단위로 끊는다 — 배지 숫자와 aria-label 모두', () => {
+    const warnings: Warning[] = Array.from({ length: 1234 }, (_, i) => (
+      { kind: 'duplicate-physical', scope: 'column', entityId: `c${i}`, tableId: 't1', message: '물리명 중복' }
+    ))
+    render(<WarningBadge warnings={warnings} />)
+    expect(screen.getByText('1,234')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^경고 1,234건: /)).toBeInTheDocument()
+  })
 })

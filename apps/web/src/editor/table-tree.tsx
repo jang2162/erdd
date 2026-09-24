@@ -8,6 +8,7 @@ import { applyGroupMove } from './bulk-panel.js'
 import { useDragStore } from './drag-store.js'
 import { dropAttrValue, dropTargetAt } from './drop-target.js'
 import { Input } from '@/components/ui/input'
+import { formatCount } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -165,7 +166,7 @@ export function TableTree({ projectId }: { projectId: string }) {
                   g.id === scopedGroupId && 'ring-1 ring-inset ring-ring')}>
                 <span className="size-2.5 shrink-0 rounded-sm" style={{ background: g.color }} />
                 <span className="flex-1 truncate text-xs font-semibold">{g.name}</span>
-                <span className="text-[10px] text-muted-foreground">{members.length}</span>
+                <span className="text-[10px] text-muted-foreground">{formatCount(members.length)}</span>
               </button>
               <ul className="ml-3 border-l pl-1">
                 {members.map((t) => (

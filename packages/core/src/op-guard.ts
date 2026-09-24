@@ -11,10 +11,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const ACTIONS = ['create', 'update', 'delete'] as const
 
 /**
- * mutation 1건이 담을 수 있는 op 최대 개수. 서버 입력 검증과 웹의 사전 가드가 이 값을
- * 공유해야 "성공했다고 알린 뒤 서버가 거절"하는 어긋남이 생기지 않는다.
- * 사전 일괄 등록(단어·용어·도메인)은 undo 1회로 되돌리기 위해 한 mutation으로 보내므로
- * 수천 행 규모의 기존 사전을 한 번에 올릴 수 있어야 한다.
+ * 요청 하나(mutation 1건)가 담을 수 있는 op 최대 개수. 서버 입력 검증(`model.mutate`·`model.push`·
+ * `resource.promote`)과 로컬 저장소가 이 값을 쓴다. **편집 하나의 크기 상한이 아니다** — 웹은 넘는 편집을
+ * 이 값씩 나눠 보낸다(guides/data-layer.md 「한 요청의 op 상한은 `MAX_OPS_PER_MUTATION`(5000)이고, 넘는
+ * 편집은 웹이 나눠 보낸다」).
  */
 export const MAX_OPS_PER_MUTATION = 5000
 
