@@ -5,7 +5,6 @@ import { useEditorStore } from './store.js'
 import { ResourceResyncTab } from './resource-resync-tab.js'
 import { ResourcePromoteTab } from './resource-promote-tab.js'
 import { formatCount } from '@/lib/format'
-import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
