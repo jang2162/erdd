@@ -53,14 +53,17 @@ export function DictPanel({ projectId, open, onOpenChange }: {
   const termList = useListPage(terms, TERM_FIELDS)
   // 사용 수는 모델을 한 번 훑은 색인에서 읽는다(행마다 wordUsage/termUsage 를 부르지 않는다). 다이얼로그가
   // 닫혀 있거나 사용 수를 보이지 않는 탭이면 만들지 않는다 — 이 패널은 늘 마운트돼 있어 편집마다 다시 만들게 된다.
+  // 의존성은 `section` 이 아니라 이 불리언이다 — 단어↔용어 탭을 오갈 때마다 같은 색인을 다시 만들지 않게 한다.
+  const needsUsage = open && (section === 'words' || section === 'terms')
   const usage = useMemo(
-    () => (open && (section === 'words' || section === 'terms') ? buildUsageIndex(model, namingRules) : null),
-    [open, section, model, namingRules])
+    () => (needsUsage ? buildUsageIndex(model, namingRules) : null), [needsUsage, model, namingRules])
+  // 미등록 계산은 이름마다 용어 전부를 비교해 대용량 사전에서 무겁다. 닫혀 있으면 돌리지 않는다 — 탭 제목의
+  // 건수도 다이얼로그 안에 있어 닫힌 동안 보일 곳이 없다.
   const candidates = useMemo(
-    () => unregisteredWords(model, namingRules), [model, namingRules])
+    () => (open ? unregisteredWords(model, namingRules) : []), [open, model, namingRules])
   // 물리명 분해에서 나온 미등록 약어(위 candidates의 대칭 — 논리명 분해 vs 물리명 분해).
   const abbrCandidates = useMemo(
-    () => unregisteredAbbreviations(model, namingRules), [model, namingRules])
+    () => (open ? unregisteredAbbreviations(model, namingRules) : []), [open, model, namingRules])
   const unregisteredCount = candidates.length + abbrCandidates.length
 
   const onAddWord = () => { setEditingWord(null); setWordEditorOpen(true) }

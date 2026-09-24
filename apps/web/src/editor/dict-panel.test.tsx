@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -9,21 +9,30 @@ import type { AppRouter } from '@erdd/server/src/router.js'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, createEmptyModel } from '@erdd/core'
 import { useEditorStore } from './store.js'
-import { createWord, createTerm, termUsage, wordUsage } from './dict-edits.js'
+import {
+  buildUsageIndex, createWord, createTerm, termUsage, unregisteredAbbreviations, unregisteredWords, wordUsage,
+} from './dict-edits.js'
 import { updateTable } from './model-edits.js'
 import { DictPanel } from './dict-panel.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { grantEditPermission } from '@/testing/editor-store'
 
-// 사용 수가 색인에서 오는지 잠그려고 두 함수에만 스파이를 단다. 동작은 실제 구현 그대로다.
+// 사용 수가 색인에서 오는지, 무거운 계산이 필요할 때만 도는지 잠그려고 스파이를 단다. 동작은 실제 구현 그대로다.
 vi.mock('./dict-edits.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./dict-edits.js')>()
-  return { ...actual, wordUsage: vi.fn(actual.wordUsage), termUsage: vi.fn(actual.termUsage) }
+  return {
+    ...actual,
+    wordUsage: vi.fn(actual.wordUsage),
+    termUsage: vi.fn(actual.termUsage),
+    buildUsageIndex: vi.fn(actual.buildUsageIndex),
+    unregisteredWords: vi.fn(actual.unregisteredWords),
+    unregisteredAbbreviations: vi.fn(actual.unregisteredAbbreviations),
+  }
 })
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000bb'
 
-function renderPanel() {
+function renderPanel(open = true) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
@@ -31,7 +40,7 @@ function renderPanel() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<DictPanel projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
+  render(<DictPanel projectId={PROJECT_ID} open={open} onOpenChange={() => {}} />, { wrapper: w })
 }
 
 function loadModelWithDict(grant = true) {
@@ -160,6 +169,35 @@ describe('DictPanel', () => {
     expect(screen.getByText('단어05')).toBeInTheDocument()
     expect(screen.getByText('AB05')).toBeInTheDocument()
     expect(screen.queryByText('단어06')).toBeNull()
+  })
+  it('닫혀 있으면 모델이 바뀌어도 미등록·사용처 계산을 돌리지 않는다 — 패널은 늘 마운트돼 있다', async () => {
+    loadModelWithDict()
+    vi.mocked(unregisteredWords).mockClear()
+    vi.mocked(unregisteredAbbreviations).mockClear()
+    vi.mocked(buildUsageIndex).mockClear()
+    renderPanel(false)
+    act(() => {
+      const m = useEditorStore.getState().model
+      useEditorStore.getState().setLoaded(createWord(m, {
+        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
+      }), 2, PROJECT_ID)
+    })
+    expect(useEditorStore.getState().model.words.w9).toBeDefined()
+    expect(unregisteredWords).not.toHaveBeenCalled()
+    expect(unregisteredAbbreviations).not.toHaveBeenCalled()
+    expect(buildUsageIndex).not.toHaveBeenCalled()
+  })
+
+  it('단어↔용어 탭을 오가도 사용처 색인을 다시 만들지 않는다', async () => {
+    loadModelWithDict()
+    vi.mocked(buildUsageIndex).mockClear()
+    renderPanel()
+    expect(buildUsageIndex).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
+    expect(screen.getByText('GRD_CD')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /^단어/ }))
+    expect(screen.getByText('MBR')).toBeInTheDocument()
+    expect(buildUsageIndex).toHaveBeenCalledTimes(1)
   })
 })
 
