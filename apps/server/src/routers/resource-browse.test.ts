@@ -96,7 +96,7 @@ describe.skipIf(!url)('resource.items.page', () => {
   })
 
   it('정렬은 DB 로캘이 아니라 코드 포인트 순이다 — 한글은 가나다순, 영문 대문자가 소문자보다 앞', async () => {
-    // en_US.utf8(glibc) 기본 정렬이면 「apple, Zeta, 가, 값, 국, 나, 가감, 가격」 — 한글이 글자 수 먼저로 늘어선다.
+    // en_US.utf8(glibc) 기본 정렬이면 「가, 값, 국, 나, 가감, 가격, apple, Zeta」 — 한글이 글자 수 먼저로 늘어선다.
     const { libraryId } = await seedLibrary(app, ['나', 'Zeta', '가격', 'apple', '값', '가', '국', '가감']
       .map((n, i) => word(n, `W${i}`)))
     expect(names((await page(app, token, { libraryId, kind: 'word', offset: 0, limit: 50 })).items))
