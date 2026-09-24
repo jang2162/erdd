@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { PromoteEntry, PromoteStatus } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
+import { formatCount } from '@/lib/format'
 import { libraryDomainsQueryKey } from '@/lib/library-domains'
 import { PromoteEntryList } from '@/components/promote-entry-list'
 import { Button } from '@/components/ui/button'
@@ -157,7 +158,7 @@ function ReviewDialog({
             <Button type="button"
               disabled={resolve.isPending || detail.isPending || detail.isError}
               onClick={submit}>
-              {selected.size === 0 ? '반려' : `${selected.size}건 승격`}
+              {selected.size === 0 ? '반려' : `${formatCount(selected.size)}건 승격`}
             </Button>
           </div>
         </div>

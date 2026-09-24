@@ -148,6 +148,21 @@ describe('PromotionRequestsSection', () => {
     expect(modelGet).not.toHaveBeenCalled()
   })
 
+  it('승격 버튼의 건수를 천 단위로 보인다', async () => {
+    const entries = Array.from({ length: 1234 }, (_, i) => ({
+      ...ENTRY, entityId: `w${String(i).padStart(4, '0')}`, name: `단어${String(i).padStart(4, '0')}`,
+    }))
+    renderSection({
+      'promotion.listForOrg': () => ({ data: [ROW] }),
+      'promotion.get': () => ({ data: {
+        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+        entries, unavailable: [],
+      } }),
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '검토' }))
+    expect(await screen.findByRole('button', { name: '1,234건 승격' })).toBeInTheDocument()
+  })
+
   it('승인 성공 후 같은 화면의 라이브러리 목록·항목 캐시를 무효화한다', async () => {
     // 같은 org-detail 화면의 ResourceLibraryManager가 두 쿼리를 들고 있다. QueryClient가
     // refetchOnWindowFocus:false라 자동 회복 트리거가 없어, 무효화를 빠뜨리면 화면이 낡은
