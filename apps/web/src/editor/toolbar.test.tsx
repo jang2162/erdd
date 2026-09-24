@@ -147,12 +147,10 @@ describe('Toolbar', () => {
     expect(useEditorStore.getState().selectedTableIds).toEqual([])
   })
 
-  it('툴바 경로도 op 상한 가드를 지난다 — 상한을 넘으면 삭제를 막는다', async () => {
-    // 툴바는 일괄 패널과 **같은 다이얼로그**를 쓰므로 가드가 함께 걸린다. 이 케이스가 없으면
-    // 누군가 툴바에 다이얼로그를 복제하거나 가드를 트리거 쪽으로 옮겨도 아무 테스트도 실패하지
-    // 않는다 — 가드를 공유 다이얼로그에 둔 판단 자체가 회귀로부터 보호되지 않는다.
-    const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+  it('툴바 경로도 같은 확인 창을 지난다 — 상한을 넘어도 삭제되고 조각으로 나뉘어 간다', async () => {
+    // 툴바는 일괄 패널과 **같은 다이얼로그**를 쓴다. 이 케이스가 없으면 누군가 툴바에 다이얼로그를
+    // 복제해 옛 상한 가드를 되살려도 아무 테스트도 실패하지 않는다.
+    const fetchMock = mockModelMutate()
     useEditorStore.getState().setLoaded(modelOverOpCap(), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
@@ -160,10 +158,11 @@ describe('Toolbar', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '삭제' }))
     const dialog = within(screen.getByRole('dialog'))
-    expect(dialog.getByText(/한 번에 지우기에 너무 많습니다/)).toBeInTheDocument()
-    expect(dialog.getByRole('button', { name: '삭제' })).toBeDisabled()
-    expect(calls).toHaveLength(0)
-    expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(2)
+    expect(dialog.queryByText(/한 번에 지우기에 너무 많습니다/)).toBeNull()
+    await userEvent.click(dialog.getByRole('button', { name: '삭제' }))
+    await waitFor(() => expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(0))
+    await waitFor(() => expect(countModelMutate(fetchMock)).toBe(2))
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
   })
 
   it('단일 선택 삭제는 다이얼로그 없이 즉시 지우고 선택이 비워진다', async () => {

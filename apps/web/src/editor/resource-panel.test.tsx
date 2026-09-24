@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, beforeEach, vi } from 'vitest'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
@@ -12,7 +12,6 @@ import { grantEditPermission } from '@/testing/editor-store'
 import { settle } from '@/testing/settle'
 import { useEditorStore } from './store.js'
 import { ResourcePanel } from './resource-panel.js'
-import { overLimitMessage } from './resource-decisions.js'
 
 const PROJECT_ID = 'p1'
 const LIBS = [
@@ -26,12 +25,6 @@ const ITEMS = [
 const mutate = vi.fn()
 vi.mock('./use-model.js', () => ({ useModelMutation: () => mutate }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
-// overLimitMessage는 실제 구현으로 통과시키되(다른 테스트는 그대로 동작), op 상한 가드
-// 테스트에서만 mockReturnValueOnce로 값을 강제해 수천 행을 렌더하지 않고 가드를 트리거한다.
-vi.mock('./resource-decisions.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./resource-decisions.js')>()
-  return { ...actual, overLimitMessage: vi.fn(actual.overLimitMessage) }
-})
 
 function renderPanel(
   handlers: Parameters<typeof mockTrpcFetch>[0], model: ProjectModel,
@@ -81,22 +74,6 @@ describe('ResourcePanel', () => {
     const [producer] = mutate.mock.calls[0]!
     const next = producer(createEmptyModel()) as ProjectModel
     expect(Object.keys(next.words)).toHaveLength(2)
-  })
-
-  it('op 상한 가드가 걸리면 적용을 눌러도 mutate를 부르지 않고 오류 토스트를 띄운다', async () => {
-    // 리팩터가 onApply에서 overLimitMessage 호출을 지워도 다른 테스트는 모두 통과한다 —
-    // 이 테스트만 그 규약을 직접 지킨다. 수천 행을 렌더해 실제로 상한을 넘기는 대신
-    // overLimitMessage 자체를 이번 호출 한 번만 상한 초과로 흉내 낸다.
-    vi.mocked(overLimitMessage).mockReturnValueOnce('한 번에 너무 많은 항목입니다')
-    renderPanel({
-      'resource.library.listForProject': () => ({ data: LIBS }),
-      'resource.items.list': () => ({ data: ITEMS }),
-    }, createEmptyModel())
-    await openLibrary()
-    await screen.findByText('신규 추가 (2)')
-    await userEvent.click(screen.getByRole('button', { name: '적용' }))
-    expect(mutate).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith('한 번에 너무 많은 항목입니다')
   })
 
   it('처리할 것이 없으면 적용 버튼이 비활성', async () => {
@@ -354,5 +331,53 @@ describe('ResourcePanel', () => {
     await userEvent.click(section.getByRole('button', { name: '모두 해제' }))
     expect(screen.getByText('처리 대상 0건')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '적용' })).toBeDisabled()
+  })
+
+  it('5,000건을 넘는 선택도 막지 않고 적용한다 — 나눔은 저수준 경로가 한다', async () => {
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: manyItems(5001) }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (5,001)', undefined, { timeout: 10000 })
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const [producer] = mutate.mock.calls[0]!
+    expect(Object.keys((producer(createEmptyModel()) as ProjectModel).words)).toHaveLength(5001)
+  }, 30000)
+
+  it('나눠 적용하는 동안 적용 버튼이 잠기고 「적용 중… 1 / 2」를 보인다', async () => {
+    let finish!: (r: string) => void
+    mutate.mockImplementationOnce((_producer: unknown, opts: { onProgress?: (d: number, t: number) => void }) => {
+      opts.onProgress?.(1, 2)
+      return new Promise((resolve) => { finish = resolve })
+    })
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (2)')
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
+    await act(async () => { finish('applied') })
+    expect(await screen.findByRole('button', { name: '적용' })).toBeInTheDocument()
+  })
+
+  it('조각 적용이 실패로 끝나면 진행 표시가 걷히고 적용 버튼이 다시 열린다', async () => {
+    mutate.mockImplementationOnce(async (_producer: unknown, opts: { onProgress?: (d: number, t: number) => void }) => {
+      opts.onProgress?.(1, 2)
+      return 'error'
+    })
+    renderPanel({
+      'resource.library.listForProject': () => ({ data: LIBS }),
+      'resource.items.list': () => ({ data: ITEMS }),
+    }, createEmptyModel())
+    await openLibrary()
+    await screen.findByText('신규 추가 (2)')
+    await userEvent.click(screen.getByRole('button', { name: '적용' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '적용' })).toBeEnabled())
+    expect(screen.queryByText(/적용 중…/)).toBeNull()
   })
 })

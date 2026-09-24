@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_OPS_PER_MUTATION, type ResyncPlan } from '@erdd/core'
-import { countActive, initialDecisions, overLimitMessage, setAllForStatus } from './resource-decisions.js'
+import type { ResyncPlan } from '@erdd/core'
+import { countActive, initialDecisions, setAllForStatus } from './resource-decisions.js'
 
 const entry = (
   sourceId: string, status: 'added' | 'auto-update' | 'conflict', nameClash = false,
@@ -47,13 +47,5 @@ describe('countActive', () => {
   it('defer가 아닌 결정 수를 센다', () => {
     expect(countActive({ a: 'apply', b: 'keep', c: 'defer' })).toBe(2)
     expect(countActive({})).toBe(0)
-  })
-})
-
-describe('overLimitMessage', () => {
-  it('상한 이하면 null, 초과하면 안내 문구를 준다', () => {
-    expect(overLimitMessage(MAX_OPS_PER_MUTATION)).toBeNull()
-    expect(overLimitMessage(MAX_OPS_PER_MUTATION + 1))
-      .toBe(`한 번에 ${MAX_OPS_PER_MUTATION}건까지 적용할 수 있습니다. 나눠 선택해 주세요.`)
   })
 })

@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import {
   applyResyncPlan, planResync, RESOURCE_COLLECTION_BY_KIND, RESOURCE_KIND_LABEL, resourcePayloadOf,
   resourceSecondaryName,
   type LibraryItem, type ProjectModel, type ResyncDecision, type ResyncEntry, type ResyncPlan,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
-import { formatCount } from '@/lib/format'
+import { formatCount, formatProgress } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
-import { countActive, initialDecisions, overLimitMessage, setAllForStatus, type Decisions } from './resource-decisions.js'
+import { countActive, initialDecisions, setAllForStatus, type Decisions } from './resource-decisions.js'
 import type { LibraryRow } from './resource-panel.js'
 import { PagedSection } from '@/components/paged-section'
 import { Badge } from '@/components/ui/badge'
@@ -84,7 +83,9 @@ function ConflictValueDiff({ entry, model }: { entry: ResyncEntry; model: Projec
 /**
  * "공용 리소스" 다이얼로그의 가져오기(재동기화) 탭: 전역·조직 라이브러리를 프로젝트로
  * 가져오고 재동기화한다. 최초 가져오기는 "전 항목이 신규인 재동기화"라 코드 경로가 하나다.
- * 적용은 단일 producer → diffModels → model.mutate라 Revision 1건·undo 1회로 원복된다.
+ * 적용은 단일 producer → diffModels → model.mutate 이고 실행 취소 한 번으로 원복된다. 5,000건을 넘으면
+ * 저수준 경로가 조각으로 나눠 보내 Revision 은 조각 수만큼 쌓인다(guides/data-layer.md 「한 요청의 op 상한은 …」)
+ * — 이 탭은 나눔을 모르고 진행(`onProgress`)만 보인다.
  *
  * 구역마다 검색·50건 페이지가 있고(`PagedSection`), 결정(`decisions`)은 구역 전체에 대해 여기 있다 —
  * 쪽을 넘겨도 체크가 남고 일괄 버튼은 구역 전체에 적용된다.
@@ -95,6 +96,9 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
   const canEdit = useEditorStore((s) => s.canEdit)
   const mutate = useModelMutation(projectId)
   const [decisions, setDecisions] = useState<Decisions>({})
+  // 조각이 둘 이상일 때만 채워진다(저수준 경로가 onProgress 를 그때만 부른다). ref 는 리렌더 전 재진입을 막는다.
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const applyingRef = useRef(false)
 
   const items = useQuery(trpc.resource.items.list.queryOptions({ libraryId: library.id }))
 
@@ -115,15 +119,20 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
   const setAll = (status: ResyncEntry['status'], decision: ResyncDecision) =>
     setDecisions((prev) => setAllForStatus(prev, plan, status, decision))
 
-  const onApply = () => {
-    if (active === 0) return
-    const message = overLimitMessage(active)
-    if (message !== null) { toast.error(message); return }
+  const onApply = async () => {
+    if (active === 0 || applyingRef.current) return
+    applyingRef.current = true
     const applied = decisions
     const currentPlan = plan
-    void mutate((m) => applyResyncPlan(m, currentPlan, applied, newId), {
-      summary: `공용 리소스 재동기화 — ${library.name}`,
-    })
+    try {
+      await mutate((m) => applyResyncPlan(m, currentPlan, applied, newId), {
+        summary: `공용 리소스 재동기화 — ${library.name}`,
+        onProgress: (done, total) => setProgress({ done, total }),
+      })
+    } finally {
+      applyingRef.current = false
+      setProgress(null)
+    }
   }
 
   const checkboxRow = (entry: ResyncEntry) => (
@@ -218,7 +227,9 @@ export function ResourceResyncTab({ projectId, library }: { projectId: string; l
       {canEdit && (
         <div className="flex items-center justify-end gap-2 border-t pt-2">
           <span className="text-xs text-muted-foreground">처리 대상 {formatCount(active)}건</span>
-          <Button type="button" disabled={active === 0} onClick={onApply}>적용</Button>
+          <Button type="button" disabled={active === 0 || progress !== null} onClick={() => { void onApply() }}>
+            {progress !== null ? formatProgress(progress.done, progress.total) : '적용'}
+          </Button>
         </div>
       )}
     </>

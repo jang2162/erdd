@@ -26,7 +26,7 @@ export function setAllForStatus(
   return out
 }
 
-/** 실제로 적용될(= defer가 아닌) 항목 수. op 상한 가드와 버튼 활성 판정에 쓴다. */
+/** 실제로 적용될(= defer가 아닌) 항목 수. 적용 버튼 활성 판정과 처리 대상 표시에 쓴다. */
 export function countActive(decisions: Decisions): number {
   return Object.values(decisions).filter((d) => d !== 'defer').length
 }

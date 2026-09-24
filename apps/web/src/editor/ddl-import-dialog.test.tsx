@@ -18,7 +18,7 @@ const DDL = `
 CREATE TABLE MBR (MBR_NO bigint NOT NULL, MBR_NM varchar(100), PRIMARY KEY (MBR_NO));
 COMMENT ON TABLE MBR IS '회원';`
 
-function renderDialog() {
+function renderDialog(onOpenChange: (open: boolean) => void = () => {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
@@ -26,7 +26,7 @@ function renderDialog() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
     </QueryClientProvider>
   )
-  render(<DdlImportDialog projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
+  render(<DdlImportDialog projectId={PROJECT_ID} open onOpenChange={onOpenChange} />, { wrapper: w })
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
@@ -84,17 +84,6 @@ describe('DdlImportDialog', () => {
     await userEvent.selectOptions(screen.getByRole('combobox', { name: '방언' }), 'oracle')
     expect(await screen.findByText(/TEXT로 읽었습니다/)).toBeInTheDocument()
     expect(screen.queryByText(/알지 못해/)).toBeNull()
-  })
-
-  it('op 한도를 넘으면 적용을 막고 안내한다', async () => {
-    const many = Array.from({ length: 2600 }, (_, i) => `CREATE TABLE T${i} (C1 INT, C2 INT);`).join('\n')
-    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
-    grantEditPermission()
-    renderDialog()
-    await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
-    await userEvent.paste(many)
-    expect(await screen.findByText(/나눠/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /만들기$/ })).toBeDisabled()
   })
 
   // I-1: 경고의 target(어느 테이블·컬럼인지)이 렌더돼야 한다 — 그렇지 않으면 컬럼 여러
@@ -156,6 +145,33 @@ describe('DdlImportDialog', () => {
 
   // 「편집 권한이 없으면 진입점이 없다」는 header-tools.test.tsx 로 옮겼다 — canEdit 가드가
   // 컴포넌트에서 「파일 ▾」 메뉴 항목으로 이동했기 때문이다(설계 3.3).
+
+  it('5,000건을 넘는 가져오기는 막지 않고 나눠 보내며 버튼에 진행을 보인다', async () => {
+    const calls: { ops: unknown[]; summary?: string }[] = []
+    let release!: () => void
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input as { ops: unknown[]; summary?: string })
+        if (calls.length === 1) return { data: { seq: 2 } }
+        return new Promise((resolve) => { release = () => resolve({ data: { seq: 3 } }) })
+      },
+    })
+    const onOpenChange = vi.fn()
+    useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
+    grantEditPermission()
+    renderDialog(onOpenChange)
+    // 테이블 1 + 컬럼 5,001 = op 5,002 → 조각 5,000 + 2. 테이블을 하나로 두어 자동 배치 비용을 피한다.
+    const columns = Array.from({ length: 5001 }, (_, i) => `C${i} int`).join(', ')
+    fireEvent.change(screen.getByRole('textbox', { name: 'DDL' }), { target: { value: `CREATE TABLE T (${columns});` } })
+    const apply = await screen.findByRole('button', { name: '1개 테이블 만들기' }, { timeout: 30000 })
+    expect(screen.queryByText(/한 번에 가져올 수 있는 양을 넘었습니다/)).toBeNull()
+    await userEvent.click(apply)
+    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' }, { timeout: 30000 })).toBeDisabled()
+    release()
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false), { timeout: 30000 })
+    expect(calls.map((c) => c.ops.length)).toEqual([5000, 2])
+    expect(calls.map((c) => c.summary)).toEqual(['DDL 가져오기 (1/2)', 'DDL 가져오기 (2/2)'])
+  }, 60000)
 })
 
 describe('DdlImportDialog — DBML 형식', () => {
