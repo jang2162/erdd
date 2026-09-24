@@ -99,7 +99,7 @@
 
 관리 화면의 조회 모달(`library-view-dialog.tsx`)은 종류 하나·한 페이지만 받는다(`services/resource-library.ts`
 의 `loadLibraryItemPage`). 탭 제목의 개수는 `library.list`·`listForProject` 가 함께 싣는 `countsByKind` 다
-(`itemCount` 는 그대로 두고 CLI 가 쓴다).
+(`itemCount` 는 그대로 두고 CLI 와 웹의 라이브러리 목록 행 — 관리 화면·에디터 공용 리소스 패널 — 이 쓴다).
 
 - **`items.list` 는 전체 조회로 남는다** — CLI(`dict pull`·`dict push`·`library`)와 재동기화·승격 계획이 전체를
   전제로 `planPromote`·`planResync` 를 돌린다. 형태를 바꾸지 마라.

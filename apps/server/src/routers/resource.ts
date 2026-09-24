@@ -27,8 +27,8 @@ function kindCount(kind: ResourceKind) {
 
 /**
  * 라이브러리 목록 + 항목 수. where 조건은 호출부가 만든다.
- * `itemCount` 는 CLI(`dict list`·`library list`)가 쓰고, `countsByKind` 는 관리 화면 조회 모달의 탭 제목·빈 탭
- * 표시가 쓴다. 둘 다 같은 조인·같은 그룹에서 세므로 합이 어긋나지 않는다.
+ * `itemCount` 는 CLI(`dict list`·`library list`)와 웹의 라이브러리 목록 행(관리 화면·에디터 공용 리소스 패널)이
+ * 쓰고, `countsByKind` 는 관리 화면 조회 모달의 탭 제목·빈 탭 표시가 쓴다. 둘 다 같은 조인·같은 그룹에서 세므로 합이 어긋나지 않는다.
  */
 async function listWithCounts(db: Db, where: SQL | undefined) {
   const rows = await db

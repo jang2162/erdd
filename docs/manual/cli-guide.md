@@ -2228,7 +2228,8 @@ $ erdd dict push --library "플랫폼팀 표준 사전" --name 고객 --json --y
  "behind":[{"kind":"word","name":"고객","entityId":"01a0cc73-5ea4-7256-94f1-4864bf41a9c9"}]}
 ```
 
-`dict list --json` 은 라이브러리 배열(`canWrite`·`subscribed` 포함), `dict requests --json` 은 요청 배열
+`dict list --json` 은 라이브러리 배열(`canWrite`·`subscribed` 포함, 서버 라이브러리 행은 종류별 항목 수
+`countsByKind` 도 싣는다), `dict requests --json` 은 요청 배열
 (`status`·`note`·`resolutionNote`·`approvedEntityIds` 포함)이다. `init --create` 의 JSON 은
 [6.1](#61-erdd-init), `push` 의 `detachedOrigins` 는 [6.6](#66-erdd-push).
 

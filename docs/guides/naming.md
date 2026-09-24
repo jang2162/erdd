@@ -252,7 +252,8 @@ const generateDdl = (model, dialect, scope = { kind: 'all' }, rules = DEFAULT_NA
   동안에는 마지막으로 열려 있던 때의 값을 그대로 보인다(`dict-panel.test.tsx` 「닫혀 있으면 모델이 바뀌어도
   미등록·사용처 계산을 돌리지 않는다 — 패널은 늘 마운트돼 있다」). 사용 수는 `buildUsageIndex` 한 번에서
   읽는다 — 결과는 `wordUsage`/`termUsage` 와 같아야 하고 `dict-edits.test.ts` 「buildUsageIndex — 목록의 사용
-  수는…」 블록이 잠근다. 열 때마다 모델이 바뀌었으면 다시 계산하므로 대용량 사전에서 여는 비용은 위
+  수는…」 블록이 잠근다(`termUsage` 는 용어 전파가 계속 쓰고, `wordUsage` 는 프로덕션 호출자 없이 그 대조
+  기준으로만 남았다). 열 때마다 모델이 바뀌었으면 다시 계산하므로 대용량 사전에서 여는 비용은 위
   「분해 경로는 성능이 걸려 있다」의 사전 파생 구조가 좌우한다.
 
 ### 용어 전파
