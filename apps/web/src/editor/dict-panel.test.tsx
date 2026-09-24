@@ -43,6 +43,20 @@ function renderPanel(open = true) {
   render(<DictPanel projectId={PROJECT_ID} open={open} onOpenChange={() => {}} />, { wrapper: w })
 }
 
+/** 열림을 바꿔 가며 다시 그릴 때 — 쿼리 클라이언트를 그대로 둔다. */
+function renderPanelWithRerender(open: boolean) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
+  const w = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+    </QueryClientProvider>
+  )
+  const panel = (o: boolean) => <DictPanel projectId={PROJECT_ID} open={o} onOpenChange={() => {}} />
+  const result = render(panel(open), { wrapper: w })
+  return { rerender: (o: boolean) => result.rerender(panel(o)) }
+}
+
 function loadModelWithDict(grant = true) {
   // buildSampleModel의 t2 테이블 논리명은 "회원", c2/c3/c4 컬럼 논리명은 "회원번호"/"회원명"/"등급코드".
   let m = buildSampleModel()
@@ -58,7 +72,7 @@ function loadModelWithDict(grant = true) {
   if (grant) grantEditPermission()
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); useEditorStore.getState().reset() })
 
 describe('DictPanel', () => {
   it('단어 탭: 목록과 사용처 개수를 보여준다', async () => {
@@ -186,6 +200,62 @@ describe('DictPanel', () => {
     expect(unregisteredWords).not.toHaveBeenCalled()
     expect(unregisteredAbbreviations).not.toHaveBeenCalled()
     expect(buildUsageIndex).not.toHaveBeenCalled()
+  })
+
+  it('닫히는 애니메이션 동안 미등록 건수·사용처를 그대로 보이고, 닫힌 동안 모델이 바뀌어도 다시 계산하지 않는다', async () => {
+    // jsdom 에는 애니메이션이 없어 Radix Presence 가 닫자마자 내용을 걷는다. 닫힘 상태에서 애니메이션이 도는 것처럼
+    // 보이게 해 내용이 남아 있는 동안(브라우저의 페이드아웃 약 200ms)의 화면을 본다.
+    const real = window.getComputedStyle.bind(window)
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => new Proxy(real(el, pseudo), {
+      get: (target, prop) => {
+        if (prop === 'animationName') return el.getAttribute('data-state') === 'closed' ? 'exit' : 'enter'
+        const value = Reflect.get(target, prop) as unknown
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value
+      },
+    }))
+    loadModelWithDict()
+    const { rerender } = renderPanelWithRerender(true)
+    const unregisteredTab = screen.getByRole('tab', { name: /^미등록 항목 \(\d+\)$/ })
+    const unregisteredTitle = unregisteredTab.textContent
+    expect(screen.getByText(/사용처 \d+개/)).toBeInTheDocument()
+    vi.mocked(unregisteredWords).mockClear()
+    vi.mocked(unregisteredAbbreviations).mockClear()
+    vi.mocked(buildUsageIndex).mockClear()
+
+    rerender(false)
+    act(() => {
+      const m = useEditorStore.getState().model
+      useEditorStore.getState().setLoaded(createWord(m, {
+        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
+      }), 2, PROJECT_ID)
+    })
+    expect(screen.getByRole('dialog', { hidden: true })).toHaveAttribute('data-state', 'closed')
+    expect(screen.getByRole('tab', { name: unregisteredTitle!, hidden: true })).toBeInTheDocument()
+    expect(screen.getByText(/사용처 \d+개/)).toBeInTheDocument()
+    expect(unregisteredWords).not.toHaveBeenCalled()
+    expect(unregisteredAbbreviations).not.toHaveBeenCalled()
+    expect(buildUsageIndex).not.toHaveBeenCalled()
+  })
+
+  it('닫힌 동안 모델이 바뀌었으면 다시 열 때 최신 모델로 미등록 건수와 사용처를 다시 계산한다', async () => {
+    loadModelWithDict()
+    const { rerender } = renderPanelWithRerender(true)
+    const before = Number(/\((\d+)\)/.exec(screen.getByRole('tab', { name: /^미등록 항목/ }).textContent!)![1])
+    expect(screen.queryByText('NO')).toBeNull()
+    rerender(false)
+    act(() => {
+      // 픽스처의 「회원번호」(MBR_NO) 컬럼이 쓰는 미등록 단어 「번호」/약어 「NO」를 등록한다 — 두 방향에서
+      // 하나씩, 미등록이 둘 줄고 새 단어에 사용처가 생긴다.
+      const m = useEditorStore.getState().model
+      useEditorStore.getState().setLoaded(createWord(m, {
+        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
+      }), 2, PROJECT_ID)
+    })
+    rerender(true)
+    expect(before).toBeGreaterThan(2)
+    expect(screen.getByRole('tab', { name: /^미등록 항목/ })).toHaveTextContent(`미등록 항목 (${before - 2})`)
+    const row = screen.getByText('NO').closest('li')!
+    expect(row).toHaveTextContent(/사용처 [1-9]\d*개/)
   })
 
   it('단어↔용어 탭을 오가도 사용처 색인을 다시 만들지 않는다', async () => {

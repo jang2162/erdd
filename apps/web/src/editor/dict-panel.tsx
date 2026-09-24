@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import type { ProjectModel, Term, Word } from '@erdd/core'
+import type { NamingRules, ProjectModel, Term, Word } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
@@ -51,19 +51,28 @@ export function DictPanel({ projectId, open, onOpenChange }: {
     () => Object.values(model.terms).sort((a, b) => a.logicalName.localeCompare(b.logicalName)), [model.terms])
   const wordList = useListPage(words, WORD_FIELDS)
   const termList = useListPage(terms, TERM_FIELDS)
-  // 사용 수는 모델을 한 번 훑은 색인에서 읽는다(행마다 wordUsage/termUsage 를 부르지 않는다). 다이얼로그가
-  // 닫혀 있거나 사용 수를 보이지 않는 탭이면 만들지 않는다 — 이 패널은 늘 마운트돼 있어 편집마다 다시 만들게 된다.
-  // 의존성은 `section` 이 아니라 이 불리언이다 — 단어↔용어 탭을 오갈 때마다 같은 색인을 다시 만들지 않게 한다.
-  const needsUsage = open && (section === 'words' || section === 'terms')
+  // 무거운 계산(사용처 색인·미등록)은 열려 있던 마지막 때의 입력으로 한다. 이 패널은 늘 마운트돼 있어 닫힌
+  // 동안 편집마다 다시 계산하게 되므로 닫혀 있으면 입력을 바꾸지 않는다 — 한 번도 열리지 않았으면 계산하지 않는다.
+  // 닫힌 동안 값을 비우지 않는 것은 닫힘 애니메이션(Radix Presence 가 내용을 잠시 더 그린다) 동안 건수·사용처가
+  // 먼저 사라져 깜박이지 않게 하려는 것이다. 다시 열면 최신 모델로 바뀌어 다시 계산된다.
+  // 렌더 중 상태 맞추기라 바뀐 입력으로 한 번 더 그리고, 옛 입력의 화면은 커밋되지 않는다.
+  const [calcInput, setCalcInput] = useState<{ model: ProjectModel; namingRules: NamingRules } | null>(null)
+  if (open && (calcInput === null || calcInput.model !== model || calcInput.namingRules !== namingRules)) {
+    setCalcInput({ model, namingRules })
+  }
+  // 사용 수는 모델을 한 번 훑은 색인에서 읽는다(행마다 wordUsage/termUsage 를 부르지 않는다). 사용 수를 보이지
+  // 않는 탭이면 만들지 않는다. 의존성은 `section` 이 아니라 이 불리언이다 — 단어↔용어 탭을 오갈 때마다 같은
+  // 색인을 다시 만들지 않게 한다.
+  const showsUsage = section === 'words' || section === 'terms'
   const usage = useMemo(
-    () => (needsUsage ? buildUsageIndex(model, namingRules) : null), [needsUsage, model, namingRules])
-  // 미등록 계산은 이름마다 용어 전부를 비교해 대용량 사전에서 무겁다. 닫혀 있으면 돌리지 않는다 — 탭 제목의
-  // 건수도 다이얼로그 안에 있어 닫힌 동안 보일 곳이 없다.
+    () => (showsUsage && calcInput !== null ? buildUsageIndex(calcInput.model, calcInput.namingRules) : null),
+    [showsUsage, calcInput])
+  // 미등록 계산은 이름마다 용어 전부를 비교해 대용량 사전에서 무겁다.
   const candidates = useMemo(
-    () => (open ? unregisteredWords(model, namingRules) : []), [open, model, namingRules])
+    () => (calcInput !== null ? unregisteredWords(calcInput.model, calcInput.namingRules) : []), [calcInput])
   // 물리명 분해에서 나온 미등록 약어(위 candidates의 대칭 — 논리명 분해 vs 물리명 분해).
   const abbrCandidates = useMemo(
-    () => (open ? unregisteredAbbreviations(model, namingRules) : []), [open, model, namingRules])
+    () => (calcInput !== null ? unregisteredAbbreviations(calcInput.model, calcInput.namingRules) : []), [calcInput])
   const unregisteredCount = candidates.length + abbrCandidates.length
 
   const onAddWord = () => { setEditingWord(null); setWordEditorOpen(true) }
