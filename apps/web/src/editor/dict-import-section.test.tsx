@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
-import type { SheetData } from '@erdd/core'
+import type { SheetData, Word } from '@erdd/core'
 import { MAX_OPS_PER_MUTATION, createEmptyModel } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import { formatCount } from '@/lib/format'
@@ -89,6 +89,25 @@ describe('DictImportSection', () => {
     expect(screen.getByText(/오류 1행/)).toBeInTheDocument()
     expect(screen.getByText('적용 대상 1건')).toBeInTheDocument()
   })
+
+  it('미리보기의 신규·중복·오류와 넘친 이슈 수를 천 단위로 보인다', async () => {
+    const words: Record<string, Word> = {}
+    for (let i = 0; i < 1000; i++) {
+      words[`w${i}`] = { id: `w${i}`, logicalName: `기존${i}`, abbreviation: `OLD${i}`, englishName: null, description: null, origin: null }
+    }
+    useEditorStore.getState().setLoaded({ ...createEmptyModel(), words }, 1, PROJECT_ID)
+    grantEditPermission()
+    renderSection()
+    const rows = [
+      ...Array.from({ length: 1000 }, (_, i) => [`기존${i}`, `OLD${i}`, '', '']),
+      ...Array.from({ length: 1200 }, (_, i) => [`신규${i}`, `NEW${i}`, '', '']),
+      ...Array.from({ length: 1100 }, () => ['', '', '', 'x']),
+    ]
+    await userEvent.upload(fileInput(), await xlsxFile([wordsSheet(rows)]))
+    expect(await screen.findByText(/신규 1,200건 · 중복 1,000건 · 오류 1,100행/, undefined, { timeout: 10000 })).toBeInTheDocument()
+    const issues = screen.getByRole('list', { name: '가져오기 이슈' })
+    expect(issues).toHaveTextContent('외 1,080건')                 // 오류 행 1,100건 − 보이는 20건
+  }, 30000)
 
   it('이슈 목록에 시트 이름과 사유를 보여준다', async () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)

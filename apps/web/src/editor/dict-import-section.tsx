@@ -126,7 +126,7 @@ export function DictImportSection({ projectId }: { projectId: string }) {
               <p className="text-sm">
                 <span className="font-medium">{fileName}</span>
                 {' — '}
-                신규 {plan.total.created}건 · 중복 {plan.total.duplicated}건 · 오류 {plan.total.errored}행
+                신규 {formatCount(plan.total.created)}건 · 중복 {formatCount(plan.total.duplicated)}건 · 오류 {formatCount(plan.total.errored)}행
               </p>
 
               <fieldset className="grid gap-1.5">
@@ -166,7 +166,7 @@ export function DictImportSection({ projectId }: { projectId: string }) {
                     </li>
                   ))}
                   {plan.issues.length > MAX_ISSUES_SHOWN && (
-                    <li className="text-muted-foreground">외 {plan.issues.length - MAX_ISSUES_SHOWN}건</li>
+                    <li className="text-muted-foreground">외 {formatCount(plan.issues.length - MAX_ISSUES_SHOWN)}건</li>
                   )}
                 </ul>
               )}

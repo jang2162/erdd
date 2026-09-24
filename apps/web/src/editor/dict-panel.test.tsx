@@ -323,6 +323,21 @@ describe('DictPanel 용어 전파', () => {
     expect(screen.getAllByText(/GRD_CD → GRADE_CD/)).toHaveLength(2)
   })
 
+  it('전파 대상 수를 천 단위로 보인다', async () => {
+    loadModelWithDict()
+    const m = useEditorStore.getState().model
+    const base = Object.values(m.columns).find((c) => c.logicalName === '등급코드')!
+    const columns = { ...m.columns }
+    for (let i = 0; i < 1000; i++) columns[`cx${i}`] = { ...base, id: `cx${i}` }
+    useEditorStore.getState().setLoaded({ ...m, columns }, 2, PROJECT_ID)
+    renderPanel()
+    await openTermEdit()
+    await typePhysicalName('GRADE_CD')
+    await userEvent.click(screen.getByRole('button', { name: '저장' }))
+    expect(await screen.findByText(/용어를 쓰는 1,002곳을 함께 갱신할까요/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '1,002곳에 반영' })).toBeInTheDocument()
+  })
+
   it('확인 목록의 도메인은 UUID가 아니라 이름으로 보여준다', async () => {
     // loadModelWithDict의 term1은 '등급코드'(도메인 없음), c1·c4가 그 용어를 쓴다.
     loadModelWithDict()

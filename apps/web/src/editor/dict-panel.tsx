@@ -536,7 +536,7 @@ function TermEditDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            &quot;{term?.logicalName}&quot; 용어를 쓰는 {pending?.plan.entries.length ?? 0}곳을 함께 갱신할까요?
+            &quot;{term?.logicalName}&quot; 용어를 쓰는 {formatCount(pending?.plan.entries.length ?? 0)}곳을 함께 갱신할까요?
           </DialogTitle>
         </DialogHeader>
         <div className="max-h-72 overflow-y-auto text-sm">
@@ -555,7 +555,7 @@ function TermEditDialog({
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onResolve(false)}>유지</Button>
           <Button type="button" onClick={() => onResolve(true)}>
-            {pending?.plan.entries.length ?? 0}곳에 반영
+            {formatCount(pending?.plan.entries.length ?? 0)}곳에 반영
           </Button>
         </DialogFooter>
       </DialogContent>
