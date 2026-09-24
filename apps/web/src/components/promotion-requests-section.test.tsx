@@ -305,6 +305,18 @@ describe('PromotionRequestsSection', () => {
     expect(screen.queryByRole('button', { name: '검토' })).toBeNull()
   })
 
+  it('항목 칸의 개수는 천 단위로 끊는다 — 대기와 승인 모두', async () => {
+    const many = Array.from({ length: 16565 }, (_, i) => `w${i}`)
+    renderSection({ 'promotion.listForOrg': (input: unknown) => ({ data: [
+      (input as { status?: string } | undefined)?.status === 'resolved'
+        ? { ...ROW, id: 'r9', status: 'resolved', entityIds: many, itemCount: 16565, approvedEntityIds: many }
+        : { ...ROW, entityIds: many, itemCount: 16565 },
+    ] }) })
+    expect(await screen.findByText('16,565건')).toBeTruthy()
+    await pickStatus('승인됨')
+    expect(await screen.findByText('16,565/16,565건 승격')).toBeTruthy()
+  })
+
   it('선택을 모두 풀면 버튼이 반려로 바뀌고 빈 approve를 보낸다', async () => {
     const resolve = vi.fn((_input: unknown) => ({ data: {
       status: 'rejected', seq: null, inserted: 0, updated: 0, skipped: [],

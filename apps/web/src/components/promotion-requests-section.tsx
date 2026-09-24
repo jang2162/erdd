@@ -36,8 +36,8 @@ const STATUS_OPTIONS: { value: RequestStatus; label: string; empty: string }[] =
 function itemCountLabel(
   status: RequestStatus, row: { itemCount: number; approvedEntityIds: string[] | null },
 ): string {
-  if (status !== 'resolved') return `${row.itemCount}건`
-  return `${(row.approvedEntityIds ?? []).length}/${row.itemCount}건 승격`
+  if (status !== 'resolved') return `${formatCount(row.itemCount)}건`
+  return `${formatCount((row.approvedEntityIds ?? []).length)}/${formatCount(row.itemCount)}건 승격`
 }
 
 /**
