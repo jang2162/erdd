@@ -170,7 +170,8 @@ describe('PromotionRequestsSection', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
 
     const keys = invalidatedKeys(invalidate)
-    expect(keys.some((k) => k.includes('"items"') && k.includes('"l2"'))).toBe(true)
+    expect(keys).toContain(JSON.stringify([['resource', 'items', 'page'], { input: { libraryId: 'l2' }, type: 'query' }]))
+    expect(keys).toContain(JSON.stringify(['library-domain-options', 'l2']))
     expect(keys.some((k) => k.includes('"library"') && k.includes('"list"'))).toBe(true)
   })
 

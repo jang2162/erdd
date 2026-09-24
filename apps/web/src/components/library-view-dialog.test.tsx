@@ -149,7 +149,7 @@ describe('LibraryViewDialog', () => {
     expect(page).toHaveBeenCalledWith(expect.objectContaining({ kind: 'domain', offset: 0, limit: 200 }))
   })
 
-  it('항목을 추가하면 그 라이브러리·종류로 만들고 항목 페이지와 목록 개수를 무효화한다', async () => {
+  it('항목을 추가하면 그 라이브러리·종류로 만들고 항목 페이지·도메인 목록·목록 개수를 무효화한다', async () => {
     const create = vi.fn(() => ({ data: { id: 'w9' } }))
     const { queryClient, onChanged } = renderDialog({
       'resource.items.page': pageHandler(() => words(1)), 'resource.items.create': create,
@@ -166,5 +166,6 @@ describe('LibraryViewDialog', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
     const keys = invalidate.mock.calls.map(([f]) => JSON.stringify((f as { queryKey?: unknown } | undefined)?.queryKey))
     expect(keys).toContain(JSON.stringify([['resource', 'items', 'page'], { input: { libraryId: 'l1' }, type: 'query' }]))
+    expect(keys).toContain(JSON.stringify(['library-domain-options', 'l1']))
   })
 })

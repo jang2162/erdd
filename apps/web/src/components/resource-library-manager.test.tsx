@@ -86,7 +86,7 @@ describe('ResourceLibraryManager', () => {
     expect(screen.queryByRole('button', { name: /파일에서 만들기/ })).toBeNull()
   })
 
-  it('가져오기 완료는 가져온 라이브러리의 항목 페이지 쿼리만 무효화한다', async () => {
+  it('가져오기 완료는 가져온 라이브러리의 항목 페이지·도메인 목록 쿼리만 무효화한다', async () => {
     const LIBS2 = [
       { id: 'a1', scope: 'global', orgId: null, name: '대상 A', description: '', itemCount: 1, countsByKind: { ...COUNTS, word: 1 } },
       { id: 'b1', scope: 'global', orgId: null, name: '다른 B', description: '', itemCount: 1, countsByKind: { ...COUNTS, word: 1 } },
@@ -118,5 +118,10 @@ describe('ResourceLibraryManager', () => {
       JSON.stringify([['resource', 'items', 'page'], { input: { libraryId }, type: 'query' }]))
     expect(invalidatedPage('a1')).toBe(true)
     expect(invalidatedPage('b1')).toBe(false)
+    const invalidatedDomains = (libraryId: string) => invalidateSpy.mock.calls.some(([opts]) =>
+      JSON.stringify((opts as { queryKey?: unknown } | undefined)?.queryKey) ===
+      JSON.stringify(['library-domain-options', libraryId]))
+    expect(invalidatedDomains('a1')).toBe(true)
+    expect(invalidatedDomains('b1')).toBe(false)
   })
 })
