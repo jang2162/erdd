@@ -187,6 +187,24 @@ describe('DictPanel', () => {
     expect(screen.getByText('AB05')).toBeInTheDocument()
     expect(screen.queryByText('단어06')).toBeNull()
   })
+  it('단어는 영문명으로, 용어는 물리명으로도 찾는다', async () => {
+    let m = createEmptyModel()
+    m = createWord(m, { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'Member', description: null, origin: null })
+    m = createWord(m, { id: 'w2', logicalName: '주문', abbreviation: 'ORD', englishName: 'Order', description: null, origin: null })
+    m = createTerm(m, { id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: null, description: null, origin: null })
+    m = createTerm(m, { id: 't2', logicalName: '주문일자', physicalName: 'ORD_DT', domainId: null, description: null, origin: null })
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.type(screen.getByRole('textbox', { name: '단어 검색' }), 'membe')
+    expect(screen.getByText('회원')).toBeInTheDocument()
+    expect(screen.queryByText('주문')).toBeNull()
+    await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
+    await userEvent.type(screen.getByRole('textbox', { name: '용어 검색' }), 'ord_d')
+    expect(screen.getByText('주문일자')).toBeInTheDocument()
+    expect(screen.queryByText('회원번호')).toBeNull()
+  })
+
   it('용어 목록도 쪽을 넘기면 맨 위부터 보인다', async () => {
     let m = createEmptyModel()
     for (let i = 0; i < 60; i++) {
