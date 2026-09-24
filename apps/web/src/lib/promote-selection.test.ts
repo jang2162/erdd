@@ -77,6 +77,11 @@ describe('carrySelection', () => {
     expect([...out]).toEqual([])
   })
 
+  it('대상 항목이 같아도 상태가 바뀌면 기본 선택을 받는다 — 링크가 끊겨 원본 갱신이 동명 발견이 된 경우', () => {
+    const next = [entry({ entityId: 'u1', status: 'name-match', targetItemId: 's2' })]
+    expect([...carrySelection(before, new Set(['u1']), next)]).toEqual([])
+  })
+
   it('계획에서 빠진 항목은 선택에서 빠진다 — 올릴 항목 건수에 남지 않는다', () => {
     const out = carrySelection(before, new Set(['n1', 'n2', 'u1']), [before[0]!])
     expect([...out]).toEqual(['n1'])
