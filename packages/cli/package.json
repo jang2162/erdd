@@ -1,6 +1,6 @@
 {
   "name": "@erdd/cli",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "ER 모델을 저장소 안의 YAML 파일로 두고 브라우저 GUI 로 편집하는 ERDD 의 명령줄 도구",
   "keywords": [
     "erd",
