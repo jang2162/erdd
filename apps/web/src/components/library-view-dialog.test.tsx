@@ -69,8 +69,11 @@ describe('LibraryViewDialog', () => {
     renderDialog({ 'resource.items.page': page })
     await screen.findByText('w000')
     expect(screen.getByText('1 / 3')).toBeInTheDocument()
+    const list = screen.getByText('w000').closest<HTMLElement>('[class*="overflow-y-auto"]')!
+    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
     await userEvent.click(screen.getByRole('button', { name: '다음' }))
     expect(await screen.findByText('w050')).toBeInTheDocument()
+    expect(list.scrollTop).toBe(0)
     expect(page).toHaveBeenCalledWith(expect.objectContaining({ kind: 'word', offset: 50, limit: 50 }))
     await userEvent.type(screen.getByRole('textbox', { name: '단어 검색' }), 'w11')
     await waitFor(() => expect(page).toHaveBeenCalledWith(expect.objectContaining({ query: 'w11', offset: 0 })))

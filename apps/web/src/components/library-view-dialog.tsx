@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -206,6 +206,7 @@ function KindTab({
 
   const columns = columnsOf(kind)
   const label = RESOURCE_KIND_LABEL[kind]
+  const listRef = useRef<HTMLDivElement>(null)
   return (
     <div className="grid gap-2">
       <div className="flex items-center gap-2">
@@ -222,7 +223,7 @@ function KindTab({
         </p>
       )}
       {result.data && result.data.items.length > 0 && (
-        <div className="max-h-[50vh] overflow-y-auto">
+        <div ref={listRef} className="max-h-[50vh] overflow-y-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -267,7 +268,7 @@ function KindTab({
         </div>
       )}
       <Pagination label={label} page={Math.min(state.page, pageCount)} pageCount={pageCount} total={total}
-        onPageChange={onPageChange} />
+        onPageChange={onPageChange} listRef={listRef} />
     </div>
   )
 }

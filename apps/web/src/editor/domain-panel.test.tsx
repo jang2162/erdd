@@ -105,8 +105,11 @@ describe('DomainPanel', () => {
     renderPanel()
     expect(screen.getByText('가분류')).toBeInTheDocument()
     expect(screen.queryByText('나분류')).toBeNull()
+    const list = screen.getByText('가분류').closest<HTMLElement>('[class*="overflow-y-auto"]')!
+    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
     await userEvent.click(screen.getByRole('button', { name: '다음' }))
     expect(screen.getByText('나분류')).toBeInTheDocument()
+    expect(list.scrollTop).toBe(0)
     expect(screen.queryByText('가분류')).toBeNull()
   })
 

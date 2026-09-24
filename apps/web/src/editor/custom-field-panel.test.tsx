@@ -110,7 +110,10 @@ describe('CustomFieldPanel', () => {
     grantEditPermission()
     renderPanel()
     expect(screen.getByRole('button', { name: '항목49 아래로' })).toBeEnabled()   // 쪽의 끝이지만 전체의 끝이 아니다
+    const list = screen.getByText('항목49').closest<HTMLElement>('[class*="overflow-y-auto"]')!
+    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
     await userEvent.click(screen.getByRole('button', { name: '다음' }))
+    expect(list.scrollTop).toBe(0)
     expect(screen.getByRole('button', { name: '항목50 위로' })).toBeEnabled()
     expect(screen.getByRole('button', { name: '항목59 아래로' })).toBeDisabled()
   })

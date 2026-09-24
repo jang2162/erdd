@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { formatCount } from '@/lib/format'
 import { useListPage } from '@/lib/use-list-page'
 import { Input } from '@/components/ui/input'
@@ -23,10 +23,11 @@ export function PagedSection<T>({ title, rows, fields, renderRow, actions, child
   children?: ReactNode
 }) {
   const list = useListPage(rows, fields)
+  const sectionRef = useRef<HTMLElement>(null)
   const { view } = list
   const searching = list.query.trim() !== ''
   return (
-    <section aria-label={title} className="grid gap-1.5">
+    <section ref={sectionRef} aria-label={title} className="grid gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-sm font-semibold">{title} ({formatCount(rows.length)})</h4>
         {actions !== undefined && rows.length > 0 && (
@@ -48,7 +49,7 @@ export function PagedSection<T>({ title, rows, fields, renderRow, actions, child
       )}
       <ul className="grid gap-1">{view.rows.map(renderRow)}</ul>
       <Pagination label={title} page={view.page} pageCount={view.pageCount} total={view.total}
-        onPageChange={list.setPage} />
+        onPageChange={list.setPage} listRef={sectionRef} />
     </section>
   )
 }

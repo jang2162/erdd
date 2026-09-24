@@ -177,13 +177,33 @@ describe('DictPanel', () => {
     expect(screen.getByRole('tab', { name: '단어 (60)' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('단어49')).toBeInTheDocument()
     expect(screen.queryByText('단어50')).toBeNull()
+    const list = screen.getByText('단어49').closest('ul')!
+    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
     await userEvent.click(screen.getByRole('button', { name: '다음' }))
     expect(screen.getByText('단어50')).toBeInTheDocument()
+    expect(list.scrollTop).toBe(0)
     await userEvent.type(screen.getByRole('textbox', { name: '단어 검색' }), 'ab05')
     expect(screen.getByText('단어05')).toBeInTheDocument()
     expect(screen.getByText('AB05')).toBeInTheDocument()
     expect(screen.queryByText('단어06')).toBeNull()
   })
+  it('용어 목록도 쪽을 넘기면 맨 위부터 보인다', async () => {
+    let m = createEmptyModel()
+    for (let i = 0; i < 60; i++) {
+      const n = String(i).padStart(2, '0')
+      m = createTerm(m, { id: `t${i}`, logicalName: `용어${n}`, physicalName: `TRM_${n}`, domainId: null, description: null, origin: null })
+    }
+    useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
+    grantEditPermission()
+    renderPanel()
+    await userEvent.click(screen.getByRole('tab', { name: '용어 (60)' }))
+    const list = screen.getByText('용어49').closest('ul')!
+    list.scrollTop = 400
+    await userEvent.click(screen.getByRole('button', { name: '다음' }))
+    expect(screen.getByText('용어50')).toBeInTheDocument()
+    expect(list.scrollTop).toBe(0)
+  })
+
   it('닫혀 있으면 모델이 바뀌어도 미등록·사용처 계산을 돌리지 않는다 — 패널은 늘 마운트돼 있다', async () => {
     loadModelWithDict()
     vi.mocked(unregisteredWords).mockClear()

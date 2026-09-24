@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import type { NamingRules, ProjectModel, Term, Word } from '@erdd/core'
 import { useEditorStore } from './store.js'
@@ -51,6 +51,8 @@ export function DictPanel({ projectId, open, onOpenChange }: {
     () => Object.values(model.terms).sort((a, b) => a.logicalName.localeCompare(b.logicalName)), [model.terms])
   const wordList = useListPage(words, WORD_FIELDS)
   const termList = useListPage(terms, TERM_FIELDS)
+  const wordListRef = useRef<HTMLUListElement>(null)
+  const termListRef = useRef<HTMLUListElement>(null)
   // 무거운 계산(사용처 색인·미등록)은 열려 있던 마지막 때의 입력으로 한다. 이 패널은 늘 마운트돼 있어 닫힌
   // 동안 편집마다 다시 계산하게 되므로 닫혀 있으면 입력을 바꾸지 않는다 — 한 번도 열리지 않았으면 계산하지 않는다.
   // 닫힌 동안 값을 비우지 않는 것은 닫힘 애니메이션(Radix Presence 가 내용을 잠시 더 그린다) 동안 건수·사용처가
@@ -109,7 +111,7 @@ export function DictPanel({ projectId, open, onOpenChange }: {
                 <Input aria-label="단어 검색" placeholder="논리명·약어·영문명 검색" value={wordList.query}
                   onChange={(e) => wordList.setQuery(e.target.value)} />
               )}
-              <ul className="grid max-h-96 gap-2 overflow-y-auto">
+              <ul ref={wordListRef} className="grid max-h-96 gap-2 overflow-y-auto">
                 {words.length === 0 && <p className="text-sm text-muted-foreground">아직 단어가 없습니다</p>}
                 {words.length > 0 && wordList.view.total === 0 && (
                   <p className="text-sm text-muted-foreground">검색 결과가 없습니다</p>
@@ -121,7 +123,7 @@ export function DictPanel({ projectId, open, onOpenChange }: {
                 ))}
               </ul>
               <Pagination label="단어" page={wordList.view.page} pageCount={wordList.view.pageCount}
-                total={wordList.view.total} onPageChange={wordList.setPage} />
+                total={wordList.view.total} onPageChange={wordList.setPage} listRef={wordListRef} />
             </TabsContent>
 
             <TabsContent value="terms" className="grid gap-2">
@@ -135,7 +137,7 @@ export function DictPanel({ projectId, open, onOpenChange }: {
                 <Input aria-label="용어 검색" placeholder="논리명·물리명 검색" value={termList.query}
                   onChange={(e) => termList.setQuery(e.target.value)} />
               )}
-              <ul className="grid max-h-96 gap-2 overflow-y-auto">
+              <ul ref={termListRef} className="grid max-h-96 gap-2 overflow-y-auto">
                 {terms.length === 0 && <p className="text-sm text-muted-foreground">아직 용어가 없습니다</p>}
                 {terms.length > 0 && termList.view.total === 0 && (
                   <p className="text-sm text-muted-foreground">검색 결과가 없습니다</p>
@@ -147,7 +149,7 @@ export function DictPanel({ projectId, open, onOpenChange }: {
                 ))}
               </ul>
               <Pagination label="용어" page={termList.view.page} pageCount={termList.view.pageCount}
-                total={termList.view.total} onPageChange={termList.setPage} />
+                total={termList.view.total} onPageChange={termList.setPage} listRef={termListRef} />
             </TabsContent>
 
             <TabsContent value="unregistered" className="grid gap-3">

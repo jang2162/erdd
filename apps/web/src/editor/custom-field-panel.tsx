@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { customFieldsFor, customFieldUsageCount, type CustomField } from '@erdd/core'
 import { useEditorStore } from './store.js'
@@ -52,6 +52,7 @@ export function CustomFieldPanel({ projectId, open, onOpenChange }: {
     return out
   }, [byTarget])
   const list = useListPage(ordered, FIELD_FIELDS)
+  const listRef = useRef<HTMLDivElement>(null)
   const searching = list.query.trim() !== ''
 
   const onAdd = () => { setEditing(null); setEditorOpen(true) }
@@ -84,7 +85,7 @@ export function CustomFieldPanel({ projectId, open, onOpenChange }: {
             <Input aria-label="커스텀 항목 검색" placeholder="이름 검색" value={list.query}
               onChange={(e) => list.setQuery(e.target.value)} />
           )}
-          <div className="grid max-h-96 gap-4 overflow-y-auto">
+          <div ref={listRef} className="grid max-h-96 gap-4 overflow-y-auto">
             {searching && list.view.total === 0 && (
               <p className="text-sm text-muted-foreground">검색 결과가 없습니다</p>
             )}
@@ -154,7 +155,7 @@ export function CustomFieldPanel({ projectId, open, onOpenChange }: {
             })}
           </div>
           <Pagination label="커스텀 항목" page={list.view.page} pageCount={list.view.pageCount}
-            total={list.view.total} onPageChange={list.setPage} />
+            total={list.view.total} onPageChange={list.setPage} listRef={listRef} />
         </DialogContent>
       </Dialog>
       {editorOpen && (

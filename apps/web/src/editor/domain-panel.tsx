@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { type Domain } from '@erdd/core'
 import { useEditorStore } from './store.js'
@@ -51,6 +51,7 @@ export function DomainPanel({ projectId, open, onOpenChange }: {
       .flatMap(([, items]) => items),
     [model.domains])
   const list = useListPage(ordered, DOMAIN_FIELDS)
+  const listRef = useRef<HTMLDivElement>(null)
   const groups = groupByCategory(list.view.rows)
 
   const onAdd = () => { setEditing(null); setEditorOpen(true) }
@@ -70,7 +71,7 @@ export function DomainPanel({ projectId, open, onOpenChange }: {
             <Input aria-label="도메인 검색" placeholder="이름 검색" value={list.query}
               onChange={(e) => list.setQuery(e.target.value)} />
           )}
-          <div className="grid max-h-96 gap-4 overflow-y-auto">
+          <div ref={listRef} className="grid max-h-96 gap-4 overflow-y-auto">
             {ordered.length === 0 && <p className="text-sm text-muted-foreground">아직 도메인이 없습니다</p>}
             {ordered.length > 0 && list.view.total === 0 && (
               <p className="text-sm text-muted-foreground">검색 결과가 없습니다</p>
@@ -115,7 +116,7 @@ export function DomainPanel({ projectId, open, onOpenChange }: {
             ))}
           </div>
           <Pagination label="도메인" page={list.view.page} pageCount={list.view.pageCount}
-            total={list.view.total} onPageChange={list.setPage} />
+            total={list.view.total} onPageChange={list.setPage} listRef={listRef} />
         </DialogContent>
       </Dialog>
       {editorOpen && (
