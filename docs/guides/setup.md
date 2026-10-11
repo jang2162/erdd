@@ -56,6 +56,22 @@ PORT=3001 ERDD_SERVER_PORT=3001 ERDD_WEB_PORT=5174 pnpm dev
 - `DATABASE_URL` 은 그 워크트리의 `.env` 로 준다. 격리 DB 는 미리 만들고 마이그레이션을 적용해 둔다.
 - 워크트리 생성·정리 절차는 [worktree-workflow.md](worktree-workflow.md).
 
+## 포맷·린트·훅
+
+포매터는 oxfmt, 린터는 oxlint, 훅은 lefthook 이다. 설정은 `.oxfmtrc.json`·`lefthook.yml`. 규칙의 근거는
+`docs/guideline/oxc/`·`docs/guideline/lefthook/`.
+
+```bash
+pnpm fmt          # 고친다
+pnpm fmt:check    # 검사만(pre-push 와 같다)
+pnpm lint         # oxlint
+```
+
+- **훅은 `pnpm install` 의 `prepare` 가 설치한다.** 훅은 `.git/hooks` 를 쓰므로 워크트리가 공유한다.
+- **pre-commit 은 staged 파일을 고쳐 다시 stage 하고, pre-push 는 저장소 전체를 검사만 한다.**
+- ⚠️ **oxfmt 0.72 는 한 번에 수렴하지 않는 파일이 있다.** 큰 변경 뒤 `pnpm fmt:check` 가 걸리면 `pnpm fmt` 를 한 번 더 돌린다.
+- 린트는 경고만 낸다(종료 코드 0). 미사용 import 같은 기존 경고가 남아 있다.
+
 ## 마이그레이션
 
 ```bash

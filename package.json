@@ -2,7 +2,6 @@
   "name": "erdd",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.4.1",
   "scripts": {
     "dev": "set -a; [ -f .env ] && . ./.env; set +a; pnpm --parallel -r dev",
     "db": "set -a; [ -f .env ] && . ./.env; set +a; pnpm -C apps/server exec drizzle-kit",
@@ -10,6 +9,22 @@
     "db:migrate": "pnpm run db migrate",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "verify": "pnpm -r typecheck && pnpm -C packages/core test && pnpm -C packages/cli test && pnpm -C apps/web test && pnpm -C apps/server test"
+    "verify": "pnpm -r typecheck && pnpm -C packages/core test && pnpm -C packages/cli test && pnpm -C apps/web test && pnpm -C apps/server test",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "prepare": "lefthook install || true"
+  },
+  "devDependencies": {
+    "@intellectronica/ruler": "^0.3.44",
+    "lefthook": "^2.2.1",
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0"
+  },
+  "packageManager": "pnpm@10.4.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "lefthook"
+    ]
   }
 }

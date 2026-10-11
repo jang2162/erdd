@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "singleQuote": true,
+  "printWidth": 100,
+  "ignorePatterns": [
+    "guideline.json",
+    "guideline-lock.json",
+    ".mcp.json",
+    "**/dist/**",
+    "pnpm-lock.yaml",
+    "docs/**",
+    ".ruler/**",
+    ".claude/**",
+    ".codegraph/**",
+    "**/drizzle/**",
+    "packages/cli/web/**",
+    "packages/cli/docs/**",
+    ".worktrees/**",
+    ".superpowers/**"
+  ]
+}
