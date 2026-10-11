@@ -7,4 +7,5 @@ scripts:
     mise trust
     mise install
     mise exec -- pnpm install --frozen-lockfile
+    mise exec -- pnpm dlx @colbymchenry/codegraph init || echo "codegraph init 실패: 인덱스 없이 진행"
 setupAgentStartupPolicy: wait-for-setup
