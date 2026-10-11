@@ -209,6 +209,7 @@
     curl -s -o /dev/null -w '%{http_code}\n' --max-time 40 --retry 40 --retry-delay 1 \
       --retry-connrefused http://127.0.0.1:9010/mcp
     ```
+  - **MCP 가 406 으로 답해도 창이 없으면 탭을 못 연다.** 겪은 동작이다: neo 에 창이 하나도 없으면 `tabs action="new"` 가 `No browser window available` 로 실패한다. 그때 `windows action="create"` 도 `No profile available` 이면 에이전트가 풀 수 없다 — 사람에게 neo 를 다시 띄우게 하거나, 독립 브라우저로 확인하고 그 사실을 보고서에 적는다.
   - **세션을 열기 전에 켜 둔다.** 세션이 시작될 때 꺼져 있었으면 켜도 이 세션에는 붙지 않는다 — 고장을 가르는 법은 `browser` 스택 「브라우저 서버가 안 붙을 때」. 앱을 로그인 항목에 넣어 두면 이 조건을 매번 기억하지 않아도 된다.
   - **새 탭은 백그라운드로 연다.** `tabs action="new"` 에는 `background: true` 를 준다. `run` 의 `browser.pages.newPage(url)` 은 기본이 백그라운드다. `windows action="create"` 에는 백그라운드 옵션이 없으니 창 대신 탭으로 연다.
   - neo 가 못 하는 확인(콘솔 `log`, 첫 로드 콘솔, 네트워크, 뷰포트)이면 **neo 에 Playwright 를 얹는다** — 이 스택 「neo 가 못 하는 다섯 가지」·「Playwright 를 neo 에 붙일 때」. 렌더(애니메이션·캔버스)를 재거나 다른 계정의 둘째 클라이언트가 필요한 검증은 neo 가 아니라 독립 브라우저로 한다 — `browser` 스택 「페이지 자동화 도구를 얹을 때」 의 예외.
@@ -513,7 +514,7 @@
 
 생성물에 지침을 써 넣지 않는다. 지침을 고치려면 소스를 고치고 `ruler apply` 를 돌린다.
 
-`.ruler/<스택>/` 과 `docs/guideline/` 은 `sync-guideline` 이 문서 저장소에서 복사한 **사본**이다. 직접 고치지 않는다 — 고칠 것은 문서 저장소에 `import-guideline` 으로 올린다. 직접 고친 사본은 다음 sync 에서 덮어써지거나 원본과 조용히 갈라진다.
+`.ruler/<스택>/` 과 `docs/guideline/` 은 `guideline` CLI 가 지침 서버에서 받은 **사본**이다. 직접 고치지 않는다 — 고칠 것은 `guideline propose` 로 올린다(에이전트는 `guideline-export` 스킬). 직접 고친 사본은 다음 `guideline update` 에서 건너뛰어지거나 원본과 조용히 갈라진다.
 
 - **Why:** 생성물은 다음 apply 에서 통째로 덮어써진다. 생성물이 소스로 다시 읽히는 설정이면 apply 마다 자기 자신을 덧붙여 중복 헤더로 오염된다.
 - **How to apply:** 어떤 파일이 생성물인지 헷갈리면 `.ruler/ruler.toml` 의 에이전트 목록과 `.gitignore` 의 Ruler 블록을 본다. 블록 안에 있으면 생성물이다.
