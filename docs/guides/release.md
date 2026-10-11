@@ -229,7 +229,7 @@ publish 잡은 두 패키지를 각각 `pnpm -C packages/<이름> pack --pack-de
   잡도 `pnpm install --frozen-lockfile` 을 한다.
 - **trusted publishing 의 OIDC 교환은 npm CLI 11.5.1 이상이 한다.** Node 22 에 딸린 npm 은 그보다
   낮아 publish 잡이 `npm install -g 'npm@^11.5.1'` 로 올린다. Node 는 22.14.0 이상이어야 한다
-  (`.nvmrc` 의 `22` 가 최신 22.x 로 풀린다).
+  (워크플로의 `node-version: 22` 가 최신 22.x 로 풀린다).
 - ⚠️ **`pnpm --filter <패키지> publish` 로 바꾸지 마라.** `--filter` 는 pnpm 의 재귀 게시 경로를 타는데,
   그 경로는 **이미 있는 버전을 조용히 건너뛰고**(「There are no new packages that should be published」,
   종료 코드 `0`) npm 에 넘기는 인자에서 `--provenance` 를 떨어뜨린다(`--access`·`--otp`·`--dry-run`
@@ -515,9 +515,9 @@ npm 은 `files` 와 무관하게 **패키지 루트의** `LICENSE` 를 tarball �
 - **게시본에 죽은 항목이 남는다.** tarball 의 `package.json` 에 `scripts.bundle:web`·
   `scripts.bundle:docs` 가 남는데 `scripts/` 는 동봉되지 않는다. `devDependencies` 의
   `@erdd/server` 버전도 npm 에 없다(`private` 패키지다). 둘 다 소비처에 실질 피해는 없다.
-- **떠 있는 버전이 셋 있다.** `.nvmrc` 의 `22` 는 실행 시점의 최신 22.x 로, `npm@^11.5.1` 은 최신
+- **떠 있는 버전이 셋 있다.** 워크플로의 `node-version: 22` 는 실행 시점의 최신 22.x 로, `npm@^11.5.1` 은 최신
   11.x 로, 러너 이미지 `ubuntu-24.04` 는 GitHub 가 갱신하는 대로 풀린다. 재현 가능한 파이프라인을
-  원하면 `.nvmrc` 를 `22.x.y` 로, npm 을 정확한 버전으로 고정한다. 액션은 커밋 SHA 로 고정돼 있다.
+  원하면 워크플로의 `node-version` 과 `mise.toml` 의 node 를 `22.x.y` 로, npm 을 정확한 버전으로 고정한다. 액션은 커밋 SHA 로 고정돼 있다.
 - **게시 대기열은 하나뿐이다.** `concurrency: release` 는 한 번에 하나를 돌리고 대기는 하나만 둔다 —
   도는 중에 태그 둘을 더 밀면 먼저 대기하던 쪽이 취소된다. 태그는 앞 게시가 끝난 뒤 하나씩 민다.
   취소된 태그는 그 실행을 다시 돌리면 된다.

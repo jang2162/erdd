@@ -40,7 +40,7 @@
 | 항목 | 방법 A | 방법 B | 근거 |
 |---|---|---|---|
 | Docker | Engine + Compose v2 | — | |
-| Node.js | (이미지가 포함) | 22 | `.nvmrc` |
+| Node.js | (이미지가 포함) | 22 | `mise.toml` |
 | pnpm | (이미지가 포함) | 10.4.1 — `corepack enable` 로 맞춘다 | `package.json` 의 `packageManager` |
 | PostgreSQL | (compose 의 `db`) | 17 | `docker-compose.yml` |
 | 열려야 할 포트 | `3000`(앱, 호스트 쪽은 `ERDD_PORT` 로 변경). DB 는 호스트 루프백에만 붙으므로 열지 않는다 | `3000`(앱, `PORT` 로 변경) · `5432`(DB) | |
@@ -221,6 +221,43 @@ Git 저장소의 compose 파일을 서버에서 빌드·배포해 주는 도구�
   docker compose -p <스택 이름> exec -T db pg_dump -U postgres erdd > erdd-$(date +%F).sql
   docker compose -p <스택 이름> logs migrate
   ```
+
+#### Komodo Stack 설정
+
+Stack 설정은 Komodo 안에만 있어 저장소에서는 보이지 않는다. Stack 을 바꾸면 이 표도 같은 커밋에서 고친다.
+`<…>` 는 운영자가 채운다.
+
+| 항목 | 값 |
+| --- | --- |
+| Name | `<스택 이름>` — compose 프로젝트 이름이자 볼륨 접두사다(위 ⚠️) |
+| Server | `<Komodo 서버>` |
+| Source | Git Repo — `<git_provider>` / `<소유자>/<저장소>` / 브랜치 `main`. 비공개 저장소면 Komodo 에 등록한 `git_account` |
+| File Paths | `docker-compose.yml`, 그다음 `compose.override.yaml`(서버에서 쓰는 경우만. **순서가 이 순서다**) |
+| Environment | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `ERDD_PORT`(프록시 뒤면 `127.0.0.1:3000`). 비밀값은 Komodo Variable(Secret)을 `[[ERDD_POSTGRES_PASSWORD]]` 처럼 참조한다 |
+| Webhook | **끔.** 재배포가 `app` 컨테이너를 다시 만들어 열려 있는 실시간 편집 연결(`/ws`)을 끊는다. 사람이 Komodo 에서 Deploy 한다 |
+| override 파일 | `compose.override.yaml` — 서버에서 직접 쓰고 `.gitignore` 로 커밋을 막았다. 호스트 `<호스트 경로>/<스택 이름>/` ↔ Periphery 컨테이너 `{stack_dir}/<스택 이름>/` |
+
+- **Stack Environment 는 compose 의 `${VAR}` 치환용 `.env` 가 된다.** 컨테이너로 넘어가려면 compose 의
+  `environment:` 에 쓰여 있어야 한다. 새 변수는 compose 에 먼저 쓰고 Environment 에 넣는다.
+- **프록시 뒤에 둘 때는 서버용 override 로 호스트 포트를 닫는다.** `ports` 는 합쳐지므로 `!reset` 을
+  써야 기본 파일의 `3000:3000` 이 사라진다.
+
+  ```yaml
+  # compose.override.yaml — 서버에만 있다
+  services:
+    app:
+      ports: !reset []
+      networks: !override
+        - default
+        - <프록시 네트워크>
+  networks:
+    <프록시 네트워크>:
+      external: true   # 서버에 미리 만들어 둔 네트워크여야 한다
+  ```
+
+- **override 파일은 Stack 을 다시 만들거나 다시 clone 하면 지워진다.** 위 내용(비밀값 제외)을 이 절에 남겨 두었으므로
+  복원은 이 절을 보고 한다. Deploy 전에 서버에서 `docker compose -f docker-compose.yml -f compose.override.yaml config`
+  로 결과를 확인한다.
 
 ## 4. 방법 B: 소스에서 직접 실행
 

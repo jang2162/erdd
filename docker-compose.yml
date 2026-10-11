@@ -11,14 +11,14 @@ services:
       # 호스트의 루프백에만 붙는다 — 호스트에서 psql·마이그레이션을 붙이는 데는 이것으로 충분하고,
       # 앱은 compose 네트워크로 붙으므로 공개할 필요가 없다. Docker 가 공개한 포트는 호스트
       # 방화벽(ufw 등)을 우회하므로 막아 두는 쪽이 기본이다. 외부에 열어야 하면 이 줄을 고친다.
-      - "127.0.0.1:${ERDD_DB_PORT:-5432}:5432"
+      - '127.0.0.1:${ERDD_DB_PORT:-5432}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       # -h 127.0.0.1 이 중요하다. 초기화 중에는 엔트리포인트가 임시 서버를 listen_addresses=''
       # 로 띄우므로 TCP 가 열리지 않는다 — 유닉스 소켓으로 검사하면 POSTGRES_DB 가 만들어지기
       # 전에 "준비됨" 으로 보고해서 앱이 너무 일찍 붙는다.
-      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "erdd", "-h", "127.0.0.1"]
+      test: ['CMD', 'pg_isready', '-U', 'postgres', '-d', 'erdd', '-h', '127.0.0.1']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -34,20 +34,23 @@ services:
     # image: 이름을 붙이지 않는 것은 의도다. 붙이면 `docker compose pull`(관리 도구가 배포 전에
     # 부를 수 있다)이 빌드 전의 그 이름을 레지스트리에서 찾다가 실패한다.
     build: .
-    command: ["pnpm", "--filter", "@erdd/server", "db:migrate"]
+    # 레지스트리 이미지가 아니다 — Komodo 같은 도구가 pull 을 시도하지 않고 up 할 때마다 저장소 코드로 빌드한다.
+    pull_policy: build
+    command: ['pnpm', '--filter', '@erdd/server', 'db:migrate']
     depends_on:
       db:
         condition: service_healthy
     environment:
       # app 과 같은 값이어야 한다 — 다르면 앱이 쓰지 않는 DB 에 마이그레이션하고 끝난다.
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-erdd}@db:5432/erdd
-    restart: "no"
+    restart: 'no'
 
   # ERDD 서버 한 프로세스가 tRPC API · 웹 정적 파일 · /ws 를 전부 서빙한다.
   # `docker compose up -d --build` 한 번이 빌드 → migrate → 이 서비스 기동까지 간다.
   # DB 만 띄우려면 `docker compose up -d db`.
   app:
     build: .
+    pull_policy: build
     depends_on:
       db:
         # DB 가 healthy 가 된 뒤에 뜬다. 서버는 기동 중 DB 를 조회하므로(부트스트랩·시드)
@@ -75,11 +78,17 @@ services:
     ports:
       # 리버스 프록시 뒤에 둘 때는 ERDD_PORT=127.0.0.1:3000 처럼 호스트 주소를 붙여 준다 —
       # "127.0.0.1:3000:3000" 으로 펼쳐져 루프백에만 붙는다.
-      - "${ERDD_PORT:-3000}:3000"
+      - '${ERDD_PORT:-3000}:3000'
     restart: unless-stopped
     healthcheck:
       # 이미지에 curl·wget 이 없다. Node 22 의 전역 fetch 를 쓴다.
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/trpc/health.ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/trpc/health.ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

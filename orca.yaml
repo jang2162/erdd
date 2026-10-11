@@ -1,0 +1,10 @@
+# Orca 워크트리 설정. 규칙은 docs/guideline/orca/06-orca-yaml.md.
+# 루트 .env 는 복사하지 않는다 — DATABASE_URL 이 개발 DB 를 가리켜 워크트리의 verify 가 개발 DB 를
+# 비운다. 워크트리의 .env 와 격리 DB 는 docs/guides/setup.md 「워크트리에서는 포트·DB 를 트랙별로 가른다」.
+scripts:
+  setup: |
+    set -e
+    mise trust
+    mise install
+    mise exec -- pnpm install --frozen-lockfile
+setupAgentStartupPolicy: wait-for-setup
