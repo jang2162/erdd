@@ -6,3 +6,26 @@ dist/
 # 게시용 tarball 에만 넣는 동봉물 — bundle:web / prepack 의 bundle-docs 가 만드는 산출물이라 커밋하지 않는다
 packages/cli/web/
 packages/cli/docs/
+
+# 에이전트 전달 문서와 세션 스크래치
+.superpowers/
+
+# Playwright MCP 페이지 스냅샷과 스크린샷
+/.playwright-mcp/
+
+# Komodo 서버에서 직접 쓰는 override. 서버마다 다르며 커밋하지 않는다
+/compose.override.yaml
+
+
+# START Ruler Generated Files
+/.agents/skills
+/.claude/skills
+/.codex/config.toml
+/.codex/config.toml.bak
+/.mcp.json
+/.mcp.json.bak
+/AGENTS.md
+/AGENTS.md.bak
+/CLAUDE.md
+/CLAUDE.md.bak
+# END Ruler Generated Files

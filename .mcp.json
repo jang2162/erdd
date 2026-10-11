@@ -1,14 +1,32 @@
 {
   "mcpServers": {
     "playwright-neo": {
-      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
         "@playwright/mcp@latest",
         "--cdp-endpoint",
         "http://127.0.0.1:9110"
-      ]
+      ],
+      "type": "stdio"
+    },
+    "codegraph": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@colbymchenry/codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "type": "stdio"
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "type": "stdio"
     }
   }
 }
