@@ -13,9 +13,6 @@ packages/cli/docs/
 # Playwright MCP 페이지 스냅샷과 스크린샷
 /.playwright-mcp/
 
-# Komodo 서버에서 직접 쓰는 override. 서버마다 다르며 커밋하지 않는다
-/compose.override.yaml
-
 
 # START Ruler Generated Files
 /.agents/skills
