@@ -37,6 +37,8 @@ describe('chunkFailureMessage', () => {
     expect(chunkFailureMessage(4, 4, '거절됨')).toBe('거절됨')
   })
   it('중간 실패는 몇 묶음을 적용했는지 말한다', () => {
-    expect(chunkFailureMessage(2, 4, '거절됨')).toBe('4개 묶음 중 2개를 적용했고 나머지는 적용하지 못했습니다 — 거절됨')
+    expect(chunkFailureMessage(2, 4, '거절됨')).toBe(
+      '4개 묶음 중 2개를 적용했고 나머지는 적용하지 못했습니다 — 거절됨',
+    )
   })
 })

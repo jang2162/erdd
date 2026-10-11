@@ -19,7 +19,11 @@ type RevisionItem = {
 /** source 배지: system(복원 등 시스템 작업)은 key 색으로 구분한다. */
 function SourceBadge({ source }: { source: RevisionSource }) {
   if (source === 'system') {
-    return <Badge variant="outline" className="border-key/30 bg-key/15 text-key">system</Badge>
+    return (
+      <Badge variant="outline" className="border-key/30 bg-key/15 text-key">
+        system
+      </Badge>
+    )
   }
   if (source === 'cli') {
     return <Badge variant="outline">cli</Badge>
@@ -51,7 +55,11 @@ export function HistoryView({ projectId }: { projectId: string }) {
 
   return (
     <div className="grid max-h-96 gap-2 overflow-y-auto">
-      {list.isError && <p role="alert" className="text-sm text-destructive">{list.error.message}</p>}
+      {list.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          {list.error.message}
+        </p>
+      )}
       {list.isLoading && items.length === 0 && (
         <p className="text-sm text-muted-foreground">불러오는 중…</p>
       )}
@@ -61,7 +69,9 @@ export function HistoryView({ projectId }: { projectId: string }) {
       {items.map((item) => (
         <div key={item.seq} className="rounded-md border p-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-medium">#{item.seq} {item.summary}</span>
+            <span className="font-medium">
+              #{item.seq} {item.summary}
+            </span>
             <SourceBadge source={item.source} />
           </div>
           <span className="text-xs text-muted-foreground">
@@ -71,8 +81,12 @@ export function HistoryView({ projectId }: { projectId: string }) {
       ))}
       {nextCursor !== null && (
         <Button
-          type="button" size="sm" variant="outline" className="justify-self-center"
-          disabled={list.isFetching} onClick={onMore}
+          type="button"
+          size="sm"
+          variant="outline"
+          className="justify-self-center"
+          disabled={list.isFetching}
+          onClick={onMore}
         >
           더 보기
         </Button>

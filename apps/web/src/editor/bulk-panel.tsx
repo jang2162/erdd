@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import {
-  deleteTableCascade, setTableGroup, type ProjectModel,
-} from '@erdd/core'
+import { deleteTableCascade, setTableGroup, type ProjectModel } from '@erdd/core'
 import { formatCount, formatProgress } from '@/lib/format'
 import { useEditorStore } from './store.js'
 import { useModelMutation, type Mutate } from './use-model.js'
@@ -12,23 +10,35 @@ import { planGroupMove } from './group-move.js'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
 
 /** 드롭다운에서 "미분류"를 뜻하는 값. 빈 문자열은 "여러 그룹에 걸쳐 있음"이 이미 쓴다. */
 const NO_GROUP = '__none__'
 
 /** 삭제로 함께 사라지는 것들의 수. 관계는 양끝이 모두 선택돼 있어도 한 번만 센다. */
-export function countCascade(model: ProjectModel, ids: readonly string[]): {
-  tables: number; columns: number; indexes: number; relationships: number
+export function countCascade(
+  model: ProjectModel,
+  ids: readonly string[],
+): {
+  tables: number
+  columns: number
+  indexes: number
+  relationships: number
 } {
   const set = new Set(ids.filter((id) => Object.hasOwn(model.tables, id)))
   return {
     tables: set.size,
     columns: Object.values(model.columns).filter((c) => set.has(c.tableId)).length,
     indexes: Object.values(model.indexes).filter((ix) => set.has(ix.tableId)).length,
-    relationships: Object.values(model.relationships)
-      .filter((r) => set.has(r.parentTableId) || set.has(r.childTableId)).length,
+    relationships: Object.values(model.relationships).filter(
+      (r) => set.has(r.parentTableId) || set.has(r.childTableId),
+    ).length,
   }
 }
 
@@ -48,7 +58,9 @@ export function countCascade(model: ProjectModel, ids: readonly string[]): {
  * 각자 거르면 같은 사용자 의도가 진입점에 따라 다른 좌표로 끝난다 — 실제로 갈라졌던 자리다.
  */
 export function applyGroupMove(
-  mutate: Mutate, ids: readonly string[], targetGroupId: string | null,
+  mutate: Mutate,
+  ids: readonly string[],
+  targetGroupId: string | null,
 ): void {
   if (ids.length === 0) return
   // 권한 판정도 여기 한 곳이다. 드래그·드롭다운·(예정된) 캔버스 드롭이 전부 이 함수를 지나므로
@@ -60,17 +72,20 @@ export function applyGroupMove(
   // groupPosition이 전원 비워져 그룹 뷰에서 갈라지지 않는다(위 ⚠️).
   const model = useEditorStore.getState().model
   if (ids.every((id) => model.tables[id]?.groupId === targetGroupId)) return
-  void mutate((m) => {
-    let next = m
-    for (const id of ids) {
-      next = setTableGroup(next, id, targetGroupId)
-      next = clearTableGroupPosition(next, id)
-    }
-    for (const move of planGroupMove(m, ids, targetGroupId)) {
-      next = moveTable(next, move.id, move.position)
-    }
-    return next
-  }, { summary: `그룹 이동 (${formatCount(ids.length)}개)` })
+  void mutate(
+    (m) => {
+      let next = m
+      for (const id of ids) {
+        next = setTableGroup(next, id, targetGroupId)
+        next = clearTableGroupPosition(next, id)
+      }
+      for (const move of planGroupMove(m, ids, targetGroupId)) {
+        next = moveTable(next, move.id, move.position)
+      }
+      return next
+    },
+    { summary: `그룹 이동 (${formatCount(ids.length)}개)` },
+  )
 }
 
 /**
@@ -80,8 +95,16 @@ export function applyGroupMove(
  * op 상한은 …」). 이 창은 제출과 함께 닫히고, 이 창을 띄운 일괄 패널도 낙관적 삭제로 선택이 비는 순간
  * 사라지므로 조각 진행은 창이 아니라 토스트로 알린다.
  */
-export function BulkDeleteDialog({ projectId, ids, open, onOpenChange }: {
-  projectId: string; ids: readonly string[]; open: boolean; onOpenChange: (v: boolean) => void
+export function BulkDeleteDialog({
+  projectId,
+  ids,
+  open,
+  onOpenChange,
+}: {
+  projectId: string
+  ids: readonly string[]
+  open: boolean
+  onOpenChange: (v: boolean) => void
 }) {
   const model = useEditorStore((s) => s.model)
   const mutate = useModelMutation(projectId)
@@ -110,18 +133,25 @@ export function BulkDeleteDialog({ projectId, ids, open, onOpenChange }: {
         <DialogHeader>
           <DialogTitle>선택한 테이블을 삭제할까요?</DialogTitle>
           <DialogDescription>
-            테이블 {formatCount(cascade.tables)}개와 관계 {formatCount(cascade.relationships)}개가 삭제됩니다.
-            컬럼 {formatCount(cascade.columns)}개와 인덱스 {formatCount(cascade.indexes)}개도 함께 사라집니다.
+            테이블 {formatCount(cascade.tables)}개와 관계 {formatCount(cascade.relationships)}개가
+            삭제됩니다. 컬럼 {formatCount(cascade.columns)}개와 인덱스{' '}
+            {formatCount(cascade.indexes)}개도 함께 사라집니다.
           </DialogDescription>
         </DialogHeader>
         <ul className="max-h-40 overflow-y-auto rounded border p-2">
           {tables.map((t) => (
-            <li key={t.id} className="font-mono text-xs">{t.physicalName}</li>
+            <li key={t.id} className="font-mono text-xs">
+              {t.physicalName}
+            </li>
           ))}
         </ul>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-          <Button variant="destructive" onClick={onDelete}>삭제</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            취소
+          </Button>
+          <Button variant="destructive" onClick={onDelete}>
+            삭제
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -156,7 +186,9 @@ export function BulkPanel({ projectId }: { projectId: string }) {
         ⚠️ 한계: 이 패널은 2개 이상일 때 새로 마운트되므로 1→2 전환은 "리전 안의 내용 변경"이
         아니라 리전 자체의 삽입이라 낭독이 보장되지 않는다. 2→3처럼 이미 떠 있는 동안의 변경은 읽힌다.
       */}
-      <h2 aria-live="polite" className="mb-3 text-sm font-semibold">{formatCount(ids.length)}개 테이블 선택됨</h2>
+      <h2 aria-live="polite" className="mb-3 text-sm font-semibold">
+        {formatCount(ids.length)}개 테이블 선택됨
+      </h2>
 
       <ul className="mb-4 max-h-48 overflow-y-auto rounded border">
         {tables.map((t) => (
@@ -169,7 +201,8 @@ export function BulkPanel({ projectId }: { projectId: string }) {
 
       <div className="mb-4 grid gap-1.5">
         <Label htmlFor="bulk-group">선택 테이블의 그룹</Label>
-        <select id="bulk-group"
+        <select
+          id="bulk-group"
           className="h-9 rounded-md border bg-background px-2 text-sm"
           value={commonGroup === undefined ? '' : (commonGroup ?? NO_GROUP)}
           disabled={!canEdit}
@@ -177,11 +210,14 @@ export function BulkPanel({ projectId }: { projectId: string }) {
             const raw = e.target.value
             if (raw === '') return
             applyGroupMove(mutate, ids, raw === NO_GROUP ? null : raw)
-          }}>
+          }}
+        >
           {commonGroup === undefined && <option value="">여러 그룹에 걸쳐 있음</option>}
           <option value={NO_GROUP}>미분류</option>
           {Object.values(model.tableGroups).map((g) => (
-            <option key={g.id} value={g.id}>{g.name}</option>
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
           ))}
         </select>
       </div>
@@ -191,16 +227,33 @@ export function BulkPanel({ projectId }: { projectId: string }) {
         만든 직후 `selectGroup`이 우측을 그룹 패널로 바꾸므로 이름·색을 그 자리에서 고친다
         (그 액션이 선택을 비우는 것은 의도다 — 패널은 둘 중 하나만 그린다).
       */}
-      <Button variant="outline" className="mb-4 w-full" disabled={!canEdit}
+      <Button
+        variant="outline"
+        className="mb-4 w-full"
+        disabled={!canEdit}
         onClick={() => {
           const id = createGroupWith(mutate, ids)
           if (id !== null) selectGroup(id)
-        }}>선택 테이블로 새 그룹</Button>
+        }}
+      >
+        선택 테이블로 새 그룹
+      </Button>
 
-      <Button variant="destructive" className="w-full" disabled={!canEdit}
-        onClick={() => setConfirming(true)}>선택 테이블 삭제</Button>
+      <Button
+        variant="destructive"
+        className="w-full"
+        disabled={!canEdit}
+        onClick={() => setConfirming(true)}
+      >
+        선택 테이블 삭제
+      </Button>
 
-      <BulkDeleteDialog projectId={projectId} ids={ids} open={confirming} onOpenChange={setConfirming} />
+      <BulkDeleteDialog
+        projectId={projectId}
+        ids={ids}
+        open={confirming}
+        onOpenChange={setConfirming}
+      />
     </aside>
   )
 }

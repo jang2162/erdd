@@ -36,7 +36,7 @@ describe('buildPlan', () => {
     await writeFile(path, content)
 
     const moved = fullModel()
-    moved.columns['c2']!.logicalName = '회원성명'   // 서버도 같은 필드를 다르게 고쳤다 → 충돌
+    moved.columns['c2']!.logicalName = '회원성명' // 서버도 같은 필드를 다르게 고쳤다 → 충돌
     // c1.comment는 서버가 건드리지 않는다 — base와 같아 로컬 변경이 충돌 없이 병합된다.
 
     const { client } = stub(moved)

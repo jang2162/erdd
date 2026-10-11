@@ -71,11 +71,15 @@ describe('reserveIds', () => {
   it('local에 없는 경로는 새 파일로 만든다 — 디렉터리가 없어도', async () => {
     await rm(join(dir, 'erdd/tables'), { recursive: true })
 
-    const written = await reserveIds(dir, {}, {
-      // 삽입 순서를 일부러 역순으로 둔다 — 반환은 정렬돼야 한다.
-      'erdd/tables/ZZ.yaml': { name: 'ZZ', id: 'tb9', columns: [] },
-      'erdd/tables/AA.yaml': { name: 'AA', id: 'tb8', columns: [] },
-    })
+    const written = await reserveIds(
+      dir,
+      {},
+      {
+        // 삽입 순서를 일부러 역순으로 둔다 — 반환은 정렬돼야 한다.
+        'erdd/tables/ZZ.yaml': { name: 'ZZ', id: 'tb9', columns: [] },
+        'erdd/tables/AA.yaml': { name: 'AA', id: 'tb8', columns: [] },
+      },
+    )
 
     expect(written).toEqual(['erdd/tables/AA.yaml', 'erdd/tables/ZZ.yaml'])
     expect((await read('erdd/tables/ZZ.yaml'))['id']).toBe('tb9')
@@ -89,9 +93,11 @@ describe('reserveIds', () => {
 
     const body = { name: 'MBR', logicalName: '회원', columns: [] }
     await write('erdd/tables/MBR.yaml', body)
-    await reserveIds(dir,
+    await reserveIds(
+      dir,
       { 'erdd/tables/MBR.yaml': body },
-      { 'erdd/tables/MBR.yaml': { ...body, id: 'tb1' } })
+      { 'erdd/tables/MBR.yaml': { ...body, id: 'tb1' } },
+    )
 
     expect(sync).toHaveBeenCalledTimes(1)
   })
@@ -104,11 +110,16 @@ describe('reserveIds', () => {
     // 어떤 쓰기 실패든 같다).
     await mkdir(join(dir, 'erdd/tables/ZZ.yaml'))
 
-    await expect(reserveIds(
-      dir,
-      { 'erdd/tables/AA.yaml': aa, 'erdd/tables/ZZ.yaml': zz },
-      { 'erdd/tables/AA.yaml': { ...aa, id: 'tb1' }, 'erdd/tables/ZZ.yaml': { ...zz, id: 'tb2' } },
-    )).rejects.toThrow()
+    await expect(
+      reserveIds(
+        dir,
+        { 'erdd/tables/AA.yaml': aa, 'erdd/tables/ZZ.yaml': zz },
+        {
+          'erdd/tables/AA.yaml': { ...aa, id: 'tb1' },
+          'erdd/tables/ZZ.yaml': { ...zz, id: 'tb2' },
+        },
+      ),
+    ).rejects.toThrow()
 
     // 롤백하지 않는다 — 이 id는 다음 push에서 create로 수렴한다.
     expect((await read('erdd/tables/AA.yaml'))['id']).toBe('tb1')

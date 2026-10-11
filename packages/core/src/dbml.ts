@@ -7,13 +7,14 @@ import { buildDbmlNote } from './dbml-note.js'
 import { composeTableLogicalName, composeTablePhysicalName } from './name-template.js'
 import type { NamingRules } from './naming.js'
 import { buildNameMeta, serializeNameMeta } from './name-meta.js'
-import {
-  selectTables, tableColumns, hasEmptyPhysicalName, type ExportScope,
-} from './ddl.js'
+import { selectTables, tableColumns, hasEmptyPhysicalName, type ExportScope } from './ddl.js'
 
 /** dbdocs 가 읽는 값이다. 한국어 표시명(DIALECT_LABEL)을 쓰면 안 된다. */
 export const DBML_DATABASE_TYPE: Record<Dialect, string> = {
-  postgresql: 'PostgreSQL', mysql: 'MySQL', oracle: 'Oracle', mssql: 'SQL Server',
+  postgresql: 'PostgreSQL',
+  mysql: 'MySQL',
+  oracle: 'Oracle',
+  mssql: 'SQL Server',
 }
 
 const INT_KINDS = new Set(['SMALLINT', 'INT', 'BIGINT'])
@@ -68,7 +69,9 @@ export function rawDefaultToDbml(raw: string): string {
 }
 
 function customOf(
-  model: ProjectModel, entity: { custom: Record<string, string> }, target: 'table' | 'column',
+  model: ProjectModel,
+  entity: { custom: Record<string, string> },
+  target: 'table' | 'column',
 ): Record<string, string> {
   const out: Record<string, string> = {}
   for (const f of customFieldsFor(model, target)) {
@@ -107,7 +110,12 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect, singlePk
   if (r.defaultValue !== null && r.defaultValue !== '') {
     settings.push(`default: ${rawDefaultToDbml(r.defaultValue)}`)
   }
-  const note = buildDbmlNote(col.logicalName, col.physicalName, col.comment, customOf(model, col, 'column'))
+  const note = buildDbmlNote(
+    col.logicalName,
+    col.physicalName,
+    col.comment,
+    customOf(model, col, 'column'),
+  )
   if (note !== null) settings.push(`note: ${quoteDbmlString(note)}`)
   const tail = settings.length > 0 ? ` [${settings.join(', ')}]` : ''
   return `  ${quoteDbmlIdent(col.physicalName)} ${r.sql}${tail}`
@@ -124,15 +132,19 @@ function indexLines(model: ProjectModel, table: Table, cols: Column[]): string[]
       .map((c) => model.columns[c.columnId]?.physicalName)
       .filter((n): n is string => n !== undefined && n !== '')
     if (names.length === 0) continue
-    const settings = [ix.unique ? 'unique' : null, `name: ${quoteDbmlString(ix.name)}`]
-      .filter((s): s is string => s !== null)
+    const settings = [ix.unique ? 'unique' : null, `name: ${quoteDbmlString(ix.name)}`].filter(
+      (s): s is string => s !== null,
+    )
     lines.push(`    (${names.map(quoteDbmlIdent).join(', ')}) [${settings.join(', ')}]`)
   }
   return lines
 }
 
 function tableBlock(
-  model: ProjectModel, table: Table, dialect: Dialect, rules: NamingRules,
+  model: ProjectModel,
+  table: Table,
+  dialect: Dialect,
+  rules: NamingRules,
 ): string {
   const tableName = composeTablePhysicalName(table, model, rules)
   const cols = tableColumns(model, table.id)
@@ -144,16 +156,19 @@ function tableBlock(
   if (group) settings.push(`headercolor: ${normalizeHexColor(group.color)}`)
   // 「논리명==물리명이면 생략」 판정은 **양쪽 다 최종 이름**으로 한다(설계 D5).
   const note = buildDbmlNote(
-    composeTableLogicalName(table, model, rules), tableName, table.comment,
+    composeTableLogicalName(table, model, rules),
+    tableName,
+    table.comment,
     customOf(model, table, 'table'),
   )
   if (note !== null) settings.push(`note: ${quoteDbmlString(note)}`)
   const head = settings.length > 0 ? ` [${settings.join(', ')}]` : ''
 
   const ixLines = indexLines(model, table, cols)
-  const body = ixLines.length > 0
-    ? `${lines.join('\n')}\n\n  indexes {\n${ixLines.join('\n')}\n  }`
-    : lines.join('\n')
+  const body =
+    ixLines.length > 0
+      ? `${lines.join('\n')}\n\n  indexes {\n${ixLines.join('\n')}\n  }`
+      : lines.join('\n')
   return `Table ${quoteDbmlIdent(tableName)}${head} {\n${body}\n}`
 }
 
@@ -170,7 +185,8 @@ function groupBlocks(model: ProjectModel, tables: Table[], rules: NamingRules): 
     const g = model.tableGroups[groupId]
     if (!g) continue
     const names = members
-      .map((t) => `  ${quoteDbmlIdent(composeTablePhysicalName(t, model, rules))}`).join('\n')
+      .map((t) => `  ${quoteDbmlIdent(composeTablePhysicalName(t, model, rules))}`)
+      .join('\n')
     const settings = [`color: ${normalizeHexColor(g.color)}`]
     if (g.comment) settings.push(`note: ${quoteDbmlString(g.comment)}`)
     out.push(`TableGroup ${quoteDbmlIdent(g.name)} [${settings.join(', ')}] {\n${names}\n}`)
@@ -193,23 +209,32 @@ function refLines(model: ProjectModel, selectedIds: Set<string>, rules: NamingRu
     const parent = model.tables[rel.parentTableId]
     const child = model.tables[rel.childTableId]
     if (!parent || !child) continue
-    const childCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
-    const parentCols = rel.columnMappings.map((m) => model.columns[m.parentColumnId]?.physicalName ?? '')
+    const childCols = rel.columnMappings.map(
+      (m) => model.columns[m.childColumnId]?.physicalName ?? '',
+    )
+    const parentCols = rel.columnMappings.map(
+      (m) => model.columns[m.parentColumnId]?.physicalName ?? '',
+    )
     if (childCols.length === 0) continue
     if (childCols.some((c) => c === '') || parentCols.some((c) => c === '')) continue
     // 이름은 rel.name 이 있을 때만 붙인다 — 폴백(FK_자식_부모)을 쓰면 되읽을 때
     // 원본에 없던 이름이 생겨 왕복이 깨진다(설계 §4.3).
     const label = rel.name && rel.name.trim() !== '' ? ` ${quoteDbmlIdent(rel.name)}` : ''
     const op = rel.cardinality === '1:1' ? '-' : '>'
-    out.push(`Ref${label}: ${side(compose(child), childCols)} ${op} ${side(compose(parent), parentCols)}`)
+    out.push(
+      `Ref${label}: ${side(compose(child), childCols)} ${op} ${side(compose(parent), parentCols)}`,
+    )
   }
   return out
 }
 
 // ⚠️ opts 를 `?:` 로 두면 뒤에 필수 인자를 못 붙인다(TS1016). 기본값 인자로 바꾼다.
 export function generateDbml(
-  model: ProjectModel, dialect: Dialect, scope: ExportScope = { kind: 'all' },
-  opts: { projectName?: string } = {}, rules: NamingRules,
+  model: ProjectModel,
+  dialect: Dialect,
+  scope: ExportScope = { kind: 'all' },
+  opts: { projectName?: string } = {},
+  rules: NamingRules,
 ): string {
   const tables = selectTables(model, scope, rules).filter(
     (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t, rules),

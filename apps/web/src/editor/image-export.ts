@@ -31,7 +31,8 @@ export async function downloadCanvasImage(
     transform: `translate(${MARGIN - b.x}px, ${MARGIN - b.y}px) scale(1)`,
   }
   const params = { width, height, style, backgroundColor: PAPER, pixelRatio: 2 }
-  const dataUrl = opts.format === 'png' ? await toPng(viewport, params) : await toSvg(viewport, params)
+  const dataUrl =
+    opts.format === 'png' ? await toPng(viewport, params) : await toSvg(viewport, params)
 
   const a = document.createElement('a')
   a.href = dataUrl

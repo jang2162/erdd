@@ -13,12 +13,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const pkgRoot = path.resolve(here, '..')                          // packages/cli
-const src = path.resolve(pkgRoot, '../../apps/web/dist')          // <저장소 루트>/apps/web/dist
+const pkgRoot = path.resolve(here, '..') // packages/cli
+const src = path.resolve(pkgRoot, '../../apps/web/dist') // <저장소 루트>/apps/web/dist
 const dest = path.join(pkgRoot, 'web')
 
 if (!existsSync(src)) {
-  console.error(`\`apps/web/dist\` 가 없습니다. 먼저 \`pnpm -C apps/web build\` 를 실행하세요. (찾은 경로: ${src})`)
+  console.error(
+    `\`apps/web/dist\` 가 없습니다. 먼저 \`pnpm -C apps/web build\` 를 실행하세요. (찾은 경로: ${src})`,
+  )
   process.exit(1)
 }
 

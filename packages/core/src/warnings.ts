@@ -1,6 +1,9 @@
 import type { ProjectModel, Term } from './model.js'
 import {
-  decomposeByWords, findTermByLogicalName, generatePhysicalName, type NamingRules,
+  decomposeByWords,
+  findTermByLogicalName,
+  generatePhysicalName,
+  type NamingRules,
 } from './naming.js'
 import { isReservedWord } from './identifier.js'
 import type { Dialect } from './dialect.js'
@@ -33,13 +36,17 @@ export type Warning = {
  * 그래서 조회를 `findTermByLogicalName` 한 곳에 맡긴다(사전 레코드당 한 번 만든 조회표를 쓴다).
  */
 function findMatchingTerm(
-  logicalName: string, terms: Record<string, Term>, rules: NamingRules,
+  logicalName: string,
+  terms: Record<string, Term>,
+  rules: NamingRules,
 ): Term | undefined {
   return findTermByLogicalName(logicalName, terms, rules)
 }
 
 export function computeWarnings(
-  model: ProjectModel, rules?: NamingRules, dialects?: Dialect[],
+  model: ProjectModel,
+  rules?: NamingRules,
+  dialects?: Dialect[],
 ): Warning[] {
   const warnings: Warning[] = []
 
@@ -48,7 +55,10 @@ export function computeWarnings(
   for (const c of Object.values(model.columns)) {
     if (c.physicalName === '') continue
     let names = byTable.get(c.tableId)
-    if (!names) { names = new Map(); byTable.set(c.tableId, names) }
+    if (!names) {
+      names = new Map()
+      byTable.set(c.tableId, names)
+    }
     const ids = names.get(c.physicalName) ?? []
     ids.push(c.id)
     names.set(c.physicalName, ids)
@@ -58,7 +68,10 @@ export function computeWarnings(
       if (ids.length < 2) continue
       for (const id of ids) {
         warnings.push({
-          kind: 'duplicate-physical', scope: 'column', entityId: id, tableId,
+          kind: 'duplicate-physical',
+          scope: 'column',
+          entityId: id,
+          tableId,
           message: `물리명 "${physicalName}"이(가) 같은 테이블에서 중복됩니다`,
           severity: 'error',
         })
@@ -73,7 +86,9 @@ export function computeWarnings(
     ).length
     if (parentPkCount !== rel.columnMappings.length) {
       warnings.push({
-        kind: 'incomplete-mapping', scope: 'relationship', entityId: rel.id,
+        kind: 'incomplete-mapping',
+        scope: 'relationship',
+        entityId: rel.id,
         message: '부모 기본 키와 매핑 수가 일치하지 않습니다',
       })
     }
@@ -82,7 +97,9 @@ export function computeWarnings(
       const parent = model.columns[m.parentColumnId]
       if (child && parent && child.type !== parent.type) {
         warnings.push({
-          kind: 'type-mismatch', scope: 'relationship', entityId: rel.id,
+          kind: 'type-mismatch',
+          scope: 'relationship',
+          entityId: rel.id,
           message: `참조 컬럼 타입이 다릅니다 (${parent.type} ↔ ${child.type})`,
         })
         break // 관계당 1건
@@ -93,8 +110,11 @@ export function computeWarnings(
   // 4) 명명 경고 — rules가 주어질 때만 계산(무인자 호출 시 하위호환 유지)
   if (rules) {
     const checkNamingEntity = (
-      scope: 'table' | 'column', entityId: string, tableId: string | undefined,
-      logicalName: string, physicalName: string,
+      scope: 'table' | 'column',
+      entityId: string,
+      tableId: string | undefined,
+      logicalName: string,
+      physicalName: string,
       // ⚠️ 길이·예약어만 최종 이름 기준이다. 용어 비교는 사용자가 입력하는 부분과 해야 한다.
       finalName: string = physicalName,
     ) => {
@@ -103,14 +123,20 @@ export function computeWarnings(
         const gen = generatePhysicalName(logical, model.words, model.terms, rules)
         if (gen.unknownWords.length > 0) {
           warnings.push({
-            kind: 'unknown-word', scope, entityId, tableId,
+            kind: 'unknown-word',
+            scope,
+            entityId,
+            tableId,
             message: `등록되지 않은 단어가 있습니다: ${gen.unknownWords.join(', ')}`,
           })
         }
         const term = findMatchingTerm(logical, model.terms, rules)
         if (term && term.physicalName !== physicalName) {
           warnings.push({
-            kind: 'term-mismatch', scope, entityId, tableId,
+            kind: 'term-mismatch',
+            scope,
+            entityId,
+            tableId,
             message: `용어 "${term.logicalName}"의 표준 물리명은 "${term.physicalName}"입니다(현재 "${physicalName}")`,
           })
         }
@@ -123,30 +149,46 @@ export function computeWarnings(
           const segments = gen.segments ?? decomposeByWords(logical, model.words, rules)
           if (segments.length >= 2) {
             warnings.push({
-              kind: 'missing-logical-separator', scope, entityId, tableId,
-              message: `논리명 "${logical}"에 단어 구분자(${rules.logicalSeparator})가 없습니다`
-                + ` — "${segments.map((s) => s.text).join(rules.logicalSeparator)}"`,
+              kind: 'missing-logical-separator',
+              scope,
+              entityId,
+              tableId,
+              message:
+                `논리명 "${logical}"에 단어 구분자(${rules.logicalSeparator})가 없습니다` +
+                ` — "${segments.map((s) => s.text).join(rules.logicalSeparator)}"`,
             })
           }
         }
       }
       if (new TextEncoder().encode(finalName).length > rules.maxLengthBytes) {
         warnings.push({
-          kind: 'too-long', scope, entityId, tableId,
+          kind: 'too-long',
+          scope,
+          entityId,
+          tableId,
           message: `물리명 "${finalName}"이(가) 최대 길이(${rules.maxLengthBytes}바이트)를 초과합니다`,
         })
       }
       if (dialects?.some((d) => isReservedWord(finalName, d))) {
         warnings.push({
-          kind: 'reserved', scope, entityId, tableId,
+          kind: 'reserved',
+          scope,
+          entityId,
+          tableId,
           message: `물리명 "${finalName}"은(는) 예약어입니다`,
         })
       }
     }
 
     for (const t of Object.values(model.tables)) {
-      checkNamingEntity('table', t.id, undefined, t.logicalName, t.physicalName,
-        composeTablePhysicalName(t, model, rules))
+      checkNamingEntity(
+        'table',
+        t.id,
+        undefined,
+        t.logicalName,
+        t.physicalName,
+        composeTablePhysicalName(t, model, rules),
+      )
     }
     for (const c of Object.values(model.columns)) {
       checkNamingEntity('column', c.id, c.tableId, c.logicalName, c.physicalName)
@@ -166,7 +208,9 @@ export function computeWarnings(
       if (ids.length < 2) continue
       for (const id of ids) {
         warnings.push({
-          kind: 'duplicate-physical-table', scope: 'table', entityId: id,
+          kind: 'duplicate-physical-table',
+          scope: 'table',
+          entityId: id,
           severity: 'error',
           message: `테이블 물리명 "${finalName}"이(가) 중복됩니다`,
         })
@@ -176,12 +220,18 @@ export function computeWarnings(
 
   // 5) 표준 필드 필수 미입력 — 명명 규칙과 무관한 완결성 경고이므로 rules 게이트 밖에서 계산한다.
   const requiredEmpty = (
-    scope: 'table' | 'column', entityId: string, tableId: string | undefined,
-    label: string, value: string,
+    scope: 'table' | 'column',
+    entityId: string,
+    tableId: string | undefined,
+    label: string,
+    value: string,
   ) => {
     if (value.trim() !== '') return
     warnings.push({
-      kind: 'required-empty', scope, entityId, tableId,
+      kind: 'required-empty',
+      scope,
+      entityId,
+      tableId,
       message: `필수 항목 "${label}"이(가) 비어 있습니다`,
     })
   }
@@ -199,24 +249,32 @@ export function computeWarnings(
   const tableFields = customFieldsFor(model, 'table')
   const columnFields = customFieldsFor(model, 'column')
   const checkRequired = (
-    scope: 'table' | 'column', entityId: string, tableId: string | undefined,
-    entity: { custom: Record<string, string> }, fields: typeof tableFields,
+    scope: 'table' | 'column',
+    entityId: string,
+    tableId: string | undefined,
+    entity: { custom: Record<string, string> },
+    fields: typeof tableFields,
   ) => {
     for (const field of fields) {
       // boolean은 체크박스라 "미입력"이 없다 → 필수 검사 대상 아님
       if (!field.required || field.type === 'boolean') continue
       if (resolveCustomValue(entity, field) !== '') continue
       warnings.push({
-        kind: 'custom-required', scope, entityId, tableId,
+        kind: 'custom-required',
+        scope,
+        entityId,
+        tableId,
         message: `필수 항목 "${field.name}"이(가) 비어 있습니다`,
       })
     }
   }
   if (tableFields.length > 0) {
-    for (const t of Object.values(model.tables)) checkRequired('table', t.id, undefined, t, tableFields)
+    for (const t of Object.values(model.tables))
+      checkRequired('table', t.id, undefined, t, tableFields)
   }
   if (columnFields.length > 0) {
-    for (const c of Object.values(model.columns)) checkRequired('column', c.id, c.tableId, c, columnFields)
+    for (const c of Object.values(model.columns))
+      checkRequired('column', c.id, c.tableId, c, columnFields)
   }
 
   return warnings

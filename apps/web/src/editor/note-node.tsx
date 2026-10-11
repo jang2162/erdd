@@ -13,7 +13,11 @@ export function NoteNode({ data }: NodeProps) {
       style={{
         background: note.color,
         borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
-        outline: selected ? '2px solid var(--color-primary)' : peerColorHex ? `2px solid ${peerColorHex}` : undefined,
+        outline: selected
+          ? '2px solid var(--color-primary)'
+          : peerColorHex
+            ? `2px solid ${peerColorHex}`
+            : undefined,
         outlineOffset: selected ? undefined : '2px',
       }}
     >

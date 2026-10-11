@@ -40,12 +40,23 @@ function wrapper() {
 // HeaderTools는 useIsLocal(→ useMe)을 쓴다 — RequireAuth 안에서만 렌더할 수 있다.
 function renderTools(mode: 'server' | 'local' = 'server') {
   mockTrpcFetch({
-    'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode } }),
+    'auth.me': () => ({
+      data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode },
+    }),
   })
-  render(<RequireAuth><HeaderTools projectId={PROJECT_ID} /></RequireAuth>, { wrapper: wrapper() })
+  render(
+    <RequireAuth>
+      <HeaderTools projectId={PROJECT_ID} />
+    </RequireAuth>,
+    { wrapper: wrapper() },
+  )
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 /**
  * 트리거 → 열리는 다이얼로그의 전수 표. `dialog`는 각 파일의 `<DialogTitle>` 실제 문자열이다.
@@ -94,12 +105,16 @@ describe('HeaderTools — 트리거와 다이얼로그의 배선', () => {
   // 이 케이스가 이빨을 잃는다(리뷰 I-2) — 실제로 로드된 뒤를 기다려야 한다.
   it('VersionDialog 은 닫혀 있으면 자체 트리거를 렌더하지 않는다', async () => {
     mockTrpcFetch({
-      'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' } }),
+      'auth.me': () => ({
+        data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' },
+      }),
     })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     render(
-      <RequireAuth><VersionDialog projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /></RequireAuth>,
+      <RequireAuth>
+        <VersionDialog projectId={PROJECT_ID} open={false} onOpenChange={() => {}} />
+      </RequireAuth>,
       { wrapper: wrapper() },
     )
     await waitFor(() => expect(screen.queryByText('불러오는 중…')).toBeNull())
@@ -110,12 +125,32 @@ describe('HeaderTools — 트리거와 다이얼로그의 배선', () => {
   // 나머지는 useIsLocal 을 쓰지 않아 RequireAuth 도 auth.me 목도 필요 없다 — 걸어 두면
   // "이 컴포넌트도 인증이 필요하다"는 잘못된 신호가 된다(리뷰 M-4).
   const CLOSED: { name: string; render: () => ReactNode }[] = [
-    { name: 'DomainPanel', render: () => <DomainPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
-    { name: 'DictPanel', render: () => <DictPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
-    { name: 'CustomFieldPanel', render: () => <CustomFieldPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
-    { name: 'ResourcePanel', render: () => <ResourcePanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
-    { name: 'NamingCheck', render: () => <NamingCheck projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
-    { name: 'DdlImportDialog', render: () => <DdlImportDialog projectId={PROJECT_ID} open={false} onOpenChange={() => {}} /> },
+    {
+      name: 'DomainPanel',
+      render: () => <DomainPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} />,
+    },
+    {
+      name: 'DictPanel',
+      render: () => <DictPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} />,
+    },
+    {
+      name: 'CustomFieldPanel',
+      render: () => (
+        <CustomFieldPanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} />
+      ),
+    },
+    {
+      name: 'ResourcePanel',
+      render: () => <ResourcePanel projectId={PROJECT_ID} open={false} onOpenChange={() => {}} />,
+    },
+    {
+      name: 'NamingCheck',
+      render: () => <NamingCheck projectId={PROJECT_ID} open={false} onOpenChange={() => {}} />,
+    },
+    {
+      name: 'DdlImportDialog',
+      render: () => <DdlImportDialog projectId={PROJECT_ID} open={false} onOpenChange={() => {}} />,
+    },
     { name: 'ExportDialog', render: () => <ExportDialog open={false} onOpenChange={() => {}} /> },
   ]
 

@@ -50,16 +50,23 @@ export function AccessTokensCard() {
       <CardContent className="grid gap-4">
         <form
           className="flex items-end gap-2"
-          onSubmit={(e) => { e.preventDefault(); create.mutate({ name }) }}
+          onSubmit={(e) => {
+            e.preventDefault()
+            create.mutate({ name })
+          }}
         >
           <div className="grid flex-1 gap-1.5">
             <Label htmlFor="token-name">토큰 이름</Label>
             <Input
-              id="token-name" value={name} placeholder="노트북"
+              id="token-name"
+              value={name}
+              placeholder="노트북"
               onChange={(e) => setName(e.target.value)}
             />
           </div>
-          <Button type="submit" disabled={name.trim() === '' || create.isPending}>발급</Button>
+          <Button type="submit" disabled={name.trim() === '' || create.isPending}>
+            발급
+          </Button>
         </form>
 
         {issued !== null && (
@@ -69,18 +76,26 @@ export function AccessTokensCard() {
               이 값은 지금만 보입니다 — 창을 닫으면 다시 볼 수 없습니다.
             </p>
             <Button
-              type="button" variant="outline" size="sm" className="justify-self-start"
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-self-start"
               onClick={() => {
                 void navigator.clipboard?.writeText(issued)
                 toast.success('복사했습니다')
               }}
-            >복사</Button>
+            >
+              복사
+            </Button>
           </div>
         )}
 
         <ul className="grid gap-2">
           {(list.data ?? []).map((t) => (
-            <li key={t.id} className="flex items-center justify-between gap-2 border-b pb-2 text-sm">
+            <li
+              key={t.id}
+              className="flex items-center justify-between gap-2 border-b pb-2 text-sm"
+            >
               <span className="grid">
                 <span>{t.name}</span>
                 <span className="text-muted-foreground text-xs">
@@ -90,12 +105,16 @@ export function AccessTokensCard() {
                 </span>
               </span>
               <Button
-                type="button" variant={confirmingId === t.id ? 'destructive' : 'ghost'} size="sm"
+                type="button"
+                variant={confirmingId === t.id ? 'destructive' : 'ghost'}
+                size="sm"
                 onClick={() => {
                   if (confirmingId === t.id) revoke.mutate({ id: t.id })
                   else setConfirmingId(t.id)
                 }}
-              >{confirmingId === t.id ? '정말 폐기' : '폐기'}</Button>
+              >
+                {confirmingId === t.id ? '정말 폐기' : '폐기'}
+              </Button>
             </li>
           ))}
           {(list.data ?? []).length === 0 && (

@@ -13,7 +13,13 @@ const COPY_FAILED = '복사할 수 없습니다 — 링크를 직접 선택해 �
  * 그래서 "지금만 볼 수 있다"를 문구로 알린다(§6.2). 없으면 관리자가 나중에 다시 찾을 수
  * 있다고 여기고 그대로 닫는다.
  */
-export function OneTimeLink({ kind, token, recipient, expiresAt, onDismiss }: {
+export function OneTimeLink({
+  kind,
+  token,
+  recipient,
+  expiresAt,
+  onDismiss,
+}: {
   kind: 'invite' | 'reset'
   token: string
   /**
@@ -35,7 +41,10 @@ export function OneTimeLink({ kind, token, recipient, expiresAt, onDismiss }: {
   const copy = async () => {
     // 타입은 항상 있다고 하지만 런타임에는 없을 수 있다(비-secure context).
     const clipboard: Clipboard | undefined = navigator.clipboard
-    if (clipboard === undefined) { toast.error(COPY_FAILED); return }
+    if (clipboard === undefined) {
+      toast.error(COPY_FAILED)
+      return
+    }
     try {
       await clipboard.writeText(url)
       toast.success('복사했습니다')
@@ -61,9 +70,20 @@ export function OneTimeLink({ kind, token, recipient, expiresAt, onDismiss }: {
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={() => { void copy() }}>복사</Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void copy()
+          }}
+        >
+          복사
+        </Button>
         {onDismiss !== undefined && (
-          <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>닫기</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
+            닫기
+          </Button>
         )}
       </div>
     </div>

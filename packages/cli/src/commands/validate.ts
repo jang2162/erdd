@@ -1,6 +1,9 @@
 import {
-  computeWarnings, filesToModel, validateModelIntegrity,
-  type ProjectModel, type Warning,
+  computeWarnings,
+  filesToModel,
+  validateModelIntegrity,
+  type ProjectModel,
+  type Warning,
 } from '@erdd/core'
 import { readConfig } from '../config.js'
 import { emit } from '../output.js'
@@ -24,7 +27,9 @@ const NO_LOCATION: WarningLocation = { path: null, label: null }
  * (file-merge.ts의 FILE_FIELDS에서 relationship.childTableId가 '(소속 테이블)'이다).
  */
 function locate(
-  model: ProjectModel, tableFiles: Record<string, string>, w: Warning,
+  model: ProjectModel,
+  tableFiles: Record<string, string>,
+  w: Warning,
 ): WarningLocation {
   /**
    * 좌표로 쓸 파일 경로. **filesToModel이 실제로 읽어 온 경로를 그대로 쓴다.**
@@ -64,9 +69,10 @@ function locate(
     const parent = model.tables[rel.parentTableId]
     return {
       path: fileOf(rel.childTableId),
-      label: rel.name !== null && rel.name !== ''
-        ? rel.name
-        : `→ ${parent?.physicalName ?? rel.parentTableId}`,
+      label:
+        rel.name !== null && rel.name !== ''
+          ? rel.name
+          : `→ ${parent?.physicalName ?? rel.parentTableId}`,
     }
   } catch {
     return NO_LOCATION
@@ -87,7 +93,10 @@ export function validate(ctx: CommandCtx): Promise<number> {
     if (!result.ok) {
       emit(
         ctx.json,
-        [`파싱 오류 ${result.issues.length}건`, ...result.issues.map((i) => `  ${i.path}: ${i.message}`)].join('\n'),
+        [
+          `파싱 오류 ${result.issues.length}건`,
+          ...result.issues.map((i) => `  ${i.path}: ${i.message}`),
+        ].join('\n'),
         { ok: false, parseErrors: result.issues, integrityIssues: [], warnings: [] },
       )
       return 1
@@ -95,8 +104,9 @@ export function validate(ctx: CommandCtx): Promise<number> {
 
     const integrityIssues = validateModelIntegrity(result.model)
     // 좌표는 기존 필드에 얹기만 한다 — --json 소비자가 보던 모양은 그대로다.
-    const warnings = computeWarnings(result.model, config.namingRules, config.dialects)
-      .map((w) => ({ ...w, ...locate(result.model, result.tableFiles, w) }))
+    const warnings = computeWarnings(result.model, config.namingRules, config.dialects).map(
+      (w) => ({ ...w, ...locate(result.model, result.tableFiles, w) }),
+    )
     // ⚠️ **판정에 넣지 않는다**(설계 D3) — `validate` 는 파일만 본다. 미저장 편집이 있다고
     // 종료 코드가 바뀌면 커밋 훅·CI 가 화면 상태에 좌우된다.
     const unsavedDraft = await hasDraft(ctx.cwd)
@@ -112,7 +122,10 @@ export function validate(ctx: CommandCtx): Promise<number> {
 
     emit(ctx.json, human, {
       ok,
-      parseErrors: [], integrityIssues, warnings, unsavedDraft,
+      parseErrors: [],
+      integrityIssues,
+      warnings,
+      unsavedDraft,
     })
     return ok ? 0 : 1
   })

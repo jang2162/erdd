@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
-  Background, MiniMap, ReactFlow, ConnectionMode,
-  useNodesState, useReactFlow, useUpdateNodeInternals,
-  type Connection, type Edge, type Node, type NodeChange,
+  Background,
+  MiniMap,
+  ReactFlow,
+  ConnectionMode,
+  useNodesState,
+  useReactFlow,
+  useUpdateNodeInternals,
+  type Connection,
+  type Edge,
+  type Node,
+  type NodeChange,
   type XYPosition,
 } from '@xyflow/react'
 import { toast } from 'sonner'
@@ -117,21 +125,27 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   const shortcutDelete = useEditorShortcuts({ projectId })
   const rf = useReactFlow()
   // 그룹 드래그 시작 시점의 그룹 노드 위치 + 소속 테이블 위치 스냅샷(전체 뷰에서만 사용).
-  const dragOrigin = useRef<{ groupNodeStart: XYPosition; members: Map<string, XYPosition> } | null>(null)
+  const dragOrigin = useRef<{
+    groupNodeStart: XYPosition
+    members: Map<string, XYPosition>
+  } | null>(null)
 
   const namingRules = useEditorStore((s) => s.namingRules)
   const dialects = useEditorStore((s) => s.dialects)
   const warnings = useMemo(
-    () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
+    () => computeWarnings(model, namingRules, dialects),
+    [model, namingRules, dialects],
+  )
   const peers = useEditorStore((s) => s.peers)
   const peerMarks = useMemo(() => buildPeerMarks(peers, selfUserId), [peers, selfUserId])
   // 앵커는 노드·엣지·고스트 셋이 함께 읽는다 — 한 번만 계산해 넘긴다(설계 3.3).
   const anchors = useMemo(() => buildAnchors(model), [model])
 
   // 유효 뷰: 활성 그룹이 삭제됐으면(그룹 뷰 도중 삭제) 전체 뷰로 폴백한다.
-  const view = activeGroupView && model.tableGroups[activeGroupView]
-    ? { kind: 'group' as const, groupId: activeGroupView }
-    : { kind: 'full' as const }
+  const view =
+    activeGroupView && model.tableGroups[activeGroupView]
+      ? { kind: 'group' as const, groupId: activeGroupView }
+      : { kind: 'full' as const }
 
   const onColumnClick = useCallback(
     (columnId: string, mode: 'replace' | 'toggle' | 'range') => {
@@ -143,8 +157,15 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
 
   const derived = useMemo(() => {
     const tableNodes = buildNodes(
-      model, viewMode, selectedIds, warnings, view, peerMarks,
-      { selectedColumnIds, onColumnClick }, anchors)
+      model,
+      viewMode,
+      selectedIds,
+      warnings,
+      view,
+      peerMarks,
+      { selectedColumnIds, onColumnClick },
+      anchors,
+    )
     if (view.kind === 'group') {
       // 그룹 뷰: 색상 영역·메모 노드는 숨긴다. 관계로 이어진 외부 테이블은 고스트로 보여준다.
       const ghostNodes = buildGhostNodes(model, view.groupId, anchors)
@@ -152,19 +173,39 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
     }
     const groupNodes = buildGroupNodes(model, selectedGroupId, canEdit)
     const noteNodes: Node[] = Object.values(model.notes).map((note) => ({
-      id: note.id, type: 'note', position: note.position,
+      id: note.id,
+      type: 'note',
+      position: note.position,
       data: {
-        note, selected: note.id === selectedNoteId, peers: peerMarks.get(note.id),
+        note,
+        selected: note.id === selectedNoteId,
+        peers: peerMarks.get(note.id),
       } satisfies NoteNodeData,
     }))
     return [...groupNodes, ...tableNodes, ...noteNodes]
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, viewMode, selectedIds, selectedColumnIds, onColumnClick, selectedNoteId, selectedGroupId, canEdit, warnings, peerMarks, anchors, view.kind, view.kind === 'group' ? view.groupId : null])
+  }, [
+    model,
+    viewMode,
+    selectedIds,
+    selectedColumnIds,
+    onColumnClick,
+    selectedNoteId,
+    selectedGroupId,
+    canEdit,
+    warnings,
+    peerMarks,
+    anchors,
+    view.kind,
+    view.kind === 'group' ? view.groupId : null,
+  ])
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(derived)
 
   // 스토어(구조/보기 모드/선택)가 바뀌면 노드를 재구성한다.
   // 이전 배열의 실측 크기는 이어 붙인다 — 버리면 handleBounds까지 함께 날아간다(keepMeasured 주석).
-  useEffect(() => { setNodes((prev) => keepMeasured(prev, derived)) }, [derived, setNodes])
+  useEffect(() => {
+    setNodes((prev) => keepMeasured(prev, derived))
+  }, [derived, setNodes])
 
   /**
    * 핸들 집합이 바뀐 테이블에 `updateNodeInternals` 를 건다.
@@ -192,15 +233,32 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
   }, [anchors, model, updateNodeInternals])
 
   const edges = useMemo<Edge[]>(() => {
-    const built = view.kind === 'group'
-      ? buildEdges(model, new Set([
-          ...Object.values(model.tables).filter((t) => t.groupId === view.groupId).map((t) => t.id),
-          ...buildGhostNodes(model, view.groupId, anchors).map((g) => g.data.table.id),
-        ]), peerMarks, anchors)
-      : buildEdges(model, undefined, peerMarks, anchors)
-    return selectedRelId ? built.map((e) => (e.id === selectedRelId ? { ...e, selected: true } : e)) : built
+    const built =
+      view.kind === 'group'
+        ? buildEdges(
+            model,
+            new Set([
+              ...Object.values(model.tables)
+                .filter((t) => t.groupId === view.groupId)
+                .map((t) => t.id),
+              ...buildGhostNodes(model, view.groupId, anchors).map((g) => g.data.table.id),
+            ]),
+            peerMarks,
+            anchors,
+          )
+        : buildEdges(model, undefined, peerMarks, anchors)
+    return selectedRelId
+      ? built.map((e) => (e.id === selectedRelId ? { ...e, selected: true } : e))
+      : built
     // eslint-disable-next-line react-hooks/exhaustive-deps -- view 객체는 매 렌더 새로 만들어지므로 kind/groupId로 분해해 넣는다.
-  }, [model, view.kind, view.kind === 'group' ? view.groupId : null, selectedRelId, peerMarks, anchors])
+  }, [
+    model,
+    view.kind,
+    view.kind === 'group' ? view.groupId : null,
+    selectedRelId,
+    peerMarks,
+    anchors,
+  ])
 
   // 트리에서 발행한 포커스 신호를 소비해 해당 테이블로 이동한다.
   useEffect(() => {
@@ -232,21 +290,24 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
    * 고스트는 노드 id 가 **원본 테이블 id 그대로**라 이 검사만으로는 걸러지지 않지만, 애초에
    * `selectable: false` 라 select 델타를 만들지 않는다.
    */
-  const onNodesChangeWithSelection = useCallback((changes: NodeChange[]) => {
-    onNodesChange(changes)
-    const s = useEditorStore.getState()
-    let next = s.selectedTableIds
-    for (const c of changes) {
-      if (c.type !== 'select' || !Object.hasOwn(s.model.tables, c.id)) continue
-      const has = next.includes(c.id)
-      // 새로 고른 것은 **뒤에 붙인다** — 배열 순서는 "고른 순서"이고 `[0]` 이 주 선택이다.
-      if (c.selected && !has) next = [...next, c.id]
-      else if (!c.selected && has) next = next.filter((id) => id !== c.id)
-    }
-    // 델타가 선택을 바꾸지 않았으면 아무것도 하지 않는다 — 같은 값을 다시 쓰면 새 배열이 되어
-    // 이 값을 구독하는 화면이 남의 편집마다 리렌더되고, 같은 클릭의 메모·관계 선택도 지워진다.
-    if (next !== s.selectedTableIds) s.selectTables(next)
-  }, [onNodesChange])
+  const onNodesChangeWithSelection = useCallback(
+    (changes: NodeChange[]) => {
+      onNodesChange(changes)
+      const s = useEditorStore.getState()
+      let next = s.selectedTableIds
+      for (const c of changes) {
+        if (c.type !== 'select' || !Object.hasOwn(s.model.tables, c.id)) continue
+        const has = next.includes(c.id)
+        // 새로 고른 것은 **뒤에 붙인다** — 배열 순서는 "고른 순서"이고 `[0]` 이 주 선택이다.
+        if (c.selected && !has) next = [...next, c.id]
+        else if (!c.selected && has) next = next.filter((id) => id !== c.id)
+      }
+      // 델타가 선택을 바꾸지 않았으면 아무것도 하지 않는다 — 같은 값을 다시 쓰면 새 배열이 되어
+      // 이 값을 구독하는 화면이 남의 편집마다 리렌더되고, 같은 클릭의 메모·관계 선택도 지워진다.
+      if (next !== s.selectedTableIds) s.selectTables(next)
+    },
+    [onNodesChange],
+  )
 
   const onConnect = (conn: Connection) => {
     const plan = planConnection(model, conn, newId)
@@ -255,12 +316,13 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
       return
     }
     void mutate(
-      (m) => createRelationshipFromParentPk(m, {
-        relationshipId: plan.relationshipId,
-        parentTableId: plan.parentTableId,
-        childTableId: plan.childTableId,
-        newColumnIds: plan.newColumnIds,
-      }),
+      (m) =>
+        createRelationshipFromParentPk(m, {
+          relationshipId: plan.relationshipId,
+          parentTableId: plan.parentTableId,
+          childTableId: plan.childTableId,
+          newColumnIds: plan.newColumnIds,
+        }),
       { summary: '관계 생성' },
     )
     selectRelationship(plan.relationshipId)
@@ -286,7 +348,10 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
         onConnect={onConnect}
         onNodeClick={(_, node) => {
           if (node.type === 'ghost') return
-          if (node.type === 'group') { select(null); return } // 빈 영역 클릭 = 선택 해제(라벨은 stopPropagation으로 별도 처리)
+          if (node.type === 'group') {
+            select(null)
+            return
+          } // 빈 영역 클릭 = 선택 해제(라벨은 stopPropagation으로 별도 처리)
           if (node.type === 'note') selectNote(node.id)
           // 테이블 선택(단일 클릭·Cmd/Ctrl+클릭 토글·박스 선택)은 onNodesChangeWithSelection
           // 한 곳에서만 처리한다 — 창구가 둘이면 Cmd+클릭 한 번에 ReactFlow 내부 토글과 우리
@@ -308,7 +373,8 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
           if (node.type !== 'group') return
           const gid = groupIdOf(node.id)
           const members = new Map<string, XYPosition>()
-          for (const t of Object.values(model.tables)) if (t.groupId === gid) members.set(t.id, { ...t.position })
+          for (const t of Object.values(model.tables))
+            if (t.groupId === gid) members.set(t.id, { ...t.position })
           dragOrigin.current = { groupNodeStart: { ...node.position }, members }
         }}
         onNodeDrag={(event, node) => {
@@ -322,8 +388,16 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
           const o = dragOrigin.current
           const dx = node.position.x - o.groupNodeStart.x
           const dy = node.position.y - o.groupNodeStart.y
-          setNodes((ns) => ns.map((n) =>
-            o.members.has(n.id) ? { ...n, position: { x: o.members.get(n.id)!.x + dx, y: o.members.get(n.id)!.y + dy } } : n))
+          setNodes((ns) =>
+            ns.map((n) =>
+              o.members.has(n.id)
+                ? {
+                    ...n,
+                    position: { x: o.members.get(n.id)!.x + dx, y: o.members.get(n.id)!.y + dy },
+                  }
+                : n,
+            ),
+          )
         }}
         onNodeDragStop={(_, node, dragged) => {
           const drop = useDragStore.getState().over
@@ -340,7 +414,10 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
             // 이다: 메모는 그룹 멤버가 아니고, 고스트는 노드 id가 원본 테이블 id 그대로라
             // (ghost-nodes.ts) 거르지 않으면 다른 그룹의 테이블이 함께 끌려온다.
             applyGroupMove(
-              mutate, dragged.filter((n) => n.type === 'table').map((n) => n.id), drop.groupId)
+              mutate,
+              dragged.filter((n) => n.type === 'table').map((n) => n.id),
+              drop.groupId,
+            )
             return
           }
           if (node.type === 'group') {
@@ -350,20 +427,26 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
             const dx = node.position.x - o.groupNodeStart.x
             const dy = node.position.y - o.groupNodeStart.y
             if (dx === 0 && dy === 0) return
-            void mutate((m) => {
-              let next = m
-              for (const [id, pos] of o.members) next = moveTable(next, id, { x: pos.x + dx, y: pos.y + dy })
-              return next
-            }, { summary: '그룹 이동' })
+            void mutate(
+              (m) => {
+                let next = m
+                for (const [id, pos] of o.members)
+                  next = moveTable(next, id, { x: pos.x + dx, y: pos.y + dy })
+                return next
+              },
+              { summary: '그룹 이동' },
+            )
             return
           }
           void mutate(
-            (m) => dragged.reduce((acc, n) => {
-              if (n.type === 'group' || n.type === 'ghost') return acc
-              if (view.kind === 'group' && n.type === 'table') return moveTableGroupPosition(acc, n.id, n.position)
-              if (n.type === 'note') return moveNote(acc, n.id, n.position)
-              return moveTable(acc, n.id, n.position)
-            }, m),
+            (m) =>
+              dragged.reduce((acc, n) => {
+                if (n.type === 'group' || n.type === 'ghost') return acc
+                if (view.kind === 'group' && n.type === 'table')
+                  return moveTableGroupPosition(acc, n.id, n.position)
+                if (n.type === 'note') return moveNote(acc, n.id, n.position)
+                return moveTable(acc, n.id, n.position)
+              }, m),
             { summary: '이동' },
           )
         }}
@@ -381,7 +464,9 @@ export function Canvas({ projectId, selfUserId }: { projectId: string; selfUserI
         projectId={projectId}
         ids={shortcutDelete.confirmingIds}
         open={shortcutDelete.confirmingIds.length > 0}
-        onOpenChange={(v) => { if (!v) shortcutDelete.closeConfirm() }}
+        onOpenChange={(v) => {
+          if (!v) shortcutDelete.closeConfirm()
+        }}
       />
     </div>
   )

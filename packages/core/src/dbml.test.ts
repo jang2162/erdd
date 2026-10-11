@@ -11,25 +11,54 @@ import { parseNameMeta } from './name-meta.js'
 // 이 파일의 기존 케이스는 전부 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적고
 // 호출부 20곳을 그대로 둔다.
 const generateDbml = (
-  model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' },
-  opts: { projectName?: string } = {}, rules: NamingRules = DEFAULT_NAMING_RULES,
+  model: ProjectModel,
+  dialect: Dialect,
+  scope: DdlScope = { kind: 'all' },
+  opts: { projectName?: string } = {},
+  rules: NamingRules = DEFAULT_NAMING_RULES,
 ) => generateDbmlRaw(model, dialect, scope, opts, rules)
 
 function baseModel(): ProjectModel {
   const m = createEmptyModel()
   m.tables['t1'] = {
-    id: 't1', logicalName: '회원', physicalName: 'MBR', comment: '회원 기본정보',
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 't1',
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: '회원 기본정보',
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['c1'] = {
-    id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO',
-    type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
-    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    id: 'c1',
+    tableId: 't1',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: true,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c2'] = {
-    id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM',
-    type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: false,
-    defaultValue: null, order: 1, comment: null, domainId: null, custom: {},
+    id: 'c2',
+    tableId: 't1',
+    logicalName: '회원명',
+    physicalName: 'MBR_NM',
+    type: 'VARCHAR(100)',
+    isPk: false,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 1,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   return m
 }
@@ -54,17 +83,39 @@ describe('generateDbml', () => {
   it('0컬럼 테이블과 빈 물리명 테이블은 제외한다', () => {
     const m = baseModel()
     m.tables['t2'] = {
-      id: 't2', logicalName: '빈테이블', physicalName: 'EMPTY', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't2',
+      logicalName: '빈테이블',
+      physicalName: 'EMPTY',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.tables['t3'] = {
-      id: 't3', logicalName: '이름없음', physicalName: '', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't3',
+      logicalName: '이름없음',
+      physicalName: '',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns['c9'] = {
-      id: 'c9', tableId: 't3', logicalName: '컬럼', physicalName: 'C', type: 'INT',
-      isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {},
+      id: 'c9',
+      tableId: 't3',
+      logicalName: '컬럼',
+      physicalName: 'C',
+      type: 'INT',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     const out = generateDbml(m, 'postgresql')
     expect(out).not.toContain('EMPTY')
@@ -92,14 +143,15 @@ describe('generateDbml', () => {
       const out = withComment('첫 줄\n둘째 줄\\')
       expect(parseDbml(out).tables).toHaveLength(1)
       expect(parseDbml(out).comments).toContainEqual({
-        table: 'MBR', column: null, text: '회원 - 첫 줄\n둘째 줄\\',
+        table: 'MBR',
+        column: null,
+        text: '회원 - 첫 줄\n둘째 줄\\',
       })
     })
 
     it('리터럴 백슬래시+글자를 제어문자로 바꾸지 않는다', () => {
       const out = withComment('첫 줄\n경로: C:\\temp\\n_not_newline')
-      expect(parseDbml(out).comments[0]!.text)
-        .toBe('회원 - 첫 줄\n경로: C:\\temp\\n_not_newline')
+      expect(parseDbml(out).comments[0]!.text).toBe('회원 - 첫 줄\n경로: C:\\temp\\n_not_newline')
     })
 
     it('트리플 쿼트가 든 여러 줄 설명은 그대로 왕복한다(대조군)', () => {
@@ -174,7 +226,7 @@ describe('generateDbml', () => {
 
   it('autoIncrement 는 PK 이고 정수일 때만 increment 로 낸다', () => {
     const m = baseModel()
-    m.columns['c2']!.autoIncrement = true            // PK 가 아니다
+    m.columns['c2']!.autoIncrement = true // PK 가 아니다
     expect(generateDbml(m, 'postgresql')).not.toContain('"MBR_NM" varchar(100) [increment')
   })
 
@@ -183,30 +235,54 @@ describe('generateDbml', () => {
   it('값에 중괄호·따옴표가 든 커스텀도 설명과 함께 왕복한다', () => {
     const m = baseModel()
     m.customFields['f1'] = {
-      id: 'f1', name: '비고', target: 'table', type: 'text', options: [],
-      required: false, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '비고',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.customFields['f2'] = {
-      id: 'f2', name: '메타', target: 'table', type: 'text', options: [],
-      required: false, defaultValue: null, order: 1, origin: null,
+      id: 'f2',
+      name: '메타',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 1,
+      origin: null,
     }
     m.tables['t1']!.comment = '설명에 {중괄호} 가 있다'
     m.tables['t1']!.custom = { f1: `it's {중괄호} "큰따옴표"`, f2: '{"a":1}' }
     const parsed = parseDbml(generateDbml(m, 'postgresql'))
     expect(parsed.customValues).toContainEqual({
-      table: 'MBR', column: null,
+      table: 'MBR',
+      column: null,
       values: { 비고: `it's {중괄호} "큰따옴표"`, 메타: '{"a":1}' },
     })
     expect(parsed.comments).toContainEqual({
-      table: 'MBR', column: null, text: '회원 - 설명에 {중괄호} 가 있다',
+      table: 'MBR',
+      column: null,
+      text: '회원 - 설명에 {중괄호} 가 있다',
     })
   })
 
   it('커스텀 항목 값을 note 꼬리로 낸다', () => {
     const m = baseModel()
     m.customFields['f1'] = {
-      id: 'f1', name: '보안등급', target: 'table', type: 'text', options: [],
-      required: false, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '보안등급',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.tables['t1']!.custom = { f1: '2' }
     expect(generateDbml(m, 'postgresql')).toContain('{"보안등급":"2"}')
@@ -218,26 +294,59 @@ function relModel(): ProjectModel {
   m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#0E7A6C', comment: null, alias: '' }
   m.tables['t1']!.groupId = 'g1'
   m.tables['t2'] = {
-    id: 't2', logicalName: '주문', physicalName: 'ORD', comment: null,
-    groupId: 'g1', position: { x: 300, y: 0 }, groupPosition: null, custom: {},
+    id: 't2',
+    logicalName: '주문',
+    physicalName: 'ORD',
+    comment: null,
+    groupId: 'g1',
+    position: { x: 300, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['c3'] = {
-    id: 'c3', tableId: 't2', logicalName: '주문번호', physicalName: 'ORD_NO',
-    type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
-    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    id: 'c3',
+    tableId: 't2',
+    logicalName: '주문번호',
+    physicalName: 'ORD_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c4'] = {
-    id: 'c4', tableId: 't2', logicalName: '회원번호', physicalName: 'MBR_NO',
-    type: 'BIGINT', isPk: false, autoIncrement: false, nullable: false,
-    defaultValue: null, order: 1, comment: null, domainId: null, custom: {},
+    id: 'c4',
+    tableId: 't2',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: false,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 1,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.relationships['r1'] = {
-    id: 'r1', parentTableId: 't1', childTableId: 't2',
+    id: 'r1',
+    parentTableId: 't1',
+    childTableId: 't2',
     columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
-    cardinality: '1:N', identifying: false, name: null,
+    cardinality: '1:N',
+    identifying: false,
+    name: null,
   }
   m.indexes['ix1'] = {
-    id: 'ix1', tableId: 't1', name: 'IX_MBR_NM', unique: false,
+    id: 'ix1',
+    tableId: 't1',
+    name: 'IX_MBR_NM',
+    unique: false,
     columns: [{ columnId: 'c2', direction: 'asc' }],
   }
   return m
@@ -245,8 +354,9 @@ function relModel(): ProjectModel {
 
 describe('generateDbml — 인덱스·그룹·관계', () => {
   it('인덱스를 indexes 블록으로 내고 이름을 보존한다', () => {
-    expect(generateDbml(relModel(), 'postgresql'))
-      .toContain('  indexes {\n    ("MBR_NM") [name: \'IX_MBR_NM\']\n  }')
+    expect(generateDbml(relModel(), 'postgresql')).toContain(
+      '  indexes {\n    ("MBR_NM") [name: \'IX_MBR_NM\']\n  }',
+    )
   })
 
   it('유니크 인덱스에 unique 설정을 붙인다', () => {
@@ -271,15 +381,15 @@ describe('generateDbml — 인덱스·그룹·관계', () => {
   })
 
   it('이름 없는 관계는 익명 Ref 로 낸다', () => {
-    expect(generateDbml(relModel(), 'postgresql'))
-      .toContain('Ref: "ORD"."MBR_NO" > "MBR"."MBR_NO"')
+    expect(generateDbml(relModel(), 'postgresql')).toContain('Ref: "ORD"."MBR_NO" > "MBR"."MBR_NO"')
   })
 
   it('이름 있는 관계만 이름을 붙인다', () => {
     const m = relModel()
     m.relationships['r1']!.name = 'FK_ORD_MBR'
-    expect(generateDbml(m, 'postgresql'))
-      .toContain('Ref "FK_ORD_MBR": "ORD"."MBR_NO" > "MBR"."MBR_NO"')
+    expect(generateDbml(m, 'postgresql')).toContain(
+      'Ref "FK_ORD_MBR": "ORD"."MBR_NO" > "MBR"."MBR_NO"',
+    )
   })
 
   it('1:1 은 - 로 낸다', () => {
@@ -294,8 +404,9 @@ describe('generateDbml — 인덱스·그룹·관계', () => {
       { childColumnId: 'c4', parentColumnId: 'c1' },
       { childColumnId: 'c3', parentColumnId: 'c2' },
     ]
-    expect(generateDbml(m, 'postgresql'))
-      .toContain('Ref: "ORD".("MBR_NO", "ORD_NO") > "MBR".("MBR_NO", "MBR_NM")')
+    expect(generateDbml(m, 'postgresql')).toContain(
+      'Ref: "ORD".("MBR_NO", "ORD_NO") > "MBR".("MBR_NO", "MBR_NM")',
+    )
   })
 
   it('범위가 좁혀지면 TableGroup·Ref 도 함께 좁혀진다', () => {
@@ -319,8 +430,8 @@ describe('물리명 템플릿', () => {
     const out = generateDbml(m(), 'postgresql', { kind: 'all' }, {}, tpl(TPL))
     expect(out).toContain('Table "TB_MBR_MBR" ')
     expect(out).toContain('Table "TB_MBR_MBR_GRD" ')
-    expect(out).toContain('Ref: "TB_MBR_MBR".')          // 자식(MBR) 쪽
-    expect(out).toContain('"TB_MBR_MBR_GRD".')           // 부모 쪽
+    expect(out).toContain('Ref: "TB_MBR_MBR".') // 자식(MBR) 쪽
+    expect(out).toContain('"TB_MBR_MBR_GRD".') // 부모 쪽
     expect(out).toMatch(/TableGroup [^\n]*\{\n\s+"TB_MBR_/)
     expect(out).not.toMatch(/Table "MBR_GRD"/)
     expect(out).not.toMatch(/Table "MBR"/)
@@ -344,7 +455,9 @@ describe('물리명 템플릿', () => {
 
 describe('논리명 템플릿', () => {
   const both = (physical: string, logical: string): NamingRules => ({
-    ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: physical, tableLogicalTemplate: logical,
+    ...DEFAULT_NAMING_RULES,
+    tablePhysicalTemplate: physical,
+    tableLogicalTemplate: logical,
   })
   function m(): ProjectModel {
     const x = buildSampleModel()
@@ -353,7 +466,13 @@ describe('논리명 템플릿', () => {
   }
 
   it('note 의 논리명이 조합된다', () => {
-    const out = generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, both('', '{그룹명}_{논리명}'))
+    const out = generateDbmlRaw(
+      m(),
+      'postgresql',
+      { kind: 'all' },
+      {},
+      both('', '{그룹명}_{논리명}'),
+    )
     expect(out).toContain("note: 'SALES_회원 - 서비스 가입 회원'")
   })
 
@@ -362,7 +481,12 @@ describe('논리명 템플릿', () => {
     const x = m()
     x.tables['t2'] = { ...x.tables['t2']!, logicalName: 'ORD', physicalName: 'ORD', comment: null }
     const out = generateDbmlRaw(
-      x, 'postgresql', { kind: 'all' }, {}, both('{그룹명}_{물리명}', '{그룹명}_{논리명}'))
+      x,
+      'postgresql',
+      { kind: 'all' },
+      {},
+      both('{그룹명}_{물리명}', '{그룹명}_{논리명}'),
+    )
     expect(out).toContain('Table "SALES_ORD"')
     // ⚠️ `not.toContain("note: 'SALES_ORD'")` 만으로는 구분이 안 된다 — 고치기 전에는 note 가
     // 부분('ORD')이라 그 단언이 그냥 통과한다. 그 테이블의 설정 목록에 note 가 **아예 없어야** 한다.
@@ -371,11 +495,11 @@ describe('논리명 템플릿', () => {
   })
 
   it('템플릿이 없으면 지금과 같다', () => {
-    expect(generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES))
-      .toContain("note: '회원 - 서비스 가입 회원'")
+    expect(generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES)).toContain(
+      "note: '회원 - 서비스 가입 회원'",
+    )
   })
 })
-
 
 describe('머릿말 메타', () => {
   function m(): ProjectModel {
@@ -395,23 +519,35 @@ describe('머릿말 메타', () => {
 
   it('템플릿이 걸리면 첫 줄에 // 머릿말이 나온다', () => {
     const out = generateDbmlRaw(
-      m(), 'postgresql', { kind: 'all' }, {}, tpl('TB_{그룹별칭}_{물리명}'))
+      m(),
+      'postgresql',
+      { kind: 'all' },
+      {},
+      tpl('TB_{그룹별칭}_{물리명}'),
+    )
     expect(out.split('\n')[0]!.startsWith('// erdd:v2 ')).toBe(true)
   })
 
   // ⚠️ 머릿말은 Project 블록보다 **앞**이어야 파싱이 줍는다(설계 3.4).
   it('머릿말이 Project 블록보다 앞에 온다', () => {
     const out = generateDbmlRaw(
-      m(), 'postgresql', { kind: 'all' }, { projectName: '회원 시스템' },
-      tpl('TB_{그룹별칭}_{물리명}'))
+      m(),
+      'postgresql',
+      { kind: 'all' },
+      { projectName: '회원 시스템' },
+      tpl('TB_{그룹별칭}_{물리명}'),
+    )
     expect(out.indexOf('// erdd:v2')).toBeLessThan(out.indexOf('Project '))
     expect(parseNameMeta(out)).not.toBeNull()
   })
 
   // ⚠️ 설계 D4(좁아짐) — 그룹도 템플릿도 없어야 기존 산출물 무변경이 보장된다.
   it('그룹도 템플릿도 없으면 머릿말이 없다', () => {
-    expect(parseNameMeta(generateDbmlRaw(ungrouped(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES)))
-      .toBeNull()
+    expect(
+      parseNameMeta(
+        generateDbmlRaw(ungrouped(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES),
+      ),
+    ).toBeNull()
   })
 
   // ⚠️ 이번 사이클이 넓힌 자리 — 템플릿이 없어도 그룹이 있으면 머릿말이 나간다.
@@ -438,18 +574,45 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
   function tsModel(over: Partial<Column> = {}): ProjectModel {
     const m = createEmptyModel()
     m.tables['t'] = {
-      id: 't', logicalName: 'ORD', physicalName: 'ORD', comment: null, groupId: null,
-      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't',
+      logicalName: 'ORD',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns['c1'] = {
-      id: 'c1', tableId: 't', logicalName: 'ORD_NO', physicalName: 'ORD_NO', type: 'BIGINT',
-      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-      comment: null, domainId: null, custom: {},
+      id: 'c1',
+      tableId: 't',
+      logicalName: 'ORD_NO',
+      physicalName: 'ORD_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     m.columns['c2'] = {
-      id: 'c2', tableId: 't', logicalName: 'REG_DT', physicalName: 'REG_DT', type: 'TIMESTAMPTZ',
-      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 1,
-      comment: null, domainId: null, custom: {}, ...over,
+      id: 'c2',
+      tableId: 't',
+      logicalName: 'REG_DT',
+      physicalName: 'REG_DT',
+      type: 'TIMESTAMPTZ',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 1,
+      comment: null,
+      domainId: null,
+      custom: {},
+      ...over,
     }
     return m
   }
@@ -457,9 +620,15 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
   function overrideModel(mysqlType = 'TIMESTAMP'): ProjectModel {
     const m = tsModel()
     m.domains['d'] = {
-      id: 'd', name: '등록일시', category: null, logicalType: 'DATETIME',
+      id: 'd',
+      name: '등록일시',
+      category: null,
+      logicalType: 'DATETIME',
       dialectTypes: { postgresql: null, mysql: mysqlType, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
     m.columns['c2'] = { ...m.columns['c2']!, type: '', domainId: 'd' }
     return m
@@ -519,7 +688,7 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
    */
   it('inlinePk 인 nullable TIMESTAMP 에는 pk 만 나오고 null 이 붙지 않는다', () => {
     const m = tsModel({ isPk: true })
-    m.columns['c1'] = { ...m.columns['c1']!, isPk: false }   // 단일 PK 로 만들어 인라인 pk 를 낸다
+    m.columns['c1'] = { ...m.columns['c1']!, isPk: false } // 단일 PK 로 만들어 인라인 pk 를 낸다
     expect(line(generateDbml(m, 'mysql'), 'REG_DT')).toBe('"REG_DT" TIMESTAMP [pk]')
   })
 
@@ -534,7 +703,7 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
    * 내는 것은 참이고(PK 는 not null 이다), null 을 내는 것은 거짓이다. 통일하지 마라.
    */
   it('복합 PK 인 nullable TIMESTAMP 에는 null 이 붙지 않는다', () => {
-    const out = generateDbml(tsModel({ isPk: true }), 'mysql')   // c1 과 함께 복합 PK 가 된다
+    const out = generateDbml(tsModel({ isPk: true }), 'mysql') // c1 과 함께 복합 PK 가 된다
     expect(line(out, 'REG_DT')).toBe('"REG_DT" TIMESTAMP')
     // 전제 — pk 선언은 indexes 블록으로 실제로 나간다(그래서 `[null]` 이면 모순이 된다).
     expect(out).toContain('("ORD_NO", "REG_DT") [pk]')
@@ -550,19 +719,22 @@ describe('generateDbml — MySQL nullable TIMESTAMP', () => {
 
   // `\b` — `TIMESTAMP` 로 **시작만** 하는 타입은 걸리지 않는다.
   it('mysql 이어도 물리 타입이 TIMESTAMP 로 시작만 하면 null 을 붙이지 않는다', () => {
-    expect(line(generateDbml(overrideModel('timestamptz'), 'mysql'), 'REG_DT'))
-      .toBe('"REG_DT" timestamptz')
+    expect(line(generateDbml(overrideModel('timestamptz'), 'mysql'), 'REG_DT')).toBe(
+      '"REG_DT" timestamptz',
+    )
   })
 
   // `i` — 소문자 오버라이드도 걸린다.
   it('물리 타입이 소문자 timestamp 여도 null 이 붙는다', () => {
-    expect(line(generateDbml(overrideModel('timestamp'), 'mysql'), 'REG_DT'))
-      .toBe('"REG_DT" timestamp [null]')
+    expect(line(generateDbml(overrideModel('timestamp'), 'mysql'), 'REG_DT')).toBe(
+      '"REG_DT" timestamp [null]',
+    )
   })
 
   // `.trim()` — 생산자가 정규화하지 않는 오버라이드의 앞뒤 공백을 넘어 걸린다.
   it('물리 타입 앞뒤에 공백이 있어도 null 이 붙는다', () => {
-    expect(line(generateDbml(overrideModel('  TIMESTAMP  '), 'mysql'), 'REG_DT'))
-      .toMatch(/^"REG_DT"\s+TIMESTAMP\s+\[null\]$/)
+    expect(line(generateDbml(overrideModel('  TIMESTAMP  '), 'mysql'), 'REG_DT')).toMatch(
+      /^"REG_DT"\s+TIMESTAMP\s+\[null\]$/,
+    )
   })
 })

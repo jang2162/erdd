@@ -25,7 +25,10 @@ afterEach(async () => {
 })
 
 /** `<루트>/packages/cli/src/local` 까지 만들고, 그 경로(= `from`)와 루트를 돌려준다. */
-async function layout(opts: { pkgWeb?: boolean; repoDist?: boolean }): Promise<{ root: string; from: string }> {
+async function layout(opts: {
+  pkgWeb?: boolean
+  repoDist?: boolean
+}): Promise<{ root: string; from: string }> {
   const root = await mkdtemp(join(tmpdir(), 'erdd-webdist-'))
   dirs.push(root)
   const from = join(root, 'packages/cli/src/local')
@@ -71,11 +74,15 @@ describe('startLocalServer 와 webDist', () => {
   async function project(): Promise<string> {
     const dir = await mkdtemp(join(tmpdir(), 'erdd-webdist-cwd-'))
     dirs.push(dir)
-    await writeFile(join(dir, 'erdd.config.yaml'), [
-      'dialects: [postgresql]',
-      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      [
+        'dialects: [postgresql]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
     await mkdir(join(dir, 'erdd/tables'), { recursive: true })
     return dir
   }

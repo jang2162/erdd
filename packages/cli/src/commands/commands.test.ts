@@ -21,16 +21,27 @@ let err: string[]
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'erdd-cmd-'))
-  out = []; err = []
-  vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
-  vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+  out = []
+  err = []
+  vi.spyOn(process.stdout, 'write').mockImplementation((c) => {
+    out.push(String(c))
+    return true
+  })
+  vi.spyOn(process.stderr, 'write').mockImplementation((c) => {
+    err.push(String(c))
+    return true
+  })
   await writeConfig(dir, {
     serverUrl: 'https://erdd.example.com',
     projectId: '018f6b0e-0000-7000-8000-000000000000',
     dialects: ['postgresql'],
     namingRules: {
-      case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-      tablePhysicalTemplate: '', tableLogicalTemplate: '',
+      case: 'UPPER_SNAKE',
+      separator: '_',
+      logicalSeparator: '_',
+      maxLengthBytes: 30,
+      tablePhysicalTemplate: '',
+      tableLogicalTemplate: '',
     },
     tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
     dictionaries: [],
@@ -41,13 +52,29 @@ afterEach(() => vi.restoreAllMocks())
 function model(): ProjectModel {
   const m = createEmptyModel()
   m.tables['tb1'] = {
-    id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 'tb1',
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['c1'] = {
-    id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-    isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-    comment: null, domainId: null, custom: {},
+    id: 'c1',
+    tableId: 'tb1',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   return m
 }
@@ -57,15 +84,22 @@ function stubClient(overrides: Partial<Record<string, unknown>> = {}): ApiClient
     query: vi.fn(async (path: string) => {
       if (path === 'project.get') {
         return {
-          id: 'p1', name: '커머스', dialects: ['postgresql'],
+          id: 'p1',
+          name: '커머스',
+          dialects: ['postgresql'],
           namingRules: {
-      case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-      tablePhysicalTemplate: '', tableLogicalTemplate: '',
-    },
-          ...(overrides['project.get'] as object ?? {}),
+            case: 'UPPER_SNAKE',
+            separator: '_',
+            logicalSeparator: '_',
+            maxLengthBytes: 30,
+            tablePhysicalTemplate: '',
+            tableLogicalTemplate: '',
+          },
+          ...((overrides['project.get'] as object) ?? {}),
         }
       }
-      if (path === 'model.get') return { model: model(), seq: 42, ...(overrides['model.get'] as object ?? {}) }
+      if (path === 'model.get')
+        return { model: model(), seq: 42, ...((overrides['model.get'] as object) ?? {}) }
       throw new Error(`unexpected ${path}`)
     }) as ApiClient['query'],
     mutate: vi.fn(async (path: string) => {
@@ -76,18 +110,39 @@ function stubClient(overrides: Partial<Record<string, unknown>> = {}): ApiClient
 
 describe('pull', () => {
   it('파일 트리·base·sync를 쓴다', async () => {
-    const code = await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient() })
+    const code = await pull({
+      cwd: dir,
+      json: true,
+      yes: false,
+      strict: false,
+      client: stubClient(),
+    })
     expect(code).toBe(0)
     const tree = await readTree(dir)
     expect(Object.keys(tree)).toContain('erdd/tables/MBR.yaml')
-    expect(JSON.parse(await readFile(join(dir, '.erdd/sync.json'), 'utf8'))).toMatchObject({ revisionSeq: 42 })
+    expect(JSON.parse(await readFile(join(dir, '.erdd/sync.json'), 'utf8'))).toMatchObject({
+      revisionSeq: 42,
+    })
     expect(JSON.parse(out.join(''))).toMatchObject({ revisionSeq: 42, tables: 1 })
   })
 
   it('서버의 방언·명명 규칙을 config에 갱신한다', async () => {
     await pull({
-      cwd: dir, json: true, yes: false, strict: false,
-      client: stubClient({ 'project.get': { dialects: ['oracle'], namingRules: { case: 'lower_snake', separator: '', logicalSeparator: '_', maxLengthBytes: 20 } } }),
+      cwd: dir,
+      json: true,
+      yes: false,
+      strict: false,
+      client: stubClient({
+        'project.get': {
+          dialects: ['oracle'],
+          namingRules: {
+            case: 'lower_snake',
+            separator: '',
+            logicalSeparator: '_',
+            maxLengthBytes: 20,
+          },
+        },
+      }),
     })
     const raw = await readFile(join(dir, 'erdd.config.yaml'), 'utf8')
     expect(raw).toContain('oracle')
@@ -99,7 +154,14 @@ describe('pull', () => {
     out.length = 0
     await writeFile(join(dir, 'erdd/tables/MBR.yaml'), 'id: tb1\nname: CHANGED\n', 'utf8')
     const confirm = vi.fn(async () => false)
-    const code = await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient(), confirm })
+    const code = await pull({
+      cwd: dir,
+      json: true,
+      yes: false,
+      strict: false,
+      client: stubClient(),
+      confirm,
+    })
     expect(confirm).toHaveBeenCalled()
     expect(code).toBe(1)
     expect(JSON.parse(out.join('')).error.code).toBe('CANCELLED')
@@ -110,7 +172,14 @@ describe('pull', () => {
     await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient() })
     await writeFile(join(dir, 'erdd/tables/MBR.yaml'), 'id: tb1\nname: CHANGED\n', 'utf8')
     const confirm = vi.fn(async () => false)
-    const code = await pull({ cwd: dir, json: true, yes: true, strict: false, client: stubClient(), confirm })
+    const code = await pull({
+      cwd: dir,
+      json: true,
+      yes: true,
+      strict: false,
+      client: stubClient(),
+      confirm,
+    })
     expect(confirm).not.toHaveBeenCalled()
     expect(code).toBe(0)
     expect(await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')).toContain('MBR')
@@ -118,14 +187,27 @@ describe('pull', () => {
 
   // 리뷰 초점 1 — syncDown 이 config 를 서버 값으로 통째로 새로 만들며 구독을 지우면 안 된다.
   it('pull 은 config 를 서버 값으로 갱신하면서 구독(dictionaries)을 보존한다', async () => {
-    await writeConfig(dir, { ...CONFIG, dialects: [...CONFIG.dialects], dictionaries: [{ id: 'L1', name: '표준' }] })
-    expect(await pull({ cwd: dir, json: true, yes: true, strict: false, client: stubClient() })).toBe(0)
+    await writeConfig(dir, {
+      ...CONFIG,
+      dialects: [...CONFIG.dialects],
+      dictionaries: [{ id: 'L1', name: '표준' }],
+    })
+    expect(
+      await pull({ cwd: dir, json: true, yes: true, strict: false, client: stubClient() }),
+    ).toBe(0)
     expect((await readConfig(dir)).dictionaries).toEqual([{ id: 'L1', name: '표준' }])
   })
 
   it('최초 pull은 erdd/ 가 비어 있으면 확인하지 않는다', async () => {
     const confirm = vi.fn(async () => false)
-    const code = await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient(), confirm })
+    const code = await pull({
+      cwd: dir,
+      json: true,
+      yes: false,
+      strict: false,
+      client: stubClient(),
+      confirm,
+    })
     expect(confirm).not.toHaveBeenCalled()
     expect(code).toBe(0)
   })
@@ -134,12 +216,20 @@ describe('pull', () => {
   describe('base 가 없어도 erdd/ 에 파일이 있으면', () => {
     const LOCAL = 'words:\n  - logicalName: 주문\n    abbreviation: ORD\n'
     beforeEach(async () => {
-      await writeTree(dir, { 'erdd/words.yaml': { words: [{ logicalName: '주문', abbreviation: 'ORD' }] } })
+      await writeTree(dir, {
+        'erdd/words.yaml': { words: [{ logicalName: '주문', abbreviation: 'ORD' }] },
+      })
       await writeFile(join(dir, 'erdd/words.yaml'), LOCAL, 'utf8')
     })
 
     it('비대화형이면 --yes 를 안내하며 CANCELLED 로 멈추고 파일을 건드리지 않는다', async () => {
-      const code = await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient() })
+      const code = await pull({
+        cwd: dir,
+        json: true,
+        yes: false,
+        strict: false,
+        client: stubClient(),
+      })
       expect(code).toBe(1)
       const error = JSON.parse(out.join('')).error
       expect(error.code).toBe('CANCELLED')
@@ -152,26 +242,51 @@ describe('pull', () => {
 
     it('대화형이면 확인을 받고, 거절하면 사용자가 취소했습니다', async () => {
       const confirm = vi.fn(async () => false)
-      expect(await pull({ cwd: dir, json: true, yes: false, strict: false, client: stubClient(), confirm })).toBe(1)
+      expect(
+        await pull({
+          cwd: dir,
+          json: true,
+          yes: false,
+          strict: false,
+          client: stubClient(),
+          confirm,
+        }),
+      ).toBe(1)
       expect(confirm).toHaveBeenCalledWith('계속할까요?')
-      expect(JSON.parse(out.join('')).error).toMatchObject({ code: 'CANCELLED', message: '사용자가 취소했습니다' })
+      expect(JSON.parse(out.join('')).error).toMatchObject({
+        code: 'CANCELLED',
+        message: '사용자가 취소했습니다',
+      })
       expect(await readFile(join(dir, 'erdd/words.yaml'), 'utf8')).toBe(LOCAL)
     })
 
     it('--yes 면 확인 없이 서버 상태로 덮는다', async () => {
       const confirm = vi.fn(async () => false)
-      expect(await pull({ cwd: dir, json: true, yes: true, strict: false, client: stubClient(), confirm })).toBe(0)
+      expect(
+        await pull({
+          cwd: dir,
+          json: true,
+          yes: true,
+          strict: false,
+          client: stubClient(),
+          confirm,
+        }),
+      ).toBe(0)
       expect(confirm).not.toHaveBeenCalled()
       expect(Object.keys(await readTree(dir))).toContain('erdd/tables/MBR.yaml')
     })
   })
 
   it('연결 설정이 없으면 pull이 NO_CONFIG로 실패한다', async () => {
-    await writeFile(join(dir, CONFIG_FILE), [
-      'dialects: [postgresql]',
-      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(dir, CONFIG_FILE),
+      [
+        'dialects: [postgresql]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
     const code = await pull({ cwd: dir, json: true, yes: true, strict: false })
     expect(code).toBe(1)
   })
@@ -184,7 +299,8 @@ describe('status', () => {
     const code = await status({ cwd: dir, json: true, yes: false, strict: false })
     expect(code).toBe(0)
     expect(JSON.parse(out.join(''))).toMatchObject({
-      revisionSeq: 42, changes: { added: [], modified: [], deleted: [] },
+      revisionSeq: 42,
+      changes: { added: [], modified: [], deleted: [] },
     })
   })
 
@@ -210,7 +326,11 @@ describe('validate', () => {
     out.length = 0
     const code = await validate({ cwd: dir, json: true, yes: false, strict: false })
     expect(code).toBe(0)
-    expect(JSON.parse(out.join(''))).toMatchObject({ ok: true, parseErrors: [], integrityIssues: [] })
+    expect(JSON.parse(out.join(''))).toMatchObject({
+      ok: true,
+      parseErrors: [],
+      integrityIssues: [],
+    })
   })
 
   it('해소되지 않는 이름 참조는 parseErrors로 잡고 1로 끝난다', async () => {
@@ -281,38 +401,91 @@ describe('validate 경고 좌표', () => {
   function locatedModel(): ProjectModel {
     const m = createEmptyModel()
     m.tables['tb1'] = {
-      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.tables['tb2'] = {
-      id: 'tb2', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb2',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns['c1'] = {
-      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-      comment: null, domainId: null, custom: {},
+      id: 'c1',
+      tableId: 'tb1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     m.columns['c2'] = {
-      id: 'c2', tableId: 'tb2', logicalName: '주문번호', physicalName: 'ORD_NO', type: 'BIGINT',
-      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-      comment: null, domainId: null, custom: {},
+      id: 'c2',
+      tableId: 'tb2',
+      logicalName: '주문번호',
+      physicalName: 'ORD_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     // 부모 PK(BIGINT)와 타입이 달라 관계 경고(type-mismatch)가 난다.
     m.columns['c3'] = {
-      id: 'c3', tableId: 'tb2', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'VARCHAR(20)',
-      isPk: false, autoIncrement: false, nullable: false, defaultValue: null, order: 1,
-      comment: null, domainId: null, custom: {},
+      id: 'c3',
+      tableId: 'tb2',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      type: 'VARCHAR(20)',
+      isPk: false,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 1,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     m.relationships['r1'] = {
-      id: 'r1', parentTableId: 'tb1', childTableId: 'tb2',
+      id: 'r1',
+      parentTableId: 'tb1',
+      childTableId: 'tb2',
       columnMappings: [{ childColumnId: 'c3', parentColumnId: 'c1' }],
-      cardinality: '1:N', identifying: false, name: null,
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
     }
     return m
   }
 
-  type Located = { kind: string; scope: string; entityId: string; message: string; path: string | null; label: string | null }
+  type Located = {
+    kind: string
+    scope: string
+    entityId: string
+    message: string
+    path: string | null
+    label: string | null
+  }
   const warningsOf = (): Located[] => JSON.parse(out.join('')).warnings as Located[]
 
   it('컬럼 경고는 파일 경로와 "테이블.컬럼"을 함께 낸다', async () => {
@@ -348,13 +521,29 @@ describe('validate 경고 좌표', () => {
     })
     const m = createEmptyModel()
     m.tables['tb1'] = {
-      id: 'tb1', logicalName: '회원_가입_이력_상세', physicalName: 'MBR_REGISTRATION_HISTORY_DETAIL',
-      comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb1',
+      logicalName: '회원_가입_이력_상세',
+      physicalName: 'MBR_REGISTRATION_HISTORY_DETAIL',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns['c1'] = {
-      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-      comment: null, domainId: null, custom: {},
+      id: 'c1',
+      tableId: 'tb1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     await seedPulled(dir, m)
     out.length = 0
@@ -381,22 +570,38 @@ describe('validate 경고 좌표', () => {
     })
     const m = createEmptyModel()
     m.tables['tb1'] = {
-      id: 'tb1', logicalName: '회원_가입_이력_상세', physicalName: 'MBR_REGISTRATION_HISTORY_DETAIL',
-      comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb1',
+      logicalName: '회원_가입_이력_상세',
+      physicalName: 'MBR_REGISTRATION_HISTORY_DETAIL',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns['c1'] = {
-      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-      comment: null, domainId: null, custom: {},
+      id: 'c1',
+      tableId: 'tb1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     await seedPulled(dir, m)
     out.length = 0
     await validate({ cwd: dir, json: true, yes: false, strict: false })
     const w = warningsOf().find((x) => x.kind === 'too-long' && x.scope === 'table')
     const quoted = /물리명 "([^"]+)"/.exec(w?.message ?? '')?.[1]
-    expect(w?.label).toBe('MBR_REGISTRATION_HISTORY_DETAIL')    // 파일에서 찾을 수 있는 부분 이름
-    expect(quoted).toBe('TB_MBR_REGISTRATION_HISTORY_DETAIL')   // 실제로 DB 에 나갈 최종 이름
-    expect(quoted).not.toBe(w?.label)                           // 다리가 필요한 이유 그 자체
+    expect(w?.label).toBe('MBR_REGISTRATION_HISTORY_DETAIL') // 파일에서 찾을 수 있는 부분 이름
+    expect(quoted).toBe('TB_MBR_REGISTRATION_HISTORY_DETAIL') // 실제로 DB 에 나갈 최종 이름
+    expect(quoted).not.toBe(w?.label) // 다리가 필요한 이유 그 자체
   })
 
   it('개명 직후에도 좌표가 디스크의 실제 파일을 가리킨다', async () => {
@@ -409,13 +614,29 @@ describe('validate 경고 좌표', () => {
     // 같은 값이 되어 아무것도 잠기지 않는다.
     const m = createEmptyModel()
     m.tables['tb1'] = {
-      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns['c1'] = {
-      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-      comment: null, domainId: null, custom: {},
+      id: 'c1',
+      tableId: 'tb1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     await seedPulled(dir, m)
     const tree = await readTree(dir)
@@ -445,12 +666,24 @@ describe('validate 경고 좌표', () => {
     // 맞바꿈이 그 참조를 흔들어 이 테스트가 겨냥하지 않은 오류를 부른다.
     const m = createEmptyModel()
     m.tables['tb1'] = {
-      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.tables['tb2'] = {
-      id: 'tb2', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb2',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     await seedPulled(dir, m)
     const tree = await readTree(dir)
@@ -461,7 +694,10 @@ describe('validate 경고 좌표', () => {
     out.length = 0
     await validate({ cwd: dir, json: true, yes: false, strict: false })
     const byLabel = new Map(
-      warningsOf().filter((w) => w.scope === 'table').map((w) => [w.label, w.path]))
+      warningsOf()
+        .filter((w) => w.scope === 'table')
+        .map((w) => [w.label, w.path]),
+    )
     // 파일에 ORD 라고 적힌 테이블은 MBR.yaml 에 들어 있다 — 재조립하면 정확히 뒤바뀐다.
     expect(byLabel.get('ORD')).toBe('erdd/tables/MBR.yaml')
     expect(byLabel.get('MBR')).toBe('erdd/tables/ORD.yaml')
@@ -479,13 +715,29 @@ describe('validate 경고 좌표', () => {
     // 되어(둘 다 erdd/tables/MBR.yaml) 이 테스트는 아무것도 잠그지 못한다.
     const m = createEmptyModel()
     m.tables['tb1'] = {
-      id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns['c1'] = {
-      id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-      isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-      comment: null, domainId: null, custom: {},
+      id: 'c1',
+      tableId: 'tb1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     await seedPulled(dir, m)
     const tree = await readTree(dir)
@@ -516,9 +768,13 @@ describe('validate 경고 좌표', () => {
     expect(warnings.every((w) => 'path' in w && 'label' in w)).toBe(true)
     // 가산 변경이다 — 기존 필드는 그대로 있어야 한다.
     expect(warnings.find((w) => w.kind === 'unknown-word' && w.entityId === 'c1')).toMatchObject({
-      kind: 'unknown-word', scope: 'column', entityId: 'c1', tableId: 'tb1',
+      kind: 'unknown-word',
+      scope: 'column',
+      entityId: 'c1',
+      tableId: 'tb1',
       message: '등록되지 않은 단어가 있습니다: 회원번호',
-      path: 'erdd/tables/MBR.yaml', label: 'MBR.MBR_NO',
+      path: 'erdd/tables/MBR.yaml',
+      label: 'MBR.MBR_NO',
     })
   })
 })
@@ -526,13 +782,14 @@ describe('validate 경고 좌표', () => {
 describe('미저장 편집 알림', () => {
   const ctx = () => ({ cwd: dir, json: true, yes: false, strict: false })
 
-  const seedDraft = () => writeDraft(dir, {
-    formatVersion: 1,
-    baseSignature: 'sig',
-    seq: 3,
-    updatedAt: '2026-09-03T05:25:30.000Z',
-    model: createEmptyModel(),
-  })
+  const seedDraft = () =>
+    writeDraft(dir, {
+      formatVersion: 1,
+      baseSignature: 'sig',
+      seq: 3,
+      updatedAt: '2026-09-03T05:25:30.000Z',
+      model: createEmptyModel(),
+    })
 
   it('status 가 드래프트를 발견하면 --json 에 알린다', async () => {
     await seedPulled(dir, model())
@@ -581,14 +838,25 @@ describe('미저장 편집 알림', () => {
       ['validate', () => validate({ ...ctx(), json: false })],
       ['push', () => push({ ...ctx(), client: stubClient() })],
       ['export', () => exportCommand({ ...ctx(), json: false, format: 'ddl' })],
-      ['import', () => importCommand({ ...ctx(), json: false, file: join(dir, 'x.sql'), yes: true, dryRun: true })],
+      [
+        'import',
+        () =>
+          importCommand({
+            ...ctx(),
+            json: false,
+            file: join(dir, 'x.sql'),
+            yes: true,
+            dryRun: true,
+          }),
+      ],
     ]
     for (const [name, run] of runs) {
       await seedPulled(dir, model())
       await seedDraft()
       await writeFile(join(dir, 'x.sql'), 'CREATE TABLE T (A INT);', 'utf8')
-      out = []; err = []
-      await run().catch(() => undefined)   // 명령 자체의 성패는 이 테스트의 관심이 아니다
+      out = []
+      err = []
+      await run().catch(() => undefined) // 명령 자체의 성패는 이 테스트의 관심이 아니다
       expect([...out, ...err].join(''), `${name} 이 알리지 않았다`).toContain(UNSAVED_NOTICE)
     }
   })

@@ -106,11 +106,18 @@ describe('routes', () => {
       }),
       'project.get': () => ({
         data: {
-          id: 'proj1', orgId: 'local', name: '로컬 프로젝트', description: '',
-          dialects: ['postgresql'], createdAt: '2026-01-01T00:00:00.000Z',
-          namingRules: DEFAULT_NAMING_RULES, tableOptions: DEFAULT_TABLE_OPTIONS,
-          myRole: 'admin', myOrgRole: 'owner',
-          canEdit: true, canManage: false,
+          id: 'proj1',
+          orgId: 'local',
+          name: '로컬 프로젝트',
+          description: '',
+          dialects: ['postgresql'],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          namingRules: DEFAULT_NAMING_RULES,
+          tableOptions: DEFAULT_TABLE_OPTIONS,
+          myRole: 'admin',
+          myOrgRole: 'owner',
+          canEdit: true,
+          canManage: false,
         },
       }),
       // ⚠️ 이 목이 없으면 배지 단언이 **죽은 단언**이다 — 건수가 0이라 게이트를 지워도

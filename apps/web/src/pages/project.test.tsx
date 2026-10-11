@@ -39,31 +39,50 @@ class FakeSocket {
 function renderProject(mode: 'server' | 'local') {
   useEditorStore.getState().setLocalSaveStatus({ dirty: true, external: true })
   mockTrpcFetch({
-    'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode } }),
+    'auth.me': () => ({
+      data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode },
+    }),
     'model.get': () => ({ data: { model: createEmptyModel(), seq: 0 } }),
-    'project.get': () => ({ data: {
-      id: PROJECT_ID, orgId: 'o1', name: '프로젝트', description: '', dialects: ['postgresql'],
-      namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '',
+    'project.get': () => ({
+      data: {
+        id: PROJECT_ID,
+        orgId: 'o1',
+        name: '프로젝트',
+        description: '',
+        dialects: ['postgresql'],
+        namingRules: {
+          case: 'UPPER_SNAKE',
+          separator: '_',
+          logicalSeparator: '_',
+          maxLengthBytes: 30,
+          tablePhysicalTemplate: '',
+          tableLogicalTemplate: '',
+        },
+        tableOptions: DEFAULT_TABLE_OPTIONS,
+        createdAt: new Date(0).toISOString(),
+        myRole: 'admin',
+        myOrgRole: 'owner',
+        canEdit: true,
+        canManage: true,
       },
-      tableOptions: DEFAULT_TABLE_OPTIONS,
-      createdAt: new Date(0).toISOString(), myRole: 'admin', myOrgRole: 'owner',
-      canEdit: true, canManage: true,
-    } }),
+    }),
   })
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[`/p/${PROJECT_ID}`]}>
       <QueryClientProvider client={queryClient}>
-        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+          {children}
+        </TRPCProvider>
       </QueryClientProvider>
     </MemoryRouter>
   )
   render(
     <RequireAuth>
-      <Routes><Route path="/p/:projectId" element={<ProjectPage />} /></Routes>
+      <Routes>
+        <Route path="/p/:projectId" element={<ProjectPage />} />
+      </Routes>
     </RequireAuth>,
     { wrapper },
   )
@@ -73,7 +92,11 @@ beforeEach(() => {
   vi.stubGlobal('EventSource', FakeEventSource)
   vi.stubGlobal('WebSocket', FakeSocket)
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('ProjectPage 의 로컬 가드', () => {
   /**

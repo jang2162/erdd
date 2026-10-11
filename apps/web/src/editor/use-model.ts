@@ -2,7 +2,12 @@ import { useCallback, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  applyOps, diffModels, invertOps, MAX_OPS_PER_MUTATION, validateModelIntegrity, type ProjectModel,
+  applyOps,
+  diffModels,
+  invertOps,
+  MAX_OPS_PER_MUTATION,
+  validateModelIntegrity,
+  type ProjectModel,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { chunkFailureMessage, chunkOps, chunkSummary } from './mutation-chunks.js'
@@ -16,14 +21,19 @@ import { useEditorStore } from './store.js'
 let mutationChain: Promise<unknown> = Promise.resolve()
 export function serializeMutation<T>(fn: () => Promise<T>): Promise<T> {
   const run = mutationChain.then(fn, fn)
-  mutationChain = run.then(() => undefined, () => undefined)
+  mutationChain = run.then(
+    () => undefined,
+    () => undefined,
+  )
   return run
 }
 
 // `useModelMutation` 이 `error` 로 끝난 횟수. 로컬 저장이 자기가 기다린 편집 중 거절된 것이 있는지를
 // 앞뒤 값 비교로 안다 — 체인의 각 결과는 그것을 부른 쪽만 받으므로 저장이 직접 볼 수 없다.
 let failedMutations = 0
-export function failedMutationCount(): number { return failedMutations }
+export function failedMutationCount(): number {
+  return failedMutations
+}
 
 export function useModelLoader(projectId: string) {
   const trpc = useTRPC()
@@ -41,7 +51,9 @@ export function useModelLoader(projectId: string) {
   useEffect(() => {
     if (projectQuery.data) {
       setProjectConfig(
-        projectQuery.data.namingRules, projectQuery.data.dialects, projectQuery.data.name,
+        projectQuery.data.namingRules,
+        projectQuery.data.dialects,
+        projectQuery.data.name,
         projectQuery.data.tableOptions,
       )
       setPermissions({
@@ -136,13 +148,19 @@ function useSubmit(projectId: string) {
       // 진행 표시는 화면 일이다 — 콜백이 던져도 낙관적 상태가 남거나 적용이 실패로 갈리지 않게 삼킨다.
       const report = (n: number) => {
         if (total <= 1) return
-        try { opts.onProgress?.(n, total) } catch { /* 진행 표시 실패는 적용을 좌우하지 않는다 */ }
+        try {
+          opts.onProgress?.(n, total)
+        } catch {
+          /* 진행 표시 실패는 적용을 좌우하지 않는다 */
+        }
       }
       report(0)
       try {
         for (const chunk of chunks) {
           const { seq } = await mutation.mutateAsync({
-            projectId, ops: chunk, summary: chunkSummary(opts.summary, done + 1, total),
+            projectId,
+            ops: chunk,
+            summary: chunkSummary(opts.summary, done + 1, total),
           })
           // await 사이 프로젝트가 바뀌어도 남은 조각은 끝까지 옛 프로젝트로 보낸다 — ops 는 옛 모델에서 이미 다
           // 계산됐고, 나누지 않는 경로도 요청이 떠난 뒤라 서버가 편집 전체를 적용한다. 멈추면 반쪽만 서버에
@@ -172,7 +190,13 @@ function useSubmit(projectId: string) {
         // 첫 조각의 실패는 지금의 단일 실패와 같다. 중간 실패는 원자적이지 않다 — 앞 조각은 서버에 남는다.
         // 반쯤 들어간 편집을 「한 번에 되돌리기」로 기록하지 않는다(되돌릴 op 가 서버 상태와 어긋난다).
         // 아래 resync 가 실행 취소 기록을 비운다.
-        toast.error(chunkFailureMessage(done, total, err instanceof Error ? err.message : '변경을 저장하지 못했습니다'))
+        toast.error(
+          chunkFailureMessage(
+            done,
+            total,
+            err instanceof Error ? err.message : '변경을 저장하지 못했습니다',
+          ),
+        )
         // 떠난 뒤 남은 조각이 실패해도 이 토스트는 띄운다 — 옛 프로젝트에 반쪽이 남았다는 유일한 알림이다.
         // 여전히 이 프로젝트를 보고 있을 때만 서버 상태로 복구한다(다른 프로젝트 화면 덮어쓰기 방지).
         if (stillHere()) {
@@ -215,7 +239,11 @@ export function useModelMutation(projectId: string) {
       opts?: { summary?: string; onProgress?: MutationProgress },
     ): Promise<ModelMutationResult> =>
       serializeMutation(async () => {
-        const r = await submit(producer, { summary: opts?.summary, onProgress: opts?.onProgress, record: true })
+        const r = await submit(producer, {
+          summary: opts?.summary,
+          onProgress: opts?.onProgress,
+          record: true,
+        })
         if (r === 'error') failedMutations += 1
         return r
       }),
@@ -236,24 +264,29 @@ export function useUndoRedo(projectId: string) {
   const redoStack = useEditorStore((s) => s.redoStack)
 
   const undo = useCallback(
-    () => serializeMutation(async () => {
-      const stack = useEditorStore.getState().undoStack
-      const ops = stack[stack.length - 1]
-      if (!ops) return
-      const r = await submit((m) => applyOps(m, invertOps(ops)), { summary: '실행 취소', record: false })
-      if (r === 'applied') useEditorStore.getState().moveUndoToRedo()
-    }),
+    () =>
+      serializeMutation(async () => {
+        const stack = useEditorStore.getState().undoStack
+        const ops = stack[stack.length - 1]
+        if (!ops) return
+        const r = await submit((m) => applyOps(m, invertOps(ops)), {
+          summary: '실행 취소',
+          record: false,
+        })
+        if (r === 'applied') useEditorStore.getState().moveUndoToRedo()
+      }),
     [submit],
   )
 
   const redo = useCallback(
-    () => serializeMutation(async () => {
-      const stack = useEditorStore.getState().redoStack
-      const ops = stack[stack.length - 1]
-      if (!ops) return
-      const r = await submit((m) => applyOps(m, ops), { summary: '다시 실행', record: false })
-      if (r === 'applied') useEditorStore.getState().moveRedoToUndo()
-    }),
+    () =>
+      serializeMutation(async () => {
+        const stack = useEditorStore.getState().redoStack
+        const ops = stack[stack.length - 1]
+        if (!ops) return
+        const r = await submit((m) => applyOps(m, ops), { summary: '다시 실행', record: false })
+        if (r === 'applied') useEditorStore.getState().moveRedoToUndo()
+      }),
     [submit],
   )
 

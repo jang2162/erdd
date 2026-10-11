@@ -8,9 +8,12 @@ import type { AppRouter } from '@erdd/server/src/router.js'
 import { mockTrpcFetch } from '@/testing/trpc-mock'
 import { LibraryImportDialog } from './library-import-dialog.js'
 
-const FILE = 'format: erdd-library\nformatVersion: 1\nlibrary: { name: 표준 }\nwords:\n  - { logicalName: 고객, abbreviation: CSTMR }\n'
+const FILE =
+  'format: erdd-library\nformatVersion: 1\nlibrary: { name: 표준 }\nwords:\n  - { logicalName: 고객, abbreviation: CSTMR }\n'
 const summary = (counts: Record<string, number>, entries: unknown[] = []) => ({
-  counts: { add: 0, update: 0, unchanged: 0, stale: 0, remove: 0, removeBlocked: 0, ...counts }, warnings: [], entries,
+  counts: { add: 0, update: 0, unchanged: 0, stale: 0, remove: 0, removeBlocked: 0, ...counts },
+  warnings: [],
+  entries,
 })
 
 function renderDialog(handlers: Parameters<typeof mockTrpcFetch>[0], onDone = vi.fn()) {
@@ -20,7 +23,11 @@ function renderDialog(handlers: Parameters<typeof mockTrpcFetch>[0], onDone = vi
   render(
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
-        <LibraryImportDialog target={{ kind: 'existing', libraryId: 'l1', name: '표준' }} onClose={() => {}} onDone={onDone} />
+        <LibraryImportDialog
+          target={{ kind: 'existing', libraryId: 'l1', name: '표준' }}
+          onClose={() => {}}
+          onDone={onDone}
+        />
       </TRPCProvider>
     </QueryClientProvider>,
   )
@@ -29,7 +36,10 @@ function renderDialog(handlers: Parameters<typeof mockTrpcFetch>[0], onDone = vi
 const pick = async (text = FILE, name = 'std.erdd-lib.yaml') =>
   userEvent.upload(screen.getByLabelText('파일 선택'), new File([text], name))
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('LibraryImportDialog', () => {
   it('형식 오류는 서버를 부르지 않고 위치와 함께 보인다', async () => {
@@ -42,13 +52,29 @@ describe('LibraryImportDialog', () => {
 
   it('두 체크박스는 기본 해제이고, 미리보기 해시를 실어 적용한다', async () => {
     const calls: Record<string, unknown>[] = []
-    const onDone = renderDialog({ 'resource.library.import': (input) => {
-      calls.push(input as Record<string, unknown>)
-      return { data: { libraryId: 'l1', applied: !(input as { dryRun: boolean }).dryRun, stateHash: 'h1', summary: summary(
-        { update: 1, remove: 2, stale: 1 },
-        [{ status: 'update', kind: 'word', name: '고객', currentVersion: 1, fileVersion: null, referencedBy: 0, changes: [{ field: 'abbreviation', from: 'CUST', to: 'CSTMR' }] }],
-      ) } }
-    } })
+    const onDone = renderDialog({
+      'resource.library.import': (input) => {
+        calls.push(input as Record<string, unknown>)
+        return {
+          data: {
+            libraryId: 'l1',
+            applied: !(input as { dryRun: boolean }).dryRun,
+            stateHash: 'h1',
+            summary: summary({ update: 1, remove: 2, stale: 1 }, [
+              {
+                status: 'update',
+                kind: 'word',
+                name: '고객',
+                currentVersion: 1,
+                fileVersion: null,
+                referencedBy: 0,
+                changes: [{ field: 'abbreviation', from: 'CUST', to: 'CSTMR' }],
+              },
+            ]),
+          },
+        }
+      },
+    })
     await pick()
     const prune = await screen.findByRole('checkbox', { name: /파일에 없는 항목 2건 삭제/ })
     const stale = screen.getByRole('checkbox', { name: /오래된 파일 항목 1건 덮어쓰기/ })
@@ -57,36 +83,87 @@ describe('LibraryImportDialog', () => {
     expect(screen.getByText(/CUST → CSTMR/)).toBeDefined()
     await userEvent.click(screen.getByRole('button', { name: '가져오기 실행' }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
-    expect(calls.at(-1)).toMatchObject({ dryRun: false, prune: false, includeStale: false, expectedStateHash: 'h1' })
+    expect(calls.at(-1)).toMatchObject({
+      dryRun: false,
+      prune: false,
+      includeStale: false,
+      expectedStateHash: 'h1',
+    })
   })
 
   it('바뀔 것이 0건이면 실행 버튼이 잠기고 안내가 보인다', async () => {
-    renderDialog({ 'resource.library.import': () => ({ data: { libraryId: 'l1', applied: false, stateHash: 'h', summary: summary({ unchanged: 3 }) } }) })
+    renderDialog({
+      'resource.library.import': () => ({
+        data: {
+          libraryId: 'l1',
+          applied: false,
+          stateHash: 'h',
+          summary: summary({ unchanged: 3 }),
+        },
+      }),
+    })
     await pick()
-    expect(await screen.findByText('파일 내용이 라이브러리와 같아 바뀐 항목이 없습니다')).toBeDefined()
-    expect((screen.getByRole('button', { name: '가져오기 실행' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(
+      await screen.findByText('파일 내용이 라이브러리와 같아 바뀐 항목이 없습니다'),
+    ).toBeDefined()
+    expect(
+      (screen.getByRole('button', { name: '가져오기 실행' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 
   it('미리보기의 건수는 천 단위 구분자를 붙여 보인다', async () => {
-    const adds = Array.from({ length: 1234 }, (_, i) => (
-      { status: 'add', kind: 'word', name: `단어${i}`, currentVersion: null, fileVersion: null, referencedBy: 0, changes: [] }))
-    const removes = [{ status: 'remove', kind: 'domain', name: '코드', currentVersion: 1, fileVersion: null, referencedBy: 1500, changes: [] }]
-    renderDialog({ 'resource.library.import': () => ({ data: { libraryId: 'l1', applied: false, stateHash: 'h', summary: summary(
-      { add: 1234, unchanged: 12345, stale: 1500, remove: 2001, removeBlocked: 1 }, [...adds, ...removes],
-    ) } }) })
+    const adds = Array.from({ length: 1234 }, (_, i) => ({
+      status: 'add',
+      kind: 'word',
+      name: `단어${i}`,
+      currentVersion: null,
+      fileVersion: null,
+      referencedBy: 0,
+      changes: [],
+    }))
+    const removes = [
+      {
+        status: 'remove',
+        kind: 'domain',
+        name: '코드',
+        currentVersion: 1,
+        fileVersion: null,
+        referencedBy: 1500,
+        changes: [],
+      },
+    ]
+    renderDialog({
+      'resource.library.import': () => ({
+        data: {
+          libraryId: 'l1',
+          applied: false,
+          stateHash: 'h',
+          summary: summary(
+            { add: 1234, unchanged: 12345, stale: 1500, remove: 2001, removeBlocked: 1 },
+            [...adds, ...removes],
+          ),
+        },
+      }),
+    })
     await pick()
     expect(await screen.findByText('추가 1,234건')).toBeDefined()
     expect(screen.getByText('외 1,184건')).toBeDefined()
     expect(screen.getByText('그대로 12,345건')).toBeDefined()
     expect(screen.getByText(/용어 1,500건이 가리켜 지우지 않음/)).toBeDefined()
     expect(screen.getByRole('checkbox', { name: /파일에 없는 항목 2,000건 삭제/ })).toBeDefined()
-    expect(screen.getByRole('checkbox', { name: /오래된 파일 항목 1,500건 덮어쓰기/ })).toBeDefined()
+    expect(
+      screen.getByRole('checkbox', { name: /오래된 파일 항목 1,500건 덮어쓰기/ }),
+    ).toBeDefined()
   })
 
   it('대상 라이브러리의 도메인 목록을 받지 않는다 — 변환 결과에 영향이 없다', async () => {
     const itemsPage = vi.fn(() => ({ data: { items: [], total: 0 } }))
-    renderDialog({ 'resource.items.page': itemsPage, 'resource.library.import': () => (
-      { data: { libraryId: 'l1', applied: false, stateHash: 'h', summary: summary({ add: 1 }) } }) })
+    renderDialog({
+      'resource.items.page': itemsPage,
+      'resource.library.import': () => ({
+        data: { libraryId: 'l1', applied: false, stateHash: 'h', summary: summary({ add: 1 }) },
+      }),
+    })
     await pick()
     await screen.findByText('그대로 0건')
     expect(itemsPage).not.toHaveBeenCalled()
@@ -94,9 +171,24 @@ describe('LibraryImportDialog', () => {
 
   it('409 면 다시 미리보기를 권한다', async () => {
     let n = 0
-    renderDialog({ 'resource.library.import': () => (++n === 1
-      ? { data: { libraryId: 'l1', applied: false, stateHash: 'h', summary: summary({ add: 1 }) } }
-      : { error: { code: -32009, message: '미리보기 이후 라이브러리가 바뀌었습니다 — 다시 미리보기 하세요' } }) })
+    renderDialog({
+      'resource.library.import': () =>
+        ++n === 1
+          ? {
+              data: {
+                libraryId: 'l1',
+                applied: false,
+                stateHash: 'h',
+                summary: summary({ add: 1 }),
+              },
+            }
+          : {
+              error: {
+                code: -32009,
+                message: '미리보기 이후 라이브러리가 바뀌었습니다 — 다시 미리보기 하세요',
+              },
+            },
+    })
     await pick()
     await userEvent.click(await screen.findByRole('button', { name: '가져오기 실행' }))
     expect(await screen.findByRole('button', { name: '다시 미리보기' })).toBeDefined()
@@ -104,22 +196,39 @@ describe('LibraryImportDialog', () => {
 
   it('늦게 응답한 먼저 고른 파일의 미리보기가 나중에 고른 파일의 요약을 덮지 않는다', async () => {
     let resolveFirst: (v: { data: unknown }) => void = () => {}
-    const pending = new Promise<{ data: unknown }>((resolve) => { resolveFirst = resolve })
+    const pending = new Promise<{ data: unknown }>((resolve) => {
+      resolveFirst = resolve
+    })
     let call = 0
-    const marker = (name: string) => summary({ add: 1 }, [
-      { status: 'add', kind: 'word', name, currentVersion: null, fileVersion: null, referencedBy: 0, changes: [] },
-    ])
-    renderDialog({ 'resource.library.import': () => {
-      call += 1
-      return call === 1
-        ? pending
-        : { data: { libraryId: 'l1', applied: false, stateHash: 'h2', summary: marker('SECOND') } }
-    } })
+    const marker = (name: string) =>
+      summary({ add: 1 }, [
+        {
+          status: 'add',
+          kind: 'word',
+          name,
+          currentVersion: null,
+          fileVersion: null,
+          referencedBy: 0,
+          changes: [],
+        },
+      ])
+    renderDialog({
+      'resource.library.import': () => {
+        call += 1
+        return call === 1
+          ? pending
+          : {
+              data: { libraryId: 'l1', applied: false, stateHash: 'h2', summary: marker('SECOND') },
+            }
+      },
+    })
     await pick(FILE, 'first.erdd-lib.yaml')
     await pick(FILE, 'second.erdd-lib.yaml')
     expect(await screen.findByText(/SECOND/)).toBeDefined()
     // 먼저 고른 파일의 dryRun 이 이제야 응답한다 — 화면은 이미 두 번째 파일의 요약을 보이고 있다.
-    resolveFirst({ data: { libraryId: 'l1', applied: false, stateHash: 'h1', summary: marker('FIRST') } })
+    resolveFirst({
+      data: { libraryId: 'l1', applied: false, stateHash: 'h1', summary: marker('FIRST') },
+    })
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(screen.getByText(/SECOND/)).toBeDefined()
     expect(screen.queryByText(/FIRST/)).toBeNull()

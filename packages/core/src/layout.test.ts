@@ -5,16 +5,31 @@ import { LOCAL_PROJECT_ID } from './local.js'
 
 function tbl(id: string, physicalName: string, over: Partial<Table> = {}): Table {
   return {
-    id, logicalName: id, physicalName, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {}, ...over,
+    id,
+    logicalName: id,
+    physicalName,
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
+    ...over,
   }
 }
 
 function model(): ProjectModel {
   const m = createEmptyModel()
-  m.tables['t2'] = tbl('t2', 'ORD', { position: { x: 300, y: 40 }, groupPosition: { x: 12, y: 34 } })
+  m.tables['t2'] = tbl('t2', 'ORD', {
+    position: { x: 300, y: 40 },
+    groupPosition: { x: 12, y: 34 },
+  })
   m.tables['t1'] = tbl('t1', 'MBR', { position: { x: 100, y: 20 } })
-  m.notes['n1'] = { id: 'n1', content: '정산 배치는 매일 02:00', position: { x: 400, y: 200 }, color: '#fde68a' }
+  m.notes['n1'] = {
+    id: 'n1',
+    content: '정산 배치는 매일 02:00',
+    position: { x: 400, y: 200 },
+    color: '#fde68a',
+  }
   return m
 }
 
@@ -26,7 +41,12 @@ describe('layoutFromModel', () => {
       { id: 't2', name: 'ORD', position: { x: 300, y: 40 }, groupPosition: { x: 12, y: 34 } },
     ])
     expect(layout.notes).toEqual([
-      { id: 'n1', content: '정산 배치는 매일 02:00', position: { x: 400, y: 200 }, color: '#fde68a' },
+      {
+        id: 'n1',
+        content: '정산 배치는 매일 02:00',
+        position: { x: 400, y: 200 },
+        color: '#fde68a',
+      },
     ])
   })
 
@@ -105,7 +125,10 @@ describe('applyLayout', () => {
   it('입력 모델을 변형하지 않는다', () => {
     const m = createEmptyModel()
     m.tables['t1'] = tbl('t1', 'MBR')
-    applyLayout(m, { tables: [{ id: 't1', name: 'MBR', position: { x: 7, y: 8 }, groupPosition: null }], notes: [] })
+    applyLayout(m, {
+      tables: [{ id: 't1', name: 'MBR', position: { x: 7, y: 8 }, groupPosition: null }],
+      notes: [],
+    })
     expect(m.tables['t1']!.position).toEqual({ x: 0, y: 0 })
   })
 })
@@ -122,6 +145,8 @@ describe('왕복', () => {
 
 describe('LOCAL_PROJECT_ID', () => {
   it('uuid 형식이다 — 웹 라우트와 프로시저 입력이 uuid 를 요구한다', () => {
-    expect(LOCAL_PROJECT_ID).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    expect(LOCAL_PROJECT_ID).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    )
   })
 })

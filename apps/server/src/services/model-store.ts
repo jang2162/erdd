@@ -1,18 +1,37 @@
 import { and, eq } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import {
-  type Column, type CustomField, type Domain, type IndexDef, type Note, type Op,
-  type ProjectModel, type Relationship, type Table, type TableGroup, type Term, type Word,
+  type Column,
+  type CustomField,
+  type Domain,
+  type IndexDef,
+  type Note,
+  type Op,
+  type ProjectModel,
+  type Relationship,
+  type Table,
+  type TableGroup,
+  type Term,
+  type Word,
 } from '@erdd/core'
 import * as schema from '../db/schema.js'
 import {
-  modelColumns, modelCustomFields, modelDomains, modelIndexes, modelNotes, modelRelationships,
-  modelTableGroups, modelTables, modelTerms, modelWords,
+  modelColumns,
+  modelCustomFields,
+  modelDomains,
+  modelIndexes,
+  modelNotes,
+  modelRelationships,
+  modelTableGroups,
+  modelTables,
+  modelTerms,
+  modelWords,
 } from '../db/schema.js'
 
 /** Db와 drizzle 트랜잭션 객체가 공유하는 쿼리 인터페이스. */
 export type DbLike = Pick<
-  NodePgDatabase<typeof schema>, 'select' | 'insert' | 'update' | 'delete' | 'execute'
+  NodePgDatabase<typeof schema>,
+  'select' | 'insert' | 'update' | 'delete' | 'execute'
 >
 
 const TABLE_BY_KIND = {
@@ -33,70 +52,148 @@ function keyed<T extends { id: string }>(rows: T[]): Record<string, T> {
 }
 
 export async function loadProjectModel(db: DbLike, projectId: string): Promise<ProjectModel> {
-  const groupRows = await db.select().from(modelTableGroups)
+  const groupRows = await db
+    .select()
+    .from(modelTableGroups)
     .where(eq(modelTableGroups.projectId, projectId))
-  const tableRows = await db.select().from(modelTables)
-    .where(eq(modelTables.projectId, projectId))
-  const columnRows = await db.select().from(modelColumns)
+  const tableRows = await db.select().from(modelTables).where(eq(modelTables.projectId, projectId))
+  const columnRows = await db
+    .select()
+    .from(modelColumns)
     .where(eq(modelColumns.projectId, projectId))
-  const relRows = await db.select().from(modelRelationships)
+  const relRows = await db
+    .select()
+    .from(modelRelationships)
     .where(eq(modelRelationships.projectId, projectId))
-  const indexRows = await db.select().from(modelIndexes)
+  const indexRows = await db
+    .select()
+    .from(modelIndexes)
     .where(eq(modelIndexes.projectId, projectId))
-  const noteRows = await db.select().from(modelNotes)
-    .where(eq(modelNotes.projectId, projectId))
-  const domainRows = await db.select().from(modelDomains)
+  const noteRows = await db.select().from(modelNotes).where(eq(modelNotes.projectId, projectId))
+  const domainRows = await db
+    .select()
+    .from(modelDomains)
     .where(eq(modelDomains.projectId, projectId))
-  const wordRows = await db.select().from(modelWords)
-    .where(eq(modelWords.projectId, projectId))
-  const termRows = await db.select().from(modelTerms)
-    .where(eq(modelTerms.projectId, projectId))
-  const customFieldRows = await db.select().from(modelCustomFields)
+  const wordRows = await db.select().from(modelWords).where(eq(modelWords.projectId, projectId))
+  const termRows = await db.select().from(modelTerms).where(eq(modelTerms.projectId, projectId))
+  const customFieldRows = await db
+    .select()
+    .from(modelCustomFields)
     .where(eq(modelCustomFields.projectId, projectId))
 
   return {
-    tableGroups: keyed(groupRows.map((r): TableGroup => ({
-      id: r.id, name: r.name, color: r.color, comment: r.comment, alias: r.alias,
-    }))),
-    tables: keyed(tableRows.map((r): Table => ({
-      id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,
-      comment: r.comment, groupId: r.groupId, position: r.position,
-      groupPosition: r.groupPosition ?? null, custom: r.custom ?? {},
-    }))),
-    columns: keyed(columnRows.map((r): Column => ({
-      id: r.id, tableId: r.tableId, logicalName: r.logicalName, physicalName: r.physicalName,
-      type: r.type, isPk: r.isPk, autoIncrement: r.autoIncrement, nullable: r.nullable,
-      defaultValue: r.defaultValue, order: r.order, comment: r.comment,
-      domainId: r.domainId, custom: r.custom ?? {},
-    }))),
-    relationships: keyed(relRows.map((r): Relationship => ({
-      id: r.id, parentTableId: r.parentTableId, childTableId: r.childTableId,
-      columnMappings: r.columnMappings, cardinality: r.cardinality,
-      identifying: r.identifying, name: r.name,
-    }))),
-    indexes: keyed(indexRows.map((r): IndexDef => ({
-      id: r.id, tableId: r.tableId, name: r.name, columns: r.columns, unique: r.unique,
-    }))),
-    notes: keyed(noteRows.map((r): Note => ({
-      id: r.id, content: r.content, position: r.position, color: r.color,
-    }))),
-    domains: keyed(domainRows.map((r): Domain => ({
-      id: r.id, name: r.name, category: r.category, logicalType: r.logicalType,
-      dialectTypes: r.dialectTypes, defaultValue: r.defaultValue,
-      allowedValues: r.allowedValues, description: r.description, origin: r.origin ?? null,
-    }))),
-    words: keyed(wordRows.map((r): Word => ({
-      id: r.id, logicalName: r.logicalName, abbreviation: r.abbreviation,
-      englishName: r.englishName, description: r.description, origin: r.origin ?? null,
-    }))),
-    terms: keyed(termRows.map((r): Term => ({
-      id: r.id, logicalName: r.logicalName, physicalName: r.physicalName,
-      domainId: r.domainId, description: r.description, origin: r.origin ?? null,
-    }))),
-    customFields: keyed(customFieldRows.map((r): CustomField => ({
-      id: r.id, name: r.name, target: r.target, type: r.type, options: r.options,
-      required: r.required, defaultValue: r.defaultValue, order: r.order, origin: r.origin ?? null,
-    }))),
+    tableGroups: keyed(
+      groupRows.map((r): TableGroup => ({
+        id: r.id,
+        name: r.name,
+        color: r.color,
+        comment: r.comment,
+        alias: r.alias,
+      })),
+    ),
+    tables: keyed(
+      tableRows.map((r): Table => ({
+        id: r.id,
+        logicalName: r.logicalName,
+        physicalName: r.physicalName,
+        comment: r.comment,
+        groupId: r.groupId,
+        position: r.position,
+        groupPosition: r.groupPosition ?? null,
+        custom: r.custom ?? {},
+      })),
+    ),
+    columns: keyed(
+      columnRows.map((r): Column => ({
+        id: r.id,
+        tableId: r.tableId,
+        logicalName: r.logicalName,
+        physicalName: r.physicalName,
+        type: r.type,
+        isPk: r.isPk,
+        autoIncrement: r.autoIncrement,
+        nullable: r.nullable,
+        defaultValue: r.defaultValue,
+        order: r.order,
+        comment: r.comment,
+        domainId: r.domainId,
+        custom: r.custom ?? {},
+      })),
+    ),
+    relationships: keyed(
+      relRows.map((r): Relationship => ({
+        id: r.id,
+        parentTableId: r.parentTableId,
+        childTableId: r.childTableId,
+        columnMappings: r.columnMappings,
+        cardinality: r.cardinality,
+        identifying: r.identifying,
+        name: r.name,
+      })),
+    ),
+    indexes: keyed(
+      indexRows.map((r): IndexDef => ({
+        id: r.id,
+        tableId: r.tableId,
+        name: r.name,
+        columns: r.columns,
+        unique: r.unique,
+      })),
+    ),
+    notes: keyed(
+      noteRows.map((r): Note => ({
+        id: r.id,
+        content: r.content,
+        position: r.position,
+        color: r.color,
+      })),
+    ),
+    domains: keyed(
+      domainRows.map((r): Domain => ({
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        logicalType: r.logicalType,
+        dialectTypes: r.dialectTypes,
+        defaultValue: r.defaultValue,
+        allowedValues: r.allowedValues,
+        description: r.description,
+        origin: r.origin ?? null,
+      })),
+    ),
+    words: keyed(
+      wordRows.map((r): Word => ({
+        id: r.id,
+        logicalName: r.logicalName,
+        abbreviation: r.abbreviation,
+        englishName: r.englishName,
+        description: r.description,
+        origin: r.origin ?? null,
+      })),
+    ),
+    terms: keyed(
+      termRows.map((r): Term => ({
+        id: r.id,
+        logicalName: r.logicalName,
+        physicalName: r.physicalName,
+        domainId: r.domainId,
+        description: r.description,
+        origin: r.origin ?? null,
+      })),
+    ),
+    customFields: keyed(
+      customFieldRows.map((r): CustomField => ({
+        id: r.id,
+        name: r.name,
+        target: r.target,
+        type: r.type,
+        options: r.options,
+        required: r.required,
+        defaultValue: r.defaultValue,
+        order: r.order,
+        origin: r.origin ?? null,
+      })),
+    ),
   }
 }
 
@@ -105,9 +202,7 @@ export async function loadProjectModel(db: DbLike, projectId: string): Promise<P
  * 계약: 호출 전에 반드시 core `applyOps`로 같은 배치가 검증(스키마·무결성)되어 있어야 한다.
  * 모든 조건에 projectId 스코프를 포함해 타 프로젝트 행 접근을 차단한다.
  */
-export async function persistOps(
-  db: DbLike, projectId: string, ops: readonly Op[],
-): Promise<void> {
+export async function persistOps(db: DbLike, projectId: string, ops: readonly Op[]): Promise<void> {
   for (const op of ops) {
     // 유니언 테이블에 대한 캐스트 — 필드명이 모델 속성과 1:1이고 applyOps가 선검증한다.
     const table = TABLE_BY_KIND[op.entity] as typeof modelNotes
@@ -119,11 +214,12 @@ export async function persistOps(
       // 심층 방어 — applyOps 계약을 우회한 호출이 있어도 소유권/identity 필드는 불변
       delete patch.id
       delete patch.projectId
-      await db.update(table).set(patch as never)
+      await db
+        .update(table)
+        .set(patch as never)
         .where(and(eq(table.id, op.entityId), eq(table.projectId, projectId)))
     } else {
-      await db.delete(table)
-        .where(and(eq(table.id, op.entityId), eq(table.projectId, projectId)))
+      await db.delete(table).where(and(eq(table.id, op.entityId), eq(table.projectId, projectId)))
     }
   }
 }

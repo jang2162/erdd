@@ -10,10 +10,17 @@ import { adminProcedure, router } from '../trpc.js'
 export const adminRouter = router({
   users: router({
     list: adminProcedure.query(({ ctx }) =>
-      ctx.db.select({
-        id: users.id, email: users.email, name: users.name,
-        role: users.role, isActive: users.isActive, createdAt: users.createdAt,
-      }).from(users).orderBy(users.createdAt),
+      ctx.db
+        .select({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          role: users.role,
+          isActive: users.isActive,
+          createdAt: users.createdAt,
+        })
+        .from(users)
+        .orderBy(users.createdAt),
     ),
 
     /**
@@ -25,10 +32,12 @@ export const adminRouter = router({
      * 서비스 역할은 초대 행에 담긴다 — 수락자가 스스로 admin이 될 수 있으면 안 된다.
      */
     invite: adminProcedure
-      .input(z.object({
-        email: z.string().email(),
-        role: z.enum(['admin', 'user']).default('user'),
-      }))
+      .input(
+        z.object({
+          email: z.string().email(),
+          role: z.enum(['admin', 'user']).default('user'),
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
         const email = normalizeEmail(input.email)
         const existing = (
@@ -43,16 +52,25 @@ export const adminRouter = router({
         await ctx.db.transaction(async (tx) => {
           // 재발급은 이전 링크를 죽인다. 두 링크가 동시에 살아 있으면 첫 것이 어디로 갔는지
           // 아무도 모른다. 조직 초대(orgId 있음)는 별개 묶음이라 건드리지 않는다.
-          await tx.update(invitations)
+          await tx
+            .update(invitations)
             .set({ expiresAt: new Date() })
-            .where(and(
-              eq(invitations.email, email),
-              isNull(invitations.orgId),
-              isNull(invitations.usedAt),
-            ))
+            .where(
+              and(
+                eq(invitations.email, email),
+                isNull(invitations.orgId),
+                isNull(invitations.usedAt),
+              ),
+            )
           await tx.insert(invitations).values({
-            id, email, orgId: null, orgRole: null, userRole: input.role,
-            tokenHash: hash, expiresAt, createdBy: ctx.user.id,
+            id,
+            email,
+            orgId: null,
+            orgRole: null,
+            userRole: input.role,
+            tokenHash: hash,
+            expiresAt,
+            createdBy: ctx.user.id,
           })
         })
         // 평문은 여기서만 나간다. 이후 조회할 방법은 없다 — 잃으면 재발급이다.
@@ -69,8 +87,10 @@ export const adminRouter = router({
       .input(z.object({ userId: z.string().uuid() }))
       .mutation(async ({ ctx, input }) => {
         const target = (
-          await ctx.db.select({ id: users.id, isActive: users.isActive })
-            .from(users).where(eq(users.id, input.userId))
+          await ctx.db
+            .select({ id: users.id, isActive: users.isActive })
+            .from(users)
+            .where(eq(users.id, input.userId))
         )[0]
         if (!target) {
           throw new TRPCError({ code: 'NOT_FOUND', message: '사용자를 찾을 수 없습니다' })
@@ -80,7 +100,8 @@ export const adminRouter = router({
         // 나오지 않는다. 여기서 거절해야 다음 행동(활성화)이 화면에 보인다.
         if (!target.isActive) {
           throw new TRPCError({
-            code: 'BAD_REQUEST', message: '비활성 계정입니다 — 먼저 활성화하세요',
+            code: 'BAD_REQUEST',
+            message: '비활성 계정입니다 — 먼저 활성화하세요',
           })
         }
         const { plain, hash } = issueToken('reset')
@@ -88,14 +109,18 @@ export const adminRouter = router({
         const expiresAt = tokenExpiry('reset')
         await ctx.db.transaction(async (tx) => {
           // 재발급은 그 사용자의 이전 미사용 토큰을 죽인다(초대와 같은 규칙).
-          await tx.update(passwordResetTokens)
+          await tx
+            .update(passwordResetTokens)
             .set({ expiresAt: new Date() })
-            .where(and(
-              eq(passwordResetTokens.userId, input.userId),
-              isNull(passwordResetTokens.usedAt),
-            ))
+            .where(
+              and(eq(passwordResetTokens.userId, input.userId), isNull(passwordResetTokens.usedAt)),
+            )
           await tx.insert(passwordResetTokens).values({
-            id, userId: input.userId, tokenHash: hash, expiresAt, createdBy: ctx.user.id,
+            id,
+            userId: input.userId,
+            tokenHash: hash,
+            expiresAt,
+            createdBy: ctx.user.id,
           })
         })
         // 만료 시각도 함께 준다(초대와 같다). 재설정은 24시간으로 초대보다 훨씬 짧고 목록 화면도
@@ -107,9 +132,13 @@ export const adminRouter = router({
       .input(z.object({ userId: z.string().uuid(), isActive: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
         if (input.userId === ctx.user.id && !input.isActive) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: '자기 자신은 비활성화할 수 없습니다' })
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: '자기 자신은 비활성화할 수 없습니다',
+          })
         }
-        const updated = await ctx.db.update(users)
+        const updated = await ctx.db
+          .update(users)
           .set({ isActive: input.isActive })
           .where(eq(users.id, input.userId))
           .returning({ id: users.id })
@@ -136,8 +165,11 @@ export const adminRouter = router({
     list: adminProcedure.query(({ ctx }) =>
       ctx.db
         .select({
-          id: invitations.id, email: invitations.email, userRole: invitations.userRole,
-          expiresAt: invitations.expiresAt, usedAt: invitations.usedAt,
+          id: invitations.id,
+          email: invitations.email,
+          userRole: invitations.userRole,
+          expiresAt: invitations.expiresAt,
+          usedAt: invitations.usedAt,
           createdAt: invitations.createdAt,
         })
         .from(invitations)
@@ -150,13 +182,16 @@ export const adminRouter = router({
       .mutation(async ({ ctx, input }) => {
         // 조건부 UPDATE다 — 이미 사용된 초대를 되살리지 않고, 조직 초대(orgId 있음)도 건드리지
         // 못한다. 잘못된 주소로 나간 링크를 7일 내내 죽일 수 없으면 안 된다(설계 3.2 "취소: 가능").
-        const revoked = await ctx.db.update(invitations)
+        const revoked = await ctx.db
+          .update(invitations)
           .set({ expiresAt: new Date() })
-          .where(and(
-            eq(invitations.id, input.id),
-            isNull(invitations.orgId),
-            isNull(invitations.usedAt),
-          ))
+          .where(
+            and(
+              eq(invitations.id, input.id),
+              isNull(invitations.orgId),
+              isNull(invitations.usedAt),
+            ),
+          )
           .returning({ id: invitations.id })
         if (revoked.length === 0) {
           throw new TRPCError({ code: 'CONFLICT', message: '이미 사용되었거나 없는 초대입니다' })

@@ -4,8 +4,17 @@ import { createGroup, updateGroup, deleteGroup, setTableGroup } from './group.js
 import { createEmptyModel, type ProjectModel, type Table } from './model.js'
 
 function tbl(id: string, over: Partial<Table> = {}): Table {
-  return { id, logicalName: id, physicalName: id.toUpperCase(), comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {}, ...over }
+  return {
+    id,
+    logicalName: id,
+    physicalName: id.toUpperCase(),
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
+    ...over,
+  }
 }
 function base(): ProjectModel {
   const m = createEmptyModel()
@@ -17,7 +26,12 @@ function base(): ProjectModel {
 describe('createGroup', () => {
   it('그룹을 추가한다', () => {
     const next = createGroup(base(), { id: 'G1', name: '회원', color: '#0E7A6C' })
-    expect(next.tableGroups['G1']).toMatchObject({ id: 'G1', name: '회원', color: '#0E7A6C', comment: null })
+    expect(next.tableGroups['G1']).toMatchObject({
+      id: 'G1',
+      name: '회원',
+      color: '#0E7A6C',
+      comment: null,
+    })
     expect(validateModelIntegrity(next)).toEqual([])
   })
   it('이미 있는 id는 no-op', () => {
@@ -31,7 +45,11 @@ describe('updateGroup', () => {
   it('이름·색상·설명을 바꾼다', () => {
     const m = createGroup(base(), { id: 'G1', name: '회원', color: '#000' })
     const next = updateGroup(m, 'G1', { name: '주문', color: '#C89B3C', comment: '주문 도메인' })
-    expect(next.tableGroups['G1']).toMatchObject({ name: '주문', color: '#C89B3C', comment: '주문 도메인' })
+    expect(next.tableGroups['G1']).toMatchObject({
+      name: '주문',
+      color: '#C89B3C',
+      comment: '주문 도메인',
+    })
   })
   it('없는 그룹은 no-op', () => {
     const m = base()

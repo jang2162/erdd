@@ -13,10 +13,16 @@ function renderHome(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   mockTrpcFetch(handlers)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
-  const Stub = createRoutesStub([{
-    path: '/',
-    Component: () => <RequireAuth><HomePage /></RequireAuth>,
-  }])
+  const Stub = createRoutesStub([
+    {
+      path: '/',
+      Component: () => (
+        <RequireAuth>
+          <HomePage />
+        </RequireAuth>
+      ),
+    },
+  ])
   render(
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
@@ -64,7 +70,9 @@ describe('HomePage', () => {
     renderHome({
       'auth.me': () => ({ data: { id: 'u1', name: '나', email: 'me@t.dev', role: 'user' } }),
       'org.list': () => ({ data: [{ id: 'o1', name: '팀', kind: 'team', role: 'owner' }] }),
-      'promotion.pendingCount': () => ({ data: { total: 1234, byOrg: [{ orgId: 'o1', count: 1234 }] } }),
+      'promotion.pendingCount': () => ({
+        data: { total: 1234, byOrg: [{ orgId: 'o1', count: 1234 }] },
+      }),
     })
     expect(await screen.findByText('승격 요청 1,234건')).toBeTruthy()
   })

@@ -61,13 +61,24 @@ export function buildAnchors(model: ProjectModel): AnchorIndex {
   const add = (tableId: string, anchor: Anchor | null) => {
     if (anchor === null) return
     const list = byTable.get(tableId)
-    if (list === undefined) { byTable.set(tableId, [anchor]); return }
+    if (list === undefined) {
+      byTable.set(tableId, [anchor])
+      return
+    }
     if (!list.some((a) => a.key === anchor.key)) list.push(anchor)
   }
 
   for (const rel of Object.values(model.relationships)) {
-    const child = anchorOf(model, rel.childTableId, rel.columnMappings.map((m) => m.childColumnId))
-    const parent = anchorOf(model, rel.parentTableId, rel.columnMappings.map((m) => m.parentColumnId))
+    const child = anchorOf(
+      model,
+      rel.childTableId,
+      rel.columnMappings.map((m) => m.childColumnId),
+    )
+    const parent = anchorOf(
+      model,
+      rel.parentTableId,
+      rel.columnMappings.map((m) => m.parentColumnId),
+    )
     add(rel.childTableId, child)
     add(rel.parentTableId, parent)
     byRelationship.set(rel.id, { childKey: child?.key ?? null, parentKey: parent?.key ?? null })
@@ -76,10 +87,12 @@ export function buildAnchors(model: ProjectModel): AnchorIndex {
   // 순서를 고정한다 — 흔들리면 합성 행이 렌더마다 자리를 바꾼다.
   // 단일(컬럼 행에 붙는 것) 먼저, 복합(합성 행) 나중.
   for (const list of byTable.values()) {
-    list.sort((a, b) =>
-      (a.columnIds.length === 1 ? 0 : 1) - (b.columnIds.length === 1 ? 0 : 1)
-      || firstOrder(model, a) - firstOrder(model, b)
-      || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    list.sort(
+      (a, b) =>
+        (a.columnIds.length === 1 ? 0 : 1) - (b.columnIds.length === 1 ? 0 : 1) ||
+        firstOrder(model, a) - firstOrder(model, b) ||
+        (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    )
   }
   return { byTable, byRelationship }
 }
@@ -120,16 +133,23 @@ export function anchorSignatures(index: AnchorIndex, model: ProjectModel): Map<s
     const rows = rowsByTable.get(tableId)!
     rows.sort((a, b) => a.order - b.order)
     const rowOf = new Map(rows.map((c, i) => [c.id, i]))
-    out.set(tableId, list
-      .map((a) => `${a.key}@${a.columnIds.length === 1 ? rowOf.get(a.columnIds[0]!) ?? -1 : rows.length}`)
-      .join('|'))
+    out.set(
+      tableId,
+      list
+        .map(
+          (a) =>
+            `${a.key}@${a.columnIds.length === 1 ? (rowOf.get(a.columnIds[0]!) ?? -1) : rows.length}`,
+        )
+        .join('|'),
+    )
   }
   return out
 }
 
 /** 서명이 달라졌거나 사라진 테이블 id. 앵커가 0개가 된 테이블도 갱신 대상이다. */
 export function changedAnchorTables(
-  prev: Map<string, string>, next: Map<string, string>,
+  prev: Map<string, string>,
+  next: Map<string, string>,
 ): string[] {
   const changed: string[] = []
   for (const [id, sig] of next) if (prev.get(id) !== sig) changed.push(id)

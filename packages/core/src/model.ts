@@ -49,9 +49,7 @@ export const IndexSchema = z.strictObject({
   id: z.string(),
   tableId: z.string(),
   name: z.string(),
-  columns: z.array(
-    z.strictObject({ columnId: z.string(), direction: z.enum(['asc', 'desc']) }),
-  ),
+  columns: z.array(z.strictObject({ columnId: z.string(), direction: z.enum(['asc', 'desc']) })),
   unique: z.boolean(),
 })
 export type IndexDef = z.infer<typeof IndexSchema>
@@ -115,7 +113,7 @@ export const WordSchema = z.strictObject({
   id: z.string(),
   logicalName: z.string(),
   abbreviation: z.string(),
-  englishName: z.string().nullable().default(null),   // 회원 → MEMBER. 옛 페이로드 하위호환
+  englishName: z.string().nullable().default(null), // 회원 → MEMBER. 옛 페이로드 하위호환
   description: z.string().nullable(),
   origin: OriginSchema.nullable().default(null),
 })
@@ -133,13 +131,13 @@ export type Term = z.infer<typeof TermSchema>
 
 export const CustomFieldSchema = z.strictObject({
   id: z.string(),
-  name: z.string(),                              // "개인정보여부"
-  target: z.enum(['table', 'column']),           // 적용 대상
+  name: z.string(), // "개인정보여부"
+  target: z.enum(['table', 'column']), // 적용 대상
   type: z.enum(['text', 'boolean', 'select']),
-  options: z.array(z.string()),                  // select일 때만 사용(그 외 [])
-  required: z.boolean(),                         // boolean 타입에는 적용하지 않는다(항상 값이 있음)
+  options: z.array(z.string()), // select일 때만 사용(그 외 [])
+  required: z.boolean(), // boolean 타입에는 적용하지 않는다(항상 값이 있음)
   defaultValue: z.string().nullable(),
-  order: z.number().int(),                       // 같은 target 안에서의 표시 순서
+  order: z.number().int(), // 같은 target 안에서의 표시 순서
   origin: OriginSchema.nullable().default(null),
 })
 export type CustomField = z.infer<typeof CustomFieldSchema>
@@ -160,7 +158,15 @@ export type ProjectModel = z.infer<typeof ProjectModelSchema>
 
 export function createEmptyModel(): ProjectModel {
   return {
-    tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {},
-    domains: {}, words: {}, terms: {}, customFields: {},
+    tables: {},
+    columns: {},
+    relationships: {},
+    indexes: {},
+    notes: {},
+    tableGroups: {},
+    domains: {},
+    words: {},
+    terms: {},
+    customFields: {},
   }
 }

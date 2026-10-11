@@ -7,7 +7,12 @@ import { diffProjection } from './diff.js'
 import { formatChangeset } from './format.js'
 import { parseChangeset } from './parse.js'
 import { applyChangeset } from './replay.js'
-import { CHANGESET_FORMAT, emptyProjection, type SchemaProjection, type Statement } from './types.js'
+import {
+  CHANGESET_FORMAT,
+  emptyProjection,
+  type SchemaProjection,
+  type Statement,
+} from './types.js'
 
 /**
  * 왕복 불변식 — 재생이 기준선의 유일한 원천이므로(guide 「재생은 `@id` 로 대상을 찾는다」)
@@ -33,9 +38,15 @@ const COMMENTS = [null, '설명', "따옴표'와\n줄바꿈"]
 function initial(): ProjectModel {
   const m = createEmptyModel()
   m.domains['d1'] = {
-    id: 'd1', name: '코드', category: null, logicalType: 'VARCHAR(10)',
+    id: 'd1',
+    name: '코드',
+    category: null,
+    logicalType: 'VARCHAR(10)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: [], description: null, origin: null,
+    defaultValue: null,
+    allowedValues: [],
+    description: null,
+    origin: null,
   }
   return m
 }
@@ -43,31 +54,74 @@ function initial(): ProjectModel {
 function mutate(state: State, rand: () => number, counter: { n: number }): State {
   let m: ProjectModel = structuredClone(state.model)
   let rules = state.rules
-  const pick = <T,>(xs: readonly T[]): T | undefined => (xs.length === 0 ? undefined : xs[Math.floor(rand() * xs.length)])
-  const fresh = (p: string) => { counter.n += 1; return `${p}${counter.n}` }
+  const pick = <T>(xs: readonly T[]): T | undefined =>
+    xs.length === 0 ? undefined : xs[Math.floor(rand() * xs.length)]
+  const fresh = (p: string) => {
+    counter.n += 1
+    return `${p}${counter.n}`
+  }
   const tables = () => Object.values(m.tables)
-  const cols = (tid: string) => Object.values(m.columns).filter((c) => c.tableId === tid).sort((a, b) => a.order - b.order)
-  const renumber = (list: Column[]) => list.forEach((c, i) => { m.columns[c.id] = { ...m.columns[c.id]!, order: i } })
+  const cols = (tid: string) =>
+    Object.values(m.columns)
+      .filter((c) => c.tableId === tid)
+      .sort((a, b) => a.order - b.order)
+  const renumber = (list: Column[]) =>
+    list.forEach((c, i) => {
+      m.columns[c.id] = { ...m.columns[c.id]!, order: i }
+    })
   const newColumn = (tid: string): Column => ({
-    id: fresh('c'), tableId: tid, logicalName: '', physicalName: fresh('COL_'), type: pick(TYPES)!,
-    isPk: false, autoIncrement: false, nullable: rand() < 0.5, defaultValue: null, order: 0,
-    comment: null, domainId: null, custom: {},
+    id: fresh('c'),
+    tableId: tid,
+    logicalName: '',
+    physicalName: fresh('COL_'),
+    type: pick(TYPES)!,
+    isPk: false,
+    autoIncrement: false,
+    nullable: rand() < 0.5,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   })
 
   switch (Math.floor(rand() * 16)) {
     case 0: {
       const id = fresh('t')
-      m.tables[id] = { id, logicalName: '', physicalName: fresh('TB_'), comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+      m.tables[id] = {
+        id,
+        logicalName: '',
+        physicalName: fresh('TB_'),
+        comment: null,
+        groupId: null,
+        position: { x: 0, y: 0 },
+        groupPosition: null,
+        custom: {},
+      }
       const n = 1 + Math.floor(rand() * 3)
       for (let i = 0; i < n; i += 1) {
         const c = { ...newColumn(id), order: i }
-        if (i === 0) Object.assign(c, { isPk: true, type: 'BIGINT', nullable: false, autoIncrement: rand() < 0.5 })
+        if (i === 0)
+          Object.assign(c, {
+            isPk: true,
+            type: 'BIGINT',
+            nullable: false,
+            autoIncrement: rand() < 0.5,
+          })
         m.columns[c.id] = c
       }
       break
     }
-    case 1: { const t = pick(tables()); if (t) m = deleteTableCascade(m, t.id); break }
-    case 2: { const t = pick(tables()); if (t) m.tables[t.id] = { ...t, physicalName: fresh('RN_') }; break }
+    case 1: {
+      const t = pick(tables())
+      if (t) m = deleteTableCascade(m, t.id)
+      break
+    }
+    case 2: {
+      const t = pick(tables())
+      if (t) m.tables[t.id] = { ...t, physicalName: fresh('RN_') }
+      break
+    }
     case 3: {
       const t = pick(tables())
       if (t) {
@@ -79,20 +133,42 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
       }
       break
     }
-    case 4: { const c = pick(Object.values(m.columns)); if (c) m = deleteColumnCascade(m, c.id); break }
-    case 5: { const c = pick(Object.values(m.columns)); if (c) m.columns[c.id] = { ...c, physicalName: fresh('RC_') }; break }
+    case 4: {
+      const c = pick(Object.values(m.columns))
+      if (c) m = deleteColumnCascade(m, c.id)
+      break
+    }
+    case 5: {
+      const c = pick(Object.values(m.columns))
+      if (c) m.columns[c.id] = { ...c, physicalName: fresh('RC_') }
+      break
+    }
     case 6: {
       const c = pick(Object.values(m.columns))
       if (c) {
         const next = { ...c }
         switch (Math.floor(rand() * 7)) {
-          case 0: next.type = pick(TYPES)!; break
-          case 1: next.nullable = !c.nullable; break
-          case 2: next.defaultValue = pick(DEFAULTS)!; break
-          case 3: next.comment = pick(COMMENTS)!; break
-          case 4: next.isPk = !c.isPk; break
-          case 5: next.autoIncrement = !c.autoIncrement; break
-          case 6: next.domainId = c.domainId === null ? 'd1' : null; break
+          case 0:
+            next.type = pick(TYPES)!
+            break
+          case 1:
+            next.nullable = !c.nullable
+            break
+          case 2:
+            next.defaultValue = pick(DEFAULTS)!
+            break
+          case 3:
+            next.comment = pick(COMMENTS)!
+            break
+          case 4:
+            next.isPk = !c.isPk
+            break
+          case 5:
+            next.autoIncrement = !c.autoIncrement
+            break
+          case 6:
+            next.domainId = c.domainId === null ? 'd1' : null
+            break
         }
         m.columns[c.id] = next
       }
@@ -117,8 +193,13 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
         const chosen = list.filter(() => rand() < 0.6)
         const id = fresh('i')
         m.indexes[id] = {
-          id, tableId: t.id, name: fresh('IX_'),
-          columns: (chosen.length > 0 ? chosen : [list[0]!]).map((c) => ({ columnId: c.id, direction: rand() < 0.5 ? 'asc' as const : 'desc' as const })),
+          id,
+          tableId: t.id,
+          name: fresh('IX_'),
+          columns: (chosen.length > 0 ? chosen : [list[0]!]).map((c) => ({
+            columnId: c.id,
+            direction: rand() < 0.5 ? ('asc' as const) : ('desc' as const),
+          })),
           unique: rand() < 0.5,
         }
       }
@@ -142,27 +223,48 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
       if (child && parent && cc && pc) {
         const id = fresh('r')
         m.relationships[id] = {
-          id, parentTableId: parent.id, childTableId: child.id,
+          id,
+          parentTableId: parent.id,
+          childTableId: child.id,
           columnMappings: [{ childColumnId: cc.id, parentColumnId: pc.id }],
-          cardinality: rand() < 0.5 ? '1:1' : '1:N', identifying: false, name: rand() < 0.5 ? null : fresh('FK_'),
+          cardinality: rand() < 0.5 ? '1:1' : '1:N',
+          identifying: false,
+          name: rand() < 0.5 ? null : fresh('FK_'),
         }
       }
       break
     }
-    case 11: { const r = pick(Object.values(m.relationships)); if (r) m = deleteRelationship(m, r.id); break }
+    case 11: {
+      const r = pick(Object.values(m.relationships))
+      if (r) m = deleteRelationship(m, r.id)
+      break
+    }
     case 12: {
       const d = m.domains['d1']!
       m.domains['d1'] = {
-        ...d, logicalType: pick(TYPES)!,
+        ...d,
+        logicalType: pick(TYPES)!,
         dialectTypes: { ...d.dialectTypes, postgresql: rand() < 0.5 ? null : 'TEXT' },
-        allowedValues: rand() < 0.5 ? [] : ['Y', 'N'], defaultValue: pick(DEFAULTS)!,
+        allowedValues: rand() < 0.5 ? [] : ['Y', 'N'],
+        defaultValue: pick(DEFAULTS)!,
       }
       break
     }
-    case 13: { rules = { ...rules, tablePhysicalTemplate: rules.tablePhysicalTemplate === '' ? 'X_{물리명}' : '' }; break }
+    case 13: {
+      rules = {
+        ...rules,
+        tablePhysicalTemplate: rules.tablePhysicalTemplate === '' ? 'X_{물리명}' : '',
+      }
+      break
+    }
     case 14: {
       const t = pick(tables())
-      if (t) m.tables[t.id] = { ...t, comment: pick(COMMENTS)!, logicalName: pick(['', '회원', '주문 상세'])! }
+      if (t)
+        m.tables[t.id] = {
+          ...t,
+          comment: pick(COMMENTS)!,
+          logicalName: pick(['', '회원', '주문 상세'])!,
+        }
       break
     }
     // 이름 재사용 — 한 테이블(컬럼)이 버린 이름을 다른 테이블(컬럼)이 곧바로 받는다. 한 기록에 개명 사슬이
@@ -197,7 +299,12 @@ function mutate(state: State, rand: () => number, counter: { n: number }): State
  */
 function sqlNameClash(base: SchemaProjection, statements: readonly Statement[]): string | null {
   const tables = new Map(Object.values(base.tables).map((t) => [t.id, t.name]))
-  const columns = new Map(Object.values(base.tables).map((t) => [t.id, new Set(t.columnIds.map((id) => base.columns[id]!.name))]))
+  const columns = new Map(
+    Object.values(base.tables).map((t) => [
+      t.id,
+      new Set(t.columnIds.map((id) => base.columns[id]!.name)),
+    ]),
+  )
   const indexes = new Set(Object.values(base.indexes).map((ix) => ix.name))
   const tableNames = () => new Set(tables.values())
   const inCycle = (pairs: { from: string; to: string }[], x: { from: string; to: string }) => {
@@ -214,28 +321,40 @@ function sqlNameClash(base: SchemaProjection, statements: readonly Statement[]):
   const indexRenames = statements.flatMap((s) => (s.kind === 'renameIndex' ? [s] : []))
   for (const s of statements) {
     switch (s.kind) {
-      case 'dropIndex': indexes.delete(s.index.name); break
+      case 'dropIndex':
+        indexes.delete(s.index.name)
+        break
       case 'renameIndex':
-        if (indexes.has(s.to) && !inCycle(indexRenames, s)) return `rename index ${s.from} -> ${s.to}`
-        indexes.delete(s.from); indexes.add(s.to); break
+        if (indexes.has(s.to) && !inCycle(indexRenames, s))
+          return `rename index ${s.from} -> ${s.to}`
+        indexes.delete(s.from)
+        indexes.add(s.to)
+        break
       case 'dropTable':
-        tables.delete(s.table.id); columns.delete(s.table.id)
+        tables.delete(s.table.id)
+        columns.delete(s.table.id)
         for (const ix of s.table.indexes) indexes.delete(ix.name)
         break
       case 'renameTable':
-        if (tableNames().has(s.to) && !inCycle(tableRenames, s)) return `rename table ${s.from} -> ${s.to}`
-        tables.set(s.id, s.to); break
+        if (tableNames().has(s.to) && !inCycle(tableRenames, s))
+          return `rename table ${s.from} -> ${s.to}`
+        tables.set(s.id, s.to)
+        break
       case 'createTable':
         if (tableNames().has(s.table.name)) return `create table ${s.table.name}`
-        tables.set(s.table.id, s.table.name); columns.set(s.table.id, new Set(s.table.columns.map((c) => c.name))); break
+        tables.set(s.table.id, s.table.name)
+        columns.set(s.table.id, new Set(s.table.columns.map((c) => c.name)))
+        break
       case 'alterTable': {
         const set = columns.get(s.id)!
         const renames = s.actions.flatMap((a) => (a.kind === 'renameColumn' ? [a] : []))
         for (const a of s.actions) {
           if (a.kind === 'dropColumn') set.delete(a.column.name)
           else if (a.kind === 'renameColumn') {
-            if (set.has(a.to) && !inCycle(renames, a)) return `${s.name}: rename column ${a.from} -> ${a.to}`
-            set.delete(a.from); set.add(a.to)
+            if (set.has(a.to) && !inCycle(renames, a))
+              return `${s.name}: rename column ${a.from} -> ${a.to}`
+            set.delete(a.from)
+            set.add(a.to)
           } else if (a.kind === 'addColumn') {
             if (set.has(a.column.name)) return `${s.name}: add column ${a.column.name}`
             set.add(a.column.name)
@@ -245,8 +364,10 @@ function sqlNameClash(base: SchemaProjection, statements: readonly Statement[]):
       }
       case 'addIndex':
         if (indexes.has(s.index.name)) return `add index ${s.index.name}`
-        indexes.add(s.index.name); break
-      default: break
+        indexes.add(s.index.name)
+        break
+      default:
+        break
     }
   }
   return null
@@ -267,9 +388,18 @@ describe('왕복 불변식 — 기록을 쌓아 재생하면 매 시점의 투�
       const d = diffProjection(a, b)
       if (!d.ok) throw new Error(`시드 ${seed} 단계 ${step}: ${d.message}`)
       expect(sqlNameClash(a, d.statements), `시드 ${seed} 단계 ${step}`).toBeNull()
-      const text = formatChangeset({ header: { format: CHANGESET_FORMAT, name: `s${step}`, created: '2026-09-23T00:00:00Z', baseline: false }, statements: d.statements })
+      const text = formatChangeset({
+        header: {
+          format: CHANGESET_FORMAT,
+          name: `s${step}`,
+          created: '2026-09-23T00:00:00Z',
+          baseline: false,
+        },
+        statements: d.statements,
+      })
       const parsed = parseChangeset(text)
-      if (!parsed.ok) throw new Error(`시드 ${seed} 단계 ${step} ${parsed.line}행: ${parsed.message}\n${text}`)
+      if (!parsed.ok)
+        throw new Error(`시드 ${seed} 단계 ${step} ${parsed.line}행: ${parsed.message}\n${text}`)
       expect(applyChangeset(replayed, parsed.changeset)).toEqual([])
       expect(replayed).toEqual(b)
       state = next

@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { createEmptyModel } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import {
-  addColumn, clearColumnDomain, removeColumn, reorderColumn, setColumnDomain, updateColumn,
+  addColumn,
+  clearColumnDomain,
+  removeColumn,
+  reorderColumn,
+  setColumnDomain,
+  updateColumn,
 } from './column-edits.js'
 
 describe('column-edits', () => {
@@ -11,7 +16,9 @@ describe('column-edits', () => {
     const m = addColumn(base, 't2', { id: 'c-new' })
     const cols = Object.values(m.columns).filter((c) => c.tableId === 't2')
     const added = m.columns['c-new']!
-    expect(added.order).toBe(Math.max(...cols.filter((c) => c.id !== 'c-new').map((c) => c.order)) + 1)
+    expect(added.order).toBe(
+      Math.max(...cols.filter((c) => c.id !== 'c-new').map((c) => c.order)) + 1,
+    )
     expect(added.type).not.toBe('')
   })
 
@@ -37,12 +44,42 @@ describe('column-edits', () => {
 
   it('setColumnDomain은 domainId를 설정하고, clearColumnDomain은 해제하며 해석 논리타입을 type에 복사', () => {
     let m = createEmptyModel()
-    m.domains['d'] = { id: 'd', name: '여부', category: null, logicalType: 'CHAR(1)',
+    m.domains['d'] = {
+      id: 'd',
+      name: '여부',
+      category: null,
+      logicalType: 'CHAR(1)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null, origin: null }
-    m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
-    m.columns['c'] = { id: 'c', tableId: 't', logicalName: 'A', physicalName: 'A', type: 'INT',
-      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null, custom: {} }
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
+    }
+    m.tables['t'] = {
+      id: 't',
+      logicalName: 'T',
+      physicalName: 'T',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
+    }
+    m.columns['c'] = {
+      id: 'c',
+      tableId: 't',
+      logicalName: 'A',
+      physicalName: 'A',
+      type: 'INT',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
     m = setColumnDomain(m, 'c', 'd')
     expect(m.columns['c']!.domainId).toBe('d')
     m = clearColumnDomain(m, 'c')

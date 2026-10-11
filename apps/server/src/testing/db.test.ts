@@ -7,8 +7,12 @@ const url = process.env.DATABASE_URL
 
 describe.skipIf(!url)('TEST_TABLES', () => {
   let app: FastifyInstance
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
 
   // 새 테이블을 만들고 이 목록에 넣지 않으면 그 테이블만 테스트 간에 살아남아
   // 다음 스위트를 조용히 오염시킨다. 그것을 여기서 잡는다.

@@ -36,26 +36,37 @@ function fmtDialects(d: DialectTypes): string {
   const parts = DIALECTS.flatMap((k) => (d[k] === undefined ? [] : [`${k}: ${fmtType(d[k])}`]))
   return parts.length === 0 ? 'none' : `(${parts.join(', ')})`
 }
-const fmtPosition = (after: string | null): string => (after === null ? 'first' : `after ${fmtIdent(after)}`)
+const fmtPosition = (after: string | null): string =>
+  after === null ? 'first' : `after ${fmtIdent(after)}`
 
 /** modify column 의 이전·이후 값. 경합 경고도 이 표기로 현재 값을 보여 준다. */
 export function fmtFieldValue(field: ColumnChange['field'], v: unknown): string {
   switch (field) {
-    case 'type': return fmtType(v as string)
-    case 'dialects': return fmtDialects(v as DialectTypes)
+    case 'type':
+      return fmtType(v as string)
+    case 'dialects':
+      return fmtDialects(v as DialectTypes)
     case 'nullable':
-    case 'increment': return fmtBool(v as boolean)
-    case 'default': return fmtDefault(v as string | null)
-    case 'comment': return fmtNullableString(v as string | null)
-    case 'check': return fmtCheckList(v as string[])
-    case 'position': return fmtPosition(v as string | null)
+    case 'increment':
+      return fmtBool(v as boolean)
+    case 'default':
+      return fmtDefault(v as string | null)
+    case 'comment':
+      return fmtNullableString(v as string | null)
+    case 'check':
+      return fmtCheckList(v as string[])
+    case 'position':
+      return fmtPosition(v as string | null)
   }
 }
 
 // ── 파서 커서 — 한 줄 안을 읽는다 ──
 
 export class ParseFailure extends Error {
-  constructor(readonly line: number, message: string) {
+  constructor(
+    readonly line: number,
+    message: string,
+  ) {
     super(message)
     this.name = 'ParseFailure'
   }
@@ -65,21 +76,37 @@ const IDENT_CHAR = /[A-Za-z0-9_$#]/
 
 export class Cursor {
   #pos = 0
-  constructor(readonly text: string, readonly line: number) {}
+  constructor(
+    readonly text: string,
+    readonly line: number,
+  ) {}
 
-  fail(message: string): never { throw new ParseFailure(this.line, message) }
+  fail(message: string): never {
+    throw new ParseFailure(this.line, message)
+  }
 
   #ws(): void {
-    while (this.#pos < this.text.length && (this.text[this.#pos] === ' ' || this.text[this.#pos] === '\t')) this.#pos += 1
+    while (
+      this.#pos < this.text.length &&
+      (this.text[this.#pos] === ' ' || this.text[this.#pos] === '\t')
+    )
+      this.#pos += 1
   }
-  #rest(): string { return this.text.slice(this.#pos) }
+  #rest(): string {
+    return this.text.slice(this.#pos)
+  }
   #near(): string {
     const r = this.#rest().trim()
     return r === '' ? '줄 끝' : `'${r.slice(0, 24)}'`
   }
 
-  atEnd(): boolean { this.#ws(); return this.#pos >= this.text.length }
-  end(): void { if (!this.atEnd()) this.fail(`줄 끝이어야 하는데 ${this.#near()} 이(가) 있습니다`) }
+  atEnd(): boolean {
+    this.#ws()
+    return this.#pos >= this.text.length
+  }
+  end(): void {
+    if (!this.atEnd()) this.fail(`줄 끝이어야 하는데 ${this.#near()} 이(가) 있습니다`)
+  }
 
   /** 단어 경계까지 맞는 키워드. 공백으로 나뉜 여러 단어(`not null`, `drop foreign key`)도 받는다. */
   tryWord(word: string): boolean {
@@ -100,7 +127,8 @@ export class Cursor {
     return true
   }
   word(word: string): void {
-    if (!this.tryWord(word)) this.fail(`'${word}' 이(가) 와야 하는데 ${this.#near()} 이(가) 있습니다`)
+    if (!this.tryWord(word))
+      this.fail(`'${word}' 이(가) 와야 하는데 ${this.#near()} 이(가) 있습니다`)
   }
   trySymbol(sym: string): boolean {
     this.#ws()
@@ -109,7 +137,8 @@ export class Cursor {
     return true
   }
   symbol(sym: string): void {
-    if (!this.trySymbol(sym)) this.fail(`'${sym}' 이(가) 와야 하는데 ${this.#near()} 이(가) 있습니다`)
+    if (!this.trySymbol(sym))
+      this.fail(`'${sym}' 이(가) 와야 하는데 ${this.#near()} 이(가) 있습니다`)
   }
 
   #quoted(quote: '"' | "'" | '`', what: string): string {
@@ -118,7 +147,10 @@ export class Cursor {
     for (;;) {
       const ch = this.text[i]
       if (ch === undefined) this.fail(`${what}의 닫는 ${quote} 가 없습니다`)
-      if (ch === quote) { this.#pos = i + 1; return out }
+      if (ch === quote) {
+        this.#pos = i + 1
+        return out
+      }
       if (ch === '\\') {
         const nx = this.text[i + 1]
         if (nx === 'n') out += '\n'
@@ -151,12 +183,14 @@ export class Cursor {
   }
   string(): string {
     this.#ws()
-    if (this.text[this.#pos] !== "'") this.fail(`'…' 문자열이 와야 하는데 ${this.#near()} 이(가) 있습니다`)
+    if (this.text[this.#pos] !== "'")
+      this.fail(`'…' 문자열이 와야 하는데 ${this.#near()} 이(가) 있습니다`)
     return this.#quoted("'", '문자열')
   }
   raw(): string {
     this.#ws()
-    if (this.text[this.#pos] !== '`') this.fail(`\`…\` 기본값이 와야 하는데 ${this.#near()} 이(가) 있습니다`)
+    if (this.text[this.#pos] !== '`')
+      this.fail(`\`…\` 기본값이 와야 하는데 ${this.#near()} 이(가) 있습니다`)
     return this.#quoted('`', '기본값')
   }
   integer(): number {
@@ -177,8 +211,12 @@ export class Cursor {
     if (this.tryWord('false')) return false
     return this.fail(`true 또는 false 가 와야 하는데 ${this.#near()} 이(가) 있습니다`)
   }
-  nullableString(): string | null { return this.tryWord('none') ? null : this.string() }
-  defaultValue(): string | null { return this.tryWord('none') ? null : this.raw() }
+  nullableString(): string | null {
+    return this.tryWord('none') ? null : this.string()
+  }
+  defaultValue(): string | null {
+    return this.tryWord('none') ? null : this.raw()
+  }
   identList(): string[] {
     if (this.tryWord('none')) return []
     this.symbol('(')
@@ -205,7 +243,8 @@ export class Cursor {
     const out: DialectTypes = {}
     do {
       const d = this.tryDialect()
-      if (d === null) this.fail(`방언 이름(${DIALECTS.join('·')})이 와야 하는데 ${this.#near()} 이(가) 있습니다`)
+      if (d === null)
+        this.fail(`방언 이름(${DIALECTS.join('·')})이 와야 하는데 ${this.#near()} 이(가) 있습니다`)
       this.symbol(':')
       out[d] = this.type()
     } while (this.trySymbol(','))

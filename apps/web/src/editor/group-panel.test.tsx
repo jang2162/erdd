@@ -20,13 +20,19 @@ function renderPanel() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<GroupPanel projectId={PROJECT_ID} />, { wrapper: w })
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('GroupPanel', () => {
   it('renders the group name, delete button, and member count for the selected group', () => {
@@ -75,7 +81,8 @@ describe('GroupPanel', () => {
     await userEvent.type(input, 'MBR')
     await userEvent.tab()
     await waitFor(() =>
-      expect(useEditorStore.getState().model.tableGroups['g1']!.alias).toBe('MBR'))
+      expect(useEditorStore.getState().model.tableGroups['g1']!.alias).toBe('MBR'),
+    )
   })
 
   // ⚠️ 설계 D3 — 타이핑 중에 규칙을 강제한다.
@@ -93,21 +100,36 @@ describe('GroupPanel', () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
     // 픽스처 그룹 이름은 '회원관리' — 사전에 두 단어를 넣어 MBR_MGMT 가 나오게 한다.
-    m = createWord(m, { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null, origin: null })
-    m = createWord(m, { id: 'w2', logicalName: '관리', abbreviation: 'MGMT', englishName: null, description: null, origin: null })
+    m = createWord(m, {
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
+    })
+    m = createWord(m, {
+      id: 'w2',
+      logicalName: '관리',
+      abbreviation: 'MGMT',
+      englishName: null,
+      description: null,
+      origin: null,
+    })
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectGroup('g1')
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: '이름으로 별칭 채우기' }))
     await waitFor(() =>
-      expect(useEditorStore.getState().model.tableGroups['g1']!.alias).toBe('MBR_MGMT'))
+      expect(useEditorStore.getState().model.tableGroups['g1']!.alias).toBe('MBR_MGMT'),
+    )
   })
 
   it('사전에 없으면 토스트를 내고 별칭을 바꾸지 않는다', async () => {
     const { toast } = await import('sonner')
     const spy = vi.spyOn(toast, 'error').mockImplementation(() => '' as never)
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)   // 사전 비어 있음
+    useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID) // 사전 비어 있음
     grantEditPermission()
     useEditorStore.getState().selectGroup('g1')
     renderPanel()
@@ -145,7 +167,8 @@ describe('GroupPanel', () => {
     })
     // ⚠️ 커밋이 도착한 뒤에 단언한다 — 안 그러면 타이밍에 따라 우연히 통과한다.
     await waitFor(() =>
-      expect(useEditorStore.getState().model.tableGroups['g1']!.alias).toBe(value))
+      expect(useEditorStore.getState().model.tableGroups['g1']!.alias).toBe(value),
+    )
   }
 
   it('그룹을 갈아타면 별칭 입력이 새 그룹 값으로 바뀐다', async () => {
@@ -162,7 +185,7 @@ describe('GroupPanel', () => {
     renderPanel()
     await typeAliasThenSwitchGroup('AAA')
 
-    await userEvent.click(screen.getByLabelText('별칭'))      // 값은 건드리지 않고 스쳐 지나간다
+    await userEvent.click(screen.getByLabelText('별칭')) // 값은 건드리지 않고 스쳐 지나간다
     await userEvent.tab()
     expect(useEditorStore.getState().model.tableGroups['g2']!.alias).toBe('')
   })

@@ -1,8 +1,14 @@
 import { create } from 'zustand'
 import {
-  createEmptyModel, DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS,
-  type Dialect, type NamingRules, type Op, type Peer,
-  type ProjectModel, type TableOptions,
+  createEmptyModel,
+  DEFAULT_NAMING_RULES,
+  DEFAULT_TABLE_OPTIONS,
+  type Dialect,
+  type NamingRules,
+  type Op,
+  type Peer,
+  type ProjectModel,
+  type TableOptions,
 } from '@erdd/core'
 
 export type ViewMode = 'logical' | 'physical' | 'mixed'
@@ -61,7 +67,9 @@ type EditorState = {
    */
   setLoaded: (model: ProjectModel, seq: number, projectId: string) => void
   setProjectConfig: (
-    namingRules: NamingRules, dialects: Dialect[], projectName: string | null,
+    namingRules: NamingRules,
+    dialects: Dialect[],
+    projectName: string | null,
     tableOptions: TableOptions,
   ) => void
   setPermissions: (perms: { canEdit: boolean; canManage: boolean }) => void
@@ -109,8 +117,11 @@ const NO_TABLES: readonly string[] = []
 const NO_COLUMNS: readonly string[] = []
 
 const CLEARED_SELECTION = {
-  selectedTableIds: NO_TABLES, selectedColumnIds: NO_COLUMNS,
-  selectedRelationshipId: null, selectedNoteId: null, selectedGroupId: null,
+  selectedTableIds: NO_TABLES,
+  selectedColumnIds: NO_COLUMNS,
+  selectedRelationshipId: null,
+  selectedNoteId: null,
+  selectedGroupId: null,
 }
 
 /**
@@ -123,11 +134,14 @@ const CLEARED_SELECTION = {
  */
 function keptSelection(s: EditorState, model: ProjectModel) {
   const keep = (id: string | null, rec: Record<string, unknown>) =>
-    (id !== null && Object.hasOwn(rec, id) ? id : null)
+    id !== null && Object.hasOwn(rec, id) ? id : null
   const keptTables = s.selectedTableIds.filter((id) => Object.hasOwn(model.tables, id))
-  const selectedTableIds = keptTables.length === s.selectedTableIds.length
-    ? s.selectedTableIds
-    : keptTables.length === 0 ? NO_TABLES : keptTables
+  const selectedTableIds =
+    keptTables.length === s.selectedTableIds.length
+      ? s.selectedTableIds
+      : keptTables.length === 0
+        ? NO_TABLES
+        : keptTables
   /*
    * 컬럼은 **테이블에 종속된 선택**이라(canvas-clipboard 설계 D-C1) 테이블이 걸러진 뒤에도
    * 불변식 `selectedTableIds.length !== 1 → selectedColumnIds가 빈 배열`이 유지돼야 한다.
@@ -135,14 +149,18 @@ function keptSelection(s: EditorState, model: ProjectModel) {
    * 이 규칙은 원래 resync 안에만 있었다 — pruneSelection(로컬 편집·남의 삭제 수신)이 같은 사건을
    * 다르게 처리하지 않도록 keptSelection 안으로 들였다.
    */
-  const keptColumns = selectedTableIds.length === 1
-    ? s.selectedColumnIds.filter((id) => model.columns[id]?.tableId === selectedTableIds[0])
-    : []
+  const keptColumns =
+    selectedTableIds.length === 1
+      ? s.selectedColumnIds.filter((id) => model.columns[id]?.tableId === selectedTableIds[0])
+      : []
   return {
     selectedTableIds,
-    selectedColumnIds: keptColumns.length === s.selectedColumnIds.length
-      ? s.selectedColumnIds
-      : keptColumns.length === 0 ? NO_COLUMNS : keptColumns,
+    selectedColumnIds:
+      keptColumns.length === s.selectedColumnIds.length
+        ? s.selectedColumnIds
+        : keptColumns.length === 0
+          ? NO_COLUMNS
+          : keptColumns,
     selectedRelationshipId: keep(s.selectedRelationshipId, model.relationships),
     selectedNoteId: keep(s.selectedNoteId, model.notes),
     selectedGroupId: keep(s.selectedGroupId, model.tableGroups),
@@ -177,8 +195,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // 것뿐이다. 같은 프로젝트를 서버 상태로 되맞추는 경로는 resync가 맡는다(설계 §4 — 규칙 한 벌).
   setLoaded: (model, seq, projectId) =>
     set({
-      model, seq, loaded: true, loadedProjectId: projectId,
-      undoStack: [], redoStack: [], activeGroupView: null, peers: [],
+      model,
+      seq,
+      loaded: true,
+      loadedProjectId: projectId,
+      undoStack: [],
+      redoStack: [],
+      activeGroupView: null,
+      peers: [],
       ...CLEARED_SELECTION,
     }),
   setProjectConfig: (namingRules, dialects, projectName, tableOptions) =>
@@ -197,56 +221,67 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // undo 스택은 버린다(되돌리려는 op가 이미 사라진 대상을 가리킬 수 있다).
   // activeGroupView는 유지한다 — 남이 편집할 때마다 그룹 뷰에서 튕기면 못 쓴다.
   // 선택은 대상이 아직 존재할 때만 남긴다.
-  resync: (model, seq) => set((s) => ({
-    model, seq, loaded: true, undoStack: [], redoStack: [],
-    ...keptSelection(s, model),
-  })),
+  resync: (model, seq) =>
+    set((s) => ({
+      model,
+      seq,
+      loaded: true,
+      undoStack: [],
+      redoStack: [],
+      ...keptSelection(s, model),
+    })),
   pruneSelection: (model) => set((s) => keptSelection(s, model)),
   setViewMode: (viewMode) => set({ viewMode }),
-  select: (tableId) => set({ ...CLEARED_SELECTION, selectedTableIds: tableId === null ? NO_TABLES : [tableId] }),
+  select: (tableId) =>
+    set({ ...CLEARED_SELECTION, selectedTableIds: tableId === null ? NO_TABLES : [tableId] }),
   // 컬럼 선택은 테이블이 하나일 때만 성립한다(불변식) — CLEARED_SELECTION이 함께 비운다.
   // 토글은 정의상 그 id를 넣거나 빼므로 "같은 단일 테이블이 그대로 남는" 갈래가 존재하지 않는다.
-  toggleTable: (tableId) => set((s) => {
-    const next = s.selectedTableIds.includes(tableId)
-      ? s.selectedTableIds.filter((id) => id !== tableId)
-      : [...s.selectedTableIds, tableId]
-    return { ...CLEARED_SELECTION, selectedTableIds: next.length === 0 ? NO_TABLES : next }
-  }),
+  toggleTable: (tableId) =>
+    set((s) => {
+      const next = s.selectedTableIds.includes(tableId)
+        ? s.selectedTableIds.filter((id) => id !== tableId)
+        : [...s.selectedTableIds, tableId]
+      return { ...CLEARED_SELECTION, selectedTableIds: next.length === 0 ? NO_TABLES : next }
+    }),
   // 빈 배열은 **다른 종류의** 선택(메모·관계·그룹)을 지우지 않는다 — 캔버스에서 메모를 클릭하면
   // ReactFlow가 테이블 해제로 빈 배열을 쏘는데, 그것이 같은 클릭의 selectNote를 지우면 안 된다.
   // **컬럼은 예외다**: 형제가 아니라 테이블에 종속된 선택이라(D-C1) 테이블이 비면 불변식상
   // 함께 비어야 한다. 이미 비어 있는지 따로 보지 않는다 — zustand는 어떤 partial을 받든 새 루트
   // 상태를 만들어 리스너를 전부 호출하므로 `{}` 를 돌려줘도 리렌더가 줄지 않는다. 억제는
   // **같은 참조**가 한다.
-  selectTables: (tableIds) => set(
-    tableIds.length === 0
-      ? { selectedTableIds: NO_TABLES, selectedColumnIds: NO_COLUMNS }
-      : { ...CLEARED_SELECTION, selectedTableIds: [...tableIds] }),
-  selectColumn: (tableId, columnId, mode) => set((s) => {
-    const sameTable = s.selectedTableIds.length === 1 && s.selectedTableIds[0] === tableId
-    const base: readonly string[] = sameTable ? s.selectedColumnIds : NO_COLUMNS
-    let next: string[]
-    if (mode === 'toggle') {
-      next = base.includes(columnId) ? base.filter((x) => x !== columnId) : [...base, columnId]
-    } else if (mode === 'range' && base.length > 0) {
-      const anchor = base[base.length - 1]!
-      const ordered = Object.values(s.model.columns)
-        .filter((c) => c.tableId === tableId)
-        .sort((a, b) => a.order - b.order)
-        .map((c) => c.id)
-      const i = ordered.indexOf(anchor)
-      const j = ordered.indexOf(columnId)
-      next = i === -1 || j === -1 ? [columnId] : ordered.slice(Math.min(i, j), Math.max(i, j) + 1)
-    } else {
-      next = [columnId]
-    }
-    return {
-      ...CLEARED_SELECTION,
-      selectedTableIds: [tableId],
-      selectedColumnIds: next.length === 0 ? NO_COLUMNS : next,
-    }
-  }),
-  selectRelationship: (selectedRelationshipId) => set({ ...CLEARED_SELECTION, selectedRelationshipId }),
+  selectTables: (tableIds) =>
+    set(
+      tableIds.length === 0
+        ? { selectedTableIds: NO_TABLES, selectedColumnIds: NO_COLUMNS }
+        : { ...CLEARED_SELECTION, selectedTableIds: [...tableIds] },
+    ),
+  selectColumn: (tableId, columnId, mode) =>
+    set((s) => {
+      const sameTable = s.selectedTableIds.length === 1 && s.selectedTableIds[0] === tableId
+      const base: readonly string[] = sameTable ? s.selectedColumnIds : NO_COLUMNS
+      let next: string[]
+      if (mode === 'toggle') {
+        next = base.includes(columnId) ? base.filter((x) => x !== columnId) : [...base, columnId]
+      } else if (mode === 'range' && base.length > 0) {
+        const anchor = base[base.length - 1]!
+        const ordered = Object.values(s.model.columns)
+          .filter((c) => c.tableId === tableId)
+          .sort((a, b) => a.order - b.order)
+          .map((c) => c.id)
+        const i = ordered.indexOf(anchor)
+        const j = ordered.indexOf(columnId)
+        next = i === -1 || j === -1 ? [columnId] : ordered.slice(Math.min(i, j), Math.max(i, j) + 1)
+      } else {
+        next = [columnId]
+      }
+      return {
+        ...CLEARED_SELECTION,
+        selectedTableIds: [tableId],
+        selectedColumnIds: next.length === 0 ? NO_COLUMNS : next,
+      }
+    }),
+  selectRelationship: (selectedRelationshipId) =>
+    set({ ...CLEARED_SELECTION, selectedRelationshipId }),
   selectNote: (selectedNoteId) => set({ ...CLEARED_SELECTION, selectedNoteId }),
   selectGroup: (selectedGroupId) => set({ ...CLEARED_SELECTION, selectedGroupId }),
   focus: (id) => set({ ...CLEARED_SELECTION, focusTableId: id, selectedTableIds: [id] }),
@@ -269,12 +304,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ redoStack: redoStack.slice(0, -1), undoStack: [...undoStack, ops] })
     return ops
   },
-  reset: () => set({
-    model: createEmptyModel(), seq: 0, loaded: false, loadedProjectId: null,
-    namingRules: DEFAULT_NAMING_RULES, tableOptions: DEFAULT_TABLE_OPTIONS,
-    dialects: [], projectName: null, peers: [],
-    canEdit: false, canManage: false, blocked: null,
-    localSave: { dirty: false, external: false, saving: false },
-    ...CLEARED_SELECTION, focusTableId: null, activeGroupView: null, undoStack: [], redoStack: [],
-  }),
+  reset: () =>
+    set({
+      model: createEmptyModel(),
+      seq: 0,
+      loaded: false,
+      loadedProjectId: null,
+      namingRules: DEFAULT_NAMING_RULES,
+      tableOptions: DEFAULT_TABLE_OPTIONS,
+      dialects: [],
+      projectName: null,
+      peers: [],
+      canEdit: false,
+      canManage: false,
+      blocked: null,
+      localSave: { dirty: false, external: false, saving: false },
+      ...CLEARED_SELECTION,
+      focusTableId: null,
+      activeGroupView: null,
+      undoStack: [],
+      redoStack: [],
+    }),
 }))

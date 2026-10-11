@@ -13,14 +13,23 @@ import { ExportDialog } from './export-dialog.js'
 import { Button } from '@/components/ui/button'
 import { formatCount } from '@/lib/format'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useIsLocal } from '@/components/require-auth'
 
 /** 상단 우측에서 열 수 있는 관리 도구. 한 번에 하나만 열린다. */
 type ToolId =
-  | 'version' | 'domain' | 'dict' | 'customField'
-  | 'resource' | 'namingCheck' | 'ddlImport' | 'export'
+  | 'version'
+  | 'domain'
+  | 'dict'
+  | 'customField'
+  | 'resource'
+  | 'namingCheck'
+  | 'ddlImport'
+  | 'export'
 
 /**
  * 상단 우측 관리 도구. 열린 도구를 **단일 상태**로 들어 두 다이얼로그가 동시에 열리는 상태가
@@ -33,7 +42,9 @@ type ToolId =
  */
 export function HeaderTools({ projectId }: { projectId: string }) {
   const [tool, setTool] = useState<ToolId | null>(null)
-  const close = (open: boolean) => { if (!open) setTool(null) }
+  const close = (open: boolean) => {
+    if (!open) setTool(null)
+  }
   const warnings = useWarnings()
   const canEdit = useEditorStore((s) => s.canEdit)
   // 공용 리소스는 서버의 라이브러리 테이블에 얹혀 있다 — 로컬 서버에는 그 프로시저가 없다.
@@ -83,7 +94,9 @@ export function HeaderTools({ projectId }: { projectId: string }) {
             사라져도 **메뉴에는 눌러도 아무 일 없는 죽은 항목이 남으므로** 가드가 여기로 왔다(설계 3.3).
           */}
           {canEdit && (
-            <DropdownMenuItem onSelect={() => setTool('ddlImport')}>DDL·DBML 가져오기</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setTool('ddlImport')}>
+              DDL·DBML 가져오기
+            </DropdownMenuItem>
           )}
           <DropdownMenuItem onSelect={() => setTool('export')}>내보내기</DropdownMenuItem>
         </DropdownMenuContent>
@@ -97,7 +110,9 @@ export function HeaderTools({ projectId }: { projectId: string }) {
         닫아 두는 것으로는 부족하다 — ResourcePanel 은 enabled 가드 없이 마운트 즉시
         resource.library.listForProject 를 부른다. 로컬 라우터에 없는 프로시저다.
       */}
-      {!isLocal && <ResourcePanel projectId={projectId} open={tool === 'resource'} onOpenChange={close} />}
+      {!isLocal && (
+        <ResourcePanel projectId={projectId} open={tool === 'resource'} onOpenChange={close} />
+      )}
       <NamingCheck projectId={projectId} open={tool === 'namingCheck'} onOpenChange={close} />
       <DdlImportDialog projectId={projectId} open={tool === 'ddlImport'} onOpenChange={close} />
       <ExportDialog open={tool === 'export'} onOpenChange={close} />

@@ -1,7 +1,10 @@
 import { useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
-  LOCAL_DISCARD_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, type LocalSaveResult,
+  LOCAL_DISCARD_PATH,
+  LOCAL_KEEP_PATH,
+  LOCAL_SAVE_PATH,
+  type LocalSaveResult,
 } from '@erdd/core'
 import { formatCount } from '@/lib/format'
 import { useEditorStore } from './store.js'
@@ -30,11 +33,15 @@ async function flushPendingEdits(): Promise<boolean> {
  */
 function restoreFocus(el: HTMLInputElement | HTMLTextAreaElement): void {
   if (document.activeElement !== document.body && document.activeElement !== null) return
-  const target = el.isConnected ? el : (el.id ? document.getElementById(el.id) : null)
+  const target = el.isConnected ? el : el.id ? document.getElementById(el.id) : null
   if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return
   target.focus()
   // 리마운트된 칸은 커서가 맨 앞에 선다 — 치던 자리(끝)로 옮긴다. color 등은 선택 API 가 없다.
-  try { target.setSelectionRange(target.value.length, target.value.length) } catch { /* 지원 안 함 */ }
+  try {
+    target.setSelectionRange(target.value.length, target.value.length)
+  } catch {
+    /* 지원 안 함 */
+  }
 }
 
 /**
@@ -74,22 +81,25 @@ export function useLocalSave() {
     try {
       // 거절된 편집은 모델에서 되돌려졌는데 `CommitInput` 은 그 값을 그대로 보여 준다. 저장하고
       // 성공을 띄우면 「친 값이 빠진 채 성공」 그대로다 — 거절 사유 토스트는 useSubmit 이 이미 띄웠다.
-      if (!await flushPendingEdits()) {
+      if (!(await flushPendingEdits())) {
         toast.error('반영되지 않은 편집이 있어 저장하지 않았습니다')
         return
       }
-      const r = await post(LOCAL_SAVE_PATH) as LocalSaveResult
+      const r = (await post(LOCAL_SAVE_PATH)) as LocalSaveResult
       if (r.ok) {
         useEditorStore.getState().setLocalSaveStatus({ dirty: false, external: false })
-        toast.success(r.written.length + r.deleted.length === 0
-          ? '저장할 변경이 없습니다'
-          : `저장했습니다 (파일 ${formatCount(r.written.length + r.deleted.length)}개)`)
+        toast.success(
+          r.written.length + r.deleted.length === 0
+            ? '저장할 변경이 없습니다'
+            : `저장했습니다 (파일 ${formatCount(r.written.length + r.deleted.length)}개)`,
+        )
         return
       }
       // 거절의 두 갈래를 그대로 상태에 옮긴다 — external 이면 배너가 뜨고, blocked 면 이미
       // 손상 배너가 떠 있다. 어느 쪽이든 미저장은 남아 있다.
       useEditorStore.getState().setLocalSaveStatus({
-        dirty: true, external: r.reason === 'external',
+        dirty: true,
+        external: r.reason === 'external',
       })
       toast.error(r.message)
     } catch {
@@ -127,7 +137,9 @@ export function useLocalSave() {
       void save()
     }
     document.addEventListener('keydown', onKeyDown)
-    return () => { document.removeEventListener('keydown', onKeyDown) }
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
   }, [save])
 
   return { dirty, external, saving, save, discard, keep }

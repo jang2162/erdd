@@ -1,8 +1,12 @@
 import { deepEqual } from './equal.js'
 import type { Origin, ProjectModel } from './model.js'
 import {
-  RESOURCE_COLLECTION_BY_KIND, RESOURCE_KINDS, resourceDisplayName, resourceEntitiesOf,
-  resourcePayloadOf, type ResourceKind,
+  RESOURCE_COLLECTION_BY_KIND,
+  RESOURCE_KINDS,
+  resourceDisplayName,
+  resourceEntitiesOf,
+  resourcePayloadOf,
+  type ResourceKind,
 } from './resource.js'
 
 /** 라이브러리 항목(서버 resource_items 한 행). payload는 라이브러리 공간이다. */
@@ -57,13 +61,16 @@ function keyOf(kind: ResourceKind, sourceId: string): string {
  * 도메인을 함께 가져오지 않아도 용어가 유효하게 들어간다.
  */
 function projectPayload(
-  kind: ResourceKind, payload: Record<string, unknown>, idBySource: ReadonlyMap<string, string>,
+  kind: ResourceKind,
+  payload: Record<string, unknown>,
+  idBySource: ReadonlyMap<string, string>,
 ): Record<string, unknown> {
   if (kind !== 'term') return { ...payload }
   const sourceDomainId = payload.domainId
-  const mapped = typeof sourceDomainId === 'string'
-    ? idBySource.get(keyOf('domain', sourceDomainId)) ?? null
-    : null
+  const mapped =
+    typeof sourceDomainId === 'string'
+      ? (idBySource.get(keyOf('domain', sourceDomainId)) ?? null)
+      : null
   return { ...payload, domainId: mapped }
 }
 
@@ -73,10 +80,13 @@ function projectPayload(
  * 나중에 달라졌을 때(예: 도메인을 나중에 추가로 가져옴) 원본이 그대로인데도 변경으로 잡힌다.
  */
 export function planResync(
-  model: ProjectModel, libraryId: string, items: readonly LibraryItem[],
+  model: ProjectModel,
+  libraryId: string,
+  items: readonly LibraryItem[],
 ): ResyncPlan {
   const linked = new Map<
-    string, { entity: { id: string; origin: Origin | null }; payload: Record<string, unknown> }
+    string,
+    { entity: { id: string; origin: Origin | null }; payload: Record<string, unknown> }
   >()
   const idBySource = new Map<string, string>()
   const namesByKind = new Map<ResourceKind, Set<string>>()
@@ -87,7 +97,10 @@ export function planResync(
     for (const entity of resourceEntitiesOf(model, kind)) {
       const payload = resourcePayloadOf(kind, entity as unknown as Record<string, unknown>)
       names.add(resourceDisplayName(kind, payload).trim())
-      if (!entity.origin) { keptLocal += 1; continue }
+      if (!entity.origin) {
+        keptLocal += 1
+        continue
+      }
       idBySource.set(keyOf(kind, entity.origin.sourceId), entity.id)
       if (entity.origin.libraryId !== libraryId) continue
       linked.set(keyOf(kind, entity.origin.sourceId), { entity, payload })
@@ -108,26 +121,43 @@ export function planResync(
 
     if (!link) {
       entries.push({
-        kind: item.kind, sourceId: item.id, name, status: 'added',
-        version: item.version, fromVersion: null, projectEntityId: null,
-        sourcePayload: item.payload, nextPayload, changedFields: [],
+        kind: item.kind,
+        sourceId: item.id,
+        name,
+        status: 'added',
+        version: item.version,
+        fromVersion: null,
+        projectEntityId: null,
+        sourcePayload: item.payload,
+        nextPayload,
+        changedFields: [],
         nameClash: namesByKind.get(item.kind)!.has(name.trim()),
       })
       continue
     }
 
     const origin = link.entity.origin!
-    if (origin.sourceVersion === item.version) { keptSynced += 1; continue }
+    if (origin.sourceVersion === item.version) {
+      keptSynced += 1
+      continue
+    }
 
     const modified = !deepEqual(link.payload, origin.base)
-    const changedFields = Object.keys(nextPayload)
-      .filter((prop) => !deepEqual(nextPayload[prop], origin.base[prop]))
+    const changedFields = Object.keys(nextPayload).filter(
+      (prop) => !deepEqual(nextPayload[prop], origin.base[prop]),
+    )
     entries.push({
-      kind: item.kind, sourceId: item.id, name,
+      kind: item.kind,
+      sourceId: item.id,
+      name,
       status: modified ? 'conflict' : 'auto-update',
-      version: item.version, fromVersion: origin.sourceVersion,
+      version: item.version,
+      fromVersion: origin.sourceVersion,
       projectEntityId: link.entity.id,
-      sourcePayload: item.payload, nextPayload, changedFields, nameClash: false,
+      sourcePayload: item.payload,
+      nextPayload,
+      changedFields,
+      nameClash: false,
     })
   }
 
@@ -139,9 +169,12 @@ export function planResync(
   // 로케일에 따라 순서가 흔들려도 같은 대상을 다투는 것은 trim 한 이름이 같은 항목뿐이고, 그들은
   // 이름 비교가 0 이라 sourceId 가 정한다. 그래서 이름도 trim 해 비교한다.
   const kindOrder = new Map(RESOURCE_KINDS.map((k, i) => [k, i]))
-  entries.sort((a, b) =>
-    kindOrder.get(a.kind)! - kindOrder.get(b.kind)! || a.name.trim().localeCompare(b.name.trim())
-    || (a.sourceId < b.sourceId ? -1 : a.sourceId > b.sourceId ? 1 : 0))
+  entries.sort(
+    (a, b) =>
+      kindOrder.get(a.kind)! - kindOrder.get(b.kind)! ||
+      a.name.trim().localeCompare(b.name.trim()) ||
+      (a.sourceId < b.sourceId ? -1 : a.sourceId > b.sourceId ? 1 : 0),
+  )
 
   return { libraryId, entries, keptLocal, keptSynced, keptDetached }
 }
@@ -157,10 +190,18 @@ export function adoptTargetOf(model: ProjectModel, entry: ResyncEntry): string |
   if (entry.status !== 'added') return null
   const hit = resourceEntitiesOf(model, entry.kind)
     .filter((e) => e.origin === null)
-    .filter((e) => entry.kind !== 'customField'
-      || (e as { target?: unknown }).target === entry.sourcePayload.target)
-    .filter((e) => resourceDisplayName(entry.kind,
-      resourcePayloadOf(entry.kind, e as unknown as Record<string, unknown>)).trim() === entry.name.trim())
+    .filter(
+      (e) =>
+        entry.kind !== 'customField' ||
+        (e as { target?: unknown }).target === entry.sourcePayload.target,
+    )
+    .filter(
+      (e) =>
+        resourceDisplayName(
+          entry.kind,
+          resourcePayloadOf(entry.kind, e as unknown as Record<string, unknown>),
+        ).trim() === entry.name.trim(),
+    )
     // 코드 단위 비교다 — localeCompare 는 환경 로케일에 따라 대소문자 혼용 id 의 순서가 갈린다.
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0]
   return hit?.id ?? null
@@ -172,7 +213,9 @@ export function adoptTargetOf(model: ProjectModel, entry: ResyncEntry): string |
  * 적용과 갈라지지 않는다. Map 에 없는 adopt 항목은 적용되지 않는다(대상 없음 또는 선착 패배).
  */
 export function adoptAssignments(
-  model: ProjectModel, plan: ResyncPlan, decisions: Readonly<Record<string, ResyncDecision>>,
+  model: ProjectModel,
+  plan: ResyncPlan,
+  decisions: Readonly<Record<string, ResyncDecision>>,
 ): Map<string, string> {
   return planAdoption(model, plan, decisions, { sameContentOnly: false }).assigned
 }
@@ -195,12 +238,18 @@ const UNRESOLVED = Symbol('unresolved')
  * null 로 덮는 update 를 낸다.
  */
 function adoptDifferingFields(
-  kind: ResourceKind, current: Record<string, unknown>, sourcePayload: Record<string, unknown>,
+  kind: ResourceKind,
+  current: Record<string, unknown>,
+  sourcePayload: Record<string, unknown>,
   idBySource: ReadonlyMap<string, string>,
 ): string[] {
   const projected: Record<string, unknown> = projectPayload(kind, sourcePayload, idBySource)
-  if (kind === 'term' && typeof sourcePayload.domainId === 'string'
-    && !idBySource.has(keyOf('domain', sourcePayload.domainId))) projected.domainId = UNRESOLVED
+  if (
+    kind === 'term' &&
+    typeof sourcePayload.domainId === 'string' &&
+    !idBySource.has(keyOf('domain', sourcePayload.domainId))
+  )
+    projected.domainId = UNRESOLVED
   const keys = [...new Set([...Object.keys(projected), ...Object.keys(current)])]
   return keys.filter((k) => !deepEqual(current[k], projected[k]))
 }
@@ -223,7 +272,9 @@ function adoptDifferingFields(
  * 남은 adopt 들의 대상은 서로 다르고, 각 대상은 여전히 `adoptTargetOf` 의 첫 후보다.
  */
 export function planAdoption(
-  model: ProjectModel, plan: ResyncPlan, decisions: Readonly<Record<string, ResyncDecision>>,
+  model: ProjectModel,
+  plan: ResyncPlan,
+  decisions: Readonly<Record<string, ResyncDecision>>,
   opts: { sameContentOnly: boolean },
 ): AdoptionPlan {
   const assigned = new Map<string, string>()
@@ -241,11 +292,16 @@ export function planAdoption(
     const target = adoptTargetOf(model, entry)
     if (target === null || claimed.has(target)) continue
     if (opts.sameContentOnly) {
-      const collection = model[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as
-        Record<string, Record<string, unknown>>
+      const collection = model[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as Record<
+        string,
+        Record<string, unknown>
+      >
       const current = resourcePayloadOf(entry.kind, collection[target]!)
       const fields = adoptDifferingFields(entry.kind, current, entry.sourcePayload, idBySource)
-      if (fields.length > 0) { differs.set(entry.sourceId, fields); continue }
+      if (fields.length > 0) {
+        differs.set(entry.sourceId, fields)
+        continue
+      }
       idBySource.set(keyOf(entry.kind, entry.sourceId), target)
     }
     claimed.add(target)
@@ -326,31 +382,32 @@ export function applyResyncPlan(
       sourceVersion: entry.version,
       base: payload,
     }
-    const collection = next[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as
-      Record<string, Record<string, unknown>>
+    const collection = next[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as Record<
+      string,
+      Record<string, unknown>
+    >
 
     if (entry.status === 'added') {
       if (decision === 'adopt') {
         const target = adopted.get(entry.sourceId)
         if (target === undefined) continue
-        collection[target] = { ...collection[target]!, origin }   // 내용은 그대로, 출처만
+        collection[target] = { ...collection[target]!, origin } // 내용은 그대로, 출처만
         changed = true
         continue
       }
       if (decision !== 'apply') continue
       const id = allocated.get(entry.sourceId)!
-      const extra = entry.kind === 'customField'
-        ? { order: nextOrder[String(payload.target)]!++ }
-        : {}
+      const extra =
+        entry.kind === 'customField' ? { order: nextOrder[String(payload.target)]!++ } : {}
       collection[id] = { ...payload, ...extra, id, origin }
       changed = true
       continue
     }
 
-    if (decision === 'adopt') continue   // added 가 아니면 의미가 없다 — keep 으로 새면 안 된다
+    if (decision === 'adopt') continue // added 가 아니면 의미가 없다 — keep 으로 새면 안 된다
     const id = entry.projectEntityId!
     const current = collection[id]
-    if (!current) continue   // 계획 계산 후 삭제된 경우 방어
+    if (!current) continue // 계획 계산 후 삭제된 경우 방어
     if (decision === 'apply') {
       // customField의 order는 프로젝트 표시 관심사라 원본 반영에서도 보존한다.
       const keepOrder = entry.kind === 'customField' ? { order: current.order } : {}

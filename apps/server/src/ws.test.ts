@@ -2,7 +2,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { FastifyInstance } from 'fastify'
 import { uuidv7 } from 'uuidv7'
 import {
-  parseServerMessage, WS_CLOSE_FORBIDDEN, WS_CLOSE_UNAUTHORIZED, type ServerMessage,
+  parseServerMessage,
+  WS_CLOSE_FORBIDDEN,
+  WS_CLOSE_UNAUTHORIZED,
+  type ServerMessage,
 } from '@erdd/core'
 import { resetDb } from './testing/db.js'
 import { createTestApp, loginAs } from './testing/helpers.js'
@@ -13,15 +16,20 @@ const url = process.env.DATABASE_URL
 
 function post(app: FastifyInstance, path: string, token: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`, cookies: { erdd_session: token },
-    headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
+    method: 'POST',
+    url: `/trpc/${path}`,
+    cookies: { erdd_session: token },
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify(input),
   })
 }
 
 function noteCreateOp() {
   const id = uuidv7()
   return {
-    action: 'create', entity: 'note', entityId: id,
+    action: 'create',
+    entity: 'note',
+    entityId: id,
     data: { id, content: '메모', position: { x: 0, y: 0 }, color: '#fff' },
   }
 }
@@ -33,7 +41,8 @@ function noteCreateOp() {
  */
 async function connect(app: FastifyInstance, path: string, cookie?: string) {
   const frames: ServerMessage[] = []
-  const waiters: { match: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }[] = []
+  const waiters: { match: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void }[] =
+    []
   let closeCode: number | null = null
   const closeWaiters: ((code: number) => void)[] = []
 
@@ -58,17 +67,24 @@ async function connect(app: FastifyInstance, path: string, cookie?: string) {
     next: (match: (m: ServerMessage) => boolean, timeoutMs = 3000) =>
       new Promise<ServerMessage>((resolve, reject) => {
         const hit = frames.find(match)
-        if (hit) { resolve(hit); return }
+        if (hit) {
+          resolve(hit)
+          return
+        }
         waiters.push({ match, resolve })
         setTimeout(
           () => reject(new Error(`타임아웃 — 받은 프레임: ${JSON.stringify(frames)}`)),
           timeoutMs,
         )
       }),
-    closed: () => new Promise<number>((resolve) => {
-      if (closeCode !== null) { resolve(closeCode); return }
-      closeWaiters.push(resolve)
-    }),
+    closed: () =>
+      new Promise<number>((resolve) => {
+        if (closeCode !== null) {
+          resolve(closeCode)
+          return
+        }
+        closeWaiters.push(resolve)
+      }),
   }
 }
 
@@ -87,47 +103,74 @@ describe.skipIf(!url)('ws', () => {
   let projectId: string
   let userId: string
 
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
   beforeEach(async () => {
     await resetDb(app.pgPool!)
     const account = await createAccount(app.db!, {
-      email: 'o@t.dev', name: '오너', password: 'password-o', role: 'user',
+      email: 'o@t.dev',
+      name: '오너',
+      password: 'password-o',
+      role: 'user',
     })
     userId = account.id
     token = await loginAs(app, 'o@t.dev', 'password-o')
     const orgId = (await post(app, 'org.create', token, { name: '팀' })).json().result.data.id
-    projectId = (await post(app, 'project.create', token, {
-      orgId, name: 'P', dialects: ['postgresql'],
-    })).json().result.data.id
+    projectId = (
+      await post(app, 'project.create', token, {
+        orgId,
+        name: 'P',
+        dialects: ['postgresql'],
+      })
+    ).json().result.data.id
   })
 
   describe('authorizeSocket', () => {
     it('세션 쿠키가 없으면 4401', async () => {
-      expect(await authorizeSocket(app.db!, undefined, projectId))
-        .toEqual({ ok: false, code: WS_CLOSE_UNAUTHORIZED })
+      expect(await authorizeSocket(app.db!, undefined, projectId)).toEqual({
+        ok: false,
+        code: WS_CLOSE_UNAUTHORIZED,
+      })
     })
 
     it('없는 세션 토큰이면 4401', async () => {
-      expect(await authorizeSocket(app.db!, uuidv7(), projectId))
-        .toEqual({ ok: false, code: WS_CLOSE_UNAUTHORIZED })
+      expect(await authorizeSocket(app.db!, uuidv7(), projectId)).toEqual({
+        ok: false,
+        code: WS_CLOSE_UNAUTHORIZED,
+      })
     })
 
     it('projectId가 UUID가 아니면 DB에 닿기 전에 4403', async () => {
-      expect(await authorizeSocket(app.db!, token, 'not-a-uuid'))
-        .toEqual({ ok: false, code: WS_CLOSE_FORBIDDEN })
+      expect(await authorizeSocket(app.db!, token, 'not-a-uuid')).toEqual({
+        ok: false,
+        code: WS_CLOSE_FORBIDDEN,
+      })
     })
 
     it('멤버가 아닌 프로젝트면 4403', async () => {
-      await createAccount(app.db!, { email: 'x@t.dev', name: '외부', password: 'password-x', role: 'user' })
+      await createAccount(app.db!, {
+        email: 'x@t.dev',
+        name: '외부',
+        password: 'password-x',
+        role: 'user',
+      })
       const outsider = await loginAs(app, 'x@t.dev', 'password-x')
-      expect(await authorizeSocket(app.db!, outsider, projectId))
-        .toEqual({ ok: false, code: WS_CLOSE_FORBIDDEN })
+      expect(await authorizeSocket(app.db!, outsider, projectId)).toEqual({
+        ok: false,
+        code: WS_CLOSE_FORBIDDEN,
+      })
     })
 
     it('접근 권한이 있으면 사용자 정보를 반환한다', async () => {
-      expect(await authorizeSocket(app.db!, token, projectId))
-        .toEqual({ ok: true, userId, name: '오너' })
+      expect(await authorizeSocket(app.db!, token, projectId)).toEqual({
+        ok: true,
+        userId,
+        name: '오너',
+      })
     })
   })
 
@@ -136,15 +179,22 @@ describe.skipIf(!url)('ws', () => {
       const c = await connect(app, `/ws?projectId=${projectId}`, `erdd_session=${token}`)
       const ready = await c.next((m) => m.type === 'ready')
       expect(ready).toEqual({
-        type: 'ready', seq: 0,
+        type: 'ready',
+        seq: 0,
         peers: [{ userId, name: '오너', selections: [] }],
       })
 
       const op = noteCreateOp()
-      expect((await post(app, 'model.mutate', token, { projectId, ops: [op] })).statusCode).toBe(200)
+      expect((await post(app, 'model.mutate', token, { projectId, ops: [op] })).statusCode).toBe(
+        200,
+      )
 
       expect(await c.next((m) => m.type === 'ops')).toEqual({
-        type: 'ops', seq: 1, ops: [op], actorUserId: userId, actorName: '오너',
+        type: 'ops',
+        seq: 1,
+        ops: [op],
+        actorUserId: userId,
+        actorName: '오너',
       })
       c.socket.terminate()
     })
@@ -159,15 +209,19 @@ describe.skipIf(!url)('ws', () => {
         JSON.stringify({ type: 'selection' }),
         JSON.stringify({ type: 'selection', selections: 't1' }),
         JSON.stringify({ type: 'selection', selections: [{ kind: 'column', id: 'c1' }] }),
-      ]) c.socket.send(bad)
+      ])
+        c.socket.send(bad)
 
       // 소켓이 살아 있어야 그 다음 정상 프레임이 presence로 되돌아온다.
-      c.socket.send(JSON.stringify({ type: 'selection', selections: [{ kind: 'table', id: 't1' }] }))
-      expect(await c.next((m) => m.type === 'presence' && m.peers.some((p) => p.selections.length > 0)))
-        .toEqual({
-          type: 'presence',
-          peers: [{ userId, name: '오너', selections: [{ kind: 'table', id: 't1' }] }],
-        })
+      c.socket.send(
+        JSON.stringify({ type: 'selection', selections: [{ kind: 'table', id: 't1' }] }),
+      )
+      expect(
+        await c.next((m) => m.type === 'presence' && m.peers.some((p) => p.selections.length > 0)),
+      ).toEqual({
+        type: 'presence',
+        peers: [{ userId, name: '오너', selections: [{ kind: 'table', id: 't1' }] }],
+      })
       expect(app.hub.connectionCount(projectId)).toBe(1)
       c.socket.terminate()
     })
@@ -193,7 +247,10 @@ describe.skipIf(!url)('ws', () => {
       const mutation = await import('./services/mutation.js')
       let releasePending: (() => void) | undefined
       const spy = vi.spyOn(mutation, 'currentSeq').mockImplementationOnce(
-        () => new Promise<number>((resolve) => { releasePending = () => resolve(0) }),
+        () =>
+          new Promise<number>((resolve) => {
+            releasePending = () => resolve(0)
+          }),
       )
       const c = await connect(app, `/ws?projectId=${projectId}`, `erdd_session=${token}`)
       await waitUntil(() => app.hub.connectionCount(projectId) === 1)

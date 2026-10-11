@@ -2,8 +2,13 @@ import { deepEqual } from './equal.js'
 import type { Origin, ProjectModel } from './model.js'
 import { OpApplyError } from './op.js'
 import {
-  RESOURCE_COLLECTION_BY_KIND, RESOURCE_KINDS, RESOURCE_PAYLOAD_SCHEMAS, resourceDisplayName,
-  resourceEntitiesOf, resourcePayloadOf, type ResourceKind,
+  RESOURCE_COLLECTION_BY_KIND,
+  RESOURCE_KINDS,
+  RESOURCE_PAYLOAD_SCHEMAS,
+  resourceDisplayName,
+  resourceEntitiesOf,
+  resourcePayloadOf,
+  type ResourceKind,
 } from './resource.js'
 import type { LibraryItem } from './resource-sync.js'
 
@@ -60,9 +65,8 @@ export function libraryPayload(
 ): Record<string, unknown> {
   if (kind !== 'term') return { ...payload }
   const projectDomainId = payload.domainId
-  const mapped = typeof projectDomainId === 'string'
-    ? itemIdByEntity.get(projectDomainId) ?? null
-    : null
+  const mapped =
+    typeof projectDomainId === 'string' ? (itemIdByEntity.get(projectDomainId) ?? null) : null
   return { ...payload, domainId: mapped }
 }
 
@@ -77,7 +81,8 @@ function nameKey(kind: ResourceKind, name: string): string {
  * 클라와 서버가 같은 모델 내용에서 같은 순서로 이 함수를 부르면 항상 같은 결과를 낸다.
  */
 function sortedResourceEntities(
-  model: ProjectModel, kind: ResourceKind,
+  model: ProjectModel,
+  kind: ResourceKind,
 ): { id: string; origin: Origin | null }[] {
   return [...resourceEntitiesOf(model, kind)].sort((a, b) => a.id.localeCompare(b.id))
 }
@@ -88,7 +93,9 @@ function sortedResourceEntities(
  * (프로젝트가 원본을 마지막으로 본 시점이 아니라 지금 값이 같은지가 관심사다).
  */
 export function planPromote(
-  model: ProjectModel, libraryId: string, items: readonly LibraryItem[],
+  model: ProjectModel,
+  libraryId: string,
+  items: readonly LibraryItem[],
 ): PromotePlan {
   const itemById = new Map(items.map((item) => [item.id, item]))
 
@@ -128,7 +135,10 @@ export function planPromote(
       let sourceBehind = false
       if (linked !== undefined) {
         target = itemById.get(linked)!
-        if (deepEqual(payload, target.payload)) { syncedCount += 1; continue }
+        if (deepEqual(payload, target.payload)) {
+          syncedCount += 1
+          continue
+        }
         status = 'update'
         // 링크가 있으면 origin은 이 라이브러리의 이 항목을 가리킨다(1단계의 조건).
         sourceBehind = entity.origin!.sourceVersion < target.version
@@ -157,8 +167,9 @@ export function planPromote(
   }
 
   const kindOrder = new Map(RESOURCE_KINDS.map((k, i) => [k, i]))
-  entries.sort((a, b) =>
-    kindOrder.get(a.kind)! - kindOrder.get(b.kind)! || a.name.localeCompare(b.name))
+  entries.sort(
+    (a, b) => kindOrder.get(a.kind)! - kindOrder.get(b.kind)! || a.name.localeCompare(b.name),
+  )
 
   return { libraryId, entries, syncedCount, linkedItemIds: Object.fromEntries(linkedItemId) }
 }
@@ -172,7 +183,7 @@ function domainRefOf(
   if (kind !== 'term') return null
   const domainId = raw.domainId
   if (typeof domainId !== 'string') return null
-  if (!Object.hasOwn(model.domains, domainId)) return null   // dangling — 참조 없음으로 본다
+  if (!Object.hasOwn(model.domains, domainId)) return null // dangling — 참조 없음으로 본다
   return { entityId: domainId, targetItemId: linkedItemId.get(domainId) ?? null }
 }
 
@@ -209,7 +220,7 @@ function projectSpace(
 ): Record<string, unknown> {
   if (kind !== 'term') return { ...payload }
   const itemId = payload.domainId
-  const mapped = typeof itemId === 'string' ? entityByItemId.get(itemId) ?? null : null
+  const mapped = typeof itemId === 'string' ? (entityByItemId.get(itemId) ?? null) : null
   return { ...payload, domainId: mapped }
 }
 
@@ -232,8 +243,10 @@ export function applyPromotePlan(
   //    형제 항목(예: 함께 선택된 용어)의 참조가 실제로 쓰이지 않는 유령 id를 가리키게 된다.
   const itemIdByEntity = new Map(Object.entries(plan.linkedItemIds))
   for (const entry of chosen) {
-    const collection = model[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as
-      Record<string, unknown>
+    const collection = model[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as Record<
+      string,
+      unknown
+    >
     if (!Object.hasOwn(collection, entry.entityId)) continue
     itemIdByEntity.set(entry.entityId, entry.targetItemId ?? newId())
   }
@@ -250,26 +263,35 @@ export function applyPromotePlan(
 
   const writes: PromoteWrite[] = []
   for (const entry of chosen) {
-    const collection = next[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as
-      Record<string, Record<string, unknown>>
+    const collection = next[RESOURCE_COLLECTION_BY_KIND[entry.kind]] as unknown as Record<
+      string,
+      Record<string, unknown>
+    >
     const entity = collection[entry.entityId]
-    if (!entity) continue   // 위 존재 확인과 같은 조건 — id 발급 단계에서 이미 걸러졌다
+    if (!entity) continue // 위 존재 확인과 같은 조건 — id 발급 단계에서 이미 걸러졌다
     const itemId = itemIdByEntity.get(entry.entityId)!
     const projected = libraryPayload(
-      entry.kind, resourcePayloadOf(entry.kind, entity), itemIdByEntity)
+      entry.kind,
+      resourcePayloadOf(entry.kind, entity),
+      itemIdByEntity,
+    )
     // 저장될 값(라이브러리 payload 스키마 파싱 결과)과 origin.base가 서로 다른 값에서
     // 파생되지 않도록, 여기서 한 번 파싱해 그 결과를 write.payload와 base 계산 모두에 쓴다 —
     // 스키마가 나중에 기본값·변환을 갖게 되어도 두 값이 갈라지지 않는다.
     const parsed = RESOURCE_PAYLOAD_SCHEMAS[entry.kind].safeParse(projected)
     if (!parsed.success) {
       throw new OpApplyError(
-        `승격 payload 형식 오류(${entry.kind} ${entry.entityId}) — ${parsed.error.message}`)
+        `승격 payload 형식 오류(${entry.kind} ${entry.entityId}) — ${parsed.error.message}`,
+      )
     }
     const payload = parsed.data as Record<string, unknown>
     const version = entry.targetVersion === null ? 1 : entry.targetVersion + 1
     writes.push({
       mode: entry.targetItemId === null ? 'insert' : 'update',
-      itemId, kind: entry.kind, payload, version,
+      itemId,
+      kind: entry.kind,
+      payload,
+      version,
     })
     const origin: Origin = {
       libraryId: plan.libraryId,

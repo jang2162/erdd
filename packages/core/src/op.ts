@@ -1,14 +1,30 @@
 import type { z } from 'zod'
 import {
-  ColumnSchema, CustomFieldSchema, DomainSchema, IndexSchema, NoteSchema, RelationshipSchema,
-  TableGroupSchema, TableSchema, TermSchema, WordSchema,
+  ColumnSchema,
+  CustomFieldSchema,
+  DomainSchema,
+  IndexSchema,
+  NoteSchema,
+  RelationshipSchema,
+  TableGroupSchema,
+  TableSchema,
+  TermSchema,
+  WordSchema,
   type ProjectModel,
 } from './model.js'
 import { validateModelIntegrity } from './integrity.js'
 
 export const ENTITY_KINDS = [
-  'tableGroup', 'domain', 'word', 'term', 'customField',
-  'table', 'column', 'relationship', 'index', 'note',
+  'tableGroup',
+  'domain',
+  'word',
+  'term',
+  'customField',
+  'table',
+  'column',
+  'relationship',
+  'index',
+  'note',
 ] as const
 export type EntityKind = (typeof ENTITY_KINDS)[number]
 
@@ -85,9 +101,11 @@ export function applyOps(model: ProjectModel, ops: readonly Op[]): ProjectModel 
       if (op.entityId === '__proto__') throw new OpApplyError(`${label}: 허용되지 않는 id`)
       if (Object.hasOwn(collection, op.entityId)) throw new OpApplyError(`${label}: 이미 존재함`)
       const parsed = ENTITY_SCHEMAS[op.entity].safeParse(op.data)
-      if (!parsed.success) throw new OpApplyError(`${label}: 데이터 형식 오류 — ${parsed.error.message}`)
+      if (!parsed.success)
+        throw new OpApplyError(`${label}: 데이터 형식 오류 — ${parsed.error.message}`)
       const entity = parsed.data as { id: string }
-      if (entity.id !== op.entityId) throw new OpApplyError(`${label}: data.id(${entity.id}) 불일치`)
+      if (entity.id !== op.entityId)
+        throw new OpApplyError(`${label}: data.id(${entity.id}) 불일치`)
       collection[op.entityId] = entity
     } else if (op.action === 'update') {
       if (!Object.hasOwn(collection, op.entityId)) throw new OpApplyError(`${label}: 존재하지 않음`)
@@ -98,7 +116,8 @@ export function applyOps(model: ProjectModel, ops: readonly Op[]): ProjectModel 
         updated[prop] = change.to
       }
       const parsed = ENTITY_SCHEMAS[op.entity].safeParse(updated)
-      if (!parsed.success) throw new OpApplyError(`${label}: 갱신 결과 형식 오류 — ${parsed.error.message}`)
+      if (!parsed.success)
+        throw new OpApplyError(`${label}: 갱신 결과 형식 오류 — ${parsed.error.message}`)
       collection[op.entityId] = parsed.data as { id: string }
     } else {
       if (!Object.hasOwn(collection, op.entityId)) throw new OpApplyError(`${label}: 존재하지 않음`)

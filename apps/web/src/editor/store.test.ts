@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { primaryTableId, useEditorStore } from './store.js'
 
-afterEach(() => { useEditorStore.getState().reset() })
+afterEach(() => {
+  useEditorStore.getState().reset()
+})
 
 describe('editor store 권한 상태', () => {
   it('기본값은 fail-closed다 — 서버 판정이 오기 전에는 편집할 수 없다', () => {
@@ -184,7 +186,10 @@ describe('editor store pruneSelection', () => {
 describe('다중 선택 액션과 컬럼 불변식', () => {
   const s = () => useEditorStore.getState()
 
-  beforeEach(() => { s().reset(); s().setLoaded(buildSampleModel(), 1, 'p1') })
+  beforeEach(() => {
+    s().reset()
+    s().setLoaded(buildSampleModel(), 1, 'p1')
+  })
 
   it('selectTables로 2개를 고르면 컬럼 선택이 비워진다', () => {
     s().selectColumn('t2', 'c2', 'replace')
@@ -239,7 +244,10 @@ describe('다중 선택 액션과 컬럼 불변식', () => {
 describe('선택 배열', () => {
   const s = () => useEditorStore.getState()
 
-  beforeEach(() => { s().reset(); s().setLoaded(buildSampleModel(), 1, 'p1') })
+  beforeEach(() => {
+    s().reset()
+    s().setLoaded(buildSampleModel(), 1, 'p1')
+  })
 
   it('select는 단일 선택으로 배열을 만든다', () => {
     s().select('t1')
@@ -292,7 +300,7 @@ describe('선택 배열', () => {
     expect(s().selectedColumnIds).toEqual(['c2', 'c3', 'c4'])
   })
 
-  it("range에 앞선 선택이 없으면 replace처럼 동작한다", () => {
+  it('range에 앞선 선택이 없으면 replace처럼 동작한다', () => {
     s().select('t2')
     s().selectColumn('t2', 'c3', 'range')
     expect(s().selectedColumnIds).toEqual(['c3'])

@@ -12,7 +12,11 @@ Table "MBR" [note: '회원 - 회원 기본정보'] {
     expect(p.tables).toHaveLength(1)
     expect(p.tables[0]!.name).toBe('MBR')
     expect(p.tables[0]!.columns[0]).toMatchObject({
-      name: 'MBR_NO', rawType: 'bigint', inlinePk: true, autoIncrement: true, notNull: false,
+      name: 'MBR_NO',
+      rawType: 'bigint',
+      inlinePk: true,
+      autoIncrement: true,
+      notNull: false,
     })
     expect(p.tables[0]!.columns[1]).toMatchObject({ name: 'MBR_NM', notNull: true })
     expect(p.tables[0]!.columns[2]!.defaultValue).toBe("'01'")
@@ -39,7 +43,7 @@ Table "MBR" {
   })
 
   it('문자열 안의 주석 기호는 주석이 아니다', () => {
-    const p = parseDbml("Table \"T\" {\n  \"C\" int [note: 'a // b']\n}")
+    const p = parseDbml('Table "T" {\n  "C" int [note: \'a // b\']\n}')
     expect(p.comments[0]!.text).toBe('a // b')
   })
 
@@ -59,7 +63,7 @@ Table "MBR" {
   })
 
   it('Project 의 database_type 을 읽는다', () => {
-    const p = parseDbml("Project \"P\" {\n  database_type: 'Oracle'\n}")
+    const p = parseDbml('Project "P" {\n  database_type: \'Oracle\'\n}')
     expect(p.databaseType).toBe('Oracle')
   })
 
@@ -100,16 +104,26 @@ describe('parseDbml — Ref', () => {
   it('> 는 왼쪽이 자식이다', () => {
     const p = parseDbml('Ref: "ORD"."MBR_NO" > "MBR"."MBR_NO"')
     expect(p.constraints).toContainEqual({
-      kind: 'fk', table: 'ORD', name: null, columns: ['MBR_NO'],
-      refTable: 'MBR', refColumns: ['MBR_NO'], oneToOne: false,
+      kind: 'fk',
+      table: 'ORD',
+      name: null,
+      columns: ['MBR_NO'],
+      refTable: 'MBR',
+      refColumns: ['MBR_NO'],
+      oneToOne: false,
     })
   })
 
   it('< 는 방향을 뒤집어 정규화한다', () => {
     const p = parseDbml('Ref: "MBR"."MBR_NO" < "ORD"."MBR_NO"')
     expect(p.constraints).toContainEqual({
-      kind: 'fk', table: 'ORD', name: null, columns: ['MBR_NO'],
-      refTable: 'MBR', refColumns: ['MBR_NO'], oneToOne: false,
+      kind: 'fk',
+      table: 'ORD',
+      name: null,
+      columns: ['MBR_NO'],
+      refTable: 'MBR',
+      refColumns: ['MBR_NO'],
+      oneToOne: false,
     })
   })
 
@@ -137,8 +151,13 @@ describe('parseDbml — Ref', () => {
   it('인라인 ref 를 같은 제약으로 편다', () => {
     const p = parseDbml('Table "ORD" {\n  "MBR_NO" bigint [ref: > "MBR"."MBR_NO"]\n}')
     expect(p.constraints).toContainEqual({
-      kind: 'fk', table: 'ORD', name: null, columns: ['MBR_NO'],
-      refTable: 'MBR', refColumns: ['MBR_NO'], oneToOne: false,
+      kind: 'fk',
+      table: 'ORD',
+      name: null,
+      columns: ['MBR_NO'],
+      refTable: 'MBR',
+      refColumns: ['MBR_NO'],
+      oneToOne: false,
     })
   })
 })
@@ -167,16 +186,23 @@ Table "MBR" {
   })
 
   it('indexes 의 pk 는 PK 제약으로 낸다', () => {
-    const p = parseDbml('Table "MBR" {\n  "A" int\n  "B" int\n\n  indexes {\n    ("A", "B") [pk]\n  }\n}')
+    const p = parseDbml(
+      'Table "MBR" {\n  "A" int\n  "B" int\n\n  indexes {\n    ("A", "B") [pk]\n  }\n}',
+    )
     expect(p.constraints).toContainEqual({ kind: 'pk', table: 'MBR', columns: ['A', 'B'] })
     expect(p.indexes).toEqual([])
   })
 
   it('TableGroup 을 읽는다', () => {
     const p = parseDbml('TableGroup "회원 관리" [color: #0E7A6C] {\n  "MBR"\n  "ORD"\n}')
-    expect(p.groups).toEqual([{
-      name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR', 'ORD'],
-    }])
+    expect(p.groups).toEqual([
+      {
+        name: '회원 관리',
+        color: '#0E7A6C',
+        comment: null,
+        tables: ['MBR', 'ORD'],
+      },
+    ])
   })
 
   it('TableGroup 의 note 를 그룹 설명으로 읽는다', () => {
@@ -199,12 +225,12 @@ TableGroup "회원" {
   // 쓴 남의 파일에서 `"#abcdef"` 가 그대로 모델에 들어가 캔버스 색이 깨졌다(리뷰 m-3).
   it('따옴표로 감싼 color·headercolor 의 따옴표를 벗긴다', () => {
     const p = parseDbml(
-      'Table "MBR" [headercolor: "#123456"] {\n  "A" int\n}\n'
-      + 'TableGroup "G1" [color: "#abcdef"] {\n  "MBR"\n}\n'
-      + 'TableGroup "G2" {\n  "MBR"\n}',
+      'Table "MBR" [headercolor: "#123456"] {\n  "A" int\n}\n' +
+        'TableGroup "G1" [color: "#abcdef"] {\n  "MBR"\n}\n' +
+        'TableGroup "G2" {\n  "MBR"\n}',
     )
     expect(p.groups[0]!.color).toBe('#abcdef')
-    expect(p.groups[1]!.color).toBe('#123456')      // headercolor 폴백도 같다
+    expect(p.groups[1]!.color).toBe('#123456') // headercolor 폴백도 같다
   })
 
   it('color 도 headercolor 도 없으면 null 이다', () => {
@@ -227,7 +253,7 @@ describe('parseDbml — PK 정규화', () => {
   it('컬럼 설정 [pk] 를 테이블 수준 pk 제약으로도 낸다', () => {
     const p = parseDbml('Table "T" {\n  "A" int [pk]\n}')
     expect(p.constraints).toContainEqual({ kind: 'pk', table: 'T', columns: ['A'] })
-    expect(p.tables[0]!.columns[0]!.inlinePk).toBe(true)   // inlinePk 도 그대로 둔다
+    expect(p.tables[0]!.columns[0]!.inlinePk).toBe(true) // inlinePk 도 그대로 둔다
   })
 
   it('인라인 [pk] 와 indexes 의 [pk] 가 둘 다 있으면 문서 순서대로 낸다(먼저 나온 것이 이긴다)', () => {
@@ -235,8 +261,8 @@ describe('parseDbml — PK 정규화', () => {
       'Table "T" {\n  "A" int [pk]\n  "B" int\n\n  indexes {\n    ("A", "B") [pk]\n  }\n}',
     )
     expect(p.constraints.filter((c) => c.kind === 'pk')).toEqual([
-      { kind: 'pk', table: 'T', columns: ['A'] },          // 인라인이 먼저
-      { kind: 'pk', table: 'T', columns: ['A', 'B'] },      // indexes 블록이 뒤
+      { kind: 'pk', table: 'T', columns: ['A'] }, // 인라인이 먼저
+      { kind: 'pk', table: 'T', columns: ['A', 'B'] }, // indexes 블록이 뒤
     ])
   })
 })
@@ -251,7 +277,7 @@ describe('parseDbml — 머릿말 메타', () => {
     ].join('\n')
     const parsed = parseDbml(src)
     expect(parsed.nameMeta).toEqual({ tables: { TB_MBR_ORD: { p: 'ORD', l: '주문' } }, groups: {} })
-    expect(parsed.tables).toHaveLength(1)          // ⚠️ stripComments 가 머릿말을 지워도 테이블은 읽힌다
+    expect(parsed.tables).toHaveLength(1) // ⚠️ stripComments 가 머릿말을 지워도 테이블은 읽힌다
   })
 
   it('머릿말이 없으면 nameMeta 가 undefined 다', () => {

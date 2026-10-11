@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  generatePhysicalName, restoreLogicalName, suggestCompletions,
-  type Completion, type ProjectModel,
+  generatePhysicalName,
+  restoreLogicalName,
+  suggestCompletions,
+  type Completion,
+  type ProjectModel,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
@@ -123,9 +126,8 @@ export function NamePair(props: {
     // 바꿔 둔 상태에서 blur 가 오면 내 쪽 값은 그대로라 조기 반환에 걸려, foldOtherDraft 가
     // 실어 보내야 할 그 값이 통째로 사라진다(설계 3.7 · 「확정 뒤 blur 는 두 필드가 한
     // 뮤테이션」이 red 가 된다). 그래서 **상대 draft 가 커밋값과 다른가**를 함께 본다.
-    const dirtyOther = side === 'logical'
-      ? draft.physicalName !== physicalName
-      : draft.logicalName !== logicalName
+    const dirtyOther =
+      side === 'logical' ? draft.physicalName !== physicalName : draft.logicalName !== logicalName
     if (value === current && !dirtyOther) return
     setDraft((d) => ({ ...d, ...patch }))
     commit(patch, side === 'logical' ? '논리명 변경' : '물리명 변경')
@@ -140,9 +142,11 @@ export function NamePair(props: {
     if (side === 'logical') {
       const gen = generatePhysicalName(draft.logicalName, words, terms, namingRules)
       if (!gen.physicalName) {
-        toast.error(gen.unknownWords.length > 0
-          ? `사전에 없는 단어: ${gen.unknownWords.join(', ')}`
-          : '논리명이 비어 있어 물리명을 만들 수 없습니다')
+        toast.error(
+          gen.unknownWords.length > 0
+            ? `사전에 없는 단어: ${gen.unknownWords.join(', ')}`
+            : '논리명이 비어 있어 물리명을 만들 수 없습니다',
+        )
         return
       }
       if (gen.physicalName !== physicalName) patch.physicalName = gen.physicalName
@@ -150,9 +154,11 @@ export function NamePair(props: {
     } else {
       const r = restoreLogicalName(draft.physicalName, words, terms, namingRules)
       if (!r.ok) {
-        toast.error(r.unknownTokens.length > 0
-          ? `등록되지 않은 약어: ${r.unknownTokens.join(', ')}`
-          : '물리명이 비어 있어 논리명을 만들 수 없습니다')
+        toast.error(
+          r.unknownTokens.length > 0
+            ? `등록되지 않은 약어: ${r.unknownTokens.join(', ')}`
+            : '물리명이 비어 있어 논리명을 만들 수 없습니다',
+        )
         return
       }
       if (r.logicalName !== logicalName) patch.logicalName = r.logicalName
@@ -187,28 +193,39 @@ export function NamePair(props: {
     const id = newId()
     const draftLogical = draft.logicalName
     const draftPhysical = draft.physicalName
-    void mutate((m) => {
-      const next = createWord(m, {
-        id, logicalName: logical.trim(), abbreviation: abbreviation.trim(),
-        englishName: null, description: null, origin: null,
-      })
-      const patch: NamePatch = {}
-      if (draftPhysical.trim() === '' && draftLogical.trim() !== '') {
-        const gen = generatePhysicalName(draftLogical, next.words, next.terms, namingRules)
-        if (gen.physicalName) patch.physicalName = gen.physicalName
-      } else if (draftLogical.trim() === '' && draftPhysical.trim() !== '') {
-        const r = restoreLogicalName(draftPhysical, next.words, next.terms, namingRules)
-        if (r.ok) patch.logicalName = r.logicalName
-      }
-      return Object.keys(patch).length > 0 ? applyNames(next, patch) : next
-    }, { summary: '단어 등록' })
+    void mutate(
+      (m) => {
+        const next = createWord(m, {
+          id,
+          logicalName: logical.trim(),
+          abbreviation: abbreviation.trim(),
+          englishName: null,
+          description: null,
+          origin: null,
+        })
+        const patch: NamePatch = {}
+        if (draftPhysical.trim() === '' && draftLogical.trim() !== '') {
+          const gen = generatePhysicalName(draftLogical, next.words, next.terms, namingRules)
+          if (gen.physicalName) patch.physicalName = gen.physicalName
+        } else if (draftLogical.trim() === '' && draftPhysical.trim() !== '') {
+          const r = restoreLogicalName(draftPhysical, next.words, next.terms, namingRules)
+          if (r.ok) patch.logicalName = r.logicalName
+        }
+        return Object.keys(patch).length > 0 ? applyNames(next, patch) : next
+      },
+      { summary: '단어 등록' },
+    )
   }
 
   return (
     <div className="grid gap-3">
       <NameField
-        side="physical" label={props.physicalLabel} id={`${props.idPrefix}-physical`}
-        value={draft.physicalName} committed={physicalName} canEdit={canEdit}
+        side="physical"
+        label={props.physicalLabel}
+        id={`${props.idPrefix}-physical`}
+        value={draft.physicalName}
+        committed={physicalName}
+        canEdit={canEdit}
         onChange={(v) => setDraft((d) => ({ ...d, physicalName: v }))}
         onCommit={(v, overwrite) => commitSide('physical', v, overwrite)}
         onFillOther={() => fillOther('physical')}
@@ -216,8 +233,12 @@ export function NamePair(props: {
         onRegisterWord={registerWord}
       />
       <NameField
-        side="logical" label="논리명" id={`${props.idPrefix}-logical`}
-        value={draft.logicalName} committed={logicalName} canEdit={canEdit}
+        side="logical"
+        label="논리명"
+        id={`${props.idPrefix}-logical`}
+        value={draft.logicalName}
+        committed={logicalName}
+        canEdit={canEdit}
         onChange={(v) => setDraft((d) => ({ ...d, logicalName: v }))}
         onCommit={(v, overwrite) => commitSide('logical', v, overwrite)}
         onFillOther={() => fillOther('logical')}
@@ -255,26 +276,34 @@ function NameField(props: {
   const [dismissed, setDismissed] = useState(false)
   const [active, setActive] = useState(0)
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => { if (blurTimer.current) clearTimeout(blurTimer.current) }, [])
+  useEffect(
+    () => () => {
+      if (blurTimer.current) clearTimeout(blurTimer.current)
+    },
+    [],
+  )
 
   const completions = useMemo(
-    () => (props.canEdit
-      ? suggestCompletions(props.value, props.side, words, terms, namingRules)
-      : { query: '', items: [] as Completion[] }),
+    () =>
+      props.canEdit
+        ? suggestCompletions(props.value, props.side, words, terms, namingRules)
+        : { query: '', items: [] as Completion[] },
     [props.value, props.side, props.canEdit, words, terms, namingRules],
   )
   const open = focused && !dismissed && completions.items.length > 0
   // ⚠️ query 만 보면 안 된다 — 용어만 나오는 구간은 query 가 '' 로 고정이라, 사전이 바뀌어 항목이
   // 줄어들어도 활성 인덱스가 그대로 남아 범위를 벗어나고 Enter 가 아무 일도 하지 않는다.
   const itemsKey = completions.items.map((i) => `${i.kind}:${i.insert}`).join('|')
-  useEffect(() => { setActive(0) }, [completions.query, itemsKey])
+  useEffect(() => {
+    setActive(0)
+  }, [completions.query, itemsKey])
 
   const apply = (item: Completion) => {
     const next = props.value.slice(0, item.start) + item.insert
     props.onChange(next)
     // 확정은 커밋이 아니지만 상대 draft 는 즉시 따라간다(설계 3.7).
     props.onPreviewOther(next)
-    setDismissed(true)      // 확정하면 닫는다. 다음 글자를 치면 다시 열린다.
+    setDismissed(true) // 확정하면 닫는다. 다음 글자를 치면 다시 열린다.
   }
 
   // ⚠️ draft 가 아니라 committed 로 계산한다 — draft 로 하면 타이핑 중 꼬리가 늘 미등록이라 깜박인다.
@@ -289,14 +318,21 @@ function NameField(props: {
 
   // 사전이 바뀌어 칩이 사라지면 펼친 폼도 닫는다.
   useEffect(() => {
-    if (openChip !== null && !chips.includes(openChip)) { setOpenChip(null); setChipValue('') }
+    if (openChip !== null && !chips.includes(openChip)) {
+      setOpenChip(null)
+      setChipValue('')
+    }
   }, [chips, openChip])
 
-  const check = openChip === null
-    ? null
-    : canRegisterWord(model, props.side === 'logical'
-      ? { logicalName: openChip, abbreviation: chipValue }
-      : { logicalName: chipValue, abbreviation: openChip })
+  const check =
+    openChip === null
+      ? null
+      : canRegisterWord(
+          model,
+          props.side === 'logical'
+            ? { logicalName: openChip, abbreviation: chipValue }
+            : { logicalName: chipValue, abbreviation: openChip },
+        )
 
   // ⚠️ 라벨은 **채우는 대상** 기준이다 — 버튼이 놓인 칸의 반대편을 채운다(설계 D5·3.7).
   const fillLabel = props.side === 'physical' ? '논리명 채우기' : '물리명 채우기'
@@ -305,7 +341,9 @@ function NameField(props: {
 
   return (
     <div className="grid gap-1.5">
-      <FieldLabel htmlFor={props.id} required>{props.label}</FieldLabel>
+      <FieldLabel htmlFor={props.id} required>
+        {props.label}
+      </FieldLabel>
       <div className="relative">
         <Input
           id={props.id}
@@ -321,13 +359,19 @@ function NameField(props: {
           readOnly={!props.canEdit}
           className={props.side === 'physical' ? 'pr-9 font-mono' : 'pr-9'}
           onFocus={() => setFocused(true)}
-          onChange={(e) => { setDismissed(false); props.onChange(e.target.value) }}
+          onChange={(e) => {
+            setDismissed(false)
+            props.onChange(e.target.value)
+          }}
           onBlur={(e) => {
             const value = e.target.value
             // 목록 항목을 누른 경우 mousedown 의 preventDefault 로 blur 가 오지 않는다.
             // 그래도 방어로 한 틱 미뤄 확정이 먼저 반영되게 한다.
             if (blurTimer.current) clearTimeout(blurTimer.current)
-            blurTimer.current = setTimeout(() => { setFocused(false); props.onCommit(value, false) }, 0)
+            blurTimer.current = setTimeout(() => {
+              setFocused(false)
+              props.onCommit(value, false)
+            }, 0)
           }}
           onKeyDown={(e) => {
             if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -345,16 +389,21 @@ function NameField(props: {
             }
             if (open && e.key === 'Escape') {
               e.preventDefault()
-              e.stopPropagation()     // 상위(다이얼로그·캔버스)로 새면 안 된다
+              e.stopPropagation() // 상위(다이얼로그·캔버스)로 새면 안 된다
               setDismissed(true)
               return
             }
-            if (e.key === 'Enter') { e.preventDefault(); props.onCommit(props.value, true) }
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              props.onCommit(props.value, true)
+            }
           }}
         />
         {props.canEdit && (
           <Button
-            type="button" size="icon" variant="ghost"
+            type="button"
+            size="icon"
+            variant="ghost"
             className="absolute top-1/2 right-1 size-7 -translate-y-1/2"
             aria-label={fillLabel}
             // ⚠️ 포커스를 뺏지 않는다 — 커서가 입력란에 남아 이어서 칠 수 있다.
@@ -367,7 +416,8 @@ function NameField(props: {
         )}
         {open && (
           <ul
-            id={listId} role="listbox"
+            id={listId}
+            role="listbox"
             className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
           >
             {completions.items.map((item, i) => (
@@ -379,10 +429,12 @@ function NameField(props: {
                 className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 text-sm ${
                   i === active ? 'bg-accent' : ''
                 }`}
-                onMouseDown={(e) => e.preventDefault()}   // blur 로 목록이 닫히기 전에 클릭이 온다
+                onMouseDown={(e) => e.preventDefault()} // blur 로 목록이 닫히기 전에 클릭이 온다
                 onClick={() => apply(item)}
               >
-                <span className={props.side === 'physical' ? 'font-mono' : undefined}>{item.insert}</span>
+                <span className={props.side === 'physical' ? 'font-mono' : undefined}>
+                  {item.insert}
+                </span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {item.kind === 'term' ? `용어 · ${item.hint}` : item.hint}
                 </span>
@@ -396,7 +448,10 @@ function NameField(props: {
           <span className="text-muted-foreground">미등록</span>
           {chips.map((chip) => (
             <Button
-              key={chip} type="button" size="sm" variant="outline"
+              key={chip}
+              type="button"
+              size="sm"
+              variant="outline"
               className="h-6 gap-0.5 px-1.5 text-[11px]"
               aria-label={`${chip} 등록`}
               onMouseDown={(e) => e.preventDefault()}
@@ -423,7 +478,9 @@ function NameField(props: {
               onChange={(e) => setChipValue(e.target.value)}
             />
             <Button
-              type="button" size="sm" className="h-8 shrink-0"
+              type="button"
+              size="sm"
+              className="h-8 shrink-0"
               disabled={!check?.ok}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {

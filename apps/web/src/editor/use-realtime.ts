@@ -2,9 +2,15 @@ import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  applyOps, parseServerMessage,
-  WS_CLOSE_FORBIDDEN, WS_CLOSE_UNAUTHORIZED,
-  type ClientMessage, type Op, type PeerSelection, type ProjectModel, type ServerMessage,
+  applyOps,
+  parseServerMessage,
+  WS_CLOSE_FORBIDDEN,
+  WS_CLOSE_UNAUTHORIZED,
+  type ClientMessage,
+  type Op,
+  type PeerSelection,
+  type ProjectModel,
+  type ServerMessage,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { formatCount } from '@/lib/format'
@@ -45,7 +51,8 @@ function selectionsOf(s: SelectionSource): PeerSelection[] {
   if (s.selectedTableIds.length > 0) {
     return s.selectedTableIds.map((id) => ({ kind: 'table' as const, id }))
   }
-  if (s.selectedRelationshipId !== null) return [{ kind: 'relationship', id: s.selectedRelationshipId }]
+  if (s.selectedRelationshipId !== null)
+    return [{ kind: 'relationship', id: s.selectedRelationshipId }]
   if (s.selectedNoteId !== null) return [{ kind: 'note', id: s.selectedNoteId }]
   if (s.selectedGroupId !== null) return [{ kind: 'group', id: s.selectedGroupId }]
   return []
@@ -74,11 +81,12 @@ export function selectionImpact(
       continue
     }
     if (tableIds.size > 0 && (op.entity === 'column' || op.entity === 'index')) {
-      const owner = op.action === 'create'
-        ? (op.data as { tableId?: unknown }).tableId
-        : op.entity === 'column'
-          ? model.columns[op.entityId]?.tableId
-          : model.indexes[op.entityId]?.tableId
+      const owner =
+        op.action === 'create'
+          ? (op.data as { tableId?: unknown }).tableId
+          : op.entity === 'column'
+            ? model.columns[op.entityId]?.tableId
+            : model.indexes[op.entityId]?.tableId
       if (typeof owner === 'string' && tableIds.has(owner)) impact = 'changed'
     }
   }
@@ -112,54 +120,63 @@ export function useRealtime(projectId: string): void {
       }
     }
 
-    const handle = (msg: ServerMessage) => serializeMutation(async () => {
-      const s = useEditorStore.getState()
-      if (s.loadedProjectId !== projectId) return
+    const handle = (msg: ServerMessage) =>
+      serializeMutation(async () => {
+        const s = useEditorStore.getState()
+        if (s.loadedProjectId !== projectId) return
 
-      if (msg.type === 'presence') { s.setPeers(msg.peers); return }
-      if (msg.type === 'ready') {
-        s.setPeers(msg.peers)
-        if (msg.seq !== s.seq) await reload()
-        return
-      }
-      if (msg.seq <= s.seq) return              // 내 변경의 에코이거나 중복
-      if (msg.seq !== s.seq + 1) { await reload(); return }   // 간극 → 통째 리로드
+        if (msg.type === 'presence') {
+          s.setPeers(msg.peers)
+          return
+        }
+        if (msg.type === 'ready') {
+          s.setPeers(msg.peers)
+          if (msg.seq !== s.seq) await reload()
+          return
+        }
+        if (msg.seq <= s.seq) return // 내 변경의 에코이거나 중복
+        if (msg.seq !== s.seq + 1) {
+          await reload()
+          return
+        } // 간극 → 통째 리로드
 
-      let next: ProjectModel
-      try {
-        next = applyOps(s.model, msg.ops)
-      } catch {
-        await reload()
-        return
-      }
-      const impact = selectionImpact(s.model, msg.ops, {
-        tableIds: s.selectedTableIds,
-        relationshipId: s.selectedRelationshipId,
-        noteId: s.selectedNoteId,
+        let next: ProjectModel
+        try {
+          next = applyOps(s.model, msg.ops)
+        } catch {
+          await reload()
+          return
+        }
+        const impact = selectionImpact(s.model, msg.ops, {
+          tableIds: s.selectedTableIds,
+          relationshipId: s.selectedRelationshipId,
+          noteId: s.selectedNoteId,
+        })
+        useEditorStore.getState().setModel(next)
+        useEditorStore.getState().setSeq(msg.seq)
+        // 배치당 최대 1건 — 대량 op에서 토스트가 쏟아지지 않게.
+        if (impact === 'deleted') {
+          // 선택 전체를 비우지 않고 **사라진 것만** 걷어낸다. 다중 선택 중 하나만 삭제됐는데
+          // 나머지까지 잃으면 안 되고, 무엇보다 같은 사건을 seq 간극·재접속으로 받았을 때
+          // (resync) 와 결과가 달라지면 안 된다 — 그래서 store의 같은 규칙을 부른다.
+          // before/after는 pruneSelection이 실제로 읽는 **살아 있는** 상태에서 잰다.
+          const before = useEditorStore.getState().selectedTableIds.length
+          useEditorStore.getState().pruneSelection(next)
+          const after = useEditorStore.getState().selectedTableIds.length
+          // 「이 항목」은 **하나**가 사라졌다는 뜻으로 읽힌다. 일괄 삭제로 고른 N건이 통째로
+          // 날아간 화면에서는 사실과 다르므로, 사라진 것이 2건 이상이면 개수를 말한다.
+          // 관계·메모처럼 단건뿐인 선택은 before가 0이라 기존 문구 그대로다.
+          toast.info(
+            after > 0
+              ? '다른 사용자가 선택 항목 중 일부를 삭제했습니다'
+              : before > 1
+                ? `다른 사용자가 선택한 ${formatCount(before)}개 항목을 삭제했습니다`
+                : '다른 사용자가 이 항목을 삭제했습니다',
+          )
+        } else if (impact === 'changed') {
+          toast.info('다른 사용자가 이 항목을 수정했습니다')
+        }
       })
-      useEditorStore.getState().setModel(next)
-      useEditorStore.getState().setSeq(msg.seq)
-      // 배치당 최대 1건 — 대량 op에서 토스트가 쏟아지지 않게.
-      if (impact === 'deleted') {
-        // 선택 전체를 비우지 않고 **사라진 것만** 걷어낸다. 다중 선택 중 하나만 삭제됐는데
-        // 나머지까지 잃으면 안 되고, 무엇보다 같은 사건을 seq 간극·재접속으로 받았을 때
-        // (resync) 와 결과가 달라지면 안 된다 — 그래서 store의 같은 규칙을 부른다.
-        // before/after는 pruneSelection이 실제로 읽는 **살아 있는** 상태에서 잰다.
-        const before = useEditorStore.getState().selectedTableIds.length
-        useEditorStore.getState().pruneSelection(next)
-        const after = useEditorStore.getState().selectedTableIds.length
-        // 「이 항목」은 **하나**가 사라졌다는 뜻으로 읽힌다. 일괄 삭제로 고른 N건이 통째로
-        // 날아간 화면에서는 사실과 다르므로, 사라진 것이 2건 이상이면 개수를 말한다.
-        // 관계·메모처럼 단건뿐인 선택은 before가 0이라 기존 문구 그대로다.
-        toast.info(after > 0
-          ? '다른 사용자가 선택 항목 중 일부를 삭제했습니다'
-          : before > 1
-            ? `다른 사용자가 선택한 ${formatCount(before)}개 항목을 삭제했습니다`
-            : '다른 사용자가 이 항목을 삭제했습니다')
-      } else if (impact === 'changed') {
-        toast.info('다른 사용자가 이 항목을 수정했습니다')
-      }
-    })
 
     const connect = () => {
       if (disposed) return
@@ -170,7 +187,10 @@ export function useRealtime(projectId: string): void {
         // 재접속 시 서버 쪽 Entry는 빈 selections로 새로 시작한다. 로컬 선택이 그대로여도
         // 다시 알리지 않으면(발신 effect는 "값이 바뀔 때만" 보낸다) 다른 참여자에게는
         // 이 사용자의 하이라이트가 재접속 전까지 사라진 채로 남는다.
-        const msg: ClientMessage = { type: 'selection', selections: selectionsOf(useEditorStore.getState()) }
+        const msg: ClientMessage = {
+          type: 'selection',
+          selections: selectionsOf(useEditorStore.getState()),
+        }
         socket.send(JSON.stringify(msg))
       }
       socket.onmessage = (ev) => {
@@ -206,7 +226,10 @@ export function useRealtime(projectId: string): void {
       timer = undefined
       const socket = socketRef.current
       if (!socket || socket.readyState !== 1) return // 1 = OPEN
-      const msg: ClientMessage = { type: 'selection', selections: selectionsOf(useEditorStore.getState()) }
+      const msg: ClientMessage = {
+        type: 'selection',
+        selections: selectionsOf(useEditorStore.getState()),
+      }
       socket.send(JSON.stringify(msg))
     }
 

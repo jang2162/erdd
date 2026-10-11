@@ -34,7 +34,9 @@ export function buildServer({ databaseUrl }: { databaseUrl?: string } = {}): Fas
     const created = createDb(databaseUrl)
     db = created.db
     pool = created.pool
-    app.addHook('onClose', async () => { await pool!.end() })
+    app.addHook('onClose', async () => {
+      await pool!.end()
+    })
   }
   app.decorate('db', db)
   app.decorate('pgPool', pool)
@@ -49,7 +51,8 @@ export function buildServer({ databaseUrl }: { databaseUrl?: string } = {}): Fas
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
-      createContext: ({ req, res }: CreateFastifyContextOptions) => createContext({ req, res, db, hub }),
+      createContext: ({ req, res }: CreateFastifyContextOptions) =>
+        createContext({ req, res, db, hub }),
     },
   })
 

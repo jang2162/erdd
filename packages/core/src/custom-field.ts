@@ -4,7 +4,7 @@ import type { CustomField, ProjectModel } from './model.js'
 export function customFieldsFor(model: ProjectModel, target: 'table' | 'column'): CustomField[] {
   return Object.values(model.customFields)
     .filter((f) => f.target === target)
-    .sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name))
+    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
 }
 
 /**
@@ -13,7 +13,8 @@ export function customFieldsFor(model: ProjectModel, target: 'table' | 'column')
  * 값을 입력하지 않은 엔티티에 즉시 반영된다. 빈 문자열은 미입력으로 본다.
  */
 export function resolveCustomValue(
-  entity: { custom: Record<string, string> }, field: CustomField,
+  entity: { custom: Record<string, string> },
+  field: CustomField,
 ): string {
   const v = entity.custom[field.id]
   if (v === undefined || v === '') return field.defaultValue ?? ''
@@ -21,7 +22,8 @@ export function resolveCustomValue(
 }
 
 function targetEntities(
-  model: ProjectModel, target: 'table' | 'column',
+  model: ProjectModel,
+  target: 'table' | 'column',
 ): { custom: Record<string, string> }[] {
   return target === 'table' ? Object.values(model.tables) : Object.values(model.columns)
 }
@@ -30,13 +32,14 @@ function targetEntities(
 export function customFieldUsageCount(model: ProjectModel, fieldId: string): number {
   const field = model.customFields[fieldId]
   if (!field) return 0
-  return targetEntities(model, field.target)
-    .filter((e) => (e.custom[fieldId] ?? '') !== '').length
+  return targetEntities(model, field.target).filter((e) => (e.custom[fieldId] ?? '') !== '').length
 }
 
 /** 그 선택지를 값으로 갖는 테이블 또는 컬럼 수. 선택지 삭제 가드용. */
 export function customOptionUsageCount(
-  model: ProjectModel, fieldId: string, option: string,
+  model: ProjectModel,
+  fieldId: string,
+  option: string,
 ): number {
   const field = model.customFields[fieldId]
   if (!field) return 0

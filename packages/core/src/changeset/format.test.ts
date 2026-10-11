@@ -29,49 +29,107 @@ describe('값 표기', () => {
 describe('formatChangeset', () => {
   it('머릿말 → 빈 줄 → 문장. 블록 앞뒤에만 빈 줄을 두고 줄 끝에 @id 를 단다', () => {
     const cs: Changeset = {
-      header: { format: 1, name: '회원 등급 추가', created: '2026-09-23T04:12:00Z', baseline: false },
+      header: {
+        format: 1,
+        name: '회원 등급 추가',
+        created: '2026-09-23T04:12:00Z',
+        baseline: false,
+      },
       statements: [
-        { kind: 'dropIndex', index: { id: 'i9', name: 'IX_OLD', table: 'MBR', columns: [{ name: 'MBR_NM', direction: 'asc' }], unique: false } },
+        {
+          kind: 'dropIndex',
+          index: {
+            id: 'i9',
+            name: 'IX_OLD',
+            table: 'MBR',
+            columns: [{ name: 'MBR_NM', direction: 'asc' }],
+            unique: false,
+          },
+        },
         { kind: 'renameTable', id: 't9', from: 'ORD_DTL', to: 'ORD_ITEM' },
         {
-          kind: 'alterTable', id: 't2', name: 'MBR', actions: [
+          kind: 'alterTable',
+          id: 't2',
+          name: 'MBR',
+          actions: [
             {
-              kind: 'addColumn', after: 'MBR_NM',
-              column: { id: 'c5', name: 'GRD_CD', type: 'VARCHAR(10)', dialectTypes: {}, nullable: true, default: null, increment: false, comment: '등급코드', check: [] },
+              kind: 'addColumn',
+              after: 'MBR_NM',
+              column: {
+                id: 'c5',
+                name: 'GRD_CD',
+                type: 'VARCHAR(10)',
+                dialectTypes: {},
+                nullable: true,
+                default: null,
+                increment: false,
+                comment: '등급코드',
+                check: [],
+              },
             },
-            { kind: 'modifyColumn', id: 'c3', name: 'MBR_NM', changes: [{ field: 'type', from: 'VARCHAR(50)', to: 'VARCHAR(100)' }, { field: 'nullable', from: true, to: false }] },
+            {
+              kind: 'modifyColumn',
+              id: 'c3',
+              name: 'MBR_NM',
+              changes: [
+                { field: 'type', from: 'VARCHAR(50)', to: 'VARCHAR(100)' },
+                { field: 'nullable', from: true, to: false },
+              ],
+            },
             { kind: 'primaryKey', from: ['MBR_NO'], to: ['MBR_NO', 'GRD_CD'] },
           ],
         },
-        { kind: 'addForeignKey', fk: { id: 'r1', name: 'FK_MBR_GRD', child: 'MBR', childColumns: ['GRD_CD'], parent: 'GRD', parentColumns: ['GRD_CD'], cardinality: '1:1', uniqueName: 'UQ_MBR_GRD_CD' } },
+        {
+          kind: 'addForeignKey',
+          fk: {
+            id: 'r1',
+            name: 'FK_MBR_GRD',
+            child: 'MBR',
+            childColumns: ['GRD_CD'],
+            parent: 'GRD',
+            parentColumns: ['GRD_CD'],
+            cardinality: '1:1',
+            uniqueName: 'UQ_MBR_GRD_CD',
+          },
+        },
       ],
     }
-    expect(formatChangeset(cs)).toBe([
-      CHANGESET_BANNER,
-      "changeset '회원 등급 추가' {",
-      '  format: 1',
-      "  created: '2026-09-23T04:12:00Z'",
-      '}',
-      '',
-      tag('drop index IX_OLD on MBR (MBR_NM asc)', 'i9'),
-      tag('rename table ORD_DTL -> ORD_ITEM', 't9'),
-      '',
-      tag('alter table MBR {', 't2'),
-      tag("  add column GRD_CD VARCHAR(10) [null, comment: '등급코드', after: MBR_NM]", 'c5'),
-      tag('  modify column MBR_NM {', 'c3'),
-      '    type: VARCHAR(50) -> VARCHAR(100)',
-      '    nullable: yes -> no',
-      '  }',
-      '  primary key: (MBR_NO) -> (MBR_NO, GRD_CD)',
-      '}',
-      '',
-      tag('add foreign key FK_MBR_GRD MBR(GRD_CD) -> GRD(GRD_CD) [1:1, unique: UQ_MBR_GRD_CD]', 'r1'),
-      '',
-    ].join('\n'))
+    expect(formatChangeset(cs)).toBe(
+      [
+        CHANGESET_BANNER,
+        "changeset '회원 등급 추가' {",
+        '  format: 1',
+        "  created: '2026-09-23T04:12:00Z'",
+        '}',
+        '',
+        tag('drop index IX_OLD on MBR (MBR_NM asc)', 'i9'),
+        tag('rename table ORD_DTL -> ORD_ITEM', 't9'),
+        '',
+        tag('alter table MBR {', 't2'),
+        tag("  add column GRD_CD VARCHAR(10) [null, comment: '등급코드', after: MBR_NM]", 'c5'),
+        tag('  modify column MBR_NM {', 'c3'),
+        '    type: VARCHAR(50) -> VARCHAR(100)',
+        '    nullable: yes -> no',
+        '  }',
+        '  primary key: (MBR_NO) -> (MBR_NO, GRD_CD)',
+        '}',
+        '',
+        tag(
+          'add foreign key FK_MBR_GRD MBR(GRD_CD) -> GRD(GRD_CD) [1:1, unique: UQ_MBR_GRD_CD]',
+          'r1',
+        ),
+        '',
+      ].join('\n'),
+    )
   })
 
   it('baseline 이면 머릿말에 baseline: true 를 싣고, 문장이 없으면 머릿말만 낸다', () => {
-    const text = formatChangeset({ header: { format: 1, name: 'x', created: '2026-01-01T00:00:00Z', baseline: true }, statements: [] })
-    expect(text).toBe(`${CHANGESET_BANNER}\nchangeset 'x' {\n  format: 1\n  created: '2026-01-01T00:00:00Z'\n  baseline: true\n}\n`)
+    const text = formatChangeset({
+      header: { format: 1, name: 'x', created: '2026-01-01T00:00:00Z', baseline: true },
+      statements: [],
+    })
+    expect(text).toBe(
+      `${CHANGESET_BANNER}\nchangeset 'x' {\n  format: 1\n  created: '2026-01-01T00:00:00Z'\n  baseline: true\n}\n`,
+    )
   })
 })

@@ -12,9 +12,15 @@ const url = process.env.DATABASE_URL
 
 describe.skipIf(!url)('ensureStarterGlobalLibrary', () => {
   let app: FastifyInstance
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
-  beforeEach(async () => { await resetDb(app.pgPool!) })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
+  beforeEach(async () => {
+    await resetDb(app.pgPool!)
+  })
 
   it('전역 라이브러리가 없으면 예시 1개를 만든다', async () => {
     await ensureStarterGlobalLibrary(app.db!)
@@ -36,7 +42,8 @@ describe.skipIf(!url)('ensureStarterGlobalLibrary', () => {
   })
 
   it('이미 전역 라이브러리가 있으면 아무것도 만들지 않는다', async () => {
-    await app.db!.insert(resourceLibraries)
+    await app
+      .db!.insert(resourceLibraries)
       .values({ id: uuidv7(), scope: 'global', orgId: null, name: '기존', description: '' })
     await ensureStarterGlobalLibrary(app.db!)
     const libs = await app.db!.select().from(resourceLibraries)
@@ -47,7 +54,10 @@ describe.skipIf(!url)('ensureStarterGlobalLibrary', () => {
   it('용어 항목의 domainId가 같은 라이브러리의 도메인 항목을 가리킨다', async () => {
     await ensureStarterGlobalLibrary(app.db!)
     const lib = (await app.db!.select().from(resourceLibraries))[0]!
-    const items = await app.db!.select().from(resourceItems).where(eq(resourceItems.libraryId, lib.id))
+    const items = await app
+      .db!.select()
+      .from(resourceItems)
+      .where(eq(resourceItems.libraryId, lib.id))
     const domainIds = new Set(items.filter((i) => i.kind === 'domain').map((i) => i.id))
     const linked = items.filter((i) => i.kind === 'term' && i.payload.domainId !== null)
     expect(linked.length).toBeGreaterThan(0)
@@ -61,7 +71,10 @@ describe.skipIf(!url)('ensureStarterGlobalLibrary', () => {
     expect(items.length).toBeGreaterThan(0)
     for (const item of items) {
       const result = RESOURCE_PAYLOAD_SCHEMAS[item.kind].safeParse(item.payload)
-      expect(result.success, `${item.kind}:${item.id} — ${result.success ? '' : result.error.message}`).toBe(true)
+      expect(
+        result.success,
+        `${item.kind}:${item.id} — ${result.success ? '' : result.error.message}`,
+      ).toBe(true)
     }
   })
 })

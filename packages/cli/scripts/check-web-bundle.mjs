@@ -19,8 +19,8 @@ const indexHtml = path.join(pkgRoot, 'web', 'index.html')
 if (!existsSync(indexHtml)) {
   console.error(
     `웹 번들이 없어 팩할 수 없습니다: ${indexHtml}\n` +
-    '먼저 `pnpm -C apps/web build && pnpm -C packages/cli run bundle:web` 를 실행하세요.\n' +
-    '(번들 없이 게시하면 설치한 쪽에서 erdd serve 의 /p/<id> 가 404 를 냅니다.)',
+      '먼저 `pnpm -C apps/web build && pnpm -C packages/cli run bundle:web` 를 실행하세요.\n' +
+      '(번들 없이 게시하면 설치한 쪽에서 erdd serve 의 /p/<id> 가 404 를 냅니다.)',
   )
   process.exit(1)
 }

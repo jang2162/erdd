@@ -2,13 +2,25 @@ import { describe, expect, it } from 'vitest'
 import { customFieldsFor, type CustomField, type ProjectModel } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import {
-  createCustomField, moveCustomField, removeCustomField, setCustomValue, updateCustomField,
+  createCustomField,
+  moveCustomField,
+  removeCustomField,
+  setCustomValue,
+  updateCustomField,
 } from './custom-field-edits.js'
 
 function newField(id: string, over: Partial<CustomField> = {}): Omit<CustomField, 'order'> {
   const { order: _order, ...rest } = {
-    id, name: id, target: 'column' as const, type: 'text' as const, options: [] as string[],
-    required: false, defaultValue: null, order: 0, origin: null, ...over,
+    id,
+    name: id,
+    target: 'column' as const,
+    type: 'text' as const,
+    options: [] as string[],
+    required: false,
+    defaultValue: null,
+    order: 0,
+    origin: null,
+    ...over,
   }
   return rest
 }
@@ -23,7 +35,10 @@ function withFields(): ProjectModel {
 describe('createCustomField', () => {
   it('같은 target 안에서 order를 최대+1로 부여한다', () => {
     const m = withFields()
-    expect(customFieldsFor(m, 'column').map((f) => [f.id, f.order])).toEqual([['f1', 0], ['f2', 1]])
+    expect(customFieldsFor(m, 'column').map((f) => [f.id, f.order])).toEqual([
+      ['f1', 0],
+      ['f2', 1],
+    ])
     expect(customFieldsFor(m, 'table').map((f) => [f.id, f.order])).toEqual([['t1f', 0]])
   })
 })
@@ -31,10 +46,17 @@ describe('createCustomField', () => {
 describe('updateCustomField', () => {
   it('이름·필수·기본값·선택지를 갱신한다', () => {
     const m = updateCustomField(withFields(), 'f1', {
-      name: '개인정보', required: true, defaultValue: 'N', options: ['Y', 'N'],
+      name: '개인정보',
+      required: true,
+      defaultValue: 'N',
+      options: ['Y', 'N'],
     })
     expect(m.customFields['f1']).toMatchObject({
-      name: '개인정보', required: true, defaultValue: 'N', options: ['Y', 'N'], target: 'column',
+      name: '개인정보',
+      required: true,
+      defaultValue: 'N',
+      options: ['Y', 'N'],
+      target: 'column',
     })
   })
 

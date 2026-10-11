@@ -1,7 +1,15 @@
 import {
   CHANGESET_FORMAT,
-  type AlterAction, type Changeset, type ChangesetHeader, type ColumnChange, type ColumnDef,
-  type DialectTypes, type ForeignKeyDef, type IndexDef, type Statement, type TableDef,
+  type AlterAction,
+  type Changeset,
+  type ChangesetHeader,
+  type ColumnChange,
+  type ColumnDef,
+  type DialectTypes,
+  type ForeignKeyDef,
+  type IndexDef,
+  type Statement,
+  type TableDef,
 } from './types.js'
 import { Cursor, ParseFailure } from './syntax.js'
 
@@ -17,10 +25,21 @@ type Line = { no: number; text: string }
  */
 const ID_TAG = /[ \t]+@([A-Za-z0-9_.:-]+)[ \t]*$/
 
-const FIELDS = ['type', 'dialects', 'nullable', 'default', 'increment', 'comment', 'check', 'position'] as const
+const FIELDS = [
+  'type',
+  'dialects',
+  'nullable',
+  'default',
+  'increment',
+  'comment',
+  'check',
+  'position',
+] as const
 
 export function parseChangeset(text: string): ParseChangesetResult {
-  const lines: Line[] = text.replace(/^﻿/, '').split('\n')
+  const lines: Line[] = text
+    .replace(/^﻿/, '')
+    .split('\n')
     .map((t, i) => ({ no: i + 1, text: t.replace(/\r$/, '') }))
     .filter((l) => {
       const s = l.text.trim()
@@ -52,7 +71,9 @@ class Parser {
     if (m === null) throw new ParseFailure(l.no, '줄 끝에 @id 가 없습니다')
     return { c: new Cursor(l.text.slice(0, m.index), l.no), id: m[1]! }
   }
-  #isClose(l: Line): boolean { return l.text.trim() === '}' }
+  #isClose(l: Line): boolean {
+    return l.text.trim() === '}'
+  }
 
   parse(): Changeset {
     const header = this.#header()
@@ -75,15 +96,24 @@ class Parser {
       const l = this.#next('}')
       if (this.#isClose(l)) break
       const k = new Cursor(l.text, l.no)
-      if (k.tryWord('format')) { k.symbol(':'); format = k.integer() }
-      else if (k.tryWord('created')) { k.symbol(':'); created = k.string() }
-      else if (k.tryWord('baseline')) { k.symbol(':'); baseline = k.trueFalse() }
-      else k.fail('알 수 없는 머릿말 항목입니다 — format·created·baseline 만 쓸 수 있습니다')
+      if (k.tryWord('format')) {
+        k.symbol(':')
+        format = k.integer()
+      } else if (k.tryWord('created')) {
+        k.symbol(':')
+        created = k.string()
+      } else if (k.tryWord('baseline')) {
+        k.symbol(':')
+        baseline = k.trueFalse()
+      } else k.fail('알 수 없는 머릿말 항목입니다 — format·created·baseline 만 쓸 수 있습니다')
       k.end()
     }
     if (format === null) throw new ParseFailure(first.no, '머릿말에 format 이 없습니다')
     if (format > CHANGESET_FORMAT) {
-      throw new ParseFailure(first.no, `format ${format} 은(는) 이 ERDD 가 모르는 형식입니다 — 더 새 ERDD 로 만든 기록입니다. CLI 를 올리세요`)
+      throw new ParseFailure(
+        first.no,
+        `format ${format} 은(는) 이 ERDD 가 모르는 형식입니다 — 더 새 ERDD 로 만든 기록입니다. CLI 를 올리세요`,
+      )
     }
     if (created === null) throw new ParseFailure(first.no, '머릿말에 created 가 없습니다')
     return { format, name, created, baseline }
@@ -121,7 +151,8 @@ class Parser {
       return { kind: 'renameIndex', id, table, from, to, line }
     }
     if (starts('drop table')) return { kind: 'dropTable', table: this.#tableBlock(l, 'drop'), line }
-    if (starts('create table')) return { kind: 'createTable', table: this.#tableBlock(l, 'create'), line }
+    if (starts('create table'))
+      return { kind: 'createTable', table: this.#tableBlock(l, 'create'), line }
     if (starts('rename table')) {
       const { c, id } = this.#tagged(l)
       c.word('rename table')
@@ -150,13 +181,21 @@ class Parser {
     c.symbol('->')
     const parent = c.ident()
     const parentColumns = this.#parenIdents(c)
-    if (childColumns.length !== parentColumns.length) c.fail('자식 컬럼과 부모 컬럼의 개수가 다릅니다')
+    if (childColumns.length !== parentColumns.length)
+      c.fail('자식 컬럼과 부모 컬럼의 개수가 다릅니다')
     c.symbol('[')
     let cardinality: '1:1' | '1:N'
     if (c.trySymbol('1:1')) cardinality = '1:1'
-    else { c.symbol('1:N'); cardinality = '1:N' }
+    else {
+      c.symbol('1:N')
+      cardinality = '1:N'
+    }
     let uniqueName: string | null = null
-    if (c.trySymbol(',')) { c.word('unique'); c.symbol(':'); uniqueName = c.ident() }
+    if (c.trySymbol(',')) {
+      c.word('unique')
+      c.symbol(':')
+      uniqueName = c.ident()
+    }
     c.symbol(']')
     return { id, name, child, childColumns, parent, parentColumns, cardinality, uniqueName }
   }
@@ -168,7 +207,10 @@ class Parser {
       const name = c.ident()
       let direction: 'asc' | 'desc'
       if (c.tryWord('asc')) direction = 'asc'
-      else { c.word('desc'); direction = 'desc' }
+      else {
+        c.word('desc')
+        direction = 'desc'
+      }
       out.push({ name, direction })
     } while (c.trySymbol(','))
     c.symbol(')')
@@ -188,7 +230,11 @@ class Parser {
     return { id, name, table, columns, unique: this.#uniqueTail(c) }
   }
 
-  #columnDef(c: Cursor, id: string, allowAfter: boolean): { column: ColumnDef; after: string | null } {
+  #columnDef(
+    c: Cursor,
+    id: string,
+    allowAfter: boolean,
+  ): { column: ColumnDef; after: string | null } {
     const name = c.ident()
     const type = c.type()
     let nullable: boolean | null = null
@@ -203,11 +249,19 @@ class Parser {
       if (c.tryWord('not null')) nullable = false
       else if (c.tryWord('null')) nullable = true
       else if (c.tryWord('increment')) increment = true
-      else if (c.tryWord('default')) { c.symbol(':'); dflt = c.raw() }
-      else if (c.tryWord('comment')) { c.symbol(':'); comment = c.string() }
-      else if (c.tryWord('check')) { c.symbol(':'); check = c.checkList() }
-      else if (allowAfter && c.tryWord('after')) { c.symbol(':'); after = c.ident() }
-      else if (allowAfter && c.tryWord('first')) after = null
+      else if (c.tryWord('default')) {
+        c.symbol(':')
+        dflt = c.raw()
+      } else if (c.tryWord('comment')) {
+        c.symbol(':')
+        comment = c.string()
+      } else if (c.tryWord('check')) {
+        c.symbol(':')
+        check = c.checkList()
+      } else if (allowAfter && c.tryWord('after')) {
+        c.symbol(':')
+        after = c.ident()
+      } else if (allowAfter && c.tryWord('first')) after = null
       else {
         const d = c.tryDialect()
         if (d === null) c.fail('알 수 없는 컬럼 속성입니다')
@@ -217,7 +271,8 @@ class Parser {
     } while (c.trySymbol(','))
     c.symbol(']')
     if (nullable === null) c.fail('null 또는 not null 이 와야 합니다')
-    if (allowAfter && after === undefined) c.fail('add column 에는 after: <컬럼> 또는 first 가 와야 합니다')
+    if (allowAfter && after === undefined)
+      c.fail('add column 에는 after: <컬럼> 또는 first 가 와야 합니다')
     return {
       column: { id, name, type, dialectTypes, nullable, default: dflt, increment, comment, check },
       after: after ?? null,
@@ -229,7 +284,12 @@ class Parser {
     c.word(`${verb} table`)
     const name = c.ident()
     let comment: string | null = null
-    if (c.trySymbol('[')) { c.word('comment'); c.symbol(':'); comment = c.string(); c.symbol(']') }
+    if (c.trySymbol('[')) {
+      c.word('comment')
+      c.symbol(':')
+      comment = c.string()
+      c.symbol(']')
+    }
     c.symbol('{')
     c.end()
     const columns: ColumnDef[] = []
@@ -302,7 +362,13 @@ class Parser {
         const colName = x.ident()
         x.symbol('{')
         x.end()
-        actions.push({ kind: 'modifyColumn', id: cid, name: colName, changes: this.#changes(line), line })
+        actions.push({
+          kind: 'modifyColumn',
+          id: cid,
+          name: colName,
+          changes: this.#changes(line),
+          line,
+        })
       } else if (t.startsWith('primary key')) {
         const x = new Cursor(a.text, line)
         x.word('primary key')
@@ -335,7 +401,8 @@ class Parser {
       if (this.#isClose(l)) break
       const c = new Cursor(l.text, l.no)
       const field = c.ident()
-      if (!(FIELDS as readonly string[]).includes(field)) c.fail(`modify column 에 올 수 없는 항목입니다: ${field}`)
+      if (!(FIELDS as readonly string[]).includes(field))
+        c.fail(`modify column 에 올 수 없는 항목입니다: ${field}`)
       c.symbol(':')
       const from = readFieldValue(field as ColumnChange['field'], c)
       c.symbol('->')
@@ -351,13 +418,20 @@ class Parser {
 
 function readFieldValue(field: ColumnChange['field'], c: Cursor): unknown {
   switch (field) {
-    case 'type': return c.type()
-    case 'dialects': return c.dialects()
+    case 'type':
+      return c.type()
+    case 'dialects':
+      return c.dialects()
     case 'nullable':
-    case 'increment': return c.bool()
-    case 'default': return c.defaultValue()
-    case 'comment': return c.nullableString()
-    case 'check': return c.checkList()
-    case 'position': return c.position()
+    case 'increment':
+      return c.bool()
+    case 'default':
+      return c.defaultValue()
+    case 'comment':
+      return c.nullableString()
+    case 'check':
+      return c.checkList()
+    case 'position':
+      return c.position()
   }
 }

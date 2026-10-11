@@ -60,7 +60,10 @@ export function InviteAcceptPage() {
     if (askedFor.current === peekAttempt) return
     askedFor.current = peekAttempt
     peekAsync({ token })
-      .then((inv) => { setInvitation(inv); setPeekError(null) })
+      .then((inv) => {
+        setInvitation(inv)
+        setPeekError(null)
+      })
       .catch(setPeekError)
   }, [peekAsync, token, peekAttempt])
 
@@ -87,10 +90,15 @@ export function InviteAcceptPage() {
             <LinkFailure failure={failure} />
           ) : peekStalled ? (
             <div className="grid gap-3 text-center">
-              <p role="alert" className="text-sm text-destructive">{TRANSIENT_FAILURE_MESSAGE}</p>
+              <p role="alert" className="text-sm text-destructive">
+                {TRANSIENT_FAILURE_MESSAGE}
+              </p>
               <Button
                 variant="outline"
-                onClick={() => { setPeekError(null); setPeekAttempt((n) => n + 1) }}
+                onClick={() => {
+                  setPeekError(null)
+                  setPeekAttempt((n) => n + 1)
+                }}
               >
                 다시 시도
               </Button>
@@ -102,7 +110,10 @@ export function InviteAcceptPage() {
               className="grid gap-4"
               onSubmit={(e) => {
                 e.preventDefault()
-                if (password !== confirm) { setMismatch(true); return }
+                if (password !== confirm) {
+                  setMismatch(true)
+                  return
+                }
                 setMismatch(false)
                 accept.mutate({ token, name, password })
               }}
@@ -111,8 +122,8 @@ export function InviteAcceptPage() {
                 <p className="font-mono">{invitation.email}</p>
                 {invitation.orgName !== null && (
                   <p className="text-muted-foreground">
-                    조직 <span className="font-medium text-foreground">{invitation.orgName}</span>
-                    에 {ORG_ROLE_LABEL[invitation.orgRole ?? 'member']}(으)로 참여합니다
+                    조직 <span className="font-medium text-foreground">{invitation.orgName}</span>에{' '}
+                    {ORG_ROLE_LABEL[invitation.orgRole ?? 'member']}(으)로 참여합니다
                   </p>
                 )}
               </div>
@@ -121,26 +132,56 @@ export function InviteAcceptPage() {
                 판단한다. 없으면 다음 로그인에서 자동완성이 나오지 않는다. 이메일은 바로 위에
                 이미 보이므로 이 입력은 숨긴다.
               */}
-              <input type="email" autoComplete="username" value={invitation.email} readOnly hidden />
+              <input
+                type="email"
+                autoComplete="username"
+                value={invitation.email}
+                readOnly
+                hidden
+              />
               <div className="grid gap-2">
                 <Label htmlFor="name">이름</Label>
-                <Input id="name" required autoComplete="name"
-                  value={name} onChange={(e) => setName(e.target.value)} />
+                <Input
+                  id="name"
+                  required
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="password">비밀번호</Label>
-                <Input id="password" type="password" required minLength={8} autoComplete="new-password"
-                  value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="confirm">비밀번호 확인</Label>
-                <Input id="confirm" type="password" required autoComplete="new-password"
-                  value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+                <Input
+                  id="confirm"
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
               </div>
-              {mismatch && <p role="alert" className="text-sm text-destructive">비밀번호가 서로 다릅니다</p>}
+              {mismatch && (
+                <p role="alert" className="text-sm text-destructive">
+                  비밀번호가 서로 다릅니다
+                </p>
+              )}
               {/* 비종료성 오류. 재시도 수단은 아래 제출 버튼 그대로다 — 입력한 이름을 잃지 않는다. */}
               {accept.error && (
-                <p role="alert" className="text-sm text-destructive">{TRANSIENT_FAILURE_MESSAGE}</p>
+                <p role="alert" className="text-sm text-destructive">
+                  {TRANSIENT_FAILURE_MESSAGE}
+                </p>
               )}
               <Button type="submit" disabled={accept.isPending}>
                 {accept.isPending ? '만드는 중…' : '계정 만들기'}

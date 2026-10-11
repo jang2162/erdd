@@ -1,7 +1,15 @@
 import { uuidv7 } from 'uuidv7'
 import {
-  applyMerge, diffModels, filesToModel, fileVisibleModel, mergeModels,
-  type FileTree, type MergeConflict, type Op, type PrunedRef, type ProjectModel,
+  applyMerge,
+  diffModels,
+  filesToModel,
+  fileVisibleModel,
+  mergeModels,
+  type FileTree,
+  type MergeConflict,
+  type Op,
+  type PrunedRef,
+  type ProjectModel,
 } from '@erdd/core'
 import type { ApiClient } from './client.js'
 import { readBase, type Connection } from './config.js'
@@ -31,7 +39,9 @@ export type PushPlan = {
 }
 
 export async function buildPlan(
-  cwd: string, connection: Connection, client: ApiClient,
+  cwd: string,
+  connection: Connection,
+  client: ApiClient,
 ): Promise<PushPlan> {
   const baseTree = await readBase(cwd)
   if (baseTree === null) {
@@ -48,10 +58,13 @@ export async function buildPlan(
 
   const localResult = filesToModel(localTree, { newId: uuidv7 })
   if (!localResult.ok) {
-    throw new CliError('VALIDATION', [
-      `파일 오류 ${localResult.issues.length}건 — erdd validate로 확인하세요`,
-      ...localResult.issues.map((i) => `  ${i.path}: ${i.message}`),
-    ].join('\n'))
+    throw new CliError(
+      'VALIDATION',
+      [
+        `파일 오류 ${localResult.issues.length}건 — erdd validate로 확인하세요`,
+        ...localResult.issues.map((i) => `  ${i.path}: ${i.message}`),
+      ].join('\n'),
+    )
   }
   // base는 항상 서버가 쓴 트리라 id가 완전하다 — newId가 필요 없다.
   const baseResult = filesToModel(baseTree)
@@ -60,22 +73,29 @@ export async function buildPlan(
   }
 
   const { model: server, seq } = await client.query<{ model: ProjectModel; seq: number }>(
-    'model.get', { projectId: connection.projectId },
+    'model.get',
+    { projectId: connection.projectId },
   )
   const serverVisible = fileVisibleModel(server)
   // 충돌 좌표는 **로컬 트리에서 읽은 실제 경로**로 낸다 — 재조립하면 개명 직후 없는 파일을
   // 가리킨다(file-merge.ts pathOf 주석). base가 아니라 local 인 것이 요점이다: base는 마지막
   // pull 때 서버가 쓴 정규 경로라 지금 디스크와 어긋날 수 있고, localResult는 방금
   // readTree 가 읽은 키 그대로다.
-  const { merged, conflicts } = mergeModels(
-    baseResult.model, localResult.model, serverVisible, { tableFiles: localResult.tableFiles },
-  )
+  const { merged, conflicts } = mergeModels(baseResult.model, localResult.model, serverVisible, {
+    tableFiles: localResult.tableFiles,
+  })
   const { model: applied, pruned } = applyMerge(server, merged)
 
   return {
-    seq, server, base: baseResult.model, local: localResult.model, serverVisible,
-    localTree, assignedTree: localResult.assignedTree,
+    seq,
+    server,
+    base: baseResult.model,
+    local: localResult.model,
+    serverVisible,
+    localTree,
+    assignedTree: localResult.assignedTree,
     ops: conflicts.length > 0 ? [] : diffModels(server, applied),
-    conflicts, pruned,
+    conflicts,
+    pruned,
   }
 }

@@ -13,8 +13,22 @@ import { AdminPage } from './admin.js'
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 const USERS = [
-  { id: 'u1', email: 'admin@test.dev', name: '관리자', role: 'admin', isActive: true, createdAt: '2026-07-24T00:00:00Z' },
-  { id: 'u2', email: 'user@test.dev', name: '사용자', role: 'user', isActive: false, createdAt: '2026-07-24T00:00:00Z' },
+  {
+    id: 'u1',
+    email: 'admin@test.dev',
+    name: '관리자',
+    role: 'admin',
+    isActive: true,
+    createdAt: '2026-07-24T00:00:00Z',
+  },
+  {
+    id: 'u2',
+    email: 'user@test.dev',
+    name: '사용자',
+    role: 'user',
+    isActive: false,
+    createdAt: '2026-07-24T00:00:00Z',
+  },
 ]
 
 const FUTURE = '2099-06-15T00:00:00.000Z'
@@ -22,9 +36,30 @@ const PAST = '2020-01-01T00:00:00.000Z'
 
 /** 관리자 초대는 `orgId`가 null인 초대다 — 조직 초대와 다른 목록이다(설계 §5.4). */
 const INVITATIONS = [
-  { id: 'i1', email: 'pending@test.dev', userRole: 'user', expiresAt: FUTURE, usedAt: null, createdAt: PAST },
-  { id: 'i2', email: 'used@test.dev', userRole: 'admin', expiresAt: FUTURE, usedAt: PAST, createdAt: PAST },
-  { id: 'i3', email: 'expired@test.dev', userRole: 'user', expiresAt: PAST, usedAt: null, createdAt: PAST },
+  {
+    id: 'i1',
+    email: 'pending@test.dev',
+    userRole: 'user',
+    expiresAt: FUTURE,
+    usedAt: null,
+    createdAt: PAST,
+  },
+  {
+    id: 'i2',
+    email: 'used@test.dev',
+    userRole: 'admin',
+    expiresAt: FUTURE,
+    usedAt: PAST,
+    createdAt: PAST,
+  },
+  {
+    id: 'i3',
+    email: 'expired@test.dev',
+    userRole: 'user',
+    expiresAt: PAST,
+    usedAt: null,
+    createdAt: PAST,
+  },
 ]
 
 function renderAdmin(handlers: Parameters<typeof mockTrpcFetch>[0]) {
@@ -61,8 +96,9 @@ function renderAdmin(handlers: Parameters<typeof mockTrpcFetch>[0]) {
  */
 function expectNoPasswordField() {
   expect(document.querySelectorAll('input[type="password"]')).toHaveLength(0)
-  expect(screen.queryAllByLabelText(/비밀번호|암호|password|pw/i, { selector: 'input, textarea' }))
-    .toHaveLength(0)
+  expect(
+    screen.queryAllByLabelText(/비밀번호|암호|password|pw/i, { selector: 'input, textarea' }),
+  ).toHaveLength(0)
   expect(document.querySelectorAll('input[autocomplete$="-password"]')).toHaveLength(0)
 }
 
@@ -72,7 +108,10 @@ async function chooseOption(trigger: HTMLElement, option: string) {
   await userEvent.click(await screen.findByRole('option', { name: option }))
 }
 
-beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
+beforeEach(() => {
+  vi.mocked(toast.success).mockClear()
+  vi.mocked(toast.error).mockClear()
+})
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()

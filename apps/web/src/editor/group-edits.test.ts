@@ -21,7 +21,9 @@ function fakeMutate() {
   return { mutate, calls }
 }
 
-afterEach(() => { useEditorStore.getState().reset() })
+afterEach(() => {
+  useEditorStore.getState().reset()
+})
 
 describe('createGroupWith', () => {
   it('새 그룹을 만들고 주어진 테이블 전원을 그 그룹에 넣는다 — producer 하나로(undo 1회)', () => {
@@ -32,7 +34,7 @@ describe('createGroupWith', () => {
     const id = createGroupWith(mutate, ['t1', 't2'])
 
     expect(id).not.toBeNull()
-    expect(calls).toHaveLength(1)   // 생성 + 배정이 한 Revision
+    expect(calls).toHaveLength(1) // 생성 + 배정이 한 Revision
     const next = calls[0]!.producer(buildSampleModel())
     expect(next.tableGroups[id!]).toBeDefined()
     expect(next.tables['t1']?.groupId).toBe(id)
@@ -63,7 +65,10 @@ describe('createGroupWith', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     const ahead = buildSampleModel()
-    ahead.tableGroups = { ...ahead.tableGroups, z: { id: 'z', name: '그룹1', color: '#333333', comment: null, alias: '' } }
+    ahead.tableGroups = {
+      ...ahead.tableGroups,
+      z: { id: 'z', name: '그룹1', color: '#333333', comment: null, alias: '' },
+    }
     const { mutate, calls } = fakeMutate()
 
     const id = createGroupWith(mutate, [])

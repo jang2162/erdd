@@ -15,7 +15,7 @@ export type RawSheet = { key: DictSheetKey; headers: string[]; rows: string[][] 
 export type DictImportIssue = {
   sheet: DictSheetKey
   row: number | null
-  level: 'error' | 'warning'    // error=행 스킵, warning=행 등록하되 일부 값 무시
+  level: 'error' | 'warning' // error=행 스킵, warning=행 등록하되 일부 값 무시
   message: string
 }
 
@@ -29,17 +29,30 @@ export type TermDraft = Omit<Term, 'id' | 'domainId'> & { domainName: string }
  */
 export type WordPatch = Partial<Omit<Word, 'id'>>
 export type TermPatch = Partial<TermDraft>
-export type DomainPatch =
-  Partial<Omit<Domain, 'id' | 'dialectTypes'>> & { dialectTypes?: Partial<Domain['dialectTypes']> }
+export type DomainPatch = Partial<Omit<Domain, 'id' | 'dialectTypes'>> & {
+  dialectTypes?: Partial<Domain['dialectTypes']>
+}
 
 /**
  * draft는 신규 생성용 완전값(없던 컬럼은 빈 값/null 기본값), patch는 덮어쓰기용 부분값이다.
  * draft = 기본값 + patch 이므로 두 값이 어긋날 일은 없다.
  */
 export type DictImportEntry =
-  | { kind: 'word'; row: number; draft: Omit<Word, 'id'>; patch: WordPatch; existingId: string | null }
+  | {
+      kind: 'word'
+      row: number
+      draft: Omit<Word, 'id'>
+      patch: WordPatch
+      existingId: string | null
+    }
   | { kind: 'term'; row: number; draft: TermDraft; patch: TermPatch; existingId: string | null }
-  | { kind: 'domain'; row: number; draft: Omit<Domain, 'id'>; patch: DomainPatch; existingId: string | null }
+  | {
+      kind: 'domain'
+      row: number
+      draft: Omit<Domain, 'id'>
+      patch: DomainPatch
+      existingId: string | null
+    }
 
 export type DictImportCounts = { created: number; duplicated: number; errored: number }
 
@@ -53,9 +66,9 @@ export type DictImportPlan = {
 }
 
 const KEY_HEADER: Record<DictSheetKey, string> = {
-  words: WORD_HEADERS[0],      // '논리명'
-  terms: TERM_HEADERS[0],      // '용어'
-  domains: DOMAIN_HEADERS[0],  // '이름'
+  words: WORD_HEADERS[0], // '논리명'
+  terms: TERM_HEADERS[0], // '용어'
+  domains: DOMAIN_HEADERS[0], // '이름'
 }
 
 /** 파서가 실제로 읽는 컬럼. '구성 단어'는 파생값이라 읽지 않으므로 뺀다. */
@@ -66,7 +79,9 @@ const PARSED_HEADERS: Record<DictSheetKey, readonly string[]> = {
 }
 
 const SHEET_OF: Record<DictImportEntry['kind'], DictSheetKey> = {
-  word: 'words', term: 'terms', domain: 'domains',
+  word: 'words',
+  term: 'terms',
+  domain: 'domains',
 }
 
 /** 한 데이터 행을 시트 헤더에 비추어 읽는 창구. */
@@ -87,7 +102,10 @@ const isBlank = (row: string[]): boolean => row.every((c) => (c ?? '').trim() ==
  * 왕복하지 못한다(알려진 한계 — 인코딩 변경은 별도 과제).
  */
 const splitList = (s: string): string[] =>
-  s.split(',').map((x) => x.trim()).filter((x) => x !== '')
+  s
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => x !== '')
 
 /** 받침이 있으면 true. 한글 음절이 아니면 있는 쪽(이/을)으로 본다. */
 function hasFinalConsonant(word: string): boolean {
@@ -104,7 +122,8 @@ const objectParticle = (word: string): string => (hasFinalConsonant(word) ? '을
 
 /** 이름 → id 조회표. 행마다 Object.values().find()를 도는 O(행×사전)을 없앤다. */
 function idByName<T extends { id: string }>(
-  items: Record<string, T>, nameOf: (item: T) => string,
+  items: Record<string, T>,
+  nameOf: (item: T) => string,
 ): Map<string, string> {
   const m = new Map<string, string>()
   for (const item of Object.values(items)) {
@@ -126,7 +145,9 @@ function idByName<T extends { id: string }>(
  * 빈 객체를 넘긴다 — 자기 자신에 완전일치해 단축되는 것을 막고 단어 분해만 쓰기 위해서다.
  */
 export function planDictImport(
-  sheets: RawSheet[], model: ProjectModel, rules?: NamingRules,
+  sheets: RawSheet[],
+  model: ProjectModel,
+  rules?: NamingRules,
 ): DictImportPlan {
   const entries: DictImportEntry[] = []
   const issues: DictImportIssue[] = []
@@ -154,7 +175,9 @@ export function planDictImport(
     const keyIdx = indexByHeader.get(keyName) ?? -1
     if (keyIdx < 0) {
       issues.push({
-        sheet: key, row: null, level: 'error',
+        sheet: key,
+        row: null,
+        level: 'error',
         message: `"${keyName}" 헤더를 찾을 수 없어 시트를 건너뜁니다`,
       })
       return
@@ -170,7 +193,9 @@ export function planDictImport(
       const keyValue = cell(row, keyIdx)
       if (keyValue === '') {
         issues.push({
-          sheet: key, row: rowNo, level: 'error',
+          sheet: key,
+          row: rowNo,
+          level: 'error',
           message: `${keyName}${subjectParticle(keyName)} 비어 있습니다`,
         })
         return
@@ -178,16 +203,22 @@ export function planDictImport(
       const prev = seen.get(keyValue)
       if (prev !== undefined) {
         issues.push({
-          sheet: key, row: rowNo, level: 'error',
+          sheet: key,
+          row: rowNo,
+          level: 'error',
           message: `${keyName}${subjectParticle(keyName)} ${prev}행과 중복됩니다`,
         })
         return
       }
       seen.set(keyValue, rowNo)
-      onRow({
-        has: (name) => recognizedSet.has(name),
-        at: (name) => cell(row, indexByHeader.get(name) ?? -1),
-      }, rowNo, keyValue)
+      onRow(
+        {
+          has: (name) => recognizedSet.has(name),
+          at: (name) => cell(row, indexByHeader.get(name) ?? -1),
+        },
+        rowNo,
+        keyValue,
+      )
     })
   }
 
@@ -195,7 +226,12 @@ export function planDictImport(
   eachRow('domains', (r, rowNo, name) => {
     const logicalType = r.at('논리 타입')
     if (logicalType === '') {
-      issues.push({ sheet: 'domains', row: rowNo, level: 'error', message: '논리 타입이 비어 있습니다' })
+      issues.push({
+        sheet: 'domains',
+        row: rowNo,
+        level: 'error',
+        message: '논리 타입이 비어 있습니다',
+      })
       return
     }
     const dialectPatch: Partial<Domain['dialectTypes']> = {}
@@ -212,15 +248,25 @@ export function planDictImport(
     if (r.has('설명')) patch.description = orNull(r.at('설명'))
 
     const draft: Omit<Domain, 'id'> = {
-      name, category: null, logicalType,
-      defaultValue: null, allowedValues: [], description: null,
+      name,
+      category: null,
+      logicalType,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
       ...patch,
       // patch.dialectTypes는 부분값이라 그대로 쓸 수 없다. 기본값 null 위에 다시 얹는다.
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null, ...dialectPatch },
       // Excel 시트에는 origin 컬럼이 없다. 가져온 항목은 공용 리소스 원본과 무관한 신규 항목이다.
       origin: null,
     }
-    entries.push({ kind: 'domain', row: rowNo, existingId: domainIdByName.get(name) ?? null, draft, patch })
+    entries.push({
+      kind: 'domain',
+      row: rowNo,
+      existingId: domainIdByName.get(name) ?? null,
+      draft,
+      patch,
+    })
     domainNames.add(name)
   })
 
@@ -231,10 +277,20 @@ export function planDictImport(
     if (r.has('영문명')) patch.englishName = orNull(r.at('영문명'))
     if (r.has('설명')) patch.description = orNull(r.at('설명'))
     const draft: Omit<Word, 'id'> = {
-      logicalName, abbreviation: '', englishName: null, description: null, ...patch,
+      logicalName,
+      abbreviation: '',
+      englishName: null,
+      description: null,
+      ...patch,
       origin: null,
     }
-    entries.push({ kind: 'word', row: rowNo, existingId: wordIdByName.get(logicalName) ?? null, draft, patch })
+    entries.push({
+      kind: 'word',
+      row: rowNo,
+      existingId: wordIdByName.get(logicalName) ?? null,
+      draft,
+      patch,
+    })
   })
 
   // 이번 파일의 단어를 기존 사전 위에 얹은 "적용 후" 단어 사전. 논리명이 겹치면 파일 쪽이
@@ -257,13 +313,18 @@ export function planDictImport(
       // 그 자리가 빈 채로 이어붙어 "회원번호 → _NO" 같은 값이 나온다. 행은 그대로 등록하되
       // 어느 단어 때문인지 알려 준다.
       if (physicalName !== '') {
-        const blanks = [...new Set(
-          decomposeByWords(logicalName, effectiveWords, rules)
-            .flatMap((s) => (s.word !== null && s.word.abbreviation.trim() === '' ? [s.word.logicalName] : [])),
-        )]
+        const blanks = [
+          ...new Set(
+            decomposeByWords(logicalName, effectiveWords, rules).flatMap((s) =>
+              s.word !== null && s.word.abbreviation.trim() === '' ? [s.word.logicalName] : [],
+            ),
+          ),
+        ]
         if (blanks.length > 0) {
           issues.push({
-            sheet: 'terms', row: rowNo, level: 'warning',
+            sheet: 'terms',
+            row: rowNo,
+            level: 'warning',
             message: `물리명 자동 생성에 약어가 비어 있는 단어를 썼습니다: ${blanks.join(', ')}`,
           })
         }
@@ -271,7 +332,9 @@ export function planDictImport(
     }
     if (physicalName === '') {
       issues.push({
-        sheet: 'terms', row: rowNo, level: 'error',
+        sheet: 'terms',
+        row: rowNo,
+        level: 'error',
         message: '물리명이 비어 있고 단어 사전으로 자동 생성할 수도 없습니다',
       })
       return
@@ -279,7 +342,9 @@ export function planDictImport(
     const domainName = r.at('기본 도메인')
     if (domainName !== '' && !domainNames.has(domainName)) {
       issues.push({
-        sheet: 'terms', row: rowNo, level: 'warning',
+        sheet: 'terms',
+        row: rowNo,
+        level: 'warning',
         message: `기본 도메인 "${domainName}"${objectParticle(domainName)} 찾을 수 없어 비웁니다`,
       })
     }
@@ -289,9 +354,20 @@ export function planDictImport(
     if (r.has('기본 도메인')) patch.domainName = domainName
     if (r.has('설명')) patch.description = orNull(r.at('설명'))
     const draft: TermDraft = {
-      logicalName, domainName: '', description: null, ...patch, physicalName, origin: null,
+      logicalName,
+      domainName: '',
+      description: null,
+      ...patch,
+      physicalName,
+      origin: null,
     }
-    entries.push({ kind: 'term', row: rowNo, existingId: termIdByName.get(logicalName) ?? null, draft, patch })
+    entries.push({
+      kind: 'term',
+      row: rowNo,
+      existingId: termIdByName.get(logicalName) ?? null,
+      draft,
+      patch,
+    })
   })
 
   const countsFor = (key: DictSheetKey): DictImportCounts => {
@@ -303,7 +379,9 @@ export function planDictImport(
     }
   }
   const bySheet: Record<DictSheetKey, DictImportCounts> = {
-    words: countsFor('words'), terms: countsFor('terms'), domains: countsFor('domains'),
+    words: countsFor('words'),
+    terms: countsFor('terms'),
+    domains: countsFor('domains'),
   }
   const total: DictImportCounts = {
     created: bySheet.words.created + bySheet.terms.created + bySheet.domains.created,

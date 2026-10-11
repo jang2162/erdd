@@ -14,7 +14,10 @@ export type SessionUser = { id: string; email: string; name: string; role: 'admi
 export type AuthKind = 'session' | 'token'
 
 export async function createContext({
-  req, res, db, hub,
+  req,
+  res,
+  db,
+  hub,
 }: {
   req: FastifyRequest
   res: FastifyReply
@@ -28,8 +31,12 @@ export async function createContext({
   if (db && cookie) {
     const rows = await db
       .select({
-        id: users.id, email: users.email, name: users.name,
-        role: users.role, isActive: users.isActive, expiresAt: sessions.expiresAt,
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        isActive: users.isActive,
+        expiresAt: sessions.expiresAt,
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
@@ -44,17 +51,22 @@ export async function createContext({
   // 쿠키로 인증되지 않았을 때만 Bearer 토큰을 본다.
   if (db && user === null) {
     const header = req.headers['authorization']
-    const plain = typeof header === 'string' && header.startsWith('Bearer ')
-      ? header.slice('Bearer '.length).trim()
-      : null
+    const plain =
+      typeof header === 'string' && header.startsWith('Bearer ')
+        ? header.slice('Bearer '.length).trim()
+        : null
     if (plain) {
       // 해시를 인덱스로 조회하므로 상수시간 비교가 따로 필요 없다 —
       // DB가 돌려준 행이 곧 일치를 뜻한다.
       const rows = await db
         .select({
-          tokenId: accessTokens.id, revokedAt: accessTokens.revokedAt,
-          id: users.id, email: users.email, name: users.name,
-          role: users.role, isActive: users.isActive,
+          tokenId: accessTokens.id,
+          revokedAt: accessTokens.revokedAt,
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          role: users.role,
+          isActive: users.isActive,
         })
         .from(accessTokens)
         .innerJoin(users, eq(accessTokens.userId, users.id))
@@ -63,7 +75,8 @@ export async function createContext({
       if (row && row.isActive && row.revokedAt === null) {
         user = { id: row.id, email: row.email, name: row.name, role: row.role }
         authKind = 'token'
-        await db.update(accessTokens)
+        await db
+          .update(accessTokens)
           .set({ lastUsedAt: new Date() })
           .where(eq(accessTokens.id, row.tokenId))
       }

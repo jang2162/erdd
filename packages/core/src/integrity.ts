@@ -4,7 +4,15 @@ import type { ProjectModel } from './model.js'
 // 막기 위해 EntityKind를 다시 import하지 않고 유니언을 이 파일에 리터럴로 정의한다.
 export type IntegrityIssue = {
   entity:
-    | 'tableGroup' | 'table' | 'column' | 'relationship' | 'index' | 'note' | 'domain' | 'word' | 'term'
+    | 'tableGroup'
+    | 'table'
+    | 'column'
+    | 'relationship'
+    | 'index'
+    | 'note'
+    | 'domain'
+    | 'word'
+    | 'term'
     | 'customField'
   entityId: string
   message: string
@@ -14,7 +22,10 @@ export type IntegrityIssue = {
 export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
   const issues: IntegrityIssue[] = []
 
-  const collections: { entity: IntegrityIssue['entity']; record: Record<string, { id: string }> }[] = [
+  const collections: {
+    entity: IntegrityIssue['entity']
+    record: Record<string, { id: string }>
+  }[] = [
     { entity: 'tableGroup', record: model.tableGroups },
     { entity: 'table', record: model.tables },
     { entity: 'column', record: model.columns },
@@ -30,7 +41,8 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
     for (const [key, value] of Object.entries(record)) {
       if (key !== value.id) {
         issues.push({
-          entity, entityId: key,
+          entity,
+          entityId: key,
           message: `레코드 키(${key})와 id(${value.id}) 불일치`,
         })
       }
@@ -40,7 +52,8 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
   for (const table of Object.values(model.tables)) {
     if (table.groupId !== null && !Object.hasOwn(model.tableGroups, table.groupId)) {
       issues.push({
-        entity: 'table', entityId: table.id,
+        entity: 'table',
+        entityId: table.id,
         message: `존재하지 않는 그룹 참조: ${table.groupId}`,
       })
     }
@@ -49,7 +62,8 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
   for (const column of Object.values(model.columns)) {
     if (!Object.hasOwn(model.tables, column.tableId)) {
       issues.push({
-        entity: 'column', entityId: column.id,
+        entity: 'column',
+        entityId: column.id,
         message: `존재하지 않는 테이블 참조: ${column.tableId}`,
       })
     }
@@ -58,7 +72,8 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
   for (const column of Object.values(model.columns)) {
     if (column.domainId !== null && !Object.hasOwn(model.domains, column.domainId)) {
       issues.push({
-        entity: 'column', entityId: column.id,
+        entity: 'column',
+        entityId: column.id,
         message: `존재하지 않는 도메인 참조: ${column.domainId}`,
       })
     }
@@ -67,26 +82,41 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
   for (const term of Object.values(model.terms)) {
     if (term.domainId !== null && !Object.hasOwn(model.domains, term.domainId)) {
       issues.push({
-        entity: 'term', entityId: term.id,
+        entity: 'term',
+        entityId: term.id,
         message: `존재하지 않는 도메인 참조: ${term.domainId}`,
       })
     }
   }
 
   for (const rel of Object.values(model.relationships)) {
-    if (!Object.hasOwn(model.tables, rel.parentTableId) || !Object.hasOwn(model.tables, rel.childTableId)) {
+    if (
+      !Object.hasOwn(model.tables, rel.parentTableId) ||
+      !Object.hasOwn(model.tables, rel.childTableId)
+    ) {
       issues.push({
-        entity: 'relationship', entityId: rel.id,
+        entity: 'relationship',
+        entityId: rel.id,
         message: '존재하지 않는 테이블 참조',
       })
       continue
     }
     for (const m of rel.columnMappings) {
-      const child = Object.hasOwn(model.columns, m.childColumnId) ? model.columns[m.childColumnId] : undefined
-      const parent = Object.hasOwn(model.columns, m.parentColumnId) ? model.columns[m.parentColumnId] : undefined
-      if (!child || child.tableId !== rel.childTableId || !parent || parent.tableId !== rel.parentTableId) {
+      const child = Object.hasOwn(model.columns, m.childColumnId)
+        ? model.columns[m.childColumnId]
+        : undefined
+      const parent = Object.hasOwn(model.columns, m.parentColumnId)
+        ? model.columns[m.parentColumnId]
+        : undefined
+      if (
+        !child ||
+        child.tableId !== rel.childTableId ||
+        !parent ||
+        parent.tableId !== rel.parentTableId
+      ) {
         issues.push({
-          entity: 'relationship', entityId: rel.id,
+          entity: 'relationship',
+          entityId: rel.id,
           message: '매핑 컬럼이 없거나 소속 테이블이 다름',
         })
         break
@@ -97,16 +127,20 @@ export function validateModelIntegrity(model: ProjectModel): IntegrityIssue[] {
   for (const index of Object.values(model.indexes)) {
     if (!Object.hasOwn(model.tables, index.tableId)) {
       issues.push({
-        entity: 'index', entityId: index.id,
+        entity: 'index',
+        entityId: index.id,
         message: `존재하지 않는 테이블 참조: ${index.tableId}`,
       })
       continue
     }
     for (const ic of index.columns) {
-      const column = Object.hasOwn(model.columns, ic.columnId) ? model.columns[ic.columnId] : undefined
+      const column = Object.hasOwn(model.columns, ic.columnId)
+        ? model.columns[ic.columnId]
+        : undefined
       if (!column || column.tableId !== index.tableId) {
         issues.push({
-          entity: 'index', entityId: index.id,
+          entity: 'index',
+          entityId: index.id,
           message: '인덱스 컬럼이 없거나 소속 테이블이 다름',
         })
         break

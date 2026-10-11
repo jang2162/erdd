@@ -19,13 +19,19 @@ function renderSection(tableId: string) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<IndexSection projectId={PROJECT_ID} tableId={tableId} />, { wrapper: w })
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('IndexSection', () => {
   it('renders an existing index name, UNIQUE state, and its member columns', () => {
@@ -48,7 +54,9 @@ describe('IndexSection', () => {
     await userEvent.click(screen.getByRole('button', { name: '인덱스 추가' }))
 
     await waitFor(() => {
-      const indexes = Object.values(useEditorStore.getState().model.indexes).filter((ix) => ix.tableId === 't1')
+      const indexes = Object.values(useEditorStore.getState().model.indexes).filter(
+        (ix) => ix.tableId === 't1',
+      )
       expect(indexes).toHaveLength(1)
       expect(indexes[0]!.name).toBe('IX_1')
     })
@@ -70,7 +78,9 @@ describe('IndexSection', () => {
 
     await waitFor(() => {
       const names = Object.values(useEditorStore.getState().model.indexes)
-        .filter((ix) => ix.tableId === 't1').map((ix) => ix.name).sort()
+        .filter((ix) => ix.tableId === 't1')
+        .map((ix) => ix.name)
+        .sort()
       expect(names).toEqual(['IX_1', 'IX_2'])
     })
   })

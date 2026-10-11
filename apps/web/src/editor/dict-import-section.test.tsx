@@ -17,20 +17,26 @@ import { DictImportSection } from './dict-import-section.js'
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000cc'
 const mutate = vi.fn(
-  (_producer?: unknown, _opts?: { summary?: string; onProgress?: (done: number, total: number) => void }): Promise<ModelMutationResult> =>
-    Promise.resolve('applied'),
+  (
+    _producer?: unknown,
+    _opts?: { summary?: string; onProgress?: (done: number, total: number) => void },
+  ): Promise<ModelMutationResult> => Promise.resolve('applied'),
 )
 vi.mock('./use-model.js', () => ({ useModelMutation: () => mutate }))
 
-const { toastSuccess, toastError, toastInfo } = vi.hoisted(
-  () => ({ toastSuccess: vi.fn(), toastError: vi.fn(), toastInfo: vi.fn() }),
-)
+const { toastSuccess, toastError, toastInfo } = vi.hoisted(() => ({
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
+  toastInfo: vi.fn(),
+}))
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError, info: toastInfo } }))
 
 /** 손으로 결정하는 mutation. 시간 기반 대기 없이 "제출 중" 상태를 붙잡아 둔다. */
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((r) => { resolve = r })
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
   return { promise, resolve }
 }
 
@@ -39,7 +45,9 @@ function renderSection() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<DictImportSection projectId={PROJECT_ID} />, { wrapper: w })
@@ -50,8 +58,14 @@ async function xlsxFile(sheets: SheetData[], name = 'dict.xlsx'): Promise<File> 
   return new File([blob], name, { type: blob.type })
 }
 
-const wordsSheet = (rows: string[][], headers = ['논리명', '약어', '영문명', '설명']): SheetData => ({
-  key: 'words', name: '단어사전', headers, rows,
+const wordsSheet = (
+  rows: string[][],
+  headers = ['논리명', '약어', '영문명', '설명'],
+): SheetData => ({
+  key: 'words',
+  name: '단어사전',
+  headers,
+  rows,
 })
 
 const importButton = () => screen.getByRole('button', { name: '가져오기 실행' })
@@ -81,7 +95,12 @@ describe('DictImportSection', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderSection()
-    const file = await xlsxFile([wordsSheet([['주문', 'ORD', '', ''], ['', '', '', 'x']])])
+    const file = await xlsxFile([
+      wordsSheet([
+        ['주문', 'ORD', '', ''],
+        ['', '', '', 'x'],
+      ]),
+    ])
     await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), file)
     await waitFor(() => {
       expect(screen.getByText(/신규 1건/)).toBeInTheDocument()
@@ -93,7 +112,14 @@ describe('DictImportSection', () => {
   it('미리보기의 신규·중복·오류와 넘친 이슈 수를 천 단위로 보인다', async () => {
     const words: Record<string, Word> = {}
     for (let i = 0; i < 1000; i++) {
-      words[`w${i}`] = { id: `w${i}`, logicalName: `기존${i}`, abbreviation: `OLD${i}`, englishName: null, description: null, origin: null }
+      words[`w${i}`] = {
+        id: `w${i}`,
+        logicalName: `기존${i}`,
+        abbreviation: `OLD${i}`,
+        englishName: null,
+        description: null,
+        origin: null,
+      }
     }
     useEditorStore.getState().setLoaded({ ...createEmptyModel(), words }, 1, PROJECT_ID)
     grantEditPermission()
@@ -104,9 +130,13 @@ describe('DictImportSection', () => {
       ...Array.from({ length: 1100 }, () => ['', '', '', 'x']),
     ]
     await userEvent.upload(fileInput(), await xlsxFile([wordsSheet(rows)]))
-    expect(await screen.findByText(/신규 1,200건 · 중복 1,000건 · 오류 1,100행/, undefined, { timeout: 10000 })).toBeInTheDocument()
+    expect(
+      await screen.findByText(/신규 1,200건 · 중복 1,000건 · 오류 1,100행/, undefined, {
+        timeout: 10000,
+      }),
+    ).toBeInTheDocument()
     const issues = screen.getByRole('list', { name: '가져오기 이슈' })
-    expect(issues).toHaveTextContent('외 1,080건')                 // 오류 행 1,100건 − 보이는 20건
+    expect(issues).toHaveTextContent('외 1,080건') // 오류 행 1,100건 − 보이는 20건
   }, 30000)
 
   it('이슈 목록에 시트 이름과 사유를 보여준다', async () => {
@@ -194,7 +224,9 @@ describe('DictImportSection', () => {
     await userEvent.click(importButton())
     expect(mutate).toHaveBeenCalledTimes(1)
 
-    await act(async () => { pending.resolve('applied') })
+    await act(async () => {
+      pending.resolve('applied')
+    })
     expect(toastSuccess).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('button', { name: '가져오기 실행' })).not.toBeInTheDocument()
   })
@@ -206,10 +238,15 @@ describe('DictImportSection', () => {
 
     // 같은 틱에 두 번 — disabled가 아직 DOM에 반영되기 전이라 핸들러 재진입 가드가 막아야 한다.
     const button = importButton()
-    await act(async () => { button.click(); button.click() })
+    await act(async () => {
+      button.click()
+      button.click()
+    })
     expect(mutate).toHaveBeenCalledTimes(1)
 
-    await act(async () => { pending.resolve('applied') })
+    await act(async () => {
+      pending.resolve('applied')
+    })
     expect(toastSuccess).toHaveBeenCalledTimes(1)
   })
 
@@ -221,7 +258,9 @@ describe('DictImportSection', () => {
     await userEvent.click(importButton())
     expect(importButton()).toBeDisabled()
 
-    await act(async () => { pending.resolve('error') })
+    await act(async () => {
+      pending.resolve('error')
+    })
     expect(importButton()).toBeEnabled()
     expect(fileInput()).toBeEnabled()
     expect(screen.getByText(/신규 1건/)).toBeInTheDocument()
@@ -245,10 +284,21 @@ describe('DictImportSection', () => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderSection()
-    const rows = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, (_, i) => [`단어${i}`, `W${i}`, '', ''])
-    await userEvent.upload(screen.getByLabelText('Excel 파일 선택'), await xlsxFile([wordsSheet(rows)]))
+    const rows = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, (_, i) => [
+      `단어${i}`,
+      `W${i}`,
+      '',
+      '',
+    ])
+    await userEvent.upload(
+      screen.getByLabelText('Excel 파일 선택'),
+      await xlsxFile([wordsSheet(rows)]),
+    )
     await waitFor(
-      () => expect(screen.getByText(`적용 대상 ${formatCount(MAX_OPS_PER_MUTATION + 1)}건`)).toBeInTheDocument(),
+      () =>
+        expect(
+          screen.getByText(`적용 대상 ${formatCount(MAX_OPS_PER_MUTATION + 1)}건`),
+        ).toBeInTheDocument(),
       { timeout: 20000 },
     )
     expect(screen.queryByRole('alert')).toBeNull()
@@ -266,7 +316,9 @@ describe('DictImportSection', () => {
     await uploadOneWord()
     await userEvent.click(importButton())
     expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
-    await act(async () => { pending.resolve('applied') })
+    await act(async () => {
+      pending.resolve('applied')
+    })
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
   })
 
@@ -279,7 +331,9 @@ describe('DictImportSection', () => {
     await uploadOneWord()
     await userEvent.click(importButton())
     expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' })).toBeDisabled()
-    await act(async () => { pending.resolve('error') })
+    await act(async () => {
+      pending.resolve('error')
+    })
     await waitFor(() => expect(importButton()).toBeEnabled())
     expect(screen.queryByText(/적용 중…/)).toBeNull()
     expect(fileInput()).toBeEnabled()

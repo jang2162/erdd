@@ -3,7 +3,11 @@ import { type Domain, type ProjectModel, type Column } from '@erdd/core'
 export function createDomain(model: ProjectModel, domain: Domain): ProjectModel {
   return { ...model, domains: { ...model.domains, [domain.id]: domain } }
 }
-export function updateDomain(model: ProjectModel, id: string, patch: Partial<Omit<Domain, 'id'>>): ProjectModel {
+export function updateDomain(
+  model: ProjectModel,
+  id: string,
+  patch: Partial<Omit<Domain, 'id'>>,
+): ProjectModel {
   const cur = model.domains[id]
   if (!cur) return model
   return { ...model, domains: { ...model.domains, [id]: { ...cur, ...patch } } }

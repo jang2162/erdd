@@ -2,7 +2,10 @@ import { useRef, useState } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  DICT_SHEET_KEYS, EXCEL_SHEET_NAME, buildDictTemplateSheets, planDictImport,
+  DICT_SHEET_KEYS,
+  EXCEL_SHEET_NAME,
+  buildDictTemplateSheets,
+  planDictImport,
   type DictImportPlan,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
@@ -34,10 +37,11 @@ export function DictImportSection({ projectId }: { projectId: string }) {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
   const onTemplate = () => {
-    void downloadExcelWorkbook(buildDictTemplateSheets(), 'erdd_사전양식.xlsx')
-      .catch((err: unknown) => {
+    void downloadExcelWorkbook(buildDictTemplateSheets(), 'erdd_사전양식.xlsx').catch(
+      (err: unknown) => {
         toast.error(err instanceof Error ? err.message : '양식을 내려받지 못했습니다')
-      })
+      },
+    )
   }
 
   const onFile = async (file: File | undefined) => {
@@ -90,11 +94,12 @@ export function DictImportSection({ projectId }: { projectId: string }) {
   const applied = plan ? countApplied(plan, mode) : null
   const appliedTotal = applied === null ? 0 : applied.words + applied.terms + applied.domains
   const nothingToApply = applied !== null && appliedTotal === 0
-  const recognizedSheets = plan === null
-    ? []
-    : DICT_SHEET_KEYS
-      .map((key) => [key, plan.recognizedColumns[key]] as const)
-      .filter(([, cols]) => cols.length > 0)
+  const recognizedSheets =
+    plan === null
+      ? []
+      : DICT_SHEET_KEYS.map((key) => [key, plan.recognizedColumns[key]] as const).filter(
+          ([, cols]) => cols.length > 0,
+        )
 
   return (
     <div className="grid gap-3">
@@ -102,15 +107,22 @@ export function DictImportSection({ projectId }: { projectId: string }) {
         <p className="text-sm text-muted-foreground">
           정해진 양식의 Excel로 단어·용어·도메인을 한 번에 등록합니다
         </p>
-        <Button size="sm" variant="outline" onClick={onTemplate}><Download /> 양식 다운로드</Button>
+        <Button size="sm" variant="outline" onClick={onTemplate}>
+          <Download /> 양식 다운로드
+        </Button>
       </div>
 
       {canEdit && (
         <>
           <div className="grid gap-1.5">
-            <label htmlFor="dict-import-file" className="text-sm font-medium">Excel 파일 선택</label>
+            <label htmlFor="dict-import-file" className="text-sm font-medium">
+              Excel 파일 선택
+            </label>
             <input
-              id="dict-import-file" type="file" accept=".xlsx" disabled={importing}
+              id="dict-import-file"
+              type="file"
+              accept=".xlsx"
+              disabled={importing}
               className="text-sm file:mr-3 file:rounded-md file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm disabled:opacity-50"
               onChange={(e) => {
                 const f = e.target.files?.[0]
@@ -126,22 +138,29 @@ export function DictImportSection({ projectId }: { projectId: string }) {
               <p className="text-sm">
                 <span className="font-medium">{fileName}</span>
                 {' — '}
-                신규 {formatCount(plan.total.created)}건 · 중복 {formatCount(plan.total.duplicated)}건 · 오류 {formatCount(plan.total.errored)}행
+                신규 {formatCount(plan.total.created)}건 · 중복 {formatCount(plan.total.duplicated)}
+                건 · 오류 {formatCount(plan.total.errored)}행
               </p>
 
               <fieldset className="grid gap-1.5">
                 <legend className="text-sm font-medium">중복 항목 처리</legend>
                 <label className="flex items-center gap-2 text-sm">
                   <input
-                    type="radio" name="dict-import-mode" className="size-4"
-                    checked={mode === 'skip'} onChange={() => setMode('skip')}
+                    type="radio"
+                    name="dict-import-mode"
+                    className="size-4"
+                    checked={mode === 'skip'}
+                    onChange={() => setMode('skip')}
                   />
                   건너뛰기
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <input
-                    type="radio" name="dict-import-mode" className="size-4"
-                    checked={mode === 'overwrite'} onChange={() => setMode('overwrite')}
+                    type="radio"
+                    name="dict-import-mode"
+                    className="size-4"
+                    checked={mode === 'overwrite'}
+                    onChange={() => setMode('overwrite')}
                   />
                   덮어쓰기
                 </label>
@@ -152,34 +171,51 @@ export function DictImportSection({ projectId }: { projectId: string }) {
                   <p>덮어쓰기는 파일에 있는 아래 컬럼만 갱신하고 나머지 값은 그대로 둡니다</p>
                   <ul aria-label="인식한 컬럼">
                     {recognizedSheets.map(([key, cols]) => (
-                      <li key={key}>{EXCEL_SHEET_NAME[key]}: {cols.join(', ')}</li>
+                      <li key={key}>
+                        {EXCEL_SHEET_NAME[key]}: {cols.join(', ')}
+                      </li>
                     ))}
                   </ul>
                 </div>
               )}
 
               {plan.issues.length > 0 && (
-                <ul aria-label="가져오기 이슈" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs">
+                <ul
+                  aria-label="가져오기 이슈"
+                  className="grid max-h-48 gap-0.5 overflow-y-auto text-xs"
+                >
                   {plan.issues.slice(0, MAX_ISSUES_SHOWN).map((i, idx) => (
                     <li key={idx} className={i.level === 'error' ? 'text-destructive' : 'text-key'}>
-                      {EXCEL_SHEET_NAME[i.sheet]} · {i.row === null ? '' : `${i.row}행 · `}{i.message}
+                      {EXCEL_SHEET_NAME[i.sheet]} · {i.row === null ? '' : `${i.row}행 · `}
+                      {i.message}
                     </li>
                   ))}
                   {plan.issues.length > MAX_ISSUES_SHOWN && (
-                    <li className="text-muted-foreground">외 {formatCount(plan.issues.length - MAX_ISSUES_SHOWN)}건</li>
+                    <li className="text-muted-foreground">
+                      외 {formatCount(plan.issues.length - MAX_ISSUES_SHOWN)}건
+                    </li>
                   )}
                 </ul>
               )}
 
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm text-muted-foreground">적용 대상 {formatCount(appliedTotal)}건</p>
+                <p className="text-sm text-muted-foreground">
+                  적용 대상 {formatCount(appliedTotal)}건
+                </p>
                 <Button
-                  type="button" disabled={nothingToApply || importing}
-                  onClick={() => { void onImport() }}
+                  type="button"
+                  disabled={nothingToApply || importing}
+                  onClick={() => {
+                    void onImport()
+                  }}
                 >
-                  {progress !== null
-                    ? formatProgress(progress.done, progress.total)
-                    : <><Upload /> 가져오기 실행</>}
+                  {progress !== null ? (
+                    formatProgress(progress.done, progress.total)
+                  ) : (
+                    <>
+                      <Upload /> 가져오기 실행
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

@@ -11,9 +11,11 @@ export type ProcedureType = 'query' | 'mutation' | 'subscription'
  * 오타가 모두 깨진다.
  */
 export function procedureEntries(): Array<[string, ProcedureType]> {
-  const procedures = (appRouter as unknown as {
-    _def: { procedures: Record<string, { _def: { type: ProcedureType } }> }
-  })._def.procedures
+  const procedures = (
+    appRouter as unknown as {
+      _def: { procedures: Record<string, { _def: { type: ProcedureType } }> }
+    }
+  )._def.procedures
   return Object.entries(procedures).map(([path, p]) => [path, p._def.type])
 }
 

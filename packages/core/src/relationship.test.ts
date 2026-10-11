@@ -1,21 +1,52 @@
 import { describe, expect, it } from 'vitest'
 import { validateModelIntegrity } from './integrity.js'
 import {
-  createRelationshipFromParentPk, remapRelationshipChildColumn,
-  setRelationshipIdentifying, deleteRelationship, deleteTableCascade, deleteColumnCascade,
-  junctionTableName, resolveManyToMany,
+  createRelationshipFromParentPk,
+  remapRelationshipChildColumn,
+  setRelationshipIdentifying,
+  deleteRelationship,
+  deleteTableCascade,
+  deleteColumnCascade,
+  junctionTableName,
+  resolveManyToMany,
 } from './relationship.js'
 import type { Column, ProjectModel, Table } from './model.js'
 import { createEmptyModel } from './model.js'
 
 function tbl(id: string, physicalName: string): Table {
-  return { id, logicalName: id, physicalName, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+  return {
+    id,
+    logicalName: id,
+    physicalName,
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
+  }
 }
-function col(id: string, tableId: string, physicalName: string, over: Partial<Column> = {}): Column {
-  return { id, tableId, logicalName: id, physicalName, type: 'BIGINT', isPk: false,
-    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
-    domainId: null, custom: {}, ...over }
+function col(
+  id: string,
+  tableId: string,
+  physicalName: string,
+  over: Partial<Column> = {},
+): Column {
+  return {
+    id,
+    tableId,
+    logicalName: id,
+    physicalName,
+    type: 'BIGINT',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
+    ...over,
+  }
 }
 
 // 부모 USERS(PK id), 자식 ORDERS(컬럼 없음)
@@ -23,21 +54,29 @@ function baseModel(): ProjectModel {
   const m = createEmptyModel()
   m.tables['P'] = tbl('P', 'USERS')
   m.tables['C'] = tbl('C', 'ORDERS')
-  m.columns['P_ID'] = col('P_ID', 'P', 'ID', { isPk: true, nullable: false, order: 0, type: 'BIGINT' })
+  m.columns['P_ID'] = col('P_ID', 'P', 'ID', {
+    isPk: true,
+    nullable: false,
+    order: 0,
+    type: 'BIGINT',
+  })
   return m
 }
 
 describe('createRelationshipFromParentPk', () => {
   it('부모 PK를 자식에 FK 컬럼으로 생성하고 관계를 만든다', () => {
     const next = createRelationshipFromParentPk(baseModel(), {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     const fk = next.columns['FK1']!
     expect(fk.tableId).toBe('C')
-    expect(fk.physicalName).toBe('ID')       // 부모 물리명 복제
-    expect(fk.type).toBe('BIGINT')            // 타입 복제
-    expect(fk.nullable).toBe(false)           // NOT NULL 기본
-    expect(fk.isPk).toBe(false)               // 비식별 기본
+    expect(fk.physicalName).toBe('ID') // 부모 물리명 복제
+    expect(fk.type).toBe('BIGINT') // 타입 복제
+    expect(fk.nullable).toBe(false) // NOT NULL 기본
+    expect(fk.isPk).toBe(false) // 비식별 기본
     const rel = next.relationships['R']!
     expect(rel.parentTableId).toBe('P')
     expect(rel.childTableId).toBe('C')
@@ -49,9 +88,12 @@ describe('createRelationshipFromParentPk', () => {
 
   it('자식에 물리명이 이미 있으면 _2 접미를 붙인다', () => {
     const m = baseModel()
-    m.columns['EXIST'] = col('EXIST', 'C', 'ID', { order: 0 })  // 이미 ID 존재
+    m.columns['EXIST'] = col('EXIST', 'C', 'ID', { order: 0 }) // 이미 ID 존재
     const next = createRelationshipFromParentPk(m, {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     expect(next.columns['FK1']!.physicalName).toBe('ID_2')
   })
@@ -60,7 +102,10 @@ describe('createRelationshipFromParentPk', () => {
     const m = baseModel()
     m.columns['P_ID2'] = col('P_ID2', 'P', 'TENANT', { isPk: true, nullable: false, order: 1 })
     const next = createRelationshipFromParentPk(m, {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1', 'FK2'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1', 'FK2'],
     })
     expect(next.relationships['R']!.columnMappings).toHaveLength(2)
     expect(validateModelIntegrity(next)).toEqual([])
@@ -68,7 +113,11 @@ describe('createRelationshipFromParentPk', () => {
 
   it('식별 관계면 FK 컬럼이 자식 PK가 된다', () => {
     const next = createRelationshipFromParentPk(baseModel(), {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'], identifying: true,
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
+      identifying: true,
     })
     expect(next.columns['FK1']!.isPk).toBe(true)
     expect(next.relationships['R']!.identifying).toBe(true)
@@ -77,16 +126,24 @@ describe('createRelationshipFromParentPk', () => {
   it('newColumnIds가 부족하면 throw', () => {
     const m = baseModel()
     m.columns['P_ID2'] = col('P_ID2', 'P', 'TENANT', { isPk: true, nullable: false, order: 1 })
-    expect(() => createRelationshipFromParentPk(m, {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
-    })).toThrow()
+    expect(() =>
+      createRelationshipFromParentPk(m, {
+        relationshipId: 'R',
+        parentTableId: 'P',
+        childTableId: 'C',
+        newColumnIds: ['FK1'],
+      }),
+    ).toThrow()
   })
 
   it('부모에 PK가 없으면 관계를 만들지 않고 그대로 반환한다', () => {
     const m = baseModel()
     m.columns['P_ID']!.isPk = false
     const next = createRelationshipFromParentPk(m, {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     expect(next.relationships['R']).toBeUndefined()
     expect(next.columns['FK1']).toBeUndefined()
@@ -96,7 +153,10 @@ describe('createRelationshipFromParentPk', () => {
 describe('setRelationshipIdentifying', () => {
   it('true면 FK 컬럼이 PK가 되고 false면 해제된다', () => {
     const created = createRelationshipFromParentPk(baseModel(), {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     const on = setRelationshipIdentifying(created, 'R', true)
     expect(on.columns['FK1']!.isPk).toBe(true)
@@ -113,27 +173,42 @@ describe('remapRelationshipChildColumn', () => {
     const m = baseModel()
     m.columns['USER_REF'] = col('USER_REF', 'C', 'USER_REF', { type: 'BIGINT', order: 0 })
     const created = createRelationshipFromParentPk(m, {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     const next = remapRelationshipChildColumn(created, {
-      relationshipId: 'R', parentColumnId: 'P_ID', newChildColumnId: 'USER_REF',
+      relationshipId: 'R',
+      parentColumnId: 'P_ID',
+      newChildColumnId: 'USER_REF',
     })
     expect(next.relationships['R']!.columnMappings).toEqual([
       { childColumnId: 'USER_REF', parentColumnId: 'P_ID' },
     ])
-    expect(next.columns['FK1']).toBeUndefined()  // 이전 자동생성 컬럼 삭제
+    expect(next.columns['FK1']).toBeUndefined() // 이전 자동생성 컬럼 삭제
     expect(next.columns['USER_REF']).toBeDefined()
     expect(validateModelIntegrity(next)).toEqual([])
   })
 
   it('식별 관계를 기존 컬럼으로 재매핑하면 그 컬럼이 PK가 된다', () => {
     const m = baseModel()
-    m.columns['USER_REF'] = col('USER_REF', 'C', 'USER_REF', { type: 'BIGINT', order: 0, isPk: false })
+    m.columns['USER_REF'] = col('USER_REF', 'C', 'USER_REF', {
+      type: 'BIGINT',
+      order: 0,
+      isPk: false,
+    })
     const created = createRelationshipFromParentPk(m, {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'], identifying: true,
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
+      identifying: true,
     })
     const next = remapRelationshipChildColumn(created, {
-      relationshipId: 'R', parentColumnId: 'P_ID', newChildColumnId: 'USER_REF',
+      relationshipId: 'R',
+      parentColumnId: 'P_ID',
+      newChildColumnId: 'USER_REF',
     })
     expect(next.columns['USER_REF']!.isPk).toBe(true)
     expect(validateModelIntegrity(next)).toEqual([])
@@ -142,20 +217,41 @@ describe('remapRelationshipChildColumn', () => {
   it('이전 자식 컬럼이 다른 관계에서 쓰이면 삭제하지 않는다', () => {
     const m = baseModel()
     m.tables['P2'] = tbl('P2', 'ROLES')
-    m.columns['P2_ID'] = col('P2_ID', 'P2', 'RID', { isPk: true, nullable: false, order: 0, type: 'BIGINT' })
+    m.columns['P2_ID'] = col('P2_ID', 'P2', 'RID', {
+      isPk: true,
+      nullable: false,
+      order: 0,
+      type: 'BIGINT',
+    })
     m.columns['SHARED'] = col('SHARED', 'C', 'SHARED', { type: 'BIGINT', order: 0 })
     m.columns['OTHER'] = col('OTHER', 'C', 'OTHER', { type: 'BIGINT', order: 1 })
-    m.relationships['R1'] = { id: 'R1', parentTableId: 'P', childTableId: 'C',
+    m.relationships['R1'] = {
+      id: 'R1',
+      parentTableId: 'P',
+      childTableId: 'C',
       columnMappings: [{ childColumnId: 'SHARED', parentColumnId: 'P_ID' }],
-      cardinality: '1:N', identifying: false, name: null }
-    m.relationships['R2'] = { id: 'R2', parentTableId: 'P2', childTableId: 'C',
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
+    }
+    m.relationships['R2'] = {
+      id: 'R2',
+      parentTableId: 'P2',
+      childTableId: 'C',
       columnMappings: [{ childColumnId: 'SHARED', parentColumnId: 'P2_ID' }],
-      cardinality: '1:N', identifying: false, name: null }
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
+    }
     const next = remapRelationshipChildColumn(m, {
-      relationshipId: 'R1', parentColumnId: 'P_ID', newChildColumnId: 'OTHER',
+      relationshipId: 'R1',
+      parentColumnId: 'P_ID',
+      newChildColumnId: 'OTHER',
     })
     expect(next.columns['SHARED']).toBeDefined()
-    expect(next.relationships['R1']!.columnMappings).toEqual([{ childColumnId: 'OTHER', parentColumnId: 'P_ID' }])
+    expect(next.relationships['R1']!.columnMappings).toEqual([
+      { childColumnId: 'OTHER', parentColumnId: 'P_ID' },
+    ])
     expect(validateModelIntegrity(next)).toEqual([])
   })
 })
@@ -163,11 +259,14 @@ describe('remapRelationshipChildColumn', () => {
 describe('deleteRelationship', () => {
   it('관계를 지우되 자식 FK 컬럼은 일반 컬럼으로 남긴다', () => {
     const created = createRelationshipFromParentPk(baseModel(), {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     const next = deleteRelationship(created, 'R')
     expect(next.relationships['R']).toBeUndefined()
-    expect(next.columns['FK1']).toBeDefined()   // 컬럼 보존
+    expect(next.columns['FK1']).toBeDefined() // 컬럼 보존
     expect(validateModelIntegrity(next)).toEqual([])
   })
 })
@@ -175,24 +274,30 @@ describe('deleteRelationship', () => {
 describe('deleteTableCascade', () => {
   it('부모 삭제 시 관계는 지우고 자식 FK 컬럼은 보존한다', () => {
     const created = createRelationshipFromParentPk(baseModel(), {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     const next = deleteTableCascade(created, 'P')
     expect(next.tables['P']).toBeUndefined()
-    expect(next.columns['P_ID']).toBeUndefined()  // 부모 소속 컬럼 삭제
+    expect(next.columns['P_ID']).toBeUndefined() // 부모 소속 컬럼 삭제
     expect(next.relationships['R']).toBeUndefined()
-    expect(next.columns['FK1']).toBeDefined()     // 자식 FK 보존
+    expect(next.columns['FK1']).toBeDefined() // 자식 FK 보존
     expect(validateModelIntegrity(next)).toEqual([])
   })
   it('자식 삭제 시 관계와 자식 컬럼이 함께 삭제된다', () => {
     const created = createRelationshipFromParentPk(baseModel(), {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     const next = deleteTableCascade(created, 'C')
     expect(next.tables['C']).toBeUndefined()
     expect(next.columns['FK1']).toBeUndefined()
     expect(next.relationships['R']).toBeUndefined()
-    expect(next.columns['P_ID']).toBeDefined()    // 부모 컬럼 보존
+    expect(next.columns['P_ID']).toBeDefined() // 부모 컬럼 보존
     expect(validateModelIntegrity(next)).toEqual([])
   })
 })
@@ -200,18 +305,24 @@ describe('deleteTableCascade', () => {
 describe('deleteColumnCascade', () => {
   it('매핑에 쓰인 컬럼 삭제 시 매핑에서 제거하고 매핑이 비면 관계도 삭제한다', () => {
     const created = createRelationshipFromParentPk(baseModel(), {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1'],
     })
     const next = deleteColumnCascade(created, 'FK1')
     expect(next.columns['FK1']).toBeUndefined()
-    expect(next.relationships['R']).toBeUndefined()  // 매핑이 비어 관계 삭제
+    expect(next.relationships['R']).toBeUndefined() // 매핑이 비어 관계 삭제
     expect(validateModelIntegrity(next)).toEqual([])
   })
   it('복합 매핑에서 한 컬럼만 지우면 관계는 유지되고 매핑만 축소된다', () => {
     const m = baseModel()
     m.columns['P_ID2'] = col('P_ID2', 'P', 'TENANT', { isPk: true, nullable: false, order: 1 })
     const created = createRelationshipFromParentPk(m, {
-      relationshipId: 'R', parentTableId: 'P', childTableId: 'C', newColumnIds: ['FK1', 'FK2'],
+      relationshipId: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
+      newColumnIds: ['FK1', 'FK2'],
     })
     const next = deleteColumnCascade(created, 'FK1')
     expect(next.relationships['R']).toBeDefined()
@@ -237,13 +348,20 @@ function m2mBase(): ProjectModel {
   m.columns['P_PK'] = col('P_PK', 'P', 'ORDER_ID', { isPk: true, nullable: false, order: 0 })
   m.columns['C_PK'] = col('C_PK', 'C', 'PRODUCT_ID', { isPk: true, nullable: false, order: 0 })
   return createRelationshipFromParentPk(m, {
-    relationshipId: 'r1', parentTableId: 'P', childTableId: 'C', newColumnIds: ['fk1'],
+    relationshipId: 'r1',
+    parentTableId: 'P',
+    childTableId: 'C',
+    newColumnIds: ['fk1'],
   })
 }
 
 const JUNCTION = {
-  id: 'J', logicalName: '주문상품', physicalName: 'ORD_PRD',
-  position: { x: 50, y: 25 }, groupId: null, groupPosition: null,
+  id: 'J',
+  logicalName: '주문상품',
+  physicalName: 'ORD_PRD',
+  position: { x: 50, y: 25 },
+  groupId: null,
+  groupPosition: null,
 }
 const ARGS = {
   relationshipId: 'r1',
@@ -276,13 +394,23 @@ describe('resolveManyToMany', () => {
     const out = resolveManyToMany(m2mBase(), ARGS)
 
     expect(out.relationships['ra']).toMatchObject({
-      parentTableId: 'P', childTableId: 'J', cardinality: '1:N', identifying: true,
+      parentTableId: 'P',
+      childTableId: 'J',
+      cardinality: '1:N',
+      identifying: true,
     })
     expect(out.relationships['rb']).toMatchObject({
-      parentTableId: 'C', childTableId: 'J', cardinality: '1:N', identifying: true,
+      parentTableId: 'C',
+      childTableId: 'J',
+      cardinality: '1:N',
+      identifying: true,
     })
-    expect(out.relationships['ra']?.columnMappings).toEqual([{ childColumnId: 'ja1', parentColumnId: 'P_PK' }])
-    expect(out.relationships['rb']?.columnMappings).toEqual([{ childColumnId: 'jb1', parentColumnId: 'C_PK' }])
+    expect(out.relationships['ra']?.columnMappings).toEqual([
+      { childColumnId: 'ja1', parentColumnId: 'P_PK' },
+    ])
+    expect(out.relationships['rb']?.columnMappings).toEqual([
+      { childColumnId: 'jb1', parentColumnId: 'C_PK' },
+    ])
   })
 
   it('결과 모델의 참조 무결성이 유지된다', () => {
@@ -332,10 +460,13 @@ describe('resolveManyToMany', () => {
       ...base,
       relationships: {
         ...base.relationships,
-        r1: { ...base.relationships['r1']!, columnMappings: [
-          { childColumnId: 'P_PK', parentColumnId: 'P_PK' },
-          { childColumnId: 'C_PK', parentColumnId: 'P_PK' },
-        ] },
+        r1: {
+          ...base.relationships['r1']!,
+          columnMappings: [
+            { childColumnId: 'P_PK', parentColumnId: 'P_PK' },
+            { childColumnId: 'C_PK', parentColumnId: 'P_PK' },
+          ],
+        },
       },
     }
     expect(resolveManyToMany(m, ARGS)).toEqual(m)
@@ -346,11 +477,23 @@ describe('resolveManyToMany', () => {
     const m = {
       ...base,
       indexes: {
-        ix_only: { id: 'ix_only', tableId: 'C', name: 'IX_ONLY', unique: false,
-          columns: [{ columnId: 'fk1', direction: 'asc' as const }] },
-        ix_mixed: { id: 'ix_mixed', tableId: 'C', name: 'IX_MIXED', unique: false,
-          columns: [{ columnId: 'fk1', direction: 'asc' as const },
-                    { columnId: 'C_PK', direction: 'asc' as const }] },
+        ix_only: {
+          id: 'ix_only',
+          tableId: 'C',
+          name: 'IX_ONLY',
+          unique: false,
+          columns: [{ columnId: 'fk1', direction: 'asc' as const }],
+        },
+        ix_mixed: {
+          id: 'ix_mixed',
+          tableId: 'C',
+          name: 'IX_MIXED',
+          unique: false,
+          columns: [
+            { columnId: 'fk1', direction: 'asc' as const },
+            { columnId: 'C_PK', direction: 'asc' as const },
+          ],
+        },
       },
     }
     const out = resolveManyToMany(m, ARGS)
@@ -363,10 +506,15 @@ describe('resolveManyToMany', () => {
     m.tables['S'] = { ...tbl('S', 'EMP'), logicalName: '사원' }
     m.columns['S_PK'] = col('S_PK', 'S', 'EMP_NO', { isPk: true, nullable: false, order: 0 })
     const withRel = createRelationshipFromParentPk(m, {
-      relationshipId: 'r1', parentTableId: 'S', childTableId: 'S', newColumnIds: ['fk1'],
+      relationshipId: 'r1',
+      parentTableId: 'S',
+      childTableId: 'S',
+      newColumnIds: ['fk1'],
     })
     const out = resolveManyToMany(withRel, ARGS)
-    const jCols = Object.values(out.columns).filter((c) => c.tableId === 'J').sort((a, b) => a.order - b.order)
+    const jCols = Object.values(out.columns)
+      .filter((c) => c.tableId === 'J')
+      .sort((a, b) => a.order - b.order)
     expect(jCols.map((c) => c.physicalName)).toEqual(['EMP_NO', 'EMP_NO_2'])
   })
 
@@ -385,7 +533,9 @@ describe('resolveManyToMany', () => {
     // groupId 를 실제 그룹으로 두어야 무결성 검사를 통과한다(integrity.ts:41).
     const m = {
       ...base,
-      tableGroups: { g1: { id: 'g1', name: '주문영역', color: '#e0e0e0', comment: null, alias: '' } },
+      tableGroups: {
+        g1: { id: 'g1', name: '주문영역', color: '#e0e0e0', comment: null, alias: '' },
+      },
     }
     const out = resolveManyToMany(m, {
       ...ARGS,
@@ -409,7 +559,10 @@ function m2mDownstreamBase(): ProjectModel {
   m.columns['P_PK'] = col('P_PK', 'P', 'ORD_NO', { isPk: true, nullable: false, order: 0 })
   m.columns['C_PK'] = col('C_PK', 'C', 'DTL_SEQ', { isPk: true, nullable: false, order: 0 })
   const withR1 = createRelationshipFromParentPk(m, {
-    relationshipId: 'r1', parentTableId: 'P', childTableId: 'C', newColumnIds: ['fk1'],
+    relationshipId: 'r1',
+    parentTableId: 'P',
+    childTableId: 'C',
+    newColumnIds: ['fk1'],
   })
   const pkFk = {
     ...withR1,
@@ -417,7 +570,10 @@ function m2mDownstreamBase(): ProjectModel {
   }
   // 손자 관계는 자식의 PK 2개(DTL_SEQ · ORD_NO)를 모두 부모 컬럼으로 가져간다.
   return createRelationshipFromParentPk(pkFk, {
-    relationshipId: 'r2', parentTableId: 'C', childTableId: 'G', newColumnIds: ['gfk1', 'gfk2'],
+    relationshipId: 'r2',
+    parentTableId: 'C',
+    childTableId: 'G',
+    newColumnIds: ['gfk1', 'gfk2'],
   })
 }
 
@@ -427,9 +583,10 @@ describe('resolveManyToMany — 하위 관계가 FK 컬럼을 참조', () => {
     // identifying 가드에 먼저 걸리면 이 케이스를 검증하지 못한다 — false 인 것을 못 박는다.
     expect(m.relationships['r1']?.identifying).toBe(false)
     expect(m.columns['fk1']?.isPk).toBe(true)
-    expect(m.relationships['r2']?.columnMappings)
-      .toEqual([{ childColumnId: 'gfk1', parentColumnId: 'C_PK' },
-                { childColumnId: 'gfk2', parentColumnId: 'fk1' }])
+    expect(m.relationships['r2']?.columnMappings).toEqual([
+      { childColumnId: 'gfk1', parentColumnId: 'C_PK' },
+      { childColumnId: 'gfk2', parentColumnId: 'fk1' },
+    ])
 
     // 가드가 없으면 fk1 이 사라지면서 r2 의 매핑이 조용히 1개로 줄고, 배송.ORD_NO 가
     // 아무도 참조하지 않는 고아 컬럼으로 남는다 — 무결성 검사도 경고도 잡지 못한다(설계 3.3).
@@ -447,7 +604,10 @@ function m2mCompositeBase(): ProjectModel {
   m.columns['P_PK2'] = col('P_PK2', 'P', 'TENANT_ID', { isPk: true, nullable: false, order: 1 })
   m.columns['C_PK'] = col('C_PK', 'C', 'PRODUCT_ID', { isPk: true, nullable: false, order: 0 })
   return createRelationshipFromParentPk(m, {
-    relationshipId: 'r1', parentTableId: 'P', childTableId: 'C', newColumnIds: ['fk1', 'fk2'],
+    relationshipId: 'r1',
+    parentTableId: 'P',
+    childTableId: 'C',
+    newColumnIds: ['fk1', 'fk2'],
   })
 }
 
@@ -477,11 +637,14 @@ describe('resolveManyToMany — 복합 PK 부모', () => {
     // 중복을 세면 droppedPk 가 실제보다 커져 pkCount - droppedPk 가 음수가 되고,
     // '=== 0' 비교를 빠져나가 교차 테이블과 관계 하나만 생긴다(설계 3.4 가 막으려던 상태).
     const dup = remapRelationshipChildColumn(m2mCompositeBase(), {
-      relationshipId: 'r1', parentColumnId: 'P_PK2', newChildColumnId: 'fk1',
+      relationshipId: 'r1',
+      parentColumnId: 'P_PK2',
+      newChildColumnId: 'fk1',
     })
-    expect(dup.relationships['r1']?.columnMappings)
-      .toEqual([{ childColumnId: 'fk1', parentColumnId: 'P_PK1' },
-                { childColumnId: 'fk1', parentColumnId: 'P_PK2' }])
+    expect(dup.relationships['r1']?.columnMappings).toEqual([
+      { childColumnId: 'fk1', parentColumnId: 'P_PK1' },
+      { childColumnId: 'fk1', parentColumnId: 'P_PK2' },
+    ])
 
     // fk1 을 자식의 유일한 PK 로 만든다 — 지우면 자식 PK 가 0개가 된다.
     const { C_PK, ...rest } = dup.columns
@@ -495,7 +658,9 @@ describe('resolveManyToMany — 복합 PK 부모', () => {
     // 풀 수 있는 모델이 조용히 no-op 이 된다. 위 테스트는 <= 0 이중 방어만으로도
     // 통과하므로 dedup 자체를 잠그는 것은 이쪽이다.
     const dup = remapRelationshipChildColumn(m2mCompositeBase(), {
-      relationshipId: 'r1', parentColumnId: 'P_PK2', newChildColumnId: 'fk1',
+      relationshipId: 'r1',
+      parentColumnId: 'P_PK2',
+      newChildColumnId: 'fk1',
     })
     // C_PK 는 남긴다 — fk1 을 지워도 자식 PK 가 1개 남는다.
     const m = { ...dup, columns: { ...dup.columns, fk1: { ...dup.columns['fk1']!, isPk: true } } }

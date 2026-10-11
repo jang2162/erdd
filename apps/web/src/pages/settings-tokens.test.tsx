@@ -21,14 +21,19 @@ function renderCard(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   )
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('AccessTokensCard', () => {
   it('목록을 보여주고 사용 이력이 없으면 그렇게 표시한다', async () => {
     renderCard({
-      'auth.tokens.list': () => ({ data: [
-        { id: 'a', name: '노트북', createdAt: '2026-08-01T00:00:00.000Z', lastUsedAt: null },
-      ] }),
+      'auth.tokens.list': () => ({
+        data: [
+          { id: 'a', name: '노트북', createdAt: '2026-08-01T00:00:00.000Z', lastUsedAt: null },
+        ],
+      }),
     })
     expect(await screen.findByText('노트북')).toBeDefined()
     expect(screen.getByText('사용 안 함')).toBeDefined()
@@ -53,9 +58,11 @@ describe('AccessTokensCard', () => {
   it('폐기는 두 번 눌러야 실행된다', async () => {
     const revoke = vi.fn(() => ({ data: { ok: true } }))
     renderCard({
-      'auth.tokens.list': () => ({ data: [
-        { id: 'a', name: '노트북', createdAt: '2026-08-01T00:00:00.000Z', lastUsedAt: null },
-      ] }),
+      'auth.tokens.list': () => ({
+        data: [
+          { id: 'a', name: '노트북', createdAt: '2026-08-01T00:00:00.000Z', lastUsedAt: null },
+        ],
+      }),
       'auth.tokens.revoke': revoke,
     })
     await userEvent.click(await screen.findByRole('button', { name: '폐기' }))

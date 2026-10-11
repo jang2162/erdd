@@ -1,9 +1,6 @@
 import { asc, eq } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
-import {
-  applyPromotePlan, planPromote,
-  type ProjectModel, type PromoteStatus,
-} from '@erdd/core'
+import { applyPromotePlan, planPromote, type ProjectModel, type PromoteStatus } from '@erdd/core'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { parsePayload } from './resource-library.js'
 import type { Db } from '../db/client.js'
@@ -37,16 +34,20 @@ export function emptyOutcome(): PromoteOutcome {
  * 두 시점의 판정이 갈린다. 트랜잭션 안에서 잠글 때는 반환값에 .for('update')를 이어 붙인다.
  */
 export function loadLibraryItems(dbOrTx: Db | MutationTx, libraryId: string) {
-  return dbOrTx
-    .select({
-      id: resourceItems.id, kind: resourceItems.kind,
-      payload: resourceItems.payload, version: resourceItems.version,
-    })
-    .from(resourceItems)
-    .where(eq(resourceItems.libraryId, libraryId))
-    // 동률은 id 로 깬다 — 한 트랜잭션의 승격이 넣은 행은 createdAt(트랜잭션 시작 시각)이 전부 같아
-    // 순서가 비결정적이면 두 시점의 동명 선점이 갈린다.
-    .orderBy(asc(resourceItems.createdAt), asc(resourceItems.id))
+  return (
+    dbOrTx
+      .select({
+        id: resourceItems.id,
+        kind: resourceItems.kind,
+        payload: resourceItems.payload,
+        version: resourceItems.version,
+      })
+      .from(resourceItems)
+      .where(eq(resourceItems.libraryId, libraryId))
+      // 동률은 id 로 깬다 — 한 트랜잭션의 승격이 넣은 행은 createdAt(트랜잭션 시작 시각)이 전부 같아
+      // 순서가 비결정적이면 두 시점의 동명 선점이 갈린다.
+      .orderBy(asc(resourceItems.createdAt), asc(resourceItems.id))
+  )
 }
 
 /**
@@ -80,9 +81,11 @@ export async function runPromoteInTx(
       args.outcome.skipped.push({ entityId: req.entityId, reason: 'missing' })
       continue
     }
-    if (entry.status !== req.expectedStatus
-      || entry.targetItemId !== req.expectedTargetItemId
-      || entry.targetVersion !== req.expectedTargetVersion) {
+    if (
+      entry.status !== req.expectedStatus ||
+      entry.targetItemId !== req.expectedTargetItemId ||
+      entry.targetVersion !== req.expectedTargetVersion
+    ) {
       // targetVersion까지 대조해야 한다 — 상태·대상 id가 같아도 그 사이 다른 사람이 대상
       // 항목을 고쳤으면(버전만 바뀜) 화면의 미리보기가 이미 낡은 것이라 최신 편집을 덮어쓴다.
       args.outcome.skipped.push({ entityId: req.entityId, reason: 'plan-changed' })
@@ -96,19 +99,25 @@ export async function runPromoteInTx(
     const payload = parsePayload(write.kind, write.payload)
     if (write.mode === 'insert') {
       await tx.insert(resourceItems).values({
-        id: write.itemId, libraryId: args.libraryId,
-        kind: write.kind, payload, version: write.version,
+        id: write.itemId,
+        libraryId: args.libraryId,
+        kind: write.kind,
+        payload,
+        version: write.version,
       })
       args.outcome.inserted += 1
     } else {
-      await tx.update(resourceItems)
+      await tx
+        .update(resourceItems)
         .set({ payload, version: write.version, updatedAt: new Date() })
         .where(eq(resourceItems.id, write.itemId))
       args.outcome.updated += 1
     }
   }
   if (applied.writes.length > 0) {
-    await tx.update(resourceLibraries).set({ updatedAt: new Date() })
+    await tx
+      .update(resourceLibraries)
+      .set({ updatedAt: new Date() })
       .where(eq(resourceLibraries.id, args.libraryId))
   }
   return applied.nextModel

@@ -4,13 +4,33 @@ import { buildAnchors } from './anchors.js'
 import { createEmptyModel, type Column, type ProjectModel, type Table } from '@erdd/core'
 
 function tbl(id: string): Table {
-  return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+  return {
+    id,
+    logicalName: id,
+    physicalName: id,
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
+  }
 }
 function col(id: string, tableId: string): Column {
-  return { id, tableId, logicalName: id, physicalName: id, type: 'VARCHAR(10)',
-    isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
-    order: 0, comment: null, domainId: null, custom: {} }
+  return {
+    id,
+    tableId,
+    logicalName: id,
+    physicalName: id,
+    type: 'VARCHAR(10)',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
+  }
 }
 function model(): ProjectModel {
   const m = createEmptyModel()
@@ -26,8 +46,9 @@ describe('buildNodes — 컬럼 선택 전달', () => {
   // 하나만 가리킬 때만 selectedColumnIds를 실어야 하고, 나머지(다른 테이블·미선택·다중 선택)
   // 노드에는 빈 배열을 실어야 한다.
   it('선택된 테이블 하나에만 selectedColumnIds를 싣는다', () => {
-    const nodes = buildNodes(model(), 'physical', new Set(['T1']), [], undefined, undefined,
-      { selectedColumnIds: ['C1'] })
+    const nodes = buildNodes(model(), 'physical', new Set(['T1']), [], undefined, undefined, {
+      selectedColumnIds: ['C1'],
+    })
     const t1 = nodes.find((n) => n.id === 'T1')!
     const t2 = nodes.find((n) => n.id === 'T2')!
     expect(t1.data.selectedColumnIds).toEqual(['C1'])
@@ -35,14 +56,16 @@ describe('buildNodes — 컬럼 선택 전달', () => {
   })
 
   it('테이블이 선택되지 않았으면 모든 노드가 빈 배열을 받는다', () => {
-    const nodes = buildNodes(model(), 'physical', new Set<string>([]), [], undefined, undefined,
-      { selectedColumnIds: ['C1'] })
+    const nodes = buildNodes(model(), 'physical', new Set<string>([]), [], undefined, undefined, {
+      selectedColumnIds: ['C1'],
+    })
     for (const n of nodes) expect(n.data.selectedColumnIds).toEqual([])
   })
 
   it('테이블이 여러 개 선택됐으면(다중 선택) 어느 노드도 selectedColumnIds를 받지 않는다', () => {
-    const nodes = buildNodes(model(), 'physical', new Set(['T1', 'T2']), [], undefined, undefined,
-      { selectedColumnIds: ['C1'] })
+    const nodes = buildNodes(model(), 'physical', new Set(['T1', 'T2']), [], undefined, undefined, {
+      selectedColumnIds: ['C1'],
+    })
     for (const n of nodes) expect(n.data.selectedColumnIds).toEqual([])
   })
 })
@@ -71,9 +94,13 @@ describe('buildNodes — 앵커 전달', () => {
   function relModel(): ProjectModel {
     const m = model()
     m.relationships['R'] = {
-      id: 'R', parentTableId: 'T1', childTableId: 'T2',
+      id: 'R',
+      parentTableId: 'T1',
+      childTableId: 'T2',
       columnMappings: [{ childColumnId: 'C2', parentColumnId: 'C1' }],
-      cardinality: '1:N', identifying: false, name: null,
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
     }
     return m
   }
@@ -93,8 +120,16 @@ describe('buildNodes — 앵커 전달', () => {
 
   it('앵커를 넘기지 않아도 자기 계산으로 올바른 값을 싣는다', () => {
     // 인자를 빠뜨려도 결과가 옳아야 한다 — 배선 누락이 "조용한 중앙 폴백"으로 숨지 않게 한다.
-    const withArg = buildNodes(relModel(), 'physical', new Set<string>(), [],
-      undefined, undefined, {}, buildAnchors(relModel()))
+    const withArg = buildNodes(
+      relModel(),
+      'physical',
+      new Set<string>(),
+      [],
+      undefined,
+      undefined,
+      {},
+      buildAnchors(relModel()),
+    )
     const without = buildNodes(relModel(), 'physical', new Set<string>(), [])
     expect(without.map((n) => n.data.anchors)).toEqual(withArg.map((n) => n.data.anchors))
   })

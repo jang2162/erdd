@@ -13,18 +13,43 @@ const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 function loadWith(physicalName: string) {
   const m = createEmptyModel()
   m.terms['term1'] = {
-    id: 'term1', logicalName: '주문', physicalName, domainId: null, description: null, origin: null,
+    id: 'term1',
+    logicalName: '주문',
+    physicalName,
+    domainId: null,
+    description: null,
+    origin: null,
   }
   m.tables['t1'] = {
-    id: 't1', logicalName: '주문', physicalName, comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 't1',
+    logicalName: '주문',
+    physicalName,
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
   useEditorStore.getState().setProjectConfig(
-    { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' }, ['postgresql'], null, DEFAULT_TABLE_OPTIONS)
+    {
+      case: 'UPPER_SNAKE',
+      separator: '_',
+      logicalSeparator: '_',
+      maxLengthBytes: 30,
+      tablePhysicalTemplate: '',
+      tableLogicalTemplate: '',
+    },
+    ['postgresql'],
+    null,
+    DEFAULT_TABLE_OPTIONS,
+  )
 }
 
-afterEach(() => { cleanup(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  useEditorStore.getState().reset()
+})
 
 describe('NamingCheck', () => {
   it('예약어 물리명 경고를 보여주고 클릭 시 해당 테이블을 선택한다', async () => {
@@ -44,19 +69,48 @@ describe('NamingCheck', () => {
   it('필수 커스텀 항목 미입력을 그룹으로 보여주고 클릭 시 해당 테이블을 선택한다', async () => {
     const m = createEmptyModel()
     m.customFields['cf1'] = {
-      id: 'cf1', name: '업무구분', target: 'table', type: 'text',
-      options: [], required: true, defaultValue: null, order: 0, origin: null,
+      id: 'cf1',
+      name: '업무구분',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: true,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.terms['term1'] = {
-      id: 'term1', logicalName: '주문', physicalName: 'ORD', domainId: null, description: null, origin: null,
+      id: 'term1',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      domainId: null,
+      description: null,
+      origin: null,
     }
     m.tables['t1'] = {
-      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     useEditorStore.getState().setProjectConfig(
-      { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' }, ['postgresql'], null, DEFAULT_TABLE_OPTIONS)
+      {
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+        tableLogicalTemplate: '',
+      },
+      ['postgresql'],
+      null,
+      DEFAULT_TABLE_OPTIONS,
+    )
     render(<NamingCheck projectId={PROJECT_ID} open onOpenChange={() => {}} />)
 
     expect(screen.getByText('필수 항목 미입력 (1)')).toBeInTheDocument()

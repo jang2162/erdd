@@ -7,9 +7,13 @@ import { Button } from '@/components/ui/button'
  * 그룹 뷰로 전환하지 않아도 드롭다운에서 아무 그룹이나 골라 내보낼 수 있다.
  * ExportScope의 { kind: 'tables' }는 이 UI에서 만들지 않는다.
  */
-export function ExportScopeSelect(
-  { value, onChange }: { value: ExportScope; onChange: (s: ExportScope) => void },
-) {
+export function ExportScopeSelect({
+  value,
+  onChange,
+}: {
+  value: ExportScope
+  onChange: (s: ExportScope) => void
+}) {
   const model = useEditorStore((s) => s.model)
   const groups = Object.values(model.tableGroups).sort((a, b) => a.name.localeCompare(b.name))
 
@@ -18,7 +22,8 @@ export function ExportScopeSelect(
       <span className="text-sm font-medium">범위</span>
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          type="button" size="sm"
+          type="button"
+          size="sm"
           variant={value.kind === 'all' ? 'default' : 'outline'}
           onClick={() => onChange({ kind: 'all' })}
         >
@@ -35,7 +40,11 @@ export function ExportScopeSelect(
             }}
           >
             <option value="">그룹 선택…</option>
-            {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
           </select>
         )}
       </div>

@@ -63,7 +63,11 @@ export async function readDraft(cwd: string): Promise<DraftRead> {
   }
 
   let parsed: unknown
-  try { parsed = JSON.parse(raw) } catch { return quarantine() }
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return quarantine()
+  }
   if (!isRecord(parsed)) return quarantine()
 
   const model = ProjectModelSchema.safeParse(parsed['model'])

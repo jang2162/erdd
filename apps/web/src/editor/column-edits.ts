@@ -5,7 +5,9 @@ function tableColumns(model: ProjectModel, tableId: string): Column[] {
 }
 
 export function addColumn(
-  model: ProjectModel, tableId: string, { id }: { id: string },
+  model: ProjectModel,
+  tableId: string,
+  { id }: { id: string },
 ): ProjectModel {
   const siblings = tableColumns(model, tableId)
   const order = siblings.length === 0 ? 0 : Math.max(...siblings.map((c) => c.order)) + 1
@@ -13,9 +15,19 @@ export function addColumn(
   let n = 1
   while (used.has(`COL_${n}`)) n++
   const column: Column = {
-    id, tableId, logicalName: `컬럼${n}`, physicalName: `COL_${n}`,
-    type: 'VARCHAR(255)', isPk: false, autoIncrement: false, nullable: true,
-    defaultValue: null, order, comment: null, domainId: null, custom: {},
+    id,
+    tableId,
+    logicalName: `컬럼${n}`,
+    physicalName: `COL_${n}`,
+    type: 'VARCHAR(255)',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   return { ...model, columns: { ...model.columns, [id]: column } }
 }
@@ -23,7 +35,8 @@ export function addColumn(
 // patch 에서 `tableId` 를 빼 둔 것이 나눠 보내기의 접두사 무결성 방어선이다 — 컬럼의 소속을 바꾸는 diff 는
 // 조각 경계에서 관계·인덱스 참조가 깨질 수 있다(core `diff-prefix.test.ts` 머리 주석).
 export function updateColumn(
-  model: ProjectModel, id: string,
+  model: ProjectModel,
+  id: string,
   patch: Partial<Omit<Column, 'id' | 'tableId'>>,
 ): ProjectModel {
   const column = model.columns[id]
@@ -35,7 +48,11 @@ export function removeColumn(model: ProjectModel, id: string): ProjectModel {
   return deleteColumnCascade(model, id)
 }
 
-export function setColumnDomain(model: ProjectModel, columnId: string, domainId: string): ProjectModel {
+export function setColumnDomain(
+  model: ProjectModel,
+  columnId: string,
+  domainId: string,
+): ProjectModel {
   const c = model.columns[columnId]
   if (!c) return model
   return { ...model, columns: { ...model.columns, [columnId]: { ...c, domainId } } }
@@ -46,7 +63,10 @@ export function clearColumnDomain(model: ProjectModel, columnId: string): Projec
   if (!c || c.domainId === null) return model
   // 해제 시 해석된 논리타입을 type에 복사(직접입력 전환). 방언 무관하게 논리타입만 필요하므로 임의 방언 사용.
   const logicalType = resolveColumn(c, model, 'postgresql').logicalType
-  return { ...model, columns: { ...model.columns, [columnId]: { ...c, domainId: null, type: logicalType } } }
+  return {
+    ...model,
+    columns: { ...model.columns, [columnId]: { ...c, domainId: null, type: logicalType } },
+  }
 }
 
 /** 같은 테이블 내 인접 컬럼과 order를 교환한다. dir: -1 위로, +1 아래로. */

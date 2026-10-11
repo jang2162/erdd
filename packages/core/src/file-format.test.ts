@@ -9,16 +9,18 @@ describe('modelToFiles', () => {
   it('테이블마다 파일 하나와 최상위 파일 5개를 만든다', () => {
     const { tree, issues } = modelToFiles(fullModel())
     expect(issues).toEqual([])
-    expect(Object.keys(tree).sort()).toEqual([
-      `${TREE_ROOT}/custom-fields.yaml`,
-      `${TREE_ROOT}/domains.yaml`,
-      `${TREE_ROOT}/groups.yaml`,
-      `${TREE_ROOT}/tables/MBR.yaml`,
-      `${TREE_ROOT}/tables/MBR_DTL.yaml`,
-      `${TREE_ROOT}/tables/ORD.yaml`,
-      `${TREE_ROOT}/terms.yaml`,
-      `${TREE_ROOT}/words.yaml`,
-    ].sort())
+    expect(Object.keys(tree).sort()).toEqual(
+      [
+        `${TREE_ROOT}/custom-fields.yaml`,
+        `${TREE_ROOT}/domains.yaml`,
+        `${TREE_ROOT}/groups.yaml`,
+        `${TREE_ROOT}/tables/MBR.yaml`,
+        `${TREE_ROOT}/tables/MBR_DTL.yaml`,
+        `${TREE_ROOT}/tables/ORD.yaml`,
+        `${TREE_ROOT}/terms.yaml`,
+        `${TREE_ROOT}/words.yaml`,
+      ].sort(),
+    )
     // 여섯째는 origins.yaml 이다 — 출처가 0건이면 만들지 않아 위 목록에 없다.
     expect(TOP_LEVEL_FILES).toHaveLength(6)
   })
@@ -26,8 +28,9 @@ describe('modelToFiles', () => {
   it('그룹 별칭을 groups.yaml 에 싣고 빈 별칭은 생략한다', () => {
     const m = fullModel()
     m.tableGroups['g2'] = { id: 'g2', name: '주문관리', color: '#fee', comment: null, alias: '' }
-    const groups = (modelToFiles(m).tree[`${TREE_ROOT}/groups.yaml`] as
-      { groups: Array<Record<string, unknown>> }).groups
+    const groups = (
+      modelToFiles(m).tree[`${TREE_ROOT}/groups.yaml`] as { groups: Array<Record<string, unknown>> }
+    ).groups
     expect(groups.find((g) => g['id'] === 'g1')!['alias']).toBe('MBR')
     expect(groups.find((g) => g['id'] === 'g2')).not.toHaveProperty('alias')
   })
@@ -35,24 +38,67 @@ describe('modelToFiles', () => {
   it('컬럼·인덱스·관계를 테이블 파일 안에 이름으로 적는다', () => {
     const { tree } = modelToFiles(fullModel())
     expect(tree[`${TREE_ROOT}/tables/MBR.yaml`]).toEqual({
-      id: 'tb1', name: 'MBR', logicalName: '회원', group: '회원관리', comment: '서비스 가입 회원',
+      id: 'tb1',
+      name: 'MBR',
+      logicalName: '회원',
+      group: '회원관리',
+      comment: '서비스 가입 회원',
       columns: [
-        { id: 'c1', name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', pk: true, autoIncrement: true, nullable: false, comment: '회원 식별자' },
-        { id: 'c2', name: 'MBR_NM', logicalName: '회원명', domain: '명', type: 'VARCHAR(100)', nullable: false, default: "''", custom: { '개인정보여부': 'true' } },
+        {
+          id: 'c1',
+          name: 'MBR_NO',
+          logicalName: '회원번호',
+          type: 'BIGINT',
+          pk: true,
+          autoIncrement: true,
+          nullable: false,
+          comment: '회원 식별자',
+        },
+        {
+          id: 'c2',
+          name: 'MBR_NM',
+          logicalName: '회원명',
+          domain: '명',
+          type: 'VARCHAR(100)',
+          nullable: false,
+          default: "''",
+          custom: { 개인정보여부: 'true' },
+        },
       ],
       indexes: [{ id: 'ix1', name: 'UX_MBR_01', columns: ['MBR_NM'], unique: true }],
     })
     expect(tree[`${TREE_ROOT}/tables/ORD.yaml`]).toEqual({
-      id: 'tb2', name: 'ORD', logicalName: '주문',
+      id: 'tb2',
+      name: 'ORD',
+      logicalName: '주문',
       columns: [
-        { id: 'c3', name: 'ORD_NO', logicalName: '주문번호', type: 'BIGINT', pk: true, nullable: false },
-        { id: 'c4', name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', pk: true, nullable: false },
+        {
+          id: 'c3',
+          name: 'ORD_NO',
+          logicalName: '주문번호',
+          type: 'BIGINT',
+          pk: true,
+          nullable: false,
+        },
+        {
+          id: 'c4',
+          name: 'MBR_NO',
+          logicalName: '회원번호',
+          type: 'BIGINT',
+          pk: true,
+          nullable: false,
+        },
       ],
       indexes: [{ id: 'ix2', name: 'IX_ORD_01', columns: ['MBR_NO DESC'] }],
-      relations: [{
-        id: 'r1', name: 'FK_ORD_MBR', to: 'MBR',
-        columns: { MBR_NO: 'MBR_NO' }, identifying: true,
-      }],
+      relations: [
+        {
+          id: 'r1',
+          name: 'FK_ORD_MBR',
+          to: 'MBR',
+          columns: { MBR_NO: 'MBR_NO' },
+          identifying: true,
+        },
+      ],
     })
   })
 
@@ -67,8 +113,14 @@ describe('modelToFiles', () => {
     const m = fullModel()
     // 컬렉션 키는 반드시 id와 같아야 한다(op.ts:90이 강제하는 리포 전역 불변식).
     m.tables['tb3abcdef-0000'] = {
-      id: 'tb3abcdef-0000', logicalName: '회원소문자', physicalName: 'mbr', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb3abcdef-0000',
+      logicalName: '회원소문자',
+      physicalName: 'mbr',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const { tree, issues } = modelToFiles(m)
     expect(Object.keys(tree)).toContain(`${TREE_ROOT}/tables/MBR.tb1.yaml`)
@@ -82,16 +134,30 @@ describe('modelToFiles', () => {
     // uuidv7의 앞 12자는 48비트 ms 타임스탬프 — 같은 65초 창이면 앞 8자가 동일하다.
     const idA = '019fc671-b1ef-7e97-958b-4a888c73a323'
     const idB = '019fc671-c2aa-7000-8000-000000000001'
-    expect(idA.slice(0, 8)).toBe(idB.slice(0, 8))   // 전제 확인
+    expect(idA.slice(0, 8)).toBe(idB.slice(0, 8)) // 전제 확인
     m.tables[idA] = {
-      id: idA, logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: idA,
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.tables[idB] = {
-      id: idB, logicalName: '회원소문자', physicalName: 'mbr', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: idB,
+      logicalName: '회원소문자',
+      physicalName: 'mbr',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
-    const names = Object.keys(modelToFiles(m).tree).filter((p) => p.startsWith(`${TREE_ROOT}/tables/`))
+    const names = Object.keys(modelToFiles(m).tree).filter((p) =>
+      p.startsWith(`${TREE_ROOT}/tables/`),
+    )
     expect(names).toHaveLength(2)
     // 대소문자를 구분하지 않는 파일시스템에서도 서로 다른 경로여야 한다.
     expect(new Set(names.map((n) => n.toLowerCase())).size).toBe(2)
@@ -101,14 +167,26 @@ describe('modelToFiles', () => {
     const m = createEmptyModel()
     const idA = '019fc671-0000-7000-8000-4a888c73a323'
     const idB = '019fc671-1111-7000-8000-4a888c73a323'
-    expect(idA.slice(-8)).toBe(idB.slice(-8))   // 전제 확인
+    expect(idA.slice(-8)).toBe(idB.slice(-8)) // 전제 확인
     m.tables[idA] = {
-      id: idA, logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: idA,
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.tables[idB] = {
-      id: idB, logicalName: '회원소문자', physicalName: 'mbr', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: idB,
+      logicalName: '회원소문자',
+      physicalName: 'mbr',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const names = Object.keys(modelToFiles(m).tree)
     expect(names).toContain(`${TREE_ROOT}/tables/MBR.${idA}.yaml`)
@@ -118,12 +196,24 @@ describe('modelToFiles', () => {
   it('경로 구분자나 ..가 든 물리명은 파일로 쓰지 않고 issue를 낸다', () => {
     const m = fullModel()
     m.tables['tbX'] = {
-      id: 'tbX', logicalName: '탈출', physicalName: '../../ESCAPED', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tbX',
+      logicalName: '탈출',
+      physicalName: '../../ESCAPED',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.tables['tbY'] = {
-      id: 'tbY', logicalName: '중첩', physicalName: 'sub/NESTED', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tbY',
+      logicalName: '중첩',
+      physicalName: 'sub/NESTED',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const { tree, issues } = modelToFiles(m)
     // 트리 키가 erdd/tables/ 밖으로 나가지 않는다.
@@ -141,17 +231,31 @@ describe('filesToModel', () => {
   it('newId를 주면 신규 객체가 발급된 id를 받고 참조도 그 id로 조립된다', () => {
     const tree = {
       'erdd/groups.yaml': { groups: [{ name: '회원관리', color: '#eef' }] },
-      'erdd/domains.yaml': { domains: [{ name: '명칭', logicalType: 'VARCHAR(100)', dialectTypes: {} }] },
+      'erdd/domains.yaml': {
+        domains: [{ name: '명칭', logicalType: 'VARCHAR(100)', dialectTypes: {} }],
+      },
       'erdd/words.yaml': { words: [{ logicalName: '회원', abbreviation: 'MBR' }] },
       'erdd/terms.yaml': { terms: [{ logicalName: '회원번호', physicalName: 'MBR_NO' }] },
       'erdd/custom-fields.yaml': { customFields: [{ name: 'cf1', target: 'table', type: 'text' }] },
       'erdd/tables/MBR.yaml': {
-        name: 'MBR', logicalName: '회원', group: '회원관리',
-        columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', pk: true, nullable: false, domain: '명칭' }],
+        name: 'MBR',
+        logicalName: '회원',
+        group: '회원관리',
+        columns: [
+          {
+            name: 'MBR_NO',
+            logicalName: '회원번호',
+            type: 'BIGINT',
+            pk: true,
+            nullable: false,
+            domain: '명칭',
+          },
+        ],
         indexes: [{ name: 'UX_MBR_01', columns: ['MBR_NO'], unique: true }],
       },
       'erdd/tables/ORD.yaml': {
-        name: 'ORD', logicalName: '주문',
+        name: 'ORD',
+        logicalName: '주문',
         columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', nullable: false }],
         relations: [{ to: 'MBR', columns: { MBR_NO: 'MBR_NO' } }],
       },
@@ -163,9 +267,15 @@ describe('filesToModel', () => {
     const m = result.model
 
     const allIds = [
-      ...Object.keys(m.tableGroups), ...Object.keys(m.tables),
-      ...Object.keys(m.columns), ...Object.keys(m.indexes), ...Object.keys(m.relationships),
-      ...Object.keys(m.domains), ...Object.keys(m.words), ...Object.keys(m.terms), ...Object.keys(m.customFields),
+      ...Object.keys(m.tableGroups),
+      ...Object.keys(m.tables),
+      ...Object.keys(m.columns),
+      ...Object.keys(m.indexes),
+      ...Object.keys(m.relationships),
+      ...Object.keys(m.domains),
+      ...Object.keys(m.words),
+      ...Object.keys(m.terms),
+      ...Object.keys(m.customFields),
     ]
     expect(allIds.every((id) => id.startsWith('id-'))).toBe(true)
     expect(allIds.some(isNewId)).toBe(false)
@@ -264,7 +374,9 @@ describe('filesToModel', () => {
     expect(names).toContain('NEW_A')
     expect(names).toContain('NEW_B')
     // 키가 겹치지 않아야 한다 — 겹치면 하나가 사라진다.
-    expect(new Set(Object.keys(result.model.columns)).size).toBe(Object.keys(result.model.columns).length)
+    expect(new Set(Object.keys(result.model.columns)).size).toBe(
+      Object.keys(result.model.columns).length,
+    )
   })
 
   it('id 없는 테이블이 둘이어도 둘 다 남는다', () => {
@@ -291,7 +403,12 @@ describe('filesToModel', () => {
 
   it('테이블 물리명이 중복되면 issue를 낸다', () => {
     const { tree } = modelToFiles(fullModel())
-    tree['erdd/tables/MBR.copy.yaml'] = { id: 'tbX', name: 'MBR', logicalName: '회원사본', columns: [] }
+    tree['erdd/tables/MBR.copy.yaml'] = {
+      id: 'tbX',
+      name: 'MBR',
+      logicalName: '회원사본',
+      columns: [],
+    }
     const result = filesToModel(tree)
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -307,8 +424,14 @@ describe('filesToModel', () => {
    * 생길 수 없다. 그 상태는 alias 검사(같은 객체 재방문)에 걸려 "id 중복"이 아닌 다른
    * 오류를 부르므로, 테스트가 잡으려는 상황과 어긋난다.
    */
-  const copiedFile = (tree: FileTree, name: string, logicalName: string): Record<string, unknown> => ({
-    ...structuredClone(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>), name, logicalName,
+  const copiedFile = (
+    tree: FileTree,
+    name: string,
+    logicalName: string,
+  ): Record<string, unknown> => ({
+    ...structuredClone(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>),
+    name,
+    logicalName,
   })
 
   it('같은 id가 두 파일에 있으면 issue를 낸다 — 파일 복사가 원본을 조용히 덮어쓴다', () => {
@@ -324,8 +447,8 @@ describe('filesToModel', () => {
     if (result.ok) return
     const dup = result.issues.find((i) => i.message.includes('tb3'))
     expect(dup).toBeDefined()
-    expect(dup!.path).toBe('erdd/tables/PAY.yaml')               // 뒤에 온 파일에서 보고한다
-    expect(dup!.message).toContain('erdd/tables/MBR_DTL.yaml')   // 먼저 쓴 파일도 짚어 준다
+    expect(dup!.path).toBe('erdd/tables/PAY.yaml') // 뒤에 온 파일에서 보고한다
+    expect(dup!.message).toContain('erdd/tables/MBR_DTL.yaml') // 먼저 쓴 파일도 짚어 준다
   })
 
   it('newId를 줘도(push 경로) 명시된 id 중복은 그대로 issue다', () => {
@@ -377,7 +500,7 @@ describe('filesToModel', () => {
     if (!result.ok) return
     expect(result.model.tables['tb1']!.physicalName).toBe('MEMBER')
     expect(result.tableFiles).toEqual({
-      tb1: 'erdd/tables/MBR.yaml',      // 물리명에서 재조립하면 MEMBER.yaml — 없는 파일이다
+      tb1: 'erdd/tables/MBR.yaml', // 물리명에서 재조립하면 MEMBER.yaml — 없는 파일이다
       tb2: 'erdd/tables/ORD.yaml',
     })
   })
@@ -391,17 +514,31 @@ describe('filesToModel', () => {
 function treeWithNewEverywhere(): FileTree {
   return {
     'erdd/groups.yaml': { groups: [{ name: '회원관리', color: '#eef' }] },
-    'erdd/domains.yaml': { domains: [{ name: '명칭', logicalType: 'VARCHAR(100)', dialectTypes: {} }] },
+    'erdd/domains.yaml': {
+      domains: [{ name: '명칭', logicalType: 'VARCHAR(100)', dialectTypes: {} }],
+    },
     'erdd/words.yaml': { words: [{ logicalName: '회원', abbreviation: 'MBR' }] },
     'erdd/terms.yaml': { terms: [{ logicalName: '회원번호', physicalName: 'MBR_NO' }] },
     'erdd/custom-fields.yaml': { customFields: [{ name: 'cf1', target: 'table', type: 'text' }] },
     'erdd/tables/MBR.yaml': {
-      name: 'MBR', logicalName: '회원', group: '회원관리',
-      columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', pk: true, nullable: false, domain: '명칭' }],
+      name: 'MBR',
+      logicalName: '회원',
+      group: '회원관리',
+      columns: [
+        {
+          name: 'MBR_NO',
+          logicalName: '회원번호',
+          type: 'BIGINT',
+          pk: true,
+          nullable: false,
+          domain: '명칭',
+        },
+      ],
       indexes: [{ name: 'UX_MBR_01', columns: ['MBR_NO'], unique: true }],
     },
     'erdd/tables/ORD.yaml': {
-      name: 'ORD', logicalName: '주문',
+      name: 'ORD',
+      logicalName: '주문',
       columns: [{ name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT', nullable: false }],
       relations: [{ to: 'MBR', columns: { MBR_NO: 'MBR_NO' } }],
     },
@@ -411,9 +548,14 @@ function treeWithNewEverywhere(): FileTree {
 /** 모델이 쥔 모든 엔티티 id. 컬렉션 키가 곧 id다(op.ts:90). */
 function idsOf(m: ProjectModel): string[] {
   return [
-    ...Object.keys(m.tableGroups), ...Object.keys(m.tables),
-    ...Object.keys(m.columns), ...Object.keys(m.indexes), ...Object.keys(m.relationships),
-    ...Object.keys(m.domains), ...Object.keys(m.words), ...Object.keys(m.terms),
+    ...Object.keys(m.tableGroups),
+    ...Object.keys(m.tables),
+    ...Object.keys(m.columns),
+    ...Object.keys(m.indexes),
+    ...Object.keys(m.relationships),
+    ...Object.keys(m.domains),
+    ...Object.keys(m.words),
+    ...Object.keys(m.terms),
     ...Object.keys(m.customFields),
   ]
 }
@@ -475,15 +617,23 @@ describe('filesToModel — assignedTree (push 멱등성)', () => {
   })
 
   it('이미 적힌 id는 그대로 두고 새로 발급하지 않는다', () => {
-    const result = filesToModel({
-      'erdd/tables/MBR.yaml': {
-        id: 'table-keep', name: 'MBR', logicalName: '회원',
-        columns: [{ id: 'col-keep', name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT' }],
+    const result = filesToModel(
+      {
+        'erdd/tables/MBR.yaml': {
+          id: 'table-keep',
+          name: 'MBR',
+          logicalName: '회원',
+          columns: [{ id: 'col-keep', name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT' }],
+        },
       },
-    }, { newId: () => 'issued' })
+      { newId: () => 'issued' },
+    )
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    const file = result.assignedTree!['erdd/tables/MBR.yaml'] as { id: string; columns: { id: string }[] }
+    const file = result.assignedTree!['erdd/tables/MBR.yaml'] as {
+      id: string
+      columns: { id: string }[]
+    }
     expect(file.id).toBe('table-keep')
     expect(file.columns[0]!.id).toBe('col-keep')
     expect(Object.keys(result.model.tables)).toEqual(['table-keep'])
@@ -515,9 +665,12 @@ describe('filesToModel — assignedTree (push 멱등성)', () => {
     // 잡지 않으면 컬럼 2개가 조용히 1개로 합쳐진 채 ok:true가 나간다.
     const shared = { name: 'MBR_NO', logicalName: '회원번호', type: 'BIGINT' }
     let n = 0
-    const result = filesToModel({
-      'erdd/tables/MBR.yaml': { name: 'MBR', logicalName: '회원', columns: [shared, shared] },
-    }, { newId: () => `id-${++n}` })
+    const result = filesToModel(
+      {
+        'erdd/tables/MBR.yaml': { name: 'MBR', logicalName: '회원', columns: [shared, shared] },
+      },
+      { newId: () => `id-${++n}` },
+    )
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.issues).toHaveLength(1)
@@ -562,12 +715,17 @@ describe('filesToModel — assignedTree (push 멱등성)', () => {
 
   it('파싱에 실패하면 assignedTree를 내지 않는다', () => {
     // 없는 부모 테이블을 가리키는 관계 — 기존 테스트가 쓰는 것과 같은 실패 경로다.
-    const result = filesToModel({
-      'erdd/tables/ORD.yaml': {
-        name: 'ORD', logicalName: '주문', columns: [],
-        relations: [{ to: 'NOPE', columns: {} }],
+    const result = filesToModel(
+      {
+        'erdd/tables/ORD.yaml': {
+          name: 'ORD',
+          logicalName: '주문',
+          columns: [],
+          relations: [{ to: 'NOPE', columns: {} }],
+        },
       },
-    }, { newId: () => 'id-x' })
+      { newId: () => 'id-x' },
+    )
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result).not.toHaveProperty('assignedTree')
@@ -583,18 +741,40 @@ describe('파일 왕복 — 부호 없음 표기', () => {
   it('컬럼 타입과 도메인 논리 타입이 yaml 왕복을 견딘다', () => {
     const m = createEmptyModel()
     m.domains['d'] = {
-      id: 'd', name: '수량', category: null, logicalType: 'BIGINT UNSIGNED',
+      id: 'd',
+      name: '수량',
+      category: null,
+      logicalType: 'BIGINT UNSIGNED',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
     m.tables['t'] = {
-      id: 't', logicalName: 'ORD', physicalName: 'ORD', comment: null, groupId: null,
-      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't',
+      logicalName: 'ORD',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns['c'] = {
-      id: 'c', tableId: 't', logicalName: 'ORD_NO', physicalName: 'ORD_NO', type: 'INT UNSIGNED',
-      isPk: true, autoIncrement: true, nullable: false, defaultValue: null, order: 0,
-      comment: null, domainId: null, custom: {},
+      id: 'c',
+      tableId: 't',
+      logicalName: 'ORD_NO',
+      physicalName: 'ORD_NO',
+      type: 'INT UNSIGNED',
+      isPk: true,
+      autoIncrement: true,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     const r = filesToModel(modelToFiles(m).tree)
     expect(r.ok).toBe(true)
@@ -606,13 +786,20 @@ describe('파일 왕복 — 부호 없음 표기', () => {
 
 describe('origins.yaml', () => {
   const origin = {
-    libraryId: 'L1', sourceId: 'S1', sourceVersion: 3,
+    libraryId: 'L1',
+    sourceId: 'S1',
+    sourceVersion: 3,
     base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null },
   }
   function withWord(o: typeof origin | null = origin) {
     const m = createEmptyModel()
     m.words['w1'] = {
-      id: 'w1', logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin: o,
+      id: 'w1',
+      logicalName: '고객',
+      abbreviation: 'CUST',
+      englishName: null,
+      description: null,
+      origin: o,
     }
     return m
   }
@@ -620,9 +807,13 @@ describe('origins.yaml', () => {
   it('출처를 origins.yaml 로 쓰고, 사전 파일에는 싣지 않으며, 다시 읽으면 복원된다', () => {
     const { tree } = modelToFiles(withWord())
     expect(tree['erdd/origins.yaml']).toEqual({
-      origins: [{ id: 'w1', kind: 'word', library: 'L1', item: 'S1', version: 3, base: origin.base }],
+      origins: [
+        { id: 'w1', kind: 'word', library: 'L1', item: 'S1', version: 3, base: origin.base },
+      ],
     })
-    expect(tree['erdd/words.yaml']).toEqual({ words: [{ id: 'w1', logicalName: '고객', abbreviation: 'CUST' }] })
+    expect(tree['erdd/words.yaml']).toEqual({
+      words: [{ id: 'w1', logicalName: '고객', abbreviation: 'CUST' }],
+    })
     const r = filesToModel(tree)
     expect(r.ok && r.model.words['w1']!.origin).toEqual(origin)
   })
@@ -634,18 +825,24 @@ describe('origins.yaml', () => {
   it('여러 종류의 출처를 id 오름차순으로 쓴다', () => {
     const m = withWord()
     m.domains['d0'] = {
-      id: 'd0', name: 'NO', category: null, logicalType: 'string',
+      id: 'd0',
+      name: 'NO',
+      category: null,
+      logicalType: 'string',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
       origin: { libraryId: 'L1', sourceId: 'S0', sourceVersion: 1, base: {} },
     }
-    const list = (modelToFiles(m).tree['erdd/origins.yaml'] as { origins: { id: string }[] }).origins
+    const list = (modelToFiles(m).tree['erdd/origins.yaml'] as { origins: { id: string }[] })
+      .origins
     expect(list.map((o) => o.id)).toEqual(['d0', 'w1'])
   })
 
   it('가리키는 엔티티가 없는 줄은 조용히 무시하고 다음 쓰기에서 사라진다', () => {
     const { tree } = modelToFiles(withWord())
-    tree['erdd/words.yaml'] = { words: [] }   // 사람이 단어를 지웠다
+    tree['erdd/words.yaml'] = { words: [] } // 사람이 단어를 지웠다
     const r = filesToModel(tree)
     expect(r.ok).toBe(true)
     if (!r.ok) return
@@ -656,7 +853,12 @@ describe('origins.yaml', () => {
   it('id 가 프로토타입 키여도 엔티티로 오인하지 않는다', () => {
     const { tree } = modelToFiles(withWord())
     const [o] = (tree['erdd/origins.yaml'] as { origins: Record<string, unknown>[] }).origins
-    tree['erdd/origins.yaml'] = { origins: [{ ...o, id: '__proto__' }, { ...o, id: 'constructor' }] }
+    tree['erdd/origins.yaml'] = {
+      origins: [
+        { ...o, id: '__proto__' },
+        { ...o, id: 'constructor' },
+      ],
+    }
     const r = filesToModel(tree)
     expect(r.ok).toBe(true)
     expect(({} as Record<string, unknown>)['origin']).toBeUndefined()
@@ -697,7 +899,11 @@ describe('origins.yaml', () => {
   it('종류가 다른 두 엔티티가 같은 id 를 쓰면 각자의 출처로 읽는다', () => {
     const m = withWord()
     m.terms['w1'] = {
-      id: 'w1', logicalName: '고객', physicalName: 'CUST', domainId: null, description: null,
+      id: 'w1',
+      logicalName: '고객',
+      physicalName: 'CUST',
+      domainId: null,
+      description: null,
       origin: { ...origin, sourceId: 'S2' },
     }
     const r = filesToModel(modelToFiles(m).tree)
@@ -710,16 +916,25 @@ describe('origins.yaml', () => {
   it('출처는 로캘이 아니라 코드 단위 순서로 정렬한다', () => {
     const m = createEmptyModel()
     for (const id of ['a1', 'B1']) {
-      m.words[id] = { id, logicalName: id, abbreviation: id, englishName: null, description: null, origin }
+      m.words[id] = {
+        id,
+        logicalName: id,
+        abbreviation: id,
+        englishName: null,
+        description: null,
+        origin,
+      }
     }
-    const list = (modelToFiles(m).tree['erdd/origins.yaml'] as { origins: { id: string }[] }).origins
+    const list = (modelToFiles(m).tree['erdd/origins.yaml'] as { origins: { id: string }[] })
+      .origins
     // localeCompare 는 a1 → B1 이다. 코드 단위로는 대문자가 앞선다.
     expect(list.map((o) => o.id)).toEqual(['B1', 'a1'])
   })
 
   it('읽은 출처의 base 는 입력 트리와 참조를 공유하지 않는다', () => {
     const { tree } = modelToFiles(withWord())
-    const [o] = (tree['erdd/origins.yaml'] as { origins: { base: Record<string, unknown> }[] }).origins
+    const [o] = (tree['erdd/origins.yaml'] as { origins: { base: Record<string, unknown> }[] })
+      .origins
     const r = filesToModel(tree)
     expect(r.ok).toBe(true)
     if (!r.ok) return

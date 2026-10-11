@@ -10,8 +10,16 @@ describe('applyOps', () => {
   // 순서가 흐트러지면 스냅샷 복원이 FK 위반 500으로 죽는 사고가 과거 2회 있었다.
   it('ENTITY_KINDS 순서는 FK 안전성 제약이다(참조 대상이 참조하는 쪽보다 앞)', () => {
     expect(ENTITY_KINDS).toEqual([
-      'tableGroup', 'domain', 'word', 'term', 'customField',
-      'table', 'column', 'relationship', 'index', 'note',
+      'tableGroup',
+      'domain',
+      'word',
+      'term',
+      'customField',
+      'table',
+      'column',
+      'relationship',
+      'index',
+      'note',
     ])
   })
 
@@ -20,11 +28,15 @@ describe('applyOps', () => {
     const frozen = JSON.parse(JSON.stringify(base))
     const ops: Op[] = [
       {
-        action: 'create', entity: 'note', entityId: 'n2',
+        action: 'create',
+        entity: 'note',
+        entityId: 'n2',
         data: { id: 'n2', content: '새 메모', position: { x: 1, y: 2 }, color: '#FFFFFF' },
       },
       {
-        action: 'update', entity: 'column', entityId: 'c3',
+        action: 'update',
+        entity: 'column',
+        entityId: 'c3',
         changes: { logicalName: { from: '회원명', to: '고객명' } },
       },
       { action: 'delete', entity: 'index', entityId: 'i1', before: base.indexes.i1 },
@@ -39,7 +51,9 @@ describe('applyOps', () => {
   it('rejects creating an entity whose id already exists', () => {
     const base = buildSampleModel()
     const op: Op = {
-      action: 'create', entity: 'note', entityId: 'n1',
+      action: 'create',
+      entity: 'note',
+      entityId: 'n1',
       data: { id: 'n1', content: 'dup', position: { x: 0, y: 0 }, color: '#fff' },
     }
     expect(() => applyOps(base, [op])).toThrow(OpApplyError)
@@ -48,7 +62,9 @@ describe('applyOps', () => {
   it('rejects create when data.id does not match entityId', () => {
     const base = buildSampleModel()
     const op: Op = {
-      action: 'create', entity: 'note', entityId: 'n2',
+      action: 'create',
+      entity: 'note',
+      entityId: 'n2',
       data: { id: 'n9', content: 'x', position: { x: 0, y: 0 }, color: '#fff' },
     }
     expect(() => applyOps(base, [op])).toThrow(OpApplyError)
@@ -58,12 +74,22 @@ describe('applyOps', () => {
     const base = buildSampleModel()
     expect(() =>
       applyOps(base, [
-        { action: 'update', entity: 'table', entityId: 'missing', changes: { comment: { from: null, to: 'x' } } },
+        {
+          action: 'update',
+          entity: 'table',
+          entityId: 'missing',
+          changes: { comment: { from: null, to: 'x' } },
+        },
       ]),
     ).toThrow(OpApplyError)
     expect(() =>
       applyOps(base, [
-        { action: 'update', entity: 'table', entityId: 't1', changes: { id: { from: 't1', to: 't9' } } },
+        {
+          action: 'update',
+          entity: 'table',
+          entityId: 't1',
+          changes: { id: { from: 't1', to: 't9' } },
+        },
       ]),
     ).toThrow(OpApplyError)
   })
@@ -71,7 +97,9 @@ describe('applyOps', () => {
   it('rejects update that produces a schema-invalid entity', () => {
     const base = buildSampleModel()
     const op: Op = {
-      action: 'update', entity: 'column', entityId: 'c3',
+      action: 'update',
+      entity: 'column',
+      entityId: 'c3',
       changes: { order: { from: 1, to: 1.5 } }, // order는 정수여야 함
     }
     expect(() => applyOps(base, [op])).toThrow(OpApplyError)
@@ -109,7 +137,9 @@ describe('applyOps', () => {
   it('treats prototype property names as ordinary ids', () => {
     const base = buildSampleModel()
     const data = { id: 'constructor', content: 'x', position: { x: 0, y: 0 }, color: '#fff' }
-    const next = applyOps(base, [{ action: 'create', entity: 'note', entityId: 'constructor', data }])
+    const next = applyOps(base, [
+      { action: 'create', entity: 'note', entityId: 'constructor', data },
+    ])
     expect(next.notes['constructor']?.content).toBe('x')
     expect(() =>
       applyOps(base, [{ action: 'delete', entity: 'note', entityId: 'toString', before: null }]),
@@ -130,31 +160,59 @@ describe('applyOps', () => {
     expect(next).toEqual(base)
     expect(() =>
       applyOps(base, [
-        { action: 'update', entity: 'note', entityId: 'n1', changes: { nope: { from: null, to: 1 } } },
+        {
+          action: 'update',
+          entity: 'note',
+          entityId: 'n1',
+          changes: { nope: { from: null, to: 1 } },
+        },
       ]),
     ).toThrow(OpApplyError)
   })
 
   it('domain 엔티티를 create/update/delete로 왕복한다', () => {
     const m = createEmptyModel()
-    const d = { id: 'd1', name: '금액', category: '숫자', logicalType: 'DECIMAL(15)',
+    const d = {
+      id: 'd1',
+      name: '금액',
+      category: '숫자',
+      logicalType: 'DECIMAL(15)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null }
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+    }
     const created = applyOps(m, [{ action: 'create', entity: 'domain', entityId: 'd1', data: d }])
     expect(created.domains['d1']!.name).toBe('금액')
-    const updated = applyOps(created, [{ action: 'update', entity: 'domain', entityId: 'd1',
-      changes: { name: { from: '금액', to: '통화금액' } } }])
+    const updated = applyOps(created, [
+      {
+        action: 'update',
+        entity: 'domain',
+        entityId: 'd1',
+        changes: { name: { from: '금액', to: '통화금액' } },
+      },
+    ])
     expect(updated.domains['d1']!.name).toBe('통화금액')
-    const deleted = applyOps(updated, [{ action: 'delete', entity: 'domain', entityId: 'd1', before: d }])
+    const deleted = applyOps(updated, [
+      { action: 'delete', entity: 'domain', entityId: 'd1', before: d },
+    ])
     expect(deleted.domains['d1']).toBeUndefined()
   })
 
   it('컬럼 create 시 domainId를 생략해도 통과하며 null로 채워진다(구 리비전 하위호환)', () => {
     const base = buildSampleModel()
     const data = {
-      id: 'c5', tableId: 't2', logicalName: '비고', physicalName: 'RMK',
-      type: 'VARCHAR(200)', isPk: false, autoIncrement: false, nullable: true,
-      defaultValue: null, order: 3, comment: null,
+      id: 'c5',
+      tableId: 't2',
+      logicalName: '비고',
+      physicalName: 'RMK',
+      type: 'VARCHAR(200)',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 3,
+      comment: null,
       // domainId 의도적으로 생략 — domainId 필드가 없던 구 리비전 op 페이로드를 흉내
     }
     const next = applyOps(base, [{ action: 'create', entity: 'column', entityId: 'c5', data }])
@@ -163,40 +221,107 @@ describe('applyOps', () => {
 
   it('컬럼이 존재하지 않는 도메인을 가리키면 무결성 위반', () => {
     const m = createEmptyModel()
-    m.tables['t'] = { id: 't', logicalName: 'T', physicalName: 'T', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
-    expect(() => applyOps(m, [{ action: 'create', entity: 'column', entityId: 'c', data: {
-      id: 'c', tableId: 't', logicalName: 'A', physicalName: 'A', type: 'INT', isPk: false,
-      autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
-      domainId: 'missing' } }])).toThrow()
+    m.tables['t'] = {
+      id: 't',
+      logicalName: 'T',
+      physicalName: 'T',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
+    }
+    expect(() =>
+      applyOps(m, [
+        {
+          action: 'create',
+          entity: 'column',
+          entityId: 'c',
+          data: {
+            id: 'c',
+            tableId: 't',
+            logicalName: 'A',
+            physicalName: 'A',
+            type: 'INT',
+            isPk: false,
+            autoIncrement: false,
+            nullable: true,
+            defaultValue: null,
+            order: 0,
+            comment: null,
+            domainId: 'missing',
+          },
+        },
+      ]),
+    ).toThrow()
   })
 
   it('word/term 엔티티를 왕복하고, term은 존재하는 도메인만 참조한다', () => {
     const m = createEmptyModel()
-    const w = { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null }
+    const w = {
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+    }
     const created = applyOps(m, [{ action: 'create', entity: 'word', entityId: 'w1', data: w }])
     expect(created.words['w1']!.abbreviation).toBe('MBR')
     // term with missing domain → 무결성 위반
-    expect(() => applyOps(created, [{ action: 'create', entity: 'term', entityId: 't1', data: {
-      id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: 'nope', description: null } }])).toThrow()
+    expect(() =>
+      applyOps(created, [
+        {
+          action: 'create',
+          entity: 'term',
+          entityId: 't1',
+          data: {
+            id: 't1',
+            logicalName: '회원번호',
+            physicalName: 'MBR_NO',
+            domainId: 'nope',
+            description: null,
+          },
+        },
+      ]),
+    ).toThrow()
     // term with null domain OK
-    const wt = applyOps(created, [{ action: 'create', entity: 'term', entityId: 't1', data: {
-      id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: null, description: null } }])
+    const wt = applyOps(created, [
+      {
+        action: 'create',
+        entity: 'term',
+        entityId: 't1',
+        data: {
+          id: 't1',
+          logicalName: '회원번호',
+          physicalName: 'MBR_NO',
+          domainId: null,
+          description: null,
+        },
+      },
+    ])
     expect(wt.terms['t1']!.physicalName).toBe('MBR_NO')
   })
   it('words/terms 생략된 옛 모델도 파싱된다(.default)', () => {
     // applyOps 초기 spread가 model.words 없이도 동작하는지 — createEmptyModel엔 있으나 옛 스냅샷 방어
     const legacy = { ...createEmptyModel() } as Record<string, unknown>
-    delete legacy.words; delete legacy.terms
+    delete legacy.words
+    delete legacy.terms
     const out = applyOps(legacy as ReturnType<typeof createEmptyModel>, [])
-    expect(out.words).toEqual({}); expect(out.terms).toEqual({})
+    expect(out.words).toEqual({})
+    expect(out.terms).toEqual({})
   })
 
   it('customField 엔티티를 왕복하고 table/column의 custom 값을 갱신한다', () => {
     const m = createEmptyModel()
     const field = {
-      id: 'f1', name: '개인정보여부', target: 'column', type: 'boolean',
-      options: [], required: false, defaultValue: null, order: 0,
+      id: 'f1',
+      name: '개인정보여부',
+      target: 'column',
+      type: 'boolean',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
     }
     const withField = applyOps(m, [
       { action: 'create', entity: 'customField', entityId: 'f1', data: field },
@@ -204,19 +329,51 @@ describe('applyOps', () => {
     expect(withField.customFields['f1']!.name).toBe('개인정보여부')
 
     const withTable = applyOps(withField, [
-      { action: 'create', entity: 'table', entityId: 't1', data: {
-        id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null,
-        position: { x: 0, y: 0 }, groupPosition: null, custom: {} } },
-      { action: 'create', entity: 'column', entityId: 'c1', data: {
-        id: 'c1', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM', type: 'VARCHAR(100)',
-        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0,
-        comment: null, domainId: null, custom: { f1: 'true' } } },
+      {
+        action: 'create',
+        entity: 'table',
+        entityId: 't1',
+        data: {
+          id: 't1',
+          logicalName: '회원',
+          physicalName: 'MBR',
+          comment: null,
+          groupId: null,
+          position: { x: 0, y: 0 },
+          groupPosition: null,
+          custom: {},
+        },
+      },
+      {
+        action: 'create',
+        entity: 'column',
+        entityId: 'c1',
+        data: {
+          id: 'c1',
+          tableId: 't1',
+          logicalName: '회원명',
+          physicalName: 'MBR_NM',
+          type: 'VARCHAR(100)',
+          isPk: false,
+          autoIncrement: false,
+          nullable: true,
+          defaultValue: null,
+          order: 0,
+          comment: null,
+          domainId: null,
+          custom: { f1: 'true' },
+        },
+      },
     ])
     expect(withTable.columns['c1']!.custom).toEqual({ f1: 'true' })
 
     const updated = applyOps(withTable, [
-      { action: 'update', entity: 'column', entityId: 'c1',
-        changes: { custom: { from: { f1: 'true' }, to: { f1: 'false' } } } },
+      {
+        action: 'update',
+        entity: 'column',
+        entityId: 'c1',
+        changes: { custom: { from: { f1: 'true' }, to: { f1: 'false' } } },
+      },
     ])
     expect(updated.columns['c1']!.custom).toEqual({ f1: 'false' })
 

@@ -8,8 +8,13 @@ import { CHANGE_KIND_LABEL, DIFF_KIND_LABEL, type ModelDiff } from './model-diff
 export type ExcelSheetKey = 'tableList' | 'tableSpec' | 'words' | 'terms' | 'domains'
 
 /** 워크북 안에서의 시트 순서. buildExcelSheets는 항상 이 순서로 반환한다. */
-export const EXCEL_SHEET_KEYS: readonly ExcelSheetKey[] =
-  ['tableList', 'tableSpec', 'words', 'terms', 'domains']
+export const EXCEL_SHEET_KEYS: readonly ExcelSheetKey[] = [
+  'tableList',
+  'tableSpec',
+  'words',
+  'terms',
+  'domains',
+]
 
 /**
  * 워크북에 실릴 수 있는 전체 시트 키. 'changes'(변경분 정의서)는 내보내기 다이얼로그의
@@ -28,13 +33,32 @@ export const EXCEL_SHEET_NAME: Record<SheetKey, string> = {
 
 export const TABLE_LIST_HEADERS = ['그룹', '논리명', '물리명', '설명'] as const
 export const TABLE_SPEC_HEADERS = [
-  '그룹', '테이블 논리명', '테이블 물리명', '순번', '논리명', '물리명',
-  '도메인', '타입', 'PK', 'NOT NULL', '기본값', '설명',
+  '그룹',
+  '테이블 논리명',
+  '테이블 물리명',
+  '순번',
+  '논리명',
+  '물리명',
+  '도메인',
+  '타입',
+  'PK',
+  'NOT NULL',
+  '기본값',
+  '설명',
 ] as const
 export const WORD_HEADERS = ['논리명', '약어', '영문명', '설명'] as const
 export const TERM_HEADERS = ['용어', '구성 단어', '물리명', '기본 도메인', '설명'] as const
 export const DOMAIN_HEADERS = [
-  '이름', '분류', '논리 타입', 'PostgreSQL', 'MySQL', 'Oracle', 'MSSQL', '기본값', '허용값', '설명',
+  '이름',
+  '분류',
+  '논리 타입',
+  'PostgreSQL',
+  'MySQL',
+  'Oracle',
+  'MSSQL',
+  '기본값',
+  '허용값',
+  '설명',
 ] as const
 export const CHANGE_HEADERS = ['구분', '대상', '변경유형', '속성', '이전값', '이후값'] as const
 
@@ -73,9 +97,11 @@ function scopedTables(model: ProjectModel, scope: ExportScope, rules: NamingRule
     picked = all.filter((t) => ids.has(t.id))
   }
   const compose = (t: Table) => composeTablePhysicalName(t, model, rules)
-  return picked.sort((a, b) =>
-    groupNameOf(model, a).localeCompare(groupNameOf(model, b))
-    || compose(a).localeCompare(compose(b)))
+  return picked.sort(
+    (a, b) =>
+      groupNameOf(model, a).localeCompare(groupNameOf(model, b)) ||
+      compose(a).localeCompare(compose(b)),
+  )
 }
 
 function tableColumns(model: ProjectModel, tableId: string): Column[] {
@@ -89,7 +115,8 @@ function tableColumns(model: ProjectModel, tableId: string): Column[] {
  * resolveColumn과 같은 우선순위지만 SQL 타입을 만들지 않으므로 dialect가 필요 없다).
  */
 function resolveForSheet(
-  model: ProjectModel, col: Column,
+  model: ProjectModel,
+  col: Column,
 ): { domainName: string; type: string; defaultValue: string } {
   const d = col.domainId ? model.domains[col.domainId] : undefined
   if (!d) return { domainName: '', type: col.type, defaultValue: text(col.defaultValue) }
@@ -121,10 +148,12 @@ export function buildExcelSheets(
     switch (key) {
       case 'tableList':
         return {
-          key, name: EXCEL_SHEET_NAME[key],
+          key,
+          name: EXCEL_SHEET_NAME[key],
           headers: [...TABLE_LIST_HEADERS, ...tableFields.map((f) => f.name)],
           rows: tables.map((t) => [
-            groupNameOf(model, t), composeTableLogicalName(t, model, rules),
+            groupNameOf(model, t),
+            composeTableLogicalName(t, model, rules),
             composeTablePhysicalName(t, model, rules),
             text(t.comment),
             ...tableFields.map((f) => resolveCustomValue(t, f)),
@@ -136,36 +165,50 @@ export function buildExcelSheets(
           tableColumns(model, t.id).forEach((c, i) => {
             const r = resolveForSheet(model, c)
             rows.push([
-              groupNameOf(model, t), composeTableLogicalName(t, model, rules),
+              groupNameOf(model, t),
+              composeTableLogicalName(t, model, rules),
               composeTablePhysicalName(t, model, rules),
               String(i + 1),
-              c.logicalName, c.physicalName, r.domainName, r.type,
-              c.isPk ? 'Y' : '', c.nullable ? '' : 'Y', r.defaultValue, text(c.comment),
+              c.logicalName,
+              c.physicalName,
+              r.domainName,
+              r.type,
+              c.isPk ? 'Y' : '',
+              c.nullable ? '' : 'Y',
+              r.defaultValue,
+              text(c.comment),
               ...columnFields.map((f) => resolveCustomValue(c, f)),
             ])
           })
         }
         return {
-          key, name: EXCEL_SHEET_NAME[key],
+          key,
+          name: EXCEL_SHEET_NAME[key],
           headers: [...TABLE_SPEC_HEADERS, ...columnFields.map((f) => f.name)],
           rows,
         }
       }
       case 'words':
         return {
-          key, name: EXCEL_SHEET_NAME[key], headers: [...WORD_HEADERS],
+          key,
+          name: EXCEL_SHEET_NAME[key],
+          headers: [...WORD_HEADERS],
           rows: Object.values(model.words)
             .sort((a, b) => a.logicalName.localeCompare(b.logicalName))
             .map((w) => [w.logicalName, w.abbreviation, text(w.englishName), text(w.description)]),
         }
       case 'terms':
         return {
-          key, name: EXCEL_SHEET_NAME[key], headers: [...TERM_HEADERS],
+          key,
+          name: EXCEL_SHEET_NAME[key],
+          headers: [...TERM_HEADERS],
           rows: Object.values(model.terms)
             .sort((a, b) => a.logicalName.localeCompare(b.logicalName))
             .map((t) => [
               t.logicalName,
-              decomposeByWords(t.logicalName, model.words, rules).map((s) => s.text).join(', '),
+              decomposeByWords(t.logicalName, model.words, rules)
+                .map((s) => s.text)
+                .join(', '),
               t.physicalName,
               t.domainId ? text(model.domains[t.domainId]?.name) : '',
               text(t.description),
@@ -175,14 +218,22 @@ export function buildExcelSheets(
         // 허용값은 `', '` 조인이고 파서는 `,`로 나눈다. 값 자체에 쉼표가 든 허용값은
         // 왕복하지 못한다(알려진 한계 — 인코딩 변경은 별도 과제).
         return {
-          key, name: EXCEL_SHEET_NAME[key], headers: [...DOMAIN_HEADERS],
+          key,
+          name: EXCEL_SHEET_NAME[key],
+          headers: [...DOMAIN_HEADERS],
           rows: Object.values(model.domains)
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((d) => [
-              d.name, text(d.category), d.logicalType,
-              text(d.dialectTypes.postgresql), text(d.dialectTypes.mysql),
-              text(d.dialectTypes.oracle), text(d.dialectTypes.mssql),
-              text(d.defaultValue), d.allowedValues.join(', '), text(d.description),
+              d.name,
+              text(d.category),
+              d.logicalType,
+              text(d.dialectTypes.postgresql),
+              text(d.dialectTypes.mysql),
+              text(d.dialectTypes.oracle),
+              text(d.dialectTypes.mssql),
+              text(d.defaultValue),
+              d.allowedValues.join(', '),
+              text(d.description),
             ]),
         }
     }
@@ -205,7 +256,8 @@ export function buildDictTemplateSheets(): SheetData[] {
  * 한 행에 속성·값 칸을 비워 둔다(무엇이 통째로 생기거나 사라졌는지가 정보의 전부다).
  */
 export function buildChangeSheet(
-  diff: ModelDiff, meta: { baseLabel: string; targetLabel: string },
+  diff: ModelDiff,
+  meta: { baseLabel: string; targetLabel: string },
 ): SheetData {
   const rows: string[][] = []
   for (const e of diff.entries) {

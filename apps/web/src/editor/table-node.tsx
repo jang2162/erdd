@@ -42,23 +42,36 @@ export function TableNode({
    */
   isConnectable?: boolean
 }) {
-  const { table, columns, viewMode, selected, tableWarnings = [], columnWarnings = {}, peers = [],
-    selectedColumnIds = [], onColumnClick, anchors = [] } = data
+  const {
+    table,
+    columns,
+    viewMode,
+    selected,
+    tableWarnings = [],
+    columnWarnings = {},
+    peers = [],
+    selectedColumnIds = [],
+    onColumnClick,
+    anchors = [],
+  } = data
   const peerColorHex = peers[0]?.color
   const sorted = [...columns].sort((a, b) => a.order - b.order)
   const mixed = viewMode === 'mixed'
   // 단일 앵커는 그 컬럼 행에, 복합 앵커는 맨 아래 합성 행에 붙는다.
   const anchorByColumn = new Map(
-    anchors.filter((a) => a.columnIds.length === 1).map((a) => [a.columnIds[0]!, a]))
+    anchors.filter((a) => a.columnIds.length === 1).map((a) => [a.columnIds[0]!, a]),
+  )
   const composites = anchors.filter((a) => a.columnIds.length > 1)
   const columnById = new Map(columns.map((c) => [c.id, c]))
   /** 합성 행 라벨. 혼합 모드는 물리명만 쓴다 — 둘 다 넣으면 노드가 과하게 넓어진다(설계 D-4). */
   const compositeLabel = (a: Anchor) =>
-    `(${a.columnIds.map((id) => {
-      const c = columnById.get(id)
-      if (c === undefined) return id
-      return viewMode === 'logical' ? c.logicalName : c.physicalName
-    }).join(', ')})`
+    `(${a.columnIds
+      .map((id) => {
+        const c = columnById.get(id)
+        if (c === undefined) return id
+        return viewMode === 'logical' ? c.logicalName : c.physicalName
+      })
+      .join(', ')})`
 
   return (
     <div
@@ -67,16 +80,30 @@ export function TableNode({
         selected && 'ring-2 ring-primary',
       )}
       // 로컬 선택(ring)과 구분되도록 peer는 바깥쪽 외곽선을 쓴다.
-      style={peerColorHex ? { outline: `2px solid ${peerColorHex}`, outlineOffset: '2px' } : undefined}
+      style={
+        peerColorHex ? { outline: `2px solid ${peerColorHex}`, outlineOffset: '2px' } : undefined
+      }
     >
-      <Handle id="l" type="source" position={Position.Left} isConnectable={isConnectable}
-        className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background" />
-      <Handle id="r" type="source" position={Position.Right} isConnectable={isConnectable}
-        className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background" />
+      <Handle
+        id="l"
+        type="source"
+        position={Position.Left}
+        isConnectable={isConnectable}
+        className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background"
+      />
+      <Handle
+        id="r"
+        type="source"
+        position={Position.Right}
+        isConnectable={isConnectable}
+        className="!h-3 !w-3 !border !border-muted-foreground/50 !bg-background"
+      />
       {peers.length > 0 && (
         <div className="flex flex-wrap gap-1 px-2 py-0.5" style={{ background: peerColorHex }}>
           {peers.map((p) => (
-            <span key={p.userId} className="text-[9px] font-semibold text-white">{p.name}</span>
+            <span key={p.userId} className="text-[9px] font-semibold text-white">
+              {p.name}
+            </span>
           ))}
         </div>
       )}
@@ -110,7 +137,7 @@ export function TableNode({
               onClick={(e) => {
                 if (!onColumnClick) return
                 e.stopPropagation() // React Flow의 onNodeClick이 테이블 선택으로 덮어쓰는 것을 막는다
-                const mode = e.shiftKey ? 'range' : (e.metaKey || e.ctrlKey) ? 'toggle' : 'replace'
+                const mode = e.shiftKey ? 'range' : e.metaKey || e.ctrlKey ? 'toggle' : 'replace'
                 onColumnClick(c.id, mode)
               }}
             >
@@ -131,7 +158,9 @@ export function TableNode({
                 </span>
               )}
               <span className="shrink-0 font-mono text-muted-foreground">{c.type}</span>
-              {!c.nullable && <span className="shrink-0 text-[10px] text-muted-foreground">NN</span>}
+              {!c.nullable && (
+                <span className="shrink-0 text-[10px] text-muted-foreground">NN</span>
+              )}
               {cWarnings.length > 0 && (
                 <span
                   className="shrink-0"

@@ -16,7 +16,9 @@ function wrapper() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
 }
@@ -26,9 +28,15 @@ class FakeEventSource {
   static last: FakeEventSource | null = null
   onmessage: ((e: { data: string }) => void) | null = null
   closed = false
-  constructor(public url: string) { FakeEventSource.last = this }
-  close() { this.closed = true }
-  emit(data: unknown) { this.onmessage?.({ data: JSON.stringify(data) }) }
+  constructor(public url: string) {
+    FakeEventSource.last = this
+  }
+  close() {
+    this.closed = true
+  }
+  emit(data: unknown) {
+    this.onmessage?.({ data: JSON.stringify(data) })
+  }
 }
 
 const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
@@ -136,7 +144,9 @@ describe('useLocalWatch', () => {
     const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
     const w = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>
-        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+        <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+          {children}
+        </TRPCProvider>
       </QueryClientProvider>
     )
     renderHook(() => useLocalWatch(PROJECT_ID, true), { wrapper: w })

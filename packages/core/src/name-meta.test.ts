@@ -18,7 +18,7 @@ describe('serializeNameMeta', () => {
   it('한 줄로 낸다', () => {
     const line = serializeNameMeta(META, '--')!
     expect(line.startsWith('-- erdd:v2 ')).toBe(true)
-    expect(line).not.toContain('\n')            // ⚠️ 줄바꿈이 들어가면 주석이 아닌 줄이 생긴다
+    expect(line).not.toContain('\n') // ⚠️ 줄바꿈이 들어가면 주석이 아닌 줄이 생긴다
   })
 
   it('접두만 갈린다', () => {
@@ -44,23 +44,27 @@ describe('parseNameMeta — v2', () => {
   })
 
   it('조회 키는 대문자로 정규화하고 원문 이름은 name 이 나른다', () => {
-    const m = parseNameMeta('-- erdd:v2 {"t":{"tb_mbr_ord":{"p":"ORD","l":"주문","g":"sales"}},"g":{"sales":{"a":"SLS"}}}')!
+    const m = parseNameMeta(
+      '-- erdd:v2 {"t":{"tb_mbr_ord":{"p":"ORD","l":"주문","g":"sales"}},"g":{"sales":{"a":"SLS"}}}',
+    )!
     expect(m.tables['TB_MBR_ORD']).toEqual({ p: 'ORD', l: '주문', g: 'sales' })
     expect(m.groups['SALES']).toEqual({ name: 'sales', a: 'SLS' })
   })
 
   it('그룹 구획이 없어도 읽는다', () => {
-    expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가"}}}'))
-      .toEqual({ tables: { X: { p: 'A', l: '가' } }, groups: {} })
+    expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가"}}}')).toEqual({
+      tables: { X: { p: 'A', l: '가' } },
+      groups: {},
+    })
   })
 
   it('형태가 다르면 null 이다', () => {
-    expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A"}}}')).toBeNull()             // l 없음
+    expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A"}}}')).toBeNull() // l 없음
     expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가","g":1}}}')).toBeNull() // g 가 문자열 아님
     expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가"}},"g":{"G":"x"}}')).toBeNull() // 그룹 값이 객체 아님
     expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가"}},"g":{"G":{"a":1}}}')).toBeNull()
     expect(parseNameMeta('-- erdd:v2 {"t":{"X":{"p":"A","l":"가"}},"g":[]}')).toBeNull() // g 구획이 객체 아님
-    expect(parseNameMeta('-- erdd:v2 {"g":{}}')).toBeNull()                          // t 없음
+    expect(parseNameMeta('-- erdd:v2 {"g":{}}')).toBeNull() // t 없음
   })
 })
 
@@ -71,14 +75,13 @@ describe('parseNameMeta — v1 하위호환', () => {
   })
 
   it('조회 키는 대문자로 정규화한다', () => {
-    expect(parseNameMeta('-- erdd:v1 {"tb_mbr_ord":{"p":"ORD","l":"주문"}}'))
-      .toEqual(V1_PARSED)
+    expect(parseNameMeta('-- erdd:v1 {"tb_mbr_ord":{"p":"ORD","l":"주문"}}')).toEqual(V1_PARSED)
   })
 
   it('v1 의 형태 검사는 그대로다', () => {
-    expect(parseNameMeta('-- erdd:v1 {"TB":{"p":"ORD"}}')).toBeNull()          // l 없음
-    expect(parseNameMeta('-- erdd:v1 {"TB":{"p":1,"l":"주문"}}')).toBeNull()   // 문자열 아님
-    expect(parseNameMeta('-- erdd:v1 ["ORD"]')).toBeNull()                     // 배열
+    expect(parseNameMeta('-- erdd:v1 {"TB":{"p":"ORD"}}')).toBeNull() // l 없음
+    expect(parseNameMeta('-- erdd:v1 {"TB":{"p":1,"l":"주문"}}')).toBeNull() // 문자열 아님
+    expect(parseNameMeta('-- erdd:v1 ["ORD"]')).toBeNull() // 배열
     expect(parseNameMeta('-- erdd:v1 null')).toBeNull()
   })
 
@@ -93,7 +96,7 @@ describe('parseNameMeta — v1 하위호환', () => {
     expect(parseNameMeta('-- erdd:v9 {"t":{}}')).toBeNull()
     expect(parseNameMeta('-- erdd:v11 {"TB":{"p":"ORD","l":"주문"}}')).toBeNull()
     expect(parseNameMeta('-- erdd:v21 {"t":{"X":{"p":"A","l":"가"}}}')).toBeNull()
-    expect(parseNameMeta('-- erdd:v1{"TB":{"p":"ORD","l":"주문"}}')).toBeNull()   // 공백이 없다
+    expect(parseNameMeta('-- erdd:v1{"TB":{"p":"ORD","l":"주문"}}')).toBeNull() // 공백이 없다
   })
 })
 
@@ -139,11 +142,16 @@ describe('buildNameMeta', () => {
     const m = grouped()
     const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
     expect(meta.tables['MBR']).toEqual({ p: 'MBR', l: '회원', g: '회원관리' })
-    expect(meta.groups['회원관리']).toEqual({ name: '회원관리', a: 'MBR', c: '#4A90D9', n: '회원 도메인' })
+    expect(meta.groups['회원관리']).toEqual({
+      name: '회원관리',
+      a: 'MBR',
+      c: '#4A90D9',
+      n: '회원 도메인',
+    })
   })
 
   it('빈 별칭·빈 코멘트는 키를 생략한다', () => {
-    const m = buildSampleModel()                       // alias '' · comment null
+    const m = buildSampleModel() // alias '' · comment null
     const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
     expect(meta.groups['회원관리']).toEqual({ name: '회원관리', c: '#4A90D9' })
   })
@@ -152,7 +160,12 @@ describe('buildNameMeta', () => {
   // 싣는다」만 잠그고 **빈 색을 생략하는 쪽**은 잠그지 못한다. 색을 비운 그룹을 직접 세운다.
   it('빈 색은 키를 생략한다', () => {
     const m = buildSampleModel()
-    m.tableGroups['g1'] = { ...m.tableGroups['g1']!, color: '', alias: 'MBR', comment: '회원 도메인' }
+    m.tableGroups['g1'] = {
+      ...m.tableGroups['g1']!,
+      color: '',
+      alias: 'MBR',
+      comment: '회원 도메인',
+    }
     const meta = buildNameMeta(m, tables(m), DEFAULT_NAMING_RULES)
     expect(meta.groups['회원관리']).toEqual({ name: '회원관리', a: 'MBR', n: '회원 도메인' })
   })

@@ -2,12 +2,21 @@ import { initTRPC, TRPCError } from '@trpc/server'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  parseOps, DIALECTS, NamingRulesStrictSchema, OpParseError, TableOptionsStrictSchema, type RunMode,
+  parseOps,
+  DIALECTS,
+  NamingRulesStrictSchema,
+  OpParseError,
+  TableOptionsStrictSchema,
+  type RunMode,
 } from '@erdd/core'
 import { readConfig, writeConfig, type ErddConfig } from '../config.js'
 import { FileStore, LocalStoreError } from './store.js'
 import {
-  SnapshotCorruptError, deleteSnapshot, listSnapshots, readSnapshot, writeSnapshot,
+  SnapshotCorruptError,
+  deleteSnapshot,
+  listSnapshots,
+  readSnapshot,
+  writeSnapshot,
   type SnapshotRecord,
 } from './snapshots.js'
 
@@ -117,16 +126,18 @@ export function createLocalRouter() {
        * 걸리면 키 누락이 곧 「기본값으로 되쓰기」가 되어 꺼 둔 구분자가 조용히 켜진다.
        */
       update: scoped
-        .input(z.object({
-          projectId: z.string(),
-          name: z.string().min(1).optional(),
-          description: z.string().optional(),
-          dialects: z.array(z.enum(DIALECTS)).min(1).optional(),
-          namingRules: NamingRulesStrictSchema.optional(),
-          // 서버와 같은 이유로 **strict** 다 — 한 방언만 보낸 화면이 나머지 셋을 지우면
-          // `erdd.config.yaml` 이 그대로 오염된다.
-          tableOptions: TableOptionsStrictSchema.optional(),
-        }))
+        .input(
+          z.object({
+            projectId: z.string(),
+            name: z.string().min(1).optional(),
+            description: z.string().optional(),
+            dialects: z.array(z.enum(DIALECTS)).min(1).optional(),
+            namingRules: NamingRulesStrictSchema.optional(),
+            // 서버와 같은 이유로 **strict** 다 — 한 방언만 보낸 화면이 나머지 셋을 지우면
+            // `erdd.config.yaml` 이 그대로 오염된다.
+            tableOptions: TableOptionsStrictSchema.optional(),
+          }),
+        )
         .mutation(async ({ ctx, input }) => {
           // 이름·설명은 config 에 담을 자리가 없다(로컬 프로젝트에는 이름이 없다).
           // 방언·명명 규칙만 되쓴다.
@@ -157,32 +168,38 @@ export function createLocalRouter() {
       })),
 
       mutate: scoped
-        .input(z.object({
-          projectId: z.string(),
-          ops: z.array(z.unknown()).min(1),
-          summary: z.string().min(1).max(200).optional(),
-        }))
-        .mutation(({ ctx, input }) => wrap(async () => {
-          let ops
-          try {
-            ops = parseOps(input.ops)
-          } catch (err) {
-            if (err instanceof OpParseError) {
-              throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
+        .input(
+          z.object({
+            projectId: z.string(),
+            ops: z.array(z.unknown()).min(1),
+            summary: z.string().min(1).max(200).optional(),
+          }),
+        )
+        .mutation(({ ctx, input }) =>
+          wrap(async () => {
+            let ops
+            try {
+              ops = parseOps(input.ops)
+            } catch (err) {
+              if (err instanceof OpParseError) {
+                throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
+              }
+              throw err
             }
-            throw err
-          }
-          return await ctx.store.mutate(ops)
-        })),
+            return await ctx.store.mutate(ops)
+          }),
+        ),
     }),
 
     snapshot: t.router({
       create: scoped
-        .input(z.object({
-          projectId: z.string(),
-          name: z.string().min(1).max(100),
-          description: z.string().max(1000).optional(),
-        }))
+        .input(
+          z.object({
+            projectId: z.string(),
+            name: z.string().min(1).max(100),
+            description: z.string().max(1000).optional(),
+          }),
+        )
         .mutation(async ({ ctx, input }) => {
           // 저장된 상태만 스냅샷 대상이다(설계 D4) — 미저장 편집으로 버전을 만들 수 없다.
           // 만들 수 있게 두면 「스냅샷이 가리키는 상태가 파일 어디에도 없는」 것이 생긴다.
@@ -230,7 +247,7 @@ export function createLocalRouter() {
         .mutation(async ({ ctx, input }) => {
           // 존재 검사도 체인 안에서 한다 — 밖에서 하면 그 사이에 남이 지운 것을 못 본다.
           // `deleteSnapshot` 이 파일 삭제 결과로 그것을 판정해 돌려준다.
-          if (!await deleteSnapshot(ctx.cwd, input.snapshotId)) {
+          if (!(await deleteSnapshot(ctx.cwd, input.snapshotId))) {
             throw new TRPCError({ code: 'NOT_FOUND', message: '스냅샷을 찾을 수 없습니다' })
           }
           return { ok: true as const }
@@ -238,11 +255,13 @@ export function createLocalRouter() {
 
       restore: scoped
         .input(z.object({ projectId: z.string(), snapshotId: z.string() }))
-        .mutation(({ ctx, input }) => wrap(async () => {
-          const s = await requireSnapshot(ctx.cwd, input.snapshotId)
-          // 옛 스냅샷의 누락 컬렉션 보충은 requireSnapshot 의 스키마 파싱이 이미 했다.
-          return await ctx.store.setModel(s.model)
-        })),
+        .mutation(({ ctx, input }) =>
+          wrap(async () => {
+            const s = await requireSnapshot(ctx.cwd, input.snapshotId)
+            // 옛 스냅샷의 누락 컬렉션 보충은 requireSnapshot 의 스키마 파싱이 이미 했다.
+            return await ctx.store.setModel(s.model)
+          }),
+        ),
     }),
   })
 }

@@ -5,14 +5,21 @@ import { planGroupMove, tableBounds } from './group-move.js'
 /** 컬럼 0개인 테이블. estHeight(0) = 44 + 1*28 = 72, 폭은 EST_W = 260. */
 function tbl(id: string, groupId: string | null, x: number, y: number): Table {
   return {
-    id, logicalName: id, physicalName: id.toUpperCase(), comment: null,
-    groupId, position: { x, y }, groupPosition: null, custom: {},
+    id,
+    logicalName: id,
+    physicalName: id.toUpperCase(),
+    comment: null,
+    groupId,
+    position: { x, y },
+    groupPosition: null,
+    custom: {},
   }
 }
 
 function modelWith(tables: Table[], groupIds: string[]): ProjectModel {
   const m = createEmptyModel()
-  for (const g of groupIds) m.tableGroups[g] = { id: g, name: g, color: '#fff', comment: null, alias: '' }
+  for (const g of groupIds)
+    m.tableGroups[g] = { id: g, name: g, color: '#fff', comment: null, alias: '' }
   for (const t of tables) m.tables[t.id] = t
   return m
 }
@@ -23,14 +30,27 @@ function modelWith(tables: Table[], groupIds: string[]): ProjectModel {
  *
  * `tbl`이 만드는 테이블은 컬럼이 0개이므로 사각형은 언제나 위치 + (260, 72)다.
  */
-function overlappingPairs(model: ProjectModel, moves: { id: string; position: Position }[]): string[] {
+function overlappingPairs(
+  model: ProjectModel,
+  moves: { id: string; position: Position }[],
+): string[] {
   const movingIds = new Set(moves.map((m) => m.id))
   const others = Object.values(model.tables).filter((t) => !movingIds.has(t.id))
   const pairs: string[] = []
   for (const mv of moves) {
-    const a = { x1: mv.position.x, y1: mv.position.y, x2: mv.position.x + 260, y2: mv.position.y + 72 }
+    const a = {
+      x1: mv.position.x,
+      y1: mv.position.y,
+      x2: mv.position.x + 260,
+      y2: mv.position.y + 72,
+    }
     for (const o of others) {
-      const b = { x1: o.position.x, y1: o.position.y, x2: o.position.x + 260, y2: o.position.y + 72 }
+      const b = {
+        x1: o.position.x,
+        y1: o.position.y,
+        x2: o.position.x + 260,
+        y2: o.position.y + 72,
+      }
       if (a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2) pairs.push(`${mv.id}↔${o.id}`)
     }
   }
@@ -44,7 +64,12 @@ describe('tableBounds', () => {
 
   it('컬럼 0개 테이블 하나의 bbox는 위치 + (260, 72)다', () => {
     const t = tbl('a', null, 100, 50)
-    expect(tableBounds(modelWith([t], []), [t])).toEqual({ minX: 100, minY: 50, maxX: 360, maxY: 122 })
+    expect(tableBounds(modelWith([t], []), [t])).toEqual({
+      minX: 100,
+      minY: 50,
+      maxX: 360,
+      maxY: 122,
+    })
   })
 })
 
@@ -111,12 +136,16 @@ describe('planGroupMove', () => {
     // 주문 그룹 bbox maxX = 680 + 260 = 940 → 붙일 자리 x = 940 + GAP(60) = 1000.
     // 그 자리에 미분류 `audit_logs`가 이미 있다 → (1000,0)-(1260,72).
     // 아래로 밀어 y = 72 + GAP(60) = 132.
-    const model = modelWith([
-      tbl('orders', 'gOrder', 0, 0), tbl('order_items', 'gOrder', 340, 0),
-      tbl('payments', 'gOrder', 680, 0),
-      tbl('audit_logs', null, 1000, 0),
-      tbl('settings', null, 0, 500),
-    ], ['gOrder'])
+    const model = modelWith(
+      [
+        tbl('orders', 'gOrder', 0, 0),
+        tbl('order_items', 'gOrder', 340, 0),
+        tbl('payments', 'gOrder', 680, 0),
+        tbl('audit_logs', null, 1000, 0),
+        tbl('settings', null, 0, 500),
+      ],
+      ['gOrder'],
+    )
     const moves = planGroupMove(model, ['settings'], 'gOrder')
     expect(moves).toEqual([{ id: 'settings', position: { x: 1000, y: 132 } }])
     expect(overlappingPairs(model, moves)).toEqual([])
@@ -125,10 +154,15 @@ describe('planGroupMove', () => {
   it('아래로 밀려도 이동 집합의 상대 배치는 그대로다', () => {
     // 겹침 회피가 집합을 **통째로** 움직인다는 것을 잠근다. 테이블마다 따로 자리를 찾으면
     // 겹침은 사라지지만 D3의 "함께 옮긴 것은 함께 놓인다"가 깨진다.
-    const model = modelWith([
-      tbl('b1', 'gB', 0, 0), tbl('막는놈', null, 320, 0),
-      tbl('a1', 'gA', 500, 100), tbl('a2', 'gA', 600, 200),
-    ], ['gA', 'gB'])
+    const model = modelWith(
+      [
+        tbl('b1', 'gB', 0, 0),
+        tbl('막는놈', null, 320, 0),
+        tbl('a1', 'gA', 500, 100),
+        tbl('a2', 'gA', 600, 200),
+      ],
+      ['gA', 'gB'],
+    )
     const moves = planGroupMove(model, ['a1', 'a2'], 'gB')
     expect(moves).toEqual([
       { id: 'a1', position: { x: 320, y: 132 } },
@@ -142,10 +176,15 @@ describe('planGroupMove', () => {
 
   it('장애물이 연달아 쌓여 있으면 마지막 것 아래까지 내려간다', () => {
     // 한 번만 밀면 두 번째 장애물 위에 얹힌다 — 빈자리를 찾을 때까지 반복해야 한다.
-    const model = modelWith([
-      tbl('b1', 'gB', 0, 0), tbl('막는놈1', null, 320, 0), tbl('막는놈2', null, 320, 132),
-      tbl('a1', 'gA', 1000, 1000),
-    ], ['gA', 'gB'])
+    const model = modelWith(
+      [
+        tbl('b1', 'gB', 0, 0),
+        tbl('막는놈1', null, 320, 0),
+        tbl('막는놈2', null, 320, 132),
+        tbl('a1', 'gA', 1000, 1000),
+      ],
+      ['gA', 'gB'],
+    )
     const moves = planGroupMove(model, ['a1'], 'gB')
     expect(moves).toEqual([{ id: 'a1', position: { x: 320, y: 264 } }])
     expect(overlappingPairs(model, moves)).toEqual([])

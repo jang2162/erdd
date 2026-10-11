@@ -29,7 +29,10 @@ let out: string[]
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'erdd-diff-'))
   out = []
-  vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+  vi.spyOn(process.stdout, 'write').mockImplementation((c) => {
+    out.push(String(c))
+    return true
+  })
   vi.spyOn(process.stderr, 'write').mockReturnValue(true)
   await writeConfig(dir, { ...CONFIG, dialects: [...CONFIG.dialects] })
 })
@@ -40,11 +43,14 @@ const seed = (server: ProjectModel) => seedPulled(dir, server)
 describe('diff', () => {
   it('올릴 변경과 내려올 변경을 나눠 보여준다', async () => {
     const server = fullModel()
-    await seed(server)                          // base = 원래 상태
+    await seed(server) // base = 원래 상태
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
     const moved = fullModel()
-    moved.tables['tb2']!.comment = '주문 마스터'   // 서버가 다른 곳을 고쳤다
+    moved.tables['tb2']!.comment = '주문 마스터' // 서버가 다른 곳을 고쳤다
 
     const { client } = stub(moved)
     expect(await diff({ cwd: dir, json: false, yes: false, strict: false, client })).toBe(0)
@@ -82,11 +88,16 @@ describe('diff', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
     const moved = fullModel()
     moved.columns['c2']!.logicalName = '회원성명'
 
-    expect(await diff({ cwd: dir, json: false, yes: false, strict: false, client: stub(moved).client })).toBe(0)
+    expect(
+      await diff({ cwd: dir, json: false, yes: false, strict: false, client: stub(moved).client }),
+    ).toBe(0)
     const text = out.join('')
     // renderConflicts(push와 공유하는 포매터)가 실제로 쓰였는지를 본다 — 이 구체적인
     // 내용(라벨·필드·기준/로컬/서버 값)은 하드코딩된 문자열이나 별도 포매터로는 안 나온다.
@@ -96,17 +107,27 @@ describe('diff', () => {
     expect(text).toContain('로컬  회원 이름')
     expect(text).toContain('서버  회원성명')
     out.length = 0
-    expect(await diff({ cwd: dir, json: false, yes: false, strict: true, client: stub(moved).client })).toBe(1)
+    expect(
+      await diff({ cwd: dir, json: false, yes: false, strict: true, client: stub(moved).client }),
+    ).toBe(1)
   })
 
   it('--json은 up·down·conflicts를 담는다', async () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
     const { client } = stub(server)
     expect(await diff({ cwd: dir, json: true, yes: false, strict: false, client })).toBe(0)
-    const payload = JSON.parse(out.join('')) as { ok: boolean; up: unknown[]; down: unknown[]; conflicts: unknown[] }
+    const payload = JSON.parse(out.join('')) as {
+      ok: boolean
+      up: unknown[]
+      down: unknown[]
+      conflicts: unknown[]
+    }
     expect(payload.ok).toBe(true)
     expect(payload.up).toHaveLength(1)
     expect(payload.down).toEqual([])

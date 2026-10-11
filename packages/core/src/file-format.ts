@@ -1,5 +1,10 @@
 import { createEmptyModel, type Origin, type ProjectModel } from './model.js'
-import { RESOURCE_COLLECTION_BY_KIND, RESOURCE_KINDS, resourceEntitiesOf, type ResourceKind } from './resource.js'
+import {
+  RESOURCE_COLLECTION_BY_KIND,
+  RESOURCE_KINDS,
+  resourceEntitiesOf,
+  type ResourceKind,
+} from './resource.js'
 
 /** 상대 경로 → 파일 내용(plain object). YAML 인코딩은 이 파일의 책임이 아니다. */
 export type FileTree = Record<string, unknown>
@@ -49,7 +54,8 @@ export function unsafeFileName(physicalName: string): boolean {
 
 /** 값이 기본값이면 키를 아예 넣지 않는다 — diff를 조용하게 유지한다. */
 function omitDefaults<T extends Record<string, unknown>>(
-  obj: T, defaults: Partial<Record<keyof T, unknown>>,
+  obj: T,
+  defaults: Partial<Record<keyof T, unknown>>,
 ): Partial<T> {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(obj)) {
@@ -68,7 +74,7 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
   const domainName = (id: string | null) => (id === null ? undefined : model.domains[id]?.name)
 
   // 테이블별 컬럼을 order로 정렬해 둔다.
-  const colsByTable = new Map<string, typeof model.columns[string][]>()
+  const colsByTable = new Map<string, (typeof model.columns)[string][]>()
   for (const c of Object.values(model.columns)) {
     const list = colsByTable.get(c.tableId) ?? []
     list.push(c)
@@ -87,41 +93,51 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
     const cols = colsByTable.get(table.id) ?? []
     const colById = new Map(cols.map((c) => [c.id, c]))
 
-    const columns = cols.map((c) => omitDefaults({
-      id: c.id,
-      name: c.physicalName,
-      logicalName: c.logicalName,
-      // type과 domain을 둘 다 쓴다. setColumnDomain(apps/web/src/editor/column-edits.ts:36)이
-      // 도메인 지정 시 기존 type 문자열을 지우지 않으므로, 하나만 쓰면 왕복에서 다른 하나가 소실된다.
-      domain: domainName(c.domainId),
-      type: c.type,
-      pk: c.isPk,
-      autoIncrement: c.autoIncrement,
-      nullable: c.nullable,
-      default: c.defaultValue ?? undefined,
-      comment: c.comment ?? undefined,
-      custom: Object.keys(c.custom).length > 0 ? c.custom : undefined,
-    }, { pk: false, autoIncrement: false, nullable: true }))
+    const columns = cols.map((c) =>
+      omitDefaults(
+        {
+          id: c.id,
+          name: c.physicalName,
+          logicalName: c.logicalName,
+          // type과 domain을 둘 다 쓴다. setColumnDomain(apps/web/src/editor/column-edits.ts:36)이
+          // 도메인 지정 시 기존 type 문자열을 지우지 않으므로, 하나만 쓰면 왕복에서 다른 하나가 소실된다.
+          domain: domainName(c.domainId),
+          type: c.type,
+          pk: c.isPk,
+          autoIncrement: c.autoIncrement,
+          nullable: c.nullable,
+          default: c.defaultValue ?? undefined,
+          comment: c.comment ?? undefined,
+          custom: Object.keys(c.custom).length > 0 ? c.custom : undefined,
+        },
+        { pk: false, autoIncrement: false, nullable: true },
+      ),
+    )
 
     const indexes = Object.values(model.indexes)
       .filter((ix) => ix.tableId === table.id)
-      .map((ix) => omitDefaults({
-        id: ix.id,
-        name: ix.name,
-        // "MBR_NM" 또는 "MBR_NM DESC" — 오름차순은 방향을 생략한다.
-        columns: ix.columns.map((c) => {
-          const name = colById.get(c.columnId)?.physicalName
-          if (name === undefined) {
-            issues.push({
-              path: `${TREE_ROOT}/tables/${tableFileName(model, table.id)}`,
-              message: `인덱스 ${ix.name}이 이 테이블에 없는 컬럼을 가리킵니다`,
-            })
-            return c.columnId
-          }
-          return c.direction === 'desc' ? `${name} DESC` : name
-        }),
-        unique: ix.unique,
-      }, { unique: false }))
+      .map((ix) =>
+        omitDefaults(
+          {
+            id: ix.id,
+            name: ix.name,
+            // "MBR_NM" 또는 "MBR_NM DESC" — 오름차순은 방향을 생략한다.
+            columns: ix.columns.map((c) => {
+              const name = colById.get(c.columnId)?.physicalName
+              if (name === undefined) {
+                issues.push({
+                  path: `${TREE_ROOT}/tables/${tableFileName(model, table.id)}`,
+                  message: `인덱스 ${ix.name}이 이 테이블에 없는 컬럼을 가리킵니다`,
+                })
+                return c.columnId
+              }
+              return c.direction === 'desc' ? `${name} DESC` : name
+            }),
+            unique: ix.unique,
+          },
+          { unique: false },
+        ),
+      )
 
     // 관계는 자식 테이블 파일에만 적는다.
     const relations = Object.values(model.relationships)
@@ -134,27 +150,33 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
           const parentCol = model.columns[m2.parentColumnId]?.physicalName ?? m2.parentColumnId
           columns[child] = parentCol
         }
-        return omitDefaults({
-          id: r.id,
-          name: r.name ?? undefined,
-          to: parent?.physicalName ?? r.parentTableId,
-          columns,
-          identifying: r.identifying,
-          cardinality: r.cardinality,
-        }, { identifying: false, cardinality: '1:N' })
+        return omitDefaults(
+          {
+            id: r.id,
+            name: r.name ?? undefined,
+            to: parent?.physicalName ?? r.parentTableId,
+            columns,
+            identifying: r.identifying,
+            cardinality: r.cardinality,
+          },
+          { identifying: false, cardinality: '1:N' },
+        )
       })
 
-    tree[`${TREE_ROOT}/tables/${tableFileName(model, table.id)}`] = omitDefaults({
-      id: table.id,
-      name: table.physicalName,
-      logicalName: table.logicalName,
-      group: groupName(table.groupId),
-      comment: table.comment ?? undefined,
-      custom: Object.keys(table.custom).length > 0 ? table.custom : undefined,
-      columns,
-      indexes: indexes.length > 0 ? indexes : undefined,
-      relations: relations.length > 0 ? relations : undefined,
-    }, {})
+    tree[`${TREE_ROOT}/tables/${tableFileName(model, table.id)}`] = omitDefaults(
+      {
+        id: table.id,
+        name: table.physicalName,
+        logicalName: table.logicalName,
+        group: groupName(table.groupId),
+        comment: table.comment ?? undefined,
+        custom: Object.keys(table.custom).length > 0 ? table.custom : undefined,
+        columns,
+        indexes: indexes.length > 0 ? indexes : undefined,
+        relations: relations.length > 0 ? relations : undefined,
+      },
+      {},
+    )
   }
 
   // 물리명 대소문자 충돌 경고 — 파일명은 tableFileName이 이미 갈랐다.
@@ -173,37 +195,80 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
   }
 
   tree[`${TREE_ROOT}/groups.yaml`] = {
-    groups: Object.values(model.tableGroups).map((g) => omitDefaults({
-      id: g.id, name: g.name, color: g.color, comment: g.comment ?? undefined,
-      alias: g.alias,
-    }, { alias: '' })),
+    groups: Object.values(model.tableGroups).map((g) =>
+      omitDefaults(
+        {
+          id: g.id,
+          name: g.name,
+          color: g.color,
+          comment: g.comment ?? undefined,
+          alias: g.alias,
+        },
+        { alias: '' },
+      ),
+    ),
   }
   tree[`${TREE_ROOT}/words.yaml`] = {
-    words: Object.values(model.words).map((w) => omitDefaults({
-      id: w.id, logicalName: w.logicalName, abbreviation: w.abbreviation,
-      englishName: w.englishName ?? undefined, description: w.description ?? undefined,
-    }, {})),
+    words: Object.values(model.words).map((w) =>
+      omitDefaults(
+        {
+          id: w.id,
+          logicalName: w.logicalName,
+          abbreviation: w.abbreviation,
+          englishName: w.englishName ?? undefined,
+          description: w.description ?? undefined,
+        },
+        {},
+      ),
+    ),
   }
   tree[`${TREE_ROOT}/terms.yaml`] = {
-    terms: Object.values(model.terms).map((t) => omitDefaults({
-      id: t.id, logicalName: t.logicalName, physicalName: t.physicalName,
-      domain: domainName(t.domainId), description: t.description ?? undefined,
-    }, {})),
+    terms: Object.values(model.terms).map((t) =>
+      omitDefaults(
+        {
+          id: t.id,
+          logicalName: t.logicalName,
+          physicalName: t.physicalName,
+          domain: domainName(t.domainId),
+          description: t.description ?? undefined,
+        },
+        {},
+      ),
+    ),
   }
   tree[`${TREE_ROOT}/domains.yaml`] = {
-    domains: Object.values(model.domains).map((d) => omitDefaults({
-      id: d.id, name: d.name, category: d.category ?? undefined, logicalType: d.logicalType,
-      dialectTypes: d.dialectTypes, defaultValue: d.defaultValue ?? undefined,
-      allowedValues: d.allowedValues.length > 0 ? d.allowedValues : undefined,
-      description: d.description ?? undefined,
-    }, {})),
+    domains: Object.values(model.domains).map((d) =>
+      omitDefaults(
+        {
+          id: d.id,
+          name: d.name,
+          category: d.category ?? undefined,
+          logicalType: d.logicalType,
+          dialectTypes: d.dialectTypes,
+          defaultValue: d.defaultValue ?? undefined,
+          allowedValues: d.allowedValues.length > 0 ? d.allowedValues : undefined,
+          description: d.description ?? undefined,
+        },
+        {},
+      ),
+    ),
   }
   tree[`${TREE_ROOT}/custom-fields.yaml`] = {
-    customFields: Object.values(model.customFields).map((f) => omitDefaults({
-      id: f.id, name: f.name, target: f.target, type: f.type,
-      options: f.options.length > 0 ? f.options : undefined,
-      required: f.required, defaultValue: f.defaultValue ?? undefined, order: f.order,
-    }, { required: false })),
+    customFields: Object.values(model.customFields).map((f) =>
+      omitDefaults(
+        {
+          id: f.id,
+          name: f.name,
+          target: f.target,
+          type: f.type,
+          options: f.options.length > 0 ? f.options : undefined,
+          required: f.required,
+          defaultValue: f.defaultValue ?? undefined,
+          order: f.order,
+        },
+        { required: false },
+      ),
+    ),
   }
   // 출처는 사전 파일에 인라인하지 않는다 — base 가 payload 사본이라 항목 길이가 두 배가 되고,
   // 사람이 고치는 파일과 기계가 관리하는 파일이 섞인다. 0건이면 파일을 만들지 않는다.
@@ -211,9 +276,14 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
     resourceEntitiesOf(model, kind)
       .filter((e): e is { id: string; origin: Origin } => e.origin !== null)
       .map((e) => ({
-        id: e.id, kind, library: e.origin.libraryId, item: e.origin.sourceId,
-        version: e.origin.sourceVersion, base: e.origin.base,
-      })))
+        id: e.id,
+        kind,
+        library: e.origin.libraryId,
+        item: e.origin.sourceId,
+        version: e.origin.sourceVersion,
+        base: e.origin.base,
+      })),
+  )
     // 코드 단위 비교 — 커밋되는 파일의 순서가 실행 환경의 로캘에 기대면 안 된다.
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   if (origins.length > 0) tree[ORIGINS_FILE] = { origins }
@@ -355,10 +425,16 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   const readRawList = (path: string, key: string): unknown[] => {
     const file = src[path]
     if (file === undefined) return []
-    if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); return [] }
+    if (!isRec(file)) {
+      issues.push({ path, message: '객체가 아닙니다' })
+      return []
+    }
     const list = file[key]
     if (list === undefined) return []
-    if (!Array.isArray(list)) { issues.push({ path, message: `${key}는 배열이어야 합니다` }); return [] }
+    if (!Array.isArray(list)) {
+      issues.push({ path, message: `${key}는 배열이어야 합니다` })
+      return []
+    }
     return list
   }
   const readList = (path: string, key: string): Rec[] => readRawList(path, key).filter(isRec)
@@ -367,31 +443,47 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   readList(`${TREE_ROOT}/groups.yaml`, 'groups').forEach((g, i) => {
     const id = idOf(g, `${TREE_ROOT}/groups.yaml`, 'groups', i)
     model.tableGroups[id] = {
-      id, name: asStr(g['name']) ?? '', color: asStr(g['color']) ?? '#ffffff',
-      comment: asStr(g['comment']), alias: asStr(g['alias']) ?? '',
+      id,
+      name: asStr(g['name']) ?? '',
+      color: asStr(g['color']) ?? '#ffffff',
+      comment: asStr(g['comment']),
+      alias: asStr(g['alias']) ?? '',
     }
   })
   readList(`${TREE_ROOT}/domains.yaml`, 'domains').forEach((d, i) => {
     const id = idOf(d, `${TREE_ROOT}/domains.yaml`, 'domains', i)
     const dt = isRec(d['dialectTypes']) ? d['dialectTypes'] : {}
     model.domains[id] = {
-      id, name: asStr(d['name']) ?? '', category: asStr(d['category']),
+      id,
+      name: asStr(d['name']) ?? '',
+      category: asStr(d['category']),
       logicalType: asStr(d['logicalType']) ?? '',
       dialectTypes: {
-        postgresql: asStr(dt['postgresql']), mysql: asStr(dt['mysql']),
-        oracle: asStr(dt['oracle']), mssql: asStr(dt['mssql']),
+        postgresql: asStr(dt['postgresql']),
+        mysql: asStr(dt['mysql']),
+        oracle: asStr(dt['oracle']),
+        mssql: asStr(dt['mssql']),
       },
       defaultValue: asStr(d['defaultValue']),
-      allowedValues: Array.isArray(d['allowedValues']) ? d['allowedValues'].filter((v): v is string => typeof v === 'string') : [],
-      description: asStr(d['description']), origin: null,
+      allowedValues: Array.isArray(d['allowedValues'])
+        ? d['allowedValues'].filter((v): v is string => typeof v === 'string')
+        : [],
+      description: asStr(d['description']),
+      origin: null,
     }
   })
 
   for (const n of duplicates(Object.values(model.tableGroups).map((g) => g.name))) {
-    issues.push({ path: `${TREE_ROOT}/groups.yaml`, message: `그룹 이름 ${n}이 중복됩니다 — 이름으로 참조되므로 유일해야 합니다` })
+    issues.push({
+      path: `${TREE_ROOT}/groups.yaml`,
+      message: `그룹 이름 ${n}이 중복됩니다 — 이름으로 참조되므로 유일해야 합니다`,
+    })
   }
   for (const n of duplicates(Object.values(model.domains).map((d) => d.name))) {
-    issues.push({ path: `${TREE_ROOT}/domains.yaml`, message: `도메인 이름 ${n}이 중복됩니다 — 이름으로 참조되므로 유일해야 합니다` })
+    issues.push({
+      path: `${TREE_ROOT}/domains.yaml`,
+      message: `도메인 이름 ${n}이 중복됩니다 — 이름으로 참조되므로 유일해야 합니다`,
+    })
   }
 
   const groupIdByName = new Map(Object.values(model.tableGroups).map((g) => [g.name, g.id]))
@@ -400,8 +492,12 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   readList(`${TREE_ROOT}/words.yaml`, 'words').forEach((w, i) => {
     const id = idOf(w, `${TREE_ROOT}/words.yaml`, 'words', i)
     model.words[id] = {
-      id, logicalName: asStr(w['logicalName']) ?? '', abbreviation: asStr(w['abbreviation']) ?? '',
-      englishName: asStr(w['englishName']), description: asStr(w['description']), origin: null,
+      id,
+      logicalName: asStr(w['logicalName']) ?? '',
+      abbreviation: asStr(w['abbreviation']) ?? '',
+      englishName: asStr(w['englishName']),
+      description: asStr(w['description']),
+      origin: null,
     }
   })
   readList(`${TREE_ROOT}/terms.yaml`, 'terms').forEach((t, i) => {
@@ -411,12 +507,19 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     if (domainName !== null) {
       const hit = domainIdByName.get(domainName)
       if (hit === undefined) {
-        issues.push({ path: `${TREE_ROOT}/terms.yaml`, message: `도메인 ${domainName}을 찾지 못했습니다` })
+        issues.push({
+          path: `${TREE_ROOT}/terms.yaml`,
+          message: `도메인 ${domainName}을 찾지 못했습니다`,
+        })
       } else domainId = hit
     }
     model.terms[id] = {
-      id, logicalName: asStr(t['logicalName']) ?? '', physicalName: asStr(t['physicalName']) ?? '',
-      domainId, description: asStr(t['description']), origin: null,
+      id,
+      logicalName: asStr(t['logicalName']) ?? '',
+      physicalName: asStr(t['physicalName']) ?? '',
+      domainId,
+      description: asStr(t['description']),
+      origin: null,
     }
   })
   readList(`${TREE_ROOT}/custom-fields.yaml`, 'customFields').forEach((f, i) => {
@@ -424,10 +527,17 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     const target = f['target'] === 'table' ? 'table' : 'column'
     const type = f['type'] === 'boolean' ? 'boolean' : f['type'] === 'select' ? 'select' : 'text'
     model.customFields[id] = {
-      id, name: asStr(f['name']) ?? '', target, type,
-      options: Array.isArray(f['options']) ? f['options'].filter((v): v is string => typeof v === 'string') : [],
-      required: asBool(f['required'], false), defaultValue: asStr(f['defaultValue']),
-      order: typeof f['order'] === 'number' ? f['order'] : 0, origin: null,
+      id,
+      name: asStr(f['name']) ?? '',
+      target,
+      type,
+      options: Array.isArray(f['options'])
+        ? f['options'].filter((v): v is string => typeof v === 'string')
+        : [],
+      required: asBool(f['required'], false),
+      defaultValue: asStr(f['defaultValue']),
+      order: typeof f['order'] === 'number' ? f['order'] : 0,
+      origin: null,
     }
   })
 
@@ -438,7 +548,10 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   // 존재 판정은 Object.hasOwn 이다 — 손으로 고칠 수 있는 파일이라 id 가 `__proto__` 면
   // `collection[id]` 가 Object.prototype 을 돌려주고, 거기에 origin 을 써 넣게 된다.
   const entityOf = (k: ResourceKind, id: string): { origin: Origin | null } | undefined => {
-    const col = model[RESOURCE_COLLECTION_BY_KIND[k]] as unknown as Record<string, { origin: Origin | null }>
+    const col = model[RESOURCE_COLLECTION_BY_KIND[k]] as unknown as Record<
+      string,
+      { origin: Origin | null }
+    >
     return Object.hasOwn(col, id) ? col[id] : undefined
   }
   // 원 배열을 직접 훑는다 — 객체가 아닌 줄도 파일 오류이고, 오류 좌표 `origins[i]` 가 거르기 전
@@ -454,9 +567,16 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     const item = asStr(o['item'])
     const version = o['version']
     const base = o['base']
-    if (id === null || kind === null || !(RESOURCE_KINDS as readonly string[]).includes(kind)
-        || library === null || item === null
-        || typeof version !== 'number' || !Number.isInteger(version) || !isRec(base)) {
+    if (
+      id === null ||
+      kind === null ||
+      !(RESOURCE_KINDS as readonly string[]).includes(kind) ||
+      library === null ||
+      item === null ||
+      typeof version !== 'number' ||
+      !Number.isInteger(version) ||
+      !isRec(base)
+    ) {
       issues.push({
         path: ORIGINS_FILE,
         message: `origins[${i}]의 형식이 올바르지 않습니다 — id·kind·library·item·version(정수)·base(객체)가 필요합니다`,
@@ -475,12 +595,20 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
     if (entity === undefined) {
       const actual = RESOURCE_KINDS.find((k) => k !== kind && entityOf(k, id) !== undefined)
       if (actual !== undefined) {
-        issues.push({ path: ORIGINS_FILE, message: `id ${id}의 kind가 ${kind}로 적혀 있지만 실제로는 ${actual}입니다` })
+        issues.push({
+          path: ORIGINS_FILE,
+          message: `id ${id}의 kind가 ${kind}로 적혀 있지만 실제로는 ${actual}입니다`,
+        })
       }
       return
     }
     // 입력 트리와 참조를 끊는다 — 모델을 고치는 소비처가 읽어 온 트리를 오염시키지 않게.
-    entity.origin = { libraryId: library, sourceId: item, sourceVersion: version, base: structuredClone(base) }
+    entity.origin = {
+      libraryId: library,
+      sourceId: item,
+      sourceVersion: version,
+      base: structuredClone(base),
+    }
   })
 
   // 2) 테이블 파일 — 두 번 훑는다. 관계가 다른 테이블의 컬럼을 참조하기 때문이다.
@@ -489,7 +617,10 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
 
   for (const path of tablePaths.sort()) {
     const file = src[path]
-    if (!isRec(file)) { issues.push({ path, message: '객체가 아닙니다' }); continue }
+    if (!isRec(file)) {
+      issues.push({ path, message: '객체가 아닙니다' })
+      continue
+    }
     const tableId = idOf(file, path, 'table', 0)
     const groupName = asStr(file['group'])
     let groupId: string | null = null
@@ -499,12 +630,20 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
       else groupId = hit
     }
     model.tables[tableId] = {
-      id: tableId, physicalName: asStr(file['name']) ?? '', logicalName: asStr(file['logicalName']) ?? '',
-      comment: asStr(file['comment']), groupId,
-      position: { x: 0, y: 0 }, groupPosition: null,
-      custom: isRec(file['custom']) ? Object.fromEntries(
-        Object.entries(file['custom']).filter((e): e is [string, string] => typeof e[1] === 'string'),
-      ) : {},
+      id: tableId,
+      physicalName: asStr(file['name']) ?? '',
+      logicalName: asStr(file['logicalName']) ?? '',
+      comment: asStr(file['comment']),
+      groupId,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: isRec(file['custom'])
+        ? Object.fromEntries(
+            Object.entries(file['custom']).filter(
+              (e): e is [string, string] => typeof e[1] === 'string',
+            ),
+          )
+        : {},
     }
 
     const rawCols = Array.isArray(file['columns']) ? file['columns'].filter(isRec) : []
@@ -514,18 +653,30 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
       let domainId: string | null = null
       if (domainName !== null) {
         const hit = domainIdByName.get(domainName)
-        if (hit === undefined) issues.push({ path, message: `도메인 ${domainName}을 찾지 못했습니다` })
+        if (hit === undefined)
+          issues.push({ path, message: `도메인 ${domainName}을 찾지 못했습니다` })
         else domainId = hit
       }
       model.columns[id] = {
-        id, tableId, physicalName: asStr(c['name']) ?? '', logicalName: asStr(c['logicalName']) ?? '',
+        id,
+        tableId,
+        physicalName: asStr(c['name']) ?? '',
+        logicalName: asStr(c['logicalName']) ?? '',
         type: asStr(c['type']) ?? '',
-        isPk: asBool(c['pk'], false), autoIncrement: asBool(c['autoIncrement'], false),
-        nullable: asBool(c['nullable'], true), defaultValue: asStr(c['default']),
-        order, comment: asStr(c['comment']), domainId,
-        custom: isRec(c['custom']) ? Object.fromEntries(
-          Object.entries(c['custom']).filter((e): e is [string, string] => typeof e[1] === 'string'),
-        ) : {},
+        isPk: asBool(c['pk'], false),
+        autoIncrement: asBool(c['autoIncrement'], false),
+        nullable: asBool(c['nullable'], true),
+        defaultValue: asStr(c['default']),
+        order,
+        comment: asStr(c['comment']),
+        domainId,
+        custom: isRec(c['custom'])
+          ? Object.fromEntries(
+              Object.entries(c['custom']).filter(
+                (e): e is [string, string] => typeof e[1] === 'string',
+              ),
+            )
+          : {},
       }
     })
 
@@ -533,25 +684,39 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   }
 
   for (const n of duplicates(Object.values(model.tables).map((t) => t.physicalName))) {
-    issues.push({ path: `${TREE_ROOT}/tables`, message: `테이블 물리명 ${n}이 중복됩니다 — 관계가 이름으로 참조하므로 유일해야 합니다` })
+    issues.push({
+      path: `${TREE_ROOT}/tables`,
+      message: `테이블 물리명 ${n}이 중복됩니다 — 관계가 이름으로 참조하므로 유일해야 합니다`,
+    })
   }
 
   const tableIdByName = new Map(Object.values(model.tables).map((t) => [t.physicalName, t.id]))
   const colIdIn = (tableId: string, physicalName: string): string | undefined =>
-    Object.values(model.columns).find((c) => c.tableId === tableId && c.physicalName === physicalName)?.id
+    Object.values(model.columns).find(
+      (c) => c.tableId === tableId && c.physicalName === physicalName,
+    )?.id
 
   for (const { path, file, tableId } of pending) {
     ;(Array.isArray(file['indexes']) ? file['indexes'].filter(isRec) : []).forEach((ix, i) => {
-      const cols = (Array.isArray(ix['columns']) ? ix['columns'] : []).filter((v): v is string => typeof v === 'string')
+      const cols = (Array.isArray(ix['columns']) ? ix['columns'] : []).filter(
+        (v): v is string => typeof v === 'string',
+      )
       const parsed = cols.map((raw) => {
         const desc = /\s+DESC$/i.test(raw)
         const name = raw.replace(/\s+(ASC|DESC)$/i, '')
         const columnId = colIdIn(tableId, name)
-        if (columnId === undefined) issues.push({ path, message: `인덱스 컬럼 ${name}을 찾지 못했습니다` })
+        if (columnId === undefined)
+          issues.push({ path, message: `인덱스 컬럼 ${name}을 찾지 못했습니다` })
         return { columnId: columnId ?? '', direction: (desc ? 'desc' : 'asc') as 'asc' | 'desc' }
       })
       const id = idOf(ix, path, 'indexes', i)
-      model.indexes[id] = { id, tableId, name: asStr(ix['name']) ?? '', columns: parsed, unique: asBool(ix['unique'], false) }
+      model.indexes[id] = {
+        id,
+        tableId,
+        name: asStr(ix['name']) ?? '',
+        columns: parsed,
+        unique: asBool(ix['unique'], false),
+      }
     })
 
     ;(Array.isArray(file['relations']) ? file['relations'].filter(isRec) : []).forEach((r, i) => {
@@ -562,19 +727,27 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
         return
       }
       const mappings: { childColumnId: string; parentColumnId: string }[] = []
-      for (const [childName, parentName] of Object.entries(isRec(r['columns']) ? r['columns'] : {})) {
+      for (const [childName, parentName] of Object.entries(
+        isRec(r['columns']) ? r['columns'] : {},
+      )) {
         if (typeof parentName !== 'string') continue
         const childColumnId = colIdIn(tableId, childName)
         const parentColumnId = colIdIn(parentTableId, parentName)
-        if (childColumnId === undefined) issues.push({ path, message: `관계의 자식 컬럼 ${childName}을 찾지 못했습니다` })
-        if (parentColumnId === undefined) issues.push({ path, message: `관계의 부모 컬럼 ${to}.${parentName}을 찾지 못했습니다` })
+        if (childColumnId === undefined)
+          issues.push({ path, message: `관계의 자식 컬럼 ${childName}을 찾지 못했습니다` })
+        if (parentColumnId === undefined)
+          issues.push({ path, message: `관계의 부모 컬럼 ${to}.${parentName}을 찾지 못했습니다` })
         mappings.push({ childColumnId: childColumnId ?? '', parentColumnId: parentColumnId ?? '' })
       }
       const id = idOf(r, path, 'relations', i)
       model.relationships[id] = {
-        id, parentTableId, childTableId: tableId, columnMappings: mappings,
+        id,
+        parentTableId,
+        childTableId: tableId,
+        columnMappings: mappings,
         cardinality: r['cardinality'] === '1:1' ? '1:1' : '1:N',
-        identifying: asBool(r['identifying'], false), name: asStr(r['name']),
+        identifying: asBool(r['identifying'], false),
+        name: asStr(r['name']),
       }
     })
   }
@@ -582,7 +755,9 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   if (issues.length > 0) return { ok: false, issues }
   // 파싱에 실패한 트리에 id를 기록할 이유가 없다 — ok:false에는 싣지 않는다.
   return {
-    ok: true, model, warnings,
+    ok: true,
+    model,
+    warnings,
     // pending은 테이블 파일 루프가 실제로 읽은 것만 담는다 — 여기서 다시 훑을 필요가 없다.
     tableFiles: Object.fromEntries(pending.map(({ tableId, path }) => [tableId, path])),
     ...(newId === undefined ? {} : { assignedTree: src }),

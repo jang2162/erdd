@@ -52,7 +52,11 @@ function mockModelMutate() {
   return mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: ++seq } }) })
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('Toolbar', () => {
   it('그룹 뷰에서 "테이블 추가"로 만든 테이블을 활성 그룹에 배정한다', async () => {
@@ -114,7 +118,12 @@ describe('Toolbar', () => {
 
   it('다중 선택에서 삭제를 누르면 확인 다이얼로그가 뜬다 — 바로 지우지 않는다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])

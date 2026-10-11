@@ -17,8 +17,13 @@ export function ZoomControls() {
       <Button size="icon-sm" variant="ghost" aria-label="축소" onClick={() => zoomOut()}>
         <Minus className="size-4" />
       </Button>
-      <Button size="sm" variant="ghost" className="w-14 px-0 text-xs tabular-nums"
-        aria-label="배율 100%로" onClick={() => zoomTo(1)}>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="w-14 px-0 text-xs tabular-nums"
+        aria-label="배율 100%로"
+        onClick={() => zoomTo(1)}
+      >
         {`${Math.round(zoom * 100)}%`}
       </Button>
       <Button size="icon-sm" variant="ghost" aria-label="확대" onClick={() => zoomIn()}>

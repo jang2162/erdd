@@ -16,11 +16,15 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 async function project(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-local-'))
-  await writeFile(join(dir, 'erdd.config.yaml'), [
-    'dialects: [postgresql]',
-    'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-    '',
-  ].join('\n'), 'utf8')
+  await writeFile(
+    join(dir, 'erdd.config.yaml'),
+    [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'),
+    'utf8',
+  )
   for (const [rel, body] of Object.entries(files)) {
     const abs = join(dir, rel)
     await mkdir(join(abs, '..'), { recursive: true })
@@ -59,23 +63,28 @@ describe('FileStore.load', () => {
   })
 
   it('layout.yaml 의 좌표와 메모를 모델에 꽂는다', async () => {
-    const store = new FileStore(await project({
-      'erdd/tables/MBR.yaml': MBR,
-      'erdd/layout.yaml': [
-        'tables:',
-        '  - id: 018f6b0e-0000-7000-8000-000000000001',
-        '    name: MBR',
-        '    position: { x: 120, y: 80 }',
-        'notes:',
-        '  - id: 018f6b0e-0000-7000-8000-000000000009',
-        '    content: 메모',
-        '    position: { x: 5, y: 6 }',
-        "    color: '#fde68a'",
-        '',
-      ].join('\n'),
-    }))
+    const store = new FileStore(
+      await project({
+        'erdd/tables/MBR.yaml': MBR,
+        'erdd/layout.yaml': [
+          'tables:',
+          '  - id: 018f6b0e-0000-7000-8000-000000000001',
+          '    name: MBR',
+          '    position: { x: 120, y: 80 }',
+          'notes:',
+          '  - id: 018f6b0e-0000-7000-8000-000000000009',
+          '    content: 메모',
+          '    position: { x: 5, y: 6 }',
+          "    color: '#fde68a'",
+          '',
+        ].join('\n'),
+      }),
+    )
     const s = await store.load()
-    expect(s.model.tables['018f6b0e-0000-7000-8000-000000000001']!.position).toEqual({ x: 120, y: 80 })
+    expect(s.model.tables['018f6b0e-0000-7000-8000-000000000001']!.position).toEqual({
+      x: 120,
+      y: 80,
+    })
     expect(Object.values(s.model.notes)[0]!.content).toBe('메모')
   })
 
@@ -101,18 +110,20 @@ describe('FileStore.load', () => {
   })
 
   it('layout.yaml 의 망가진 항목은 걸러 격자로 떨어뜨린다', async () => {
-    const store = new FileStore(await project({
-      'erdd/tables/MBR.yaml': MBR,
-      'erdd/layout.yaml': [
-        'tables:',
-        '  - id: 018f6b0e-0000-7000-8000-000000000001',
-        '    name: MBR',
-        '    position: { x: 몰라, y: 80 }',   // 숫자가 아니다
-        'notes:',
-        '  - id: n1',                          // content·position·color 가 없다
-        '',
-      ].join('\n'),
-    }))
+    const store = new FileStore(
+      await project({
+        'erdd/tables/MBR.yaml': MBR,
+        'erdd/layout.yaml': [
+          'tables:',
+          '  - id: 018f6b0e-0000-7000-8000-000000000001',
+          '    name: MBR',
+          '    position: { x: 몰라, y: 80 }', // 숫자가 아니다
+          'notes:',
+          '  - id: n1', // content·position·color 가 없다
+          '',
+        ].join('\n'),
+      }),
+    )
     const s = await store.load()
     expect(s.ok).toBe(true)
     // 좌표만 잃고 격자로 떨어진다 — 파일 전체를 거절하지 않는다.
@@ -135,7 +146,7 @@ describe('FileStore.load', () => {
         '    content: 정산 배치는 매일 02:00 — 잃으면 안 되는 사용자 메모',
         '    position: { x: 5, y: 6 }',
         "    color: '#fde68a'",
-        'tables: [불완전',   // 닫히지 않은 flow 시퀀스 — 파일 전체가 파싱되지 않는다
+        'tables: [불완전', // 닫히지 않은 flow 시퀀스 — 파일 전체가 파싱되지 않는다
         '',
       ].join('\n'),
     })
@@ -148,15 +159,16 @@ describe('FileStore.load', () => {
     // 잠겼으므로 편집이 통과하면 안 된다 — 통과하면 300ms 뒤 flush 가 파일을 덮는다.
     await expect(store.mutate([createTable('t1', 'ORD')])).rejects.toThrow(LocalStoreError)
     await store.flush()
-    expect(await readFile(join(dir, LAYOUT_FILE), 'utf8'))
-      .toContain('잃으면 안 되는 사용자 메모')
+    expect(await readFile(join(dir, LAYOUT_FILE), 'utf8')).toContain('잃으면 안 되는 사용자 메모')
   })
 
   it('빈 layout.yaml 은 손상이 아니다 — 빈 layout 으로 연다', async () => {
-    const store = new FileStore(await project({
-      'erdd/tables/MBR.yaml': MBR,
-      'erdd/layout.yaml': '# 주석만 있는 파일\n',
-    }))
+    const store = new FileStore(
+      await project({
+        'erdd/tables/MBR.yaml': MBR,
+        'erdd/layout.yaml': '# 주석만 있는 파일\n',
+      }),
+    )
     const s = await store.load()
     expect(s.ok).toBe(true)
     expect(Object.values(s.model.tables)[0]!.physicalName).toBe('MBR')
@@ -178,18 +190,20 @@ describe('FileStore.load', () => {
   })
 
   it('참조 무결성이 깨져도 실패로 본다', async () => {
-    const store = new FileStore(await project({
-      'erdd/tables/MBR.yaml': [
-        'id: 018f6b0e-0000-7000-8000-000000000001',
-        'name: MBR',
-        'logicalName: 회원',
-        'columns: []',
-        'relations:',
-        '  - to: NOPE',
-        '    columns: { A: B }',
-        '',
-      ].join('\n'),
-    }))
+    const store = new FileStore(
+      await project({
+        'erdd/tables/MBR.yaml': [
+          'id: 018f6b0e-0000-7000-8000-000000000001',
+          'name: MBR',
+          'logicalName: 회원',
+          'columns: []',
+          'relations:',
+          '  - to: NOPE',
+          '    columns: { A: B }',
+          '',
+        ].join('\n'),
+      }),
+    )
     const s = await store.load()
     expect(s.ok).toBe(false)
   })
@@ -238,8 +252,14 @@ const createTable = (id: string, name: string): Op => ({
   action: 'create',
   entityId: id,
   data: {
-    id, logicalName: name, physicalName: name, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id,
+    logicalName: name,
+    physicalName: name,
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   },
 })
 
@@ -287,7 +307,9 @@ describe('FileStore.mutate', () => {
   it('op 상한을 넘기면 거절한다', async () => {
     const store = new FileStore(await project({}))
     await store.load()
-    const many = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, (_, i) => createTable(`t${i}`, `T${i}`))
+    const many = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, (_, i) =>
+      createTable(`t${i}`, `T${i}`),
+    )
     await expect(store.mutate(many)).rejects.toThrow()
   })
 
@@ -295,11 +317,23 @@ describe('FileStore.mutate', () => {
     const store = new FileStore(await project({}))
     await store.load()
     const bad: Op = {
-      entity: 'column', action: 'create', entityId: 'c1',
+      entity: 'column',
+      action: 'create',
+      entityId: 'c1',
       data: {
-        id: 'c1', tableId: '없는테이블', logicalName: 'x', physicalName: 'X', type: 'TEXT',
-        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0,
-        comment: null, domainId: null, custom: {},
+        id: 'c1',
+        tableId: '없는테이블',
+        logicalName: 'x',
+        physicalName: 'X',
+        type: 'TEXT',
+        isPk: false,
+        autoIncrement: false,
+        nullable: true,
+        defaultValue: null,
+        order: 0,
+        comment: null,
+        domainId: null,
+        custom: {},
       },
     }
     // applyOps 가 던지는 OpApplyError 를 LocalStoreError 로 바꿔 던지는 경로를 잠근다 —
@@ -337,8 +371,11 @@ describe('FileStore.mutate', () => {
     const after = await readDraft(dir)
     expect(after.kind).toBe('ok')
     if (after.kind !== 'ok') return
-    expect(Object.values(after.draft.model.tables).map((t) => t.physicalName).sort())
-      .toEqual(['A', 'B'])
+    expect(
+      Object.values(after.draft.model.tables)
+        .map((t) => t.physicalName)
+        .sort(),
+    ).toEqual(['A', 'B'])
   })
 
   it('load() 진행 중에 커밋된 mutate 의 편집을 되돌리지 않는다(경합)', async () => {
@@ -402,13 +439,17 @@ describe('FileStore.mutate', () => {
 
     // 에이전트가 밖에서 새 테이블 파일을 쓴다.
     await mkdir(join(dir, 'erdd/tables'), { recursive: true })
-    await writeFile(join(dir, 'erdd/tables/ORD.yaml'), [
-      'id: 018f6b0e-0000-7000-8000-0000000000aa',
-      'name: ORD',
-      'logicalName: 주문',
-      'columns: []',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(dir, 'erdd/tables/ORD.yaml'),
+      [
+        'id: 018f6b0e-0000-7000-8000-0000000000aa',
+        'name: ORD',
+        'logicalName: 주문',
+        'columns: []',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
 
     // 감시가 그것을 잡아 load() 를 시작한다 — readTree 의 IO 로 곧장 양보한다.
     const loadPromise = store.load()
@@ -417,8 +458,11 @@ describe('FileStore.mutate', () => {
     await loadPromise
 
     // 밖의 변경은 **채택되지 않는다** — 내 편집만 그대로다.
-    expect(Object.values(store.state.model.tables).map((t) => t.physicalName).sort())
-      .toEqual(['A', 'B'])
+    expect(
+      Object.values(store.state.model.tables)
+        .map((t) => t.physicalName)
+        .sort(),
+    ).toEqual(['A', 'B'])
     // 그러나 조용하지 않다 — 사용자가 고를 수 있도록 알린다.
     expect(store.external).toBe(true)
     // 그리고 파일은 손대지 않았다(자동 병합도, 덮어쓰기도 없다).
@@ -460,17 +504,24 @@ describe('FileStore.save 의 쓰기 규칙', () => {
     // B.yaml 을 사람이 손으로 다듬은 형태로 바꾼다 — **값은 그대로**고 포맷과 주석만 다르다.
     // 정규화 재작성이 돌면 주석이 사라지고 들여쓰기가 바뀌므로 바이트 비교로 잡힌다.
     const bPath = join(dir, 'erdd/tables/B.yaml')
-    const handwritten = `# 손으로 붙인 주석 — 재작성되면 사라진다\n${
-      JSON.stringify(parseYaml(await readFile(bPath, 'utf8')), null, 4)}\n`
+    const handwritten = `# 손으로 붙인 주석 — 재작성되면 사라진다\n${JSON.stringify(
+      parseYaml(await readFile(bPath, 'utf8')),
+      null,
+      4,
+    )}\n`
     await writeFile(bPath, handwritten, 'utf8')
     await store.load()
     const before = await stat(bPath)
 
     // A 만 고친다.
-    await store.mutate([{
-      action: 'update', entity: 'table', entityId: 't1',
-      changes: { logicalName: { from: 'A', to: '가나' } },
-    }])
+    await store.mutate([
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: 't1',
+        changes: { logicalName: { from: 'A', to: '가나' } },
+      },
+    ])
     await store.flush()
     expect((await store.save()).ok).toBe(true)
 
@@ -489,9 +540,14 @@ describe('FileStore.save 의 쓰기 규칙', () => {
     expect((await store.save()).ok).toBe(true)
     expect(await readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).toContain('name: B')
 
-    await store.mutate([{
-      action: 'delete', entity: 'table', entityId: 't2', before: store.state.model.tables['t2'],
-    }])
+    await store.mutate([
+      {
+        action: 'delete',
+        entity: 'table',
+        entityId: 't2',
+        before: store.state.model.tables['t2'],
+      },
+    ])
     await store.flush()
     expect((await store.save()).ok).toBe(true)
     await expect(readFile(join(dir, 'erdd/tables/B.yaml'), 'utf8')).rejects.toThrow()
@@ -567,10 +623,14 @@ describe('FileStore 드래프트', () => {
     await store.flush()
     expect(store.dirty).toBe(true)
 
-    await store.mutate([{
-      action: 'update', entity: 'table', entityId: MBR_ID,
-      changes: { physicalName: { from: 'MBR2', to: 'MBR' } },
-    }])
+    await store.mutate([
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: MBR_ID,
+        changes: { physicalName: { from: 'MBR2', to: 'MBR' } },
+      },
+    ])
     await store.flush()
     expect(store.dirty).toBe(false)
     expect(await hasDraft(dir)).toBe(false)
@@ -604,7 +664,9 @@ describe('FileStore 드래프트', () => {
     await first.flush()
 
     await writeFile(
-      join(dir, 'erdd/tables/MBR.yaml'), MBR.replace('logicalName: 회원', 'logicalName: 멤버'), 'utf8',
+      join(dir, 'erdd/tables/MBR.yaml'),
+      MBR.replace('logicalName: 회원', 'logicalName: 멤버'),
+      'utf8',
     )
 
     const second = new FileStore(dir)
@@ -642,7 +704,7 @@ describe('FileStore 드래프트', () => {
     const second = new FileStore(dir)
     expect((await second.load()).ok).toBe(false)
     await second.adoptDraft()
-    expect(second.dirty).toBe(false)          // 아직 얹지 않았다
+    expect(second.dirty).toBe(false) // 아직 얹지 않았다
 
     await writeFile(join(dir, 'erdd/tables/MBR.yaml'), MBR, 'utf8')
     expect((await second.load()).ok).toBe(true)
@@ -684,7 +746,7 @@ describe('FileStore.save', () => {
     expect(r).toMatchObject({ ok: true })
     await expect(stat(join(dir, 'erdd/tables/A.yaml'))).resolves.toBeDefined()
     await expect(stat(join(dir, 'erdd/tables/B.yaml'))).rejects.toThrow()
-    expect(store.unsaved).toBe(true)   // B 는 저장 뒤의 편집이라 미저장으로 남는다
+    expect(store.unsaved).toBe(true) // B 는 저장 뒤의 편집이라 미저장으로 남는다
     expect(Object.keys(store.state.model.tables).sort()).toEqual(['t1', 't2'])
   })
 
@@ -697,13 +759,22 @@ describe('FileStore.save', () => {
     const dir = await project({ 'erdd/tables/MBR.yaml': MBR })
     const store = new FileStore(dir)
     await store.load()
-    const origin = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } }
+    const origin = {
+      libraryId: 'L1',
+      sourceId: 'S1',
+      sourceVersion: 1,
+      base: { logicalName: '고객' },
+    }
     await store.setModel({
       ...store.state.model,
       words: {
         '018f6b0e-0000-7000-8000-0000000000a1': {
-          id: '018f6b0e-0000-7000-8000-0000000000a1', logicalName: '고객', abbreviation: 'CUST',
-          englishName: null, description: null, origin,
+          id: '018f6b0e-0000-7000-8000-0000000000a1',
+          logicalName: '고객',
+          abbreviation: 'CUST',
+          englishName: null,
+          description: null,
+          origin,
         },
       },
     })
@@ -713,8 +784,10 @@ describe('FileStore.save', () => {
     const r = await store.save()
     expect(r).toMatchObject({ ok: true })
     // layout.yaml 은 트리 밖(좌표·메모)이라 트리 쓰기 뒤에 따로 쓴다 — 순서 불변식의 대상이 아니다.
-    const written = spy.mock.calls.map(([p]) => String(p))
-      .filter((p) => p.startsWith(join(dir, 'erdd') + '/')).map((p) => p.slice(dir.length + 1))
+    const written = spy.mock.calls
+      .map(([p]) => String(p))
+      .filter((p) => p.startsWith(join(dir, 'erdd') + '/'))
+      .map((p) => p.slice(dir.length + 1))
       .filter((p) => p !== LAYOUT_FILE)
     expect(written).toContain('erdd/words.yaml')
     expect(written.at(-1)).toBe('erdd/origins.yaml')
@@ -750,7 +823,9 @@ describe('FileStore.save', () => {
 
     // 감시를 거치지 않고 파일만 바꾼다 — store 는 아직 모른다.
     await writeFile(
-      join(dir, 'erdd/tables/MBR.yaml'), MBR.replace('logicalName: 회원', 'logicalName: 멤버'), 'utf8',
+      join(dir, 'erdd/tables/MBR.yaml'),
+      MBR.replace('logicalName: 회원', 'logicalName: 멤버'),
+      'utf8',
     )
     const body = await readFile(join(dir, 'erdd/tables/MBR.yaml'), 'utf8')
 
@@ -788,13 +863,17 @@ describe('FileStore.save', () => {
     await store.mutate([renameMbr('MBR2')])
     await store.flush()
 
-    await writeFile(join(dir, 'erdd/tables/NEW.yaml'), [
-      'id: 018f6b0e-0000-7000-8000-0000000000ff',
-      'name: NEW',
-      'logicalName: 신규',
-      'columns: []',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(dir, 'erdd/tables/NEW.yaml'),
+      [
+        'id: 018f6b0e-0000-7000-8000-0000000000ff',
+        'name: NEW',
+        'logicalName: 신규',
+        'columns: []',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
     expect(await store.save()).toMatchObject({ ok: false, reason: 'external' })
 
     await store.keep()
@@ -829,17 +908,21 @@ describe('FileStore.save', () => {
       'erdd/tables/ORD.yaml': ['name: ORD', 'logicalName: 주문', 'columns: []', ''].join('\n'),
     })
     const store = new FileStore(dir)
-    await store.load()          // 여기서 id 가 발급돼 파일에 되쓰인다
+    await store.load() // 여기서 id 가 발급돼 파일에 되쓰인다
     expect(store.external).toBe(false)
 
     // ⚠️ **미저장 편집이 있어야 이 잠금이 성립한다.** 되쓰기가 기준선에 반영되지 않으면
     // 다음 로드가 「밖에서 바뀌었다」로 보는데, 미저장이 없으면 그냥 채택해 버려 증상이 숨는다.
     // 실제 동선이 정확히 이것이다 — 되쓰기가 깨운 감시 이벤트가 사용자의 첫 편집보다 늦게 온다.
     const ord = Object.values(store.state.model.tables)[0]!
-    await store.mutate([{
-      action: 'update', entity: 'table', entityId: ord.id,
-      changes: { logicalName: { from: '주문', to: '주문서' } },
-    }])
+    await store.mutate([
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: ord.id,
+        changes: { logicalName: { from: '주문', to: '주문서' } },
+      },
+    ])
     await store.flush()
     expect(store.dirty).toBe(true)
 
@@ -864,16 +947,22 @@ describe('FileStore 상태 전이', () => {
     await store.mutate([renameMbr('MBR2')])
     await store.flush()
     await writeFile(
-      join(dir, 'erdd/tables/MBR.yaml'), MBR.replace('logicalName: 회원', 'logicalName: 멤버'), 'utf8',
+      join(dir, 'erdd/tables/MBR.yaml'),
+      MBR.replace('logicalName: 회원', 'logicalName: 멤버'),
+      'utf8',
     )
     await store.load()
     expect(store.external).toBe(true)
 
     // 사용자가 편집을 되돌린다(Cmd+Z) → 미저장이 사라진다.
-    await store.mutate([{
-      action: 'update', entity: 'table', entityId: MBR_ID,
-      changes: { physicalName: { from: 'MBR2', to: 'MBR' } },
-    }])
+    await store.mutate([
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: MBR_ID,
+        changes: { physicalName: { from: 'MBR2', to: 'MBR' } },
+      },
+    ])
     await store.flush()
     expect(store.dirty).toBe(false)
 
@@ -910,18 +999,30 @@ describe('FileStore 상태 전이', () => {
     expect(store.dirty).toBe(false)
     // ⚠️ **여기서 `flush()` 를 직접 부르면 안 된다** — 예약이 빠져도 통과해 구분력이 사라진다.
     // 실제 동선대로 디바운스가 스스로 도는 것을 기다린다.
-    await new Promise((r) => { setTimeout(r, 500) })
+    await new Promise((r) => {
+      setTimeout(r, 500)
+    })
     expect(await hasDraft(dir)).toBe(false)
 
     // 그리고 밖에서 온 변경이 정상적으로 채택된다(배너가 뜨지 않는다).
-    await writeFile(join(dir, 'erdd/tables/ORD.yaml'), [
-      'id: 018f6b0e-0000-7000-8000-0000000000aa',
-      'name: ORD', 'logicalName: 주문', 'columns: []', '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(dir, 'erdd/tables/ORD.yaml'),
+      [
+        'id: 018f6b0e-0000-7000-8000-0000000000aa',
+        'name: ORD',
+        'logicalName: 주문',
+        'columns: []',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
     await store.load()
     expect(store.external).toBe(false)
-    expect(Object.values(store.state.model.tables).map((t) => t.physicalName).sort())
-      .toEqual(['MBR2', 'ORD'])
+    expect(
+      Object.values(store.state.model.tables)
+        .map((t) => t.physicalName)
+        .sort(),
+    ).toEqual(['MBR2', 'ORD'])
   })
 
   /** `keep()` 뒤에 「저장할 것이 남았는가」가 실제로 다시 계산돼야 헤더가 거짓말하지 않는다. */
@@ -933,14 +1034,20 @@ describe('FileStore 상태 전이', () => {
     await store.flush()
 
     // 밖의 변경이 **화면과 같은 내용**이다 — keep 뒤에는 저장할 것이 없어야 한다.
-    await writeFile(join(dir, 'erdd/tables/MBR2.yaml'), MBR.replace('name: MBR', 'name: MBR2'), 'utf8')
+    await writeFile(
+      join(dir, 'erdd/tables/MBR2.yaml'),
+      MBR.replace('name: MBR', 'name: MBR2'),
+      'utf8',
+    )
     await rm(join(dir, 'erdd/tables/MBR.yaml'))
     await store.load()
     expect(store.external).toBe(true)
 
     await store.keep()
     // 같은 이유로 예약이 스스로 돌기를 기다린다.
-    await new Promise((r) => { setTimeout(r, 500) })
+    await new Promise((r) => {
+      setTimeout(r, 500)
+    })
     expect(store.dirty).toBe(false)
   })
 })

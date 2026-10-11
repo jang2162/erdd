@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { useDragStore } from './drag-store.js'
 
-afterEach(() => { useDragStore.getState().end() })
+afterEach(() => {
+  useDragStore.getState().end()
+})
 
 describe('useDragStore', () => {
   it('start는 끌 대상을 담고 타깃을 비운다', () => {
@@ -24,7 +26,7 @@ describe('useDragStore', () => {
     useDragStore.getState().start(['t1'], 'sidebar')
     useDragStore.getState().moveOver({ groupId: 'g1' })
     const first = useDragStore.getState().over
-    useDragStore.getState().moveOver({ groupId: 'g1' })   // 같은 값, 다른 객체
+    useDragStore.getState().moveOver({ groupId: 'g1' }) // 같은 값, 다른 객체
     expect(useDragStore.getState().over).toBe(first)
   })
 

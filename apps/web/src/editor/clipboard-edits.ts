@@ -12,7 +12,10 @@ export type PastedTableIds = {
  * 붙여넣기에 쓸 id를 미리 발급한다.
  * ⚠️ producer 안에서 newId()를 부르면 serializeMutation의 재실행에서 다른 id가 나온다.
  */
-export function planPasteTableIds(payload: ClipboardPayload, newId: () => string): PastedTableIds[] {
+export function planPasteTableIds(
+  payload: ClipboardPayload,
+  newId: () => string,
+): PastedTableIds[] {
   if (payload.kind !== 'tables') return []
   return payload.tables.map((t) => ({
     tableId: newId(),
@@ -49,7 +52,8 @@ function domainIdByName(model: ProjectModel, name: string | null): string | null
 }
 
 export function pasteTables(
-  model: ProjectModel, payload: ClipboardPayload,
+  model: ProjectModel,
+  payload: ClipboardPayload,
   { ids, offset }: { ids: PastedTableIds[]; offset: { x: number; y: number } },
 ): ProjectModel {
   if (payload.kind !== 'tables') return model
@@ -77,7 +81,7 @@ export function pasteTables(
       logicalName,
       physicalName,
       comment: src.comment,
-      groupId: null,                       // 그룹은 붙여넣지 않는다(그룹 자체를 복사 대상에서 뺐다)
+      groupId: null, // 그룹은 붙여넣지 않는다(그룹 자체를 복사 대상에서 뺐다)
       position: { x: src.position.x + offset.x, y: src.position.y + offset.y },
       groupPosition: null,
       custom: customByName(model, src.custom),
@@ -116,10 +120,16 @@ export function pasteTables(
           return columnId ? { columnId, direction: c.direction } : null
         })
         .filter((c): c is { columnId: string; direction: 'asc' | 'desc' } => c !== null)
-      if (cols.length === 0) return        // 가리킬 컬럼이 없으면 인덱스를 만들지 않는다
+      if (cols.length === 0) return // 가리킬 컬럼이 없으면 인덱스를 만들지 않는다
       const name = uniqueName(ix.name, usedIndexNames, '_COPY')
       usedIndexNames.add(name)
-      const index: IndexDef = { id: indexId, tableId: plan.tableId, name, columns: cols, unique: ix.unique }
+      const index: IndexDef = {
+        id: indexId,
+        tableId: plan.tableId,
+        name,
+        columns: cols,
+        unique: ix.unique,
+      }
       indexes[indexId] = index
     })
   })
@@ -128,7 +138,8 @@ export function pasteTables(
 }
 
 export function pasteColumns(
-  model: ProjectModel, payload: ClipboardPayload,
+  model: ProjectModel,
+  payload: ClipboardPayload,
   { tableId, ids }: { tableId: string; ids: string[] },
 ): ProjectModel {
   if (payload.kind !== 'columns') return model
@@ -174,7 +185,8 @@ export function pasteColumns(
  * 테이블 붙여넣기와 같은 성질이고 사용자가 보고 끌어 옮긴다(설계 3.4).
  */
 export function pasteNotes(
-  model: ProjectModel, payload: ClipboardPayload,
+  model: ProjectModel,
+  payload: ClipboardPayload,
   { ids, offset }: { ids: readonly string[]; offset: { x: number; y: number } },
 ): ProjectModel {
   if (payload.kind !== 'notes') return model
@@ -183,7 +195,9 @@ export function pasteNotes(
     const id = ids[i]
     if (id === undefined) return
     notes[id] = {
-      id, content: n.content, color: n.color,
+      id,
+      content: n.content,
+      color: n.color,
       position: { x: n.position.x + offset.x, y: n.position.y + offset.y },
     }
   })

@@ -34,24 +34,34 @@ const REVISION_ITEM = {
 // VersionDialog는 useIsLocal(→ useMe)을 쓴다 — RequireAuth 안에서만 렌더할 수 있다.
 function renderDialog(handlers: Parameters<typeof mockTrpcFetch>[0] = {}) {
   const fetchMock = mockTrpcFetch({
-    'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' } }),
+    'auth.me': () => ({
+      data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' },
+    }),
     ...handlers,
   })
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(
-    <RequireAuth><VersionDialog projectId={PROJECT_ID} open onOpenChange={() => {}} /></RequireAuth>,
+    <RequireAuth>
+      <VersionDialog projectId={PROJECT_ID} open onOpenChange={() => {}} />
+    </RequireAuth>,
     { wrapper: w },
   )
   return fetchMock
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('VersionDialog', () => {
   it('opening the dialog renders the snapshot.list result', async () => {
@@ -80,21 +90,38 @@ describe('VersionDialog', () => {
     })
     // create 성공 후 목록 무효화로 snapshot.list가 다시 호출된다.
     await waitFor(() => {
-      const listCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('snapshot.list'))
+      const listCalls = fetchMock.mock.calls.filter(([url]) =>
+        String(url).includes('snapshot.list'),
+      )
       expect(listCalls.length).toBeGreaterThanOrEqual(2)
     })
   })
 
   it('confirms and calls snapshot.restore when 복원 is clicked', async () => {
     grantEditPermission()
-    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    )
     const fetchMock = renderDialog({
       'snapshot.list': () => ({ data: { items: [SNAPSHOT_ITEM] } }),
       'snapshot.restore': (input) => {
         expect(input).toMatchObject({ projectId: PROJECT_ID, snapshotId: SNAPSHOT_ITEM.id })
         return { data: { seq: 4 } }
       },
-      'model.get': () => ({ data: { model: { tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {} }, seq: 4 } }),
+      'model.get': () => ({
+        data: {
+          model: {
+            tables: {},
+            columns: {},
+            relationships: {},
+            indexes: {},
+            notes: {},
+            tableGroups: {},
+          },
+          seq: 4,
+        },
+      }),
     })
     await screen.findByText('배포 전 백업')
     await userEvent.click(screen.getByRole('button', { name: '복원' }))
@@ -149,7 +176,9 @@ describe('VersionDialog', () => {
 
   it('로컬 모드에서만 「변경 기록」 탭이 보인다', async () => {
     renderDialog({
-      'auth.me': () => ({ data: { id: 'u1', email: 'local@erdd', name: '로컬', role: 'user', mode: 'local' } }),
+      'auth.me': () => ({
+        data: { id: 'u1', email: 'local@erdd', name: '로컬', role: 'user', mode: 'local' },
+      }),
       'snapshot.list': () => ({ data: { items: [] } }),
     })
     expect(await screen.findByRole('button', { name: '변경 기록' })).toBeInTheDocument()

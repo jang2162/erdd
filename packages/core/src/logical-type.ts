@@ -13,9 +13,23 @@
  * 섞으면 GUI 타입 칸에 `tinyint unsigned` 를 쳐도 통과해 모델에 방언 이름이 들어간다.
  */
 export type LogicalTypeKind =
-  | 'CHAR' | 'VARCHAR' | 'TEXT' | 'SMALLINT' | 'INT' | 'BIGINT' | 'DECIMAL'
-  | 'FLOAT' | 'DOUBLE' | 'BOOLEAN' | 'DATE' | 'TIME' | 'DATETIME' | 'TIMESTAMPTZ'
-  | 'BLOB' | 'JSON' | 'UUID'
+  | 'CHAR'
+  | 'VARCHAR'
+  | 'TEXT'
+  | 'SMALLINT'
+  | 'INT'
+  | 'BIGINT'
+  | 'DECIMAL'
+  | 'FLOAT'
+  | 'DOUBLE'
+  | 'BOOLEAN'
+  | 'DATE'
+  | 'TIME'
+  | 'DATETIME'
+  | 'TIMESTAMPTZ'
+  | 'BLOB'
+  | 'JSON'
+  | 'UUID'
 
 /** 부호 없음을 붙일 수 있는 정수 3종(설계 §4.2). MySQL 8.0.17 이 나머지를 deprecated 했다. */
 export type UnsignedCapableKind = 'SMALLINT' | 'INT' | 'BIGINT'
@@ -45,9 +59,23 @@ const ALIASES: Record<string, LogicalTypeKind> = {
   'DOUBLE PRECISION': 'DOUBLE',
 }
 const KINDS = new Set<LogicalTypeKind>([
-  'CHAR', 'VARCHAR', 'TEXT', 'SMALLINT', 'INT', 'BIGINT', 'DECIMAL',
-  'FLOAT', 'DOUBLE', 'BOOLEAN', 'DATE', 'TIME', 'DATETIME', 'TIMESTAMPTZ',
-  'BLOB', 'JSON', 'UUID',
+  'CHAR',
+  'VARCHAR',
+  'TEXT',
+  'SMALLINT',
+  'INT',
+  'BIGINT',
+  'DECIMAL',
+  'FLOAT',
+  'DOUBLE',
+  'BOOLEAN',
+  'DATE',
+  'TIME',
+  'DATETIME',
+  'TIMESTAMPTZ',
+  'BLOB',
+  'JSON',
+  'UUID',
 ])
 
 /** 논리 타입의 표기 문자열. 부호 없음은 접미로 붙는다. */
@@ -73,7 +101,8 @@ export function parseLogicalType(input: string): ParseResult {
   const normalized = m[1]!.toUpperCase().replace(/\s+/g, ' ')
   const unsigned = normalized.endsWith(' UNSIGNED')
   const name = unsigned ? normalized.slice(0, -' UNSIGNED'.length) : normalized
-  const kind = (ALIASES[name] ?? (KINDS.has(name as LogicalTypeKind) ? (name as LogicalTypeKind) : undefined))
+  const kind =
+    ALIASES[name] ?? (KINDS.has(name as LogicalTypeKind) ? (name as LogicalTypeKind) : undefined)
   if (!kind) return { ok: false, raw }
   const p1 = m[2] === undefined ? undefined : Number(m[2])
   const p2 = m[3] === undefined ? undefined : Number(m[3])
@@ -81,7 +110,11 @@ export function parseLogicalType(input: string): ParseResult {
   if (kind === 'DECIMAL') {
     if (p1 === undefined || unsigned) return { ok: false, raw }
     const scale = p2 ?? 0
-    return { ok: true, type: { kind: 'DECIMAL', precision: p1, scale }, canonical: `DECIMAL(${p1},${scale})` }
+    return {
+      ok: true,
+      type: { kind: 'DECIMAL', precision: p1, scale },
+      canonical: `DECIMAL(${p1},${scale})`,
+    }
   }
   if (kind === 'CHAR' || kind === 'VARCHAR') {
     if (p1 === undefined || p2 !== undefined || unsigned) return { ok: false, raw }

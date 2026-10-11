@@ -10,9 +10,12 @@ import type { AppRouter } from '@erdd/server/src/router.js'
 import { router } from '@/routes'
 
 function Root() {
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
-  }))
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+      }),
+  )
   const [trpcClient] = useState(() =>
     createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] }),
   )

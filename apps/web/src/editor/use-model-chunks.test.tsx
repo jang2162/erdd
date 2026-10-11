@@ -5,7 +5,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import { toast } from 'sonner'
 import {
-  MAX_OPS_PER_MUTATION, createEmptyModel, type Domain, type Op, type ProjectModel,
+  MAX_OPS_PER_MUTATION,
+  createEmptyModel,
+  type Domain,
+  type Op,
+  type ProjectModel,
 } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
@@ -25,7 +29,9 @@ function wrapper() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
 }
@@ -41,9 +47,15 @@ function withNotes(model: ProjectModel, n: number): ProjectModel {
 
 function domain(id: string): Domain {
   return {
-    id, name: id, category: null, logicalType: 'VARCHAR(10)',
+    id,
+    name: id,
+    category: null,
+    logicalType: 'VARCHAR(10)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: [], description: null, origin: null,
+    defaultValue: null,
+    allowedValues: [],
+    description: null,
+    origin: null,
   }
 }
 
@@ -53,9 +65,14 @@ type Sent = { projectId: string; ops: Op[]; summary?: string }
  * model.mutate 스텁. 기본은 seq 를 1씩 올린다. `seqs` 를 주면 i번째 호출에 그 seq 를 돌려주고,
  * `fail` 번째 호출은 거절하며, `onCall` 은 응답 전에 부른다(그 사이의 사건을 흉내 낸다).
  */
-function serverStub(opts: {
-  seqs?: number[]; fail?: number; fresh?: ProjectModel; onCall?: (i: number) => void
-} = {}) {
+function serverStub(
+  opts: {
+    seqs?: number[]
+    fail?: number
+    fresh?: ProjectModel
+    onCall?: (i: number) => void
+  } = {},
+) {
   const sent: Sent[] = []
   const freshCalls: number[] = []
   let seq = 1
@@ -79,10 +96,9 @@ function serverStub(opts: {
 function setup() {
   useEditorStore.getState().setLoaded(createEmptyModel(), 1, PID)
   grantEditPermission()
-  return renderHook(
-    () => ({ mutate: useModelMutation(PID), history: useUndoRedo(PID) }),
-    { wrapper: wrapper() },
-  )
+  return renderHook(() => ({ mutate: useModelMutation(PID), history: useUndoRedo(PID) }), {
+    wrapper: wrapper(),
+  })
 }
 
 afterEach(() => {
@@ -98,7 +114,10 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
     const progress = vi.fn()
     let outcome: string | undefined
     await act(async () => {
-      outcome = await result.current.mutate((m) => withNotes(m, MAX), { summary: '메모 추가', onProgress: progress })
+      outcome = await result.current.mutate((m) => withNotes(m, MAX), {
+        summary: '메모 추가',
+        onProgress: progress,
+      })
     })
     expect(outcome).toBe('applied')
     expect(sent).toHaveLength(1)
@@ -113,12 +132,24 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
     const { result } = setup()
     const progress = vi.fn()
     await act(async () => {
-      await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), { summary: '메모 추가', onProgress: progress })
+      await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), {
+        summary: '메모 추가',
+        onProgress: progress,
+      })
     })
     expect(sent.map((s) => s.ops.length)).toEqual([MAX, MAX, 1])
-    expect(sent.map((s) => s.summary)).toEqual(['메모 추가 (1/3)', '메모 추가 (2/3)', '메모 추가 (3/3)'])
-    expect(progress.mock.calls).toEqual([[0, 3], [1, 3], [2, 3], [3, 3]])
-    expect(freshCalls).toHaveLength(0)                  // seq 가 이어졌으므로 되맞추지 않는다
+    expect(sent.map((s) => s.summary)).toEqual([
+      '메모 추가 (1/3)',
+      '메모 추가 (2/3)',
+      '메모 추가 (3/3)',
+    ])
+    expect(progress.mock.calls).toEqual([
+      [0, 3],
+      [1, 3],
+      [2, 3],
+      [3, 3],
+    ])
+    expect(freshCalls).toHaveLength(0) // seq 가 이어졌으므로 되맞추지 않는다
     expect(useEditorStore.getState().seq).toBe(4)
     expect(useEditorStore.getState().undoStack).toHaveLength(1)
     expect(useEditorStore.getState().undoStack[0]).toHaveLength(2 * MAX + 1)
@@ -127,13 +158,22 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
   it('진행 콜백이 던져도 적용은 그대로 끝까지 간다 — 낙관적 상태가 남거나 실패로 갈리지 않는다', async () => {
     const { sent, freshCalls } = serverStub()
     const { result } = setup()
-    const progress = vi.fn(() => { throw new Error('boom') })
+    const progress = vi.fn(() => {
+      throw new Error('boom')
+    })
     let outcome: string | undefined
     await act(async () => {
-      outcome = await result.current.mutate((m) => withNotes(m, MAX + 1), { summary: '메모 추가', onProgress: progress })
+      outcome = await result.current.mutate((m) => withNotes(m, MAX + 1), {
+        summary: '메모 추가',
+        onProgress: progress,
+      })
     })
     expect(outcome).toBe('applied')
-    expect(progress.mock.calls).toEqual([[0, 2], [1, 2], [2, 2]])
+    expect(progress.mock.calls).toEqual([
+      [0, 2],
+      [1, 2],
+      [2, 2],
+    ])
     expect(sent.map((s) => s.ops.length)).toEqual([MAX, 1])
     expect(freshCalls).toHaveLength(0)
     expect(toast.error).not.toHaveBeenCalled()
@@ -146,31 +186,57 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
     const { sent } = serverStub()
     const { result } = setup()
     await act(async () => {
-      await result.current.mutate((m) => {
-        const domains = { ...m.domains }
-        for (let i = 0; i < MAX; i++) domains[`d${i}`] = domain(`d${i}`)
-        return {
-          ...m, domains,
-          terms: { t1: { id: 't1', logicalName: '금액', physicalName: 'AMT', domainId: `d${MAX - 1}`, description: null, origin: null } },
-        }
-      }, { summary: '사전' })
+      await result.current.mutate(
+        (m) => {
+          const domains = { ...m.domains }
+          for (let i = 0; i < MAX; i++) domains[`d${i}`] = domain(`d${i}`)
+          return {
+            ...m,
+            domains,
+            terms: {
+              t1: {
+                id: 't1',
+                logicalName: '금액',
+                physicalName: 'AMT',
+                domainId: `d${MAX - 1}`,
+                description: null,
+                origin: null,
+              },
+            },
+          }
+        },
+        { summary: '사전' },
+      )
     })
     expect(sent).toHaveLength(2)
     expect(sent[0]!.ops.every((op) => op.entity === 'domain')).toBe(true)
-    expect(sent[1]!.ops).toEqual([expect.objectContaining({ action: 'create', entity: 'term', entityId: 't1' })])
+    expect(sent[1]!.ops).toEqual([
+      expect.objectContaining({ action: 'create', entity: 'term', entityId: 't1' }),
+    ])
   })
 
   it('실행 취소 한 번이 역연산 전부를 조각으로 보내고, 다시 실행도 그렇다', async () => {
     const { sent } = serverStub()
     const { result } = setup()
-    await act(async () => { await result.current.mutate((m) => withNotes(m, MAX + 1), { summary: '메모 추가' }) })
-    await act(async () => { await result.current.history.undo() })
+    await act(async () => {
+      await result.current.mutate((m) => withNotes(m, MAX + 1), { summary: '메모 추가' })
+    })
+    await act(async () => {
+      await result.current.history.undo()
+    })
     expect(sent.slice(2).map((s) => s.summary)).toEqual(['실행 취소 (1/2)', '실행 취소 (2/2)'])
-    expect(sent.slice(2).flatMap((s) => s.ops).every((op) => op.action === 'delete')).toBe(true)
+    expect(
+      sent
+        .slice(2)
+        .flatMap((s) => s.ops)
+        .every((op) => op.action === 'delete'),
+    ).toBe(true)
     expect(Object.keys(useEditorStore.getState().model.notes)).toHaveLength(0)
     expect(useEditorStore.getState().undoStack).toHaveLength(0)
     expect(useEditorStore.getState().redoStack).toHaveLength(1)
-    await act(async () => { await result.current.history.redo() })
+    await act(async () => {
+      await result.current.history.redo()
+    })
     expect(sent.slice(4).map((s) => s.summary)).toEqual(['다시 실행 (1/2)', '다시 실행 (2/2)'])
     expect(Object.keys(useEditorStore.getState().model.notes)).toHaveLength(MAX + 1)
   })
@@ -181,11 +247,15 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
     const { result } = setup()
     let outcome: string | undefined
     await act(async () => {
-      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), { summary: '메모 추가' })
+      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), {
+        summary: '메모 추가',
+      })
     })
     expect(outcome).toBe('error')
-    expect(sent).toHaveLength(2)                          // 셋째 조각은 보내지 않는다
-    expect(toast.error).toHaveBeenCalledWith('3개 묶음 중 1개를 적용했고 나머지는 적용하지 못했습니다 — 거절됨')
+    expect(sent).toHaveLength(2) // 셋째 조각은 보내지 않는다
+    expect(toast.error).toHaveBeenCalledWith(
+      '3개 묶음 중 1개를 적용했고 나머지는 적용하지 못했습니다 — 거절됨',
+    )
     expect(freshCalls).toHaveLength(1)
     expect(Object.keys(useEditorStore.getState().model.notes)).toHaveLength(3)
     expect(useEditorStore.getState().undoStack).toHaveLength(0)
@@ -194,7 +264,9 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
   it('첫 조각이 실패하면 지금의 단일 실패와 같은 문구로 알린다', async () => {
     const { sent } = serverStub({ fail: 0 })
     const { result } = setup()
-    await act(async () => { await result.current.mutate((m) => withNotes(m, MAX + 1), { summary: '메모 추가' }) })
+    await act(async () => {
+      await result.current.mutate((m) => withNotes(m, MAX + 1), { summary: '메모 추가' })
+    })
     expect(sent).toHaveLength(1)
     expect(toast.error).toHaveBeenCalledWith('거절됨')
   })
@@ -205,7 +277,9 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
     const { result } = setup()
     let outcome: string | undefined
     await act(async () => {
-      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), { summary: '메모 추가' })
+      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), {
+        summary: '메모 추가',
+      })
     })
     expect(outcome).toBe('applied')
     expect(sent).toHaveLength(3)
@@ -218,15 +292,23 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
     const { sent, freshCalls } = serverStub({
       // 조각 사이에 이탈과 끼어든 revision 을 함께 흉내 낸다 — 간극이 있어도 새 프로젝트를 되맞추지 않는다.
       seqs: [2, 5, 6],
-      onCall: (i) => { if (i === 0) useEditorStore.getState().setLoaded(createEmptyModel(), 7, OTHER) },
+      onCall: (i) => {
+        if (i === 0) useEditorStore.getState().setLoaded(createEmptyModel(), 7, OTHER)
+      },
     })
     const { result } = setup()
     let outcome: string | undefined
     await act(async () => {
-      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), { summary: '메모 추가' })
+      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), {
+        summary: '메모 추가',
+      })
     })
     expect(outcome).toBe('error')
-    expect(sent.map((s) => [s.projectId, s.ops.length])).toEqual([[PID, MAX], [PID, MAX], [PID, 1]])
+    expect(sent.map((s) => [s.projectId, s.ops.length])).toEqual([
+      [PID, MAX],
+      [PID, MAX],
+      [PID, 1],
+    ])
     expect(freshCalls).toHaveLength(0)
     expect(toast.error).not.toHaveBeenCalled()
     const s = useEditorStore.getState()
@@ -239,16 +321,22 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
   it('떠난 뒤 남은 조각이 실패하면 몇 묶음이 들어갔는지 알리되 새 프로젝트를 되맞추지 않는다', async () => {
     const { sent, freshCalls } = serverStub({
       fail: 2,
-      onCall: (i) => { if (i === 0) useEditorStore.getState().setLoaded(createEmptyModel(), 7, OTHER) },
+      onCall: (i) => {
+        if (i === 0) useEditorStore.getState().setLoaded(createEmptyModel(), 7, OTHER)
+      },
     })
     const { result } = setup()
     let outcome: string | undefined
     await act(async () => {
-      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), { summary: '메모 추가' })
+      outcome = await result.current.mutate((m) => withNotes(m, 2 * MAX + 1), {
+        summary: '메모 추가',
+      })
     })
     expect(outcome).toBe('error')
     expect(sent.map((s) => s.projectId)).toEqual([PID, PID, PID])
-    expect(toast.error).toHaveBeenCalledWith('3개 묶음 중 2개를 적용했고 나머지는 적용하지 못했습니다 — 거절됨')
+    expect(toast.error).toHaveBeenCalledWith(
+      '3개 묶음 중 2개를 적용했고 나머지는 적용하지 못했습니다 — 거절됨',
+    )
     expect(freshCalls).toHaveLength(0)
     expect(useEditorStore.getState().seq).toBe(7)
     expect(useEditorStore.getState().model.notes).toEqual({})
@@ -260,7 +348,10 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
       onCall: (i) => {
         order.push(`chunk${i}`)
         // 첫 조각의 응답을 기다리는 사이 실시간 op 가 도착했다(use-realtime 은 같은 체인에 줄을 선다).
-        if (i === 0) void serializeMutation(async () => { order.push('realtime') })
+        if (i === 0)
+          void serializeMutation(async () => {
+            order.push('realtime')
+          })
       },
     })
     const { result } = setup()
@@ -270,9 +361,16 @@ describe('useModelMutation — 5,000 op 를 넘는 편집은 나눠 보낸다', 
       void result.current.history.undo()
       await applying
     })
-    await act(async () => { await serializeMutation(async () => undefined) })   // 체인을 비운다
+    await act(async () => {
+      await serializeMutation(async () => undefined)
+    }) // 체인을 비운다
     expect(order).toEqual(['chunk0', 'chunk1', 'chunk2', 'chunk3', 'realtime'])
-    expect(sent.map((s) => s.summary)).toEqual(['메모 추가 (1/2)', '메모 추가 (2/2)', '실행 취소 (1/2)', '실행 취소 (2/2)'])
+    expect(sent.map((s) => s.summary)).toEqual([
+      '메모 추가 (1/2)',
+      '메모 추가 (2/2)',
+      '실행 취소 (1/2)',
+      '실행 취소 (2/2)',
+    ])
     expect(useEditorStore.getState().model.notes).toEqual({})
     expect(useEditorStore.getState().redoStack).toHaveLength(1)
   })

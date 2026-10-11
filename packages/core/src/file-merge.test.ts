@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import {
-  TableSchema, ColumnSchema, RelationshipSchema, IndexSchema, TableGroupSchema,
-  DomainSchema, WordSchema, TermSchema, CustomFieldSchema, createEmptyModel,
+  TableSchema,
+  ColumnSchema,
+  RelationshipSchema,
+  IndexSchema,
+  TableGroupSchema,
+  DomainSchema,
+  WordSchema,
+  TermSchema,
+  CustomFieldSchema,
+  createEmptyModel,
 } from './model.js'
 import {
-  FILE_FIELDS, FILE_INVISIBLE_FIELDS, MERGE_KINDS, fileVisibleModel, mergeModels, type MergeKind,
-  applyMerge, gridPositions, pruneDangling,
+  FILE_FIELDS,
+  FILE_INVISIBLE_FIELDS,
+  MERGE_KINDS,
+  fileVisibleModel,
+  mergeModels,
+  type MergeKind,
+  applyMerge,
+  gridPositions,
+  pruneDangling,
 } from './file-merge.js'
 import { diffModels } from './diff.js'
 import { validateModelIntegrity } from './integrity.js'
@@ -14,9 +29,15 @@ import { fullModel } from './testing/fixtures.js'
 
 /** zod 스키마에서 실제 키를 뽑는다 — 손으로 적은 목록은 드리프트한다. */
 const SHAPE_BY_KIND: Record<MergeKind, { shape: object }> = {
-  tableGroup: TableGroupSchema, domain: DomainSchema, word: WordSchema,
-  term: TermSchema, customField: CustomFieldSchema, table: TableSchema,
-  column: ColumnSchema, relationship: RelationshipSchema, index: IndexSchema,
+  tableGroup: TableGroupSchema,
+  domain: DomainSchema,
+  word: WordSchema,
+  term: TermSchema,
+  customField: CustomFieldSchema,
+  table: TableSchema,
+  column: ColumnSchema,
+  relationship: RelationshipSchema,
+  index: IndexSchema,
 }
 
 describe('FILE_FIELDS 완전성', () => {
@@ -43,7 +64,12 @@ describe('fileVisibleModel', () => {
     expect(v.notes).toEqual({})
     expect(v.tables['tb1']!.position).toEqual({ x: 0, y: 0 })
     expect(v.tables['tb1']!.groupPosition).toBeNull()
-    expect(v.domains['d1']!.origin).toEqual({ libraryId: 'L1', sourceId: 'S1', sourceVersion: 3, base: {} })
+    expect(v.domains['d1']!.origin).toEqual({
+      libraryId: 'L1',
+      sourceId: 'S1',
+      sourceVersion: 3,
+      base: {},
+    })
   })
 
   it('원본을 변형하지 않고 컬렉션도 새 객체로 만든다', () => {
@@ -69,7 +95,13 @@ function trio(): { base: ProjectModel; local: ProjectModel; server: ProjectModel
 describe('mergeModels — 상태표', () => {
   it('서버만 추가한 것은 그대로 유지한다', () => {
     const { base, local, server } = trio()
-    server.tableGroups['g2'] = { id: 'g2', name: '주문관리', color: '#fee', comment: null, alias: '' }
+    server.tableGroups['g2'] = {
+      id: 'g2',
+      name: '주문관리',
+      color: '#fee',
+      comment: null,
+      alias: '',
+    }
     const { merged, conflicts } = mergeModels(base, local, server)
     expect(conflicts).toEqual([])
     expect(merged.tableGroups['g2']).toBeDefined()
@@ -99,8 +131,12 @@ describe('mergeModels — 상태표', () => {
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({
-      kind: 'index', entityId: 'ix2', field: '*', reason: 'local-delete',
-      local: null, changedFields: ['name'],
+      kind: 'index',
+      entityId: 'ix2',
+      field: '*',
+      reason: 'local-delete',
+      local: null,
+      changedFields: ['name'],
     })
   })
 
@@ -138,8 +174,13 @@ describe('mergeModels — 상태표', () => {
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({
-      kind: 'tableGroup', entityId: 'g9', field: 'name', reason: 'both-added',
-      base: null, local: '정산', server: '결제',
+      kind: 'tableGroup',
+      entityId: 'g9',
+      field: 'name',
+      reason: 'both-added',
+      base: null,
+      local: '정산',
+      server: '결제',
     })
   })
 
@@ -158,8 +199,12 @@ describe('mergeModels — 상태표', () => {
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({
-      kind: 'index', entityId: 'ix2', field: '*', reason: 'server-delete',
-      server: null, changedFields: ['name'],
+      kind: 'index',
+      entityId: 'ix2',
+      field: '*',
+      reason: 'server-delete',
+      server: null,
+      changedFields: ['name'],
     })
   })
 })
@@ -183,9 +228,14 @@ describe('mergeModels — 필드 단위', () => {
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toEqual({
       path: 'erdd/tables/MBR.yaml',
-      kind: 'column', entityId: 'c2', label: '컬럼 MBR.MBR_NM',
-      field: 'logicalName', reason: 'field',
-      base: '회원명', local: '회원 이름', server: '회원성명',
+      kind: 'column',
+      entityId: 'c2',
+      label: '컬럼 MBR.MBR_NM',
+      field: 'logicalName',
+      reason: 'field',
+      base: '회원명',
+      local: '회원 이름',
+      server: '회원성명',
       changedFields: [],
     })
   })
@@ -211,8 +261,11 @@ describe('mergeModels — 필드 단위', () => {
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({
-      field: 'domain', reason: 'field',
-      base: null, local: '명', server: '식별번호',
+      field: 'domain',
+      reason: 'field',
+      base: null,
+      local: '명',
+      server: '식별번호',
     })
   })
 
@@ -222,27 +275,45 @@ describe('mergeModels — 필드 단위', () => {
     server.words['w1']!.abbreviation = 'MB'
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts[0]).toMatchObject({
-      path: 'erdd/words.yaml', label: '단어 회원', field: 'abbreviation',
+      path: 'erdd/words.yaml',
+      label: '단어 회원',
+      field: 'abbreviation',
     })
   })
 
   it.each([
-    ['tableGroup', 'groups.yaml', (m: { local: ProjectModel; server: ProjectModel }) => {
-      m.local.tableGroups['g1']!.name = '회원관리부'
-      m.server.tableGroups['g1']!.name = '회원부'
-    }] as const,
-    ['domain', 'domains.yaml', (m: { local: ProjectModel; server: ProjectModel }) => {
-      m.local.domains['d1']!.name = '명칭'
-      m.server.domains['d1']!.name = '식별명'
-    }] as const,
-    ['term', 'terms.yaml', (m: { local: ProjectModel; server: ProjectModel }) => {
-      m.local.terms['t1']!.physicalName = 'MBR_NO_L'
-      m.server.terms['t1']!.physicalName = 'MBR_NO_S'
-    }] as const,
-    ['customField', 'custom-fields.yaml', (m: { local: ProjectModel; server: ProjectModel }) => {
-      m.local.customFields['cf1']!.name = '개인정보여부_L'
-      m.server.customFields['cf1']!.name = '개인정보여부_S'
-    }] as const,
+    [
+      'tableGroup',
+      'groups.yaml',
+      (m: { local: ProjectModel; server: ProjectModel }) => {
+        m.local.tableGroups['g1']!.name = '회원관리부'
+        m.server.tableGroups['g1']!.name = '회원부'
+      },
+    ] as const,
+    [
+      'domain',
+      'domains.yaml',
+      (m: { local: ProjectModel; server: ProjectModel }) => {
+        m.local.domains['d1']!.name = '명칭'
+        m.server.domains['d1']!.name = '식별명'
+      },
+    ] as const,
+    [
+      'term',
+      'terms.yaml',
+      (m: { local: ProjectModel; server: ProjectModel }) => {
+        m.local.terms['t1']!.physicalName = 'MBR_NO_L'
+        m.server.terms['t1']!.physicalName = 'MBR_NO_S'
+      },
+    ] as const,
+    [
+      'customField',
+      'custom-fields.yaml',
+      (m: { local: ProjectModel; server: ProjectModel }) => {
+        m.local.customFields['cf1']!.name = '개인정보여부_L'
+        m.server.customFields['cf1']!.name = '개인정보여부_S'
+      },
+    ] as const,
   ])('최상위 파일 엔티티(%s)의 path는 %s다', (kind, file, mutate) => {
     const { base, local, server } = trio()
     mutate({ local, server })
@@ -262,7 +333,7 @@ describe('mergeModels — 필드 단위', () => {
    */
   it('개명 직후에는 좌표가 재조립이 아니라 디스크의 실제 파일이다', () => {
     const { base, local, server } = trio()
-    local.tables['tb3']!.physicalName = 'MBR_DETAIL'      // 파일 안의 name 만 고친 상태
+    local.tables['tb3']!.physicalName = 'MBR_DETAIL' // 파일 안의 name 만 고친 상태
     local.columns['c6']!.logicalName = '비고사항'
     server.columns['c6']!.logicalName = '메모'
 
@@ -274,7 +345,9 @@ describe('mergeModels — 필드 단위', () => {
     })
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({
-      kind: 'column', entityId: 'c6', path: 'erdd/tables/MBR_DTL.yaml',
+      kind: 'column',
+      entityId: 'c6',
+      path: 'erdd/tables/MBR_DTL.yaml',
     })
   })
 
@@ -287,10 +360,11 @@ describe('mergeModels — 필드 단위', () => {
    */
   it('로컬 파일이 없는 테이블의 충돌은 재조립 경로로 떨어진다', () => {
     const { base, local, server } = trio()
-    delete local.tables['tb3']                            // MBR_DTL.yaml 을 지웠다
-    delete local.columns['c5']; delete local.columns['c6']
+    delete local.tables['tb3'] // MBR_DTL.yaml 을 지웠다
+    delete local.columns['c5']
+    delete local.columns['c6']
     delete local.relationships['r2']
-    server.columns['c6']!.logicalName = '메모'            // 서버는 그 테이블을 고쳤다
+    server.columns['c6']!.logicalName = '메모' // 서버는 그 테이블을 고쳤다
 
     // 지운 파일은 tableFiles 에 없다. 다른 테이블 것이 들어 있어도 이 조회는 빗나간다.
     const { conflicts } = mergeModels(base, local, server, {
@@ -298,7 +372,10 @@ describe('mergeModels — 필드 단위', () => {
     })
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({
-      kind: 'column', entityId: 'c6', reason: 'local-delete', path: 'erdd/tables/MBR_DTL.yaml',
+      kind: 'column',
+      entityId: 'c6',
+      reason: 'local-delete',
+      path: 'erdd/tables/MBR_DTL.yaml',
     })
   })
 
@@ -311,7 +388,10 @@ describe('mergeModels — 필드 단위', () => {
     const { conflicts } = mergeModels(base, local, server)
     expect(conflicts).toHaveLength(1)
     expect(conflicts[0]).toMatchObject({
-      kind: 'relationship', entityId: 'r1', field: 'name', reason: 'field',
+      kind: 'relationship',
+      entityId: 'r1',
+      field: 'name',
+      reason: 'field',
       path: 'erdd/tables/ORD.yaml',
     })
   })
@@ -322,13 +402,20 @@ describe('gridPositions', () => {
     // fullModel의 테이블 좌표: (10,20) (30,40) (50,60) → minX=10, maxY=60
     const pos = gridPositions(fullModel(), 6)
     expect(pos).toEqual([
-      { x: 10, y: 300 }, { x: 330, y: 300 }, { x: 650, y: 300 }, { x: 970, y: 300 },
-      { x: 10, y: 540 }, { x: 330, y: 540 },
+      { x: 10, y: 300 },
+      { x: 330, y: 300 },
+      { x: 650, y: 300 },
+      { x: 970, y: 300 },
+      { x: 10, y: 540 },
+      { x: 330, y: 540 },
     ])
   })
 
   it('테이블이 하나도 없으면 원점부터 놓는다', () => {
-    expect(gridPositions(createEmptyModel(), 2)).toEqual([{ x: 0, y: 0 }, { x: 320, y: 0 }])
+    expect(gridPositions(createEmptyModel(), 2)).toEqual([
+      { x: 0, y: 0 },
+      { x: 320, y: 0 },
+    ])
   })
 })
 
@@ -370,8 +457,14 @@ describe('applyMerge', () => {
     const base = fileVisibleModel(server)
     const local = clone(base)
     local.tables['tb9'] = {
-      id: 'tb9', logicalName: '결제', physicalName: 'PAY', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb9',
+      logicalName: '결제',
+      physicalName: 'PAY',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const { merged } = mergeModels(base, local, fileVisibleModel(server))
     const { model } = applyMerge(server, merged)
@@ -384,12 +477,16 @@ describe('applyMerge', () => {
     // pruneDangling이 지울 거리를 하나 만든다 — 스칼라 정리뿐 아니라
     // 엔티티 통째 삭제 경로도 server를 건드리지 않는지 확인한다.
     server.relationships['r9'] = {
-      id: 'r9', parentTableId: 'tb1', childTableId: 'tb3',
+      id: 'r9',
+      parentTableId: 'tb1',
+      childTableId: 'tb3',
       columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c1' }],
-      cardinality: '1:N', identifying: false, name: 'FK_EXTRA',
+      cardinality: '1:N',
+      identifying: false,
+      name: 'FK_EXTRA',
     }
     const before = clone(server)
-    const base = fileVisibleModel(fullModel())     // r9 이전 시점
+    const base = fileVisibleModel(fullModel()) // r9 이전 시점
     const local = clone(base)
     delete local.tables['tb3']
     delete local.columns['c5']
@@ -408,11 +505,15 @@ describe('pruneDangling', () => {
     const server = fullModel()
     // 서버가 pull 이후 MBR_DTL → MBR 관계를 하나 더 추가했다.
     server.relationships['r9'] = {
-      id: 'r9', parentTableId: 'tb1', childTableId: 'tb3',
+      id: 'r9',
+      parentTableId: 'tb1',
+      childTableId: 'tb3',
       columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c1' }],
-      cardinality: '1:N', identifying: false, name: 'FK_EXTRA',
+      cardinality: '1:N',
+      identifying: false,
+      name: 'FK_EXTRA',
     }
-    const base = fileVisibleModel(fullModel())     // r9 이전 시점
+    const base = fileVisibleModel(fullModel()) // r9 이전 시점
     const local = clone(base)
     // 로컬은 MBR_DTL 파일을 지웠다 — 그 테이블과 컬럼·관계가 전부 사라진다.
     delete local.tables['tb3']
@@ -425,17 +526,24 @@ describe('pruneDangling', () => {
     const { model, pruned } = applyMerge(server, merged)
 
     expect(model.tables['tb3']).toBeUndefined()
-    expect(model.relationships['r9']).toBeUndefined()   // 매달린 관계를 정리했다
+    expect(model.relationships['r9']).toBeUndefined() // 매달린 관계를 정리했다
     expect(pruned).toEqual([
-      { kind: 'relationship', entityId: 'r9', label: '관계 FK_EXTRA', reason: '참조 대상이 삭제됨' },
+      {
+        kind: 'relationship',
+        entityId: 'r9',
+        label: '관계 FK_EXTRA',
+        reason: '참조 대상이 삭제됨',
+      },
     ])
     // 정리하지 않으면 여기서 FK 위반 op가 나간다.
-    expect(diffModels(server, model).some((o) => o.entityId === 'r9' && o.action === 'delete')).toBe(true)
+    expect(
+      diffModels(server, model).some((o) => o.entityId === 'r9' && o.action === 'delete'),
+    ).toBe(true)
   })
 
   it('없는 컬럼을 가리키는 인덱스를 지운다', () => {
     const m = fullModel()
-    delete m.columns['c2']            // ix1이 c2를 가리킨다
+    delete m.columns['c2'] // ix1이 c2를 가리킨다
     const pruned = pruneDangling(m)
     expect(m.indexes['ix1']).toBeUndefined()
     expect(pruned.map((p) => p.entityId)).toContain('ix1')
@@ -450,7 +558,10 @@ describe('pruneDangling', () => {
     expect(m.indexes['ix1']).toBeUndefined()
     // ix1 자신의 tableId(tb1)는 그대로다 — entityDisplayName이 테이블로 한정한다.
     expect(pruned).toContainEqual({
-      kind: 'index', entityId: 'ix1', label: '인덱스 MBR.UX_MBR_01', reason: '참조 대상이 삭제됨',
+      kind: 'index',
+      entityId: 'ix1',
+      label: '인덱스 MBR.UX_MBR_01',
+      reason: '참조 대상이 삭제됨',
     })
   })
 
@@ -463,7 +574,10 @@ describe('pruneDangling', () => {
     expect(m.relationships['r2']).toBeUndefined()
     // r2는 이름이 없다(name: null) — entityDisplayName은 raw id 대신 자식→부모로 보여준다.
     expect(pruned).toContainEqual({
-      kind: 'relationship', entityId: 'r2', label: '관계 MBR_DTL→MBR', reason: '참조 대상이 삭제됨',
+      kind: 'relationship',
+      entityId: 'r2',
+      label: '관계 MBR_DTL→MBR',
+      reason: '참조 대상이 삭제됨',
     })
   })
 
@@ -471,8 +585,8 @@ describe('pruneDangling', () => {
     // 로컬이 테이블을 g1으로 옮겼는데 서버가 g1을 지운 상황. tables.group_id는 실제 FK라
     // (apps/server/src/db/schema.ts:92) 그대로 두면 반영이 FK 위반으로 터진다.
     const m = fullModel()
-    delete m.tableGroups['g1']        // tb1·tb3이 g1을 가리킨다
-    delete m.domains['d1']            // c2.domainId와 t1.domainId가 d1을 가리킨다
+    delete m.tableGroups['g1'] // tb1·tb3이 g1을 가리킨다
+    delete m.domains['d1'] // c2.domainId와 t1.domainId가 d1을 가리킨다
     const pruned = pruneDangling(m)
 
     expect(m.tables['tb1']!.groupId).toBeNull()
@@ -499,10 +613,21 @@ describe('pruneDangling', () => {
     m.columns['c2']!.domainId = 'toLocaleString'
     m.terms['t1']!.domainId = 'isPrototypeOf'
     m.columns['cx'] = { ...m.columns['c1']!, id: 'cx', tableId: 'toString' }
-    m.indexes['ixx'] = { id: 'ixx', tableId: 'constructor', name: 'IX_X', columns: [], unique: false }
+    m.indexes['ixx'] = {
+      id: 'ixx',
+      tableId: 'constructor',
+      name: 'IX_X',
+      columns: [],
+      unique: false,
+    }
     m.relationships['rx'] = {
-      id: 'rx', parentTableId: 'valueOf', childTableId: 'tb1', columnMappings: [],
-      cardinality: '1:N', identifying: false, name: null,
+      id: 'rx',
+      parentTableId: 'valueOf',
+      childTableId: 'tb1',
+      columnMappings: [],
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
     }
 
     pruneDangling(m)
@@ -521,7 +646,14 @@ describe('origin 병합', () => {
   const X = { libraryId: 'L1', sourceId: 'S1', sourceVersion: 2, base: { logicalName: '고객' } }
   function word(origin: typeof X | null) {
     const m = createEmptyModel()
-    m.words['w1'] = { id: 'w1', logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin }
+    m.words['w1'] = {
+      id: 'w1',
+      logicalName: '고객',
+      abbreviation: 'CUST',
+      englishName: null,
+      description: null,
+      origin,
+    }
     return m
   }
 
@@ -533,7 +665,11 @@ describe('origin 병합', () => {
 
   it('업그레이드 직후 — 옛 base(출처 없음)에서 로컬이 지운 항목은 서버에 출처만 있어도 충돌 없이 지워진다', () => {
     // 옛 base 는 출처를 모른다. 서버는 아무것도 고치지 않았으므로 로컬 삭제가 이긴다.
-    const { merged, conflicts } = mergeModels(word(null), createEmptyModel(), fileVisibleModel(word(X)))
+    const { merged, conflicts } = mergeModels(
+      word(null),
+      createEmptyModel(),
+      fileVisibleModel(word(X)),
+    )
     expect(conflicts).toEqual([])
     expect(merged.words['w1']).toBeUndefined()
   })
@@ -560,8 +696,12 @@ describe('origin 병합', () => {
     expect(conflicts).toHaveLength(1)
     // 표시 형식은 변경분 표시(formatOrigin)와 같다.
     expect(conflicts[0]).toMatchObject({
-      field: '출처', reason: 'field', path: 'erdd/origins.yaml',
-      base: null, local: 'v2 · 항목 S1', server: 'v3 · 항목 S1',
+      field: '출처',
+      reason: 'field',
+      path: 'erdd/origins.yaml',
+      base: null,
+      local: 'v2 · 항목 S1',
+      server: 'v3 · 항목 S1',
     })
   })
 
@@ -569,7 +709,14 @@ describe('origin 병합', () => {
     function words(...rows: [id: string, origin: typeof X | null][]): ProjectModel {
       const m = createEmptyModel()
       for (const [id, origin] of rows) {
-        m.words[id] = { id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin }
+        m.words[id] = {
+          id,
+          logicalName: '고객',
+          abbreviation: 'CUST',
+          englishName: null,
+          description: null,
+          origin,
+        }
       }
       return m
     }
@@ -579,20 +726,40 @@ describe('origin 병합', () => {
      * 각각 「로컬 추가」·「서버 전용 유지」가 되어 둘 다 남고, 이후 재동기화는 한쪽만 본다.
      */
     it('로컬이 추가한 항목이 서버 항목과 같은 원본을 가리키면 충돌이다', () => {
-      const { conflicts } = mergeModels(createEmptyModel(), words(['id-B', X]), fileVisibleModel(words(['id-A', X])))
-      expect(conflicts).toEqual([expect.objectContaining({
-        kind: 'word', entityId: 'id-B', reason: 'duplicate-origin', field: '*', path: 'erdd/words.yaml',
-        base: null, local: '고객 (id id-B) · v2 · 항목 S1', server: '고객 (id id-A) · v2 · 항목 S1',
-      })])
+      const { conflicts } = mergeModels(
+        createEmptyModel(),
+        words(['id-B', X]),
+        fileVisibleModel(words(['id-A', X])),
+      )
+      expect(conflicts).toEqual([
+        expect.objectContaining({
+          kind: 'word',
+          entityId: 'id-B',
+          reason: 'duplicate-origin',
+          field: '*',
+          path: 'erdd/words.yaml',
+          base: null,
+          local: '고객 (id id-B) · v2 · 항목 S1',
+          server: '고객 (id id-A) · v2 · 항목 S1',
+        }),
+      ])
     })
 
     it('로컬이 기존 항목에 붙인 출처가 서버 항목과 같은 원본이면 출처 충돌이다 — 연결을 풀라고 가리킨다', () => {
       const { conflicts } = mergeModels(
-        words(['id-B', null]), words(['id-B', X]), fileVisibleModel(words(['id-B', null], ['id-A', X])),
+        words(['id-B', null]),
+        words(['id-B', X]),
+        fileVisibleModel(words(['id-B', null], ['id-A', X])),
       )
-      expect(conflicts).toEqual([expect.objectContaining({
-        entityId: 'id-B', reason: 'duplicate-origin', field: '출처', path: 'erdd/origins.yaml', base: null,
-      })])
+      expect(conflicts).toEqual([
+        expect.objectContaining({
+          entityId: 'id-B',
+          reason: 'duplicate-origin',
+          field: '출처',
+          path: 'erdd/origins.yaml',
+          base: null,
+        }),
+      ])
     })
 
     it('로컬이 만들지 않은 중복(서버에 이미 둘)은 push 를 막지 않는다', () => {
@@ -602,7 +769,9 @@ describe('origin 병합', () => {
 
     it('원본 id 가 같아도 라이브러리가 다르면 중복이 아니다', () => {
       const { conflicts } = mergeModels(
-        createEmptyModel(), words(['id-B', { ...X, libraryId: 'L2' }]), fileVisibleModel(words(['id-A', X])),
+        createEmptyModel(),
+        words(['id-B', { ...X, libraryId: 'L2' }]),
+        fileVisibleModel(words(['id-A', X])),
       )
       expect(conflicts).toEqual([])
     })
@@ -612,8 +781,12 @@ describe('origin 병합', () => {
     const server = word(X)
     server.words['w1']!.abbreviation = 'CSTM'
     const { conflicts } = mergeModels(word(X), createEmptyModel(), fileVisibleModel(server))
-    expect(conflicts).toEqual([expect.objectContaining({
-      path: 'erdd/words.yaml', reason: 'local-delete', changedFields: ['abbreviation'],
-    })])
+    expect(conflicts).toEqual([
+      expect.objectContaining({
+        path: 'erdd/words.yaml',
+        reason: 'local-delete',
+        changedFields: ['abbreviation'],
+      }),
+    ])
   })
 })

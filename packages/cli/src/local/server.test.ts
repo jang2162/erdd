@@ -4,8 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH,
-  LOCAL_CHANGES_PATH, LOCAL_CHANGES_CREATE_PATH, createEmptyModel, modelToFiles,
+  LOCAL_DISCARD_PATH,
+  LOCAL_EVENTS_PATH,
+  LOCAL_KEEP_PATH,
+  LOCAL_SAVE_PATH,
+  LOCAL_CHANGES_PATH,
+  LOCAL_CHANGES_CREATE_PATH,
+  createEmptyModel,
+  modelToFiles,
 } from '@erdd/core'
 import { startLocalServer, type LocalServer } from './server.js'
 import { LOCAL_PROJECT_ID } from '../config.js'
@@ -13,15 +19,22 @@ import { writeTree } from '../tree.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 let running: LocalServer | null = null
-afterEach(async () => { await running?.close(); running = null })
+afterEach(async () => {
+  await running?.close()
+  running = null
+})
 
 async function project(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-server-'))
-  await writeFile(join(dir, 'erdd.config.yaml'), [
-    'dialects: [postgresql]',
-    'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-    '',
-  ].join('\n'), 'utf8')
+  await writeFile(
+    join(dir, 'erdd.config.yaml'),
+    [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'),
+    'utf8',
+  )
   await mkdir(join(dir, 'erdd/tables'), { recursive: true })
   return dir
 }
@@ -48,11 +61,21 @@ function rawGet(url: string, host: string): Promise<{ status: number; body: stri
   const u = new URL(url)
   return new Promise((resolve, reject) => {
     const req = httpRequest(
-      { host: u.hostname, port: u.port, path: `${u.pathname}${u.search}`, method: 'GET', headers: { Host: host } },
+      {
+        host: u.hostname,
+        port: u.port,
+        path: `${u.pathname}${u.search}`,
+        method: 'GET',
+        headers: { Host: host },
+      },
       (res) => {
         let body = ''
-        res.on('data', (c: Buffer) => { body += c.toString('utf8') })
-        res.on('end', () => { resolve({ status: res.statusCode ?? 0, body }) })
+        res.on('data', (c: Buffer) => {
+          body += c.toString('utf8')
+        })
+        res.on('end', () => {
+          resolve({ status: res.statusCode ?? 0, body })
+        })
       },
     )
     req.on('error', reject)
@@ -66,7 +89,12 @@ function rawPost(url: string, host: string): Promise<{ status: number }> {
   return new Promise((resolve, reject) => {
     const req = httpRequest(
       { host: u.hostname, port: u.port, path: u.pathname, method: 'POST', headers: { Host: host } },
-      (res) => { res.resume(); res.on('end', () => { resolve({ status: res.statusCode ?? 0 }) }) },
+      (res) => {
+        res.resume()
+        res.on('end', () => {
+          resolve({ status: res.statusCode ?? 0 })
+        })
+      },
     )
     req.on('error', reject)
     req.end()
@@ -90,10 +118,18 @@ async function mutate(url: string, ops: unknown[]): Promise<void> {
 
 const T1 = '018f6b0e-0000-7000-8000-000000000001'
 const createMbr = () => ({
-  action: 'create', entity: 'table', entityId: T1,
+  action: 'create',
+  entity: 'table',
+  entityId: T1,
   data: {
-    id: T1, logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: T1,
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   },
 })
 
@@ -103,7 +139,7 @@ describe('startLocalServer', () => {
     const url = `${s.url}/trpc/model.get?input=${encodeURIComponent(JSON.stringify({ projectId: LOCAL_PROJECT_ID }))}`
     const res = await fetch(url)
     expect(res.status).toBe(200)
-    const body = await res.json() as { result: { data: { seq: number } } }
+    const body = (await res.json()) as { result: { data: { seq: number } } }
     expect(body.result.data.seq).toBe(0)
   })
 
@@ -148,10 +184,18 @@ describe('startLocalServer', () => {
       const u = new URL(`${s.url}/trpc/model.mutate`)
       const req = httpRequest(
         {
-          host: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+          host: u.hostname,
+          port: u.port,
+          path: u.pathname,
+          method: 'POST',
           headers: { Host: 'evil.example.com', 'content-type': 'application/json' },
         },
-        (r) => { r.resume(); r.on('end', () => { resolve(r.statusCode ?? 0) }) },
+        (r) => {
+          r.resume()
+          r.on('end', () => {
+            resolve(r.statusCode ?? 0)
+          })
+        },
       )
       req.on('error', reject)
       req.end(JSON.stringify({ projectId: LOCAL_PROJECT_ID, ops: [] }))
@@ -193,11 +237,15 @@ describe('startLocalServer', () => {
 
   it('erdd/ 가 기동 시점에 없어도, 나중에 생기면 그 안의 변경을 SSE 로 알린다', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'erdd-server-'))
-    await writeFile(join(cwd, 'erdd.config.yaml'), [
-      'dialects: [postgresql]',
-      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(cwd, 'erdd.config.yaml'),
+      [
+        'dialects: [postgresql]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
     // erdd/ 는 일부러 만들지 않는다 — `init --local` 직후 첫 `serve` 상태를 그대로 재현한다.
     const s = await start(cwd)
     const res = await fetch(`${s.url}/local/events`)
@@ -253,13 +301,23 @@ describe('startLocalServer', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         projectId: LOCAL_PROJECT_ID,
-        ops: [{
-          action: 'create', entity: 'table', entityId: '018f6b0e-0000-7000-8000-000000000001',
-          data: {
-            id: '018f6b0e-0000-7000-8000-000000000001', logicalName: '회원', physicalName: 'MBR',
-            comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+        ops: [
+          {
+            action: 'create',
+            entity: 'table',
+            entityId: '018f6b0e-0000-7000-8000-000000000001',
+            data: {
+              id: '018f6b0e-0000-7000-8000-000000000001',
+              logicalName: '회원',
+              physicalName: 'MBR',
+              comment: null,
+              groupId: null,
+              position: { x: 0, y: 0 },
+              groupPosition: null,
+              custom: {},
+            },
           },
-        }],
+        ],
       }),
     })
     await sleep(1500)
@@ -312,7 +370,7 @@ describe('startLocalServer', () => {
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
     await sleep(500)
     const url = `${s.url}/trpc/model.get?input=${encodeURIComponent(JSON.stringify({ projectId: LOCAL_PROJECT_ID }))}`
-    const body = await (await fetch(url)).json() as {
+    const body = (await (await fetch(url)).json()) as {
       result: { data: { model: { tables: Record<string, { physicalName: string }> } } }
     }
     expect(Object.values(body.result.data.model.tables)[0]!.physicalName).toBe('MBR')
@@ -322,14 +380,18 @@ describe('startLocalServer', () => {
     const cwd = await project()
     const s = await start(cwd)
     await sleep(100)
-    await writeFile(join(cwd, 'erdd.config.yaml'), [
-      'dialects: [mysql]',
-      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(cwd, 'erdd.config.yaml'),
+      [
+        'dialects: [mysql]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
     await sleep(500)
     const url = `${s.url}/trpc/project.get?input=${encodeURIComponent(JSON.stringify({ projectId: LOCAL_PROJECT_ID }))}`
-    const body = await (await fetch(url)).json() as { result: { data: { dialects: string[] } } }
+    const body = (await (await fetch(url)).json()) as { result: { data: { dialects: string[] } } }
     expect(body.result.data.dialects).toEqual(['mysql'])
   }, 10_000)
 
@@ -374,7 +436,7 @@ describe('로컬 저장 라우트', () => {
     const s = await start(cwd)
 
     await mutate(s.url, [createMbr()])
-    await sleep(500)                              // 드래프트 디바운스 통과
+    await sleep(500) // 드래프트 디바운스 통과
     // 저장 전 — erdd/tables 가 비어 있다.
     expect(await readdir(join(cwd, 'erdd/tables'))).toEqual([])
 
@@ -411,10 +473,14 @@ describe('로컬 저장 라우트', () => {
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
     const s = await start(cwd)
 
-    await mutate(s.url, [{
-      action: 'update', entity: 'table', entityId: T1,
-      changes: { logicalName: { from: '회원', to: '멤버' } },
-    }])
+    await mutate(s.url, [
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: T1,
+        changes: { logicalName: { from: '회원', to: '멤버' } },
+      },
+    ])
     await sleep(500)
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE.replace('회원', '고객'), 'utf8')
     await sleep(500)
@@ -429,10 +495,14 @@ describe('로컬 저장 라우트', () => {
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
     const s = await start(cwd)
 
-    await mutate(s.url, [{
-      action: 'update', entity: 'table', entityId: T1,
-      changes: { logicalName: { from: '회원', to: '멤버' } },
-    }])
+    await mutate(s.url, [
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: T1,
+        changes: { logicalName: { from: '회원', to: '멤버' } },
+      },
+    ])
     await sleep(500)
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE.replace('회원', '고객'), 'utf8')
     await sleep(500)
@@ -464,7 +534,8 @@ describe('로컬 저장 라우트', () => {
     it(`낯선 Origin 의 POST ${path} 는 403 이다`, async () => {
       const s = await start(await project())
       const res = await fetch(`${s.url}${path}`, {
-        method: 'POST', headers: { Origin: 'https://evil.example.com' },
+        method: 'POST',
+        headers: { Origin: 'https://evil.example.com' },
       })
       expect(res.status).toBe(403)
     }, 10_000)
@@ -474,7 +545,8 @@ describe('로컬 저장 라우트', () => {
   it('자기 Origin 의 POST 는 통과한다', async () => {
     const s = await start(await project())
     const res = await fetch(`${s.url}${LOCAL_SAVE_PATH}`, {
-      method: 'POST', headers: { Origin: s.url },
+      method: 'POST',
+      headers: { Origin: s.url },
     })
     expect(res.status).toBe(200)
   }, 10_000)
@@ -506,7 +578,7 @@ describe('로컬 저장 라우트', () => {
 
     const again = await start(cwd)
     const url = `${again.url}/trpc/model.get?input=${encodeURIComponent(JSON.stringify({ projectId: LOCAL_PROJECT_ID }))}`
-    const body = await (await fetch(url)).json() as {
+    const body = (await (await fetch(url)).json()) as {
       result: { data: { model: { tables: Record<string, { physicalName: string }> } } }
     }
     expect(Object.values(body.result.data.model.tables)[0]!.physicalName).toBe('MBR')
@@ -522,8 +594,31 @@ describe('변경 기록 엔드포인트', () => {
   async function projectWithTable(): Promise<string> {
     const cwd = await project()
     const m = createEmptyModel()
-    m.tables[T] = { id: T, logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
-    m.columns[C1] = { id: C1, tableId: T, logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null, domainId: null, custom: {} }
+    m.tables[T] = {
+      id: T,
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
+    }
+    m.columns[C1] = {
+      id: C1,
+      tableId: T,
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
     await writeTree(cwd, modelToFiles(m).tree)
     return cwd
   }
@@ -531,7 +626,9 @@ describe('변경 기록 엔드포인트', () => {
   async function postJson(url: string, path: string, body?: unknown): Promise<unknown> {
     const res = await fetch(`${url}${path}`, {
       method: 'POST',
-      ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+      ...(body === undefined
+        ? {}
+        : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
     })
     return res.json()
   }
@@ -539,38 +636,69 @@ describe('변경 기록 엔드포인트', () => {
   it('상태는 미기록을 보여 주고, 생성하면 파일이 생기고 미기록이 사라진다', async () => {
     const cwd = await projectWithTable()
     const s = await start(cwd)
-    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ records: [], error: null, unsaved: false, pending: { count: 1 } })
-    const created = await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' }) as { ok: boolean; file: string }
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({
+      records: [],
+      error: null,
+      unsaved: false,
+      pending: { count: 1 },
+    })
+    const created = (await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })) as {
+      ok: boolean
+      file: string
+    }
     expect(created).toMatchObject({ ok: true, statementCount: 1 })
-    expect(await readdir(join(cwd, 'erdd/changes'))).toEqual([created.file.slice('erdd/changes/'.length)])
+    expect(await readdir(join(cwd, 'erdd/changes'))).toEqual([
+      created.file.slice('erdd/changes/'.length),
+    ])
     expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ pending: { count: 0 } })
   }, 10_000)
 
   it('미저장 편집이 있으면 생성을 거절한다', async () => {
     const cwd = await projectWithTable()
     const s = await start(cwd)
-    await mutate(s.url, [{ action: 'update', entity: 'table', entityId: T, changes: { logicalName: { from: '회원', to: '멤버' } } }])
+    await mutate(s.url, [
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: T,
+        changes: { logicalName: { from: '회원', to: '멤버' } },
+      },
+    ])
     expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({
-      ok: false, reason: 'unsaved', message: '저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 변경 기록을 만드세요',
+      ok: false,
+      reason: 'unsaved',
+      message: '저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 변경 기록을 만드세요',
     })
     expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ unsaved: true })
   }, 10_000)
 
   it('서버에 연결된 프로젝트면 상태는 오류, 생성은 local-only 로 거절하고 파일을 만들지 않는다', async () => {
     const cwd = await projectWithTable()
-    await writeFile(join(cwd, 'erdd.config.yaml'), [
-      'serverUrl: http://localhost:9',
-      `projectId: ${T}`,
-      'dialects: [postgresql]',
-      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(cwd, 'erdd.config.yaml'),
+      [
+        'serverUrl: http://localhost:9',
+        `projectId: ${T}`,
+        'dialects: [postgresql]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
     const s = await start(cwd)
     const message = '변경 기록은 로컬 모드 전용입니다 — 서버에 연결된 프로젝트에서는 쓸 수 없습니다'
     expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toEqual({
-      records: [], pending: null, warnings: [], error: { file: null, line: null, message }, unsaved: false,
+      records: [],
+      pending: null,
+      warnings: [],
+      error: { file: null, line: null, message },
+      unsaved: false,
     })
-    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({ ok: false, reason: 'local-only', message })
+    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({
+      ok: false,
+      reason: 'local-only',
+      message,
+    })
     await expect(readdir(join(cwd, 'erdd/changes'))).rejects.toMatchObject({ code: 'ENOENT' })
   }, 10_000)
 
@@ -579,20 +707,29 @@ describe('변경 기록 엔드포인트', () => {
     await writeFile(join(cwd, 'erdd/tables/BROKEN.yaml'), 'name: [불완전\n', 'utf8')
     const s = await start(cwd)
     const message = '파일이 깨져 편집이 잠겨 있습니다 — 파일을 고친 뒤 다시 하세요'
-    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({ pending: null, error: { file: null, line: null, message } })
-    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({ ok: false, reason: 'blocked', message })
+    expect(await postJson(s.url, LOCAL_CHANGES_PATH)).toMatchObject({
+      pending: null,
+      error: { file: null, line: null, message },
+    })
+    expect(await postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '초기' })).toEqual({
+      ok: false,
+      reason: 'blocked',
+      message,
+    })
     await expect(readdir(join(cwd, 'erdd/changes'))).rejects.toMatchObject({ code: 'ENOENT' })
   }, 10_000)
 
   it('동시에 두 번 생성하면 하나만 기록되고 다른 하나는 empty 로 거절한다', async () => {
     const cwd = await projectWithTable()
     const s = await start(cwd)
-    const results = await Promise.all([
+    const results = (await Promise.all([
       postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '가' }),
       postJson(s.url, LOCAL_CHANGES_CREATE_PATH, { name: '나' }),
-    ]) as { ok: boolean; reason?: string }[]
+    ])) as { ok: boolean; reason?: string }[]
     expect(results.filter((r) => r.ok)).toHaveLength(1)
-    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, reason: 'empty', message: '기록할 변경이 없습니다' }])
+    expect(results.filter((r) => !r.ok)).toEqual([
+      { ok: false, reason: 'empty', message: '기록할 변경이 없습니다' },
+    ])
     expect(await readdir(join(cwd, 'erdd/changes'))).toHaveLength(1)
   }, 10_000)
 
@@ -659,10 +796,14 @@ describe('감시 콜백 — config 와 파일이 함께 바뀔 때', () => {
     const cwd = await project()
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE, 'utf8')
     const s = await start(cwd)
-    await mutate(s.url, [{
-      action: 'update', entity: 'table', entityId: T1,
-      changes: { logicalName: { from: '회원', to: '멤버' } },
-    }])
+    await mutate(s.url, [
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: T1,
+        changes: { logicalName: { from: '회원', to: '멤버' } },
+      },
+    ])
     await sleep(500)
     return { cwd, s }
   }
@@ -672,8 +813,11 @@ describe('감시 콜백 — config 와 파일이 함께 바뀔 때', () => {
     const ev = await listen(s.url)
     await sleep(100)
     await writeFile(join(cwd, 'erdd/words.yaml'), WORDS, 'utf8')
-    await writeFile(join(cwd, 'erdd.config.yaml'),
-      [...CONFIG, 'dictionaries: [{ id: L1, name: 표준 }]', ''].join('\n'), 'utf8')
+    await writeFile(
+      join(cwd, 'erdd.config.yaml'),
+      [...CONFIG, 'dictionaries: [{ id: L1, name: 표준 }]', ''].join('\n'),
+      'utf8',
+    )
     for (let i = 0; i < 50 && !ev.text().includes('"external":true'); i += 1) await sleep(20)
     expect(ev.text()).toContain('"external":true')
     await ev.stop()
@@ -685,8 +829,11 @@ describe('감시 콜백 — config 와 파일이 함께 바뀔 때', () => {
     const ev = await listen(s.url)
     for (let i = 0; i < 50 && count(ev.text(), '"reload"') === 0; i += 1) await sleep(20)
     expect(count(ev.text(), '"reload"')).toBe(1)
-    await writeFile(join(cwd, 'erdd.config.yaml'),
-      [...CONFIG, 'dictionaries: [{ id: L1, name: 표준 }]', ''].join('\n'), 'utf8')
+    await writeFile(
+      join(cwd, 'erdd.config.yaml'),
+      [...CONFIG, 'dictionaries: [{ id: L1, name: 표준 }]', ''].join('\n'),
+      'utf8',
+    )
     await sleep(600)
     expect(count(ev.text(), '"reload"')).toBe(1)
     await ev.stop()
@@ -697,8 +844,11 @@ describe('감시 콜백 — config 와 파일이 함께 바뀔 때', () => {
     const ev = await listen(s.url)
     await sleep(100)
     await writeFile(join(cwd, 'erdd/tables/MBR.yaml'), MBR_TABLE.replace('회원', '고객'), 'utf8')
-    await writeFile(join(cwd, 'erdd.config.yaml'),
-      ['dialects: [mysql]', CONFIG[1], ''].join('\n'), 'utf8')
+    await writeFile(
+      join(cwd, 'erdd.config.yaml'),
+      ['dialects: [mysql]', CONFIG[1], ''].join('\n'),
+      'utf8',
+    )
     for (let i = 0; i < 50 && !ev.text().includes('"external":true'); i += 1) await sleep(20)
     expect(ev.text()).toContain('"external":true')
     // config 가 바뀌었으니 reload 도 나간다(방언 등 project.get 을 다시 읽어야 한다).

@@ -56,7 +56,11 @@ describe('resolveColumnType', () => {
 })
 
 /** 왕복이 깨지는 조합. 설계 문서 §2의 표와 1:1 대응한다. */
-const ROUND_TRIP_LOSSES: Array<{ kind: LogicalTypeKind; dialect: Dialect; readBack: LogicalTypeKind }> = [
+const ROUND_TRIP_LOSSES: Array<{
+  kind: LogicalTypeKind
+  dialect: Dialect
+  readBack: LogicalTypeKind
+}> = [
   { kind: 'JSON', dialect: 'oracle', readBack: 'TEXT' },
   { kind: 'DATE', dialect: 'oracle', readBack: 'DATETIME' },
   { kind: 'TIME', dialect: 'oracle', readBack: 'DATETIME' },
@@ -70,11 +74,19 @@ const SAMPLE: Record<LogicalTypeKind, LogicalType> = {
   DECIMAL: { kind: 'DECIMAL', precision: 12, scale: 3 },
   TEXT: { kind: 'TEXT' },
   // 정수 3종은 `unsigned` 가 **필수**다 — 이 리터럴이 타입 검사에 걸려야 정상이다(설계 §4.3).
-  SMALLINT: { kind: 'SMALLINT', unsigned: false }, INT: { kind: 'INT', unsigned: false },
-  BIGINT: { kind: 'BIGINT', unsigned: false }, FLOAT: { kind: 'FLOAT' }, DOUBLE: { kind: 'DOUBLE' },
-  BOOLEAN: { kind: 'BOOLEAN' }, DATE: { kind: 'DATE' }, TIME: { kind: 'TIME' },
-  DATETIME: { kind: 'DATETIME' }, TIMESTAMPTZ: { kind: 'TIMESTAMPTZ' },
-  BLOB: { kind: 'BLOB' }, JSON: { kind: 'JSON' }, UUID: { kind: 'UUID' },
+  SMALLINT: { kind: 'SMALLINT', unsigned: false },
+  INT: { kind: 'INT', unsigned: false },
+  BIGINT: { kind: 'BIGINT', unsigned: false },
+  FLOAT: { kind: 'FLOAT' },
+  DOUBLE: { kind: 'DOUBLE' },
+  BOOLEAN: { kind: 'BOOLEAN' },
+  DATE: { kind: 'DATE' },
+  TIME: { kind: 'TIME' },
+  DATETIME: { kind: 'DATETIME' },
+  TIMESTAMPTZ: { kind: 'TIMESTAMPTZ' },
+  BLOB: { kind: 'BLOB' },
+  JSON: { kind: 'JSON' },
+  UUID: { kind: 'UUID' },
 }
 
 describe('fromDialectType', () => {
@@ -93,36 +105,68 @@ describe('fromDialectType', () => {
           expect(back.type, `${kind}/${dialect} → ${sql} 는 왕복해야 한다`).toEqual(original)
         } else {
           expect(back.type.kind, `${kind}/${dialect} → ${sql}`).toBe(expected)
-          expect(back.type, `${kind}/${dialect} 는 손실 목록에 있으므로 왕복하면 안 된다`)
-            .not.toEqual(original)
+          expect(
+            back.type,
+            `${kind}/${dialect} 는 손실 목록에 있으므로 왕복하면 안 된다`,
+          ).not.toEqual(original)
         }
       }
     }
   })
 
   it('oracle NUMBER를 정밀도로 갈라 읽고 DECIMAL을 대안으로 남긴다', () => {
-    expect(fromDialectType('NUMBER(1)', 'oracle')).toMatchObject({ type: { kind: 'BOOLEAN' }, alternatives: ['DECIMAL'] })
-    expect(fromDialectType('NUMBER(5)', 'oracle')).toMatchObject({ type: { kind: 'SMALLINT' }, alternatives: ['DECIMAL'] })
-    expect(fromDialectType('NUMBER(10)', 'oracle')).toMatchObject({ type: { kind: 'INT' }, alternatives: ['DECIMAL'] })
-    expect(fromDialectType('NUMBER(19)', 'oracle')).toMatchObject({ type: { kind: 'BIGINT' }, alternatives: ['DECIMAL'] })
+    expect(fromDialectType('NUMBER(1)', 'oracle')).toMatchObject({
+      type: { kind: 'BOOLEAN' },
+      alternatives: ['DECIMAL'],
+    })
+    expect(fromDialectType('NUMBER(5)', 'oracle')).toMatchObject({
+      type: { kind: 'SMALLINT' },
+      alternatives: ['DECIMAL'],
+    })
+    expect(fromDialectType('NUMBER(10)', 'oracle')).toMatchObject({
+      type: { kind: 'INT' },
+      alternatives: ['DECIMAL'],
+    })
+    expect(fromDialectType('NUMBER(19)', 'oracle')).toMatchObject({
+      type: { kind: 'BIGINT' },
+      alternatives: ['DECIMAL'],
+    })
     // 위 넷에 없는 정밀도는 모호하지 않다.
     expect(fromDialectType('NUMBER(7)', 'oracle')).toMatchObject({
-      type: { kind: 'DECIMAL', precision: 7, scale: 0 }, alternatives: [],
+      type: { kind: 'DECIMAL', precision: 7, scale: 0 },
+      alternatives: [],
     })
     // scale이 있으면 정수 후보가 아니다 — NUMBER(10,0)이 INT로 읽히면 안 된다.
     expect(fromDialectType('NUMBER(10,0)', 'oracle')).toMatchObject({
-      type: { kind: 'DECIMAL', precision: 10, scale: 0 }, alternatives: [],
+      type: { kind: 'DECIMAL', precision: 10, scale: 0 },
+      alternatives: [],
     })
   })
 
   it('모호한 조합에 대안을 남긴다', () => {
-    expect(fromDialectType('CLOB', 'oracle')).toMatchObject({ type: { kind: 'TEXT' }, alternatives: ['JSON'] })
-    expect(fromDialectType('DATE', 'oracle')).toMatchObject({ type: { kind: 'DATETIME' }, alternatives: ['DATE'] })
-    expect(fromDialectType('TIMESTAMP', 'oracle')).toMatchObject({ type: { kind: 'DATETIME' }, alternatives: ['TIME'] })
-    expect(fromDialectType('NVARCHAR(MAX)', 'mssql')).toMatchObject({ type: { kind: 'TEXT' }, alternatives: ['JSON'] })
-    expect(fromDialectType('TINYINT(1)', 'mysql')).toMatchObject({ type: { kind: 'BOOLEAN' }, alternatives: ['SMALLINT'] })
+    expect(fromDialectType('CLOB', 'oracle')).toMatchObject({
+      type: { kind: 'TEXT' },
+      alternatives: ['JSON'],
+    })
+    expect(fromDialectType('DATE', 'oracle')).toMatchObject({
+      type: { kind: 'DATETIME' },
+      alternatives: ['DATE'],
+    })
+    expect(fromDialectType('TIMESTAMP', 'oracle')).toMatchObject({
+      type: { kind: 'DATETIME' },
+      alternatives: ['TIME'],
+    })
+    expect(fromDialectType('NVARCHAR(MAX)', 'mssql')).toMatchObject({
+      type: { kind: 'TEXT' },
+      alternatives: ['JSON'],
+    })
+    expect(fromDialectType('TINYINT(1)', 'mysql')).toMatchObject({
+      type: { kind: 'BOOLEAN' },
+      alternatives: ['SMALLINT'],
+    })
     expect(fromDialectType('CHAR(36)', 'mysql')).toMatchObject({
-      type: { kind: 'CHAR', length: 36 }, alternatives: ['UUID'],
+      type: { kind: 'CHAR', length: 36 },
+      alternatives: ['UUID'],
     })
   })
 
@@ -156,13 +200,21 @@ describe('fromDialectType', () => {
 describe('fromDialectType — 부호 없음 접미', () => {
   const from = (t: string, d: Dialect) => {
     const r = fromDialectType(t, d)
-    return r.ok ? { canonical: r.canonical, dropped: r.unsignedDropped } : { canonical: `RAW:${r.raw}` }
+    return r.ok
+      ? { canonical: r.canonical, dropped: r.unsignedDropped }
+      : { canonical: `RAW:${r.raw}` }
   }
 
   it('정수 3종의 접미를 읽는다', () => {
     expect(from('int unsigned', 'mysql')).toEqual({ canonical: 'INT UNSIGNED', dropped: false })
-    expect(from('smallint unsigned', 'mysql')).toEqual({ canonical: 'SMALLINT UNSIGNED', dropped: false })
-    expect(from('bigint unsigned', 'mysql')).toEqual({ canonical: 'BIGINT UNSIGNED', dropped: false })
+    expect(from('smallint unsigned', 'mysql')).toEqual({
+      canonical: 'SMALLINT UNSIGNED',
+      dropped: false,
+    })
+    expect(from('bigint unsigned', 'mysql')).toEqual({
+      canonical: 'BIGINT UNSIGNED',
+      dropped: false,
+    })
   })
   it('네 방언 모두 같게 읽는다 — 읽는 시점의 방언으로 모델 값을 깎지 않는다(§4.6)', () => {
     for (const d of DIALECTS) {
@@ -170,21 +222,33 @@ describe('fromDialectType — 부호 없음 접미', () => {
     }
   })
   it('⚠️ tinyint unsigned 회귀 — 이름이 TINYINT 로 남아 mysql 분기를 탄다', () => {
-    expect(from('tinyint unsigned', 'mysql')).toEqual({ canonical: 'SMALLINT UNSIGNED', dropped: false })
+    expect(from('tinyint unsigned', 'mysql')).toEqual({
+      canonical: 'SMALLINT UNSIGNED',
+      dropped: false,
+    })
   })
   it('허용 집합 밖은 부호 없음만 떨어뜨리고 그 사실을 싣는다', () => {
     expect(from('tinyint(1) unsigned', 'mysql')).toEqual({ canonical: 'BOOLEAN', dropped: true })
-    expect(from('decimal(10,2) unsigned', 'mysql')).toEqual({ canonical: 'DECIMAL(10,2)', dropped: true })
+    expect(from('decimal(10,2) unsigned', 'mysql')).toEqual({
+      canonical: 'DECIMAL(10,2)',
+      dropped: true,
+    })
     expect(from('double unsigned', 'mysql')).toEqual({ canonical: 'DOUBLE', dropped: true })
   })
   it('ZEROFILL 은 삼키고 버린다 — UNSIGNED 를 함의하지 않는다(§10.5)', () => {
     expect(from('int zerofill', 'mysql')).toEqual({ canonical: 'INT', dropped: false })
-    expect(from('int unsigned zerofill', 'mysql')).toEqual({ canonical: 'INT UNSIGNED', dropped: false })
+    expect(from('int unsigned zerofill', 'mysql')).toEqual({
+      canonical: 'INT UNSIGNED',
+      dropped: false,
+    })
   })
   it('기존 분해가 그대로다', () => {
     expect(from('NVARCHAR(MAX)', 'mssql')).toEqual({ canonical: 'TEXT', dropped: false })
     expect(from('double precision', 'postgresql')).toEqual({ canonical: 'DOUBLE', dropped: false })
-    expect(from('timestamp with time zone', 'postgresql')).toEqual({ canonical: 'TIMESTAMPTZ', dropped: false })
+    expect(from('timestamp with time zone', 'postgresql')).toEqual({
+      canonical: 'TIMESTAMPTZ',
+      dropped: false,
+    })
     expect(from('number(10,2)', 'oracle')).toEqual({ canonical: 'DECIMAL(10,2)', dropped: false })
   })
 })

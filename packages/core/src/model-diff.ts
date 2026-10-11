@@ -29,14 +29,23 @@ export type ModelDiff = {
 
 /** Excel '구분' 컬럼과 화면 그룹 제목이 공유하는 종류 라벨. */
 export const DIFF_KIND_LABEL: Record<EntityKind, string> = {
-  table: '테이블', column: '컬럼', relationship: '관계', index: '인덱스',
-  tableGroup: '그룹', domain: '도메인', word: '단어', term: '용어',
-  customField: '커스텀 항목', note: '메모',
+  table: '테이블',
+  column: '컬럼',
+  relationship: '관계',
+  index: '인덱스',
+  tableGroup: '그룹',
+  domain: '도메인',
+  word: '단어',
+  term: '용어',
+  customField: '커스텀 항목',
+  note: '메모',
 }
 
 /** Excel '변경유형' 컬럼과 화면의 변경 유형 라벨이 공유하는 상수. */
 export const CHANGE_KIND_LABEL: Record<DiffChangeKind, string> = {
-  added: '추가', removed: '삭제', changed: '변경',
+  added: '추가',
+  removed: '삭제',
+  changed: '변경',
 }
 
 /**
@@ -46,8 +55,16 @@ export const CHANGE_KIND_LABEL: Record<DiffChangeKind, string> = {
  * (11번째 op 엔티티가 여기 누락되면 그 종류 전체가 diff·정의서에서 조용히 빠진다).
  */
 export const KIND_ORDER: readonly EntityKind[] = [
-  'table', 'column', 'relationship', 'index', 'tableGroup',
-  'domain', 'word', 'term', 'customField', 'note',
+  'table',
+  'column',
+  'relationship',
+  'index',
+  'tableGroup',
+  'domain',
+  'word',
+  'term',
+  'customField',
+  'note',
 ]
 
 /**
@@ -57,16 +74,41 @@ export const KIND_ORDER: readonly EntityKind[] = [
 const IGNORED_FIELDS = new Set(['id', 'position', 'groupPosition'])
 
 const FIELD_LABEL: Record<string, string> = {
-  logicalName: '논리명', physicalName: '물리명', comment: '설명', description: '설명',
-  name: '이름', groupId: '소속 그룹', tableId: '소속 테이블', type: '타입',
-  isPk: '기본키', autoIncrement: '자동증가', nullable: 'NULL 허용',
-  defaultValue: '기본값', order: '순번', domainId: '도메인', custom: '커스텀 항목',
-  abbreviation: '약어', englishName: '영문명', logicalType: '논리 타입',
-  dialectTypes: '방언별 타입', allowedValues: '허용값', category: '분류',
-  color: '색상', alias: '별칭', content: '내용', unique: '유니크', columns: '구성 컬럼',
-  parentTableId: '부모 테이블', childTableId: '자식 테이블', cardinality: '카디널리티',
-  identifying: '식별 관계', columnMappings: '컬럼 매핑', target: '적용 대상',
-  options: '선택지', required: '필수', origin: '원본 참조',
+  logicalName: '논리명',
+  physicalName: '물리명',
+  comment: '설명',
+  description: '설명',
+  name: '이름',
+  groupId: '소속 그룹',
+  tableId: '소속 테이블',
+  type: '타입',
+  isPk: '기본키',
+  autoIncrement: '자동증가',
+  nullable: 'NULL 허용',
+  defaultValue: '기본값',
+  order: '순번',
+  domainId: '도메인',
+  custom: '커스텀 항목',
+  abbreviation: '약어',
+  englishName: '영문명',
+  logicalType: '논리 타입',
+  dialectTypes: '방언별 타입',
+  allowedValues: '허용값',
+  category: '분류',
+  color: '색상',
+  alias: '별칭',
+  content: '내용',
+  unique: '유니크',
+  columns: '구성 컬럼',
+  parentTableId: '부모 테이블',
+  childTableId: '자식 테이블',
+  cardinality: '카디널리티',
+  identifying: '식별 관계',
+  columnMappings: '컬럼 매핑',
+  target: '적용 대상',
+  options: '선택지',
+  required: '필수',
+  origin: '원본 참조',
 }
 
 /** 값 하나를 셀 문자열로. 모든 표시 경로가 이 함수만 쓴다. */
@@ -75,7 +117,11 @@ function formatValue(v: unknown): string {
   if (typeof v === 'boolean') return v ? 'Y' : ''
   if (typeof v === 'number') return String(v)
   if (typeof v === 'string') return v
-  if (Array.isArray(v)) return v.map(formatValue).filter((s) => s !== '').join(', ')
+  if (Array.isArray(v))
+    return v
+      .map(formatValue)
+      .filter((s) => s !== '')
+      .join(', ')
   if (typeof v === 'object') {
     return Object.entries(v as Record<string, unknown>)
       .map(([k, val]) => [k, formatValue(val)] as const)
@@ -92,7 +138,9 @@ function formatValue(v: unknown): string {
  * 원시 id를 그대로 남긴다. 정보를 숨기지 않는다.
  */
 function resolveRefLabel<T>(
-  id: unknown, collection: Record<string, T>, nameOf: (e: T) => string,
+  id: unknown,
+  collection: Record<string, T>,
+  nameOf: (e: T) => string,
 ): string {
   if (id === null || id === undefined || id === '') return ''
   if (typeof id !== 'string') return formatValue(id)
@@ -169,7 +217,8 @@ function formatColumnMappings(value: unknown, model: ProjectModel): string {
 export function formatOrigin(value: unknown): string {
   if (value === null || value === undefined) return ''
   const o = value as { sourceId?: unknown; sourceVersion?: unknown }
-  if (typeof o.sourceId !== 'string' || typeof o.sourceVersion !== 'number') return formatValue(value)
+  if (typeof o.sourceId !== 'string' || typeof o.sourceVersion !== 'number')
+    return formatValue(value)
   const item = o.sourceId.length > 8 ? `…${o.sourceId.slice(-8)}` : o.sourceId
   return `v${o.sourceVersion} · 항목 ${item}`
 }
@@ -185,17 +234,24 @@ export function formatOrigin(value: unknown): string {
  */
 function formatFieldValue(field: string, value: unknown, model: ProjectModel): string {
   switch (field) {
-    case 'domainId': return refDomainName(model, value)
-    case 'groupId': return refGroupName(model, value)
+    case 'domainId':
+      return refDomainName(model, value)
+    case 'groupId':
+      return refGroupName(model, value)
     case 'tableId':
     case 'parentTableId':
     case 'childTableId':
       return refTableName(model, value)
-    case 'custom': return formatCustomField(value, model)
-    case 'columns': return formatIndexColumns(value, model)
-    case 'columnMappings': return formatColumnMappings(value, model)
-    case 'origin': return formatOrigin(value)
-    default: return formatValue(value)
+    case 'custom':
+      return formatCustomField(value, model)
+    case 'columns':
+      return formatIndexColumns(value, model)
+    case 'columnMappings':
+      return formatColumnMappings(value, model)
+    case 'origin':
+      return formatOrigin(value)
+    default:
+      return formatValue(value)
   }
 }
 
@@ -274,7 +330,9 @@ export function diffModelsForDisplay(base: ProjectModel, target: ProjectModel): 
       const before = baseCol[id]
       if (!before) {
         entries.push({
-          kind, changeKind: 'added', entityId: id,
+          kind,
+          changeKind: 'added',
+          entityId: id,
           label: labelOf(kind, entity, target),
           parentTableId: parentTableIdOf(kind, entity),
           fields: [],
@@ -294,7 +352,9 @@ export function diffModelsForDisplay(base: ProjectModel, target: ProjectModel): 
       }
       if (fields.length === 0) continue
       entries.push({
-        kind, changeKind: 'changed', entityId: id,
+        kind,
+        changeKind: 'changed',
+        entityId: id,
         label: labelOf(kind, entity, target),
         parentTableId: parentTableIdOf(kind, entity),
         fields,
@@ -304,7 +364,9 @@ export function diffModelsForDisplay(base: ProjectModel, target: ProjectModel): 
     for (const [id, entity] of Object.entries(baseCol)) {
       if (Object.hasOwn(targetCol, id)) continue
       entries.push({
-        kind, changeKind: 'removed', entityId: id,
+        kind,
+        changeKind: 'removed',
+        entityId: id,
         label: labelOf(kind, entity, base),
         parentTableId: parentTableIdOf(kind, entity),
         fields: [],
@@ -313,8 +375,7 @@ export function diffModelsForDisplay(base: ProjectModel, target: ProjectModel): 
   }
 
   const order = new Map(KIND_ORDER.map((k, i) => [k, i]))
-  entries.sort((x, y) =>
-    (order.get(x.kind)! - order.get(y.kind)!) || x.label.localeCompare(y.label))
+  entries.sort((x, y) => order.get(x.kind)! - order.get(y.kind)! || x.label.localeCompare(y.label))
 
   return {
     entries,

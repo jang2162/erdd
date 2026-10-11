@@ -3,19 +3,25 @@
   "version": "0.6.0",
   "description": "ER 모델을 저장소 안의 YAML 파일로 두고 브라우저 GUI 로 편집하는 ERDD 의 명령줄 도구",
   "keywords": [
-    "erd",
-    "er-diagram",
+    "cli",
     "database",
-    "schema",
     "ddl",
-    "yaml",
-    "cli"
+    "er-diagram",
+    "erd",
+    "schema",
+    "yaml"
   ],
+  "homepage": "https://github.com/jang2162/erdd/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/jang2162/erdd/issues"
+  },
   "license": "MIT",
   "author": "장병현",
-  "type": "module",
-  "main": "./src/main.ts",
-  "types": "./src/main.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jang2162/erdd.git",
+    "directory": "packages/cli"
+  },
   "bin": {
     "erdd": "./src/main.ts"
   },
@@ -26,18 +32,9 @@
     "web",
     "docs"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/jang2162/erdd.git",
-    "directory": "packages/cli"
-  },
-  "homepage": "https://github.com/jang2162/erdd/tree/main/packages/cli#readme",
-  "bugs": {
-    "url": "https://github.com/jang2162/erdd/issues"
-  },
-  "engines": {
-    "node": ">=22"
-  },
+  "type": "module",
+  "main": "./src/main.ts",
+  "types": "./src/main.ts",
   "publishConfig": {
     "access": "public"
   },
@@ -63,5 +60,8 @@
     "@types/node": "^22.20.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

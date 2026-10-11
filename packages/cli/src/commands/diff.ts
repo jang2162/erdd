@@ -1,6 +1,8 @@
 import {
-  diffModelsForDisplay, DIFF_KIND_LABEL,
-  type DiffChangeKind, type DiffEntry,
+  diffModelsForDisplay,
+  DIFF_KIND_LABEL,
+  type DiffChangeKind,
+  type DiffEntry,
 } from '@erdd/core'
 import { readConfig, requireConnection } from '../config.js'
 import { buildPlan } from '../plan.js'
@@ -43,7 +45,9 @@ export function diff(ctx: CommandCtx): Promise<number> {
 
     emit(ctx.json, human, {
       ok: plan.conflicts.length === 0,
-      up: up.entries, down: down.entries, conflicts: plan.conflicts,
+      up: up.entries,
+      down: down.entries,
+      conflicts: plan.conflicts,
     })
     // 기본은 정보 제공이므로 0. --strict일 때만 충돌을 실패로 본다(validate의 선례).
     return plan.conflicts.length > 0 && ctx.strict ? 1 : 0

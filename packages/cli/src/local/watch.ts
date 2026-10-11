@@ -27,7 +27,10 @@ export function watchProject(
   const fire = () => {
     if (closed) return
     if (timer !== null) clearTimeout(timer)
-    timer = setTimeout(() => { timer = null; if (!closed) onChange() }, debounceMs)
+    timer = setTimeout(() => {
+      timer = null
+      if (!closed) onChange()
+    }, debounceMs)
   }
 
   /**
@@ -104,7 +107,10 @@ export function watchProject(
   return {
     close: () => {
       closed = true
-      if (timer !== null) { clearTimeout(timer); timer = null }
+      if (timer !== null) {
+        clearTimeout(timer)
+        timer = null
+      }
       for (const w of watchers) w.close()
     },
   }

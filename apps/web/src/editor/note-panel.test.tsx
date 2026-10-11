@@ -19,13 +19,19 @@ function renderPanel() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<NotePanel projectId={PROJECT_ID} />, { wrapper: w })
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('NotePanel', () => {
   it('renders the note content, delete button, and unlocked inputs when editable', () => {
@@ -52,7 +58,9 @@ describe('NotePanel', () => {
     await userEvent.clear(contentInput)
     await userEvent.type(contentInput, '수정된 메모')
     await userEvent.tab() // blur → commit
-    await waitFor(() => expect(useEditorStore.getState().model.notes['n1']!.content).toBe('수정된 메모'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.notes['n1']!.content).toBe('수정된 메모'),
+    )
   })
 
   it('deletes the note and clears selection when the delete button is clicked', async () => {

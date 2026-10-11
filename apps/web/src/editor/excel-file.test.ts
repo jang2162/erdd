@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type {
-  Domain, ExcelSheetKey, ExportScope, NamingRules, ProjectModel, SheetData, Term, Word,
+  Domain,
+  ExcelSheetKey,
+  ExportScope,
+  NamingRules,
+  ProjectModel,
+  SheetData,
+  Term,
+  Word,
 } from '@erdd/core'
 import {
-  DEFAULT_NAMING_RULES, buildExcelSheets as buildExcelSheetsRaw, createEmptyModel, planDictImport,
+  DEFAULT_NAMING_RULES,
+  buildExcelSheets as buildExcelSheetsRaw,
+  createEmptyModel,
+  planDictImport,
 } from '@erdd/core'
 
 // 이 파일의 기존 케이스는 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적는다.
@@ -17,12 +27,29 @@ import { applyDictImport } from './dict-import-edits.js'
 
 const sheets: SheetData[] = [
   {
-    key: 'words', name: '단어사전', headers: ['논리명', '약어', '영문명', '설명'],
-    rows: [['회원', 'MBR', 'MEMBER', ''], ['번호', 'NO', '', '순번']],
+    key: 'words',
+    name: '단어사전',
+    headers: ['논리명', '약어', '영문명', '설명'],
+    rows: [
+      ['회원', 'MBR', 'MEMBER', ''],
+      ['번호', 'NO', '', '순번'],
+    ],
   },
   {
-    key: 'domains', name: '도메인정의서',
-    headers: ['이름', '분류', '논리 타입', 'PostgreSQL', 'MySQL', 'Oracle', 'MSSQL', '기본값', '허용값', '설명'],
+    key: 'domains',
+    name: '도메인정의서',
+    headers: [
+      '이름',
+      '분류',
+      '논리 타입',
+      'PostgreSQL',
+      'MySQL',
+      'Oracle',
+      'MSSQL',
+      '기본값',
+      '허용값',
+      '설명',
+    ],
     rows: [['금액', '', 'DECIMAL(15,2)', '', '', '', '', '', '', '']],
   },
 ]
@@ -33,7 +60,10 @@ describe('excel-file 왕복', () => {
     const read = await readDictSheets(blob)
     expect(read.map((s) => s.key)).toEqual(['words', 'domains'])
     expect(read[0]!.headers).toEqual(['논리명', '약어', '영문명', '설명'])
-    expect(read[0]!.rows).toEqual([['회원', 'MBR', 'MEMBER', ''], ['번호', 'NO', '', '순번']])
+    expect(read[0]!.rows).toEqual([
+      ['회원', 'MBR', 'MEMBER', ''],
+      ['번호', 'NO', '', '순번'],
+    ])
     expect(read[1]!.rows).toEqual([['금액', '', 'DECIMAL(15,2)', '', '', '', '', '', '', '']])
   })
 
@@ -71,10 +101,10 @@ describe('excel-file 왕복', () => {
     const ws = wb.addWorksheet('단어사전')
     ws.addRow(['논리명', '약어', '영문명', '설명'])
     const row = ws.addRow([])
-    row.getCell(1).value = { richText: [{ text: '주' }, { text: '문' }] }   // 일부만 서식이 다른 셀
-    row.getCell(2).value = { formula: 'UPPER("ord")', result: 'ORD' }       // 수식 셀은 계산값을 쓴다
+    row.getCell(1).value = { richText: [{ text: '주' }, { text: '문' }] } // 일부만 서식이 다른 셀
+    row.getCell(2).value = { formula: 'UPPER("ord")', result: 'ORD' } // 수식 셀은 계산값을 쓴다
     row.getCell(3).value = 'ORDER'
-    row.getCell(4).value = new Date(Date.UTC(2026, 6, 28))                  // 날짜 서식 셀
+    row.getCell(4).value = new Date(Date.UTC(2026, 6, 28)) // 날짜 서식 셀
     const read = await readDictSheets(new Blob([await wb.xlsx.writeBuffer()]))
     expect(read[0]!.rows).toEqual([['주문', 'ORD', 'ORDER', '2026-07-28']])
   })
@@ -94,25 +124,43 @@ function modelWithDictionaries(): ProjectModel {
   const m = buildSampleModel()
   const domains: Record<string, Domain> = {
     d1: {
-      id: 'd1', name: '등급코드', category: '코드', logicalType: 'CHAR(2)',
+      id: 'd1',
+      name: '등급코드',
+      category: '코드',
+      logicalType: 'CHAR(2)',
       dialectTypes: { postgresql: 'char(2)', mysql: null, oracle: null, mssql: null },
-      defaultValue: "'01'", allowedValues: ['01', '02'], description: '회원 등급', origin: null,
+      defaultValue: "'01'",
+      allowedValues: ['01', '02'],
+      description: '회원 등급',
+      origin: null,
     },
   }
   const words: Record<string, Word> = {
     w1: {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: 'MEMBER', description: null, origin: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: 'MEMBER',
+      description: null,
+      origin: null,
     },
     w2: {
-      id: 'w2', logicalName: '번호', abbreviation: 'NO',
-      englishName: null, description: '순번', origin: null,
+      id: 'w2',
+      logicalName: '번호',
+      abbreviation: 'NO',
+      englishName: null,
+      description: '순번',
+      origin: null,
     },
   }
   const terms: Record<string, Term> = {
     tm1: {
-      id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: 'd1',
-      description: '회원 식별자', origin: null,
+      id: 'tm1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      domainId: 'd1',
+      description: '회원 식별자',
+      origin: null,
     },
   }
   return { ...m, domains, words, terms }
@@ -136,19 +184,35 @@ describe('내보내기 → 업로드 왕복', () => {
     const wordDrafts = plan.entries.flatMap((e) => (e.kind === 'word' ? [e.draft] : []))
     expect(wordDrafts.map((d) => d.logicalName)).toEqual(['번호', '회원'])
     expect(wordDrafts[1]).toEqual({
-      logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', origin: null, description: null,
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: 'MEMBER',
+      origin: null,
+      description: null,
     })
     const termDrafts = plan.entries.flatMap((e) => (e.kind === 'term' ? [e.draft] : []))
-    expect(termDrafts).toEqual([{
-      logicalName: '회원번호', physicalName: 'MBR_NO', domainName: '등급코드',
-      description: '회원 식별자', origin: null,
-    }])
+    expect(termDrafts).toEqual([
+      {
+        logicalName: '회원번호',
+        physicalName: 'MBR_NO',
+        domainName: '등급코드',
+        description: '회원 식별자',
+        origin: null,
+      },
+    ])
     const domainDrafts = plan.entries.flatMap((e) => (e.kind === 'domain' ? [e.draft] : []))
-    expect(domainDrafts).toEqual([{
-      name: '등급코드', category: '코드', logicalType: 'CHAR(2)',
-      dialectTypes: { postgresql: 'char(2)', mysql: null, oracle: null, mssql: null },
-      defaultValue: "'01'", allowedValues: ['01', '02'], description: '회원 등급', origin: null,
-    }])
+    expect(domainDrafts).toEqual([
+      {
+        name: '등급코드',
+        category: '코드',
+        logicalType: 'CHAR(2)',
+        dialectTypes: { postgresql: 'char(2)', mysql: null, oracle: null, mssql: null },
+        defaultValue: "'01'",
+        allowedValues: ['01', '02'],
+        description: '회원 등급',
+        origin: null,
+      },
+    ])
 
     // 빈 모델에 적용하면 사전 3시트가 원본과 글자 하나까지 같아진다(도메인 참조 포함).
     let n = 0
@@ -161,8 +225,11 @@ describe('내보내기 → 업로드 왕복', () => {
 describe('제목 행이 있는 시트', () => {
   it('제목을 1행에, 헤더를 2행에 쓴다', async () => {
     const sheet = {
-      key: 'changes' as const, name: '변경분 정의서', title: '기준: v1.0 · 비교: 현재',
-      headers: ['구분', '대상'], rows: [['컬럼', 'MBR.MBR_NO']],
+      key: 'changes' as const,
+      name: '변경분 정의서',
+      title: '기준: v1.0 · 비교: 현재',
+      headers: ['구분', '대상'],
+      rows: [['컬럼', 'MBR.MBR_NO']],
     }
     const blob = await buildWorkbookBlob([sheet])
     const ExcelJS = await import('exceljs')
@@ -178,8 +245,10 @@ describe('제목 행이 있는 시트', () => {
 
   it('제목이 없는 시트는 1행이 헤더 그대로다(회귀)', async () => {
     const sheet = {
-      key: 'words' as const, name: '단어사전',
-      headers: ['논리명', '약어'], rows: [['회원', 'MBR']],
+      key: 'words' as const,
+      name: '단어사전',
+      headers: ['논리명', '약어'],
+      rows: [['회원', 'MBR']],
     }
     const blob = await buildWorkbookBlob([sheet])
     const ExcelJS = await import('exceljs')

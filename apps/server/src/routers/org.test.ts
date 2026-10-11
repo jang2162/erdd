@@ -8,8 +8,11 @@ const url = process.env.DATABASE_URL
 
 function post(app: FastifyInstance, path: string, token: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`, cookies: { erdd_session: token },
-    headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
+    method: 'POST',
+    url: `/trpc/${path}`,
+    cookies: { erdd_session: token },
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify(input),
   })
 }
 function get(app: FastifyInstance, path: string, token: string, input?: unknown) {
@@ -21,12 +24,26 @@ describe.skipIf(!url)('org', () => {
   let app: FastifyInstance
   let ownerToken: string
   let plainToken: string
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
   beforeEach(async () => {
     await resetDb(app.pgPool!)
-    await createAccount(app.db!, { email: 'o@test.dev', name: '오너', password: 'password-o', role: 'user' })
-    await createAccount(app.db!, { email: 'p@test.dev', name: '일반', password: 'password-p', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'o@test.dev',
+      name: '오너',
+      password: 'password-o',
+      role: 'user',
+    })
+    await createAccount(app.db!, {
+      email: 'p@test.dev',
+      name: '일반',
+      password: 'password-p',
+      role: 'user',
+    })
     ownerToken = await loginAs(app, 'o@test.dev', 'password-o')
     plainToken = await loginAs(app, 'p@test.dev', 'password-p')
   })
@@ -49,17 +66,22 @@ describe.skipIf(!url)('org', () => {
   it('adds a member by email; personal org rejects member add', async () => {
     const orgId = await createTeam()
     const add = await post(app, 'org.members.add', ownerToken, {
-      orgId, email: 'p@test.dev', role: 'member',
+      orgId,
+      email: 'p@test.dev',
+      role: 'member',
     })
     expect(add.statusCode).toBe(200)
 
     const list = await get(app, 'org.list', plainToken)
     expect((list.json().result.data as unknown[]).length).toBe(2) // 개인 + 팀A
 
-    const personal = (await get(app, 'org.list', ownerToken)).json().result.data
-      .find((o: { kind: string }) => o.kind === 'personal')
+    const personal = (await get(app, 'org.list', ownerToken))
+      .json()
+      .result.data.find((o: { kind: string }) => o.kind === 'personal')
     const bad = await post(app, 'org.members.add', ownerToken, {
-      orgId: personal.id, email: 'p@test.dev', role: 'member',
+      orgId: personal.id,
+      email: 'p@test.dev',
+      role: 'member',
     })
     expect(bad.statusCode).toBe(403)
   })
@@ -69,17 +91,23 @@ describe.skipIf(!url)('org', () => {
     await post(app, 'org.members.add', ownerToken, { orgId, email: 'p@test.dev', role: 'member' })
 
     const forbidden = await post(app, 'org.members.add', plainToken, {
-      orgId, email: 'o@test.dev', role: 'member',
+      orgId,
+      email: 'o@test.dev',
+      role: 'member',
     })
     expect(forbidden.statusCode).toBe(403)
 
     const notFound = await post(app, 'org.members.add', ownerToken, {
-      orgId, email: 'ghost@test.dev', role: 'member',
+      orgId,
+      email: 'ghost@test.dev',
+      role: 'member',
     })
     expect(notFound.statusCode).toBe(404)
 
     const dup = await post(app, 'org.members.add', ownerToken, {
-      orgId, email: 'p@test.dev', role: 'member',
+      orgId,
+      email: 'p@test.dev',
+      role: 'member',
     })
     expect(dup.statusCode).toBe(409)
   })
@@ -87,16 +115,20 @@ describe.skipIf(!url)('org', () => {
   it('protects the last owner from demotion and removal', async () => {
     const orgId = await createTeam()
     const membersRes = await get(app, 'org.members.list', ownerToken, { orgId })
-    const ownerMember = (membersRes.json().result.data as Array<{ id: string; role: string }>)
-      .find((m) => m.role === 'owner')!
+    const ownerMember = (membersRes.json().result.data as Array<{ id: string; role: string }>).find(
+      (m) => m.role === 'owner',
+    )!
 
     const demote = await post(app, 'org.members.setRole', ownerToken, {
-      orgId, memberId: ownerMember.id, role: 'member',
+      orgId,
+      memberId: ownerMember.id,
+      role: 'member',
     })
     expect(demote.statusCode).toBe(400)
 
     const remove = await post(app, 'org.members.remove', ownerToken, {
-      orgId, memberId: ownerMember.id,
+      orgId,
+      memberId: ownerMember.id,
     })
     expect(remove.statusCode).toBe(400)
   })
@@ -104,12 +136,14 @@ describe.skipIf(!url)('org', () => {
   it('org admin (non-owner) cannot grant owner role', async () => {
     const orgId = await createTeam()
     await post(app, 'org.members.add', ownerToken, { orgId, email: 'p@test.dev', role: 'admin' })
-    const orgMembers = (await get(app, 'org.members.list', ownerToken, { orgId }))
-      .json().result.data as Array<{ id: string; email: string }>
+    const orgMembers = (await get(app, 'org.members.list', ownerToken, { orgId })).json().result
+      .data as Array<{ id: string; email: string }>
     const p = orgMembers.find((m) => m.email === 'p@test.dev')!
 
     const res = await post(app, 'org.members.setRole', plainToken, {
-      orgId, memberId: p.id, role: 'owner',
+      orgId,
+      memberId: p.id,
+      role: 'owner',
     })
     expect(res.statusCode).toBe(403)
   })

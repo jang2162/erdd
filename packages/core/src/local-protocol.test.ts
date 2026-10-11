@@ -1,16 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import {
-  LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, parseLocalEvent,
+  LOCAL_DISCARD_PATH,
+  LOCAL_EVENTS_PATH,
+  LOCAL_KEEP_PATH,
+  LOCAL_SAVE_PATH,
+  parseLocalEvent,
 } from './local-protocol.js'
 
 describe('parseLocalEvent', () => {
   it('reload·blocked·status 를 그대로 되살린다', () => {
     expect(parseLocalEvent(JSON.stringify({ type: 'reload' }))).toEqual({ type: 'reload' })
-    expect(parseLocalEvent(JSON.stringify({
-      type: 'blocked', failures: [{ path: 'erdd/', message: '깨졌다' }],
-    }))).toEqual({ type: 'blocked', failures: [{ path: 'erdd/', message: '깨졌다' }] })
-    expect(parseLocalEvent(JSON.stringify({ type: 'status', dirty: true, external: false })))
-      .toEqual({ type: 'status', dirty: true, external: false })
+    expect(
+      parseLocalEvent(
+        JSON.stringify({
+          type: 'blocked',
+          failures: [{ path: 'erdd/', message: '깨졌다' }],
+        }),
+      ),
+    ).toEqual({ type: 'blocked', failures: [{ path: 'erdd/', message: '깨졌다' }] })
+    expect(
+      parseLocalEvent(JSON.stringify({ type: 'status', dirty: true, external: false })),
+    ).toEqual({ type: 'status', dirty: true, external: false })
   })
 
   /**
@@ -20,9 +30,13 @@ describe('parseLocalEvent', () => {
   it('모르는 type·깨진 JSON·형식 위반은 null 이다', () => {
     expect(parseLocalEvent(JSON.stringify({ type: 'nope' }))).toBeNull()
     expect(parseLocalEvent('{')).toBeNull()
-    expect(parseLocalEvent(JSON.stringify({ type: 'status', dirty: 'yes', external: false }))).toBeNull()
+    expect(
+      parseLocalEvent(JSON.stringify({ type: 'status', dirty: 'yes', external: false })),
+    ).toBeNull()
     expect(parseLocalEvent(JSON.stringify({ type: 'blocked' }))).toBeNull()
-    expect(parseLocalEvent(JSON.stringify({ type: 'blocked', failures: [{ path: 1, message: 'x' }] }))).toBeNull()
+    expect(
+      parseLocalEvent(JSON.stringify({ type: 'blocked', failures: [{ path: 1, message: 'x' }] })),
+    ).toBeNull()
     expect(parseLocalEvent(JSON.stringify(['reload']))).toBeNull()
   })
 

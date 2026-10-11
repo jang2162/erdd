@@ -55,16 +55,31 @@ export function createRelationshipFromParentPk(
     usedPhysical.add(physicalName)
     usedLogical.add(logicalName)
     newColumns[id] = {
-      id, tableId: childTableId, logicalName, physicalName, type: pk.type,
-      isPk: identifying, autoIncrement: false, nullable: false,
-      defaultValue: null, order: order++, comment: null, domainId: null, custom: {},
+      id,
+      tableId: childTableId,
+      logicalName,
+      physicalName,
+      type: pk.type,
+      isPk: identifying,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: order++,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     mappings.push({ childColumnId: id, parentColumnId: pk.id })
   })
 
   const relationship: Relationship = {
-    id: relationshipId, parentTableId, childTableId, columnMappings: mappings,
-    cardinality: args.cardinality ?? '1:N', identifying, name: args.name ?? null,
+    id: relationshipId,
+    parentTableId,
+    childTableId,
+    columnMappings: mappings,
+    cardinality: args.cardinality ?? '1:N',
+    identifying,
+    name: args.name ?? null,
   }
 
   return {
@@ -95,20 +110,27 @@ export function remapRelationshipChildColumn(
   const relationships = { ...model.relationships, [rel.id]: { ...rel, columnMappings } }
 
   // 새로 매핑된 컬럼의 isPk를 관계의 식별 상태에 맞춘다(setRelationshipIdentifying과 동일 규칙).
-  const columns = { ...model.columns, [args.newChildColumnId]: { ...newChild, isPk: rel.identifying } }
+  const columns = {
+    ...model.columns,
+    [args.newChildColumnId]: { ...newChild, isPk: rel.identifying },
+  }
 
   // 이전 자식 컬럼이 어떤 관계 매핑·인덱스에서도 더 쓰이지 않을 때만 삭제(자동생성 FK 정리).
   const referencedElsewhere = Object.values(relationships).some((r) =>
-    r.columnMappings.some((m) => m.childColumnId === oldChildId || m.parentColumnId === oldChildId))
+    r.columnMappings.some((m) => m.childColumnId === oldChildId || m.parentColumnId === oldChildId),
+  )
   const inIndex = Object.values(model.indexes).some((ix) =>
-    ix.columns.some((ic) => ic.columnId === oldChildId))
+    ix.columns.some((ic) => ic.columnId === oldChildId),
+  )
   if (!referencedElsewhere && !inIndex) delete columns[oldChildId]
 
   return { ...model, columns, relationships }
 }
 
 export function setRelationshipIdentifying(
-  model: ProjectModel, relationshipId: string, identifying: boolean,
+  model: ProjectModel,
+  relationshipId: string,
+  identifying: boolean,
 ): ProjectModel {
   const rel = model.relationships[relationshipId]
   if (!rel) return model
@@ -256,14 +278,18 @@ export function resolveManyToMany(
 
   next = createRelationshipFromParentPk(next, {
     relationshipId: args.a.relationshipId,
-    parentTableId, childTableId: junction.id,
+    parentTableId,
+    childTableId: junction.id,
     newColumnIds: args.a.newColumnIds,
-    cardinality: '1:N', identifying: true,
+    cardinality: '1:N',
+    identifying: true,
   })
   return createRelationshipFromParentPk(next, {
     relationshipId: args.b.relationshipId,
-    parentTableId: childTableId, childTableId: junction.id,
+    parentTableId: childTableId,
+    childTableId: junction.id,
     newColumnIds: args.b.newColumnIds,
-    cardinality: '1:N', identifying: true,
+    cardinality: '1:N',
+    identifying: true,
   })
 }

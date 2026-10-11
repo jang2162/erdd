@@ -35,17 +35,23 @@ export function DragGhost() {
       if (el) el.style.transform = `translate(${e.clientX + OFFSET}px, ${e.clientY + OFFSET}px)`
     }
     window.addEventListener('pointermove', onMove)
-    return () => { window.removeEventListener('pointermove', onMove) }
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+    }
   }, [count])
 
   if (count === 0) return null
 
   return (
-    <div ref={ref} aria-hidden data-testid="drag-ghost"
+    <div
+      ref={ref}
+      aria-hidden
+      data-testid="drag-ghost"
       className="fixed left-0 top-0 z-50 rounded border bg-popover px-2 py-1 text-xs
         font-medium text-popover-foreground shadow-md"
       // 첫 pointermove가 자리를 잡을 때까지 화면 밖에 둔다 — 좌상단(0,0)에 한 프레임 번쩍이지 않게.
-      style={{ pointerEvents: 'none', transform: 'translate(-9999px, -9999px)' }}>
+      style={{ pointerEvents: 'none', transform: 'translate(-9999px, -9999px)' }}
+    >
       {formatCount(count)}개 테이블
     </div>
   )

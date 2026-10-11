@@ -15,11 +15,15 @@ const mockSpawn = vi.mocked(spawn)
 
 async function project(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-serve-'))
-  await writeFile(join(dir, 'erdd.config.yaml'), [
-    'dialects: [postgresql]',
-    'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-    '',
-  ].join('\n'), 'utf8')
+  await writeFile(
+    join(dir, 'erdd.config.yaml'),
+    [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'),
+    'utf8',
+  )
   return dir
 }
 
@@ -35,9 +39,18 @@ describe('serve', () => {
     await new Promise<void>((r) => blocker.listen(0, '127.0.0.1', r))
     const port = (blocker.address() as { port: number }).port
     try {
-      const code = await serve({ cwd: dir, json: true, yes: true, strict: false, port, open: false })
+      const code = await serve({
+        cwd: dir,
+        json: true,
+        yes: true,
+        strict: false,
+        port,
+        open: false,
+      })
       expect(code).toBe(1)
-    } finally { blocker.close() }
+    } finally {
+      blocker.close()
+    }
   })
 })
 

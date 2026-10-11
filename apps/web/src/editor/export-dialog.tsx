@@ -3,8 +3,16 @@ import { Copy, Download } from 'lucide-react'
 import { useReactFlow } from '@xyflow/react'
 import { toast } from 'sonner'
 import {
-  DIALECTS, EXCEL_SHEET_KEYS, EXCEL_SHEET_NAME, buildExcelSheets, generateDdl, generateDbml,
-  ddlWarnings, type Dialect, type ExcelSheetKey, type ExportScope,
+  DIALECTS,
+  EXCEL_SHEET_KEYS,
+  EXCEL_SHEET_NAME,
+  buildExcelSheets,
+  generateDdl,
+  generateDbml,
+  ddlWarnings,
+  type Dialect,
+  type ExcelSheetKey,
+  type ExportScope,
 } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { downloadCanvasImage, type ImageFormat } from './image-export.js'
@@ -13,7 +21,11 @@ import { ExportScopeSelect } from './export-scope-select.js'
 import { DIALECT_LABEL } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
 
 type Section = 'ddl' | 'dbml' | 'image' | 'excel'
@@ -30,7 +42,10 @@ function safeFileNamePart(s: string): string {
  * DDL 과 DBML 은 방언·범위 state 를 **공유한다** — 형식을 바꿔도 고른 방언·범위가 유지되는
  * 것이 자연스럽고, 경고(`ddlWarnings`)도 두 형식이 같은 것을 쓴다(테이블 선정 판정이 같다).
  */
-export function ExportDialog({ open, onOpenChange }: {
+export function ExportDialog({
+  open,
+  onOpenChange,
+}: {
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -56,15 +71,21 @@ export function ExportDialog({ open, onOpenChange }: {
 
   const ddl = useMemo(
     () => generateDdl(model, dialect, scope, namingRules, tableOptions),
-    [model, dialect, scope, namingRules, tableOptions])
+    [model, dialect, scope, namingRules, tableOptions],
+  )
   const dbml = useMemo(
-    () => generateDbml(model, dialect, scope, { projectName: projectName ?? undefined }, namingRules),
+    () =>
+      generateDbml(model, dialect, scope, { projectName: projectName ?? undefined }, namingRules),
     [model, dialect, scope, projectName, namingRules],
   )
   const warnings = useMemo(
-    () => ddlWarnings(model, dialect, scope, namingRules), [model, dialect, scope, namingRules])
+    () => ddlWarnings(model, dialect, scope, namingRules),
+    [model, dialect, scope, namingRules],
+  )
 
-  const onCopy = () => { void navigator.clipboard?.writeText(ddl) }
+  const onCopy = () => {
+    void navigator.clipboard?.writeText(ddl)
+  }
   const onDownload = () => {
     const blob = new Blob([ddl], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -75,7 +96,9 @@ export function ExportDialog({ open, onOpenChange }: {
     URL.revokeObjectURL(url)
   }
 
-  const onCopyDbml = () => { void navigator.clipboard?.writeText(dbml) }
+  const onCopyDbml = () => {
+    void navigator.clipboard?.writeText(dbml)
+  }
   const onDownloadDbml = () => {
     const blob = new Blob([dbml], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -112,28 +135,38 @@ export function ExportDialog({ open, onOpenChange }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>내보내기</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>내보내기</DialogTitle>
+        </DialogHeader>
         <div className="flex gap-2">
           <Button
-            type="button" size="sm" variant={section === 'ddl' ? 'default' : 'outline'}
+            type="button"
+            size="sm"
+            variant={section === 'ddl' ? 'default' : 'outline'}
             onClick={() => setSection('ddl')}
           >
             DDL
           </Button>
           <Button
-            type="button" size="sm" variant={section === 'dbml' ? 'default' : 'outline'}
+            type="button"
+            size="sm"
+            variant={section === 'dbml' ? 'default' : 'outline'}
             onClick={() => setSection('dbml')}
           >
             DBML
           </Button>
           <Button
-            type="button" size="sm" variant={section === 'image' ? 'default' : 'outline'}
+            type="button"
+            size="sm"
+            variant={section === 'image' ? 'default' : 'outline'}
             onClick={() => setSection('image')}
           >
             이미지
           </Button>
           <Button
-            type="button" size="sm" variant={section === 'excel' ? 'default' : 'outline'}
+            type="button"
+            size="sm"
+            variant={section === 'excel' ? 'default' : 'outline'}
             onClick={() => setSection('excel')}
           >
             Excel
@@ -146,7 +179,9 @@ export function ExportDialog({ open, onOpenChange }: {
               <div className="flex flex-wrap gap-2">
                 {DIALECTS.map((d) => (
                   <Button
-                    key={d} type="button" size="sm"
+                    key={d}
+                    type="button"
+                    size="sm"
                     variant={dialect === d ? 'default' : 'outline'}
                     onClick={() => setDialect(d)}
                   >
@@ -170,8 +205,12 @@ export function ExportDialog({ open, onOpenChange }: {
               </ul>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onCopy}><Copy /> 복사</Button>
-              <Button type="button" onClick={onDownload}><Download /> 다운로드</Button>
+              <Button type="button" variant="outline" onClick={onCopy}>
+                <Copy /> 복사
+              </Button>
+              <Button type="button" onClick={onDownload}>
+                <Download /> 다운로드
+              </Button>
             </DialogFooter>
           </>
         )}
@@ -182,7 +221,9 @@ export function ExportDialog({ open, onOpenChange }: {
               <div className="flex flex-wrap gap-2">
                 {DIALECTS.map((d) => (
                   <Button
-                    key={d} type="button" size="sm"
+                    key={d}
+                    type="button"
+                    size="sm"
                     variant={dialect === d ? 'default' : 'outline'}
                     onClick={() => setDialect(d)}
                   >
@@ -206,8 +247,12 @@ export function ExportDialog({ open, onOpenChange }: {
               </ul>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onCopyDbml}><Copy /> 복사</Button>
-              <Button type="button" onClick={onDownloadDbml}><Download /> 다운로드</Button>
+              <Button type="button" variant="outline" onClick={onCopyDbml}>
+                <Copy /> 복사
+              </Button>
+              <Button type="button" onClick={onDownloadDbml}>
+                <Download /> 다운로드
+              </Button>
             </DialogFooter>
           </>
         )}
@@ -217,14 +262,16 @@ export function ExportDialog({ open, onOpenChange }: {
               <span className="text-sm font-medium">포맷</span>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  type="button" size="sm"
+                  type="button"
+                  size="sm"
                   variant={imageFormat === 'png' ? 'default' : 'outline'}
                   onClick={() => setImageFormat('png')}
                 >
                   PNG
                 </Button>
                 <Button
-                  type="button" size="sm"
+                  type="button"
+                  size="sm"
                   variant={imageFormat === 'svg' ? 'default' : 'outline'}
                   onClick={() => setImageFormat('svg')}
                 >
@@ -232,9 +279,13 @@ export function ExportDialog({ open, onOpenChange }: {
                 </Button>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">현재 화면(뷰·보기 모드)이 그대로 저장됩니다</p>
+            <p className="text-sm text-muted-foreground">
+              현재 화면(뷰·보기 모드)이 그대로 저장됩니다
+            </p>
             <DialogFooter>
-              <Button type="button" onClick={() => void onDownloadImage()}><Download /> 다운로드</Button>
+              <Button type="button" onClick={() => void onDownloadImage()}>
+                <Download /> 다운로드
+              </Button>
             </DialogFooter>
           </>
         )}
@@ -247,7 +298,8 @@ export function ExportDialog({ open, onOpenChange }: {
                 {EXCEL_SHEET_KEYS.map((k) => (
                   <label key={k} className="flex items-center gap-2 text-sm">
                     <input
-                      type="checkbox" className="size-4"
+                      type="checkbox"
+                      className="size-4"
                       checked={sheets.includes(k)}
                       onChange={() => toggleSheet(k)}
                     />
@@ -260,7 +312,11 @@ export function ExportDialog({ open, onOpenChange }: {
               범위는 테이블 목록·테이블정의서에만 적용됩니다. 사전 3종은 항상 전체를 내보냅니다
             </p>
             <DialogFooter>
-              <Button type="button" disabled={sheets.length === 0} onClick={() => void onDownloadExcel()}>
+              <Button
+                type="button"
+                disabled={sheets.length === 0}
+                onClick={() => void onDownloadExcel()}
+              >
                 <Download /> 다운로드
               </Button>
             </DialogFooter>

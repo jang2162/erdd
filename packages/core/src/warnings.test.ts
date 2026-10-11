@@ -6,13 +6,40 @@ import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import { buildSampleModel } from './testing/fixtures.js'
 
 function tbl(id: string, over: Partial<Table> = {}): Table {
-  return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {}, ...over }
+  return {
+    id,
+    logicalName: id,
+    physicalName: id,
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
+    ...over,
+  }
 }
-function col(id: string, tableId: string, physicalName: string, over: Partial<Column> = {}): Column {
-  return { id, tableId, logicalName: id, physicalName, type: 'BIGINT', isPk: false,
-    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
-    domainId: null, custom: {}, ...over }
+function col(
+  id: string,
+  tableId: string,
+  physicalName: string,
+  over: Partial<Column> = {},
+): Column {
+  return {
+    id,
+    tableId,
+    logicalName: id,
+    physicalName,
+    type: 'BIGINT',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
+    ...over,
+  }
 }
 function word(id: string, logicalName: string, abbreviation: string): Word {
   return { id, logicalName, abbreviation, englishName: null, description: null, origin: null }
@@ -34,19 +61,28 @@ describe('computeWarnings', () => {
 
   it('다른 테이블의 같은 물리명은 경고하지 않는다', () => {
     const m = createEmptyModel()
-    m.tables['T1'] = tbl('T1'); m.tables['T2'] = tbl('T2')
-    m.columns['A'] = col('A', 'T1', 'ID'); m.columns['B'] = col('B', 'T2', 'ID')
+    m.tables['T1'] = tbl('T1')
+    m.tables['T2'] = tbl('T2')
+    m.columns['A'] = col('A', 'T1', 'ID')
+    m.columns['B'] = col('B', 'T2', 'ID')
     expect(computeWarnings(m).filter((x) => x.kind === 'duplicate-physical')).toEqual([])
   })
 
   it('관계 매핑의 타입 불일치를 경고한다', () => {
     const m = createEmptyModel()
-    m.tables['P'] = tbl('P'); m.tables['C'] = tbl('C')
+    m.tables['P'] = tbl('P')
+    m.tables['C'] = tbl('C')
     m.columns['PC'] = col('PC', 'P', 'ID', { type: 'BIGINT', isPk: true })
     m.columns['CC'] = col('CC', 'C', 'PID', { type: 'VARCHAR(20)' })
-    const rel: Relationship = { id: 'R', parentTableId: 'P', childTableId: 'C',
+    const rel: Relationship = {
+      id: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
       columnMappings: [{ childColumnId: 'CC', parentColumnId: 'PC' }],
-      cardinality: '1:N', identifying: false, name: null }
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
+    }
     m.relationships['R'] = rel
     const w = computeWarnings(m).filter((x) => x.kind === 'type-mismatch')
     expect(w).toHaveLength(1)
@@ -59,12 +95,19 @@ describe('computeWarnings', () => {
    */
   it('부호 없음이 다르면 타입 불일치를 경고한다', () => {
     const m = createEmptyModel()
-    m.tables['P'] = tbl('P'); m.tables['C'] = tbl('C')
+    m.tables['P'] = tbl('P')
+    m.tables['C'] = tbl('C')
     m.columns['PC'] = col('PC', 'P', 'ID', { type: 'INT UNSIGNED', isPk: true })
     m.columns['CC'] = col('CC', 'C', 'PID', { type: 'INT' })
-    m.relationships['R'] = { id: 'R', parentTableId: 'P', childTableId: 'C',
+    m.relationships['R'] = {
+      id: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
       columnMappings: [{ childColumnId: 'CC', parentColumnId: 'PC' }],
-      cardinality: '1:N', identifying: false, name: null }
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
+    }
     const w = computeWarnings(m).filter((x) => x.kind === 'type-mismatch')
     expect(w).toHaveLength(1)
     expect(w[0]!.message).toContain('INT UNSIGNED ↔ INT')
@@ -72,13 +115,20 @@ describe('computeWarnings', () => {
 
   it('부모 PK 수와 매핑 수가 다르면 매핑 불완전을 경고한다', () => {
     const m = createEmptyModel()
-    m.tables['P'] = tbl('P'); m.tables['C'] = tbl('C')
+    m.tables['P'] = tbl('P')
+    m.tables['C'] = tbl('C')
     m.columns['P1'] = col('P1', 'P', 'ID', { isPk: true, type: 'BIGINT' })
     m.columns['P2'] = col('P2', 'P', 'TENANT', { isPk: true, type: 'BIGINT' })
     m.columns['CC'] = col('CC', 'C', 'PID', { type: 'BIGINT' })
-    m.relationships['R'] = { id: 'R', parentTableId: 'P', childTableId: 'C',
+    m.relationships['R'] = {
+      id: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
       columnMappings: [{ childColumnId: 'CC', parentColumnId: 'P1' }],
-      cardinality: '1:N', identifying: false, name: null }
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
+    }
     const w = computeWarnings(m).filter((x) => x.kind === 'incomplete-mapping')
     expect(w).toHaveLength(1)
   })
@@ -93,9 +143,13 @@ describe('computeWarnings', () => {
 
 describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
   const rules: NamingRules = {
-  case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-  tablePhysicalTemplate: '', tableLogicalTemplate: '',
-}
+    case: 'UPPER_SNAKE',
+    separator: '_',
+    logicalSeparator: '_',
+    maxLengthBytes: 30,
+    tablePhysicalTemplate: '',
+    tableLogicalTemplate: '',
+  }
 
   it('논리명에 미등록 단어가 있으면 unknown-word를 경고한다', () => {
     const m = createEmptyModel()
@@ -125,7 +179,9 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     const m = createEmptyModel()
     m.tables['T'] = tbl('T', { logicalName: '' })
     m.columns['A'] = col('A', 'T', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_EXTRA', { logicalName: '' })
-    const ws = computeWarnings(m, { ...rules, maxLengthBytes: 5 }).filter((w) => w.kind === 'too-long')
+    const ws = computeWarnings(m, { ...rules, maxLengthBytes: 5 }).filter(
+      (w) => w.kind === 'too-long',
+    )
     expect(ws).toHaveLength(1)
     expect(ws[0]!.entityId).toBe('A')
   })
@@ -139,7 +195,9 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     // 예약어가 아닌 방언 목록만 주어지면 경고하지 않는다
     const m2 = createEmptyModel()
     m2.tables['T'] = tbl('T', { logicalName: '', physicalName: 'CUSTOMER' })
-    expect(computeWarnings(m2, rules, ['postgresql']).filter((w) => w.kind === 'reserved')).toEqual([])
+    expect(computeWarnings(m2, rules, ['postgresql']).filter((w) => w.kind === 'reserved')).toEqual(
+      [],
+    )
   })
 
   it('테이블 물리명이 다른 테이블과 중복되면 duplicate-physical-table을 severity error로 경고한다', () => {
@@ -158,15 +216,28 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
     m.words['w1'] = word('w1', '회원', 'MBR')
     m.terms['t1'] = term('t1', '주문번호', 'ORD_NO')
     m.columns['A'] = col('A', 'T1', 'ORDER_NUMBER', { logicalName: '주문번호쿠폰' })
-    const namingKinds = ['unknown-word', 'term-mismatch', 'too-long', 'reserved', 'duplicate-physical-table']
+    const namingKinds = [
+      'unknown-word',
+      'term-mismatch',
+      'too-long',
+      'reserved',
+      'duplicate-physical-table',
+    ]
     expect(computeWarnings(m).every((w) => !namingKinds.includes(w.kind))).toBe(true)
   })
 
   it('필수 커스텀 항목이 비어 있으면 경고한다(rules 없이 호출해도 계산된다)', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
-      id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
-      options: ['Y', 'N'], required: true, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '개인정보여부',
+      target: 'column',
+      type: 'select',
+      options: ['Y', 'N'],
+      required: true,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.tables['T'] = tbl('T')
     m.columns['A'] = col('A', 'T', 'NAME')
@@ -180,12 +251,26 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
   it('값이 있거나 기본값이 있으면 필수 경고를 내지 않는다', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
-      id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
-      options: ['Y', 'N'], required: true, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '개인정보여부',
+      target: 'column',
+      type: 'select',
+      options: ['Y', 'N'],
+      required: true,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.customFields['f2'] = {
-      id: 'f2', name: '암호화방식', target: 'column', type: 'text',
-      options: [], required: true, defaultValue: '없음', order: 1, origin: null,
+      id: 'f2',
+      name: '암호화방식',
+      target: 'column',
+      type: 'text',
+      options: [],
+      required: true,
+      defaultValue: '없음',
+      order: 1,
+      origin: null,
     }
     m.tables['T'] = tbl('T')
     m.columns['A'] = col('A', 'T', 'NAME', { custom: { f1: 'Y' } })
@@ -195,8 +280,15 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
   it('boolean 타입은 필수여도 경고하지 않는다(체크박스는 항상 값이 있다)', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
-      id: 'f1', name: '개인정보여부', target: 'column', type: 'boolean',
-      options: [], required: true, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '개인정보여부',
+      target: 'column',
+      type: 'boolean',
+      options: [],
+      required: true,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.tables['T'] = tbl('T')
     m.columns['A'] = col('A', 'T', 'NAME')
@@ -206,8 +298,15 @@ describe('computeWarnings — 명명 경고 (rules 지정 시)', () => {
   it('테이블 대상 필수 항목은 테이블 scope로 경고한다', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
-      id: 'f1', name: '업무구분', target: 'table', type: 'text',
-      options: [], required: true, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '업무구분',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: true,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.tables['T'] = tbl('T')
     const w = computeWarnings(m).filter((x) => x.kind === 'custom-required')
@@ -281,17 +380,41 @@ describe('findMatchingTerm 구분자 정규화', () => {
   const modelWithPair = () => {
     const m = createEmptyModel()
     m.words = {
-      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
-      w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+      w1: {
+        id: 'w1',
+        logicalName: '회원',
+        abbreviation: 'MBR',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
+      w2: {
+        id: 'w2',
+        logicalName: '주문',
+        abbreviation: 'ORD',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
     }
     // 용어 저장값에는 구분자가 없다(공용 라이브러리에서 내려온 모양 — 설계 D4).
     m.terms['tm1'] = {
-      id:'tm1', logicalName:'회원주문', physicalName:'MBR_ORD_STD',
-      domainId:null, description:null, origin:null,
+      id: 'tm1',
+      logicalName: '회원주문',
+      physicalName: 'MBR_ORD_STD',
+      domainId: null,
+      description: null,
+      origin: null,
     }
     m.tables['t1'] = {
-      id:'t1', logicalName:'회원_주문', physicalName:'MBR_ORD', comment:null, groupId:null,
-      position:{x:0,y:0}, groupPosition:null, custom:{},
+      id: 't1',
+      logicalName: '회원_주문',
+      physicalName: 'MBR_ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     return m
   }
@@ -311,15 +434,35 @@ describe('findMatchingTerm 구분자 정규화', () => {
 
 describe('missing-logical-separator', () => {
   const words = {
-    w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
-    w2: { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null },
+    w1: {
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
+    },
+    w2: {
+      id: 'w2',
+      logicalName: '주문',
+      abbreviation: 'ORD',
+      englishName: null,
+      description: null,
+      origin: null,
+    },
   }
   const modelWith = (logicalName: string) => {
     const m = createEmptyModel()
     m.words = words
     m.tables['t1'] = {
-      id:'t1', logicalName, physicalName:'MBR_ORD', comment:null, groupId:null,
-      position:{x:0,y:0}, groupPosition:null, custom:{},
+      id: 't1',
+      logicalName,
+      physicalName: 'MBR_ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     return m
   }
@@ -349,8 +492,9 @@ describe('missing-logical-separator', () => {
   })
 
   it('rules 를 주지 않으면 계산하지 않는다', () => {
-    expect(computeWarnings(modelWith('회원주문')).map((w) => w.kind))
-      .not.toContain('missing-logical-separator')
+    expect(computeWarnings(modelWith('회원주문')).map((w) => w.kind)).not.toContain(
+      'missing-logical-separator',
+    )
   })
 
   /**
@@ -364,8 +508,12 @@ describe('missing-logical-separator', () => {
     const m = modelWith('회원주문')
     // 용어 저장값도 구분자가 없다 — 논리명과 완전일치해 물리명 생성이 용어로 끝난다.
     m.terms['tm1'] = {
-      id:'tm1', logicalName:'회원주문', physicalName:'MBR_ORD',
-      domainId:null, description:null, origin:null,
+      id: 'tm1',
+      logicalName: '회원주문',
+      physicalName: 'MBR_ORD',
+      domainId: null,
+      description: null,
+      origin: null,
     }
     const ws = computeWarnings(m, DEFAULT_NAMING_RULES)
     // 전제: 용어로 끝났으므로 미등록 단어 경고는 없다(= 2단계 분해를 타지 않았다).
@@ -375,8 +523,9 @@ describe('missing-logical-separator', () => {
   })
 
   it('메시지가 구분자를 넣은 형태를 알려 준다', () => {
-    const w = computeWarnings(modelWith('회원주문'), DEFAULT_NAMING_RULES)
-      .find((x) => x.kind === 'missing-logical-separator')
+    const w = computeWarnings(modelWith('회원주문'), DEFAULT_NAMING_RULES).find(
+      (x) => x.kind === 'missing-logical-separator',
+    )
     expect(w?.message).toContain('회원_주문')
   })
 })
@@ -412,7 +561,7 @@ describe('물리명 템플릿과 경고', () => {
     m.tables['t2'] = { ...m.tables['t2']!, groupId: 'g1' }
     const w = computeWarnings(m, tpl(TPL)).filter((x) => x.kind === 'duplicate-physical-table')
     expect(w.map((x) => x.entityId).sort()).toEqual(['t1', 't2'])
-    expect(w[0]!.message).toContain('TB_MBR_ORD')       // 문구도 최종 이름이라야 고칠 곳을 안다
+    expect(w[0]!.message).toContain('TB_MBR_ORD') // 문구도 최종 이름이라야 고칠 곳을 안다
   })
 
   // maxLengthBytes 는 30 이다. 부분 25바이트는 통과, 접두 10바이트를 붙인 35바이트는 초과.
@@ -420,11 +569,13 @@ describe('물리명 템플릿과 경고', () => {
     const m = createEmptyModel()
     m.tables['t1'] = tbl('t1', { physicalName: 'A'.repeat(25), logicalName: '긴이름' })
     const kindsPlain = computeWarnings(m, DEFAULT_NAMING_RULES)
-      .filter((w) => w.entityId === 't1').map((w) => w.kind)
+      .filter((w) => w.entityId === 't1')
+      .map((w) => w.kind)
     expect(kindsPlain).not.toContain('too-long')
 
-    const kindsTpl = computeWarnings(m, tpl('TB_PREFIX_{물리명}'))   // 접두 10바이트 → 35바이트
-      .filter((w) => w.entityId === 't1').map((w) => w.kind)
+    const kindsTpl = computeWarnings(m, tpl('TB_PREFIX_{물리명}')) // 접두 10바이트 → 35바이트
+      .filter((w) => w.entityId === 't1')
+      .map((w) => w.kind)
     expect(kindsTpl).toContain('too-long')
   })
 
@@ -437,11 +588,12 @@ describe('물리명 템플릿과 경고', () => {
     const partial = 'A'.repeat(25)
     const m = createEmptyModel()
     m.tables['t1'] = tbl('t1', { physicalName: partial, logicalName: '긴이름' })
-    const w = computeWarnings(m, tpl('TB_PREFIX_{물리명}'))
-      .find((x) => x.kind === 'too-long' && x.entityId === 't1')
+    const w = computeWarnings(m, tpl('TB_PREFIX_{물리명}')).find(
+      (x) => x.kind === 'too-long' && x.entityId === 't1',
+    )
     const quoted = /물리명 "([^"]+)"/.exec(w?.message ?? '')?.[1]
-    expect(quoted).toBe(`TB_PREFIX_${partial}`)   // 실제로 DB 에 나갈 이름
-    expect(quoted).not.toBe(partial)              // 부분 이름으로 말하면 고칠 곳을 못 찾는다
+    expect(quoted).toBe(`TB_PREFIX_${partial}`) // 실제로 DB 에 나갈 이름
+    expect(quoted).not.toBe(partial) // 부분 이름으로 말하면 고칠 곳을 못 찾는다
   })
 
   // 'user' 는 네 방언 공통 예약어다(identifier.ts BASE). 'ER' 은 예약어가 아니다.
@@ -449,11 +601,13 @@ describe('물리명 템플릿과 경고', () => {
     const m = createEmptyModel()
     m.tables['t1'] = tbl('t1', { physicalName: 'ER', logicalName: '사용자' })
     const plain = computeWarnings(m, DEFAULT_NAMING_RULES, ['postgresql'])
-      .filter((w) => w.entityId === 't1').map((w) => w.kind)
+      .filter((w) => w.entityId === 't1')
+      .map((w) => w.kind)
     expect(plain).not.toContain('reserved')
 
-    const composed = computeWarnings(m, tpl('US{물리명}'), ['postgresql'])   // → 'USER'
-      .filter((w) => w.entityId === 't1').map((w) => w.kind)
+    const composed = computeWarnings(m, tpl('US{물리명}'), ['postgresql']) // → 'USER'
+      .filter((w) => w.entityId === 't1')
+      .map((w) => w.kind)
     expect(composed).toContain('reserved')
   })
 
@@ -464,8 +618,9 @@ describe('물리명 템플릿과 경고', () => {
   it('예약어 경고 문구가 부분이 아니라 조합 이름을 말한다', () => {
     const m = createEmptyModel()
     m.tables['t1'] = tbl('t1', { physicalName: 'ER', logicalName: '사용자' })
-    const w = computeWarnings(m, tpl('US{물리명}'), ['postgresql'])
-      .find((x) => x.kind === 'reserved' && x.entityId === 't1')
+    const w = computeWarnings(m, tpl('US{물리명}'), ['postgresql']).find(
+      (x) => x.kind === 'reserved' && x.entityId === 't1',
+    )
     const quoted = /물리명 "([^"]+)"/.exec(w?.message ?? '')?.[1]
     expect(quoted).toBe('USER')
     expect(quoted).not.toBe('ER')
@@ -474,10 +629,16 @@ describe('물리명 템플릿과 경고', () => {
   it('부분이 예약어라도 조합 결과가 예약어가 아니면 경고하지 않는다', () => {
     const m = createEmptyModel()
     m.tables['t1'] = tbl('t1', { physicalName: 'ORDER', logicalName: '주문' })
-    expect(computeWarnings(m, DEFAULT_NAMING_RULES, ['postgresql'])
-      .filter((w) => w.entityId === 't1').map((w) => w.kind)).toContain('reserved')
-    expect(computeWarnings(m, tpl('TB_{물리명}'), ['postgresql'])
-      .filter((w) => w.entityId === 't1').map((w) => w.kind)).not.toContain('reserved')
+    expect(
+      computeWarnings(m, DEFAULT_NAMING_RULES, ['postgresql'])
+        .filter((w) => w.entityId === 't1')
+        .map((w) => w.kind),
+    ).toContain('reserved')
+    expect(
+      computeWarnings(m, tpl('TB_{물리명}'), ['postgresql'])
+        .filter((w) => w.entityId === 't1')
+        .map((w) => w.kind),
+    ).not.toContain('reserved')
   })
 
   // ⚠️ 용어 검사만 부분 기준이다 — 사용자가 사전에 등록하는 표준 물리명은 접두가 없는 값이다.
@@ -493,7 +654,8 @@ describe('물리명 템플릿과 경고', () => {
 // 이 케이스들은 「무언가를 바꾼다」가 아니라 「아무것도 안 바뀐다」를 지킨다.
 describe('논리명 템플릿과 경고', () => {
   const withLogical: NamingRules = {
-    ...DEFAULT_NAMING_RULES, tableLogicalTemplate: '{그룹명}_{논리명}',
+    ...DEFAULT_NAMING_RULES,
+    tableLogicalTemplate: '{그룹명}_{논리명}',
   }
   function m(): ProjectModel {
     const x = createEmptyModel()
@@ -504,7 +666,7 @@ describe('논리명 템플릿과 경고', () => {
 
   it('용어 검사가 부분 논리명을 본다', () => {
     const x = m()
-    x.terms['tm1'] = term('tm1', '주문', 'ORD')     // 부분과 정확히 일치 → 불일치 경고가 없어야 한다
+    x.terms['tm1'] = term('tm1', '주문', 'ORD') // 부분과 정확히 일치 → 불일치 경고가 없어야 한다
     // ⚠️ 이 줄이 구분력을 만든다. 없으면 D1 을 위반해도 초록이다 — 조합 이름('회원관리_주문')으로
     // 등록된 용어가 없어 「매칭 없음 → 경고 없음」이 되고 단언이 「경고가 없다」라서 통과한다.
     // 물리명을 일부러 다르게 둔다(MBR_ORD ≠ ORD) — 조합을 보면 불일치 경고가 뜬다.
@@ -514,9 +676,9 @@ describe('논리명 템플릿과 경고', () => {
 
   it('미등록 단어 검사가 부분 논리명을 본다', () => {
     const x = m()
-    x.words['w1'] = word('w1', '주문', 'ORD')       // 부분은 전부 등록됨
+    x.words['w1'] = word('w1', '주문', 'ORD') // 부분은 전부 등록됨
     const kinds = computeWarnings(x, withLogical).map((w) => w.kind)
-    expect(kinds).not.toContain('unknown-word')     // 조합('회원관리_주문')을 봤다면 '회원관리'가 미등록이다
+    expect(kinds).not.toContain('unknown-word') // 조합('회원관리_주문')을 봤다면 '회원관리'가 미등록이다
   })
 
   // ⚠️ 템플릿에 밑줄이 있으면(`{그룹명}_{논리명}`) 조합 결과에도 밑줄이 있어 이 검사가 **통째로
@@ -524,10 +686,10 @@ describe('논리명 템플릿과 경고', () => {
   it('논리 구분자 경고가 부분 논리명을 본다', () => {
     const x = m()
     x.words['w1'] = word('w1', '주문', 'ORD')
-    x.words['w2'] = word('w2', '회원관리', 'MBR')   // 조합('회원관리주문')이 두 낱말로 분해되게 한다
+    x.words['w2'] = word('w2', '회원관리', 'MBR') // 조합('회원관리주문')이 두 낱말로 분해되게 한다
     const glued: NamingRules = { ...DEFAULT_NAMING_RULES, tableLogicalTemplate: '{그룹명}{논리명}' }
     const kinds = computeWarnings(x, glued).map((w) => w.kind)
-    expect(kinds).not.toContain('missing-logical-separator')  // 부분은 단어 하나라 경고 없음
+    expect(kinds).not.toContain('missing-logical-separator') // 부분은 단어 하나라 경고 없음
   })
 
   it('논리 템플릿을 걸어도 경고 목록이 통째로 같다', () => {
@@ -536,4 +698,3 @@ describe('논리명 템플릿과 경고', () => {
     expect(computeWarnings(x, withLogical)).toEqual(computeWarnings(x, DEFAULT_NAMING_RULES))
   })
 })
-

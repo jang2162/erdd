@@ -2,11 +2,17 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { FieldLabel } from './field-label.js'
 
-afterEach(() => { cleanup() })
+afterEach(() => {
+  cleanup()
+})
 
 describe('FieldLabel', () => {
   it('required면 별표를 붙이고 스크린리더용 텍스트를 준다', () => {
-    render(<FieldLabel htmlFor="x" required>논리명</FieldLabel>)
+    render(
+      <FieldLabel htmlFor="x" required>
+        논리명
+      </FieldLabel>,
+    )
     expect(screen.getByText('논리명')).toBeInTheDocument()
     expect(screen.getByText('*')).toBeInTheDocument()
     expect(screen.getByText('(필수)')).toBeInTheDocument()
@@ -22,7 +28,9 @@ describe('FieldLabel', () => {
   it('htmlFor를 그대로 넘긴다', () => {
     render(
       <>
-        <FieldLabel htmlFor="fld" required>논리명</FieldLabel>
+        <FieldLabel htmlFor="fld" required>
+          논리명
+        </FieldLabel>
         <input id="fld" />
       </>,
     )

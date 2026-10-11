@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  LOCAL_CHANGES_CREATE_PATH, LOCAL_CHANGES_PATH,
-  type LocalChangesCreateResult, type LocalChangesStatus,
+  LOCAL_CHANGES_CREATE_PATH,
+  LOCAL_CHANGES_PATH,
+  type LocalChangesCreateResult,
+  type LocalChangesStatus,
 } from '@erdd/core'
 
 /** `use-local-watch.ts` 가 로컬 이벤트마다 이 키를 무효화한다. */
@@ -14,7 +16,9 @@ export const LOCAL_CHANGES_QUERY_KEY = ['local-changes'] as const
 async function postJson(path: string, body?: unknown): Promise<unknown> {
   const res = await fetch(path, {
     method: 'POST',
-    ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+    ...(body === undefined
+      ? {}
+      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   })
   if (!res.ok) throw new Error(`요청이 실패했습니다 (HTTP ${res.status})`)
   return res.json()
@@ -23,14 +27,17 @@ async function postJson(path: string, body?: unknown): Promise<unknown> {
 export function useLocalChanges() {
   return useQuery({
     queryKey: LOCAL_CHANGES_QUERY_KEY,
-    queryFn: async () => await postJson(LOCAL_CHANGES_PATH) as LocalChangesStatus,
+    queryFn: async () => (await postJson(LOCAL_CHANGES_PATH)) as LocalChangesStatus,
   })
 }
 
 export function useCreateLocalChange() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { name: string }) => await postJson(LOCAL_CHANGES_CREATE_PATH, input) as LocalChangesCreateResult,
-    onSettled: async () => { await queryClient.invalidateQueries({ queryKey: LOCAL_CHANGES_QUERY_KEY }) },
+    mutationFn: async (input: { name: string }) =>
+      (await postJson(LOCAL_CHANGES_CREATE_PATH, input)) as LocalChangesCreateResult,
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: LOCAL_CHANGES_QUERY_KEY })
+    },
   })
 }

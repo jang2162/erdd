@@ -16,18 +16,27 @@ function wrapper() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
 }
 
-beforeEach(() => { act(() => useEditorStore.getState().reset()) })
-afterEach(() => { vi.unstubAllGlobals() })
+beforeEach(() => {
+  act(() => useEditorStore.getState().reset())
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('store 선택·히스토리', () => {
   it('select는 rel/note 선택을 해제한다', () => {
     const s = useEditorStore.getState()
-    act(() => { s.selectRelationship('R'); s.select('T') })
+    act(() => {
+      s.selectRelationship('R')
+      s.select('T')
+    })
     const st = useEditorStore.getState()
     expect(st.selectedTableIds).toEqual(['T'])
     expect(st.selectedRelationshipId).toBeNull()
@@ -59,7 +68,9 @@ describe('store 선택·히스토리', () => {
 
   it('recordEdit는 undo에 쌓고 redo를 비운다', () => {
     act(() => {
-      useEditorStore.getState().recordEdit([{ action: 'create', entity: 'table', entityId: 'A', data: {} }])
+      useEditorStore
+        .getState()
+        .recordEdit([{ action: 'create', entity: 'table', entityId: 'A', data: {} }])
     })
     expect(useEditorStore.getState().undoStack).toHaveLength(1)
     expect(useEditorStore.getState().redoStack).toHaveLength(0)
@@ -67,24 +78,48 @@ describe('store 선택·히스토리', () => {
 
   it('moveUndoToRedo는 맨 위 배치를 이동하고 반환한다', () => {
     act(() => {
-      useEditorStore.getState().recordEdit([{ action: 'create', entity: 'table', entityId: 'A', data: {} }])
+      useEditorStore
+        .getState()
+        .recordEdit([{ action: 'create', entity: 'table', entityId: 'A', data: {} }])
     })
     let moved: unknown
-    act(() => { moved = useEditorStore.getState().moveUndoToRedo() })
+    act(() => {
+      moved = useEditorStore.getState().moveUndoToRedo()
+    })
     expect(moved).toHaveLength(1)
     expect(useEditorStore.getState().undoStack).toHaveLength(0)
     expect(useEditorStore.getState().redoStack).toHaveLength(1)
   })
 
   it('setSeq는 역행하지 않는다', () => {
-    act(() => { useEditorStore.getState().setSeq(5); useEditorStore.getState().setSeq(3) })
+    act(() => {
+      useEditorStore.getState().setSeq(5)
+      useEditorStore.getState().setSeq(3)
+    })
     expect(useEditorStore.getState().seq).toBe(5)
   })
 
   it('setLoaded는 히스토리를 초기화한다', () => {
     act(() => {
-      useEditorStore.getState().recordEdit([{ action: 'create', entity: 'table', entityId: 'A', data: {} }])
-      useEditorStore.getState().setLoaded({ tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {}, tableGroups: {}, domains: {}, words: {}, terms: {}, customFields: {} }, 1, 'p1')
+      useEditorStore
+        .getState()
+        .recordEdit([{ action: 'create', entity: 'table', entityId: 'A', data: {} }])
+      useEditorStore.getState().setLoaded(
+        {
+          tables: {},
+          columns: {},
+          relationships: {},
+          indexes: {},
+          notes: {},
+          tableGroups: {},
+          domains: {},
+          words: {},
+          terms: {},
+          customFields: {},
+        },
+        1,
+        'p1',
+      )
     })
     expect(useEditorStore.getState().undoStack).toHaveLength(0)
   })
@@ -95,13 +130,20 @@ describe('useUndoRedo (훅 통합)', () => {
     const projectId = '018f6b0e-0000-7000-8000-0000000000aa'
     const TABLE = {
       id: '018f6b0e-0000-7000-8000-000000000002',
-      logicalName: '테이블', physicalName: 'table', comment: null, groupId: null,
-      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      logicalName: '테이블',
+      physicalName: 'table',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const model = { ...createEmptyModel(), tables: { [TABLE.id]: TABLE } }
     useEditorStore.getState().setLoaded(model, 3, projectId)
     grantEditPermission()
-    useEditorStore.getState().recordEdit([{ action: 'create', entity: 'table', entityId: TABLE.id, data: TABLE }])
+    useEditorStore
+      .getState()
+      .recordEdit([{ action: 'create', entity: 'table', entityId: TABLE.id, data: TABLE }])
 
     mockTrpcFetch({
       'model.mutate': () => ({ data: { seq: 4 } }),
@@ -127,12 +169,14 @@ describe('useUndoRedo (훅 통합)', () => {
     act(() => {
       useEditorStore.getState().setLoaded(createEmptyModel(), 1, 'p1')
       grantEditPermission()
-      useEditorStore.getState().recordEdit([
-        { action: 'create', entity: 'table', entityId: 'GHOST', data: {} },
-      ])
+      useEditorStore
+        .getState()
+        .recordEdit([{ action: 'create', entity: 'table', entityId: 'GHOST', data: {} }])
     })
     const { result } = renderHook(() => useUndoRedo('p1'), { wrapper: wrapper() })
-    await act(async () => { await result.current.undo() })
+    await act(async () => {
+      await result.current.undo()
+    })
     expect(useEditorStore.getState().undoStack).toHaveLength(1)
     expect(useEditorStore.getState().redoStack).toHaveLength(0)
   })
@@ -147,10 +191,19 @@ describe('프로젝트 전환 가드', () => {
     await act(async () => {
       await result.current((m) => ({
         ...m,
-        tables: { ...m.tables, X: {
-          id: 'X', logicalName: 'x', physicalName: 'X', comment: null,
-          groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
-        } },
+        tables: {
+          ...m.tables,
+          X: {
+            id: 'X',
+            logicalName: 'x',
+            physicalName: 'X',
+            comment: null,
+            groupId: null,
+            position: { x: 0, y: 0 },
+            groupPosition: null,
+            custom: {},
+          },
+        },
       }))
     })
     expect(useEditorStore.getState().model.tables.X).toBeUndefined()

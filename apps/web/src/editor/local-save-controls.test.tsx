@@ -7,14 +7,25 @@ import { LocalSaveBanner, LocalSaveControls } from './local-save-controls.js'
 
 function mockPost(result: unknown = { ok: true }): string[] {
   const calls: string[] = []
-  vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-    calls.push(`${init?.method ?? 'GET'} ${url}`)
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(result) } as Response)
-  }))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`)
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(result),
+      } as Response)
+    }),
+  )
   return calls
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 const setStatus = (dirty: boolean, external: boolean) =>
   useEditorStore.getState().setLocalSaveStatus({ dirty, external })

@@ -6,13 +6,13 @@
 
 :root {
   /* 데이터 도면 팔레트 */
-  --background: #f7f8fa;          /* 페이퍼 */
-  --foreground: #1a2340;          /* 잉크 */
+  --background: #f7f8fa; /* 페이퍼 */
+  --foreground: #1a2340; /* 잉크 */
   --card: #ffffff;
   --card-foreground: #1a2340;
   --popover: #ffffff;
   --popover-foreground: #1a2340;
-  --primary: #0e7a6c;             /* 청록 */
+  --primary: #0e7a6c; /* 청록 */
   --primary-foreground: #ffffff;
   --secondary: #eef0f3;
   --secondary-foreground: #1a2340;
@@ -25,7 +25,7 @@
   --border: #e2e5ea;
   --input: #e2e5ea;
   --ring: #0e7a6c;
-  --key: #c89b3c;                 /* 키 골드 — PK·강조 전용 */
+  --key: #c89b3c; /* 키 골드 — PK·강조 전용 */
   --radius: 0.5rem;
 }
 
@@ -58,8 +58,12 @@
 }
 
 @layer base {
-  * { @apply border-border outline-ring/50; }
-  body { @apply bg-background text-foreground font-sans antialiased; }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
 }
 
 /* 시그니처: 모눈(도면) 배경 — 로그인·빈 상태 전용 */

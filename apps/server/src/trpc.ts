@@ -33,7 +33,8 @@ export const router = t.router
 export const publicProcedure = t.procedure
 
 export const dbProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.db) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'DB가 구성되지 않았습니다' })
+  if (!ctx.db)
+    throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'DB가 구성되지 않았습니다' })
   return next({ ctx: { ...ctx, db: ctx.db } })
 })
 
@@ -52,12 +53,16 @@ export const apiProcedure = dbProcedure.use(({ ctx, next }) => {
  */
 export const authedProcedure = apiProcedure.use(({ ctx, next }) => {
   if (ctx.authKind !== 'session') {
-    throw new TRPCError({ code: 'UNAUTHORIZED', message: '이 작업은 액세스 토큰으로 할 수 없습니다' })
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: '이 작업은 액세스 토큰으로 할 수 없습니다',
+    })
   }
   return next()
 })
 
 export const adminProcedure = authedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN', message: '관리자 권한이 필요합니다' })
+  if (ctx.user.role !== 'admin')
+    throw new TRPCError({ code: 'FORBIDDEN', message: '관리자 권한이 필요합니다' })
   return next()
 })

@@ -13,17 +13,25 @@ const url = process.env.DATABASE_URL
 
 function post(app: FastifyInstance, path: string, session: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`, cookies: { erdd_session: session },
-    headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
+    method: 'POST',
+    url: `/trpc/${path}`,
+    cookies: { erdd_session: session },
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify(input),
   })
 }
 function get(app: FastifyInstance, path: string, session: string, input?: unknown) {
   const qs = input === undefined ? '' : `?input=${encodeURIComponent(JSON.stringify(input))}`
-  return app.inject({ method: 'GET', url: `/trpc/${path}${qs}`, cookies: { erdd_session: session } })
+  return app.inject({
+    method: 'GET',
+    url: `/trpc/${path}${qs}`,
+    cookies: { erdd_session: session },
+  })
 }
 function postWithToken(app: FastifyInstance, path: string, token: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`,
+    method: 'POST',
+    url: `/trpc/${path}`,
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     payload: JSON.stringify(input),
   })
@@ -39,23 +47,44 @@ describe.skipIf(!url)('model.push', () => {
   let viewerSession: string
   let projectId: string
 
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
   beforeEach(async () => {
     await resetDb(app.pgPool!)
-    await createAccount(app.db!, { email: 'o@t.dev', name: '오너', password: 'password-o', role: 'user' })
-    await createAccount(app.db!, { email: 'v@t.dev', name: '뷰어', password: 'password-v', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'o@t.dev',
+      name: '오너',
+      password: 'password-o',
+      role: 'user',
+    })
+    await createAccount(app.db!, {
+      email: 'v@t.dev',
+      name: '뷰어',
+      password: 'password-v',
+      role: 'user',
+    })
     editorSession = await loginAs(app, 'o@t.dev', 'password-o')
     viewerSession = await loginAs(app, 'v@t.dev', 'password-v')
-    const orgId = (await post(app, 'org.create', editorSession, { name: '팀' })).json().result.data.id
-    projectId = (await post(app, 'project.create', editorSession, {
-      orgId, name: 'P', dialects: ['postgresql'],
-    })).json().result.data.id
+    const orgId = (await post(app, 'org.create', editorSession, { name: '팀' })).json().result.data
+      .id
+    projectId = (
+      await post(app, 'project.create', editorSession, {
+        orgId,
+        name: 'P',
+        dialects: ['postgresql'],
+      })
+    ).json().result.data.id
     await post(app, 'org.members.add', editorSession, { orgId, email: 'v@t.dev', role: 'member' })
-    const members = (await get(app, 'org.members.list', editorSession, { orgId }))
-      .json().result.data as Array<{ id: string; email: string }>
+    const members = (await get(app, 'org.members.list', editorSession, { orgId })).json().result
+      .data as Array<{ id: string; email: string }>
     await post(app, 'project.members.add', editorSession, {
-      projectId, memberId: members.find((m) => m.email === 'v@t.dev')!.id, role: 'viewer',
+      projectId,
+      memberId: members.find((m) => m.email === 'v@t.dev')!.id,
+      role: 'viewer',
     })
   })
 
@@ -63,13 +92,20 @@ describe.skipIf(!url)('model.push', () => {
     const token = await issueToken(app, editorSession, 'cli')
     const ops = diffModels(createEmptyModel(), withUuidIds(buildSampleModel()))
     const res = await postWithToken(app, 'model.push', token, {
-      projectId, expectedSeq: 0, ops, summary: 'CLI push (테이블 2건)',
+      projectId,
+      expectedSeq: 0,
+      ops,
+      summary: 'CLI push (테이블 2건)',
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().result.data.seq).toBe(1)
 
-    const [rev] = await app.db!.select().from(revisions)
-      .where(eq(revisions.projectId, projectId)).orderBy(desc(revisions.seq)).limit(1)
+    const [rev] = await app
+      .db!.select()
+      .from(revisions)
+      .where(eq(revisions.projectId, projectId))
+      .orderBy(desc(revisions.seq))
+      .limit(1)
     expect(rev!.source).toBe('cli')
     expect(rev!.summary).toBe('CLI push (테이블 2건)')
   })
@@ -82,18 +118,27 @@ describe.skipIf(!url)('model.push', () => {
     const ops = diffModels(createEmptyModel(), withUuidIds(buildSampleModel()))
     const received: ServerMessage[] = []
     const handle = app.hub.subscribe(projectId, {
-      userId: 'observer', name: '구독자',
-      send: (text: string) => { received.push(JSON.parse(text) as ServerMessage) },
+      userId: 'observer',
+      name: '구독자',
+      send: (text: string) => {
+        received.push(JSON.parse(text) as ServerMessage)
+      },
     })
     // 다른 프로젝트 구독자에게는 가지 않아야 한다(허브 단위가 아니라 채널 단위 발행인지).
     const otherReceived: ServerMessage[] = []
     const otherHandle = app.hub.subscribe(uuidv7(), {
-      userId: 'other', name: '남',
-      send: (text: string) => { otherReceived.push(JSON.parse(text) as ServerMessage) },
+      userId: 'other',
+      name: '남',
+      send: (text: string) => {
+        otherReceived.push(JSON.parse(text) as ServerMessage)
+      },
     })
     try {
       const res = await postWithToken(app, 'model.push', token, {
-        projectId, expectedSeq: 0, ops, summary: 'CLI push',
+        projectId,
+        expectedSeq: 0,
+        ops,
+        summary: 'CLI push',
       })
       expect(res.statusCode).toBe(200)
 
@@ -111,9 +156,16 @@ describe.skipIf(!url)('model.push', () => {
   it('expectedSeq가 어긋나면 CONFLICT이고 이미 반영된 상태가 살아남는다', async () => {
     const token = await issueToken(app, editorSession, 'cli')
     const ops = diffModels(createEmptyModel(), withUuidIds(buildSampleModel()))
-    expect((await postWithToken(app, 'model.push', token, {
-      projectId, expectedSeq: 0, ops, summary: '첫 반영',
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await postWithToken(app, 'model.push', token, {
+          projectId,
+          expectedSeq: 0,
+          ops,
+          summary: '첫 반영',
+        })
+      ).statusCode,
+    ).toBe(200)
     const before = (await get(app, 'model.get', editorSession, { projectId })).json().result.data
     expect(before.seq).toBe(1)
     expect(Object.keys(before.model.tables)).toHaveLength(2)
@@ -124,19 +176,24 @@ describe.skipIf(!url)('model.push', () => {
     const wipe = diffModels(before.model as ProjectModel, createEmptyModel())
     expect(wipe.length).toBeGreaterThan(0)
     const res = await postWithToken(app, 'model.push', token, {
-      projectId, expectedSeq: 0, ops: wipe,
+      projectId,
+      expectedSeq: 0,
+      ops: wipe,
     })
     expect(res.json().error.data.code).toBe('CONFLICT')
 
     const after = (await get(app, 'model.get', editorSession, { projectId })).json().result.data
-    expect(after.seq).toBe(1)                    // 리비전이 전진하지 않았다
-    expect(after.model).toEqual(before.model)    // 첫 리비전의 데이터가 그대로다
+    expect(after.seq).toBe(1) // 리비전이 전진하지 않았다
+    expect(after.model).toEqual(before.model) // 첫 리비전의 데이터가 그대로다
   })
 
   it('토큰으로 model.push는 되지만 model.mutate는 거부된다', async () => {
     const token = await issueToken(app, editorSession, 'cli')
     const ops = diffModels(createEmptyModel(), withUuidIds(buildSampleModel()))
-    expect((await postWithToken(app, 'model.push', token, { projectId, expectedSeq: 0, ops })).statusCode).toBe(200)
+    expect(
+      (await postWithToken(app, 'model.push', token, { projectId, expectedSeq: 0, ops }))
+        .statusCode,
+    ).toBe(200)
     const denied = await postWithToken(app, 'model.mutate', token, { projectId, ops })
     expect(denied.json().error.data.code).toBe('UNAUTHORIZED')
   })

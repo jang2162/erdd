@@ -23,18 +23,21 @@ export const modelRouter = router({
     }),
 
   mutate: authedProcedure
-    .input(z.object({
-      projectId: z.string().uuid(),
-      ops: z.array(z.unknown()).min(1).max(MAX_OPS_PER_MUTATION),
-      summary: z.string().min(1).max(200).optional(),
-    }))
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        ops: z.array(z.unknown()).min(1).max(MAX_OPS_PER_MUTATION),
+        summary: z.string().min(1).max(200).optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'edit')
       let ops: Op[]
       try {
         ops = parseOps(input.ops)
       } catch (err) {
-        if (err instanceof OpParseError) throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
+        if (err instanceof OpParseError)
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
         throw err
       }
       try {
@@ -47,7 +50,8 @@ export const modelRouter = router({
           summary: input.summary,
         })
       } catch (err) {
-        if (err instanceof OpApplyError) throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
+        if (err instanceof OpApplyError)
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
         throw err
       }
     }),
@@ -57,19 +61,22 @@ export const modelRouter = router({
    * 필수다 — CLI가 병합을 계산한 시점과 반영 시점 사이에 남이 커밋했으면 락 안에서 거부한다.
    */
   push: apiProcedure
-    .input(z.object({
-      projectId: z.string().uuid(),
-      expectedSeq: z.number().int().min(0),
-      ops: z.array(z.unknown()).min(1).max(MAX_OPS_PER_MUTATION),
-      summary: z.string().min(1).max(200).optional(),
-    }))
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        expectedSeq: z.number().int().min(0),
+        ops: z.array(z.unknown()).min(1).max(MAX_OPS_PER_MUTATION),
+        summary: z.string().min(1).max(200).optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'edit')
       let ops: Op[]
       try {
         ops = parseOps(input.ops)
       } catch (err) {
-        if (err instanceof OpParseError) throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
+        if (err instanceof OpParseError)
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
         throw err
       }
       try {
@@ -90,7 +97,8 @@ export const modelRouter = router({
           summary: input.summary,
         })
       } catch (err) {
-        if (err instanceof OpApplyError) throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
+        if (err instanceof OpApplyError)
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message })
         throw err
       }
     }),

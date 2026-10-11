@@ -55,9 +55,7 @@ export type NameMeta = {
  * 이름을 좌표로 삼는다 — 프로젝트를 넘으면 id 가 무의미하기 때문이다. 뿌리는 **모델이 그 상태를
  * 허용하고 웹의 그룹 이름 변경에 중복 검사가 없다**는 데 있다.
  */
-export function buildNameMeta(
-  model: ProjectModel, tables: Table[], rules: NamingRules,
-): NameMeta {
+export function buildNameMeta(model: ProjectModel, tables: Table[], rules: NamingRules): NameMeta {
   const meta: NameMeta = { tables: {}, groups: {} }
   for (const t of tables) {
     const p = composeTablePhysicalName(t, model, rules)
@@ -119,7 +117,7 @@ export function parseNameMeta(raw: string): NameMeta | null {
     if (v2 !== null) return toV2(v2)
     const v1 = afterMarker(body, MARKER_V1)
     if (v1 !== null) return toV1(v1)
-    continue                                      // 사람이 쓴 다른 주석은 지나친다
+    continue // 사람이 쓴 다른 주석은 지나친다
   }
   return null
 }

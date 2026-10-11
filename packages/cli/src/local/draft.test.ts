@@ -59,9 +59,24 @@ describe('draft', () => {
    */
   const BROKEN: [name: string, body: string][] = [
     ['JSON 이 잘렸다', '{"formatVersion":1,"model":{'],
-    ['model 키가 없다', JSON.stringify({ formatVersion: 1, baseSignature: 's', seq: 1, updatedAt: 'x' })],
-    ['model 이 빈 객체다', JSON.stringify({ formatVersion: 1, baseSignature: 's', seq: 1, updatedAt: 'x', model: {} })],
-    ['필수 컬렉션이 모자란다', JSON.stringify({ formatVersion: 1, baseSignature: 's', seq: 1, updatedAt: 'x', model: { tables: {}, columns: {} } })],
+    [
+      'model 키가 없다',
+      JSON.stringify({ formatVersion: 1, baseSignature: 's', seq: 1, updatedAt: 'x' }),
+    ],
+    [
+      'model 이 빈 객체다',
+      JSON.stringify({ formatVersion: 1, baseSignature: 's', seq: 1, updatedAt: 'x', model: {} }),
+    ],
+    [
+      '필수 컬렉션이 모자란다',
+      JSON.stringify({
+        formatVersion: 1,
+        baseSignature: 's',
+        seq: 1,
+        updatedAt: 'x',
+        model: { tables: {}, columns: {} },
+      }),
+    ],
     ['최상위가 배열이다', '[]'],
   ]
 
@@ -95,13 +110,24 @@ describe('draft', () => {
    */
   it('신규 컬렉션 키가 없는 옛 모양도 보충해서 읽는다', async () => {
     const cwd = await dir()
-    await writeRaw(cwd, JSON.stringify({
-      formatVersion: 1, baseSignature: 's', seq: 1, updatedAt: 'x',
-      model: {
-        tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {},
-        tableGroups: {}, domains: {},
-      },
-    }))
+    await writeRaw(
+      cwd,
+      JSON.stringify({
+        formatVersion: 1,
+        baseSignature: 's',
+        seq: 1,
+        updatedAt: 'x',
+        model: {
+          tables: {},
+          columns: {},
+          relationships: {},
+          indexes: {},
+          notes: {},
+          tableGroups: {},
+          domains: {},
+        },
+      }),
+    )
     const r = await readDraft(cwd)
     expect(r.kind).toBe('ok')
     if (r.kind !== 'ok') return

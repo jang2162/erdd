@@ -1,6 +1,13 @@
 export type CliErrorCode =
-  | 'UNAUTHORIZED' | 'FORBIDDEN' | 'NOT_FOUND' | 'NO_CONFIG'
-  | 'NETWORK' | 'VALIDATION' | 'USAGE' | 'CANCELLED' | 'CONFLICT'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'NO_CONFIG'
+  | 'NETWORK'
+  | 'VALIDATION'
+  | 'USAGE'
+  | 'CANCELLED'
+  | 'CONFLICT'
 
 export class CliError extends Error {
   readonly code: CliErrorCode
@@ -31,7 +38,9 @@ export function emit(json: boolean, human: string, payload: unknown): void {
 
 export function emitError(json: boolean, err: CliError): void {
   if (json) {
-    process.stdout.write(`${JSON.stringify({ error: { code: err.code, message: err.message, ...err.details } })}\n`)
+    process.stdout.write(
+      `${JSON.stringify({ error: { code: err.code, message: err.message, ...err.details } })}\n`,
+    )
     return
   }
   process.stderr.write(`오류: ${err.message}\n`)

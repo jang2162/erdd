@@ -23,7 +23,9 @@ function renderPanel() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<BulkPanel projectId={PROJECT_ID} />, { wrapper: w })
@@ -43,8 +45,14 @@ function modelWithEmptyG2(): ProjectModel {
 function modelWithAnchoredG2(): ProjectModel {
   const m = modelWithEmptyG2()
   m.tables['t3'] = {
-    id: 't3', logicalName: '주문', physicalName: 'ORD', comment: null,
-    groupId: 'g2', position: { x: 1000, y: 500 }, groupPosition: null, custom: {},
+    id: 't3',
+    logicalName: '주문',
+    physicalName: 'ORD',
+    comment: null,
+    groupId: 'g2',
+    position: { x: 1000, y: 500 },
+    groupPosition: null,
+    custom: {},
   }
   return m
 }
@@ -56,7 +64,11 @@ function modelWithMixedGroups(): ProjectModel {
   return m
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('countCascade', () => {
   it('테이블과 함께 사라지는 컬럼·인덱스·관계를 센다', () => {
@@ -104,7 +116,12 @@ describe('BulkPanel', () => {
     // 0건이고, 그러면 producer를 둘로 쪼개도 두 번째 뮤테이션이 'noop'으로 빠져 calls·undoStack이
     // 1로 남는다 — 계약이 깨졌는데 지표가 안 움직인다. 좌표가 실제로 움직여야 잠긴다.
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().setLoaded(modelWithAnchoredG2(), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
@@ -119,7 +136,7 @@ describe('BulkPanel', () => {
     // ⚠️ waitFor로는 **"최소 1건"** 밖에 못 본다 — 0→1→2로 가는 도중 1인 순간을 잡고 통과한다.
     // 나갈 것을 다 내보낸 뒤 **정확히 1건**으로 못 박아야 producer를 쪼갠 변경이 잡힌다.
     await settle()
-    expect(calls).toHaveLength(1)   // 단일 뮤테이션 = Revision 1건
+    expect(calls).toHaveLength(1) // 단일 뮤테이션 = Revision 1건
     // 그룹 배정과 좌표 재배치가 한 producer 라 cmd+Z 한 번으로 전부 원복된다.
     expect(useEditorStore.getState().undoStack).toHaveLength(1)
   })
@@ -170,7 +187,7 @@ describe('BulkPanel', () => {
     // 둘이 갈라진다**. 전원 비우면 둘 다 폴백해 나란히 선다(설계 6.1).
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     const model = modelWithMixedGroups()
-    expect(model.tables['t2']?.groupPosition).not.toBeNull()   // 픽스처 사실: {x:310,y:10}
+    expect(model.tables['t2']?.groupPosition).not.toBeNull() // 픽스처 사실: {x:310,y:10}
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
@@ -183,13 +200,18 @@ describe('BulkPanel', () => {
       expect(useEditorStore.getState().model.tables['t1']?.groupPosition).toBeNull()
     })
     const t2 = useEditorStore.getState().model.tables['t2']
-    expect(t2?.groupId).toBe('g2')          // 원래부터 g2였다
-    expect(t2?.groupPosition).toBeNull()    // 그래도 비운다
+    expect(t2?.groupId).toBe('g2') // 원래부터 g2였다
+    expect(t2?.groupPosition).toBeNull() // 그래도 비운다
   })
 
   it('「선택 테이블로 새 그룹」이 선택 전원을 담는 그룹을 만들고 그 그룹을 연다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
@@ -200,7 +222,9 @@ describe('BulkPanel', () => {
     await waitFor(() => {
       expect(Object.values(useEditorStore.getState().model.tableGroups)).toHaveLength(2)
     })
-    const created = Object.values(useEditorStore.getState().model.tableGroups).find((g) => g.id !== 'g1')!
+    const created = Object.values(useEditorStore.getState().model.tableGroups).find(
+      (g) => g.id !== 'g1',
+    )!
     const tables = useEditorStore.getState().model.tables
     expect(tables['t1']?.groupId).toBe(created.id)
     expect(tables['t2']?.groupId).toBe(created.id)
@@ -233,13 +257,19 @@ describe('BulkPanel', () => {
       expect(tables['t2']?.groupPosition).toBeNull()
     })
     // 전체 뷰 좌표는 그대로다 — 새 그룹은 테이블을 옮기지 않는다(설계 D2).
-    expect(useEditorStore.getState().model.tables['t1']?.position)
-      .toEqual(buildSampleModel().tables['t1']?.position)
+    expect(useEditorStore.getState().model.tables['t1']?.position).toEqual(
+      buildSampleModel().tables['t1']?.position,
+    )
   })
 
   it('일괄 삭제는 확인 다이얼로그를 거친다 — 취소하면 아무 op도 나가지 않는다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
@@ -254,7 +284,12 @@ describe('BulkPanel', () => {
 
   it('확인하면 선택한 테이블이 한 번에 지워지고 선택에서도 빠진다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
@@ -265,7 +300,7 @@ describe('BulkPanel', () => {
     await waitFor(() => {
       expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(0)
     })
-    expect(calls).toHaveLength(1)   // 선택 수만큼 나눠 보내지 않는다
+    expect(calls).toHaveLength(1) // 선택 수만큼 나눠 보내지 않는다
     // 선택 정리는 이 컴포넌트가 아니라 useSubmit의 pruneSelection이 한다(경로가 한 벌이다).
     expect(useEditorStore.getState().selectedTableIds).toEqual([])
   })
@@ -304,10 +339,16 @@ describe('BulkPanel', () => {
     await waitFor(() => expect(calls).toHaveLength(2))
     await settle()
     expect(calls).toHaveLength(2)
-    expect(calls.map((c) => c.summary)).toEqual(['테이블 삭제 (2개) (1/2)', '테이블 삭제 (2개) (2/2)'])
+    expect(calls.map((c) => c.summary)).toEqual([
+      '테이블 삭제 (2개) (1/2)',
+      '테이블 삭제 (2개) (2/2)',
+    ])
     expect(Object.keys(useEditorStore.getState().model.tables)).toHaveLength(0)
     expect(useEditorStore.getState().undoStack).toHaveLength(1)
-    expect(loading).toHaveBeenCalledWith('적용 중… 1 / 2', expect.objectContaining({ id: expect.any(String) }))
+    expect(loading).toHaveBeenCalledWith(
+      '적용 중… 1 / 2',
+      expect.objectContaining({ id: expect.any(String) }),
+    )
     loading.mockRestore()
   })
 })

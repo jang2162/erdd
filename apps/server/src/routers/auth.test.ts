@@ -13,20 +13,29 @@ const url = process.env.DATABASE_URL
 /** 세션 쿠키 없이 호출한다 — resetPassword가 정말 공개인지 보려면 이것을 써야 한다. */
 function postPublic(app: FastifyInstance, path: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`,
-    headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
+    method: 'POST',
+    url: `/trpc/${path}`,
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify(input),
   })
 }
 
 describe.skipIf(!url)('auth', () => {
   let app: FastifyInstance
   let userId: string
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
   beforeEach(async () => {
     await resetDb(app.pgPool!)
     const user = await createAccount(app.db!, {
-      email: 'u1@test.dev', name: '사용자1', password: 'password-1', role: 'user',
+      email: 'u1@test.dev',
+      name: '사용자1',
+      password: 'password-1',
+      role: 'user',
     })
     userId = user.id
   })
@@ -41,8 +50,12 @@ describe.skipIf(!url)('auth', () => {
   ): Promise<string> {
     const { plain, hash } = issueToken('reset')
     await app.db!.insert(passwordResetTokens).values({
-      id: uuidv7(), userId, tokenHash: hash,
-      expiresAt: tokenExpiry('reset'), createdBy: userId, ...over,
+      id: uuidv7(),
+      userId,
+      tokenHash: hash,
+      expiresAt: tokenExpiry('reset'),
+      createdBy: userId,
+      ...over,
     })
     return plain
   }
@@ -50,7 +63,9 @@ describe.skipIf(!url)('auth', () => {
   it('login sets a session cookie and me returns the user', async () => {
     const token = await loginAs(app, 'u1@test.dev', 'password-1')
     const res = await app.inject({
-      method: 'GET', url: '/trpc/auth.me', cookies: { erdd_session: token },
+      method: 'GET',
+      url: '/trpc/auth.me',
+      cookies: { erdd_session: token },
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().result.data).toMatchObject({ email: 'u1@test.dev', role: 'user' })
@@ -58,7 +73,8 @@ describe.skipIf(!url)('auth', () => {
 
   it('rejects a wrong password with 401 and me without session with 401', async () => {
     const bad = await app.inject({
-      method: 'POST', url: '/trpc/auth.login',
+      method: 'POST',
+      url: '/trpc/auth.login',
       headers: { 'content-type': 'application/json' },
       payload: JSON.stringify({ email: 'u1@test.dev', password: 'nope' }),
     })
@@ -70,7 +86,8 @@ describe.skipIf(!url)('auth', () => {
   it('changePassword invalidates the old password', async () => {
     const token = await loginAs(app, 'u1@test.dev', 'password-1')
     const res = await app.inject({
-      method: 'POST', url: '/trpc/auth.changePassword',
+      method: 'POST',
+      url: '/trpc/auth.changePassword',
       cookies: { erdd_session: token },
       headers: { 'content-type': 'application/json' },
       payload: JSON.stringify({ currentPassword: 'password-1', newPassword: 'password-2' }),
@@ -91,7 +108,9 @@ describe.skipIf(!url)('auth', () => {
     await ensureBootstrapAdmin(app.db!)
     const token = await loginAs(app, 'admin@test.dev', 'admin-pass-1')
     const me = await app.inject({
-      method: 'GET', url: '/trpc/auth.me', cookies: { erdd_session: token },
+      method: 'GET',
+      url: '/trpc/auth.me',
+      cookies: { erdd_session: token },
     })
     expect(me.json().result.data).toMatchObject({ role: 'admin' })
     delete process.env.ADMIN_EMAIL
@@ -110,7 +129,9 @@ describe.skipIf(!url)('auth', () => {
 
     for (const s of [s1, s2]) {
       const me = await app.inject({
-        method: 'GET', url: '/trpc/auth.me', cookies: { erdd_session: s },
+        method: 'GET',
+        url: '/trpc/auth.me',
+        cookies: { erdd_session: s },
       })
       expect(me.statusCode).toBe(401)
     }
@@ -120,12 +141,18 @@ describe.skipIf(!url)('auth', () => {
 
   it('사용된 재설정 토큰은 재사용되지 않는다', async () => {
     const token = await seedResetToken()
-    expect((await postPublic(app, 'auth.resetPassword', {
-      token, newPassword: 'password-x',
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await postPublic(app, 'auth.resetPassword', {
+          token,
+          newPassword: 'password-x',
+        })
+      ).statusCode,
+    ).toBe(200)
 
     const again = await postPublic(app, 'auth.resetPassword', {
-      token, newPassword: 'password-y',
+      token,
+      newPassword: 'password-y',
     })
     expect(again.statusCode).toBe(400)
     // 두 번째 시도가 아무것도 바꾸지 못했음을 확인한다 — 링크를 주운 사람이 뒤늦게
@@ -158,63 +185,95 @@ describe.skipIf(!url)('auth', () => {
   it('죽은 재설정 토큰은 linkDead 표식을 달고 거절된다', async () => {
     const used = await seedResetToken({ usedAt: new Date() })
     const usedRes = await postPublic(app, 'auth.resetPassword', {
-      token: used, newPassword: 'password-x',
+      token: used,
+      newPassword: 'password-x',
     })
     expect(usedRes.json().error.data.linkDead).toBe(true)
 
     const stale = await seedResetToken({ expiresAt: new Date(Date.now() - 1000) })
     const staleRes = await postPublic(app, 'auth.resetPassword', {
-      token: stale, newPassword: 'password-x',
+      token: stale,
+      newPassword: 'password-x',
     })
     expect(staleRes.json().error.data.linkDead).toBe(true)
 
     const none = await postPublic(app, 'auth.resetPassword', {
-      token: 'erdd_rst_nope', newPassword: 'password-x',
+      token: 'erdd_rst_nope',
+      newPassword: 'password-x',
     })
     expect(none.json().error.data.linkDead).toBe(true)
   })
 
   it('만료된·없는 재설정 토큰은 거부되고 비밀번호가 그대로다', async () => {
     const stale = await seedResetToken({ expiresAt: new Date(Date.now() - 1000) })
-    expect((await postPublic(app, 'auth.resetPassword', {
-      token: stale, newPassword: 'password-x',
-    })).statusCode).toBe(400)
+    expect(
+      (
+        await postPublic(app, 'auth.resetPassword', {
+          token: stale,
+          newPassword: 'password-x',
+        })
+      ).statusCode,
+    ).toBe(400)
 
     // 없는 토큰도 같은 400이다 — 문구가 갈리면 임의 토큰을 던져 존재 여부를 물을 수 있다.
-    expect((await postPublic(app, 'auth.resetPassword', {
-      token: 'erdd_rst_nope', newPassword: 'password-x',
-    })).statusCode).toBe(400)
+    expect(
+      (
+        await postPublic(app, 'auth.resetPassword', {
+          token: 'erdd_rst_nope',
+          newPassword: 'password-x',
+        })
+      ).statusCode,
+    ).toBe(400)
 
     await loginAs(app, 'u1@test.dev', 'password-1')
   })
 
   it('resetPassword가 다른 사용자의 세션은 건드리지 않는다', async () => {
     await createAccount(app.db!, {
-      email: 'u2@test.dev', name: '사용자2', password: 'password-2', role: 'user',
+      email: 'u2@test.dev',
+      name: '사용자2',
+      password: 'password-2',
+      role: 'user',
     })
     const otherSession = await loginAs(app, 'u2@test.dev', 'password-2')
     const token = await seedResetToken()
-    expect((await postPublic(app, 'auth.resetPassword', {
-      token, newPassword: 'password-x',
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await postPublic(app, 'auth.resetPassword', {
+          token,
+          newPassword: 'password-x',
+        })
+      ).statusCode,
+    ).toBe(200)
 
     // userId 조건 없이 세션을 지우면 남까지 로그아웃된다.
     const me = await app.inject({
-      method: 'GET', url: '/trpc/auth.me', cookies: { erdd_session: otherSession },
+      method: 'GET',
+      url: '/trpc/auth.me',
+      cookies: { erdd_session: otherSession },
     })
     expect(me.statusCode).toBe(200)
     await loginAs(app, 'u2@test.dev', 'password-2')
-    expect((await app.db!.select().from(users).where(eq(users.email, 'u2@test.dev')))[0]!.name)
-      .toBe('사용자2')
+    expect(
+      (await app.db!.select().from(users).where(eq(users.email, 'u2@test.dev')))[0]!.name,
+    ).toBe('사용자2')
   })
 
   it('normalizes email case on create and login', async () => {
     await createAccount(app.db!, {
-      email: 'Mixed@Case.Dev', name: '혼합', password: 'password-9', role: 'user',
+      email: 'Mixed@Case.Dev',
+      name: '혼합',
+      password: 'password-9',
+      role: 'user',
     })
     await loginAs(app, 'mixed@case.dev', 'password-9') // 소문자로 로그인 성공
     await expect(
-      createAccount(app.db!, { email: 'MIXED@CASE.DEV', name: '중복', password: 'password-9', role: 'user' }),
+      createAccount(app.db!, {
+        email: 'MIXED@CASE.DEV',
+        name: '중복',
+        password: 'password-9',
+        role: 'user',
+      }),
     ).rejects.toThrow() // 대소문자만 다른 중복은 unique 위반
   })
 })

@@ -1,6 +1,11 @@
 import {
-  COLLECTION_BY_KIND, DIFF_KIND_LABEL, MAX_OPS_PER_MUTATION, entityDisplayName,
-  type EntityKind, type Op, type ProjectModel,
+  COLLECTION_BY_KIND,
+  DIFF_KIND_LABEL,
+  MAX_OPS_PER_MUTATION,
+  entityDisplayName,
+  type EntityKind,
+  type Op,
+  type ProjectModel,
 } from '@erdd/core'
 import { readConfig, requireConnection } from '../config.js'
 import { buildPlan, type PushPlan } from '../plan.js'
@@ -21,9 +26,12 @@ const MAX_SUMMARY_LENGTH = 200
  * 거절한 것이라 반영 여부가 분명하다(아무것도 커밋되지 않았다) — outcome-unknown이 아니라
  * 평범한 오류로 run()까지 그대로 올려보낸다.
  */
-const SERVER_REJECTION_CODES: ReadonlySet<CliErrorCode> = new Set(
-  ['UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'VALIDATION'] satisfies CliErrorCode[],
-)
+const SERVER_REJECTION_CODES: ReadonlySet<CliErrorCode> = new Set([
+  'UNAUTHORIZED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'VALIDATION',
+] satisfies CliErrorCode[])
 
 /**
  * 삭제 확인 프롬프트의 한 줄. 되돌릴 수 없는 반영 직전 화면이라 "어느 것인지"가 남으면 안 된다 —
@@ -32,17 +40,24 @@ const SERVER_REJECTION_CODES: ReadonlySet<CliErrorCode> = new Set(
  * pruned 목록도 같은 규칙으로 만들어지므로 한 프롬프트 안에서 표기가 갈리지 않는다.
  */
 function opLabel(server: ProjectModel, op: Op): string {
-  const entity = (server[COLLECTION_BY_KIND[op.entity]] as Record<string, Record<string, unknown>>)[op.entityId]
+  const entity = (server[COLLECTION_BY_KIND[op.entity]] as Record<string, Record<string, unknown>>)[
+    op.entityId
+  ]
   // note는 파일에 담기지 않아 push 계획에 나올 수 없다 — 그래도 타입이 허용하므로 id로 떨어뜨린다.
-  if (op.entity === 'note' || entity === undefined) return `${DIFF_KIND_LABEL[op.entity]} ${op.entityId}`
+  if (op.entity === 'note' || entity === undefined)
+    return `${DIFF_KIND_LABEL[op.entity]} ${op.entityId}`
   return `${DIFF_KIND_LABEL[op.entity]} ${entityDisplayName(op.entity, entity, [server])}`
 }
 
 function countByAction(ops: readonly Op[]): {
-  created: Record<string, number>; updated: Record<string, number>; deleted: Record<string, number>
+  created: Record<string, number>
+  updated: Record<string, number>
+  deleted: Record<string, number>
 } {
   const out = { created: {}, updated: {}, deleted: {} } as {
-    created: Record<string, number>; updated: Record<string, number>; deleted: Record<string, number>
+    created: Record<string, number>
+    updated: Record<string, number>
+    deleted: Record<string, number>
   }
   const bucket = { create: 'created', update: 'updated', delete: 'deleted' } as const
   for (const op of ops) {
@@ -66,9 +81,13 @@ function autoSummary(ops: readonly Op[]): string {
  * 떼면 재동기화·승격 상태를 잃는다. 확인을 받지는 않되 「변경 N건」 속에 묻히지 않게 따로 센다.
  */
 function countDetachedOrigins(ops: readonly Op[]): number {
-  return ops.filter((op) => op.action === 'update'
-    && Object.hasOwn(op.changes, 'origin')
-    && op.changes['origin']!.from != null && op.changes['origin']!.to === null).length
+  return ops.filter(
+    (op) =>
+      op.action === 'update' &&
+      Object.hasOwn(op.changes, 'origin') &&
+      op.changes['origin']!.from != null &&
+      op.changes['origin']!.to === null,
+  ).length
 }
 
 async function confirmDeletes(ctx: PushCtx, plan: PushPlan): Promise<void> {
@@ -88,9 +107,12 @@ async function confirmDeletes(ctx: PushCtx, plan: PushPlan): Promise<void> {
   // 비대화형(--json)에서는 confirm이 없다. 아무도 취소하지 않았는데 "취소했습니다"라고 하면
   // 이 CLI의 주 소비자인 에이전트가 원인도 해결책도 알 수 없다 — 무엇을 하면 되는지 말한다.
   if (ctx.confirm === undefined) {
-    throw new CliError('CANCELLED', '확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요')
+    throw new CliError(
+      'CANCELLED',
+      '확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요',
+    )
   }
-  if (!await ctx.confirm('계속할까요?')) throw new CliError('CANCELLED', '사용자가 취소했습니다')
+  if (!(await ctx.confirm('계속할까요?'))) throw new CliError('CANCELLED', '사용자가 취소했습니다')
 }
 
 export function push(ctx: PushCtx): Promise<number> {
@@ -120,19 +142,28 @@ export function push(ctx: PushCtx): Promise<number> {
 
       if (plan.conflicts.length > 0) {
         emit(ctx.json, renderConflicts(plan.conflicts), {
-          ok: false, conflicts: plan.conflicts, reservedFiles,
+          ok: false,
+          conflicts: plan.conflicts,
+          reservedFiles,
         })
         return 1
       }
       if (plan.ops.length === 0) {
         // pruned는 diff에 안 잡히지만(merge가 참조 끊긴 것을 조용히 지웠으므로) 사용자가
         // 로컬에서 한 작업이 반영되지 않고 사라진 것이니 "변경 없음"이라도 알려야 한다.
-        const message = plan.pruned.length > 0
-          ? `변경 없음 (참조가 끊겨 정리된 항목 ${plan.pruned.length}건은 반영되지 않았습니다 — erdd pull로 확인하세요)`
-          : '변경 없음'
+        const message =
+          plan.pruned.length > 0
+            ? `변경 없음 (참조가 끊겨 정리된 항목 ${plan.pruned.length}건은 반영되지 않았습니다 — erdd pull로 확인하세요)`
+            : '변경 없음'
         emit(ctx.json, message, {
-          ok: true, revisionSeq: plan.seq, ops: 0,
-          created: {}, updated: {}, deleted: {}, pruned: plan.pruned, retried,
+          ok: true,
+          revisionSeq: plan.seq,
+          ops: 0,
+          created: {},
+          updated: {},
+          deleted: {},
+          pruned: plan.pruned,
+          retried,
         })
         return 0
       }
@@ -147,7 +178,9 @@ export function push(ctx: PushCtx): Promise<number> {
       }
       const detachedOrigins = countDetachedOrigins(plan.ops)
       if (detachedOrigins > 0) {
-        note(`공용 사전 출처를 떼는 변경 ${detachedOrigins}건이 포함됩니다 — 의도하지 않았다면 erdd pull 로 되돌리세요`)
+        note(
+          `공용 사전 출처를 떼는 변경 ${detachedOrigins}건이 포함됩니다 — 의도하지 않았다면 erdd pull 로 되돌리세요`,
+        )
       }
       await confirmDeletes(ctx, plan)
 
@@ -155,7 +188,8 @@ export function push(ctx: PushCtx): Promise<number> {
       // 쥐고 있으므로, 응답이 유실돼 사용자가 다시 push해도 서버는 "이미 있는 것"으로 본다.
       // 여기서 실패하면 전송하지 않고 그대로 던진다 — id를 못 남긴 채 보내면 바로 그 사본
       // 문제가 남는다. 실패해도 기록한 id를 되돌리지 않는다(되돌리는 순간 문제가 부활한다).
-      for (const rel of await reserveIds(ctx.cwd, plan.localTree, plan.assignedTree)) reserved.add(rel)
+      for (const rel of await reserveIds(ctx.cwd, plan.localTree, plan.assignedTree))
+        reserved.add(rel)
       reservedFiles = [...reserved].sort()
 
       // model.push(mutate) 하나만 CONFLICT 재시도 대상이다. 이 아래(syncDown)에서 실패하면
@@ -173,7 +207,9 @@ export function push(ctx: PushCtx): Promise<number> {
           // 빈 요약(`-m ""`)은 서버의 z.string().min(1)에 걸려 zod BAD_REQUEST가 된다.
           // 값을 안 준 것과 같이 보고 자동 요약으로 떨어뜨린다.
           summary: (ctx.message !== undefined && ctx.message !== ''
-            ? ctx.message : autoSummary(plan.ops)).slice(0, MAX_SUMMARY_LENGTH),
+            ? ctx.message
+            : autoSummary(plan.ops)
+          ).slice(0, MAX_SUMMARY_LENGTH),
         })
         seq = result.seq
       } catch (err) {
@@ -203,19 +239,26 @@ export function push(ctx: PushCtx): Promise<number> {
         // 트리를 다시 쓰면서(writeTree의 삭제 패스) 방금 기록한 id째로 로컬 변경을 지운다 —
         // 바로 앞 문장의 "그대로 다시 push하면 수렴한다"를 스스로 무효화한다. erdd diff는
         // 읽기만 하므로 안전하다. pull도 알려는 주되 그 대가를 함께 말한다.
-        const resumeHint = reservedFiles.length > 0
-          ? '신규 항목의 id를 파일에 기록해 두었으므로 그대로 다시 push하면 중복 없이 수렴합니다. '
-            + '먼저 확인하려면 erdd diff를 실행하세요 — erdd pull은 반영되지 않았을 경우 '
-            + '그 id까지 서버 상태로 덮어써 지웁니다. '
-          : '그대로 다시 push하면 중복 없이 수렴합니다. '
-            + '먼저 확인하려면 erdd diff를 실행하세요 — erdd pull은 반영되지 않았을 경우 '
-            + '이번 로컬 변경을 서버 상태로 덮어써 지웁니다. '
+        const resumeHint =
+          reservedFiles.length > 0
+            ? '신규 항목의 id를 파일에 기록해 두었으므로 그대로 다시 push하면 중복 없이 수렴합니다. ' +
+              '먼저 확인하려면 erdd diff를 실행하세요 — erdd pull은 반영되지 않았을 경우 ' +
+              '그 id까지 서버 상태로 덮어써 지웁니다. '
+            : '그대로 다시 push하면 중복 없이 수렴합니다. ' +
+              '먼저 확인하려면 erdd diff를 실행하세요 — erdd pull은 반영되지 않았을 경우 ' +
+              '이번 로컬 변경을 서버 상태로 덮어써 지웁니다. '
         emit(
           ctx.json,
           `반영 여부를 확인할 수 없습니다 (변경 ${plan.ops.length}건) — ${resumeHint}(${detail})`,
           {
-            ok: false, outcomeUnknown: true, revisionSeq: null, ops: plan.ops.length,
-            ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
+            ok: false,
+            outcomeUnknown: true,
+            revisionSeq: null,
+            ops: plan.ops.length,
+            ...countByAction(plan.ops),
+            pruned: plan.pruned,
+            retried,
+            reservedFiles,
             pushError: detail,
             pushErrorCode: err instanceof CliError ? err.code : null,
           },
@@ -232,11 +275,17 @@ export function push(ctx: PushCtx): Promise<number> {
         const detail = err instanceof CliError ? err.message : (err as Error).message
         emit(
           ctx.json,
-          `반영은 성공했습니다 (리비전 ${seq}, 변경 ${plan.ops.length}건). `
-            + `파일 갱신에 실패했습니다 — erdd pull을 실행하세요 (${detail})`,
+          `반영은 성공했습니다 (리비전 ${seq}, 변경 ${plan.ops.length}건). ` +
+            `파일 갱신에 실패했습니다 — erdd pull을 실행하세요 (${detail})`,
           {
-            ok: false, committed: true, revisionSeq: seq, ops: plan.ops.length,
-            ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles,
+            ok: false,
+            committed: true,
+            revisionSeq: seq,
+            ops: plan.ops.length,
+            ...countByAction(plan.ops),
+            pruned: plan.pruned,
+            retried,
+            reservedFiles,
             syncError: detail,
           },
         )
@@ -244,8 +293,14 @@ export function push(ctx: PushCtx): Promise<number> {
       }
 
       emit(ctx.json, `반영했습니다 (리비전 ${seq}, 변경 ${plan.ops.length}건)`, {
-        ok: true, revisionSeq: seq, ops: plan.ops.length,
-        ...countByAction(plan.ops), pruned: plan.pruned, retried, reservedFiles, detachedOrigins,
+        ok: true,
+        revisionSeq: seq,
+        ops: plan.ops.length,
+        ...countByAction(plan.ops),
+        pruned: plan.pruned,
+        retried,
+        reservedFiles,
+        detachedOrigins,
       })
       return 0
     }

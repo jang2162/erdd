@@ -18,9 +18,30 @@ const PAST = '2020-01-01T00:00:00.000Z'
 
 /** 조직 초대는 `orgId`가 있는 초대다 — 관리자 초대(`admin.invitations`)와 다른 목록이다. */
 const INVITATIONS = [
-  { id: 'inv1', email: 'pending@test.dev', orgRole: 'member', expiresAt: FUTURE, usedAt: null, createdAt: PAST },
-  { id: 'inv2', email: 'used@test.dev', orgRole: 'admin', expiresAt: FUTURE, usedAt: PAST, createdAt: PAST },
-  { id: 'inv3', email: 'expired@test.dev', orgRole: 'member', expiresAt: PAST, usedAt: null, createdAt: PAST },
+  {
+    id: 'inv1',
+    email: 'pending@test.dev',
+    orgRole: 'member',
+    expiresAt: FUTURE,
+    usedAt: null,
+    createdAt: PAST,
+  },
+  {
+    id: 'inv2',
+    email: 'used@test.dev',
+    orgRole: 'admin',
+    expiresAt: FUTURE,
+    usedAt: PAST,
+    createdAt: PAST,
+  },
+  {
+    id: 'inv3',
+    email: 'expired@test.dev',
+    orgRole: 'member',
+    expiresAt: PAST,
+    usedAt: null,
+    createdAt: PAST,
+  },
 ]
 
 function renderOrg(
@@ -54,7 +75,10 @@ async function chooseOption(trigger: HTMLElement, option: string) {
   await userEvent.click(await screen.findByRole('option', { name: option }))
 }
 
-beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
+beforeEach(() => {
+  vi.mocked(toast.success).mockClear()
+  vi.mocked(toast.error).mockClear()
+})
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -62,9 +86,9 @@ afterEach(() => {
 
 describe('OrgDetailPage 초대 섹션', () => {
   it('초대를 만들면 링크가 뜨고 지금만 볼 수 있다고 알린다', async () => {
-    const create = vi.fn((_input: unknown) => (
-      { data: { id: 'inv9', token: 'erdd_inv_org', expiresAt: FUTURE } }
-    ))
+    const create = vi.fn((_input: unknown) => ({
+      data: { id: 'inv9', token: 'erdd_inv_org', expiresAt: FUTURE },
+    }))
     renderOrg({ 'invitation.create': create })
     await userEvent.type(await screen.findByLabelText('초대할 이메일'), 'new@test.dev')
     // 조직 역할은 이 폼이 정한다 — 화면이 고른 값이 실제로 실려야 한다. 기본값만 단언하면
@@ -75,7 +99,9 @@ describe('OrgDetailPage 초대 섹션', () => {
     await waitFor(() => expect(create).toHaveBeenCalled())
     // 서비스 역할은 서버가 항상 'user'로 고정한다 — 조직 초대로 관리자가 되지 않는다.
     expect(create.mock.calls[0]![0]).toEqual({
-      orgId: ORG_ID, email: 'new@test.dev', orgRole: 'admin',
+      orgId: ORG_ID,
+      email: 'new@test.dev',
+      orgRole: 'admin',
     })
     // 평문 토큰은 이 응답에서만 나온다. 목록을 다시 불러도 없다 — 잃으면 재발급이다.
     expect(await screen.findByText(/\/invite\/erdd_inv_org/)).toBeDefined()
@@ -97,9 +123,9 @@ describe('OrgDetailPage 초대 섹션', () => {
    * 링크가 화면에 서 있게 되고, 관리자는 그것을 전달한다.
    */
   it('초대를 취소하면 발급 상자가 사라진다', async () => {
-    const create = vi.fn((_input: unknown) => (
-      { data: { id: 'inv9', token: 'erdd_inv_org', expiresAt: FUTURE } }
-    ))
+    const create = vi.fn((_input: unknown) => ({
+      data: { id: 'inv9', token: 'erdd_inv_org', expiresAt: FUTURE },
+    }))
     const revoke = vi.fn((_input: unknown) => ({ data: { ok: true } }))
     renderOrg({
       'invitation.create': create,

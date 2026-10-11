@@ -1,6 +1,10 @@
 import {
-  TOP_LEVEL_FILES, TREE_ROOT, filesToModel,
-  type FileTree, type LibraryItem, type ProjectModel,
+  TOP_LEVEL_FILES,
+  TREE_ROOT,
+  filesToModel,
+  type FileTree,
+  type LibraryItem,
+  type ProjectModel,
 } from '@erdd/core'
 import { uuidv7 } from 'uuidv7'
 import type { ApiClient } from '../client.js'
@@ -9,15 +13,22 @@ import { CliError } from '../output.js'
 import { readTree } from '../tree.js'
 
 export type LibraryRow = {
-  id: string; scope: 'global' | 'org'; orgId: string | null; name: string
-  description: string; itemCount: number; canWrite: boolean
+  id: string
+  scope: 'global' | 'org'
+  orgId: string | null
+  name: string
+  description: string
+  itemCount: number
+  canWrite: boolean
 }
 
 /**
  * 사전 동기화가 쓰는 파일. 그룹·테이블 파일은 재동기화가 건드리지 않으므로 쓰지 않는다 —
  * modelToFiles 가 다시 만든 테이블 파일을 쓰면 손으로 다듬은 YAML 이 이유 없이 정규화된다.
  */
-export const DICTIONARY_FILES: readonly string[] = TOP_LEVEL_FILES.filter((p) => p !== `${TREE_ROOT}/groups.yaml`)
+export const DICTIONARY_FILES: readonly string[] = TOP_LEVEL_FILES.filter(
+  (p) => p !== `${TREE_ROOT}/groups.yaml`,
+)
 
 /** 사전 명령의 연결 관문. 로컬 전용 프로젝트에는 서버 프로젝트를 만들어 붙이는 길을 가리킨다. */
 export function requireDictConnection(config: ErddConfig): Connection {
@@ -40,9 +51,11 @@ export async function guardFeature<T>(call: () => Promise<T>): Promise<T> {
   try {
     return await call()
   } catch (err) {
-    if (err instanceof CliError && (
-      (err.code === 'UNAUTHORIZED' && err.message.includes('액세스 토큰으로 할 수 없습니다'))
-      || (err.code === 'NOT_FOUND' && /procedure on path/i.test(err.message)))) {
+    if (
+      err instanceof CliError &&
+      ((err.code === 'UNAUTHORIZED' && err.message.includes('액세스 토큰으로 할 수 없습니다')) ||
+        (err.code === 'NOT_FOUND' && /procedure on path/i.test(err.message)))
+    ) {
       throw new CliError(err.code, '서버가 이 기능을 지원하지 않습니다 — 서버를 업그레이드하세요')
     }
     throw err
@@ -50,7 +63,9 @@ export async function guardFeature<T>(call: () => Promise<T>): Promise<T> {
 }
 
 export function listLibraries(client: ApiClient, projectId: string): Promise<LibraryRow[]> {
-  return guardFeature(() => client.query<LibraryRow[]>('resource.library.listForProject', { projectId }))
+  return guardFeature(() =>
+    client.query<LibraryRow[]>('resource.library.listForProject', { projectId }),
+  )
 }
 
 /**
@@ -62,11 +77,17 @@ export function listLibraries(client: ApiClient, projectId: string): Promise<Lib
  * 계산하면 `expectedTargetItemId` 가 서버와 어긋나 그 항목이 `plan-changed` 로 조용히 건너뛰어진다.
  */
 export async function fetchItems(
-  client: ApiClient, libraryId: string, opts: { order: 'id' | 'server' } = { order: 'id' },
+  client: ApiClient,
+  libraryId: string,
+  opts: { order: 'id' | 'server' } = { order: 'id' },
 ): Promise<LibraryItem[]> {
-  const items = await guardFeature(() => client.query<LibraryItem[]>('resource.items.list', { libraryId }))
+  const items = await guardFeature(() =>
+    client.query<LibraryItem[]>('resource.items.list', { libraryId }),
+  )
   // 코드 단위 비교다 — localeCompare 는 환경 로케일에 따라 대소문자 혼용 id 의 순서가 갈린다.
-  return opts.order === 'server' ? items : [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  return opts.order === 'server'
+    ? items
+    : [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
 
 /**
@@ -75,34 +96,47 @@ export async function fetchItems(
  * `library`(`erdd library list`)냐에 따라 엉뚱한 명령을 안내하지 않도록 넘긴다.
  */
 export function resolveLibrary(
-  rows: readonly LibraryRow[], ref: string, opts: { listCommand?: string } = {},
+  rows: readonly LibraryRow[],
+  ref: string,
+  opts: { listCommand?: string } = {},
 ): LibraryRow {
   const byId = rows.find((r) => r.id === ref)
   if (byId !== undefined) return byId
   const byName = rows.filter((r) => r.name === ref)
   if (byName.length === 1) return byName[0]!
   if (byName.length > 1) {
-    throw new CliError('USAGE', [
-      `이름이 ${ref}인 라이브러리가 여럿입니다 — id로 지정하세요:`,
-      ...byName.map((r) => `  ${r.id}  ${r.scope === 'global' ? '전역' : '조직'}  ${r.name}`),
-    ].join('\n'))
+    throw new CliError(
+      'USAGE',
+      [
+        `이름이 ${ref}인 라이브러리가 여럿입니다 — id로 지정하세요:`,
+        ...byName.map((r) => `  ${r.id}  ${r.scope === 'global' ? '전역' : '조직'}  ${r.name}`),
+      ].join('\n'),
+    )
   }
   const listCommand = opts.listCommand ?? 'erdd dict list'
-  throw new CliError('NOT_FOUND', `라이브러리 ${ref}을(를) 찾지 못했습니다 — ${listCommand} 로 확인하세요`)
+  throw new CliError(
+    'NOT_FOUND',
+    `라이브러리 ${ref}을(를) 찾지 못했습니다 — ${listCommand} 로 확인하세요`,
+  )
 }
 
 /**
  * 로컬 파일 모델. id 없는 항목(사람이 직접 추가한 것)에는 **실제 uuid** 를 준다 — 임시 id(`new:…`)
  * 로 조립하면 사전 파일을 다시 쓸 때 그 임시 id 가 파일에 새어 나간다.
  */
-export async function readLocalModel(cwd: string): Promise<{ tree: FileTree; model: ProjectModel }> {
+export async function readLocalModel(
+  cwd: string,
+): Promise<{ tree: FileTree; model: ProjectModel }> {
   const tree = await readTree(cwd)
   const result = filesToModel(tree, { newId: uuidv7 })
   if (!result.ok) {
-    throw new CliError('VALIDATION', [
-      `파일 오류 ${result.issues.length}건 — erdd validate로 확인하세요`,
-      ...result.issues.map((i) => `  ${i.path}: ${i.message}`),
-    ].join('\n'))
+    throw new CliError(
+      'VALIDATION',
+      [
+        `파일 오류 ${result.issues.length}건 — erdd validate로 확인하세요`,
+        ...result.issues.map((i) => `  ${i.path}: ${i.message}`),
+      ].join('\n'),
+    )
   }
   return { tree, model: result.model }
 }

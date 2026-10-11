@@ -20,7 +20,10 @@ export function createClient(serverUrl: string, token: string | null): ApiClient
 
   async function call<T>(url: string, init: RequestInit): Promise<T> {
     if (token === null) {
-      throw new CliError('UNAUTHORIZED', '토큰이 없습니다. ERDD_TOKEN을 설정하거나 erdd init을 실행하세요')
+      throw new CliError(
+        'UNAUTHORIZED',
+        '토큰이 없습니다. ERDD_TOKEN을 설정하거나 erdd init을 실행하세요',
+      )
     }
     let res: Response
     try {
@@ -37,10 +40,16 @@ export function createClient(serverUrl: string, token: string | null): ApiClient
     } catch {
       throw new CliError('NETWORK', `서버 응답을 해석하지 못했습니다 (HTTP ${res.status})`)
     }
-    const rec = body as { result?: { data?: T }; error?: { message?: string; data?: { code?: string } } }
+    const rec = body as {
+      result?: { data?: T }
+      error?: { message?: string; data?: { code?: string } }
+    }
     if (rec.error !== undefined) {
       const serverCode = rec.error.data?.code ?? ''
-      throw new CliError(CODE_MAP[serverCode] ?? 'NETWORK', rec.error.message ?? `서버 오류 (HTTP ${res.status})`)
+      throw new CliError(
+        CODE_MAP[serverCode] ?? 'NETWORK',
+        rec.error.message ?? `서버 오류 (HTTP ${res.status})`,
+      )
     }
     if (!res.ok) throw new CliError('NETWORK', `서버 오류 (HTTP ${res.status})`)
     // 200인데 result 키가 아예 없으면 ERDD 서버가 아닌 무언가가 응답한 것이다.

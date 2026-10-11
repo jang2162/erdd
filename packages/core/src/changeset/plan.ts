@@ -7,15 +7,23 @@ import { parseChangeset } from './parse.js'
 import { projectSchema, type ProjectionSettings } from './projection.js'
 import { replay, type ChangesetRecord } from './replay.js'
 import {
-  CHANGESET_FORMAT, compareCodeUnits,
-  type ChangeIssue, type SchemaProjection, type Statement,
+  CHANGESET_FORMAT,
+  compareCodeUnits,
+  type ChangeIssue,
+  type SchemaProjection,
+  type Statement,
 } from './types.js'
 
 export const CHANGESET_EXT = '.erddc'
 
 export type ChangesetSource = { file: string; text: string }
 export type ChangeRecordSummary = {
-  file: string; name: string; created: string; baseline: boolean; statementCount: number; text: string
+  file: string
+  name: string
+  created: string
+  baseline: boolean
+  statementCount: number
+  text: string
 }
 export type ChangesPlan = {
   /** 재생 순서(오래된 것부터). */
@@ -26,7 +34,11 @@ export type ChangesPlan = {
   pending: Statement[] | null
   target: SchemaProjection | null
 }
-export type PlanInput = { sources: readonly ChangesetSource[]; model: ProjectModel; settings: ProjectionSettings }
+export type PlanInput = {
+  sources: readonly ChangesetSource[]
+  model: ProjectModel
+  settings: ProjectionSettings
+}
 
 /**
  * 변경 기록 상태: 기록 전부를 파싱·재생해 기준선을 얻고, 현재 모델의 투영과 비교한다.
@@ -36,8 +48,13 @@ export type PlanInput = { sources: readonly ChangesetSource[]; model: ProjectMod
 export function planChanges(input: PlanInput): ChangesPlan {
   const records: ChangeRecordSummary[] = []
   const parsed: ChangesetRecord[] = []
-  const stop = (error: ChangeIssue, warnings: ChangeIssue[] = []): ChangesPlan =>
-    ({ records, warnings, error, pending: null, target: null })
+  const stop = (error: ChangeIssue, warnings: ChangeIssue[] = []): ChangesPlan => ({
+    records,
+    warnings,
+    error,
+    pending: null,
+    target: null,
+  })
 
   let parseError: ChangeIssue | null = null
   for (const src of [...input.sources].sort((a, b) => compareCodeUnits(a.file, b.file))) {
@@ -49,8 +66,12 @@ export function planChanges(input: PlanInput): ChangesPlan {
     parsed.push({ file: src.file, changeset: r.changeset })
     const h = r.changeset.header
     records.push({
-      file: src.file, name: h.name, created: h.created, baseline: h.baseline,
-      statementCount: r.changeset.statements.length, text: src.text,
+      file: src.file,
+      name: h.name,
+      created: h.created,
+      baseline: h.baseline,
+      statementCount: r.changeset.statements.length,
+      text: src.text,
     })
   }
   if (parseError !== null) return stop(parseError)
@@ -59,7 +80,14 @@ export function planChanges(input: PlanInput): ChangesPlan {
 
   const missing = firstMissingId(input.model)
   if (missing !== null) {
-    return stop({ file: null, line: null, message: `id 가 없는 항목이 있습니다(${missing}) — erdd serve 로 열어 id 를 채운 뒤 다시 하세요` }, replayed.warnings)
+    return stop(
+      {
+        file: null,
+        line: null,
+        message: `id 가 없는 항목이 있습니다(${missing}) — erdd serve 로 열어 id 를 채운 뒤 다시 하세요`,
+      },
+      replayed.warnings,
+    )
   }
   const target = projectSchema(input.model, input.settings)
   const diff = diffProjection(replayed.projection, target)
@@ -91,18 +119,31 @@ const SELF_CHECK_MESSAGE =
  * 같은지 확인한다(guide 「생성 시 자기검증」) — 직렬화·파서·재생 버그가 저장소에 거짓 기록으로
  * 들어가는 것을 막는 유일한 안전망이다.
  */
-export function composeChangeset(plan: ChangesPlan, input: PlanInput, opts: ComposeOptions): ComposeResult {
+export function composeChangeset(
+  plan: ChangesPlan,
+  input: PlanInput,
+  opts: ComposeOptions,
+): ComposeResult {
   const name = opts.name.trim()
   if (name === '') return { ok: false, reason: 'name', message: '변경 기록의 이름을 입력하세요' }
   if (plan.error !== null || plan.pending === null || plan.target === null) {
     return {
-      ok: false, reason: 'invalid',
-      message: plan.error !== null ? formatChangeIssue(plan.error) : '변경 기록 상태를 계산하지 못했습니다',
+      ok: false,
+      reason: 'invalid',
+      message:
+        plan.error !== null
+          ? formatChangeIssue(plan.error)
+          : '변경 기록 상태를 계산하지 못했습니다',
     }
   }
-  if (plan.pending.length === 0) return { ok: false, reason: 'empty', message: '기록할 변경이 없습니다' }
+  if (plan.pending.length === 0)
+    return { ok: false, reason: 'empty', message: '기록할 변경이 없습니다' }
   if (opts.baseline && input.sources.length > 0) {
-    return { ok: false, reason: 'baseline', message: '--baseline 은 첫 변경 기록에만 쓸 수 있습니다 — 이미 기록이 있습니다' }
+    return {
+      ok: false,
+      reason: 'baseline',
+      message: '--baseline 은 첫 변경 기록에만 쓸 수 있습니다 — 이미 기록이 있습니다',
+    }
   }
   const text = formatChangeset({
     header: { format: CHANGESET_FORMAT, name, created: opts.created, baseline: opts.baseline },
@@ -134,7 +175,14 @@ function timeToStamp(ms: number): string {
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`
 }
 function stampToTime(s: string): number {
-  return Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8), +s.slice(8, 10), +s.slice(10, 12), +s.slice(12, 14))
+  return Date.UTC(
+    +s.slice(0, 4),
+    +s.slice(4, 6) - 1,
+    +s.slice(6, 8),
+    +s.slice(8, 10),
+    +s.slice(10, 12),
+    +s.slice(12, 14),
+  )
 }
 
 /**
@@ -157,7 +205,9 @@ export function stampToIso(stamp: string): string {
 }
 
 export function changesetFileName(stamp: string, name: string): string {
-  const slug = name.normalize('NFC').trim()
+  const slug = name
+    .normalize('NFC')
+    .trim()
     .replace(/\s+/g, '-')
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '')
     .replace(/^[-.]+|[-.]+$/g, '')
@@ -167,6 +217,8 @@ export function changesetFileName(stamp: string, name: string): string {
 }
 
 export function formatChangeIssue(issue: ChangeIssue): string {
-  const where = [issue.file, issue.line === null ? null : `${issue.line}행`].filter((x) => x !== null).join(' ')
+  const where = [issue.file, issue.line === null ? null : `${issue.line}행`]
+    .filter((x) => x !== null)
+    .join(' ')
   return where === '' ? issue.message : `${where}: ${issue.message}`
 }

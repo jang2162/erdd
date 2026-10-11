@@ -5,8 +5,12 @@ import { useModelMutation } from './use-model.js'
 import { newId } from './uid.js'
 import { parseClipboard, serializeColumns, serializeNotes, serializeTables } from './clipboard.js'
 import {
-  pasteColumns, pasteNotes, pasteTables,
-  planPasteColumnIds, planPasteNoteIds, planPasteTableIds,
+  pasteColumns,
+  pasteNotes,
+  pasteTables,
+  planPasteColumnIds,
+  planPasteNoteIds,
+  planPasteTableIds,
 } from './clipboard-edits.js'
 import { removeTable } from './model-edits.js'
 import { removeNote } from './note-edits.js'
@@ -68,8 +72,11 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
   useEffect(() => {
     // 선택 배열은 store에서 readonly로 나온다(빈 선택이 공유 인스턴스라 변형을 타입으로 막는다).
     const copyPayload = (
-      model: ProjectModel, tableIds: readonly string[], columnIds: readonly string[],
-    ) => (columnIds.length > 0 ? serializeColumns(model, columnIds) : serializeTables(model, tableIds))
+      model: ProjectModel,
+      tableIds: readonly string[],
+      columnIds: readonly string[],
+    ) =>
+      columnIds.length > 0 ? serializeColumns(model, columnIds) : serializeTables(model, tableIds)
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target) || isDialogOpen()) return
@@ -84,13 +91,16 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
         // **앞**에 와야 한다. 뒤에 두면 그 가드에 걸려 아무 일도 일어나지 않는다.
         if (s.selectedNoteId) {
           e.preventDefault()
-          void navigator.clipboard.writeText(JSON.stringify(serializeNotes(model, [s.selectedNoteId])))
+          void navigator.clipboard.writeText(
+            JSON.stringify(serializeNotes(model, [s.selectedNoteId])),
+          )
           return
         }
         if (nothingSelected) return
         e.preventDefault()
-        void navigator.clipboard.writeText(JSON.stringify(
-          copyPayload(model, selectedTableIds, selectedColumnIds)))
+        void navigator.clipboard.writeText(
+          JSON.stringify(copyPayload(model, selectedTableIds, selectedColumnIds)),
+        )
         return
       }
 
@@ -109,14 +119,16 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
         e.preventDefault()
         // 복사와 삭제를 한 producer로 — 편집 1건 · 실행 취소 1회(설계 §3.6). 5,000 op 를 넘으면 Revision 은 조각
         // 수만큼 쌓인다(guides/data-layer.md 「한 요청의 op 상한은 …」).
-        void navigator.clipboard.writeText(JSON.stringify(
-          copyPayload(model, selectedTableIds, selectedColumnIds)))
+        void navigator.clipboard.writeText(
+          JSON.stringify(copyPayload(model, selectedTableIds, selectedColumnIds)),
+        )
         const columnIds = [...selectedColumnIds]
         const tableIds = [...selectedTableIds]
         void mutate(
-          (m) => (columnIds.length > 0
-            ? columnIds.reduce((acc, id) => deleteColumnCascade(acc, id), m)
-            : tableIds.reduce((acc, id) => removeTable(acc, id), m)),
+          (m) =>
+            columnIds.length > 0
+              ? columnIds.reduce((acc, id) => deleteColumnCascade(acc, id), m)
+              : tableIds.reduce((acc, id) => removeTable(acc, id), m),
           { summary: '잘라내기' },
         )
         s.select(null)
@@ -161,9 +173,10 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
           return
         }
         void mutate(
-          (m) => (columnIds.length > 0
-            ? columnIds.reduce((acc, id) => deleteColumnCascade(acc, id), m)
-            : tableIds.reduce((acc, id) => removeTable(acc, id), m)),
+          (m) =>
+            columnIds.length > 0
+              ? columnIds.reduce((acc, id) => deleteColumnCascade(acc, id), m)
+              : tableIds.reduce((acc, id) => removeTable(acc, id), m),
           { summary: columnIds.length > 0 ? '컬럼 삭제' : '테이블 삭제' },
         )
         // 지운 대상은 선택에서 빼야 한다. 컬럼을 지웠을 때 잔재를 남기면 모델에 없는 컬럼 id가
@@ -182,13 +195,13 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
       if (!s.canEdit) return
       const text = e.clipboardData?.getData('text/plain') ?? ''
       const payload = parseClipboard(text)
-      if (!payload) return          // 이 앱이 쓴 것이 아니면 조용히 무시한다
+      if (!payload) return // 이 앱이 쓴 것이 아니면 조용히 무시한다
       e.preventDefault()
 
       if (payload.kind === 'columns') {
         const tableId = s.selectedTableIds.length === 1 ? s.selectedTableIds[0] : undefined
         if (tableId === undefined) return
-        const ids = planPasteColumnIds(payload, newId)     // producer 밖에서 발급
+        const ids = planPasteColumnIds(payload, newId) // producer 밖에서 발급
         void mutate((m) => pasteColumns(m, payload, { tableId, ids }), { summary: '컬럼 붙여넣기' })
         return
       }
@@ -200,9 +213,10 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
         // 빼고 조립한다 — canvas.tsx) — 그리고 아래 selectNote 가 **보이지 않는 것을 선택해**
         // 편집 패널만 열린다. 붙여넣기는 선택과 무관하게 도달하므로 C·X 와 달리 이 갈래가 실재한다.
         if (s.activeGroupView) return
-        const ids = planPasteNoteIds(payload, newId)      // producer 밖에서 발급
-        void mutate((m) => pasteNotes(m, payload, { ids, offset: PASTE_OFFSET }),
-          { summary: '메모 붙여넣기' })
+        const ids = planPasteNoteIds(payload, newId) // producer 밖에서 발급
+        void mutate((m) => pasteNotes(m, payload, { ids, offset: PASTE_OFFSET }), {
+          summary: '메모 붙여넣기',
+        })
         // 테이블 붙여넣기가 selectTables로 하는 것과 대칭 — 붙여넣은 것이 곧바로 선택된다.
         const first = ids[0]
         if (first !== undefined) s.selectNote(first)
@@ -210,8 +224,9 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
       }
 
       const ids = planPasteTableIds(payload, newId)
-      void mutate((m) => pasteTables(m, payload, { ids, offset: PASTE_OFFSET }),
-        { summary: '테이블 붙여넣기' })
+      void mutate((m) => pasteTables(m, payload, { ids, offset: PASTE_OFFSET }), {
+        summary: '테이블 붙여넣기',
+      })
       s.selectTables(ids.map((i) => i.tableId))
     }
 

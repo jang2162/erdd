@@ -8,7 +8,9 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver = globalThis.ResizeObserver ?? (ResizeObserverStub as never)
 if (!globalThis.DOMMatrixReadOnly) {
-  globalThis.DOMMatrixReadOnly = class { constructor() {} } as never
+  globalThis.DOMMatrixReadOnly = class {
+    constructor() {}
+  } as never
 }
 
 // Radix Select가 트리거를 열 때 쓰는 포인터 API가 jsdom에 없다. 없으면 트리거를 클릭해도

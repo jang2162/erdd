@@ -34,14 +34,18 @@ export function canonical(v: unknown, path: string): string | undefined {
     if (onPath.has(x)) {
       throw new CliError(
         'VALIDATION',
-        `${path}에 순환 참조가 있습니다 — YAML anchor/alias(\`&이름\` … \`*이름\`)가 자기 자신을 가리킵니다. `
-          + '별칭을 풀어 내용을 그대로 적어 주세요',
+        `${path}에 순환 참조가 있습니다 — YAML anchor/alias(\`&이름\` … \`*이름\`)가 자기 자신을 가리킵니다. ` +
+          '별칭을 풀어 내용을 그대로 적어 주세요',
       )
     }
     onPath.add(x)
     const out = Array.isArray(x)
       ? x.map(walk)
-      : Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, y]) => [k, walk(y)]))
+      : Object.fromEntries(
+          Object.entries(x)
+            .sort(([a], [b]) => (a < b ? -1 : 1))
+            .map(([k, y]) => [k, walk(y)]),
+        )
     onPath.delete(x)
     return out
   }
@@ -49,7 +53,8 @@ export function canonical(v: unknown, path: string): string | undefined {
 }
 
 export async function writeTree(
-  cwd: string, tree: FileTree,
+  cwd: string,
+  tree: FileTree,
 ): Promise<{ written: string[]; deleted: string[] }> {
   const keep = new Set(Object.keys(tree))
 
@@ -118,7 +123,9 @@ export async function writeTree(
  * `dict pull` 이 충돌로 **시끄럽게** 알린다. 반환 목록은 쓰기 순서와 무관하게 정렬해 둔다.
  */
 export async function writeTreeChanges(
-  cwd: string, base: FileTree, next: FileTree,
+  cwd: string,
+  base: FileTree,
+  next: FileTree,
 ): Promise<{ written: string[]; deleted: string[] }> {
   const { added, modified, deleted } = diffTrees(base, next)
   const remove = async (rel: string): Promise<void> => {
@@ -171,7 +178,8 @@ export async function readTree(cwd: string): Promise<FileTree> {
 }
 
 export function diffTrees(
-  base: FileTree, current: FileTree,
+  base: FileTree,
+  current: FileTree,
 ): { added: string[]; modified: string[]; deleted: string[] } {
   const added: string[] = []
   const modified: string[] = []

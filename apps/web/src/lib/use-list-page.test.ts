@@ -14,12 +14,14 @@ describe('useListPage', () => {
     act(() => result.current.setQuery('n1'))
     expect(result.current.query).toBe('n1')
     expect(result.current.view.page).toBe(1)
-    expect(result.current.view.total).toBe(31)   // n1, n10..n19, n100..n119
+    expect(result.current.view.total).toBe(31) // n1, n10..n19, n100..n119
   })
   it('행이 줄어 쪽이 당겨진 뒤 행이 다시 늘어도 당겨진 쪽에 머문다', () => {
-    const { result, rerender } = renderHook(({ rows }) => useListPage(rows, FIELDS), { initialProps: { rows: ROWS } })
+    const { result, rerender } = renderHook(({ rows }) => useListPage(rows, FIELDS), {
+      initialProps: { rows: ROWS },
+    })
     act(() => result.current.setPage(3))
-    rerender({ rows: ROWS.slice(0, 60) })   // 두 쪽 — 3쪽이 2쪽으로 당겨진다
+    rerender({ rows: ROWS.slice(0, 60) }) // 두 쪽 — 3쪽이 2쪽으로 당겨진다
     expect(result.current.view.page).toBe(2)
     rerender({ rows: ROWS })
     expect(result.current.view.page).toBe(2)

@@ -20,13 +20,20 @@ export function skill(ctx: SkillCtx): Promise<number> {
     }
     const targetDir = join(ctx.cwd, ctx.dir ?? DEFAULT_SKILL_DIR)
     const target = join(targetDir, 'SKILL.md')
-    const exists = await stat(target).then(() => true, () => false)
+    const exists = await stat(target).then(
+      () => true,
+      () => false,
+    )
     if (exists && !ctx.force) {
       throw new CliError('VALIDATION', `${target}가 이미 있습니다. 덮어쓰려면 --force를 쓰세요`)
     }
     await mkdir(targetDir, { recursive: true })
     await copyFile(packagedSkill(), target)
-    emit(ctx.json, `스킬을 설치했습니다: ${target}`, { ok: true, path: target, overwritten: exists })
+    emit(ctx.json, `스킬을 설치했습니다: ${target}`, {
+      ok: true,
+      path: target,
+      overwritten: exists,
+    })
     return 0
   })
 }

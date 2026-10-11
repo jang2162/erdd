@@ -29,7 +29,9 @@ function withProviders(node: ReactNode) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(node, { wrapper: w })
@@ -40,8 +42,11 @@ function renderTree() {
 }
 
 afterEach(() => {
-  cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks()
-  useEditorStore.getState().reset(); useDragStore.getState().end()
+  cleanup()
+  vi.unstubAllGlobals()
+  vi.clearAllMocks()
+  useEditorStore.getState().reset()
+  useDragStore.getState().end()
 })
 
 describe('TableTree', () => {
@@ -104,7 +109,9 @@ describe('TableTree', () => {
       const groups = Object.values(useEditorStore.getState().model.tableGroups)
       expect(groups).toHaveLength(2)
     })
-    const newGroup = Object.values(useEditorStore.getState().model.tableGroups).find((g) => g.id !== 'g1')!
+    const newGroup = Object.values(useEditorStore.getState().model.tableGroups).find(
+      (g) => g.id !== 'g1',
+    )!
     // 기존 그룹은 "회원관리"뿐이므로 미사용 최소 번호는 "그룹1".
     expect(newGroup.name).toBe('그룹1')
     expect(useEditorStore.getState().selectedGroupId).toBe(newGroup.id)
@@ -127,7 +134,9 @@ describe('TableTree', () => {
     await waitFor(() => {
       expect(Object.values(useEditorStore.getState().model.tableGroups)).toHaveLength(2)
     })
-    const added = Object.values(useEditorStore.getState().model.tableGroups).find((g) => g.id !== 'g2')!
+    const added = Object.values(useEditorStore.getState().model.tableGroups).find(
+      (g) => g.id !== 'g2',
+    )!
     expect(added.name).toBe('그룹1')
   })
 
@@ -143,10 +152,16 @@ describe('TableTree', () => {
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     useEditorStore.getState().setProjectConfig(
       {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+        tableLogicalTemplate: '',
       },
-      ['postgresql'], null, DEFAULT_TABLE_OPTIONS,
+      ['postgresql'],
+      null,
+      DEFAULT_TABLE_OPTIONS,
     )
     renderTree()
     expect(screen.getByText('MBR')).toBeInTheDocument()
@@ -157,8 +172,14 @@ describe('TableTree', () => {
 /** 트리 정렬은 physicalName.localeCompare 이므로 표시 순서는 MBR(t2) → MBR_GRD(t1) 이다. */
 function tbl(id: string, physicalName: string, logicalName: string, groupId: string | null): Table {
   return {
-    id, logicalName, physicalName, comment: null,
-    groupId, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id,
+    logicalName,
+    physicalName,
+    comment: null,
+    groupId,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
 }
 
@@ -179,7 +200,9 @@ describe('TableTree 다중 선택 제스처', () => {
     expect(screen.getByText('MBR_GRD').closest('button')).toHaveAttribute('aria-pressed', 'false')
 
     // 선택이 바뀌면 따라 바뀐다(고정값을 박아 넣은 회귀를 막는다).
-    act(() => { useEditorStore.getState().selectTables(['t1', 't2']) })
+    act(() => {
+      useEditorStore.getState().selectTables(['t1', 't2'])
+    })
     expect(screen.getByText('MBR_GRD').closest('button')).toHaveAttribute('aria-pressed', 'true')
   })
 
@@ -252,7 +275,7 @@ describe('TableTree 다중 선택 제스처', () => {
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     renderTree()
     await user.type(screen.getByPlaceholderText('테이블 검색'), '회원')
-    expect(screen.queryByText('MBR_A')).toBeNull()   // 화면에 없다는 전제를 먼저 잠근다
+    expect(screen.queryByText('MBR_A')).toBeNull() // 화면에 없다는 전제를 먼저 잠근다
     await user.click(screen.getByText('MBR'))
     await user.keyboard('{Shift>}')
     await user.click(screen.getByText('MBR_GRD'))
@@ -287,9 +310,9 @@ describe('TableTree 다중 선택 제스처', () => {
     model.tables = { ...model.tables, t3: tbl('t3', 'ORD', '주문', null) }
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     useEditorStore.getState().enterGroupView('g1')
-    useEditorStore.getState().selectTables(['t3'])   // 캔버스가 고른, 그룹 뷰 밖의 미분류 테이블
+    useEditorStore.getState().selectTables(['t3']) // 캔버스가 고른, 그룹 뷰 밖의 미분류 테이블
     renderTree()
-    expect(screen.queryByText('ORD')).toBeNull()     // 화면에 없다는 전제를 먼저 잠근다
+    expect(screen.queryByText('ORD')).toBeNull() // 화면에 없다는 전제를 먼저 잠근다
     await user.keyboard('{Shift>}')
     await user.click(screen.getByText('MBR_GRD'))
     await user.keyboard('{/Shift}')
@@ -310,7 +333,7 @@ describe('TableTree 다중 선택 제스처', () => {
     model.tables = { ...model.tables, t3: tbl('t3', 'ORD', '주문', 'g2') }
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     useEditorStore.getState().enterGroupView('g1')
-    useEditorStore.getState().selectTables(['t3'])   // 캔버스가 고른, g2 소속 테이블
+    useEditorStore.getState().selectTables(['t3']) // 캔버스가 고른, g2 소속 테이블
     renderTree()
     expect(screen.queryByText('ORD')).toBeNull()
     await user.keyboard('{Shift>}')
@@ -430,7 +453,7 @@ describe('TableTree Shift 앵커', () => {
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t3'])
     act(() => {
       useEditorStore.getState().enterGroupView('g1')
-      useEditorStore.getState().selectTables(['t2'])   // 캔버스가 MBR을 골랐다
+      useEditorStore.getState().selectTables(['t2']) // 캔버스가 MBR을 골랐다
     })
     expect(screen.queryByText('ORD')).toBeNull()
     await user.keyboard('{Shift>}')
@@ -448,8 +471,10 @@ describe('TableTree Shift 앵커', () => {
     model.tables = { ...model.tables, t3: tbl('t3', 'ORD', '주문', null) }
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     renderTree()
-    await user.click(screen.getByText('MBR'))                       // 앵커 = t2
-    act(() => { useEditorStore.getState().selectTables(['t1']) })   // 캔버스가 MBR_GRD를 골랐다
+    await user.click(screen.getByText('MBR')) // 앵커 = t2
+    act(() => {
+      useEditorStore.getState().selectTables(['t1'])
+    }) // 캔버스가 MBR_GRD를 골랐다
     await user.keyboard('{Shift>}')
     await user.click(screen.getByText('ORD'))
     await user.keyboard('{/Shift}')
@@ -484,7 +509,10 @@ describe('TableTree 드래그 그룹 이동', () => {
   /** g1(회원관리)에 t1·t2, 그리고 멤버 없는 빈 그룹 하나를 더한 모델. */
   function withEmptyGroup(id: string, name: string) {
     const model = buildSampleModel()
-    model.tableGroups = { ...model.tableGroups, [id]: { id, name, color: '#000', comment: null, alias: '' } }
+    model.tableGroups = {
+      ...model.tableGroups,
+      [id]: { id, name, color: '#000', comment: null, alias: '' },
+    }
     return model
   }
 
@@ -498,13 +526,20 @@ describe('TableTree 드래그 그룹 이동', () => {
 
   /** 커서 아래 타깃을 세우고 손을 뗀다. */
   function dropOn(item: HTMLElement, groupId: string | null): void {
-    act(() => { useDragStore.getState().moveOver({ groupId }) })
+    act(() => {
+      useDragStore.getState().moveOver({ groupId })
+    })
     fireEvent.pointerUp(item, { clientX: 40, clientY: 0, pointerId: 1 })
   }
 
   function countMutations(): unknown[] {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     return calls
   }
 
@@ -516,7 +551,9 @@ describe('TableTree 드래그 그룹 이동', () => {
    * "op 1건 = undo 1회"가 이 커밋의 핵심 계약이므로 뒤에 settle을 붙여 **정확히 n**으로 못 박는다.
    */
   async function expectSent(calls: unknown[], n: number): Promise<void> {
-    await waitFor(() => { expect(calls).toHaveLength(n) })
+    await waitFor(() => {
+      expect(calls).toHaveLength(n)
+    })
     await settle()
     expect(calls).toHaveLength(n)
   }
@@ -584,7 +621,7 @@ describe('TableTree 드래그 그룹 이동', () => {
     grantEditPermission()
     renderTree()
 
-    dropOn(grab('MBR'), 'g1')   // t2는 이미 g1이다
+    dropOn(grab('MBR'), 'g1') // t2는 이미 g1이다
 
     await settle()
     expect(calls).toHaveLength(0)
@@ -597,7 +634,10 @@ describe('TableTree 드래그 그룹 이동', () => {
     // 예외가 없었다는 것을 직접 단언해야 이 가드가 잠긴다. preventDefault로 vitest의 unhandled
     // 집계에서 빼, 되돌렸을 때 잡음이 아니라 **이 단언**이 실패하게 만든다.
     const errors: string[] = []
-    const onError = (e: ErrorEvent) => { e.preventDefault(); errors.push(e.message) }
+    const onError = (e: ErrorEvent) => {
+      e.preventDefault()
+      errors.push(e.message)
+    }
     window.addEventListener('error', onError)
     try {
       const calls = countMutations()
@@ -605,7 +645,7 @@ describe('TableTree 드래그 그룹 이동', () => {
       grantEditPermission()
       renderTree()
 
-      const item = grab('MBR')   // elementFromPoint가 없으므로 over는 null인 채다
+      const item = grab('MBR') // elementFromPoint가 없으므로 over는 null인 채다
       expect(useDragStore.getState().over).toBeNull()
       fireEvent.pointerUp(item, { clientX: 40, clientY: 0, pointerId: 1 })
 
@@ -646,12 +686,12 @@ describe('TableTree 드래그 그룹 이동', () => {
 
     const item = grab('MBR')
     expect(useDragStore.getState().tableIds).toEqual(['t2'])
-    expect(screen.getByText('주문관리')).toBeInTheDocument()   // 드래그 중이라 스코핑이 풀렸다
+    expect(screen.getByText('주문관리')).toBeInTheDocument() // 드래그 중이라 스코핑이 풀렸다
 
     fireEvent.pointerCancel(item, { clientX: 40, clientY: 0, pointerId: 1 })
 
     expect(useDragStore.getState().tableIds).toEqual([])
-    expect(screen.queryByText('주문관리')).toBeNull()          // 스코핑이 되돌아왔다
+    expect(screen.queryByText('주문관리')).toBeNull() // 스코핑이 되돌아왔다
   })
 
   it('드래그 뒤 억제는 풀린다 — 키보드로 항목을 활성화할 수 있다', async () => {
@@ -666,13 +706,13 @@ describe('TableTree 드래그 그룹 이동', () => {
     renderTree()
 
     const item = grab('MBR')
-    dropOn(item, 'g1')                                      // t2는 이미 g1이라 op는 나가지 않는다
-    fireEvent.click(item)                                   // 드래그에 뒤따라오는 click — 억제된다
+    dropOn(item, 'g1') // t2는 이미 g1이라 op는 나가지 않는다
+    fireEvent.click(item) // 드래그에 뒤따라오는 click — 억제된다
     expect(useEditorStore.getState().focusTableId).toBeNull()
 
-    await settle()                                          // setTimeout(0)이 흘러간다
+    await settle() // setTimeout(0)이 흘러간다
     expect(calls).toHaveLength(0)
-    fireEvent.click(item)                                   // 키보드 Enter로 온 click
+    fireEvent.click(item) // 키보드 Enter로 온 click
     expect(useEditorStore.getState().focusTableId).toBe('t2')
   })
 
@@ -703,7 +743,9 @@ describe('TableTree 드래그 그룹 이동', () => {
     renderTree()
 
     const item = grab('MBR')
-    act(() => { useEditorStore.getState().setPermissions({ canEdit: false, canManage: false }) })
+    act(() => {
+      useEditorStore.getState().setPermissions({ canEdit: false, canManage: false })
+    })
     dropOn(item, 'g2')
 
     await settle()
@@ -723,7 +765,12 @@ describe('TableTree 드래그 그룹 이동', () => {
     useEditorStore.getState().setLoaded(withEmptyGroup('g2', '주문영역'), 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectTables(['t1', 't2'])
-    withProviders(<><TableTree projectId={PROJECT_ID} /><DragGhost /></>)
+    withProviders(
+      <>
+        <TableTree projectId={PROJECT_ID} />
+        <DragGhost />
+      </>,
+    )
 
     expect(screen.queryByTestId('drag-ghost')).toBeNull()
 
@@ -742,8 +789,12 @@ describe('TableTree 드래그 그룹 이동', () => {
     grantEditPermission()
     renderTree()
 
-    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
-    act(() => { useDragStore.getState().moveOver({ groupId: 'g2' }) })
+    act(() => {
+      useDragStore.getState().start(['t2'], 'sidebar')
+    })
+    act(() => {
+      useDragStore.getState().moveOver({ groupId: 'g2' })
+    })
 
     expect(document.querySelector('[data-drop-group="g2"]')).toHaveClass('ring-2', 'ring-primary')
     expect(document.querySelector('[data-drop-group="g1"]')).not.toHaveClass('ring-2')
@@ -756,11 +807,18 @@ describe('TableTree 드래그 그룹 이동', () => {
     grantEditPermission()
     renderTree()
 
-    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
+    act(() => {
+      useDragStore.getState().start(['t2'], 'sidebar')
+    })
     expect(document.querySelector('[data-drop-group="unassigned"]')).not.toHaveClass('ring-2')
 
-    act(() => { useDragStore.getState().moveOver({ groupId: null }) })
-    expect(document.querySelector('[data-drop-group="unassigned"]')).toHaveClass('ring-2', 'ring-primary')
+    act(() => {
+      useDragStore.getState().moveOver({ groupId: null })
+    })
+    expect(document.querySelector('[data-drop-group="unassigned"]')).toHaveClass(
+      'ring-2',
+      'ring-primary',
+    )
     expect(document.querySelector('[data-drop-group="g1"]')).not.toHaveClass('ring-2')
   })
 
@@ -774,7 +832,9 @@ describe('TableTree 드래그 그룹 이동', () => {
     const item = screen.getByText('MBR').closest('button')!
     fireEvent.pointerDown(item, { button: 0, clientX: 0, clientY: 0, pointerId: 1 })
     fireEvent.pointerMove(item, { clientX: 3, clientY: 3, pointerId: 1 })
-    act(() => { useDragStore.getState().moveOver({ groupId: 'g2' }) })
+    act(() => {
+      useDragStore.getState().moveOver({ groupId: 'g2' })
+    })
     fireEvent.pointerUp(item, { clientX: 3, clientY: 3, pointerId: 1 })
     fireEvent.click(item)
 
@@ -842,9 +902,11 @@ describe('TableTree 드래그 그룹 이동', () => {
     renderTree()
 
     await user.type(screen.getByPlaceholderText('테이블 검색'), '회원')
-    expect(screen.queryByText('주문영역')).toBeNull()   // 멤버가 안 걸려 숨었다는 전제를 잠근다
+    expect(screen.queryByText('주문영역')).toBeNull() // 멤버가 안 걸려 숨었다는 전제를 잠근다
 
-    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
+    act(() => {
+      useDragStore.getState().start(['t2'], 'sidebar')
+    })
     expect(screen.getByText('주문영역')).toBeInTheDocument()
   })
 
@@ -855,9 +917,11 @@ describe('TableTree 드래그 그룹 이동', () => {
     useEditorStore.getState().enterGroupView('g1')
     renderTree()
 
-    expect(screen.queryByText('주문관리')).toBeNull()   // 스코핑으로 숨었다는 전제를 잠근다
+    expect(screen.queryByText('주문관리')).toBeNull() // 스코핑으로 숨었다는 전제를 잠근다
 
-    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
+    act(() => {
+      useDragStore.getState().start(['t2'], 'sidebar')
+    })
     expect(screen.getByText('주문관리')).toBeInTheDocument()
   })
 
@@ -871,10 +935,14 @@ describe('TableTree 드래그 그룹 이동', () => {
 
     expect(screen.queryByText('주문관리')).toBeNull()
 
-    act(() => { useDragStore.getState().start(['t2'], 'canvas') })
+    act(() => {
+      useDragStore.getState().start(['t2'], 'canvas')
+    })
     expect(screen.getByText('주문관리')).toBeInTheDocument()
     // 커서 고스트만 소스로 갈린다 — 드롭 타깃 하이라이트는 두 소스가 공유한다.
-    act(() => { useDragStore.getState().moveOver({ groupId: 'g2' }) })
+    act(() => {
+      useDragStore.getState().moveOver({ groupId: 'g2' })
+    })
     expect(document.querySelector('[data-drop-group="g2"]')).toHaveClass('ring-2', 'ring-primary')
   })
 
@@ -938,7 +1006,9 @@ describe('TableTree 드래그 그룹 이동', () => {
 
     expect(screen.queryByText('미분류')).toBeNull()
 
-    act(() => { useDragStore.getState().start(['t2'], 'sidebar') })
+    act(() => {
+      useDragStore.getState().start(['t2'], 'sidebar')
+    })
     expect(screen.getByText('미분류')).toBeInTheDocument()
     expect(document.querySelector('[data-drop-group="unassigned"]')).not.toBeNull()
   })

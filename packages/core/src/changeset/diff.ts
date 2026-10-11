@@ -1,9 +1,18 @@
 import { deepEqual } from '../equal.js'
 import {
   compareCodeUnits,
-  type AlterAction, type ColumnChange, type ColumnDef, type ForeignKeyDef, type IndexDef,
-  type ProjColumn, type ProjForeignKey, type ProjIndex, type ProjTable, type SchemaProjection,
-  type Statement, type TableDef,
+  type AlterAction,
+  type ColumnChange,
+  type ColumnDef,
+  type ForeignKeyDef,
+  type IndexDef,
+  type ProjColumn,
+  type ProjForeignKey,
+  type ProjIndex,
+  type ProjTable,
+  type SchemaProjection,
+  type Statement,
+  type TableDef,
 } from './types.js'
 
 export type DiffProjectionResult =
@@ -17,7 +26,10 @@ export type DiffProjectionResult =
  * ⚠️ 모델 diff(`diffModels`·`diffModelsForDisplay`)와 섞지 마라. 저 둘은 모델 전체가 대상이고
  * 용도가 고정돼 있다. 이 함수는 스키마 투영만 본다.
  */
-export function diffProjection(base: SchemaProjection, target: SchemaProjection): DiffProjectionResult {
+export function diffProjection(
+  base: SchemaProjection,
+  target: SchemaProjection,
+): DiffProjectionResult {
   const refusal = refusalOf(base, target)
   if (refusal !== null) return { ok: false, message: refusal }
   const out: Statement[] = []
@@ -25,7 +37,8 @@ export function diffProjection(base: SchemaProjection, target: SchemaProjection)
   // 1. FK 삭제 — 내용이 바뀐 FK 도 지웠다가 8번에서 다시 만든다(대부분의 DB 가 FK 를 고치지 못한다).
   for (const fk of sortedForeignKeys(base)) {
     const next = target.foreignKeys[fk.id]
-    if (next === undefined || !deepEqual(fk, next)) out.push({ kind: 'dropForeignKey', fk: foreignKeyDef(base, fk) })
+    if (next === undefined || !deepEqual(fk, next))
+      out.push({ kind: 'dropForeignKey', fk: foreignKeyDef(base, fk) })
   }
   // 2. 인덱스 삭제 — 사라지는 테이블의 인덱스는 3번 drop table 블록이 싣는다.
   // 삭제를 전부 먼저 내야 「지운 인덱스의 이름으로 개명」이 SQL 에서 충돌하지 않는다.
@@ -36,12 +49,19 @@ export function diffProjection(base: SchemaProjection, target: SchemaProjection)
     if (next === undefined || !sameIndexContent(ix, next)) {
       out.push({ kind: 'dropIndex', index: indexDef(base, ix) })
     } else if (next.name !== ix.name) {
-      indexRenames.push({ kind: 'renameIndex', id: ix.id, table: base.tables[ix.tableId]!.name, from: ix.name, to: next.name })
+      indexRenames.push({
+        kind: 'renameIndex',
+        id: ix.id,
+        table: base.tables[ix.tableId]!.name,
+        from: ix.name,
+        to: next.name,
+      })
     }
   }
   // 3. 테이블 삭제 — 개명·생성보다 먼저여야 「지운 테이블의 이름」을 곧바로 쓸 수 있다.
   for (const t of sortedTables(base)) {
-    if (target.tables[t.id] === undefined) out.push({ kind: 'dropTable', table: tableDef(base, t, true) })
+    if (target.tables[t.id] === undefined)
+      out.push({ kind: 'dropTable', table: tableDef(base, t, true) })
   }
   // 4. 인덱스 개명 — drop table 뒤로 둬야 「지워지는 테이블의 인덱스 이름으로 개명」이 부딪치지 않는다.
   // 인덱스 이름은 PostgreSQL 에서 스키마 전역이다 — 테이블을 가로질러 정렬한다.
@@ -50,12 +70,14 @@ export function diffProjection(base: SchemaProjection, target: SchemaProjection)
   const tableRenames: Extract<Statement, { kind: 'renameTable' }>[] = []
   for (const t of sortedTables(base)) {
     const next = target.tables[t.id]
-    if (next !== undefined && next.name !== t.name) tableRenames.push({ kind: 'renameTable', id: t.id, from: t.name, to: next.name })
+    if (next !== undefined && next.name !== t.name)
+      tableRenames.push({ kind: 'renameTable', id: t.id, from: t.name, to: next.name })
   }
   out.push(...renameOrder(tableRenames))
   // 6. 테이블 생성
   for (const t of sortedTables(target)) {
-    if (base.tables[t.id] === undefined) out.push({ kind: 'createTable', table: tableDef(target, t, false) })
+    if (base.tables[t.id] === undefined)
+      out.push({ kind: 'createTable', table: tableDef(target, t, false) })
   }
   // 7. 테이블 변경
   for (const t of sortedTables(target)) {
@@ -67,12 +89,14 @@ export function diffProjection(base: SchemaProjection, target: SchemaProjection)
   // 8. 인덱스 추가
   for (const ix of sortedIndexes(target)) {
     const prev = base.indexes[ix.id]
-    if (prev === undefined || !sameIndexContent(prev, ix)) out.push({ kind: 'addIndex', index: indexDef(target, ix) })
+    if (prev === undefined || !sameIndexContent(prev, ix))
+      out.push({ kind: 'addIndex', index: indexDef(target, ix) })
   }
   // 9. FK 추가
   for (const fk of sortedForeignKeys(target)) {
     const prev = base.foreignKeys[fk.id]
-    if (prev === undefined || !deepEqual(prev, fk)) out.push({ kind: 'addForeignKey', fk: foreignKeyDef(target, fk) })
+    if (prev === undefined || !deepEqual(prev, fk))
+      out.push({ kind: 'addForeignKey', fk: foreignKeyDef(target, fk) })
   }
   return { ok: true, statements: out }
 }
@@ -85,12 +109,14 @@ export function diffProjection(base: SchemaProjection, target: SchemaProjection)
 function refusalOf(base: SchemaProjection, target: SchemaProjection): string | null {
   const tableNames = new Set<string>()
   for (const t of Object.values(target.tables)) {
-    if (tableNames.has(t.name)) return `같은 물리명의 테이블이 둘 있습니다: ${t.name} — 이름을 고친 뒤 기록하세요`
+    if (tableNames.has(t.name))
+      return `같은 물리명의 테이블이 둘 있습니다: ${t.name} — 이름을 고친 뒤 기록하세요`
     tableNames.add(t.name)
     const columnNames = new Set<string>()
     for (const id of t.columnIds) {
       const c = target.columns[id]!
-      if (columnNames.has(c.name)) return `${t.name} 테이블에 같은 물리명의 컬럼이 둘 있습니다: ${c.name} — 이름을 고친 뒤 기록하세요`
+      if (columnNames.has(c.name))
+        return `${t.name} 테이블에 같은 물리명의 컬럼이 둘 있습니다: ${c.name} — 이름을 고친 뒤 기록하세요`
       columnNames.add(c.name)
     }
   }
@@ -105,7 +131,12 @@ function refusalOf(base: SchemaProjection, target: SchemaProjection): string | n
   return null
 }
 
-function alterActions(base: SchemaProjection, target: SchemaProjection, prev: ProjTable, next: ProjTable): AlterAction[] {
+function alterActions(
+  base: SchemaProjection,
+  target: SchemaProjection,
+  prev: ProjTable,
+  next: ProjTable,
+): AlterAction[] {
   const actions: AlterAction[] = []
   const inNext = new Set(next.columnIds)
   const inPrev = new Set(prev.columnIds)
@@ -123,40 +154,61 @@ function alterActions(base: SchemaProjection, target: SchemaProjection, prev: Pr
   }
   actions.push(...renameOrder(renames))
   // 옮겨진 컬럼 = 양쪽에 다 있지만 최장 공통 부분열에 들지 못한 것(guide 「`after` 는 최종 순서의 바로 앞 컬럼이다」).
-  const stable = new Set(longestCommonSubsequence(
-    prev.columnIds.filter((id) => inNext.has(id)),
-    next.columnIds.filter((id) => inPrev.has(id)),
-  ))
-  const predecessor = (list: readonly string[], i: number): string | null => (i <= 0 ? null : nameNow(list[i - 1]!))
+  const stable = new Set(
+    longestCommonSubsequence(
+      prev.columnIds.filter((id) => inNext.has(id)),
+      next.columnIds.filter((id) => inPrev.has(id)),
+    ),
+  )
+  const predecessor = (list: readonly string[], i: number): string | null =>
+    i <= 0 ? null : nameNow(list[i - 1]!)
   next.columnIds.forEach((id, i) => {
-    if (!inPrev.has(id)) actions.push({ kind: 'addColumn', column: columnDef(target.columns[id]!), after: predecessor(next.columnIds, i) })
+    if (!inPrev.has(id))
+      actions.push({
+        kind: 'addColumn',
+        column: columnDef(target.columns[id]!),
+        after: predecessor(next.columnIds, i),
+      })
   })
   next.columnIds.forEach((id, i) => {
     if (!inPrev.has(id)) return
     const changes = columnChanges(base.columns[id]!, target.columns[id]!)
     if (!stable.has(id)) {
-      changes.push({ field: 'position', from: predecessor(prev.columnIds, prev.columnIds.indexOf(id)), to: predecessor(next.columnIds, i) })
+      changes.push({
+        field: 'position',
+        from: predecessor(prev.columnIds, prev.columnIds.indexOf(id)),
+        to: predecessor(next.columnIds, i),
+      })
     }
-    if (changes.length > 0) actions.push({ kind: 'modifyColumn', id, name: target.columns[id]!.name, changes })
+    if (changes.length > 0)
+      actions.push({ kind: 'modifyColumn', id, name: target.columns[id]!.name, changes })
   })
   // 지운 PK 컬럼은 drop column 이 PK 에서도 뺀다 — 비교는 그 뒤의 상태와 한다.
   const prevPk = prev.primaryKey.filter((id) => inNext.has(id))
   if (!deepEqual(prevPk, next.primaryKey)) {
-    actions.push({ kind: 'primaryKey', from: prevPk.map(nameNow), to: next.primaryKey.map(nameNow) })
+    actions.push({
+      kind: 'primaryKey',
+      from: prevPk.map(nameNow),
+      to: next.primaryKey.map(nameNow),
+    })
   }
-  if (prev.comment !== next.comment) actions.push({ kind: 'tableComment', from: prev.comment, to: next.comment })
+  if (prev.comment !== next.comment)
+    actions.push({ kind: 'tableComment', from: prev.comment, to: next.comment })
   return actions
 }
 
 function columnChanges(a: ProjColumn, b: ProjColumn): ColumnChange[] {
   const out: ColumnChange[] = []
   if (a.type !== b.type) out.push({ field: 'type', from: a.type, to: b.type })
-  if (!deepEqual(a.dialectTypes, b.dialectTypes)) out.push({ field: 'dialects', from: { ...a.dialectTypes }, to: { ...b.dialectTypes } })
+  if (!deepEqual(a.dialectTypes, b.dialectTypes))
+    out.push({ field: 'dialects', from: { ...a.dialectTypes }, to: { ...b.dialectTypes } })
   if (a.nullable !== b.nullable) out.push({ field: 'nullable', from: a.nullable, to: b.nullable })
   if (a.default !== b.default) out.push({ field: 'default', from: a.default, to: b.default })
-  if (a.increment !== b.increment) out.push({ field: 'increment', from: a.increment, to: b.increment })
+  if (a.increment !== b.increment)
+    out.push({ field: 'increment', from: a.increment, to: b.increment })
   if (a.comment !== b.comment) out.push({ field: 'comment', from: a.comment, to: b.comment })
-  if (!deepEqual(a.check, b.check)) out.push({ field: 'check', from: [...a.check], to: [...b.check] })
+  if (!deepEqual(a.check, b.check))
+    out.push({ field: 'check', from: [...a.check], to: [...b.check] })
   return out
 }
 
@@ -191,8 +243,11 @@ export function longestCommonSubsequence(a: readonly string[], b: readonly strin
   let i = 0
   let j = 0
   while (i < n && j < m) {
-    if (a[i] === b[j]) { out.push(a[i]!); i += 1; j += 1 }
-    else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) i += 1
+    if (a[i] === b[j]) {
+      out.push(a[i]!)
+      i += 1
+      j += 1
+    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) i += 1
     else j += 1
   }
   return out
@@ -205,8 +260,11 @@ function sortedTables(p: SchemaProjection): ProjTable[] {
   return Object.values(p.tables).sort(byName)
 }
 function sortedIndexes(p: SchemaProjection): ProjIndex[] {
-  return Object.values(p.indexes).sort((a, b) =>
-    compareCodeUnits(p.tables[a.tableId]?.name ?? '', p.tables[b.tableId]?.name ?? '') || byName(a, b))
+  return Object.values(p.indexes).sort(
+    (a, b) =>
+      compareCodeUnits(p.tables[a.tableId]?.name ?? '', p.tables[b.tableId]?.name ?? '') ||
+      byName(a, b),
+  )
 }
 function sortedForeignKeys(p: SchemaProjection): ProjForeignKey[] {
   return Object.values(p.foreignKeys).sort(byName)
@@ -217,8 +275,15 @@ function sameIndexContent(a: ProjIndex, b: ProjIndex): boolean {
 
 function columnDef(c: ProjColumn): ColumnDef {
   return {
-    id: c.id, name: c.name, type: c.type, dialectTypes: { ...c.dialectTypes }, nullable: c.nullable,
-    default: c.default, increment: c.increment, comment: c.comment, check: [...c.check],
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    dialectTypes: { ...c.dialectTypes },
+    nullable: c.nullable,
+    default: c.default,
+    increment: c.increment,
+    comment: c.comment,
+    check: [...c.check],
   }
 }
 const columnName = (p: SchemaProjection, id: string) => p.columns[id]?.name ?? id
@@ -226,24 +291,36 @@ const tableName = (p: SchemaProjection, id: string) => p.tables[id]?.name ?? id
 
 function indexDef(p: SchemaProjection, ix: ProjIndex): IndexDef {
   return {
-    id: ix.id, name: ix.name, table: tableName(p, ix.tableId),
+    id: ix.id,
+    name: ix.name,
+    table: tableName(p, ix.tableId),
     columns: ix.columns.map((c) => ({ name: columnName(p, c.columnId), direction: c.direction })),
     unique: ix.unique,
   }
 }
 function foreignKeyDef(p: SchemaProjection, fk: ProjForeignKey): ForeignKeyDef {
   return {
-    id: fk.id, name: fk.name,
-    child: tableName(p, fk.childTableId), childColumns: fk.childColumnIds.map((id) => columnName(p, id)),
-    parent: tableName(p, fk.parentTableId), parentColumns: fk.parentColumnIds.map((id) => columnName(p, id)),
-    cardinality: fk.cardinality, uniqueName: fk.uniqueName,
+    id: fk.id,
+    name: fk.name,
+    child: tableName(p, fk.childTableId),
+    childColumns: fk.childColumnIds.map((id) => columnName(p, id)),
+    parent: tableName(p, fk.parentTableId),
+    parentColumns: fk.parentColumnIds.map((id) => columnName(p, id)),
+    cardinality: fk.cardinality,
+    uniqueName: fk.uniqueName,
   }
 }
 function tableDef(p: SchemaProjection, t: ProjTable, withIndexes: boolean): TableDef {
   return {
-    id: t.id, name: t.name, comment: t.comment,
+    id: t.id,
+    name: t.name,
+    comment: t.comment,
     columns: t.columnIds.map((id) => columnDef(p.columns[id]!)),
     primaryKey: t.primaryKey.map((id) => columnName(p, id)),
-    indexes: withIndexes ? sortedIndexes(p).filter((ix) => ix.tableId === t.id).map((ix) => indexDef(p, ix)) : [],
+    indexes: withIndexes
+      ? sortedIndexes(p)
+          .filter((ix) => ix.tableId === t.id)
+          .map((ix) => indexDef(p, ix))
+      : [],
   }
 }

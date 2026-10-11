@@ -106,7 +106,11 @@ export class RealtimeHub {
     const text = JSON.stringify(msg)
     for (const entry of set) {
       // 끊긴 소켓 하나가 나머지 구독자 전파를 막으면 안 된다.
-      try { entry.conn.send(text) } catch { /* 무시 — 정리는 소켓 close 핸들러가 한다 */ }
+      try {
+        entry.conn.send(text)
+      } catch {
+        /* 무시 — 정리는 소켓 close 핸들러가 한다 */
+      }
     }
   }
 }

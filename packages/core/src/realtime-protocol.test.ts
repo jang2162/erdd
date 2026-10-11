@@ -1,21 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import type { Op } from './op.js'
 import {
-  MAX_PEER_SELECTIONS, PEER_PALETTE, parseClientMessage, parseServerMessage, peerColor,
+  MAX_PEER_SELECTIONS,
+  PEER_PALETTE,
+  parseClientMessage,
+  parseServerMessage,
+  peerColor,
   type ServerMessage,
 } from './realtime-protocol.js'
 
 const UID = '018f6b0e-0000-7000-8000-0000000000c1'
 const NOTE_OP: Op = {
-  action: 'create', entity: 'note', entityId: UID,
+  action: 'create',
+  entity: 'note',
+  entityId: UID,
   data: { id: UID, content: '메모', position: { x: 0, y: 0 }, color: '#fff' },
 }
 
 describe('parseServerMessage', () => {
   it('ops 메시지를 왕복한다', () => {
     const msg: ServerMessage = {
-      type: 'ops', seq: 7, ops: [NOTE_OP],
-      actorUserId: 'u1', actorName: '오너',
+      type: 'ops',
+      seq: 7,
+      ops: [NOTE_OP],
+      actorUserId: 'u1',
+      actorName: '오너',
     }
     expect(parseServerMessage(JSON.stringify(msg))).toEqual(msg)
   })
@@ -37,9 +46,13 @@ describe('parseServerMessage', () => {
   })
 
   it('op 하나라도 형식이 틀리면 null(전체 거절)', () => {
-    const bad = { type: 'ops', seq: 1, actorUserId: 'u1', actorName: 'n', ops: [
-      NOTE_OP, { action: 'create', entity: 'note', entityId: 'not-a-uuid', data: {} },
-    ] }
+    const bad = {
+      type: 'ops',
+      seq: 1,
+      actorUserId: 'u1',
+      actorName: 'n',
+      ops: [NOTE_OP, { action: 'create', entity: 'note', entityId: 'not-a-uuid', data: {} }],
+    }
     expect(parseServerMessage(JSON.stringify(bad))).toBeNull()
   })
 
@@ -54,22 +67,32 @@ describe('parseServerMessage', () => {
   })
 
   it('peer의 selections 원소 kind가 목록 밖이면 null', () => {
-    const bad = { type: 'presence', peers: [{ userId: 'u', name: 'n', selections: [{ kind: 'column', id: 'c' }] }] }
+    const bad = {
+      type: 'presence',
+      peers: [{ userId: 'u', name: 'n', selections: [{ kind: 'column', id: 'c' }] }],
+    }
     expect(parseServerMessage(JSON.stringify(bad))).toBeNull()
   })
 })
 
 describe('parseClientMessage', () => {
   it('selections를 왕복한다', () => {
-    expect(parseClientMessage(JSON.stringify({ type: 'selection', selections: [{ kind: 'note', id: 'n1' }] })))
-      .toEqual({ type: 'selection', selections: [{ kind: 'note', id: 'n1' }] })
-    expect(parseClientMessage(JSON.stringify({ type: 'selection', selections: [] })))
-      .toEqual({ type: 'selection', selections: [] })
+    expect(
+      parseClientMessage(
+        JSON.stringify({ type: 'selection', selections: [{ kind: 'note', id: 'n1' }] }),
+      ),
+    ).toEqual({ type: 'selection', selections: [{ kind: 'note', id: 'n1' }] })
+    expect(parseClientMessage(JSON.stringify({ type: 'selection', selections: [] }))).toEqual({
+      type: 'selection',
+      selections: [],
+    })
   })
 
   it('알 수 없는 type이나 형식 오류는 null', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'ops' }))).toBeNull()
-    expect(parseClientMessage(JSON.stringify({ type: 'selection', selections: [{ kind: 'table' }] }))).toBeNull()
+    expect(
+      parseClientMessage(JSON.stringify({ type: 'selection', selections: [{ kind: 'table' }] })),
+    ).toBeNull()
   })
 })
 
@@ -96,12 +119,21 @@ describe('parseSelections (다중 선택)', () => {
   })
 
   it('원소 하나라도 형식이 틀리면 전체를 거절한다', () => {
-    const bad = { type: 'selection', selections: [{ kind: 'table', id: 't1' }, { kind: 'nope', id: 'x' }] }
+    const bad = {
+      type: 'selection',
+      selections: [
+        { kind: 'table', id: 't1' },
+        { kind: 'nope', id: 'x' },
+      ],
+    }
     expect(parseClientMessage(JSON.stringify(bad))).toBeNull()
   })
 
   it('MAX_PEER_SELECTIONS를 넘으면 앞에서부터 잘라낸다(거절이 아니다)', () => {
-    const many = Array.from({ length: MAX_PEER_SELECTIONS + 5 }, (_, i) => ({ kind: 'table' as const, id: `t${i}` }))
+    const many = Array.from({ length: MAX_PEER_SELECTIONS + 5 }, (_, i) => ({
+      kind: 'table' as const,
+      id: `t${i}`,
+    }))
     const parsed = parseClientMessage(JSON.stringify({ type: 'selection', selections: many }))
     expect(parsed?.selections).toHaveLength(MAX_PEER_SELECTIONS)
     expect(parsed?.selections.at(-1)).toEqual({ kind: 'table', id: `t${MAX_PEER_SELECTIONS - 1}` })
@@ -111,18 +143,30 @@ describe('parseSelections (다중 선택)', () => {
     const dup = {
       type: 'selection',
       selections: [
-        { kind: 'table', id: 't1' }, { kind: 'note', id: 'n1' },
-        { kind: 'table', id: 't1' }, { kind: 'table', id: 't1' },
+        { kind: 'table', id: 't1' },
+        { kind: 'note', id: 'n1' },
+        { kind: 'table', id: 't1' },
+        { kind: 'table', id: 't1' },
       ],
     }
-    expect(parseClientMessage(JSON.stringify(dup))?.selections)
-      .toEqual([{ kind: 'table', id: 't1' }, { kind: 'note', id: 'n1' }])
+    expect(parseClientMessage(JSON.stringify(dup))?.selections).toEqual([
+      { kind: 'table', id: 't1' },
+      { kind: 'note', id: 'n1' },
+    ])
   })
 
   it('id가 같아도 kind가 다르면 서로 다른 선택이다', () => {
-    const msg = { type: 'selection', selections: [{ kind: 'table', id: 'x' }, { kind: 'group', id: 'x' }] }
-    expect(parseClientMessage(JSON.stringify(msg))?.selections)
-      .toEqual([{ kind: 'table', id: 'x' }, { kind: 'group', id: 'x' }])
+    const msg = {
+      type: 'selection',
+      selections: [
+        { kind: 'table', id: 'x' },
+        { kind: 'group', id: 'x' },
+      ],
+    }
+    expect(parseClientMessage(JSON.stringify(msg))?.selections).toEqual([
+      { kind: 'table', id: 'x' },
+      { kind: 'group', id: 'x' },
+    ])
   })
 
   it('중복 제거를 절단보다 먼저 한다 — 중복이 상한을 소진해 실제 선택을 잃지 않는다', () => {
@@ -130,7 +174,9 @@ describe('parseSelections (다중 선택)', () => {
     // 고유 선택 20개가 사라진다. 중복 제거가 먼저여야 31개가 온전히 남는다.
     const flood = Array.from({ length: 40 }, () => ({ kind: 'table' as const, id: 'dup' }))
     const unique = Array.from({ length: 30 }, (_, i) => ({ kind: 'table' as const, id: `u${i}` }))
-    const parsed = parseClientMessage(JSON.stringify({ type: 'selection', selections: [...flood, ...unique] }))
+    const parsed = parseClientMessage(
+      JSON.stringify({ type: 'selection', selections: [...flood, ...unique] }),
+    )
     expect(parsed?.selections).toHaveLength(31)
     expect(parsed?.selections.at(-1)).toEqual({ kind: 'table', id: 'u29' })
   })
@@ -138,20 +184,36 @@ describe('parseSelections (다중 선택)', () => {
   it('presence의 peer 선택도 중복이 제거된다 — 같은 참여자 마크가 여러 번 붙지 않는다', () => {
     const dup = {
       type: 'presence',
-      peers: [{ userId: 'u9', name: '아홉', selections: [
-        { kind: 'table', id: 't1' }, { kind: 'table', id: 't1' }, { kind: 'table', id: 't1' },
-      ] }],
+      peers: [
+        {
+          userId: 'u9',
+          name: '아홉',
+          selections: [
+            { kind: 'table', id: 't1' },
+            { kind: 'table', id: 't1' },
+            { kind: 'table', id: 't1' },
+          ],
+        },
+      ],
     }
     const parsed = parseServerMessage(JSON.stringify(dup))
-    expect(parsed?.type === 'presence' ? parsed.peers[0]?.selections : undefined)
-      .toEqual([{ kind: 'table', id: 't1' }])
+    expect(parsed?.type === 'presence' ? parsed.peers[0]?.selections : undefined).toEqual([
+      { kind: 'table', id: 't1' },
+    ])
   })
 
   it('presence의 peer도 selections 배열을 왕복한다', () => {
     const msg: ServerMessage = {
       type: 'presence',
       peers: [
-        { userId: 'u1', name: '오너', selections: [{ kind: 'table', id: 't1' }, { kind: 'table', id: 't2' }] },
+        {
+          userId: 'u1',
+          name: '오너',
+          selections: [
+            { kind: 'table', id: 't1' },
+            { kind: 'table', id: 't2' },
+          ],
+        },
         { userId: 'u2', name: '동료', selections: [] },
       ],
     }
@@ -160,8 +222,15 @@ describe('parseSelections (다중 선택)', () => {
 
   it('presence의 peer에 selections 필드가 없으면 프레임 전체를 거절한다', () => {
     // 옛 서버가 보내는 단건 `selection` 프레임이 "모두 선택 없음"으로 조용히 통과하면 안 된다.
-    expect(parseServerMessage(JSON.stringify({ type: 'presence', peers: [{ userId: 'u1', name: '갑' }] }))).toBeNull()
-    const legacy = { type: 'presence', peers: [{ userId: 'u1', name: '갑', selection: { kind: 'table', id: 't1' } }] }
+    expect(
+      parseServerMessage(
+        JSON.stringify({ type: 'presence', peers: [{ userId: 'u1', name: '갑' }] }),
+      ),
+    ).toBeNull()
+    const legacy = {
+      type: 'presence',
+      peers: [{ userId: 'u1', name: '갑', selection: { kind: 'table', id: 't1' } }],
+    }
     expect(parseServerMessage(JSON.stringify(legacy))).toBeNull()
   })
 

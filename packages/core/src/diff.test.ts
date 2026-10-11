@@ -28,7 +28,9 @@ describe('diffModels', () => {
     const ops = diffModels(base, target)
     expect(ops).toEqual([
       {
-        action: 'update', entity: 'column', entityId: 'c3',
+        action: 'update',
+        entity: 'column',
+        entityId: 'c3',
         changes: {
           logicalName: { from: '회원명', to: '고객명' },
           order: { from: 1, to: 9 },
@@ -60,9 +62,15 @@ describe('diffModels', () => {
     const target = buildSampleModel()
     const domainId = 'dm1'
     target.domains[domainId] = {
-      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL',
+      id: domainId,
+      name: '금액',
+      category: null,
+      logicalType: 'DECIMAL',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
     target.columns.c1!.domainId = domainId
 
@@ -108,8 +116,15 @@ describe('diffModels', () => {
     const empty = createEmptyModel()
     const target = buildSampleModel()
     target.customFields['f1'] = {
-      id: 'f1', name: '개인정보여부', target: 'column', type: 'boolean',
-      options: [], required: false, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '개인정보여부',
+      target: 'column',
+      type: 'boolean',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     target.columns.c1!.custom = { f1: 'true' }
 
@@ -146,9 +161,15 @@ describe('diffModels', () => {
     // 옛 스냅샷 복원이 500으로 터진다.
     const base = buildSampleModel()
     base.domains['dm1'] = {
-      id: 'dm1', name: '금액', category: null, logicalType: 'DECIMAL',
+      id: 'dm1',
+      name: '금액',
+      category: null,
+      logicalType: 'DECIMAL',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
     const target = structuredClone(base)
     const legacyDomain = { ...target.domains.dm1! } as Record<string, unknown>

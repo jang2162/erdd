@@ -6,14 +6,29 @@ let counter = 0
 const fakeId = () => `new-${++counter}`
 
 const wordSheet = (rows: string[][]): RawSheet => ({
-  key: 'words', headers: ['논리명', '약어', '영문명', '설명'], rows,
+  key: 'words',
+  headers: ['논리명', '약어', '영문명', '설명'],
+  rows,
 })
 const termSheet = (rows: string[][]): RawSheet => ({
-  key: 'terms', headers: ['용어', '구성 단어', '물리명', '기본 도메인', '설명'], rows,
+  key: 'terms',
+  headers: ['용어', '구성 단어', '물리명', '기본 도메인', '설명'],
+  rows,
 })
 const domainSheet = (rows: string[][]): RawSheet => ({
   key: 'domains',
-  headers: ['이름', '분류', '논리 타입', 'PostgreSQL', 'MySQL', 'Oracle', 'MSSQL', '기본값', '허용값', '설명'],
+  headers: [
+    '이름',
+    '분류',
+    '논리 타입',
+    'PostgreSQL',
+    'MySQL',
+    'Oracle',
+    'MSSQL',
+    '기본값',
+    '허용값',
+    '설명',
+  ],
   rows,
 })
 
@@ -22,22 +37,42 @@ function modelWithExisting(): ProjectModel {
     ...createEmptyModel(),
     words: {
       w1: {
-        id: 'w1', logicalName: '회원', abbreviation: 'MB',
-        englishName: null, description: null, origin: null,
+        id: 'w1',
+        logicalName: '회원',
+        abbreviation: 'MB',
+        englishName: null,
+        description: null,
+        origin: null,
       },
     },
     domains: {
       d1: {
-        id: 'd1', name: '금액', category: null, logicalType: 'INT',
+        id: 'd1',
+        name: '금액',
+        category: null,
+        logicalType: 'INT',
         dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-        defaultValue: null, allowedValues: [], description: null, origin: null,
+        defaultValue: null,
+        allowedValues: [],
+        description: null,
+        origin: null,
       },
     },
     columns: {
       c1: {
-        id: 'c1', tableId: 't1', logicalName: '금액', physicalName: 'AMT', type: 'INT',
-        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0,
-        comment: null, domainId: 'd1', custom: {},
+        id: 'c1',
+        tableId: 't1',
+        logicalName: '금액',
+        physicalName: 'AMT',
+        type: 'INT',
+        isPk: false,
+        autoIncrement: false,
+        nullable: true,
+        defaultValue: null,
+        order: 0,
+        comment: null,
+        domainId: 'd1',
+        custom: {},
       },
     },
   }
@@ -55,13 +90,19 @@ function modelWithFilledValues(): ProjectModel {
       d1: {
         ...m.domains['d1']!,
         dialectTypes: { postgresql: 'numeric(15,2)', mysql: 'decimal', oracle: null, mssql: null },
-        defaultValue: "'01'", allowedValues: ['01', '02'], description: '금액 도메인',
+        defaultValue: "'01'",
+        allowedValues: ['01', '02'],
+        description: '금액 도메인',
       },
     },
     terms: {
       tm1: {
-        id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: 'd1',
-        description: null, origin: null,
+        id: 'tm1',
+        logicalName: '회원번호',
+        physicalName: 'MBR_NO',
+        domainId: 'd1',
+        description: null,
+        origin: null,
       },
     },
   }
@@ -74,8 +115,12 @@ describe('applyDictImport', () => {
     const m = applyDictImport(createEmptyModel(), plan, 'skip', fakeId)
     expect(Object.values(m.words)).toEqual([
       {
-        id: 'new-1', logicalName: '주문', abbreviation: 'ORD',
-        englishName: 'ORDER', description: null, origin: null,
+        id: 'new-1',
+        logicalName: '주문',
+        abbreviation: 'ORD',
+        englishName: 'ORDER',
+        description: null,
+        origin: null,
       },
     ])
   })
@@ -96,8 +141,12 @@ describe('applyDictImport', () => {
     const m = applyDictImport(base, plan, 'overwrite', fakeId)
     expect(Object.keys(m.words)).toEqual(['w1'])
     expect(m.words['w1']).toEqual({
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: 'MEMBER', description: null, origin: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: 'MEMBER',
+      description: null,
+      origin: null,
     })
   })
 
@@ -105,7 +154,8 @@ describe('applyDictImport', () => {
     counter = 0
     const base = modelWithExisting()
     const plan = planDictImport(
-      [domainSheet([['금액', '통화', 'DECIMAL(15,2)', '', '', '', '', '', '', '']])], base,
+      [domainSheet([['금액', '통화', 'DECIMAL(15,2)', '', '', '', '', '', '', '']])],
+      base,
     )
     const m = applyDictImport(base, plan, 'overwrite', fakeId)
     expect(Object.keys(m.domains)).toEqual(['d1'])
@@ -123,10 +173,13 @@ describe('applyDictImport', () => {
 
   it('같은 파일에서 새로 만들어진 도메인도 용어가 참조한다', () => {
     counter = 0
-    const plan = planDictImport([
-      termSheet([['회원번호', '', 'MBR_NO', '신규도메인', '']]),
-      domainSheet([['신규도메인', '', 'CHAR(2)', '', '', '', '', '', '', '']]),
-    ], createEmptyModel())
+    const plan = planDictImport(
+      [
+        termSheet([['회원번호', '', 'MBR_NO', '신규도메인', '']]),
+        domainSheet([['신규도메인', '', 'CHAR(2)', '', '', '', '', '', '', '']]),
+      ],
+      createEmptyModel(),
+    )
     const m = applyDictImport(createEmptyModel(), plan, 'skip', fakeId)
     const domainId = Object.values(m.domains)[0]!.id
     expect(Object.values(m.terms)[0]!.domainId).toBe(domainId)
@@ -134,14 +187,20 @@ describe('applyDictImport', () => {
 
   it('해석할 수 없는 기본 도메인은 null이 된다', () => {
     counter = 0
-    const plan = planDictImport([termSheet([['회원번호', '', 'MBR_NO', '없음', '']])], createEmptyModel())
+    const plan = planDictImport(
+      [termSheet([['회원번호', '', 'MBR_NO', '없음', '']])],
+      createEmptyModel(),
+    )
     const m = applyDictImport(createEmptyModel(), plan, 'skip', fakeId)
     expect(Object.values(m.terms)[0]!.domainId).toBeNull()
   })
 
   it('기본 도메인이 비면 null이다', () => {
     counter = 0
-    const plan = planDictImport([termSheet([['회원번호', '', 'MBR_NO', '', '']])], createEmptyModel())
+    const plan = planDictImport(
+      [termSheet([['회원번호', '', 'MBR_NO', '', '']])],
+      createEmptyModel(),
+    )
     const m = applyDictImport(createEmptyModel(), plan, 'skip', fakeId)
     expect(Object.values(m.terms)[0]!.domainId).toBeNull()
   })
@@ -154,8 +213,12 @@ describe('applyDictImport — 부분 덮어쓰기 (없는 컬럼은 건드리지
     const sheet: RawSheet = { key: 'words', headers: ['논리명', '약어'], rows: [['회원', 'MBR']] }
     const m = applyDictImport(base, planDictImport([sheet], base), 'overwrite', fakeId)
     expect(m.words['w1']).toEqual({
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: 'MEMBER', description: '가입 회원', origin: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: 'MEMBER',
+      description: '가입 회원',
+      origin: null,
     })
   })
 
@@ -163,7 +226,10 @@ describe('applyDictImport — 부분 덮어쓰기 (없는 컬럼은 건드리지
     counter = 0
     const base = modelWithFilledValues()
     const m = applyDictImport(
-      base, planDictImport([wordSheet([['회원', 'MBR', '', '']])], base), 'overwrite', fakeId,
+      base,
+      planDictImport([wordSheet([['회원', 'MBR', '', '']])], base),
+      'overwrite',
+      fakeId,
     )
     expect(m.words['w1']!.englishName).toBeNull()
     expect(m.words['w1']!.description).toBeNull()
@@ -173,14 +239,19 @@ describe('applyDictImport — 부분 덮어쓰기 (없는 컬럼은 건드리지
     counter = 0
     const base = modelWithFilledValues()
     const sheet: RawSheet = {
-      key: 'domains', headers: ['이름', '논리 타입', '설명'], rows: [['금액', 'DECIMAL(15,2)', '수정한 설명']],
+      key: 'domains',
+      headers: ['이름', '논리 타입', '설명'],
+      rows: [['금액', 'DECIMAL(15,2)', '수정한 설명']],
     }
     const m = applyDictImport(base, planDictImport([sheet], base), 'overwrite', fakeId)
     expect(Object.keys(m.domains)).toEqual(['d1'])
     expect(m.domains['d1']!.logicalType).toBe('DECIMAL(15,2)')
     expect(m.domains['d1']!.description).toBe('수정한 설명')
     expect(m.domains['d1']!.dialectTypes).toEqual({
-      postgresql: 'numeric(15,2)', mysql: 'decimal', oracle: null, mssql: null,
+      postgresql: 'numeric(15,2)',
+      mysql: 'decimal',
+      oracle: null,
+      mssql: null,
     })
     expect(m.domains['d1']!.allowedValues).toEqual(['01', '02'])
     expect(m.domains['d1']!.defaultValue).toBe("'01'")
@@ -191,11 +262,16 @@ describe('applyDictImport — 부분 덮어쓰기 (없는 컬럼은 건드리지
     counter = 0
     const base = modelWithFilledValues()
     const sheet: RawSheet = {
-      key: 'domains', headers: ['이름', '논리 타입', 'PostgreSQL'], rows: [['금액', 'INT', 'integer']],
+      key: 'domains',
+      headers: ['이름', '논리 타입', 'PostgreSQL'],
+      rows: [['금액', 'INT', 'integer']],
     }
     const m = applyDictImport(base, planDictImport([sheet], base), 'overwrite', fakeId)
     expect(m.domains['d1']!.dialectTypes).toEqual({
-      postgresql: 'integer', mysql: 'decimal', oracle: null, mssql: null,
+      postgresql: 'integer',
+      mysql: 'decimal',
+      oracle: null,
+      mssql: null,
     })
   })
 
@@ -203,12 +279,18 @@ describe('applyDictImport — 부분 덮어쓰기 (없는 컬럼은 건드리지
     counter = 0
     const base = modelWithFilledValues()
     const sheet: RawSheet = {
-      key: 'terms', headers: ['용어', '물리명', '설명'], rows: [['회원번호', 'MBR_NUM', '회원 식별자']],
+      key: 'terms',
+      headers: ['용어', '물리명', '설명'],
+      rows: [['회원번호', 'MBR_NUM', '회원 식별자']],
     }
     const m = applyDictImport(base, planDictImport([sheet], base), 'overwrite', fakeId)
     expect(m.terms['tm1']).toEqual({
-      id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NUM', domainId: 'd1',
-      description: '회원 식별자', origin: null,
+      id: 'tm1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NUM',
+      domainId: 'd1',
+      description: '회원 식별자',
+      origin: null,
     })
   })
 })

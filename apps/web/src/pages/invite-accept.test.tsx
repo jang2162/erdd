@@ -158,7 +158,10 @@ describe('InviteAcceptPage', () => {
     renderInvite({
       'invitation.peek': () => ({
         error: {
-          code: -32600, message: '이미 사용된 링크입니다', linkDead: true, linkReissuable: false,
+          code: -32600,
+          message: '이미 사용된 링크입니다',
+          linkDead: true,
+          linkReissuable: false,
         },
       }),
     })
@@ -184,7 +187,10 @@ describe('InviteAcceptPage', () => {
       'invitation.peek': () => ({ data: PEEK_OK }),
       'invitation.accept': () => ({
         error: {
-          code: -32009, message: '이미 가입한 이메일입니다', linkDead: true, linkReissuable: false,
+          code: -32009,
+          message: '이미 가입한 이메일입니다',
+          linkDead: true,
+          linkReissuable: false,
         },
       }),
     })
@@ -244,9 +250,7 @@ describe('InviteAcceptPage', () => {
   })
 
   it('peeks again when the retry button is pressed', async () => {
-    const peeked = vi.fn()
-      .mockReturnValueOnce({ offline: true })
-      .mockReturnValue({ data: PEEK_OK })
+    const peeked = vi.fn().mockReturnValueOnce({ offline: true }).mockReturnValue({ data: PEEK_OK })
     renderInvite({ 'invitation.peek': peeked })
     await waitFor(() => expect(screen.getByText(TRANSIENT_FAILURE_MESSAGE)).toBeDefined())
     await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
@@ -257,7 +261,8 @@ describe('InviteAcceptPage', () => {
   // 최악의 변형이 여기 있다 — accept가 서버에서 커밋된 뒤 응답만 유실되면 계정은 만들어졌는데
   // 화면은 "링크가 죽었다"고 말한다. 폼과 입력한 이름을 유지하고 다시 제출할 수 있어야 한다.
   it('keeps the form and the typed name when accept fails transiently', async () => {
-    const accepted = vi.fn()
+    const accepted = vi
+      .fn()
       .mockReturnValueOnce({ offline: true })
       .mockReturnValue({ data: { ok: true, email: 'new@test.dev' } })
     renderInvite({ 'invitation.peek': () => ({ data: PEEK_OK }), 'invitation.accept': accepted })
@@ -278,7 +283,9 @@ describe('InviteAcceptPage', () => {
   it('carries the invited email as a username field for password managers', async () => {
     const { container } = renderInvite({ 'invitation.peek': () => ({ data: PEEK_OK }) })
     await waitFor(() => expect(screen.getByText('new@test.dev')).toBeDefined())
-    const username = container.querySelector<HTMLInputElement>('form input[autocomplete="username"]')
+    const username = container.querySelector<HTMLInputElement>(
+      'form input[autocomplete="username"]',
+    )
     expect(username?.value).toBe('new@test.dev')
   })
 })

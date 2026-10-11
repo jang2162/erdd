@@ -88,7 +88,8 @@ export class LinkDeadError extends TRPCError {
 export function assertLive(row: { expiresAt: Date; usedAt: Date | null }, kind: TokenKind): void {
   if (row.usedAt !== null) {
     throw new LinkDeadError({
-      code: 'BAD_REQUEST', message: '이미 사용된 링크입니다',
+      code: 'BAD_REQUEST',
+      message: '이미 사용된 링크입니다',
       reissuable: kind !== 'invitation',
     })
   }

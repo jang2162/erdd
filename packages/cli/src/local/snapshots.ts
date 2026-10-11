@@ -51,7 +51,7 @@ const FILE_RE = /^([0-9a-fA-F-]{36})\.json\.gz$/
  * 손상(throw)」으로 갈려 임의 경로의 **존재 여부 오라클**이 된다.
  */
 const fileOf = (id: string): string | null =>
-  (ID_RE.test(id) ? join(SNAPSHOTS_DIR, `${id}.json.gz`) : null)
+  ID_RE.test(id) ? join(SNAPSHOTS_DIR, `${id}.json.gz`) : null
 
 /** 디렉터리에 실제로 있는 스냅샷 id. **이것이 진실이다.** */
 async function idsOnDisk(cwd: string): Promise<string[]> {
@@ -89,7 +89,11 @@ async function readIndex(cwd: string): Promise<IndexRead> {
     throw err
   }
   let parsed: unknown
-  try { parsed = parseYaml(raw) } catch { return { ok: false, labels: out } }
+  try {
+    parsed = parseYaml(raw)
+  } catch {
+    return { ok: false, labels: out }
+  }
   if (!isRecord(parsed)) return { ok: false, labels: out }
   const items = parsed['snapshots']
   if (!Array.isArray(items)) return { ok: false, labels: out }
@@ -100,8 +104,12 @@ async function readIndex(cwd: string): Promise<IndexRead> {
       name: typeof item['name'] === 'string' ? item['name'] : '',
       description: typeof item['description'] === 'string' ? item['description'] : '',
       revisionSeq: typeof item['revisionSeq'] === 'number' ? item['revisionSeq'] : 0,
-      createdAt: typeof item['createdAt'] === 'string' ? item['createdAt']
-        : item['createdAt'] instanceof Date ? item['createdAt'].toISOString() : '',
+      createdAt:
+        typeof item['createdAt'] === 'string'
+          ? item['createdAt']
+          : item['createdAt'] instanceof Date
+            ? item['createdAt'].toISOString()
+            : '',
     })
   }
   return { ok: true, labels: out }
@@ -118,7 +126,8 @@ async function readIndex(cwd: string): Promise<IndexRead> {
  * 인덱스를 읽지 못했으면 **덮어쓰지 않고 옮겨 둔다** — 사용자가 쓴 이름이 든 유일한 사본이다.
  */
 async function updateIndex(
-  cwd: string, mutate: (labels: Map<string, SnapshotMeta>) => void,
+  cwd: string,
+  mutate: (labels: Map<string, SnapshotMeta>) => void,
 ): Promise<void> {
   const read = await readIndex(cwd)
   if (!read.ok) {
@@ -147,9 +156,16 @@ export async function listSnapshots(cwd: string): Promise<SnapshotMeta[]> {
   const ids = await idsOnDisk(cwd)
   const { labels } = await readIndex(cwd)
   // ⚠️ 여기서 만드는 `(이름 없음)` 은 **표시용 대체값이다.** 파일에 쓰지 마라(`updateIndex` 주석).
-  const metas = ids.map((id) => labels.get(id) ?? {
-    id, name: `(이름 없음) ${id.slice(0, 8)}`, description: '', revisionSeq: 0, createdAt: '',
-  })
+  const metas = ids.map(
+    (id) =>
+      labels.get(id) ?? {
+        id,
+        name: `(이름 없음) ${id.slice(0, 8)}`,
+        description: '',
+        revisionSeq: 0,
+        createdAt: '',
+      },
+  )
   // **최신이 위다** — 서버 모드의 `snapshot.list`(`orderBy(desc(createdAt))`)와 같은 순서여야
   // 같은 화면이 모드에 따라 뒤집히지 않는다. uuidv7 은 사전순이 곧 시간순이라 뒤집기만 하면 된다.
   return metas.reverse()
@@ -211,7 +227,9 @@ export async function writeSnapshot(cwd: string, rec: SnapshotRecord): Promise<v
     await mkdir(join(cwd, SNAPSHOTS_DIR), { recursive: true })
     await writeFile(join(cwd, rel), gzipSync(Buffer.from(JSON.stringify(rec), 'utf8')))
     const { model: _model, ...meta } = rec
-    await updateIndex(cwd, (labels) => { labels.set(meta.id, meta) })
+    await updateIndex(cwd, (labels) => {
+      labels.set(meta.id, meta)
+    })
   })
 }
 
@@ -228,7 +246,9 @@ export async function deleteSnapshot(cwd: string, id: string): Promise<boolean> 
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
       return
     }
-    await updateIndex(cwd, (labels) => { labels.delete(id) })
+    await updateIndex(cwd, (labels) => {
+      labels.delete(id)
+    })
   })
   return removed
 }
@@ -247,6 +267,9 @@ let chain: Promise<unknown> = Promise.resolve()
  */
 function updateSnapshots(_cwd: string, update: () => Promise<void>): Promise<void> {
   const next = chain.then(update, update)
-  chain = next.then(() => undefined, () => undefined)
+  chain = next.then(
+    () => undefined,
+    () => undefined,
+  )
   return next
 }

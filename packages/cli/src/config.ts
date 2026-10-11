@@ -2,8 +2,12 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import {
-  DIALECTS, TableOptionsSchema,
-  type Dialect, type FileTree, type NamingRules, type TableOptions,
+  DIALECTS,
+  TableOptionsSchema,
+  type Dialect,
+  type FileTree,
+  type NamingRules,
+  type TableOptions,
 } from '@erdd/core'
 import { subscriptionPath } from './commands/dict-file.js'
 import { CliError } from './output.js'
@@ -63,7 +67,14 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   }
   const parsed: unknown = parseYaml(raw)
   if (!isRec(parsed)) throw new CliError('VALIDATION', `${CONFIG_FILE}의 최상위가 객체가 아닙니다`)
-  const { serverUrl, projectId, dialects, namingRules, tableOptions, dictionaries: rawDicts } = parsed
+  const {
+    serverUrl,
+    projectId,
+    dialects,
+    namingRules,
+    tableOptions,
+    dictionaries: rawDicts,
+  } = parsed
   const hasServer = typeof serverUrl === 'string'
   const hasProject = typeof projectId === 'string'
   // 둘 다 없으면 로컬 전용이다. **하나만 있는 것은 오타로 본다** — 삼키면 사용자는 서버에 붙은
@@ -74,13 +85,19 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
       `${CONFIG_FILE}에 serverUrl과 projectId는 함께 있어야 합니다(둘 다 없으면 로컬 전용입니다)`,
     )
   }
-  if (!Array.isArray(dialects) || dialects.length === 0
-      || !dialects.every((d): d is Dialect => (DIALECTS as readonly string[]).includes(d as string))) {
+  if (
+    !Array.isArray(dialects) ||
+    dialects.length === 0 ||
+    !dialects.every((d): d is Dialect => (DIALECTS as readonly string[]).includes(d as string))
+  ) {
     throw new CliError('VALIDATION', `${CONFIG_FILE}의 dialects가 올바르지 않습니다`)
   }
-  if (!isRec(namingRules) || typeof namingRules['case'] !== 'string'
-      || typeof namingRules['separator'] !== 'string'
-      || typeof namingRules['maxLengthBytes'] !== 'number') {
+  if (
+    !isRec(namingRules) ||
+    typeof namingRules['case'] !== 'string' ||
+    typeof namingRules['separator'] !== 'string' ||
+    typeof namingRules['maxLengthBytes'] !== 'number'
+  ) {
     throw new CliError('VALIDATION', `${CONFIG_FILE}의 namingRules가 올바르지 않습니다`)
   }
   // 옛 config 에는 이 키가 없다. 필수로 요구하면 기존 사용자의 pull 이 깨지므로 **누락만**
@@ -93,7 +110,7 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
       `${CONFIG_FILE}의 namingRules.logicalSeparator 는 "_" 또는 "" 여야 합니다`,
     )
   }
-  const logicalSeparator = ls === '' ? '' as const : '_' as const
+  const logicalSeparator = ls === '' ? ('' as const) : ('_' as const)
   // 템플릿은 임의 문자열이라 「잘못 적은 값」이 없다 — logicalSeparator 와 달리 검증하지 않고
   // 누락만 빈 문자열로 채운다(빈 문자열 = 템플릿을 쓰지 않음).
   const tpl = namingRules['tablePhysicalTemplate']
@@ -109,13 +126,25 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
   // 옛 config 에는 없다 — 누락만 빈 목록으로 읽는다. 값 없는 키(`dictionaries:` = null)도 빈 목록이다
   // — 구독을 다 지우며 키만 남긴 것이라 모호함이 없다. 잘못 적은 값은 삼키지 않는다 — 조용히 빈
   // 구독으로 돌면 사용자는 인자 없는 dict pull 이 왜 아무것도 받지 않는지 모른다.
-  if (rawDicts != null && (!Array.isArray(rawDicts) || !rawDicts.every(
-    (d) => isRec(d) && typeof d['id'] === 'string' && typeof d['name'] === 'string'
-      && (d['file'] === undefined || typeof d['file'] === 'string')))) {
-    throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries는 {id, name, file?} 목록이어야 합니다`)
+  if (
+    rawDicts != null &&
+    (!Array.isArray(rawDicts) ||
+      !rawDicts.every(
+        (d) =>
+          isRec(d) &&
+          typeof d['id'] === 'string' &&
+          typeof d['name'] === 'string' &&
+          (d['file'] === undefined || typeof d['file'] === 'string'),
+      ))
+  ) {
+    throw new CliError(
+      'VALIDATION',
+      `${CONFIG_FILE}의 dictionaries는 {id, name, file?} 목록이어야 합니다`,
+    )
   }
   const dictionaries = ((rawDicts ?? []) as DictionaryRef[]).map((d) =>
-    (d.file === undefined ? { id: d.id, name: d.name } : { id: d.id, name: d.name, file: d.file }))
+    d.file === undefined ? { id: d.id, name: d.name } : { id: d.id, name: d.name, file: d.file },
+  )
   // dict pull --file 입구(subscriptionPath)의 규칙은 그 입구를 거칠 때만 적용된다 — 손으로 고친
   // dictionaries[].file 은 인자 없는 dict pull·dict list 가 검사 없이 그대로 읽는다. 여기서
   // 다시 검증해 erdd/ 안·프로젝트 밖 경로를 파일을 읽기 전에 막는다.
@@ -125,13 +154,19 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
       subscriptionPath(cwd, d.file)
     } catch (err) {
       const reason = err instanceof CliError ? err.message : String(err)
-      throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries(${d.id}).file 이 규칙을 어깁니다 — ${reason}`)
+      throw new CliError(
+        'VALIDATION',
+        `${CONFIG_FILE}의 dictionaries(${d.id}).file 이 규칙을 어깁니다 — ${reason}`,
+      )
     }
   }
   // 같은 사전을 두 번 적으면 dict pull 이 그 사전을 두 번 처리한다 — 어느 줄이 맞는지 고를 수 없다.
   const dup = dictionaries.find((d, i) => dictionaries.findIndex((e) => e.id === d.id) !== i)
   if (dup !== undefined) {
-    throw new CliError('VALIDATION', `${CONFIG_FILE}의 dictionaries에 같은 사전(${dup.id})이 두 번 있습니다`)
+    throw new CliError(
+      'VALIDATION',
+      `${CONFIG_FILE}의 dictionaries에 같은 사전(${dup.id})이 두 번 있습니다`,
+    )
   }
   return {
     serverUrl: hasServer ? serverUrl : null,
@@ -139,7 +174,9 @@ export async function readConfig(cwd: string): Promise<ErddConfig> {
     dialects,
     namingRules: {
       ...(namingRules as unknown as NamingRules),
-      logicalSeparator, tablePhysicalTemplate, tableLogicalTemplate,
+      logicalSeparator,
+      tablePhysicalTemplate,
+      tableLogicalTemplate,
     },
     tableOptions: parsedOptions.data,
     dictionaries,
@@ -184,7 +221,10 @@ export async function resolveToken(cwd: string): Promise<string | null> {
 export async function writeToken(cwd: string, token: string): Promise<void> {
   await mkdir(join(cwd, STATE_DIR), { recursive: true })
   const path = join(cwd, STATE_DIR, 'credentials.json')
-  await writeFile(path, `${JSON.stringify({ token }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+  await writeFile(path, `${JSON.stringify({ token }, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
   // writeFile의 mode는 파일 생성 시에만 적용된다 — 이미 있는 파일의 권한이 넓어져 있으면
   // 그대로 남아 평문 토큰이 노출된다. 매번 명시적으로 좁힌다.
   await chmod(path, 0o600)

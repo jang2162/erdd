@@ -26,7 +26,9 @@ const [TABLE_A, TABLE_B, TABLE_C] = [
 
 function noteOp(id: string, content: string): Op {
   return {
-    action: 'create', entity: 'note', entityId: id,
+    action: 'create',
+    entity: 'note',
+    entityId: id,
     data: { id, content, position: { x: 0, y: 0 }, color: '#fff' },
   }
 }
@@ -39,13 +41,25 @@ class FakeSocket {
   onmessage: ((ev: { data: string }) => void) | null = null
   onopen: (() => void) | null = null
   onclose: ((ev: { code: number }) => void) | null = null
-  constructor(public url: string) { FakeSocket.instances.push(this) }
-  send(text: string) { this.sent.push(text) }
-  close() { this.readyState = 3; this.onclose?.({ code: 1000 }) }
+  constructor(public url: string) {
+    FakeSocket.instances.push(this)
+  }
+  send(text: string) {
+    this.sent.push(text)
+  }
+  close() {
+    this.readyState = 3
+    this.onclose?.({ code: 1000 })
+  }
   /** 서버가 프레임을 보낸 것처럼 만든다. */
-  emit(msg: ServerMessage) { this.onmessage?.({ data: JSON.stringify(msg) }) }
+  emit(msg: ServerMessage) {
+    this.onmessage?.({ data: JSON.stringify(msg) })
+  }
   /** 서버가 소켓을 특정 코드로 닫은 것처럼 만든다. */
-  closeWith(code: number) { this.readyState = 3; this.onclose?.({ code }) }
+  closeWith(code: number) {
+    this.readyState = 3
+    this.onclose?.({ code })
+  }
 }
 
 function Probe({ projectId }: { projectId: string }) {
@@ -58,7 +72,9 @@ function renderHook(projectId = PROJECT_ID) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   return render(<Probe projectId={projectId} />, { wrapper: w })
@@ -81,14 +97,25 @@ const tablesModel = (...ids: string[]): ProjectModel => {
   const m = createEmptyModel()
   ids.forEach((id, i) => {
     m.tables[id] = {
-      id, logicalName: id, physicalName: id.toUpperCase(), comment: null,
-      groupId: null, position: { x: i * 300, y: 0 }, groupPosition: null, custom: {},
+      id,
+      logicalName: id,
+      physicalName: id.toUpperCase(),
+      comment: null,
+      groupId: null,
+      position: { x: i * 300, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
   })
   return m
 }
 
-const deleteTableOp = (id: string): Op => ({ action: 'delete', entity: 'table', entityId: id, before: null })
+const deleteTableOp = (id: string): Op => ({
+  action: 'delete',
+  entity: 'table',
+  entityId: id,
+  before: null,
+})
 
 beforeEach(() => {
   FakeSocket.instances = []
@@ -105,7 +132,9 @@ afterEach(() => {
 describe('wsUrl', () => {
   it('http는 ws로, https는 wss로 바꾸고 projectId를 붙인다', () => {
     expect(wsUrl('p1', 'http://localhost:5173/p/p1')).toBe('ws://localhost:5173/ws?projectId=p1')
-    expect(wsUrl('p1', 'https://erdd.example.com/p/p1')).toBe('wss://erdd.example.com/ws?projectId=p1')
+    expect(wsUrl('p1', 'https://erdd.example.com/p/p1')).toBe(
+      'wss://erdd.example.com/ws?projectId=p1',
+    )
   })
 })
 
@@ -118,12 +147,22 @@ describe('selectionImpact', () => {
   })
 
   it('선택 대상이 수정되면 changed', () => {
-    const op: Op = { action: 'update', entity: 'note', entityId: NOTE_A, changes: { content: { from: 'a', to: 'b' } } }
+    const op: Op = {
+      action: 'update',
+      entity: 'note',
+      entityId: NOTE_A,
+      changes: { content: { from: 'a', to: 'b' } },
+    }
     expect(selectionImpact(model, [op], { ...none, noteId: NOTE_A })).toBe('changed')
   })
 
   it('선택 대상이 삭제되면 deleted가 changed를 이긴다', () => {
-    const update: Op = { action: 'update', entity: 'note', entityId: NOTE_A, changes: { content: { from: 'a', to: 'b' } } }
+    const update: Op = {
+      action: 'update',
+      entity: 'note',
+      entityId: NOTE_A,
+      changes: { content: { from: 'a', to: 'b' } },
+    }
     const del: Op = { action: 'delete', entity: 'note', entityId: NOTE_A, before: null }
     expect(selectionImpact(model, [update, del], { ...none, noteId: NOTE_A })).toBe('deleted')
   })
@@ -131,16 +170,34 @@ describe('selectionImpact', () => {
   it('선택한 테이블의 컬럼이 바뀌어도 changed', () => {
     const m = createEmptyModel()
     m.tables[NOTE_A] = {
-      id: NOTE_A, logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: NOTE_A,
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     m.columns[NOTE_B] = {
-      id: NOTE_B, tableId: NOTE_A, logicalName: '이름', physicalName: 'NM',
-      type: 'VARCHAR(10)', isPk: false, autoIncrement: false, nullable: true,
-      defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+      id: NOTE_B,
+      tableId: NOTE_A,
+      logicalName: '이름',
+      physicalName: 'NM',
+      type: 'VARCHAR(10)',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     const op: Op = {
-      action: 'update', entity: 'column', entityId: NOTE_B,
+      action: 'update',
+      entity: 'column',
+      entityId: NOTE_B,
       changes: { logicalName: { from: '이름', to: '성명' } },
     }
     expect(selectionImpact(m, [op], { ...none, tableIds: [NOTE_A] })).toBe('changed')
@@ -149,13 +206,24 @@ describe('selectionImpact', () => {
   it('다른 테이블의 컬럼이 바뀌면 null(오탐 방지)', () => {
     const m = createEmptyModel()
     m.columns[NOTE_B] = {
-      id: NOTE_B, tableId: '018f6b0e-0000-7000-8000-0000000000ff',
-      logicalName: '이름', physicalName: 'NM',
-      type: 'VARCHAR(10)', isPk: false, autoIncrement: false, nullable: true,
-      defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+      id: NOTE_B,
+      tableId: '018f6b0e-0000-7000-8000-0000000000ff',
+      logicalName: '이름',
+      physicalName: 'NM',
+      type: 'VARCHAR(10)',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     const op: Op = {
-      action: 'update', entity: 'column', entityId: NOTE_B,
+      action: 'update',
+      entity: 'column',
+      entityId: NOTE_B,
       changes: { logicalName: { from: '이름', to: '성명' } },
     }
     expect(selectionImpact(m, [op], { ...none, tableIds: [NOTE_A] })).toBeNull()
@@ -164,7 +232,9 @@ describe('selectionImpact', () => {
   it('선택이 여러 건이면 그중 하나만 걸려도 changed다', () => {
     const m = buildSampleModel()
     const op: Op = {
-      action: 'update', entity: 'table', entityId: 't2',
+      action: 'update',
+      entity: 'table',
+      entityId: 't2',
       changes: { logicalName: { from: '회원', to: 'X' } },
     }
     expect(selectionImpact(m, [op], { ...none, tableIds: ['t1', 't2'] })).toBe('changed')
@@ -173,7 +243,9 @@ describe('selectionImpact', () => {
   it('선택이 여러 건이어도 삭제가 수정을 이긴다', () => {
     const m = buildSampleModel()
     const upd: Op = {
-      action: 'update', entity: 'table', entityId: 't1',
+      action: 'update',
+      entity: 'table',
+      entityId: 't1',
       changes: { logicalName: { from: '회원등급', to: 'X' } },
     }
     const del: Op = { action: 'delete', entity: 'table', entityId: 't2', before: null }
@@ -190,8 +262,11 @@ describe('useRealtime 수신 적용', () => {
   it('seq가 연속이면 op를 로컬에 적용한다', async () => {
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6, ops: [noteOp(NOTE_B, '남의 메모')],
-      actorUserId: 'u2', actorName: '동료',
+      type: 'ops',
+      seq: 6,
+      ops: [noteOp(NOTE_B, '남의 메모')],
+      actorUserId: 'u2',
+      actorName: '동료',
     })
     await waitFor(() => {
       expect(useEditorStore.getState().seq).toBe(6)
@@ -202,7 +277,11 @@ describe('useRealtime 수신 적용', () => {
   it('과거 seq(내 변경의 에코)는 무시한다', async () => {
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 5, ops: [noteOp(NOTE_B, '에코')], actorUserId: 'u1', actorName: '나',
+      type: 'ops',
+      seq: 5,
+      ops: [noteOp(NOTE_B, '에코')],
+      actorUserId: 'u1',
+      actorName: '나',
     })
     await new Promise((r) => setTimeout(r, 20))
     expect(useEditorStore.getState().seq).toBe(5)
@@ -213,7 +292,11 @@ describe('useRealtime 수신 적용', () => {
     useEditorStore.getState().enterGroupView('g1')
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 9, ops: [noteOp(NOTE_B, '건너뜀')], actorUserId: 'u2', actorName: '동료',
+      type: 'ops',
+      seq: 9,
+      ops: [noteOp(NOTE_B, '건너뜀')],
+      actorUserId: 'u2',
+      actorName: '동료',
     })
     await waitFor(() => expect(useEditorStore.getState().seq).toBe(42))
     expect(useEditorStore.getState().model.notes[NOTE_B]).toBeDefined()
@@ -230,7 +313,8 @@ describe('useRealtime 수신 적용', () => {
   it('ready의 seq가 같으면 리로드하지 않고 peers만 반영한다', async () => {
     renderHook()
     ;(await socket()).emit({
-      type: 'ready', seq: 5,
+      type: 'ready',
+      seq: 5,
       peers: [{ userId: 'u2', name: '동료', selections: [] }],
     })
     await waitFor(() => expect(useEditorStore.getState().peers).toHaveLength(1))
@@ -268,8 +352,11 @@ describe('useRealtime 권한 무관 수신', () => {
     s.onopen?.()
     s.emit({ type: 'ready', seq: 1, peers: [] })
     s.emit({
-      type: 'ops', seq: 2, ops: [noteOp(NOTE_A, '남의 메모')],
-      actorUserId: 'u-other', actorName: '남',
+      type: 'ops',
+      seq: 2,
+      ops: [noteOp(NOTE_A, '남의 메모')],
+      actorUserId: 'u-other',
+      actorName: '남',
     })
     await waitFor(() => {
       expect(useEditorStore.getState().model.notes[NOTE_A]?.content).toBe('남의 메모')
@@ -308,7 +395,11 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectTables(THREE)
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
+      type: 'ops',
+      seq: 6,
+      ops: DELETE_BATCH,
+      actorUserId: 'u2',
+      actorName: '동료',
     })
     await waitFor(() => expect(useEditorStore.getState().seq).toBe(6))
     expect(useEditorStore.getState().selectedTableIds).toEqual([TA, TC])
@@ -320,7 +411,11 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectTables(THREE)
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 9, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
+      type: 'ops',
+      seq: 9,
+      ops: DELETE_BATCH,
+      actorUserId: 'u2',
+      actorName: '동료',
     })
     await waitFor(() => expect(useEditorStore.getState().seq).toBe(42))
     expect(useEditorStore.getState().selectedTableIds).toEqual([TA, TC])
@@ -330,7 +425,11 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectTables([TB])
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
+      type: 'ops',
+      seq: 6,
+      ops: DELETE_BATCH,
+      actorUserId: 'u2',
+      actorName: '동료',
     })
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
     expect(useEditorStore.getState().selectedTableIds).toEqual([])
@@ -343,7 +442,11 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectTables(THREE)
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6, ops: DELETE_BATCH, actorUserId: 'u2', actorName: '동료',
+      type: 'ops',
+      seq: 6,
+      ops: DELETE_BATCH,
+      actorUserId: 'u2',
+      actorName: '동료',
     })
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
     expect(toastInfo).toHaveBeenCalledWith('다른 사용자가 선택 항목 중 일부를 삭제했습니다')
@@ -355,9 +458,11 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectTables(THREE)
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6,
+      type: 'ops',
+      seq: 6,
       ops: THREE.map(deleteTableOp),
-      actorUserId: 'u2', actorName: '동료',
+      actorUserId: 'u2',
+      actorName: '동료',
     })
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1))
     expect(useEditorStore.getState().selectedTableIds).toEqual([])
@@ -369,9 +474,11 @@ describe('useRealtime 삭제 수신과 선택 정리', () => {
     useEditorStore.getState().selectNote(NOTE_A)
     renderHook()
     ;(await socket()).emit({
-      type: 'ops', seq: 6,
+      type: 'ops',
+      seq: 6,
       ops: [{ action: 'delete', entity: 'note', entityId: NOTE_A, before: null }],
-      actorUserId: 'u2', actorName: '동료',
+      actorUserId: 'u2',
+      actorName: '동료',
     })
     await waitFor(() => expect(useEditorStore.getState().seq).toBe(6))
     expect(useEditorStore.getState().selectedNoteId).toBeNull()
@@ -391,7 +498,8 @@ describe('useRealtime selection 발신', () => {
     useEditorStore.getState().selectNote(NOTE_A)
     await waitFor(() => expect(s.sent).toHaveLength(1))
     expect(JSON.parse(s.sent[0]!)).toEqual({
-      type: 'selection', selections: [{ kind: 'note', id: NOTE_A }],
+      type: 'selection',
+      selections: [{ kind: 'note', id: NOTE_A }],
     })
   })
 
@@ -468,7 +576,8 @@ describe('useRealtime selection 발신', () => {
     second.onopen?.()
     await waitFor(() => expect(second.sent.length).toBeGreaterThan(0))
     expect(JSON.parse(second.sent[0]!)).toEqual({
-      type: 'selection', selections: [{ kind: 'note', id: NOTE_A }],
+      type: 'selection',
+      selections: [{ kind: 'note', id: NOTE_A }],
     })
   })
 })

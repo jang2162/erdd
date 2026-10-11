@@ -14,7 +14,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 let dir: string
-beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'erdd-tree-')) })
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), 'erdd-tree-'))
+})
 
 const TREE = {
   'erdd/tables/MBR.yaml': { id: 'tb1', name: 'MBR', columns: [] },
@@ -74,8 +76,9 @@ describe('tree', () => {
     // RangeError가 나고, 그것이 명령의 catch-all에 걸려 엉뚱한 코드로 보고된다.
     const cyclic: Record<string, unknown> = { name: 'CYC' }
     cyclic['self'] = cyclic
-    expect(() => diffTrees({ 'erdd/tables/CYC.yaml': { name: 'CYC' } }, { 'erdd/tables/CYC.yaml': cyclic }))
-      .toThrow(CliError)
+    expect(() =>
+      diffTrees({ 'erdd/tables/CYC.yaml': { name: 'CYC' } }, { 'erdd/tables/CYC.yaml': cyclic }),
+    ).toThrow(CliError)
     try {
       canonical(cyclic, 'erdd/tables/CYC.yaml')
       expect.unreachable('순환 참조인데 던지지 않았다')
@@ -90,12 +93,16 @@ describe('tree', () => {
     // alias가 늘 순환인 것은 아니다 — 두 자리가 같은 값을 나눠 쓰기만 하는 파일은 walk가
     // 정상 종료한다. "이미 본 것 전부"를 순환으로 세면 지금 도는 파일이 막힌다.
     const shared = { postgresql: 'BIGINT' }
-    expect(canonical({ a: shared, b: shared }, 'erdd/domains.yaml'))
-      .toBe(canonical({ a: { postgresql: 'BIGINT' }, b: { postgresql: 'BIGINT' } }, 'erdd/domains.yaml'))
+    expect(canonical({ a: shared, b: shared }, 'erdd/domains.yaml')).toBe(
+      canonical({ a: { postgresql: 'BIGINT' }, b: { postgresql: 'BIGINT' } }, 'erdd/domains.yaml'),
+    )
   })
 
   it('대소문자만 다른 이름으로 바뀌어도 새 파일이 남는다', async () => {
-    await writeTree(dir, { ...TREE, 'erdd/tables/MBR.yaml': { id: 'tb1', name: 'MBR', columns: [] } })
+    await writeTree(dir, {
+      ...TREE,
+      'erdd/tables/MBR.yaml': { id: 'tb1', name: 'MBR', columns: [] },
+    })
     // 서버에서 MBR → mbr로 개명된 상황.
     const renamed = { ...TREE }
     delete (renamed as Record<string, unknown>)['erdd/tables/MBR.yaml']
@@ -117,7 +124,7 @@ describe('tree', () => {
     delete (partial as Record<string, unknown>)['erdd/terms.yaml']
     const { deleted } = await writeTree(dir, partial)
     expect(deleted).toContain('erdd/tables/GONE.yaml')
-    expect(deleted).toContain('erdd/terms.yaml')   // EISDIR로 중단되면 여기까지 못 온다
+    expect(deleted).toContain('erdd/terms.yaml') // EISDIR로 중단되면 여기까지 못 온다
   })
 
   it('디스크를 거친 왕복이 모델을 보존한다', async () => {
@@ -134,7 +141,10 @@ describe('tree', () => {
     // 파일에 담지 않는 것만 깎고 비교한다.
     const expected: ProjectModel = JSON.parse(JSON.stringify(original))
     expected.notes = {}
-    for (const t of Object.values(expected.tables)) { t.position = { x: 0, y: 0 }; t.groupPosition = null }
+    for (const t of Object.values(expected.tables)) {
+      t.position = { x: 0, y: 0 }
+      t.groupPosition = null
+    }
     expect(result.model).toEqual(expected)
   })
 })
@@ -142,62 +152,153 @@ describe('tree', () => {
 /** 디스크를 거친 왕복이 실제로 전 경로를 지나가게 하는 모델. */
 function richModel(): ProjectModel {
   const m = createEmptyModel()
-  m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#eef', comment: '회원 도메인', alias: '' }
+  m.tableGroups['g1'] = {
+    id: 'g1',
+    name: '회원관리',
+    color: '#eef',
+    comment: '회원 도메인',
+    alias: '',
+  }
   m.domains['d1'] = {
-    id: 'd1', name: '명', category: '문자', logicalType: 'VARCHAR(100)',
+    id: 'd1',
+    name: '명',
+    category: '문자',
+    logicalType: 'VARCHAR(100)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: ['Y', 'N'], description: null, origin: null,
+    defaultValue: null,
+    allowedValues: ['Y', 'N'],
+    description: null,
+    origin: null,
   }
   // 출처는 origins.yaml 로 왕복한다 — base 의 null 이 YAML 을 거쳐도 null 로 남는지까지 지나간다.
   m.words['w1'] = {
-    id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', description: null,
+    id: 'w1',
+    logicalName: '회원',
+    abbreviation: 'MBR',
+    englishName: 'MEMBER',
+    description: null,
     origin: {
-      libraryId: 'L1', sourceId: 'S1', sourceVersion: 2,
+      libraryId: 'L1',
+      sourceId: 'S1',
+      sourceVersion: 2,
       base: { logicalName: '회원', abbreviation: 'MBR', englishName: 'MEMBER', description: null },
     },
   }
-  m.terms['t1'] = { id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: 'd1', description: null, origin: null }
+  m.terms['t1'] = {
+    id: 't1',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    domainId: 'd1',
+    description: null,
+    origin: null,
+  }
   m.customFields['cf1'] = {
-    id: 'cf1', name: '개인정보여부', target: 'column', type: 'select',
-    options: ['Y', 'N'], required: true, defaultValue: 'N', order: 0, origin: null,
+    id: 'cf1',
+    name: '개인정보여부',
+    target: 'column',
+    type: 'select',
+    options: ['Y', 'N'],
+    required: true,
+    defaultValue: 'N',
+    order: 0,
+    origin: null,
   }
   m.tables['tb1'] = {
-    id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: '가입 회원\n두 줄 코멘트',
-    groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 'tb1',
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: '가입 회원\n두 줄 코멘트',
+    groupId: 'g1',
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.tables['tb2'] = {
-    id: 'tb2', logicalName: '주문', physicalName: 'ORD', comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 'tb2',
+    logicalName: '주문',
+    physicalName: 'ORD',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['c1'] = {
-    id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-    isPk: true, autoIncrement: true, nullable: false, defaultValue: null, order: 0,
-    comment: null, domainId: null, custom: {},
+    id: 'c1',
+    tableId: 'tb1',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: true,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c2'] = {
-    id: 'c2', tableId: 'tb1', logicalName: '회원명', physicalName: 'MBR_NM', type: 'VARCHAR(100)',
+    id: 'c2',
+    tableId: 'tb1',
+    logicalName: '회원명',
+    physicalName: 'MBR_NM',
+    type: 'VARCHAR(100)',
     // YAML이 불리언·숫자로 강제할 수 있는 값들을 일부러 넣는다.
-    isPk: false, autoIncrement: false, nullable: true, defaultValue: "'0123'", order: 1,
-    comment: null, domainId: 'd1', custom: { '개인정보여부': 'Y' },
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: "'0123'",
+    order: 1,
+    comment: null,
+    domainId: 'd1',
+    custom: { 개인정보여부: 'Y' },
   }
   m.columns['c3'] = {
-    id: 'c3', tableId: 'tb2', logicalName: '주문번호', physicalName: 'ORD_NO', type: 'BIGINT',
-    isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-    comment: null, domainId: null, custom: {},
+    id: 'c3',
+    tableId: 'tb2',
+    logicalName: '주문번호',
+    physicalName: 'ORD_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c4'] = {
-    id: 'c4', tableId: 'tb2', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-    isPk: false, autoIncrement: false, nullable: false, defaultValue: null, order: 1,
-    comment: null, domainId: null, custom: {},
+    id: 'c4',
+    tableId: 'tb2',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: false,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 1,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.indexes['ix1'] = {
-    id: 'ix1', tableId: 'tb2', name: 'IX_ORD_01',
-    columns: [{ columnId: 'c4', direction: 'desc' }], unique: false,
+    id: 'ix1',
+    tableId: 'tb2',
+    name: 'IX_ORD_01',
+    columns: [{ columnId: 'c4', direction: 'desc' }],
+    unique: false,
   }
   m.relationships['r1'] = {
-    id: 'r1', parentTableId: 'tb1', childTableId: 'tb2',
+    id: 'r1',
+    parentTableId: 'tb1',
+    childTableId: 'tb2',
     columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
-    cardinality: '1:1', identifying: false, name: null,
+    cardinality: '1:1',
+    identifying: false,
+    name: null,
   }
   return m
 }
@@ -206,30 +307,53 @@ describe('writeTreeChanges', () => {
   /** 이 디렉터리 안에서 일어난 쓰기·삭제를 호출 순서대로. */
   function ops(): string[] {
     const calls = [
-      ...vi.mocked(fsp.writeFile).mock.calls.map(([p], i) =>
-        [vi.mocked(fsp.writeFile).mock.invocationCallOrder[i]!, `write ${String(p)}`] as const),
-      ...vi.mocked(fsp.rm).mock.calls.map(([p], i) =>
-        [vi.mocked(fsp.rm).mock.invocationCallOrder[i]!, `rm ${String(p)}`] as const),
+      ...vi
+        .mocked(fsp.writeFile)
+        .mock.calls.map(
+          ([p], i) =>
+            [vi.mocked(fsp.writeFile).mock.invocationCallOrder[i]!, `write ${String(p)}`] as const,
+        ),
+      ...vi
+        .mocked(fsp.rm)
+        .mock.calls.map(
+          ([p], i) => [vi.mocked(fsp.rm).mock.invocationCallOrder[i]!, `rm ${String(p)}`] as const,
+        ),
     ]
-    return calls.sort((a, b) => a[0] - b[0]).map(([, op]) => op.replace(`${dir}/`, ''))
+    return calls
+      .sort((a, b) => a[0] - b[0])
+      .map(([, op]) => op.replace(`${dir}/`, ''))
       .filter((op) => op.includes('erdd/'))
   }
 
   it('origins.yaml 은 쓰기든 삭제든 사전 내용 파일 뒤에 한다', async () => {
-    const origins = { origins: [{ id: 'w1', kind: 'word', library: 'L1', item: 'S1', version: 1, base: {} }] }
-    const base = { 'erdd/words.yaml': { words: [{ id: 'w1', logicalName: '고객' }] }, 'erdd/origins.yaml': origins }
+    const origins = {
+      origins: [{ id: 'w1', kind: 'word', library: 'L1', item: 'S1', version: 1, base: {} }],
+    }
+    const base = {
+      'erdd/words.yaml': { words: [{ id: 'w1', logicalName: '고객' }] },
+      'erdd/origins.yaml': origins,
+    }
     await writeTree(dir, base)
 
-    vi.mocked(fsp.writeFile).mockClear(); vi.mocked(fsp.rm).mockClear()
-    const next = { 'erdd/words.yaml': { words: [{ id: 'w1', logicalName: '고객명' }] }, 'erdd/origins.yaml': { origins: [{ ...origins.origins[0]!, version: 2 }] } }
-    expect(await writeTreeChanges(dir, base, next))
-      .toEqual({ written: ['erdd/origins.yaml', 'erdd/words.yaml'], deleted: [] })
+    vi.mocked(fsp.writeFile).mockClear()
+    vi.mocked(fsp.rm).mockClear()
+    const next = {
+      'erdd/words.yaml': { words: [{ id: 'w1', logicalName: '고객명' }] },
+      'erdd/origins.yaml': { origins: [{ ...origins.origins[0]!, version: 2 }] },
+    }
+    expect(await writeTreeChanges(dir, base, next)).toEqual({
+      written: ['erdd/origins.yaml', 'erdd/words.yaml'],
+      deleted: [],
+    })
     expect(ops()).toEqual(['write erdd/words.yaml', 'write erdd/origins.yaml'])
 
-    vi.mocked(fsp.writeFile).mockClear(); vi.mocked(fsp.rm).mockClear()
+    vi.mocked(fsp.writeFile).mockClear()
+    vi.mocked(fsp.rm).mockClear()
     const unlinked = { 'erdd/words.yaml': { words: [{ id: 'w1', logicalName: '고객' }] } }
-    expect(await writeTreeChanges(dir, next, unlinked))
-      .toEqual({ written: ['erdd/words.yaml'], deleted: ['erdd/origins.yaml'] })
+    expect(await writeTreeChanges(dir, next, unlinked)).toEqual({
+      written: ['erdd/words.yaml'],
+      deleted: ['erdd/origins.yaml'],
+    })
     expect(ops()).toEqual(['write erdd/words.yaml', 'rm erdd/origins.yaml'])
     expect(await readTree(dir)).toEqual(unlinked)
   })

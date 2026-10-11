@@ -6,7 +6,11 @@ import { toast } from 'sonner'
 import { DIALECTS, type Dialect } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { DIALECT_LABEL } from '@/lib/labels'
-import { INVITATION_STATUS_LABEL, canRevokeInvitation, invitationStatus } from '@/lib/invitation-status'
+import {
+  INVITATION_STATUS_LABEL,
+  canRevokeInvitation,
+  invitationStatus,
+} from '@/lib/invitation-status'
 import { OneTimeLink } from '@/components/one-time-link'
 import { PromotionRequestsSection } from '@/components/promotion-requests-section'
 import { ResourceLibraryManager } from '@/components/resource-library-manager'
@@ -14,15 +18,29 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select'
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui/table'
 
 function CreateProjectDialog({ orgId }: { orgId: string }) {
@@ -38,7 +56,9 @@ function CreateProjectDialog({ orgId }: { orgId: string }) {
         toast.success('프로젝트를 만들었습니다')
         await queryClient.invalidateQueries({ queryKey: trpc.project.list.queryKey({ orgId }) })
         setOpen(false)
-        setName(''); setDescription(''); setDialects(['postgresql'])
+        setName('')
+        setDescription('')
+        setDialects(['postgresql'])
       },
       onError: (err) => toast.error(err.message),
     }),
@@ -49,15 +69,22 @@ function CreateProjectDialog({ orgId }: { orgId: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button><Plus /> 프로젝트 만들기</Button>
+        <Button>
+          <Plus /> 프로젝트 만들기
+        </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>프로젝트 만들기</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>프로젝트 만들기</DialogTitle>
+        </DialogHeader>
         <form
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault()
-            if (dialects.length === 0) { toast.error('대상 DB를 하나 이상 선택하세요'); return }
+            if (dialects.length === 0) {
+              toast.error('대상 DB를 하나 이상 선택하세요')
+              return
+            }
             create.mutate({ orgId, name, description, dialects })
           }}
         >
@@ -67,14 +94,20 @@ function CreateProjectDialog({ orgId }: { orgId: string }) {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="prj-desc">설명 (선택)</Label>
-            <Input id="prj-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Input
+              id="prj-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
           <div className="grid gap-2">
             <Label>대상 DB 방언</Label>
             <div className="flex flex-wrap gap-2">
               {DIALECTS.map((d) => (
                 <Button
-                  key={d} type="button" size="sm"
+                  key={d}
+                  type="button"
+                  size="sm"
                   variant={dialects.includes(d) ? 'default' : 'outline'}
                   onClick={() => toggleDialect(d)}
                 >
@@ -83,7 +116,11 @@ function CreateProjectDialog({ orgId }: { orgId: string }) {
               ))}
             </div>
           </div>
-          <DialogFooter><Button type="submit" disabled={create.isPending}>만들기</Button></DialogFooter>
+          <DialogFooter>
+            <Button type="submit" disabled={create.isPending}>
+              만들기
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
@@ -101,18 +138,24 @@ function MembersSection({ orgId, myRole }: { orgId: string; myRole: string }) {
     queryClient.invalidateQueries({ queryKey: trpc.org.members.list.queryKey({ orgId }) })
   const add = useMutation(
     trpc.org.members.add.mutationOptions({
-      onSuccess: async () => { toast.success('멤버를 추가했습니다'); setEmail(''); await invalidate() },
+      onSuccess: async () => {
+        toast.success('멤버를 추가했습니다')
+        setEmail('')
+        await invalidate()
+      },
       onError: (err) => toast.error(err.message),
     }),
   )
   const setMemberRole = useMutation(
     trpc.org.members.setRole.mutationOptions({
-      onSuccess: invalidate, onError: (err) => toast.error(err.message),
+      onSuccess: invalidate,
+      onError: (err) => toast.error(err.message),
     }),
   )
   const remove = useMutation(
     trpc.org.members.remove.mutationOptions({
-      onSuccess: invalidate, onError: (err) => toast.error(err.message),
+      onSuccess: invalidate,
+      onError: (err) => toast.error(err.message),
     }),
   )
 
@@ -122,21 +165,37 @@ function MembersSection({ orgId, myRole }: { orgId: string; myRole: string }) {
       {canManage && (
         <form
           className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => { e.preventDefault(); add.mutate({ orgId, email, role }) }}
+          onSubmit={(e) => {
+            e.preventDefault()
+            add.mutate({ orgId, email, role })
+          }}
         >
           <div className="grid gap-1">
-            <Label htmlFor="member-email" className="text-xs">이메일로 추가</Label>
-            <Input id="member-email" type="email" required placeholder="user@example.com"
-              className="w-64 font-mono" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Label htmlFor="member-email" className="text-xs">
+              이메일로 추가
+            </Label>
+            <Input
+              id="member-email"
+              type="email"
+              required
+              placeholder="user@example.com"
+              className="w-64 font-mono"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
           <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'member')}>
-            <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="member">Member</SelectItem>
               <SelectItem value="admin">Admin</SelectItem>
             </SelectContent>
           </Select>
-          <Button type="submit" disabled={add.isPending}>추가</Button>
+          <Button type="submit" disabled={add.isPending}>
+            추가
+          </Button>
         </form>
       )}
       <div className="rounded-lg border bg-card">
@@ -159,10 +218,16 @@ function MembersSection({ orgId, myRole }: { orgId: string; myRole: string }) {
                     <Select
                       value={m.role}
                       onValueChange={(v) =>
-                        setMemberRole.mutate({ orgId, memberId: m.id, role: v as 'owner' | 'admin' | 'member' })
+                        setMemberRole.mutate({
+                          orgId,
+                          memberId: m.id,
+                          role: v as 'owner' | 'admin' | 'member',
+                        })
                       }
                     >
-                      <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-28">
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="owner">Owner</SelectItem>
                         <SelectItem value="admin">Admin</SelectItem>
@@ -175,8 +240,12 @@ function MembersSection({ orgId, myRole }: { orgId: string; myRole: string }) {
                 </TableCell>
                 {canManage && (
                   <TableCell className="text-right">
-                    <Button variant="outline" size="sm" disabled={remove.isPending}
-                      onClick={() => remove.mutate({ orgId, memberId: m.id })}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={remove.isPending}
+                      onClick={() => remove.mutate({ orgId, memberId: m.id })}
+                    >
                       제거
                     </Button>
                   </TableCell>
@@ -206,9 +275,11 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
   // 지우면 다시 볼 방법이 없다(목록에도 없다). **수신자 이메일도 함께 들고 있는다** — 링크는
   // 그 이메일에 묶여 있고(수락하면 이 주소로 계정이 생긴다) 발급 성공 시 입력은 비워지므로,
   // 여기서 담지 않으면 화면에 "누구에게 줄 링크인지"가 남지 않는다.
-  const [issued, setIssued] = useState<
-    { token: string; email: string; expiresAt: Date | string } | null
-  >(null)
+  const [issued, setIssued] = useState<{
+    token: string
+    email: string
+    expiresAt: Date | string
+  } | null>(null)
   const listOptions = trpc.invitation.listForOrg.queryOptions({ orgId })
   const list = useQuery({ ...listOptions, enabled: canManage })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: listOptions.queryKey })
@@ -245,31 +316,53 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
       </p>
       <form
         className="flex flex-wrap items-end gap-2"
-        onSubmit={(e) => { e.preventDefault(); create.mutate({ orgId, email, orgRole }) }}
+        onSubmit={(e) => {
+          e.preventDefault()
+          create.mutate({ orgId, email, orgRole })
+        }}
       >
         <div className="grid gap-1">
-          <Label htmlFor="invite-email" className="text-xs">초대할 이메일</Label>
-          <Input id="invite-email" type="email" required placeholder="user@example.com"
-            className="w-64 font-mono" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Label htmlFor="invite-email" className="text-xs">
+            초대할 이메일
+          </Label>
+          <Input
+            id="invite-email"
+            type="email"
+            required
+            placeholder="user@example.com"
+            className="w-64 font-mono"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </div>
         <Select value={orgRole} onValueChange={(v) => setOrgRole(v as 'admin' | 'member')}>
-          <SelectTrigger className="w-28" aria-label="초대 역할"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-28" aria-label="초대 역할">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="member">Member</SelectItem>
             <SelectItem value="admin">Admin</SelectItem>
           </SelectContent>
         </Select>
-        <Button type="submit" disabled={create.isPending}>초대 링크 만들기</Button>
+        <Button type="submit" disabled={create.isPending}>
+          초대 링크 만들기
+        </Button>
       </form>
       {/* 관리자 화면과 달리 다이얼로그가 아니라 섹션 안이라 닫을 자리가 따로 없다 — 상자가 낸다. */}
       {issued !== null && (
         <OneTimeLink
-          kind="invite" token={issued.token} recipient={issued.email}
+          kind="invite"
+          token={issued.token}
+          recipient={issued.email}
           expiresAt={issued.expiresAt}
           onDismiss={() => setIssued(null)}
         />
       )}
-      {list.isError && <p role="alert" className="text-destructive">{list.error.message}</p>}
+      {list.isError && (
+        <p role="alert" className="text-destructive">
+          {list.error.message}
+        </p>
+      )}
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
@@ -287,11 +380,15 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
               return (
                 <TableRow key={inv.id}>
                   <TableCell className="font-mono">{inv.email}</TableCell>
-                  <TableCell><Badge variant="secondary">{inv.orgRole}</Badge></TableCell>
                   <TableCell>
-                    {status === 'pending'
-                      ? <Badge variant="outline">{INVITATION_STATUS_LABEL[status]}</Badge>
-                      : <Badge variant="secondary">{INVITATION_STATUS_LABEL[status]}</Badge>}
+                    <Badge variant="secondary">{inv.orgRole}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {status === 'pending' ? (
+                      <Badge variant="outline">{INVITATION_STATUS_LABEL[status]}</Badge>
+                    ) : (
+                      <Badge variant="secondary">{INVITATION_STATUS_LABEL[status]}</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(inv.expiresAt).toLocaleString('ko-KR')}
@@ -303,8 +400,12 @@ function InvitationsSection({ orgId, canManage }: { orgId: string; canManage: bo
                       이미 사용된 것에만 내지 않는다. 서버도 조건부 UPDATE로 나머지를 거절한다.
                     */}
                     {canRevokeInvitation(inv) && (
-                      <Button variant="outline" size="sm" disabled={revoke.isPending}
-                        onClick={() => revoke.mutate({ orgId, id: inv.id })}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={revoke.isPending}
+                        onClick={() => revoke.mutate({ orgId, id: inv.id })}
+                      >
                         취소
                       </Button>
                     )}
@@ -355,7 +456,9 @@ export function OrgDetailPage() {
       </div>
 
       {projects.isError ? (
-        <p role="alert" className="text-destructive">{projects.error.message}</p>
+        <p role="alert" className="text-destructive">
+          {projects.error.message}
+        </p>
       ) : projects.data?.length === 0 ? (
         <div className="bg-dotgrid grid place-items-center rounded-lg border py-16 text-center">
           <div className="grid gap-3">
@@ -374,7 +477,9 @@ export function OrgDetailPage() {
                   <CardDescription>{p.description || '설명 없음'}</CardDescription>
                   <div className="flex flex-wrap gap-1 pt-1">
                     {p.dialects.map((d) => (
-                      <Badge key={d} variant="outline" className="font-mono text-xs">{d}</Badge>
+                      <Badge key={d} variant="outline" className="font-mono text-xs">
+                        {d}
+                      </Badge>
                     ))}
                   </div>
                 </CardHeader>
@@ -402,7 +507,8 @@ export function OrgDetailPage() {
 
       {org && (
         <ResourceLibraryManager
-          scope="org" orgId={orgId}
+          scope="org"
+          orgId={orgId}
           canManage={org.role === 'owner' || org.role === 'admin'}
         />
       )}

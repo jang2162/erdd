@@ -12,9 +12,19 @@ export function modelOverOpCap(): ProjectModel {
   for (let i = 0; i < MAX_OPS_PER_MUTATION; i++) {
     const id = `bulk-c${i}`
     m.columns[id] = {
-      id, tableId: 't1', logicalName: `컬럼${i}`, physicalName: `COL_${i}`,
-      type: 'VARCHAR(10)', isPk: false, autoIncrement: false, nullable: true,
-      defaultValue: null, order: i + 1, comment: null, domainId: null, custom: {},
+      id,
+      tableId: 't1',
+      logicalName: `컬럼${i}`,
+      physicalName: `COL_${i}`,
+      type: 'VARCHAR(10)',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: i + 1,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
   }
   return m

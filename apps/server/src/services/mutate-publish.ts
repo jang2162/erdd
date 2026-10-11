@@ -32,17 +32,22 @@ export async function mutateAndPublish(
     summary?: string
   },
 ): Promise<{ seq: number }> {
-  const { seq, ops } = await db.transaction((tx) => runMutation(tx, {
-    projectId: args.projectId,
-    actorUserId: args.actorUserId,
-    source: args.source,
-    prepare: args.prepare,
-    deriveOps: args.deriveOps,
-    summary: args.summary,
-  }))
+  const { seq, ops } = await db.transaction((tx) =>
+    runMutation(tx, {
+      projectId: args.projectId,
+      actorUserId: args.actorUserId,
+      source: args.source,
+      prepare: args.prepare,
+      deriveOps: args.deriveOps,
+      summary: args.summary,
+    }),
+  )
   if (ops.length > 0) {
     hub.publishOps(args.projectId, {
-      seq, ops, actorUserId: args.actorUserId, actorName: args.actorName,
+      seq,
+      ops,
+      actorUserId: args.actorUserId,
+      actorName: args.actorName,
     })
   }
   return { seq }

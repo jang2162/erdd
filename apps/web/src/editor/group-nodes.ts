@@ -5,7 +5,9 @@ import { GROUP_PAD, tableBounds } from './group-move.js'
 export type GroupNodeData = { group: TableGroup; selected: boolean }
 
 export function buildGroupNodes(
-  model: ProjectModel, selectedGroupId: string | null, canEdit: boolean,
+  model: ProjectModel,
+  selectedGroupId: string | null,
+  canEdit: boolean,
 ): Node<GroupNodeData>[] {
   const nodes: Node<GroupNodeData>[] = []
   for (const group of Object.values(model.tableGroups)) {

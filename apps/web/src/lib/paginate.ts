@@ -7,7 +7,10 @@ export type PageResult<T> = { rows: T[]; total: number; page: number; pageCount:
  * 검색어가 값 가운데 하나에 부분 일치하는가. 앞뒤 공백을 걷고 대소문자를 무시한다.
  * **정규식이 아니다** — `%`·`_`·`(`·`.` 도 글자 그대로 찾는다(서버 `items.page` 의 이스케이프와 같은 뜻).
  */
-export function matchesQuery(values: readonly (string | null | undefined)[], query: string): boolean {
+export function matchesQuery(
+  values: readonly (string | null | undefined)[],
+  query: string,
+): boolean {
   const q = query.trim().toLowerCase()
   if (q === '') return true
   return values.some((v) => typeof v === 'string' && v.toLowerCase().includes(q))
@@ -24,7 +27,8 @@ export function filterAndPage<T>(
   page: number,
   size: number = PAGE_SIZE,
 ): PageResult<T> {
-  const filtered = query.trim() === '' ? rows : rows.filter((row) => matchesQuery(fields(row), query))
+  const filtered =
+    query.trim() === '' ? rows : rows.filter((row) => matchesQuery(fields(row), query))
   const total = filtered.length
   const pageCount = Math.max(1, Math.ceil(total / size))
   const current = Math.min(Math.max(1, Math.floor(page)), pageCount)

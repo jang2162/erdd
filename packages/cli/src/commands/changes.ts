@@ -1,4 +1,9 @@
-import { LOCAL_CHANGES_LOCAL_ONLY_MESSAGE, filesToModel, formatChangeIssue, type LocalChangesStatus } from '@erdd/core'
+import {
+  LOCAL_CHANGES_LOCAL_ONLY_MESSAGE,
+  filesToModel,
+  formatChangeIssue,
+  type LocalChangesStatus,
+} from '@erdd/core'
 import { readConfig } from '../config.js'
 import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
 import { CHANGES_DIR, loadChangesPlan, toLocalStatus, writeChange } from '../local/changes.js'
@@ -13,7 +18,8 @@ export type ChangesCtx = CommandCtx & {
   check: boolean
 }
 
-const UNSAVED_REFUSAL = '저장하지 않은 편집이 있습니다. 먼저 erdd serve 화면에서 저장한 뒤 변경 기록을 만드세요'
+const UNSAVED_REFUSAL =
+  '저장하지 않은 편집이 있습니다. 먼저 erdd serve 화면에서 저장한 뒤 변경 기록을 만드세요'
 
 function humanStatus(s: LocalChangesStatus): string {
   const lines = [`변경 기록 ${s.records.length}건 (${CHANGES_DIR}/)`]
@@ -40,14 +46,18 @@ function humanStatus(s: LocalChangesStatus): string {
 export function changes(ctx: ChangesCtx): Promise<number> {
   return run(ctx, async () => {
     const config = await readConfig(ctx.cwd)
-    if (config.serverUrl !== null || config.projectId !== null) throw new CliError('VALIDATION', LOCAL_CHANGES_LOCAL_ONLY_MESSAGE, { reason: 'local-only' })
+    if (config.serverUrl !== null || config.projectId !== null)
+      throw new CliError('VALIDATION', LOCAL_CHANGES_LOCAL_ONLY_MESSAGE, { reason: 'local-only' })
     const unsaved = await hasDraft(ctx.cwd)
     const files = filesToModel(await readTree(ctx.cwd))
     if (!files.ok) {
       // validate·export 와 같은 봉투다 — 같은 파일 오류를 명령마다 다른 모양으로 말하지 않는다.
       emit(
         ctx.json,
-        [`파싱 오류 ${files.issues.length}건`, ...files.issues.map((i) => `  ${i.path}: ${i.message}`)].join('\n'),
+        [
+          `파싱 오류 ${files.issues.length}건`,
+          ...files.issues.map((i) => `  ${i.path}: ${i.message}`),
+        ].join('\n'),
         { ok: false, parseErrors: files.issues, integrityIssues: [], warnings: [] },
       )
       return 1

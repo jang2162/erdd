@@ -13,8 +13,11 @@ const url = process.env.DATABASE_URL
 
 function post(app: FastifyInstance, path: string, token: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`, cookies: { erdd_session: token },
-    headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
+    method: 'POST',
+    url: `/trpc/${path}`,
+    cookies: { erdd_session: token },
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify(input),
   })
 }
 function get(app: FastifyInstance, path: string, token: string, input?: unknown) {
@@ -24,8 +27,10 @@ function get(app: FastifyInstance, path: string, token: string, input?: unknown)
 /** 세션 쿠키 없이 호출한다 — 초대 수락·비밀번호 재설정은 공개 프로시저다. */
 function postPublic(app: FastifyInstance, path: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`,
-    headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
+    method: 'POST',
+    url: `/trpc/${path}`,
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify(input),
   })
 }
 
@@ -43,12 +48,19 @@ describe.skipIf(!url)('admin.users', () => {
   let app: FastifyInstance
   let adminToken: string
   let adminId: string
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
   beforeEach(async () => {
     await resetDb(app.pgPool!)
     const admin = await createAccount(app.db!, {
-      email: 'admin@test.dev', name: '관리자', password: 'admin-pass-1', role: 'admin',
+      email: 'admin@test.dev',
+      name: '관리자',
+      password: 'admin-pass-1',
+      role: 'admin',
     })
     adminId = admin.id
     adminToken = await loginAs(app, 'admin@test.dev', 'admin-pass-1')
@@ -69,7 +81,9 @@ describe.skipIf(!url)('admin.users', () => {
   /** 그 조직의 조직 초대를 만든다 — 관리자 초대(orgId null)와 대비되는 별개 묶음이다. */
   async function orgInvite(orgId: string, email: string) {
     const res = await post(app, 'invitation.create', adminToken, {
-      orgId, email, orgRole: 'member',
+      orgId,
+      email,
+      orgRole: 'member',
     })
     expect(res.statusCode).toBe(200)
     return res.json().result.data as { id: string; token: string }
@@ -87,7 +101,10 @@ describe.skipIf(!url)('admin.users', () => {
   /** 비밀번호 재설정용 대상 계정 하나를 만들고 그 id를 준다. */
   async function makeTarget(email = 'u3@test.dev', password = 'password-3') {
     const user = await createAccount(app.db!, {
-      email, name: '사용자3', password, role: 'user',
+      email,
+      name: '사용자3',
+      password,
+      role: 'user',
     })
     return user.id
   }
@@ -115,9 +132,15 @@ describe.skipIf(!url)('admin.users', () => {
     // 어떤 구현이어도 통과한다. 실제로 존재하는 팀을 두고 그 멤버 목록을 본다.
     const teamOrgId = await makeTeamOrg()
     const created = await invite('u1@test.dev')
-    expect((await postPublic(app, 'invitation.accept', {
-      token: created.token, name: '사용자1', password: 'password-1',
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await postPublic(app, 'invitation.accept', {
+          token: created.token,
+          name: '사용자1',
+          password: 'password-1',
+        })
+      ).statusCode,
+    ).toBe(200)
 
     // 옛 admin.users.create가 보장하던 것 — 계정과 개인 조직이 함께 생긴다.
     await loginAs(app, 'u1@test.dev', 'password-1')
@@ -138,24 +161,41 @@ describe.skipIf(!url)('admin.users', () => {
 
   it('invite의 서비스 역할이 수락한 계정에 그대로 적용된다', async () => {
     const boss = await invite('boss@test.dev', 'admin')
-    expect((await postPublic(app, 'invitation.accept', {
-      token: boss.token, name: '보스', password: 'password-b',
-    })).statusCode).toBe(200)
-    expect((await app.db!.select().from(users).where(eq(users.email, 'boss@test.dev')))[0]!.role)
-      .toBe('admin')
+    expect(
+      (
+        await postPublic(app, 'invitation.accept', {
+          token: boss.token,
+          name: '보스',
+          password: 'password-b',
+        })
+      ).statusCode,
+    ).toBe(200)
+    expect(
+      (await app.db!.select().from(users).where(eq(users.email, 'boss@test.dev')))[0]!.role,
+    ).toBe('admin')
 
     // 기본값은 user다 — 역할을 빠뜨린 초대가 관리자를 만들면 안 된다.
     const plain = await invite('plain@test.dev')
-    expect((await postPublic(app, 'invitation.accept', {
-      token: plain.token, name: '일반', password: 'password-p',
-    })).statusCode).toBe(200)
-    expect((await app.db!.select().from(users).where(eq(users.email, 'plain@test.dev')))[0]!.role)
-      .toBe('user')
+    expect(
+      (
+        await postPublic(app, 'invitation.accept', {
+          token: plain.token,
+          name: '일반',
+          password: 'password-p',
+        })
+      ).statusCode,
+    ).toBe(200)
+    expect(
+      (await app.db!.select().from(users).where(eq(users.email, 'plain@test.dev')))[0]!.role,
+    ).toBe('user')
   })
 
   it('invite가 이미 가입한 이메일을 거부한다', async () => {
     await createAccount(app.db!, {
-      email: 'dup@test.dev', name: '기존', password: 'password-d', role: 'user',
+      email: 'dup@test.dev',
+      name: '기존',
+      password: 'password-d',
+      role: 'user',
     })
     // 대소문자만 다른 것도 같은 계정이다 — 정규화 후에 검사해야 잡힌다.
     const res = await post(app, 'admin.users.invite', adminToken, { email: 'DUP@test.dev' })
@@ -173,13 +213,21 @@ describe.skipIf(!url)('admin.users', () => {
    */
   it('소비된 초대는 재발급 불가로 표시되고, 실제로 그 이메일에 새 초대를 만들 수 없다', async () => {
     const created = await invite('used@test.dev')
-    expect((await postPublic(app, 'invitation.accept', {
-      token: created.token, name: '사용자', password: 'password-u',
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await postPublic(app, 'invitation.accept', {
+          token: created.token,
+          name: '사용자',
+          password: 'password-u',
+        })
+      ).statusCode,
+    ).toBe(200)
 
     for (const path of ['invitation.peek', 'invitation.accept']) {
       const res = await postPublic(app, path, {
-        token: created.token, name: '사용자', password: 'password-u',
+        token: created.token,
+        name: '사용자',
+        password: 'password-u',
       })
       expect(res.statusCode).toBe(400)
       expect(res.json().error.message).toBe('이미 사용된 링크입니다')
@@ -188,12 +236,19 @@ describe.skipIf(!url)('admin.users', () => {
     }
 
     // 안내가 가리키지 말아야 할 것을 실제로 확인한다 — 두 발급 경로가 모두 닫혀 있다.
-    expect((await post(app, 'admin.users.invite', adminToken, { email: 'used@test.dev' }))
-      .statusCode).toBe(409)
+    expect(
+      (await post(app, 'admin.users.invite', adminToken, { email: 'used@test.dev' })).statusCode,
+    ).toBe(409)
     const orgId = await makeTeamOrg('팀B')
-    expect((await post(app, 'invitation.create', adminToken, {
-      orgId, email: 'used@test.dev', orgRole: 'member',
-    })).statusCode).toBe(409)
+    expect(
+      (
+        await post(app, 'invitation.create', adminToken, {
+          orgId,
+          email: 'used@test.dev',
+          orgRole: 'member',
+        })
+      ).statusCode,
+    ).toBe(409)
   })
 
   /**
@@ -204,12 +259,18 @@ describe.skipIf(!url)('admin.users', () => {
   it('소비된 재설정 링크는 재발급 가능으로 남고, 실제로 새 링크를 낼 수 있다', async () => {
     const targetId = await makeTarget()
     const link = await resetLink(targetId)
-    expect((await postPublic(app, 'auth.resetPassword', {
-      token: link.token, newPassword: 'password-x',
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await postPublic(app, 'auth.resetPassword', {
+          token: link.token,
+          newPassword: 'password-x',
+        })
+      ).statusCode,
+    ).toBe(200)
 
     const again = await postPublic(app, 'auth.resetPassword', {
-      token: link.token, newPassword: 'password-y',
+      token: link.token,
+      newPassword: 'password-y',
     })
     expect(again.statusCode).toBe(400)
     expect(again.json().error.message).toBe('이미 사용된 링크입니다')
@@ -218,9 +279,14 @@ describe.skipIf(!url)('admin.users', () => {
 
     // 안내("관리자에게 문의해 새 링크를 받으세요")가 실제로 가능하다.
     const reissued = await resetLink(targetId)
-    expect((await postPublic(app, 'auth.resetPassword', {
-      token: reissued.token, newPassword: 'password-z',
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await postPublic(app, 'auth.resetPassword', {
+          token: reissued.token,
+          newPassword: 'password-z',
+        })
+      ).statusCode,
+    ).toBe(200)
     await loginAs(app, 'u3@test.dev', 'password-z')
   })
 
@@ -241,7 +307,7 @@ describe.skipIf(!url)('admin.users', () => {
     const first = await invite('both@test.dev')
     const second = await invite('both@test.dev')
 
-    expect(await peekStatus(first.token)).toBe(400)   // 관리자 초대끼리는 죽인다
+    expect(await peekStatus(first.token)).toBe(400) // 관리자 초대끼리는 죽인다
     expect(await peekStatus(second.token)).toBe(200)
     expect(await peekStatus(teamInv.token)).toBe(200) // 조직 초대는 그대로 살아 있다
   })
@@ -266,7 +332,9 @@ describe.skipIf(!url)('admin.users', () => {
     // 세션도 살아 있다. 세션 삭제는 auth.resetPassword 성공 시점이지 발급 시점이 아니다 —
     // 여기서 죽이면 링크를 못 받은 사용자가 이유도 모른 채 로그아웃된다.
     const me = await app.inject({
-      method: 'GET', url: '/trpc/auth.me', cookies: { erdd_session: userToken },
+      method: 'GET',
+      url: '/trpc/auth.me',
+      cookies: { erdd_session: userToken },
     })
     expect(me.statusCode).toBe(200)
   })
@@ -277,15 +345,25 @@ describe.skipIf(!url)('admin.users', () => {
     const second = await resetLink(targetId)
     expect(second.token).not.toBe(first.token)
 
-    expect((await postPublic(app, 'auth.resetPassword', {
-      token: first.token, newPassword: 'password-x',
-    })).statusCode).toBe(400)
+    expect(
+      (
+        await postPublic(app, 'auth.resetPassword', {
+          token: first.token,
+          newPassword: 'password-x',
+        })
+      ).statusCode,
+    ).toBe(400)
     // 상태코드만 보면 "거절했지만 바꿔 놨다"를 놓친다.
     await loginAs(app, 'u3@test.dev', 'password-3')
 
-    expect((await postPublic(app, 'auth.resetPassword', {
-      token: second.token, newPassword: 'password-y',
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await postPublic(app, 'auth.resetPassword', {
+          token: second.token,
+          newPassword: 'password-y',
+        })
+      ).statusCode,
+    ).toBe(200)
     await loginAs(app, 'u3@test.dev', 'password-y')
   })
 
@@ -300,9 +378,14 @@ describe.skipIf(!url)('admin.users', () => {
 
   it('resetLink가 비활성 계정을 거절한다', async () => {
     const targetId = await makeTarget()
-    expect((await post(app, 'admin.users.setActive', adminToken, {
-      userId: targetId, isActive: false,
-    })).statusCode).toBe(200)
+    expect(
+      (
+        await post(app, 'admin.users.setActive', adminToken, {
+          userId: targetId,
+          isActive: false,
+        })
+      ).statusCode,
+    ).toBe(200)
 
     // 링크를 내주면 비밀번호는 실제로 바뀌지만 로그인은 isActive에서 막힌다. 관리자는
     // "재설정해 줬는데 왜 안 되지"를 겪고 원인이 어디에도 나오지 않는다.
@@ -319,8 +402,9 @@ describe.skipIf(!url)('admin.users', () => {
     const created = await invite('gone@test.dev')
     expect(await peekStatus(created.token)).toBe(200)
 
-    expect((await post(app, 'admin.invitations.revoke', adminToken, { id: created.id })).statusCode)
-      .toBe(200)
+    expect(
+      (await post(app, 'admin.invitations.revoke', adminToken, { id: created.id })).statusCode,
+    ).toBe(200)
     // 잘못된 주소로 나간 링크를 7일 내내 죽일 수 없으면 안 된다(설계 3.2 "취소: 가능").
     expect(await peekStatus(created.token)).toBe(400)
 
@@ -338,7 +422,11 @@ describe.skipIf(!url)('admin.users', () => {
     const res = await get(app, 'admin.invitations.list', adminToken)
     expect(res.statusCode).toBe(200)
     const rows = res.json().result.data as Array<{
-      id: string; email: string; userRole: string; expiresAt: string; usedAt: string | null
+      id: string
+      email: string
+      userRole: string
+      expiresAt: string
+      usedAt: string | null
     }>
     // 관리자 초대(orgId null)만 나온다. 조직 초대는 invitation.listForOrg가 담당한다.
     expect(rows.map((r) => r.id)).toEqual([created.id])
@@ -357,38 +445,52 @@ describe.skipIf(!url)('admin.users', () => {
     const created = await invite('gone@test.dev')
     // 자기 조직의 초대는 다루는 사람이다 — 그래도 권한 축이 달라 관리자 초대에는 닿지 않는다.
     await createAccount(app.db!, {
-      email: 'mgr@test.dev', name: '매니저', password: 'password-m', role: 'user',
+      email: 'mgr@test.dev',
+      name: '매니저',
+      password: 'password-m',
+      role: 'user',
     })
     const mgrToken = await loginAs(app, 'mgr@test.dev', 'password-m')
     expect((await post(app, 'org.create', mgrToken, { name: '팀M' })).statusCode).toBe(200)
 
     expect((await get(app, 'admin.invitations.list', mgrToken)).statusCode).toBe(403)
-    expect((await post(app, 'admin.invitations.revoke', mgrToken, { id: created.id })).statusCode)
-      .toBe(403)
+    expect(
+      (await post(app, 'admin.invitations.revoke', mgrToken, { id: created.id })).statusCode,
+    ).toBe(403)
     // 거절이 진짜인지 본다 — 403을 내면서 만료시키면 아무도 모른다.
     expect(await peekStatus(created.token)).toBe(200)
   })
 
   it('rejects non-admin callers with 403', async () => {
     await createAccount(app.db!, {
-      email: 'u2@test.dev', name: '일반', password: 'password-2', role: 'user',
+      email: 'u2@test.dev',
+      name: '일반',
+      password: 'password-2',
+      role: 'user',
     })
     const token = await loginAs(app, 'u2@test.dev', 'password-2')
     const res = await app.inject({
-      method: 'GET', url: '/trpc/admin.users.list', cookies: { erdd_session: token },
+      method: 'GET',
+      url: '/trpc/admin.users.list',
+      cookies: { erdd_session: token },
     })
     expect(res.statusCode).toBe(403)
   })
 
   it('비관리자는 invite·resetLink를 못 부른다', async () => {
     await createAccount(app.db!, {
-      email: 'u2@test.dev', name: '일반', password: 'password-2', role: 'user',
+      email: 'u2@test.dev',
+      name: '일반',
+      password: 'password-2',
+      role: 'user',
     })
     const token = await loginAs(app, 'u2@test.dev', 'password-2')
-    expect((await post(app, 'admin.users.invite', token, { email: 'x@test.dev' })).statusCode)
-      .toBe(403)
-    expect((await post(app, 'admin.users.resetLink', token, { userId: adminId })).statusCode)
-      .toBe(403)
+    expect((await post(app, 'admin.users.invite', token, { email: 'x@test.dev' })).statusCode).toBe(
+      403,
+    )
+    expect((await post(app, 'admin.users.resetLink', token, { userId: adminId })).statusCode).toBe(
+      403,
+    )
     // 거절이 진짜인지 본다 — 403을 내면서 행을 남기면 아무도 모른다.
     expect(await app.db!.select().from(invitations)).toHaveLength(0)
   })
@@ -398,8 +500,11 @@ describe.skipIf(!url)('admin.users', () => {
     // 옛 경로가 그대로 살아 "관리자가 남의 비밀번호를 모른다"가 절반만 성립한다.
     for (const path of ['admin.users.create', 'admin.users.resetPassword']) {
       const res = await post(app, path, adminToken, {
-        email: 'ghost@test.dev', name: '유령', initialPassword: 'password-g',
-        userId: adminId, newPassword: 'password-g',
+        email: 'ghost@test.dev',
+        name: '유령',
+        initialPassword: 'password-g',
+        userId: adminId,
+        newPassword: 'password-g',
       })
       expect(res.statusCode).toBe(404)
       // 404만으로는 부족하다 — 살아 있는 프로시저가 NOT_FOUND를 던져도 404다.
@@ -415,7 +520,9 @@ describe.skipIf(!url)('admin.users', () => {
   it('admin 라우터의 표면이 정확히 이 여섯이다', () => {
     // 위 404 단언은 "적어 둔 경로가 없다"만 본다 — 경로 상수에 오타가 나도 통과하고, 새 프로시저가
     // 하나 늘어도 아무도 모른다. 표면을 열거해 전수 비교하면 추가·삭제·오타가 전부 여기서 깨진다.
-    const paths = procedureEntries().map(([p]) => p).filter((p) => p.startsWith('admin.'))
+    const paths = procedureEntries()
+      .map(([p]) => p)
+      .filter((p) => p.startsWith('admin.'))
     expect([...paths].sort()).toEqual([...ADMIN_PATHS].sort())
   })
 
@@ -426,9 +533,10 @@ describe.skipIf(!url)('admin.users', () => {
     for (const [path, type] of procedureEntries()) {
       // 입력은 일부러 비운다. 인증 미들웨어가 입력 파싱보다 먼저 돌므로 보호된 경로는 401이고,
       // 공개 경로는 (입력이 필요하면) 400·(아니면) 200이 되어 401이 아닌 것으로 갈린다.
-      const res = type === 'query'
-        ? await app.inject({ method: 'GET', url: `/trpc/${path}` })
-        : await postPublic(app, path, {})
+      const res =
+        type === 'query'
+          ? await app.inject({ method: 'GET', url: `/trpc/${path}` })
+          : await postPublic(app, path, {})
       if (res.statusCode !== 401) reachable.push(path)
     }
     expect(reachable.sort()).toEqual([...PUBLIC_PATHS].sort())
@@ -436,17 +544,22 @@ describe.skipIf(!url)('admin.users', () => {
 
   it('setActive(false) blocks login and self-deactivation is rejected', async () => {
     await createAccount(app.db!, {
-      email: 'u4@test.dev', name: '사용자4', password: 'password-4', role: 'user',
+      email: 'u4@test.dev',
+      name: '사용자4',
+      password: 'password-4',
+      role: 'user',
     })
     const target = (await app.db!.select().from(users).where(eq(users.email, 'u4@test.dev')))[0]!
     const res = await post(app, 'admin.users.setActive', adminToken, {
-      userId: target.id, isActive: false,
+      userId: target.id,
+      isActive: false,
     })
     expect(res.statusCode).toBe(200)
     await expect(loginAs(app, 'u4@test.dev', 'password-4')).rejects.toThrow()
 
     const self = await post(app, 'admin.users.setActive', adminToken, {
-      userId: adminId, isActive: false,
+      userId: adminId,
+      isActive: false,
     })
     expect(self.statusCode).toBe(400)
   })

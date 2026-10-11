@@ -11,7 +11,9 @@ import { computeAutoLayout } from './auto-layout.js'
  * 않는다. `ddl-import-edits.test.ts` 가 그 한 가지를 잠근다.
  */
 export function applyDdlImport(
-  model: ProjectModel, plan: DdlImportPlan, newId: () => string,
+  model: ProjectModel,
+  plan: DdlImportPlan,
+  newId: () => string,
 ): ProjectModel {
   return applyDdlImportCore(model, plan, newId, { layout: computeAutoLayout })
 }

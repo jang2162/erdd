@@ -170,7 +170,8 @@ describe('ResetPasswordPage', () => {
   })
 
   it('resubmits after a transient failure and goes to /login', async () => {
-    const reset = vi.fn()
+    const reset = vi
+      .fn()
       .mockReturnValueOnce({ offline: true })
       .mockReturnValue({ data: { ok: true } })
     renderReset({ 'auth.resetPassword': reset })

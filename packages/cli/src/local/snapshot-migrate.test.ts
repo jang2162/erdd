@@ -12,8 +12,12 @@ const ID_A = '018f6b0e-1111-7000-8000-000000000001'
 const ID_B = '018f6b12-2222-7000-8000-000000000002'
 
 const rec = (id: string, name: string): SnapshotRecord => ({
-  id, name, description: '설명', revisionSeq: 42,
-  model: createEmptyModel(), createdAt: '2026-09-03T05:25:30.000Z',
+  id,
+  name,
+  description: '설명',
+  revisionSeq: 42,
+  model: createEmptyModel(),
+  createdAt: '2026-09-03T05:25:30.000Z',
 })
 
 async function writeOld(cwd: string, snapshots: unknown[]): Promise<void> {
@@ -22,7 +26,12 @@ async function writeOld(cwd: string, snapshots: unknown[]): Promise<void> {
 }
 
 const exists = async (cwd: string, rel: string): Promise<boolean> => {
-  try { await readFile(join(cwd, rel), 'utf8'); return true } catch { return false }
+  try {
+    await readFile(join(cwd, rel), 'utf8')
+    return true
+  } catch {
+    return false
+  }
 }
 
 describe('migrateSnapshots', () => {

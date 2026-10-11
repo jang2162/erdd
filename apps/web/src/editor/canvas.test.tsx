@@ -101,7 +101,9 @@ function fireSelectionChange(nodes: Node[]) {
     | ((p: { nodes: Node[]; edges: Edge[] }) => void)
     | undefined
   if (!handler) throw new Error('Canvas가 ReactFlow에 onSelectionChange를 넘기지 않았다')
-  act(() => { handler({ nodes, edges: [] }) })
+  act(() => {
+    handler({ nodes, edges: [] })
+  })
 }
 
 /**
@@ -113,16 +115,22 @@ function fireBoxSelection(nodes: Node[]) {
   const start = p.onSelectionStart as ((e: unknown) => void) | undefined
   const end = p.onSelectionEnd as ((e: unknown) => void) | undefined
   if (!start || !end) throw new Error('Canvas가 ReactFlow에 onSelectionStart/End를 넘기지 않았다')
-  act(() => { start({}) })
+  act(() => {
+    start({})
+  })
   fireSelectionChange(nodes)
-  act(() => { end({}) })
+  act(() => {
+    end({})
+  })
 }
 
 /** 선택 상자를 시작만 하고 끝내지 않는다(pointercancel로 잘린 제스처). */
 function fireBoxSelectionStart() {
   const start = lastProps().onSelectionStart as ((e: unknown) => void) | undefined
   if (!start) throw new Error('Canvas가 ReactFlow에 onSelectionStart를 넘기지 않았다')
-  act(() => { start({}) })
+  act(() => {
+    start({})
+  })
 }
 
 /** onSelectionChange가 실어 보내는 모양의 최소 노드. 캔버스에는 테이블 말고도 여러 종류가 있다. */
@@ -232,7 +240,8 @@ describe('Canvas — 읽기 전용 잠금', () => {
     // 자리를 표시하기만 하고 연결 대상이 아니어서(설계 D-3) 권한과 무관하게 connectable 이
     // 아니다 — 전부를 훑으면 그 설계를 위반해야만 통과하는 테스트가 된다.
     const handles = node.querySelectorAll(
-      '.react-flow__handle[data-handleid="l"], .react-flow__handle[data-handleid="r"]')
+      '.react-flow__handle[data-handleid="l"], .react-flow__handle[data-handleid="r"]',
+    )
     expect(handles.length).toBeGreaterThan(0)
     for (const h of handles) {
       expect(h.className).toMatch(/(^|\s)connectable(\s|$)/)
@@ -299,8 +308,8 @@ describe('Canvas — store ↔ ReactFlow 선택 동기화', () => {
       { type: 'select', id: 't1', selected: true },
       { type: 'select', id: 't2', selected: true },
     )
-    expect(useEditorStore.getState().selectedTableIds).toBe(before)   // 참조까지 그대로
-    expect(primaryTableId(useEditorStore.getState())).toBe('t2')      // 주 선택([0])도 그대로
+    expect(useEditorStore.getState().selectedTableIds).toBe(before) // 참조까지 그대로
+    expect(primaryTableId(useEditorStore.getState())).toBe('t2') // 주 선택([0])도 그대로
   })
 
   it('선택 알림은 테이블 노드만 본다(메모는 무시)', () => {
@@ -342,8 +351,8 @@ describe('Canvas — store ↔ ReactFlow 선택 동기화', () => {
     fireEvent.keyDown(document, { key: 'Control', code: 'ControlLeft' })
     fireEvent.click(screen.getByTestId('rf__node-t2'))
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t1', 't2'])
-    expect(primaryTableId(useEditorStore.getState())).toBe('t1')   // 먼저 고른 것이 주 선택
-    fireEvent.click(screen.getByTestId('rf__node-t2'))             // 같은 것을 다시 → 빠진다
+    expect(primaryTableId(useEditorStore.getState())).toBe('t1') // 먼저 고른 것이 주 선택
+    fireEvent.click(screen.getByTestId('rf__node-t2')) // 같은 것을 다시 → 빠진다
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t1'])
     fireEvent.keyUp(document, { key: 'Control', code: 'ControlLeft' })
   })
@@ -399,55 +408,81 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
     model.tables = {
       ...model.tables,
       t3: {
-        id: 't3', logicalName: '주문', physicalName: 'ORD', comment: null,
-        groupId: 'g2', position: { x: 1000, y: 500 }, groupPosition: null, custom: {},
+        id: 't3',
+        logicalName: '주문',
+        physicalName: 'ORD',
+        comment: null,
+        groupId: 'g2',
+        position: { x: 1000, y: 500 },
+        groupPosition: null,
+        custom: {},
       },
     }
     return model
   }
 
   type FakeNode = { id: string; type: string; position: { x: number; y: number } }
-  const tbl = (id: string, x: number, y: number): FakeNode =>
-    ({ id, type: 'table', position: { x, y } })
+  const tbl = (id: string, x: number, y: number): FakeNode => ({
+    id,
+    type: 'table',
+    position: { x, y },
+  })
 
   function captureMutations(): { summary?: string }[] {
     const calls: { summary?: string }[] = []
     mockTrpcFetch({
-      'model.mutate': (input) => { calls.push(input as { summary?: string }); return { data: { seq: 2 } } },
+      'model.mutate': (input) => {
+        calls.push(input as { summary?: string })
+        return { data: { seq: 2 } }
+      },
     })
     return calls
   }
 
-  function dragStart(node: FakeNode | { id: string; type: string; position: { x: number; y: number } }) {
+  function dragStart(
+    node: FakeNode | { id: string; type: string; position: { x: number; y: number } },
+  ) {
     act(() => {
-      (lastProps().onNodeDragStart as (e: unknown, n: unknown) => void)({}, node)
+      ;(lastProps().onNodeDragStart as (e: unknown, n: unknown) => void)({}, node)
     })
   }
 
-  function dragMove(node: FakeNode | { id: string; type: string; position: { x: number; y: number } },
-    clientX: number, clientY: number) {
+  function dragMove(
+    node: FakeNode | { id: string; type: string; position: { x: number; y: number } },
+    clientX: number,
+    clientY: number,
+  ) {
     act(() => {
-      (lastProps().onNodeDrag as (e: unknown, n: unknown) => void)({ clientX, clientY }, node)
+      ;(lastProps().onNodeDrag as (e: unknown, n: unknown) => void)({ clientX, clientY }, node)
     })
   }
 
-  function dragStop(node: { id: string; type: string; position: { x: number; y: number } },
-    dragged: { id: string; type: string; position: { x: number; y: number } }[]) {
+  function dragStop(
+    node: { id: string; type: string; position: { x: number; y: number } },
+    dragged: { id: string; type: string; position: { x: number; y: number } }[],
+  ) {
     act(() => {
-      (lastProps().onNodeDragStop as (e: unknown, n: unknown, d: unknown[]) => void)({}, node, dragged)
+      ;(lastProps().onNodeDragStop as (e: unknown, n: unknown, d: unknown[]) => void)(
+        {},
+        node,
+        dragged,
+      )
     })
   }
 
   /** 커서가 사이드바의 어느 그룹 블록 위에 있는 상태를 만든다(jsdom엔 레이아웃이 없다). */
   function hoverTarget(groupId: string | null) {
-    act(() => { useDragStore.getState().moveOver({ groupId }) })
+    act(() => {
+      useDragStore.getState().moveOver({ groupId })
+    })
   }
 
   /** ReactFlow 내부 노드만 옮긴다 — 드래그로 노드가 화면에서 움직인 상태를 재현한다. */
   function moveNodeInternally(id: string, position: { x: number; y: number }) {
     act(() => {
-      (lastProps().onNodesChange as (c: unknown[]) => void)(
-        [{ type: 'position', id, position, dragging: false }])
+      ;(lastProps().onNodesChange as (c: unknown[]) => void)([
+        { type: 'position', id, position, dragging: false },
+      ])
     })
   }
 
@@ -492,7 +527,7 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
     await waitFor(() => {
       expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 50, y: 60 })
     })
-    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1')   // 그대로
+    expect(useEditorStore.getState().model.tables['t2']?.groupId).toBe('g1') // 그대로
     await settle()
     expect(calls).toHaveLength(1)
     expect(calls[0]?.summary).toBe('이동')
@@ -511,7 +546,9 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
     await waitFor(() => expect(lastProps().autoPanOnNodeDrag).toBe(false))
 
     // 타깃 밖으로 나오면 다시 켜진다 — 끈 채로 남으면 이후 드래그에서 팬이 영영 죽는다.
-    act(() => { useDragStore.getState().moveOver(null) })
+    act(() => {
+      useDragStore.getState().moveOver(null)
+    })
     await waitFor(() => expect(lastProps().autoPanOnNodeDrag).toBe(true))
   })
 
@@ -526,7 +563,9 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
     // 커서 고스트는 사이드바 전용이다 — 캔버스는 ReactFlow가 노드를 실제로 끌고 다닌다.
     expect(useDragStore.getState().source).toBe('canvas')
 
-    act(() => { useDragStore.getState().end() })
+    act(() => {
+      useDragStore.getState().end()
+    })
     useEditorStore.getState().selectTables(['t1'])
     dragStart(tbl('t2', 300, 0))
     expect(useDragStore.getState().tableIds).toEqual(['t2'])
@@ -546,7 +585,9 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
 
     // 대조군: 그룹 노드 드래그는 같은 좌표에서도 드롭 타깃을 세우지 않는다 —
     // 그것은 "그룹 통째 이동"이라는 다른 조작이다(설계 5.4).
-    act(() => { useDragStore.getState().end() })
+    act(() => {
+      useDragStore.getState().end()
+    })
     const groupNode = { id: 'group:g1', type: 'group', position: { x: 0, y: 0 } }
     dragStart(groupNode)
     dragMove({ ...groupNode, position: { x: 10, y: 10 } }, 7, 9)
@@ -579,7 +620,9 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
 
     // 좌표를 아예 못 구하면 "어떤 타깃 위도 아님"으로 떨어진다 — 마지막 타깃을 남겨 두면
     // 조준 지점을 모르는 채로 엉뚱한 그룹에 떨어진다.
-    act(() => { onNodeDrag()({ touches: [], changedTouches: [] }, tbl('t2', 1, 1)) })
+    act(() => {
+      onNodeDrag()({ touches: [], changedTouches: [] }, tbl('t2', 1, 1))
+    })
     expect(useDragStore.getState().over).toBeNull()
   })
 
@@ -592,18 +635,22 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
     const groupNode = { id: 'group:g1', type: 'group', position: { x: 0, y: 0 } }
     dragStart(groupNode)
     // 커서가 사이드바의 다른 그룹 위에 있는 상태를 만든다 — 가드가 없으면 여기서 새어 나간다.
-    act(() => { useDragStore.getState().start(['t1', 't2'], 'canvas') })
+    act(() => {
+      useDragStore.getState().start(['t1', 't2'], 'canvas')
+    })
     hoverTarget('g2')
-    dragStop({ ...groupNode, position: { x: 40, y: 20 } }, [{ ...groupNode, position: { x: 40, y: 20 } }])
+    dragStop({ ...groupNode, position: { x: 40, y: 20 } }, [
+      { ...groupNode, position: { x: 40, y: 20 } },
+    ])
 
     await waitFor(() => {
       expect(useEditorStore.getState().model.tables['t1']?.position).toEqual({ x: 40, y: 20 })
     })
     expect(useEditorStore.getState().model.tables['t2']?.position).toEqual({ x: 340, y: 20 })
-    expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g1')   // 그룹은 안 바뀐다
+    expect(useEditorStore.getState().model.tables['t1']?.groupId).toBe('g1') // 그룹은 안 바뀐다
     await settle()
     expect(calls).toHaveLength(1)
-    expect(calls[0]?.summary).toBe('그룹 이동')   // 일괄 그룹 배정('그룹 이동 (N개)')이 아니다
+    expect(calls[0]?.summary).toBe('그룹 이동') // 일괄 그룹 배정('그룹 이동 (N개)')이 아니다
   })
 
   it('테이블이 아닌 노드는 그룹 이동에 섞이지 않는다', async () => {
@@ -649,7 +696,7 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
     expect(tables['t2']!.position.y - tables['t1']!.position.y).toBe(0)
     await settle()
     expect(calls).toHaveLength(1)
-    expect(useEditorStore.getState().undoStack).toHaveLength(1)   // undo 1회로 전부 원복된다
+    expect(useEditorStore.getState().undoStack).toHaveLength(1) // undo 1회로 전부 원복된다
   })
 
   it('드롭이 아무것도 바꾸지 않아도 노드는 원위치로 돌아온다', async () => {
@@ -665,7 +712,7 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
     expect(nodePosition('t2')).toEqual({ x: 999, y: 999 })
 
     dragStart(tbl('t2', 300, 0))
-    hoverTarget('g1')                                   // t2는 이미 g1이다
+    hoverTarget('g1') // t2는 이미 g1이다
     dragStop(tbl('t2', 999, 999), [tbl('t2', 999, 999)])
 
     expect(nodePosition('t2')).toEqual({ x: 300, y: 0 })
@@ -684,12 +731,12 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
 
     const beforeEnter = capturedProps.length
     hoverTarget('g1')
-    expect(capturedProps.length).toBeGreaterThan(beforeEnter)   // 진입은 리렌더한다(팬을 꺼야 한다)
+    expect(capturedProps.length).toBeGreaterThan(beforeEnter) // 진입은 리렌더한다(팬을 꺼야 한다)
 
     const afterEnter = capturedProps.length
-    hoverTarget('g1')                                           // 같은 블록 위에서 계속 움직인다
-    expect(capturedProps.length).toBe(afterEnter)               // 더는 안 그린다
-    expect(lastProps().nodes).toBe(nodesBefore)                 // 노드 배열도 다시 만들지 않는다
+    hoverTarget('g1') // 같은 블록 위에서 계속 움직인다
+    expect(capturedProps.length).toBe(afterEnter) // 더는 안 그린다
+    expect(lastProps().nodes).toBe(nodesBefore) // 노드 배열도 다시 만들지 않는다
   })
 
   it('읽기 전용이면 드롭해도 op가 나가지 않는다', async () => {
@@ -730,8 +777,9 @@ describe('Canvas — 사이드바 그룹으로 드롭', () => {
 describe('Canvas — 노드 재구성이 measured를 버리지 않는다', () => {
   function measureNode(id: string, width: number, height: number) {
     act(() => {
-      (lastProps().onNodesChange as (c: unknown[]) => void)(
-        [{ type: 'dimensions', id, dimensions: { width, height } }])
+      ;(lastProps().onNodesChange as (c: unknown[]) => void)([
+        { type: 'dimensions', id, dimensions: { width, height } },
+      ])
     })
   }
 
@@ -748,7 +796,9 @@ describe('Canvas — 노드 재구성이 measured를 버리지 않는다', () =>
     measureNode('t2', 260, 180)
     expect(nodeById('t1')?.measured).toEqual({ width: 240, height: 120 })
 
-    act(() => { useEditorStore.getState().selectTables(['t2']) })
+    act(() => {
+      useEditorStore.getState().selectTables(['t2'])
+    })
 
     // 재구성이 실제로 일어났다는 증거. 이것이 없으면 아래 measured 단언이 공허하다 —
     // `derived`가 다시 만들어지지 않았다면 measured는 당연히 그대로다.
@@ -768,15 +818,23 @@ describe('Canvas — 노드 재구성이 measured를 버리지 않는다', () =>
 
     measureNode('t2', 240, 120)
     act(() => {
-      (lastProps().onNodesChange as (c: unknown[]) => void)(
-        [{ type: 'position', id: 't2', position: { x: 999, y: 999 }, dragging: false }])
+      ;(lastProps().onNodesChange as (c: unknown[]) => void)([
+        { type: 'position', id: 't2', position: { x: 999, y: 999 }, dragging: false },
+      ])
     })
 
-    act(() => { (lastProps().onNodeDragStart as (e: unknown, n: unknown) => void)({}, tbl('t2', 300, 0)) })
-    act(() => { useDragStore.getState().moveOver({ groupId: 'g1' }) })   // t2는 이미 g1이다(op 없음)
     act(() => {
-      (lastProps().onNodeDragStop as (e: unknown, n: unknown, d: unknown[]) => void)(
-        {}, tbl('t2', 999, 999), [tbl('t2', 999, 999)])
+      ;(lastProps().onNodeDragStart as (e: unknown, n: unknown) => void)({}, tbl('t2', 300, 0))
+    })
+    act(() => {
+      useDragStore.getState().moveOver({ groupId: 'g1' })
+    }) // t2는 이미 g1이다(op 없음)
+    act(() => {
+      ;(lastProps().onNodeDragStop as (e: unknown, n: unknown, d: unknown[]) => void)(
+        {},
+        tbl('t2', 999, 999),
+        [tbl('t2', 999, 999)],
+      )
     })
 
     // 좌표가 되돌아왔다 = 노드 배열을 `derived`로 되돌리는 경로를 실제로 탔다는 증거.
@@ -858,7 +916,9 @@ describe('Canvas — 앵커가 바뀌면 updateNodeInternals를 건다', () => {
 
     const m = buildSampleModel()
     m.relationships = {}
-    act(() => { useEditorStore.getState().setModel(m) })
+    act(() => {
+      useEditorStore.getState().setModel(m)
+    })
 
     // r1(t1.c1 ← t2.c4)이 사라지면 두 테이블 모두 앵커가 0개가 된다.
     expect(updatedTableIds()).toEqual(['t1', 't2'])
@@ -869,11 +929,17 @@ describe('Canvas — 앵커가 바뀌면 updateNodeInternals를 건다', () => {
 
     const m = buildSampleModel()
     m.relationships['r2'] = {
-      id: 'r2', parentTableId: 't1', childTableId: 't2',
+      id: 'r2',
+      parentTableId: 't1',
+      childTableId: 't2',
       columnMappings: [{ childColumnId: 'c3', parentColumnId: 'c1' }],
-      cardinality: '1:N', identifying: false, name: null,
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
     }
-    act(() => { useEditorStore.getState().setModel(m) })
+    act(() => {
+      useEditorStore.getState().setModel(m)
+    })
 
     // t2 의 앵커가 [c:c4] → [c:c3, c:c4] 로 늘었다. t1 은 부모 컬럼이 같아 그대로다.
     expect(updatedTableIds()).toEqual(['t2'])
@@ -888,7 +954,9 @@ describe('Canvas — 앵커가 바뀌면 updateNodeInternals를 건다', () => {
      */
     loadAndRender(buildSampleModel())
 
-    act(() => { useEditorStore.getState().setModel(reorderColumn(buildSampleModel(), 'c4', -1)) })
+    act(() => {
+      useEditorStore.getState().setModel(reorderColumn(buildSampleModel(), 'c4', -1))
+    })
 
     expect(updatedTableIds()).toEqual(['t2'])
   })
@@ -898,7 +966,9 @@ describe('Canvas — 앵커가 바뀌면 updateNodeInternals를 건다', () => {
     // 모델 객체는 새것이라 memo·effect 는 실제로 다시 도는데, 서명이 같아 호출이 없어야 한다.
     loadAndRender(buildSampleModel())
 
-    act(() => { useEditorStore.getState().setModel(buildSampleModel()) })
+    act(() => {
+      useEditorStore.getState().setModel(buildSampleModel())
+    })
 
     expect(updateNodeInternalsSpy).not.toHaveBeenCalled()
   })
@@ -921,10 +991,16 @@ describe('Canvas — 노드 이름', () => {
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     useEditorStore.getState().setProjectConfig(
       {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+        tableLogicalTemplate: '',
       },
-      ['postgresql'], null, DEFAULT_TABLE_OPTIONS,
+      ['postgresql'],
+      null,
+      DEFAULT_TABLE_OPTIONS,
     )
     renderCanvas()
     expect(screen.getByText('MBR')).toBeInTheDocument()

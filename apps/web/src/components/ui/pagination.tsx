@@ -3,7 +3,14 @@ import { Button } from '@/components/ui/button'
 import { formatCount } from '@/lib/format'
 
 /** 「이전 · 3 / 263 · 다음」과 전체 건수. 한 쪽뿐이면 아무것도 그리지 않는다. */
-export function Pagination({ page, pageCount, total, onPageChange, label = '목록', listRef }: {
+export function Pagination({
+  page,
+  pageCount,
+  total,
+  onPageChange,
+  label = '목록',
+  listRef,
+}: {
   page: number
   pageCount: number
   total: number
@@ -22,14 +29,33 @@ export function Pagination({ page, pageCount, total, onPageChange, label = '목�
     if (listRef?.current) showListStart(listRef.current)
   }
   return (
-    <nav aria-label={`${label} 페이지`} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+    <nav
+      aria-label={`${label} 페이지`}
+      className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
+    >
       <span>전체 {formatCount(total)}건</span>
       <span className="flex items-center gap-2">
-        <Button type="button" size="sm" variant="outline" disabled={page <= 1}
-          onClick={() => go(page - 1)}>이전</Button>
-        <span>{formatCount(page)} / {formatCount(pageCount)}</span>
-        <Button type="button" size="sm" variant="outline" disabled={page >= pageCount}
-          onClick={() => go(page + 1)}>다음</Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={page <= 1}
+          onClick={() => go(page - 1)}
+        >
+          이전
+        </Button>
+        <span>
+          {formatCount(page)} / {formatCount(pageCount)}
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={page >= pageCount}
+          onClick={() => go(page + 1)}
+        >
+          다음
+        </Button>
       </span>
     </nav>
   )
@@ -46,7 +72,8 @@ function showListStart(list: HTMLElement) {
   for (let parent = list.parentElement; parent !== null; parent = parent.parentElement) {
     const { overflowY } = getComputedStyle(parent)
     if (overflowY !== 'auto' && overflowY !== 'scroll') continue
-    if (list.getBoundingClientRect().top < parent.getBoundingClientRect().top) list.scrollIntoView({ block: 'start' })
+    if (list.getBoundingClientRect().top < parent.getBoundingClientRect().top)
+      list.scrollIntoView({ block: 'start' })
     return
   }
 }

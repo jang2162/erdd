@@ -8,7 +8,10 @@ export async function readDictSheetsFile(path: string): Promise<RawSheet[]> {
   try {
     await wb.xlsx.readFile(path)
   } catch (err) {
-    throw new CliError('VALIDATION', `Excel 파일을 읽지 못했습니다: ${path} — ${(err as Error).message}`)
+    throw new CliError(
+      'VALIDATION',
+      `Excel 파일을 읽지 못했습니다: ${path} — ${(err as Error).message}`,
+    )
   }
   try {
     return dictSheetsFromWorkbook(wb)

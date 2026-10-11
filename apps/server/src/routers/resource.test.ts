@@ -13,8 +13,11 @@ const WORD = { logicalName: '회원', abbreviation: 'MBR', description: null }
 
 function post(app: FastifyInstance, path: string, token: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`, cookies: { erdd_session: token },
-    headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
+    method: 'POST',
+    url: `/trpc/${path}`,
+    cookies: { erdd_session: token },
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify(input),
   })
 }
 function get(app: FastifyInstance, path: string, token: string, input?: unknown) {
@@ -24,20 +27,42 @@ function get(app: FastifyInstance, path: string, token: string, input?: unknown)
 
 describe.skipIf(!url)('resource', () => {
   let app: FastifyInstance
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
-  beforeEach(async () => { await resetDb(app.pgPool!) })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
+  beforeEach(async () => {
+    await resetDb(app.pgPool!)
+  })
 
   it('전역 라이브러리는 서비스 관리자만 만들 수 있다', async () => {
-    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
-    await createAccount(app.db!, { email: 'user@t.dev', name: 'U', password: 'pw-123456', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'admin@t.dev',
+      name: 'A',
+      password: 'pw-123456',
+      role: 'admin',
+    })
+    await createAccount(app.db!, {
+      email: 'user@t.dev',
+      name: 'U',
+      password: 'pw-123456',
+      role: 'user',
+    })
     const adminToken = await loginAs(app, 'admin@t.dev', 'pw-123456')
     const userToken = await loginAs(app, 'user@t.dev', 'pw-123456')
 
-    const denied = await post(app, 'resource.library.create', userToken, { scope: 'global', name: '표준' })
+    const denied = await post(app, 'resource.library.create', userToken, {
+      scope: 'global',
+      name: '표준',
+    })
     expect(denied.statusCode).toBe(403)
 
-    const created = await post(app, 'resource.library.create', adminToken, { scope: 'global', name: '표준' })
+    const created = await post(app, 'resource.library.create', adminToken, {
+      scope: 'global',
+      name: '표준',
+    })
     expect(created.statusCode).toBe(200)
 
     // 전역 라이브러리는 아무 인증 사용자나 읽을 수 있다
@@ -49,10 +74,30 @@ describe.skipIf(!url)('resource', () => {
   })
 
   it('조직 라이브러리는 Owner/Admin만 쓰고, 멤버는 읽기만, 외부인은 못 읽는다', async () => {
-    const owner = await createAccount(app.db!, { email: 'owner@t.dev', name: 'O', password: 'pw-123456', role: 'user' })
-    const memberUser = await createAccount(app.db!, { email: 'mem@t.dev', name: 'M', password: 'pw-123456', role: 'user' })
-    const adminMember = await createAccount(app.db!, { email: 'orgadmin@t.dev', name: 'OA', password: 'pw-123456', role: 'user' })
-    await createAccount(app.db!, { email: 'out@t.dev', name: 'X', password: 'pw-123456', role: 'user' })
+    const owner = await createAccount(app.db!, {
+      email: 'owner@t.dev',
+      name: 'O',
+      password: 'pw-123456',
+      role: 'user',
+    })
+    const memberUser = await createAccount(app.db!, {
+      email: 'mem@t.dev',
+      name: 'M',
+      password: 'pw-123456',
+      role: 'user',
+    })
+    const adminMember = await createAccount(app.db!, {
+      email: 'orgadmin@t.dev',
+      name: 'OA',
+      password: 'pw-123456',
+      role: 'user',
+    })
+    await createAccount(app.db!, {
+      email: 'out@t.dev',
+      name: 'X',
+      password: 'pw-123456',
+      role: 'user',
+    })
     const orgId = uuidv7()
     await app.db!.insert(organizations).values({ id: orgId, name: '팀', kind: 'team' })
     await app.db!.insert(members).values([
@@ -65,67 +110,133 @@ describe.skipIf(!url)('resource', () => {
     const orgAdminToken = await loginAs(app, 'orgadmin@t.dev', 'pw-123456')
     const outsiderToken = await loginAs(app, 'out@t.dev', 'pw-123456')
 
-    expect((await post(app, 'resource.library.create', memberToken, {
-      scope: 'org', orgId, name: '조직표준',
-    })).statusCode).toBe(403)
+    expect(
+      (
+        await post(app, 'resource.library.create', memberToken, {
+          scope: 'org',
+          orgId,
+          name: '조직표준',
+        })
+      ).statusCode,
+    ).toBe(403)
     const created = await post(app, 'resource.library.create', ownerToken, {
-      scope: 'org', orgId, name: '조직표준',
+      scope: 'org',
+      orgId,
+      name: '조직표준',
     })
     expect(created.statusCode).toBe(200)
 
     // 조직 role='admin' 멤버도 owner와 동등하게 조직 라이브러리를 만들 수 있어야 한다.
     const adminCreated = await post(app, 'resource.library.create', orgAdminToken, {
-      scope: 'org', orgId, name: '조직표준2',
+      scope: 'org',
+      orgId,
+      name: '조직표준2',
     })
     expect(adminCreated.statusCode).toBe(200)
 
-    expect((await get(app, 'resource.library.list', memberToken, { scope: 'org', orgId })).statusCode).toBe(200)
-    expect((await get(app, 'resource.library.list', outsiderToken, { scope: 'org', orgId })).statusCode).toBe(403)
+    expect(
+      (await get(app, 'resource.library.list', memberToken, { scope: 'org', orgId })).statusCode,
+    ).toBe(200)
+    expect(
+      (await get(app, 'resource.library.list', outsiderToken, { scope: 'org', orgId })).statusCode,
+    ).toBe(403)
   })
 
   it('payload가 스키마에 안 맞으면 400', async () => {
-    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
+    await createAccount(app.db!, {
+      email: 'admin@t.dev',
+      name: 'A',
+      password: 'pw-123456',
+      role: 'admin',
+    })
     const token = await loginAs(app, 'admin@t.dev', 'pw-123456')
-    const lib = (await post(app, 'resource.library.create', token, { scope: 'global', name: '표준' })).json().result.data
+    const lib = (
+      await post(app, 'resource.library.create', token, { scope: 'global', name: '표준' })
+    ).json().result.data
     const bad = await post(app, 'resource.items.create', token, {
-      libraryId: lib.id, kind: 'word', payload: { logicalName: '회원' },
+      libraryId: lib.id,
+      kind: 'word',
+      payload: { logicalName: '회원' },
     })
     expect(bad.statusCode).toBe(400)
   })
 
   it('항목 수정은 payload가 실제로 달라졌을 때만 version을 올린다', async () => {
-    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
+    await createAccount(app.db!, {
+      email: 'admin@t.dev',
+      name: 'A',
+      password: 'pw-123456',
+      role: 'admin',
+    })
     const token = await loginAs(app, 'admin@t.dev', 'pw-123456')
-    const lib = (await post(app, 'resource.library.create', token, { scope: 'global', name: '표준' })).json().result.data
-    const item = (await post(app, 'resource.items.create', token, {
-      libraryId: lib.id, kind: 'word', payload: WORD,
-    })).json().result.data
+    const lib = (
+      await post(app, 'resource.library.create', token, { scope: 'global', name: '표준' })
+    ).json().result.data
+    const item = (
+      await post(app, 'resource.items.create', token, {
+        libraryId: lib.id,
+        kind: 'word',
+        payload: WORD,
+      })
+    ).json().result.data
     expect(item.version).toBe(1)
 
     const same = await post(app, 'resource.items.update', token, { itemId: item.id, payload: WORD })
     expect(same.json().result.data.version).toBe(1)
 
     const changed = await post(app, 'resource.items.update', token, {
-      itemId: item.id, payload: { ...WORD, abbreviation: 'MEMBER' },
+      itemId: item.id,
+      payload: { ...WORD, abbreviation: 'MEMBER' },
     })
     expect(changed.json().result.data.version).toBe(2)
   })
 
   it('라이브러리를 지우면 항목도 함께 사라진다', async () => {
-    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
+    await createAccount(app.db!, {
+      email: 'admin@t.dev',
+      name: 'A',
+      password: 'pw-123456',
+      role: 'admin',
+    })
     const token = await loginAs(app, 'admin@t.dev', 'pw-123456')
-    const lib = (await post(app, 'resource.library.create', token, { scope: 'global', name: '표준' })).json().result.data
-    await post(app, 'resource.items.create', token, { libraryId: lib.id, kind: 'word', payload: WORD })
+    const lib = (
+      await post(app, 'resource.library.create', token, { scope: 'global', name: '표준' })
+    ).json().result.data
+    await post(app, 'resource.items.create', token, {
+      libraryId: lib.id,
+      kind: 'word',
+      payload: WORD,
+    })
     await post(app, 'resource.library.remove', token, { libraryId: lib.id })
     const rows = await app.pgPool!.query('SELECT count(*)::int AS n FROM resource_items')
     expect(rows.rows[0].n).toBe(0)
   })
 
   it('listForProject는 전역 + 프로젝트 소속 조직의 라이브러리만 반환하고, 타 조직 라이브러리는 새지 않는다', async () => {
-    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
-    const ownerA = await createAccount(app.db!, { email: 'ownerA@t.dev', name: 'OA', password: 'pw-123456', role: 'user' })
-    const ownerB = await createAccount(app.db!, { email: 'ownerB@t.dev', name: 'OB', password: 'pw-123456', role: 'user' })
-    await createAccount(app.db!, { email: 'out@t.dev', name: 'X', password: 'pw-123456', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'admin@t.dev',
+      name: 'A',
+      password: 'pw-123456',
+      role: 'admin',
+    })
+    const ownerA = await createAccount(app.db!, {
+      email: 'ownerA@t.dev',
+      name: 'OA',
+      password: 'pw-123456',
+      role: 'user',
+    })
+    const ownerB = await createAccount(app.db!, {
+      email: 'ownerB@t.dev',
+      name: 'OB',
+      password: 'pw-123456',
+      role: 'user',
+    })
+    await createAccount(app.db!, {
+      email: 'out@t.dev',
+      name: 'X',
+      password: 'pw-123456',
+      role: 'user',
+    })
 
     const adminToken = await loginAs(app, 'admin@t.dev', 'pw-123456')
     const ownerAToken = await loginAs(app, 'ownerA@t.dev', 'pw-123456')
@@ -143,19 +254,34 @@ describe.skipIf(!url)('resource', () => {
       { id: uuidv7(), orgId: orgBId, userId: ownerB.id, role: 'owner' },
     ])
 
-    const globalLib = (await post(app, 'resource.library.create', adminToken, {
-      scope: 'global', name: '전역',
-    })).json().result.data
-    const libA = (await post(app, 'resource.library.create', ownerAToken, {
-      scope: 'org', orgId: orgAId, name: '팀A표준',
-    })).json().result.data
-    const libB = (await post(app, 'resource.library.create', ownerBToken, {
-      scope: 'org', orgId: orgBId, name: '팀B표준',
-    })).json().result.data
+    const globalLib = (
+      await post(app, 'resource.library.create', adminToken, {
+        scope: 'global',
+        name: '전역',
+      })
+    ).json().result.data
+    const libA = (
+      await post(app, 'resource.library.create', ownerAToken, {
+        scope: 'org',
+        orgId: orgAId,
+        name: '팀A표준',
+      })
+    ).json().result.data
+    const libB = (
+      await post(app, 'resource.library.create', ownerBToken, {
+        scope: 'org',
+        orgId: orgBId,
+        name: '팀B표준',
+      })
+    ).json().result.data
 
-    const projectId = (await post(app, 'project.create', ownerAToken, {
-      orgId: orgAId, name: '프로젝트A', dialects: ['postgresql'],
-    })).json().result.data.id as string
+    const projectId = (
+      await post(app, 'project.create', ownerAToken, {
+        orgId: orgAId,
+        name: '프로젝트A',
+        dialects: ['postgresql'],
+      })
+    ).json().result.data.id as string
 
     const listed = await get(app, 'resource.library.listForProject', ownerAToken, { projectId })
     expect(listed.statusCode).toBe(200)
@@ -168,9 +294,24 @@ describe.skipIf(!url)('resource', () => {
   })
 
   it('조직 라이브러리 항목은 조직 쓰기 권한이 없으면 수정·삭제가 거부되고, 외부인은 목록도 볼 수 없다', async () => {
-    const owner = await createAccount(app.db!, { email: 'owner@t.dev', name: 'O', password: 'pw-123456', role: 'user' })
-    const memberUser = await createAccount(app.db!, { email: 'mem@t.dev', name: 'M', password: 'pw-123456', role: 'user' })
-    await createAccount(app.db!, { email: 'out@t.dev', name: 'X', password: 'pw-123456', role: 'user' })
+    const owner = await createAccount(app.db!, {
+      email: 'owner@t.dev',
+      name: 'O',
+      password: 'pw-123456',
+      role: 'user',
+    })
+    const memberUser = await createAccount(app.db!, {
+      email: 'mem@t.dev',
+      name: 'M',
+      password: 'pw-123456',
+      role: 'user',
+    })
+    await createAccount(app.db!, {
+      email: 'out@t.dev',
+      name: 'X',
+      password: 'pw-123456',
+      role: 'user',
+    })
     const orgId = uuidv7()
     await app.db!.insert(organizations).values({ id: orgId, name: '팀', kind: 'team' })
     await app.db!.insert(members).values([
@@ -181,15 +322,24 @@ describe.skipIf(!url)('resource', () => {
     const memberToken = await loginAs(app, 'mem@t.dev', 'pw-123456')
     const outsiderToken = await loginAs(app, 'out@t.dev', 'pw-123456')
 
-    const lib = (await post(app, 'resource.library.create', ownerToken, {
-      scope: 'org', orgId, name: '조직표준',
-    })).json().result.data
-    const item = (await post(app, 'resource.items.create', ownerToken, {
-      libraryId: lib.id, kind: 'word', payload: WORD,
-    })).json().result.data
+    const lib = (
+      await post(app, 'resource.library.create', ownerToken, {
+        scope: 'org',
+        orgId,
+        name: '조직표준',
+      })
+    ).json().result.data
+    const item = (
+      await post(app, 'resource.items.create', ownerToken, {
+        libraryId: lib.id,
+        kind: 'word',
+        payload: WORD,
+      })
+    ).json().result.data
 
     const memberUpdate = await post(app, 'resource.items.update', memberToken, {
-      itemId: item.id, payload: { ...WORD, abbreviation: 'X' },
+      itemId: item.id,
+      payload: { ...WORD, abbreviation: 'X' },
     })
     expect(memberUpdate.statusCode).toBe(403)
 
@@ -204,9 +354,24 @@ describe.skipIf(!url)('resource', () => {
   })
 
   it('listForProject는 라이브러리별 쓰기 권한을 함께 준다', async () => {
-    await createAccount(app.db!, { email: 'sa@t.dev', name: 'SA', password: 'pw-123456', role: 'admin' })
-    await createAccount(app.db!, { email: 'ow@t.dev', name: 'OW', password: 'pw-123456', role: 'user' })
-    await createAccount(app.db!, { email: 'me@t.dev', name: 'ME', password: 'pw-123456', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'sa@t.dev',
+      name: 'SA',
+      password: 'pw-123456',
+      role: 'admin',
+    })
+    await createAccount(app.db!, {
+      email: 'ow@t.dev',
+      name: 'OW',
+      password: 'pw-123456',
+      role: 'user',
+    })
+    await createAccount(app.db!, {
+      email: 'me@t.dev',
+      name: 'ME',
+      password: 'pw-123456',
+      role: 'user',
+    })
     const saToken = await loginAs(app, 'sa@t.dev', 'pw-123456')
     const ownerToken = await loginAs(app, 'ow@t.dev', 'pw-123456')
     const memberToken = await loginAs(app, 'me@t.dev', 'pw-123456')
@@ -214,58 +379,115 @@ describe.skipIf(!url)('resource', () => {
     await post(app, 'resource.library.create', saToken, { scope: 'global', name: '전역' })
     const orgId = (await post(app, 'org.create', ownerToken, { name: '팀' })).json().result.data.id
     await post(app, 'resource.library.create', ownerToken, { scope: 'org', orgId, name: '조직' })
-    const projectId = (await post(app, 'project.create', ownerToken, {
-      orgId, name: 'P', dialects: ['postgresql'],
-    })).json().result.data.id
+    const projectId = (
+      await post(app, 'project.create', ownerToken, {
+        orgId,
+        name: 'P',
+        dialects: ['postgresql'],
+      })
+    ).json().result.data.id
     await post(app, 'org.members.add', ownerToken, { orgId, email: 'me@t.dev', role: 'member' })
     await post(app, 'org.members.add', ownerToken, { orgId, email: 'sa@t.dev', role: 'member' })
-    const members = (await get(app, 'org.members.list', ownerToken, { orgId }))
-      .json().result.data as Array<{ id: string; email: string }>
+    const members = (await get(app, 'org.members.list', ownerToken, { orgId })).json().result
+      .data as Array<{ id: string; email: string }>
     await post(app, 'project.members.add', ownerToken, {
-      projectId, memberId: members.find((m) => m.email === 'me@t.dev')!.id, role: 'editor',
+      projectId,
+      memberId: members.find((m) => m.email === 'me@t.dev')!.id,
+      role: 'editor',
     })
     await post(app, 'project.members.add', ownerToken, {
-      projectId, memberId: members.find((m) => m.email === 'sa@t.dev')!.id, role: 'viewer',
+      projectId,
+      memberId: members.find((m) => m.email === 'sa@t.dev')!.id,
+      role: 'viewer',
     })
 
-    const asOwner = (await get(app, 'resource.library.listForProject', ownerToken, { projectId }))
-      .json().result.data as Array<{ name: string; canWrite: boolean }>
+    const asOwner = (
+      await get(app, 'resource.library.listForProject', ownerToken, { projectId })
+    ).json().result.data as Array<{ name: string; canWrite: boolean }>
     expect(asOwner.find((l) => l.name === '조직')!.canWrite).toBe(true)
     expect(asOwner.find((l) => l.name === '전역')!.canWrite).toBe(false)
 
-    const asAdmin = (await get(app, 'resource.library.listForProject', saToken, { projectId }))
-      .json().result.data as Array<{ name: string; canWrite: boolean }>
+    const asAdmin = (
+      await get(app, 'resource.library.listForProject', saToken, { projectId })
+    ).json().result.data as Array<{ name: string; canWrite: boolean }>
     expect(asAdmin.find((l) => l.name === '전역')!.canWrite).toBe(true)
     expect(asAdmin.find((l) => l.name === '조직')!.canWrite).toBe(false)
 
-    const asMember = (await get(app, 'resource.library.listForProject', memberToken, { projectId }))
-      .json().result.data as Array<{ name: string; canWrite: boolean }>
+    const asMember = (
+      await get(app, 'resource.library.listForProject', memberToken, { projectId })
+    ).json().result.data as Array<{ name: string; canWrite: boolean }>
     expect(asMember.every((l) => l.canWrite === false)).toBe(true)
   })
 
   it('library.list 는 행마다 쓰기 가능 여부를 싣는다', async () => {
-    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
-    await createAccount(app.db!, { email: 'user@t.dev', name: 'U', password: 'pw-123456', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'admin@t.dev',
+      name: 'A',
+      password: 'pw-123456',
+      role: 'admin',
+    })
+    await createAccount(app.db!, {
+      email: 'user@t.dev',
+      name: 'U',
+      password: 'pw-123456',
+      role: 'user',
+    })
     const adminToken = await loginAs(app, 'admin@t.dev', 'pw-123456')
     const userToken = await loginAs(app, 'user@t.dev', 'pw-123456')
     await post(app, 'resource.library.create', adminToken, { scope: 'global', name: '표준' })
-    expect((await get(app, 'resource.library.list', adminToken, { scope: 'global' })).json().result.data[0].canWrite).toBe(true)
-    expect((await get(app, 'resource.library.list', userToken, { scope: 'global' })).json().result.data[0].canWrite).toBe(false)
+    expect(
+      (await get(app, 'resource.library.list', adminToken, { scope: 'global' })).json().result
+        .data[0].canWrite,
+    ).toBe(true)
+    expect(
+      (await get(app, 'resource.library.list', userToken, { scope: 'global' })).json().result
+        .data[0].canWrite,
+    ).toBe(false)
   })
 
   it('library.export 는 읽기 권한이면 배포 파일을 내고, 끊긴 도메인 참조를 null 로 쓴다', async () => {
-    await createAccount(app.db!, { email: 'admin@t.dev', name: 'A', password: 'pw-123456', role: 'admin' })
-    await createAccount(app.db!, { email: 'user@t.dev', name: 'U', password: 'pw-123456', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'admin@t.dev',
+      name: 'A',
+      password: 'pw-123456',
+      role: 'admin',
+    })
+    await createAccount(app.db!, {
+      email: 'user@t.dev',
+      name: 'U',
+      password: 'pw-123456',
+      role: 'user',
+    })
     const adminToken = await loginAs(app, 'admin@t.dev', 'pw-123456')
     const userToken = await loginAs(app, 'user@t.dev', 'pw-123456')
-    const libraryId = (await post(app, 'resource.library.create', adminToken, { scope: 'global', name: '표준' })).json().result.data.id
-    const domainId = (await post(app, 'resource.items.create', adminToken, { libraryId, kind: 'domain', payload: {
-      name: '금액', category: null, logicalType: 'DECIMAL', dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null,
-    } })).json().result.data.id
-    await post(app, 'resource.items.create', adminToken, { libraryId, kind: 'term', payload: {
-      logicalName: '금액합계', physicalName: 'AMT_SUM', domainId, description: null,
-    } })
+    const libraryId = (
+      await post(app, 'resource.library.create', adminToken, { scope: 'global', name: '표준' })
+    ).json().result.data.id
+    const domainId = (
+      await post(app, 'resource.items.create', adminToken, {
+        libraryId,
+        kind: 'domain',
+        payload: {
+          name: '금액',
+          category: null,
+          logicalType: 'DECIMAL',
+          dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+          defaultValue: null,
+          allowedValues: [],
+          description: null,
+        },
+      })
+    ).json().result.data.id
+    await post(app, 'resource.items.create', adminToken, {
+      libraryId,
+      kind: 'term',
+      payload: {
+        logicalName: '금액합계',
+        physicalName: 'AMT_SUM',
+        domainId,
+        description: null,
+      },
+    })
     await post(app, 'resource.items.remove', adminToken, { itemId: domainId })
 
     const res = await get(app, 'resource.library.export', userToken, { libraryId })

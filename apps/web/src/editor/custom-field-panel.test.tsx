@@ -20,7 +20,9 @@ function renderPanel() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<CustomFieldPanel projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
@@ -29,23 +31,44 @@ function renderPanel() {
 function loadModelWithFields(grant = true) {
   let m = buildSampleModel()
   m = createCustomField(m, {
-    id: 'f1', name: '개인정보여부', target: 'column', type: 'select',
-    options: ['Y', 'N'], required: true, defaultValue: null, origin: null,
+    id: 'f1',
+    name: '개인정보여부',
+    target: 'column',
+    type: 'select',
+    options: ['Y', 'N'],
+    required: true,
+    defaultValue: null,
+    origin: null,
   })
   m = createCustomField(m, {
-    id: 'f2', name: '암호화방식', target: 'column', type: 'text',
-    options: [], required: false, defaultValue: null, origin: null,
+    id: 'f2',
+    name: '암호화방식',
+    target: 'column',
+    type: 'text',
+    options: [],
+    required: false,
+    defaultValue: null,
+    origin: null,
   })
   m = createCustomField(m, {
-    id: 'f3', name: '업무구분', target: 'table', type: 'text',
-    options: [], required: false, defaultValue: null, origin: null,
+    id: 'f3',
+    name: '업무구분',
+    target: 'table',
+    type: 'text',
+    options: [],
+    required: false,
+    defaultValue: null,
+    origin: null,
   })
   m = setCustomValue(m, 'column', 'c1', 'f1', 'Y')
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
   if (grant) grantEditPermission()
 }
 
-afterEach(() => { cleanup(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  useEditorStore.getState().reset()
+})
 
 describe('CustomFieldPanel', () => {
   it('대상별로 항목을 나눠 보여주고 사용 건수를 표시한다', async () => {
@@ -102,16 +125,22 @@ describe('CustomFieldPanel', () => {
     let m = createEmptyModel()
     for (let i = 0; i < 60; i++) {
       m = createCustomField(m, {
-        id: `f${i}`, name: `항목${String(i).padStart(2, '0')}`, target: 'column', type: 'text',
-        options: [], required: false, defaultValue: null, origin: null,
+        id: `f${i}`,
+        name: `항목${String(i).padStart(2, '0')}`,
+        target: 'column',
+        type: 'text',
+        options: [],
+        required: false,
+        defaultValue: null,
+        origin: null,
       })
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
-    expect(screen.getByRole('button', { name: '항목49 아래로' })).toBeEnabled()   // 쪽의 끝이지만 전체의 끝이 아니다
+    expect(screen.getByRole('button', { name: '항목49 아래로' })).toBeEnabled() // 쪽의 끝이지만 전체의 끝이 아니다
     const list = screen.getByText('항목49').closest<HTMLElement>('[class*="overflow-y-auto"]')!
-    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
+    list.scrollTop = 400 // 끝까지 내려 「다음」을 누른다
     await userEvent.click(screen.getByRole('button', { name: '다음' }))
     expect(list.scrollTop).toBe(0)
     expect(screen.getByRole('button', { name: '항목50 위로' })).toBeEnabled()
@@ -126,7 +155,9 @@ function renderDialog(field: Parameters<typeof CustomFieldEditDialog>[0]['field'
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(
@@ -210,8 +241,9 @@ describe('CustomFieldEditDialog', () => {
     await userEvent.selectOptions(screen.getByLabelText('타입'), 'select')
     await userEvent.type(screen.getByLabelText('선택지 (쉼표로 구분)'), 'Y, N, Y')
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
-    const created = Object.values(useEditorStore.getState().model.customFields)
-      .find((f) => f.name === '등급')
+    const created = Object.values(useEditorStore.getState().model.customFields).find(
+      (f) => f.name === '등급',
+    )
     expect(created?.options).toEqual(['Y', 'N'])
   })
 })

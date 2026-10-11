@@ -20,13 +20,19 @@ function renderPanel() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<RelationshipPanel projectId={PROJECT_ID} />, { wrapper: w })
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('RelationshipPanel', () => {
   it('renders the delete button and identifying checkbox for the selected relationship', () => {
@@ -89,9 +95,13 @@ describe('RelationshipPanel', () => {
 
   it('식별 관계면 버튼이 잠기고 이유가 보인다', () => {
     const base = buildSampleModel()
-    const m = { ...base, relationships: {
-      ...base.relationships, r1: { ...base.relationships['r1']!, identifying: true },
-    } }
+    const m = {
+      ...base,
+      relationships: {
+        ...base.relationships,
+        r1: { ...base.relationships['r1']!, identifying: true },
+      },
+    }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectRelationship('r1')
@@ -104,11 +114,14 @@ describe('RelationshipPanel', () => {
   it('PK가 모자라면 버튼이 잠기고 이유가 보인다', () => {
     const base = buildSampleModel()
     // t2의 PK c2를 비-PK로, FK c4를 PK로 → FK를 지우면 t2의 PK가 0개가 된다(no-pk).
-    const m = { ...base, columns: {
-      ...base.columns,
-      c2: { ...base.columns['c2']!, isPk: false },
-      c4: { ...base.columns['c4']!, isPk: true },
-    } }
+    const m = {
+      ...base,
+      columns: {
+        ...base.columns,
+        c2: { ...base.columns['c2']!, isPk: false },
+        c4: { ...base.columns['c4']!, isPk: true },
+      },
+    }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     useEditorStore.getState().selectRelationship('r1')
@@ -125,17 +138,31 @@ describe('RelationshipPanel', () => {
     const base = buildSampleModel()
     const m = {
       ...base,
-      tables: { ...base.tables,
-        t3: { ...base.tables['t2']!, id: 't3', logicalName: '배송', physicalName: 'DLV' } },
-      columns: { ...base.columns,
+      tables: {
+        ...base.tables,
+        t3: { ...base.tables['t2']!, id: 't3', logicalName: '배송', physicalName: 'DLV' },
+      },
+      columns: {
+        ...base.columns,
         c4: { ...base.columns['c4']!, isPk: true },
         c5: { ...base.columns['c2']!, id: 'c5', tableId: 't3', isPk: false, autoIncrement: false },
-        c6: { ...base.columns['c4']!, id: 'c6', tableId: 't3', isPk: false, order: 1 } },
-      relationships: { ...base.relationships,
-        r2: { id: 'r2', parentTableId: 't2', childTableId: 't3', cardinality: '1:N' as const,
-              identifying: false, name: null,
-              columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c2' },
-                               { childColumnId: 'c6', parentColumnId: 'c4' }] } },
+        c6: { ...base.columns['c4']!, id: 'c6', tableId: 't3', isPk: false, order: 1 },
+      },
+      relationships: {
+        ...base.relationships,
+        r2: {
+          id: 'r2',
+          parentTableId: 't2',
+          childTableId: 't3',
+          cardinality: '1:N' as const,
+          identifying: false,
+          name: null,
+          columnMappings: [
+            { childColumnId: 'c5', parentColumnId: 'c2' },
+            { childColumnId: 'c6', parentColumnId: 'c4' },
+          ],
+        },
+      },
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
@@ -157,7 +184,9 @@ describe('RelationshipPanel', () => {
     expect(screen.getByRole('button', { name: '교차 테이블로 풀기' })).toBeInTheDocument()
 
     // 선택은 r1 에 그대로 둔 채 모델에서 관계만 없앤다.
-    act(() => { useEditorStore.getState().setModel(deleteRelationship(base, 'r1')) })
+    act(() => {
+      useEditorStore.getState().setModel(deleteRelationship(base, 'r1'))
+    })
 
     expect(useEditorStore.getState().selectedRelationshipId).toBe('r1')
     expect(screen.queryByRole('heading', { name: '관계' })).toBeNull()

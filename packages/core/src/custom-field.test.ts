@@ -1,26 +1,53 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type CustomField, type ProjectModel } from './model.js'
 import {
-  customFieldsFor, customFieldUsageCount, customOptionUsageCount, resolveCustomValue,
+  customFieldsFor,
+  customFieldUsageCount,
+  customOptionUsageCount,
+  resolveCustomValue,
 } from './custom-field.js'
 
 function field(id: string, over: Partial<CustomField> = {}): CustomField {
   return {
-    id, name: id, target: 'column', type: 'text', options: [], required: false,
-    defaultValue: null, order: 0, origin: null, ...over,
+    id,
+    name: id,
+    target: 'column',
+    type: 'text',
+    options: [],
+    required: false,
+    defaultValue: null,
+    order: 0,
+    origin: null,
+    ...over,
   }
 }
 function modelWith(fields: CustomField[]): ProjectModel {
   const m = createEmptyModel()
   for (const f of fields) m.customFields[f.id] = f
   m.tables['T'] = {
-    id: 'T', logicalName: 'T', physicalName: 'T', comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 'T',
+    logicalName: 'T',
+    physicalName: 'T',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['C'] = {
-    id: 'C', tableId: 'T', logicalName: 'C', physicalName: 'C', type: 'BIGINT', isPk: false,
-    autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null,
-    domainId: null, custom: {},
+    id: 'C',
+    tableId: 'T',
+    logicalName: 'C',
+    physicalName: 'C',
+    type: 'BIGINT',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   return m
 }
@@ -37,7 +64,10 @@ describe('customFieldsFor', () => {
   })
 
   it('order가 같으면 이름순으로 안정 정렬한다', () => {
-    const m = modelWith([field('z', { name: '나', order: 0 }), field('y', { name: '가', order: 0 })])
+    const m = modelWith([
+      field('z', { name: '나', order: 0 }),
+      field('y', { name: '가', order: 0 }),
+    ])
     expect(customFieldsFor(m, 'column').map((f) => f.id)).toEqual(['y', 'z'])
   })
 })

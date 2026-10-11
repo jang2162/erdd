@@ -14,6 +14,10 @@ import { act } from '@testing-library/react'
  */
 export async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) {
-    await act(async () => { await new Promise((r) => { setTimeout(r, 0) }) })
+    await act(async () => {
+      await new Promise((r) => {
+        setTimeout(r, 0)
+      })
+    })
   }
 }

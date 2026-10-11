@@ -8,8 +8,12 @@ import { buildAnchors, type AnchorIndex } from './anchors.js'
 export type NodeView = { kind: 'full' } | { kind: 'group'; groupId: string }
 
 export function buildNodes(
-  model: ProjectModel, viewMode: ViewMode, selectedIds: ReadonlySet<string>, warnings: Warning[],
-  view: NodeView = { kind: 'full' }, peerMarks: PeerMarks = new Map(),
+  model: ProjectModel,
+  viewMode: ViewMode,
+  selectedIds: ReadonlySet<string>,
+  warnings: Warning[],
+  view: NodeView = { kind: 'full' },
+  peerMarks: PeerMarks = new Map(),
   columnSelection: {
     selectedColumnIds?: readonly string[]
     onColumnClick?: (columnId: string, mode: 'replace' | 'toggle' | 'range') => void
@@ -24,19 +28,25 @@ export function buildNodes(
   return tables.map((table) => {
     const tableCols = Object.values(model.columns).filter((c) => c.tableId === table.id)
     const colIds = new Set(tableCols.map((c) => c.id))
-    const relIds = new Set(Object.values(model.relationships)
-      .filter((r) => r.parentTableId === table.id || r.childTableId === table.id).map((r) => r.id))
-    const tableWarnings = warnings.filter((w) =>
-      (w.scope === 'table' && w.entityId === table.id)
-      || (w.scope === 'column' && w.tableId === table.id)
-      || (w.scope === 'relationship' && relIds.has(w.entityId)))
+    const relIds = new Set(
+      Object.values(model.relationships)
+        .filter((r) => r.parentTableId === table.id || r.childTableId === table.id)
+        .map((r) => r.id),
+    )
+    const tableWarnings = warnings.filter(
+      (w) =>
+        (w.scope === 'table' && w.entityId === table.id) ||
+        (w.scope === 'column' && w.tableId === table.id) ||
+        (w.scope === 'relationship' && relIds.has(w.entityId)),
+    )
     const columnWarnings: Record<string, Warning[]> = {}
     for (const w of warnings) {
       if (w.scope === 'column' && colIds.has(w.entityId)) {
-        (columnWarnings[w.entityId] ??= []).push(w)
+        ;(columnWarnings[w.entityId] ??= []).push(w)
       }
     }
-    const position = view.kind === 'group' ? (table.groupPosition ?? table.position) : table.position
+    const position =
+      view.kind === 'group' ? (table.groupPosition ?? table.position) : table.position
     const isSelected = selectedIds.has(table.id)
     return {
       id: table.id,
@@ -58,9 +68,8 @@ export function buildNodes(
         peers: peerMarks.get(table.id),
         // 불변식: 컬럼 선택은 한 테이블에만 존재한다 — 선택된 테이블이 정확히 이 노드일 때만 싣는다.
         // (집합의 크기가 1이고 이 테이블을 담고 있다 = 그 유일한 원소가 이 테이블이다.)
-        selectedColumnIds: selectedIds.size === 1 && isSelected
-          ? columnSelection.selectedColumnIds
-          : [],
+        selectedColumnIds:
+          selectedIds.size === 1 && isSelected ? columnSelection.selectedColumnIds : [],
         onColumnClick: columnSelection.onColumnClick,
         anchors: anchors.byTable.get(table.id) ?? [],
       },

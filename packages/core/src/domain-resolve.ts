@@ -9,7 +9,11 @@ export type ResolvedColumn = {
   defaultValue: string | null
 }
 
-export function resolveColumn(column: Column, model: ProjectModel, dialect: Dialect): ResolvedColumn {
+export function resolveColumn(
+  column: Column,
+  model: ProjectModel,
+  dialect: Dialect,
+): ResolvedColumn {
   if (column.domainId) {
     const d = model.domains[column.domainId]
     if (d) {
@@ -23,16 +27,26 @@ export function resolveColumn(column: Column, model: ProjectModel, dialect: Dial
         sql = r.sql
         warning = r.warning
       }
-      const defaultValue = column.defaultValue !== null && column.defaultValue !== ''
-        ? column.defaultValue : d.defaultValue
+      const defaultValue =
+        column.defaultValue !== null && column.defaultValue !== ''
+          ? column.defaultValue
+          : d.defaultValue
       return {
-        sql, logicalType: d.logicalType, warning,
-        checkValues: d.allowedValues.length ? d.allowedValues : undefined, defaultValue,
+        sql,
+        logicalType: d.logicalType,
+        warning,
+        checkValues: d.allowedValues.length ? d.allowedValues : undefined,
+        defaultValue,
       }
     }
   }
   const r = resolveColumnType(column.type, dialect)
-  return { sql: r.sql, logicalType: column.type, warning: r.warning, defaultValue: column.defaultValue }
+  return {
+    sql: r.sql,
+    logicalType: column.type,
+    warning: r.warning,
+    defaultValue: column.defaultValue,
+  }
 }
 
 /**

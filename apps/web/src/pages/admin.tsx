@@ -2,22 +2,40 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTRPC } from '@/lib/trpc'
-import { INVITATION_STATUS_LABEL, canRevokeInvitation, invitationStatus } from '@/lib/invitation-status'
+import {
+  INVITATION_STATUS_LABEL,
+  canRevokeInvitation,
+  invitationStatus,
+} from '@/lib/invitation-status'
 import { OneTimeLink } from '@/components/one-time-link'
 import { ResourceLibraryManager } from '@/components/resource-library-manager'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select'
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui/table'
 
 /**
@@ -34,14 +52,17 @@ function InviteAccountDialog() {
   // 성공하자마자 닫으면 관리자가 링크를 잃는다. **수신자 이메일도 함께 들고 있는다** — 링크는
   // 그 이메일에 묶여 있고(수락하면 이 주소로 계정이 생긴다) 발급 성공 시 입력은 비워지므로,
   // 여기서 담지 않으면 화면에 "누구에게 줄 링크인지"가 남지 않는다.
-  const [issued, setIssued] = useState<
-    { token: string; email: string; expiresAt: Date | string } | null
-  >(null)
+  const [issued, setIssued] = useState<{
+    token: string
+    email: string
+    expiresAt: Date | string
+  } | null>(null)
   const invite = useMutation(
     trpc.admin.users.invite.mutationOptions({
       onSuccess: async (data, variables) => {
         setIssued({ token: data.token, email: variables.email, expiresAt: data.expiresAt })
-        setEmail(''); setRole('user')
+        setEmail('')
+        setRole('user')
         await queryClient.invalidateQueries({ queryKey: trpc.admin.invitations.list.queryKey() })
       },
       onError: (err) => toast.error(err.message),
@@ -51,7 +72,10 @@ function InviteAccountDialog() {
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => { setOpen(next); if (!next) setIssued(null) }}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setIssued(null)
+      }}
     >
       <DialogTrigger asChild>
         <Button>계정 초대</Button>
@@ -66,11 +90,15 @@ function InviteAccountDialog() {
         {issued !== null ? (
           <div className="grid gap-4">
             <OneTimeLink
-              kind="invite" token={issued.token}
-              recipient={issued.email} expiresAt={issued.expiresAt}
+              kind="invite"
+              token={issued.token}
+              recipient={issued.email}
+              expiresAt={issued.expiresAt}
             />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>닫기</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                닫기
+              </Button>
             </DialogFooter>
           </div>
         ) : (
@@ -83,13 +111,21 @@ function InviteAccountDialog() {
           >
             <div className="grid gap-2">
               <Label htmlFor="invite-email">이메일</Label>
-              <Input id="invite-email" type="email" required className="font-mono"
-                value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input
+                id="invite-email"
+                type="email"
+                required
+                className="font-mono"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="invite-role">역할</Label>
               <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'user')}>
-                <SelectTrigger id="invite-role"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="invite-role">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="user">일반</SelectItem>
                   <SelectItem value="admin">관리자</SelectItem>
@@ -97,7 +133,9 @@ function InviteAccountDialog() {
               </Select>
             </div>
             <DialogFooter>
-              <Button type="submit" disabled={invite.isPending}>초대 링크 만들기</Button>
+              <Button type="submit" disabled={invite.isPending}>
+                초대 링크 만들기
+              </Button>
             </DialogFooter>
           </form>
         )}
@@ -126,10 +164,15 @@ function ResetLinkDialog({ userId, email }: { userId: string; email: string }) {
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => { setOpen(next); if (!next) setIssued(null) }}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setIssued(null)
+      }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">비밀번호 재설정 링크</Button>
+        <Button variant="outline" size="sm">
+          비밀번호 재설정 링크
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -140,22 +183,27 @@ function ResetLinkDialog({ userId, email }: { userId: string; email: string }) {
           <div className="grid gap-4">
             <OneTimeLink kind="reset" token={issued.token} expiresAt={issued.expiresAt} />
             <p className="text-sm text-muted-foreground">
-              이 링크를 사용자에게 전달하세요. 사용자가 링크를 열어 새 비밀번호를 정해야
-              비밀번호가 바뀝니다.
+              이 링크를 사용자에게 전달하세요. 사용자가 링크를 열어 새 비밀번호를 정해야 비밀번호가
+              바뀝니다.
             </p>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>닫기</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                닫기
+              </Button>
             </DialogFooter>
           </div>
         ) : (
           <div className="grid gap-4">
             <p className="text-sm text-muted-foreground">
-              링크를 만들어 사용자에게 전달합니다. 발급만으로는 비밀번호가 바뀌지 않고
-              로그인 세션도 유지됩니다.
+              링크를 만들어 사용자에게 전달합니다. 발급만으로는 비밀번호가 바뀌지 않고 로그인 세션도
+              유지됩니다.
             </p>
             <DialogFooter>
-              <Button type="button" disabled={resetLink.isPending}
-                onClick={() => resetLink.mutate({ userId })}>
+              <Button
+                type="button"
+                disabled={resetLink.isPending}
+                onClick={() => resetLink.mutate({ userId })}
+              >
                 링크 만들기
               </Button>
             </DialogFooter>
@@ -188,7 +236,11 @@ function InvitationsSection() {
   return (
     <section className="grid gap-3">
       <h2 className="text-lg font-semibold">초대</h2>
-      {list.isError && <p role="alert" className="text-destructive">{list.error.message}</p>}
+      {list.isError && (
+        <p role="alert" className="text-destructive">
+          {list.error.message}
+        </p>
+      )}
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
@@ -208,9 +260,11 @@ function InvitationsSection() {
                   <TableCell className="font-mono">{inv.email}</TableCell>
                   <TableCell>{inv.userRole === 'admin' ? '관리자' : '일반'}</TableCell>
                   <TableCell>
-                    {status === 'pending'
-                      ? <Badge variant="outline">{INVITATION_STATUS_LABEL[status]}</Badge>
-                      : <Badge variant="secondary">{INVITATION_STATUS_LABEL[status]}</Badge>}
+                    {status === 'pending' ? (
+                      <Badge variant="outline">{INVITATION_STATUS_LABEL[status]}</Badge>
+                    ) : (
+                      <Badge variant="secondary">{INVITATION_STATUS_LABEL[status]}</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(inv.expiresAt).toLocaleString('ko-KR')}
@@ -222,8 +276,12 @@ function InvitationsSection() {
                       이미 사용된 것에만 내지 않는다. 서버도 조건부 UPDATE로 나머지를 거절한다.
                     */}
                     {canRevokeInvitation(inv) && (
-                      <Button variant="outline" size="sm" disabled={revoke.isPending}
-                        onClick={() => revoke.mutate({ id: inv.id })}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={revoke.isPending}
+                        onClick={() => revoke.mutate({ id: inv.id })}
+                      >
                         취소
                       </Button>
                     )}
@@ -261,8 +319,8 @@ export function AdminPage() {
           <h1 className="text-xl font-semibold">계정 관리</h1>
           {/* 초대는 계정을 만들지 않는다 — 수락자가 만든다(같은 화면의 다이얼로그 설명과 같은 말). */}
           <p className="text-sm text-muted-foreground">
-            초대 링크를 만들어 사람을 부르고, 만들어진 계정의 사용 상태를 관리합니다.
-            계정은 초대를 수락한 본인이 만들고 비밀번호도 본인만 정합니다.
+            초대 링크를 만들어 사람을 부르고, 만들어진 계정의 사용 상태를 관리합니다. 계정은 초대를
+            수락한 본인이 만들고 비밀번호도 본인만 정합니다.
           </p>
         </div>
         <InviteAccountDialog />
@@ -284,19 +342,27 @@ export function AdminPage() {
                 <TableCell className="font-mono">{u.email}</TableCell>
                 <TableCell>{u.name}</TableCell>
                 <TableCell>
-                  {u.role === 'admin'
-                    ? <Badge className="bg-key/15 text-key border-key/30" variant="outline">관리자</Badge>
-                    : <Badge variant="secondary">일반</Badge>}
+                  {u.role === 'admin' ? (
+                    <Badge className="bg-key/15 text-key border-key/30" variant="outline">
+                      관리자
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">일반</Badge>
+                  )}
                 </TableCell>
                 <TableCell>
-                  {u.isActive
-                    ? <Badge variant="outline">활성</Badge>
-                    : <Badge variant="destructive">비활성</Badge>}
+                  {u.isActive ? (
+                    <Badge variant="outline">활성</Badge>
+                  ) : (
+                    <Badge variant="destructive">비활성</Badge>
+                  )}
                 </TableCell>
                 <TableCell className="flex justify-end gap-2">
                   <ResetLinkDialog userId={u.id} email={u.email} />
                   <Button
-                    variant="outline" size="sm" disabled={setActive.isPending}
+                    variant="outline"
+                    size="sm"
+                    disabled={setActive.isPending}
                     onClick={() => setActive.mutate({ userId: u.id, isActive: !u.isActive })}
                   >
                     {u.isActive ? '비활성화' : '활성화'}

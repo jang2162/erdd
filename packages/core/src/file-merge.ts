@@ -10,8 +10,9 @@ import { COLLECTION_BY_KIND, ENTITY_KINDS, type EntityKind } from './op.js'
  */
 export type MergeKind = Exclude<EntityKind, 'note'>
 
-export const MERGE_KINDS: readonly MergeKind[] =
-  ENTITY_KINDS.filter((k): k is MergeKind => k !== 'note')
+export const MERGE_KINDS: readonly MergeKind[] = ENTITY_KINDS.filter(
+  (k): k is MergeKind => k !== 'note',
+)
 
 /**
  * 모델 필드 → 파일(YAML) 키. 이 표 하나가 셋을 한다:
@@ -25,35 +26,67 @@ export const MERGE_KINDS: readonly MergeKind[] =
 export const FILE_FIELDS: Record<MergeKind, Record<string, string>> = {
   tableGroup: { name: 'name', color: 'color', comment: 'comment', alias: 'alias' },
   domain: {
-    name: 'name', category: 'category', logicalType: 'logicalType',
-    dialectTypes: 'dialectTypes', defaultValue: 'defaultValue',
-    allowedValues: 'allowedValues', description: 'description', origin: '출처',
+    name: 'name',
+    category: 'category',
+    logicalType: 'logicalType',
+    dialectTypes: 'dialectTypes',
+    defaultValue: 'defaultValue',
+    allowedValues: 'allowedValues',
+    description: 'description',
+    origin: '출처',
   },
   word: {
-    logicalName: 'logicalName', abbreviation: 'abbreviation',
-    englishName: 'englishName', description: 'description', origin: '출처',
+    logicalName: 'logicalName',
+    abbreviation: 'abbreviation',
+    englishName: 'englishName',
+    description: 'description',
+    origin: '출처',
   },
   term: {
-    logicalName: 'logicalName', physicalName: 'physicalName',
-    domainId: 'domain', description: 'description', origin: '출처',
+    logicalName: 'logicalName',
+    physicalName: 'physicalName',
+    domainId: 'domain',
+    description: 'description',
+    origin: '출처',
   },
   customField: {
-    name: 'name', target: 'target', type: 'type', options: 'options',
-    required: 'required', defaultValue: 'defaultValue', order: 'order', origin: '출처',
+    name: 'name',
+    target: 'target',
+    type: 'type',
+    options: 'options',
+    required: 'required',
+    defaultValue: 'defaultValue',
+    order: 'order',
+    origin: '출처',
   },
   table: {
-    physicalName: 'name', logicalName: 'logicalName', comment: 'comment',
-    groupId: 'group', custom: 'custom',
+    physicalName: 'name',
+    logicalName: 'logicalName',
+    comment: 'comment',
+    groupId: 'group',
+    custom: 'custom',
   },
   column: {
-    tableId: '(소속 테이블)', physicalName: 'name', logicalName: 'logicalName',
-    type: 'type', domainId: 'domain', isPk: 'pk', autoIncrement: 'autoIncrement',
-    nullable: 'nullable', defaultValue: 'default', comment: 'comment',
-    custom: 'custom', order: '(순서)',
+    tableId: '(소속 테이블)',
+    physicalName: 'name',
+    logicalName: 'logicalName',
+    type: 'type',
+    domainId: 'domain',
+    isPk: 'pk',
+    autoIncrement: 'autoIncrement',
+    nullable: 'nullable',
+    defaultValue: 'default',
+    comment: 'comment',
+    custom: 'custom',
+    order: '(순서)',
   },
   relationship: {
-    parentTableId: 'to', childTableId: '(소속 테이블)', columnMappings: 'columns',
-    cardinality: 'cardinality', identifying: 'identifying', name: 'name',
+    parentTableId: 'to',
+    childTableId: '(소속 테이블)',
+    columnMappings: 'columns',
+    cardinality: 'cardinality',
+    identifying: 'identifying',
+    name: 'name',
   },
   index: { tableId: '(소속 테이블)', name: 'name', columns: 'columns', unique: 'unique' },
 }
@@ -62,9 +95,14 @@ export const FILE_FIELDS: Record<MergeKind, Record<string, string>> = {
 export const FILE_INVISIBLE_FIELDS: Record<MergeKind, readonly string[]> = {
   tableGroup: [],
   // origin 은 erdd/origins.yaml 에 실려 파일이 진실이다(병합 필드). 객체 전체를 한 값으로 비교한다.
-  domain: [], word: [], term: [], customField: [],
+  domain: [],
+  word: [],
+  term: [],
+  customField: [],
   table: ['position', 'groupPosition'],
-  column: [], relationship: [], index: [],
+  column: [],
+  relationship: [],
+  index: [],
 }
 
 /**
@@ -77,7 +115,8 @@ export function fileVisibleModel(model: ProjectModel): ProjectModel {
   return {
     tables: Object.fromEntries(
       Object.entries(model.tables).map(([id, t]) => [
-        id, { ...t, position: { x: 0, y: 0 }, groupPosition: null },
+        id,
+        { ...t, position: { x: 0, y: 0 }, groupPosition: null },
       ]),
     ) as ProjectModel['tables'],
     columns: { ...model.columns },
@@ -97,7 +136,12 @@ export function fileVisibleModel(model: ProjectModel): ProjectModel {
  * 가리키고, 그중 하나를 **로컬이** 만들었다(새로 추가했거나 기존 항목에 출처를 붙였다). field 가 '*' 면
  * 로컬이 추가한 항목이고(지워야 한다), '출처' 면 로컬이 기존 항목에 붙인 출처다(연결을 풀어야 한다).
  */
-export type ConflictReason = 'field' | 'local-delete' | 'server-delete' | 'both-added' | 'duplicate-origin'
+export type ConflictReason =
+  | 'field'
+  | 'local-delete'
+  | 'server-delete'
+  | 'both-added'
+  | 'duplicate-origin'
 
 export type MergeConflict = {
   /** 사용자가 열어야 할 파일. */
@@ -164,7 +208,9 @@ function ownerTableId(kind: MergeKind, e: Entity): string {
  * 안내와 앞뒤가 맞는다.
  */
 function pathOf(
-  kind: MergeKind, e: Entity, models: readonly ProjectModel[],
+  kind: MergeKind,
+  e: Entity,
+  models: readonly ProjectModel[],
   tableFiles: Record<string, string>,
 ): string {
   const top = TOP_LEVEL_PATH[kind]
@@ -188,7 +234,9 @@ function pathOf(
  * id를 그대로 보여 준다.
  */
 export function entityDisplayName(
-  kind: MergeKind, e: Record<string, unknown>, models: readonly ProjectModel[],
+  kind: MergeKind,
+  e: Record<string, unknown>,
+  models: readonly ProjectModel[],
 ): string {
   const table = (id: string): string => {
     for (const m of models) {
@@ -198,14 +246,22 @@ export function entityDisplayName(
     return id
   }
   switch (kind) {
-    case 'table': return e['physicalName'] as string
-    case 'column': return `${table(e['tableId'] as string)}.${e['physicalName'] as string}`
-    case 'index': return `${table(e['tableId'] as string)}.${e['name'] as string}`
+    case 'table':
+      return e['physicalName'] as string
+    case 'column':
+      return `${table(e['tableId'] as string)}.${e['physicalName'] as string}`
+    case 'index':
+      return `${table(e['tableId'] as string)}.${e['name'] as string}`
     case 'relationship':
-      return (e['name'] as string | null)
-        ?? `${table(e['childTableId'] as string)}→${table(e['parentTableId'] as string)}`
-    case 'word': case 'term': return e['logicalName'] as string
-    default: return e['name'] as string
+      return (
+        (e['name'] as string | null) ??
+        `${table(e['childTableId'] as string)}→${table(e['parentTableId'] as string)}`
+      )
+    case 'word':
+    case 'term':
+      return e['logicalName'] as string
+    default:
+      return e['name'] as string
   }
 }
 
@@ -225,10 +281,14 @@ function displayValue(model: ProjectModel, field: string, value: unknown): strin
 }
 
 function changedKeys(
-  fields: Record<string, string>, from: Entity | undefined, to: Entity | undefined,
+  fields: Record<string, string>,
+  from: Entity | undefined,
+  to: Entity | undefined,
 ): string[] {
   if (from === undefined || to === undefined) return []
-  return Object.entries(fields).filter(([f]) => !deepEqual(from[f], to[f])).map(([, key]) => key)
+  return Object.entries(fields)
+    .filter(([f]) => !deepEqual(from[f], to[f]))
+    .map(([, key]) => key)
 }
 
 function sameVisible(a: Entity, b: Entity, fields: Record<string, string>): boolean {
@@ -261,7 +321,10 @@ export type MergeOptions = {
  * (충돌이 있으면 호출자가 merged를 쓰지 않는다).
  */
 export function mergeModels(
-  base: ProjectModel, local: ProjectModel, server: ProjectModel, opts?: MergeOptions,
+  base: ProjectModel,
+  local: ProjectModel,
+  server: ProjectModel,
+  opts?: MergeOptions,
 ): MergeResult {
   const merged = fileVisibleModel(server)
   const conflicts: MergeConflict[] = []
@@ -280,7 +343,9 @@ export function mergeModels(
     const sCol = collectionOf(server, kind)
     const out = collectionOf(merged, kind)
 
-    const ids = [...new Set([...Object.keys(bCol), ...Object.keys(lCol), ...Object.keys(sCol)])].sort()
+    const ids = [
+      ...new Set([...Object.keys(bCol), ...Object.keys(lCol), ...Object.keys(sCol)]),
+    ].sort()
     for (const id of ids) {
       const b = bCol[id]
       const l = lCol[id]
@@ -288,34 +353,59 @@ export function mergeModels(
       const any = l ?? s ?? b!
 
       const conflict = (
-        field: string, reason: ConflictReason, modelField: string | null, changed: string[],
+        field: string,
+        reason: ConflictReason,
+        modelField: string | null,
+        changed: string[],
       ): void => {
         conflicts.push({
           // 출처 값은 사전 파일이 아니라 origins.yaml 에 있다. 엔티티 단위 충돌(삭제)은 사전 파일이다.
           path: modelField === 'origin' ? ORIGINS_FILE : pathOf(kind, any, models, tableFiles),
-          kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, any, models)}`,
-          field, reason, changedFields: changed,
-          base: modelField === null
-            ? (b === undefined ? null : entityDisplayName(kind, b, models))
-            : displayValue(base, modelField, b?.[modelField]),
-          local: modelField === null
-            ? (l === undefined ? null : entityDisplayName(kind, l, models))
-            : displayValue(local, modelField, l?.[modelField]),
-          server: modelField === null
-            ? (s === undefined ? null : entityDisplayName(kind, s, models))
-            : displayValue(server, modelField, s?.[modelField]),
+          kind,
+          entityId: id,
+          label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, any, models)}`,
+          field,
+          reason,
+          changedFields: changed,
+          base:
+            modelField === null
+              ? b === undefined
+                ? null
+                : entityDisplayName(kind, b, models)
+              : displayValue(base, modelField, b?.[modelField]),
+          local:
+            modelField === null
+              ? l === undefined
+                ? null
+                : entityDisplayName(kind, l, models)
+              : displayValue(local, modelField, l?.[modelField]),
+          server:
+            modelField === null
+              ? s === undefined
+                ? null
+                : entityDisplayName(kind, s, models)
+              : displayValue(server, modelField, s?.[modelField]),
         })
       }
 
-      if (l === undefined && b === undefined) continue          // 서버 전용 → 유지
+      if (l === undefined && b === undefined) continue // 서버 전용 → 유지
       if (l === undefined) {
-        if (s === undefined) { delete out[id]; continue }        // 양쪽 삭제
-        if (sameVisible(b!, s, deleteFields)) { delete out[id]; continue }   // 로컬 삭제
+        if (s === undefined) {
+          delete out[id]
+          continue
+        } // 양쪽 삭제
+        if (sameVisible(b!, s, deleteFields)) {
+          delete out[id]
+          continue
+        } // 로컬 삭제
         conflict('*', 'local-delete', null, changedKeys(deleteFields, b, s))
         continue
       }
       if (b === undefined) {
-        if (s === undefined) { out[id] = { ...l }; continue }    // 생성
+        if (s === undefined) {
+          out[id] = { ...l }
+          continue
+        } // 생성
         // 양쪽이 같은 id로 추가 — base가 없어 필드마다 비교한다.
         for (const [f, key] of Object.entries(fields)) {
           if (deepEqual(l[f], s[f])) continue
@@ -324,17 +414,28 @@ export function mergeModels(
         continue
       }
       if (s === undefined) {
-        if (sameVisible(b, l, deleteFields)) continue            // 서버 삭제 수용(out에 이미 없다)
+        if (sameVisible(b, l, deleteFields)) continue // 서버 삭제 수용(out에 이미 없다)
         conflict('*', 'server-delete', null, changedKeys(deleteFields, b, l))
         continue
       }
 
       const next: Entity = { ...(out[id] ?? s) }
       for (const [f, key] of Object.entries(fields)) {
-        const bv = b[f], lv = l[f], sv = s[f]
-        if (deepEqual(lv, bv)) { next[f] = sv; continue }
-        if (deepEqual(sv, bv)) { next[f] = lv; continue }
-        if (deepEqual(lv, sv)) { next[f] = lv; continue }
+        const bv = b[f],
+          lv = l[f],
+          sv = s[f]
+        if (deepEqual(lv, bv)) {
+          next[f] = sv
+          continue
+        }
+        if (deepEqual(sv, bv)) {
+          next[f] = lv
+          continue
+        }
+        if (deepEqual(lv, sv)) {
+          next[f] = lv
+          continue
+        }
         conflict(key, 'field', f, [])
       }
       out[id] = next
@@ -365,8 +466,11 @@ function originKey(kind: MergeKind, origin: unknown): string | null {
  * 중복(서버에 이미 둘)은 막지 않는다 — 이 push 가 고칠 수 없는 상태로 모든 push 를 막게 된다.
  */
 function duplicateOriginConflicts(
-  base: ProjectModel, local: ProjectModel, merged: ProjectModel,
-  models: readonly ProjectModel[], tableFiles: Record<string, string>,
+  base: ProjectModel,
+  local: ProjectModel,
+  merged: ProjectModel,
+  models: readonly ProjectModel[],
+  tableFiles: Record<string, string>,
 ): MergeConflict[] {
   const out: MergeConflict[] = []
   for (const kind of MERGE_KINDS) {
@@ -383,8 +487,11 @@ function duplicateOriginConflicts(
       if (ids.length < 2) continue
       const introduced = (id: string): boolean => {
         const l = lCol[id]
-        return l !== undefined && originKey(kind, l['origin']) === key
-          && originKey(kind, bCol[id]?.['origin']) !== key
+        return (
+          l !== undefined &&
+          originKey(kind, l['origin']) === key &&
+          originKey(kind, bCol[id]?.['origin']) !== key
+        )
       }
       for (const id of ids.filter(introduced)) {
         const other = ids.find((o) => o !== id && !introduced(o)) ?? ids.find((o) => o !== id)!
@@ -396,7 +503,9 @@ function duplicateOriginConflicts(
         const added = b === undefined
         out.push({
           path: added ? pathOf(kind, mine, models, tableFiles) : ORIGINS_FILE,
-          kind, entityId: id, label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, mine, models)}`,
+          kind,
+          entityId: id,
+          label: `${DIFF_KIND_LABEL[kind]} ${entityDisplayName(kind, mine, models)}`,
           field: added ? '*' : FILE_FIELDS[kind]['origin']!,
           reason: 'duplicate-origin',
           base: added ? null : displayValue(base, 'origin', b['origin']),
@@ -421,7 +530,8 @@ const GRID_GAP = 240
 export function gridPositions(server: ProjectModel, count: number): Position[] {
   const existing = Object.values(server.tables)
   const originX = existing.length === 0 ? 0 : Math.min(...existing.map((t) => t.position.x))
-  const originY = existing.length === 0 ? 0 : Math.max(...existing.map((t) => t.position.y)) + GRID_GAP
+  const originY =
+    existing.length === 0 ? 0 : Math.max(...existing.map((t) => t.position.y)) + GRID_GAP
   return Array.from({ length: count }, (_, i) => ({
     x: originX + (i % GRID_COLS) * GRID_DX,
     y: originY + Math.floor(i / GRID_COLS) * GRID_DY,
@@ -466,31 +576,50 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
   for (const [id, c] of Object.entries(model.columns)) {
     if (has(model.tables, c.tableId)) continue
     delete model.columns[id]
-    pruned.push({ kind: 'column', entityId: id, label: `컬럼 ${entityDisplayName('column', c, [model])}`, reason })
+    pruned.push({
+      kind: 'column',
+      entityId: id,
+      label: `컬럼 ${entityDisplayName('column', c, [model])}`,
+      reason,
+    })
   }
   for (const [id, ix] of Object.entries(model.indexes)) {
-    const bad = !has(model.tables, ix.tableId)
-      || ix.columns.some((c) => {
+    const bad =
+      !has(model.tables, ix.tableId) ||
+      ix.columns.some((c) => {
         const col = columnIn(c.columnId)
         return col === undefined || col.tableId !== ix.tableId
       })
     if (!bad) continue
     delete model.indexes[id]
-    pruned.push({ kind: 'index', entityId: id, label: `인덱스 ${entityDisplayName('index', ix, [model])}`, reason })
+    pruned.push({
+      kind: 'index',
+      entityId: id,
+      label: `인덱스 ${entityDisplayName('index', ix, [model])}`,
+      reason,
+    })
   }
   for (const [id, r] of Object.entries(model.relationships)) {
-    const bad = !has(model.tables, r.parentTableId)
-      || !has(model.tables, r.childTableId)
-      || r.columnMappings.some((m) => {
+    const bad =
+      !has(model.tables, r.parentTableId) ||
+      !has(model.tables, r.childTableId) ||
+      r.columnMappings.some((m) => {
         const child = columnIn(m.childColumnId)
         const parent = columnIn(m.parentColumnId)
-        return child === undefined || child.tableId !== r.childTableId
-          || parent === undefined || parent.tableId !== r.parentTableId
+        return (
+          child === undefined ||
+          child.tableId !== r.childTableId ||
+          parent === undefined ||
+          parent.tableId !== r.parentTableId
+        )
       })
     if (!bad) continue
     delete model.relationships[id]
     pruned.push({
-      kind: 'relationship', entityId: id, label: `관계 ${entityDisplayName('relationship', r, [model])}`, reason,
+      kind: 'relationship',
+      entityId: id,
+      label: `관계 ${entityDisplayName('relationship', r, [model])}`,
+      reason,
     })
   }
 
@@ -499,7 +628,9 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     if (t.groupId === null || has(model.tableGroups, t.groupId)) continue
     t.groupId = null
     pruned.push({
-      kind: 'table', entityId: t.id, label: `테이블 ${entityDisplayName('table', t, [model])}`,
+      kind: 'table',
+      entityId: t.id,
+      label: `테이블 ${entityDisplayName('table', t, [model])}`,
       reason: '그룹이 삭제되어 참조를 해제함',
     })
   }
@@ -507,7 +638,9 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     if (c.domainId === null || has(model.domains, c.domainId)) continue
     c.domainId = null
     pruned.push({
-      kind: 'column', entityId: c.id, label: `컬럼 ${entityDisplayName('column', c, [model])}`,
+      kind: 'column',
+      entityId: c.id,
+      label: `컬럼 ${entityDisplayName('column', c, [model])}`,
       reason: '도메인이 삭제되어 참조를 해제함',
     })
   }
@@ -515,7 +648,9 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
     if (t.domainId === null || has(model.domains, t.domainId)) continue
     t.domainId = null
     pruned.push({
-      kind: 'term', entityId: t.id, label: `용어 ${entityDisplayName('term', t, [model])}`,
+      kind: 'term',
+      entityId: t.id,
+      label: `용어 ${entityDisplayName('term', t, [model])}`,
       reason: '도메인이 삭제되어 참조를 해제함',
     })
   }
@@ -535,13 +670,15 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
  * 고치는 정리 로직이 생기면 server를 오염시키므로 그때는 깊은 복사가 필요하다.
  */
 export function applyMerge(
-  server: ProjectModel, merged: ProjectModel,
+  server: ProjectModel,
+  merged: ProjectModel,
 ): { model: ProjectModel; pruned: PrunedRef[] } {
   const out: ProjectModel = { ...createEmptyModel(), notes: { ...server.notes } }
 
   // 신규 테이블 좌표는 id 오름차순으로 배정한다 — 같은 입력이면 같은 결과다.
   const newTableIds = Object.keys(merged.tables)
-    .filter((id) => server.tables[id] === undefined).sort()
+    .filter((id) => server.tables[id] === undefined)
+    .sort()
   const positions = gridPositions(server, newTableIds.length)
   const posById = new Map(newTableIds.map((id, i) => [id, positions[i]!]))
 

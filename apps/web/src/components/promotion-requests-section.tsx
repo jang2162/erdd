@@ -8,12 +8,15 @@ import { formatCount } from '@/lib/format'
 import { libraryDomainsQueryKey } from '@/lib/library-domains'
 import { PromoteEntryList } from '@/components/promote-entry-list'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui/table'
 
 type RequestStatus = 'pending' | 'resolved' | 'rejected' | 'cancelled'
@@ -34,7 +37,8 @@ const STATUS_OPTIONS: { value: RequestStatus; label: string; empty: string }[] =
  * 배열이고 취소는 null이라, 둘 다 `0/N건 승격`으로 쓰면 "0건 승격됨"으로 잘못 읽힌다.
  */
 function itemCountLabel(
-  status: RequestStatus, row: { itemCount: number; approvedEntityIds: string[] | null },
+  status: RequestStatus,
+  row: { itemCount: number; approvedEntityIds: string[] | null },
 ): string {
   if (status !== 'resolved') return `${formatCount(row.itemCount)}건`
   return `${formatCount((row.approvedEntityIds ?? []).length)}/${formatCount(row.itemCount)}건 승격`
@@ -48,8 +52,16 @@ function itemCountLabel(
  * 실시간 채널로 전파된다.
  */
 function ReviewDialog({
-  requestId, projectName, orgId, onClose,
-}: { requestId: string; projectName: string; orgId: string; onClose: () => void }) {
+  requestId,
+  projectName,
+  orgId,
+  onClose,
+}: {
+  requestId: string
+  projectName: string
+  orgId: string
+  onClose: () => void
+}) {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -70,59 +82,69 @@ function ReviewDialog({
     setSelected((prev) => carrySelection(prevEntries, prev, entries))
   }, [detail.data])
 
-  const resolve = useMutation(trpc.promotion.resolve.mutationOptions({
-    onSuccess: async (result) => {
-      // status를 빼고 지운다 — 처리 후에는 대기 목록과 처리됨 목록이 **둘 다** 낡는다.
-      await queryClient.invalidateQueries({
-        queryKey: trpc.promotion.listForOrg.queryKey(),
-      })
-      await queryClient.invalidateQueries({ queryKey: trpc.promotion.pendingCount.queryKey() })
-      // 승격은 같은 화면의 라이브러리 관리 목록(개수)과 조회 모달(항목 페이지·도메인 목록)을 낡게 만든다 —
-      // QueryClient가 refetchOnWindowFocus:false라 자동 회복 트리거가 없어 여기서 직접 지운다.
-      const resolvedLibraryId = detail.data?.request.libraryId
-      if (resolvedLibraryId !== undefined) {
+  const resolve = useMutation(
+    trpc.promotion.resolve.mutationOptions({
+      onSuccess: async (result) => {
+        // status를 빼고 지운다 — 처리 후에는 대기 목록과 처리됨 목록이 **둘 다** 낡는다.
         await queryClient.invalidateQueries({
-          queryKey: trpc.resource.items.page.queryKey({ libraryId: resolvedLibraryId }),
+          queryKey: trpc.promotion.listForOrg.queryKey(),
         })
-        await queryClient.invalidateQueries({ queryKey: libraryDomainsQueryKey(resolvedLibraryId) })
-      }
-      await queryClient.invalidateQueries({
-        queryKey: trpc.resource.library.list.queryKey({ scope: 'org', orgId }),
-      })
-      toast.success(result.status === 'rejected' ? '요청을 반려했습니다' : promoteSummary(result))
-      onClose()
-    },
-    onError: (err) => toast.error(err.message),
-  }))
+        await queryClient.invalidateQueries({ queryKey: trpc.promotion.pendingCount.queryKey() })
+        // 승격은 같은 화면의 라이브러리 관리 목록(개수)과 조회 모달(항목 페이지·도메인 목록)을 낡게 만든다 —
+        // QueryClient가 refetchOnWindowFocus:false라 자동 회복 트리거가 없어 여기서 직접 지운다.
+        const resolvedLibraryId = detail.data?.request.libraryId
+        if (resolvedLibraryId !== undefined) {
+          await queryClient.invalidateQueries({
+            queryKey: trpc.resource.items.page.queryKey({ libraryId: resolvedLibraryId }),
+          })
+          await queryClient.invalidateQueries({
+            queryKey: libraryDomainsQueryKey(resolvedLibraryId),
+          })
+        }
+        await queryClient.invalidateQueries({
+          queryKey: trpc.resource.library.list.queryKey({ scope: 'org', orgId }),
+        })
+        toast.success(result.status === 'rejected' ? '요청을 반려했습니다' : promoteSummary(result))
+        onClose()
+      },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
 
-  const submit = () => resolve.mutate({
-    requestId,
-    approve: entries
-      .filter((entry) => selected.has(entry.entityId))
-      .map((entry) => ({
-        entityId: entry.entityId,
-        expectedStatus: entry.status,
-        expectedTargetItemId: entry.targetItemId,
-        expectedTargetVersion: entry.targetVersion,
-      })),
-    note,
-  })
+  const submit = () =>
+    resolve.mutate({
+      requestId,
+      approve: entries
+        .filter((entry) => selected.has(entry.entityId))
+        .map((entry) => ({
+          entityId: entry.entityId,
+          expectedStatus: entry.status,
+          expectedTargetItemId: entry.targetItemId,
+          expectedTargetVersion: entry.targetVersion,
+        })),
+      note,
+    })
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           {/* 프로젝트명은 목록 행이 이미 갖고 있다 — 계획 조회 전에도 어느 요청인지 보인다. */}
           <DialogTitle>승격 요청 검토 — {projectName}</DialogTitle>
         </DialogHeader>
         {detail.isError && (
-          <p role="alert" className="text-destructive">{detail.error.message}</p>
+          <p role="alert" className="text-destructive">
+            {detail.error.message}
+          </p>
         )}
         <div className="grid max-h-[60vh] content-start gap-4 overflow-y-auto">
           {(detail.data?.request.note ?? '') !== '' && (
-            <p className="text-sm text-muted-foreground">
-              요청 메모: {detail.data!.request.note}
-            </p>
+            <p className="text-sm text-muted-foreground">요청 메모: {detail.data!.request.note}</p>
           )}
           {unavailable.length > 0 && (
             <p className="text-sm text-muted-foreground">
@@ -140,28 +162,37 @@ function ReviewDialog({
             audience="approve"
             entries={entries}
             selected={selected}
-            onToggle={(entityId, on) => setSelected((prev) => {
-              const next = new Set(prev)
-              if (on) next.add(entityId)
-              else next.delete(entityId)
-              return next
-            })}
-            onSetAll={(status: PromoteStatus, on) => setSelected((prev) =>
-              setAllForStatus(prev, entries, status, on))}
+            onToggle={(entityId, on) =>
+              setSelected((prev) => {
+                const next = new Set(prev)
+                if (on) next.add(entityId)
+                else next.delete(entityId)
+                return next
+              })
+            }
+            onSetAll={(status: PromoteStatus, on) =>
+              setSelected((prev) => setAllForStatus(prev, entries, status, on))
+            }
           />
         </div>
         <div className="grid gap-2 border-t pt-2">
-          <Input placeholder="처리 메모 (선택)" value={note} maxLength={500}
-            onChange={(e) => setNote(e.target.value)} />
+          <Input
+            placeholder="처리 메모 (선택)"
+            value={note}
+            maxLength={500}
+            onChange={(e) => setNote(e.target.value)}
+          />
           <div className="flex justify-end">
             {/*
               계획을 아직 못 봤거나 조회가 실패한 상태에서는 누를 수 없다. 그때는 selected가
               비어 라벨이 "반려"인데, 그대로 누르면 빈 approve가 나가 서버가 요청을 rejected로
               닫아 버린다 — 승인자가 내용을 한 번도 보지 못한 채 되돌릴 수 없게 닫는 셈이다.
             */}
-            <Button type="button"
+            <Button
+              type="button"
               disabled={resolve.isPending || detail.isPending || detail.isError}
-              onClick={submit}>
+              onClick={submit}
+            >
               {selected.size === 0 ? '반려' : `${formatCount(selected.size)}건 승격`}
             </Button>
           </div>
@@ -173,8 +204,12 @@ function ReviewDialog({
 
 /** 조직 화면의 승격 요청 승인 목록. Org Owner/Admin에게만 보인다. */
 export function PromotionRequestsSection({
-  orgId, canManage,
-}: { orgId: string; canManage: boolean }) {
+  orgId,
+  canManage,
+}: {
+  orgId: string
+  canManage: boolean
+}) {
   const trpc = useTRPC()
   // 프로젝트명까지 들고 간다 — 검토 다이얼로그가 계획 조회를 기다리는 동안에도 제목이 비지 않는다.
   const [reviewing, setReviewing] = useState<{ id: string; projectName: string } | null>(null)
@@ -196,15 +231,23 @@ export function PromotionRequestsSection({
         <h2 className="text-lg font-semibold">승격 요청</h2>
         <div className="flex gap-1" role="group" aria-label="상태 필터">
           {STATUS_OPTIONS.map(({ value, label }) => (
-            <Button key={value} size="sm" aria-pressed={status === value}
+            <Button
+              key={value}
+              size="sm"
+              aria-pressed={status === value}
               variant={status === value ? 'secondary' : 'ghost'}
-              onClick={() => setStatus(value)}>
+              onClick={() => setStatus(value)}
+            >
               {label}
             </Button>
           ))}
         </div>
       </div>
-      {list.isError && <p role="alert" className="text-destructive">{list.error.message}</p>}
+      {list.isError && (
+        <p role="alert" className="text-destructive">
+          {list.error.message}
+        </p>
+      )}
       {!list.isError && !list.isPending && (list.data ?? []).length === 0 && (
         <p className="text-sm text-muted-foreground">
           {STATUS_OPTIONS.find((o) => o.value === status)!.empty}
@@ -236,8 +279,11 @@ export function PromotionRequestsSection({
                   <TableCell className="text-right">
                     {/* 검토는 아직 열려 있는 요청에만 — 처리된 행은 읽기 전용 이력이다. */}
                     {isPendingView && (
-                      <Button variant="outline" size="sm"
-                        onClick={() => setReviewing({ id: row.id, projectName: row.projectName })}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setReviewing({ id: row.id, projectName: row.projectName })}
+                      >
                         검토
                       </Button>
                     )}
@@ -250,8 +296,10 @@ export function PromotionRequestsSection({
       )}
       {reviewing !== null && (
         <ReviewDialog
-          requestId={reviewing.id} projectName={reviewing.projectName}
-          orgId={orgId} onClose={() => setReviewing(null)}
+          requestId={reviewing.id}
+          projectName={reviewing.projectName}
+          orgId={orgId}
+          onClose={() => setReviewing(null)}
         />
       )}
     </section>

@@ -43,9 +43,7 @@ function autoIncrementToken(dialect: Dialect): string {
   }
 }
 
-export function selectTables(
-  model: ProjectModel, scope: DdlScope, rules: NamingRules,
-): Table[] {
+export function selectTables(model: ProjectModel, scope: DdlScope, rules: NamingRules): Table[] {
   const all = Object.values(model.tables)
   let picked: Table[]
   if (scope.kind === 'all') picked = all
@@ -60,11 +58,17 @@ export function selectTables(
 }
 
 export function tableColumns(model: ProjectModel, tableId: string): Column[] {
-  return Object.values(model.columns).filter((c) => c.tableId === tableId).sort((a, b) => a.order - b.order)
+  return Object.values(model.columns)
+    .filter((c) => c.tableId === tableId)
+    .sort((a, b) => a.order - b.order)
 }
 
 /** logicalName/physicalName/comment로부터 코멘트 텍스트 산출. 논리명==물리명이고 설명이 없으면 생략(null). */
-export function commentText(logicalName: string, physicalName: string, comment: string | null): string | null {
+export function commentText(
+  logicalName: string,
+  physicalName: string,
+  comment: string | null,
+): string | null {
   const parts: string[] = []
   if (logicalName && logicalName !== physicalName) parts.push(logicalName)
   else if (logicalName && logicalName === physicalName && comment) parts.push(logicalName)
@@ -81,7 +85,10 @@ function fkBaseName(rel: { name: string | null }, child: string, parent: string)
 
 /** 배치 안에서 제약명이 유일하도록 보장한다(충돌 시 _2, _3… 접미). */
 function uniqueConstraintName(base: string, used: Set<string>): string {
-  if (!used.has(base)) { used.add(base); return base }
+  if (!used.has(base)) {
+    used.add(base)
+    return base
+  }
   let n = 2
   while (used.has(`${base}_${n}`)) n++
   const name = `${base}_${n}`
@@ -107,7 +114,8 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string 
   // ⚠️ **PK 여도 낸다** — DBML 과 다른 것이 맞다(정책이 다르다. 판정은 같은 함수가 갖는다).
   // SQL 에서 `... NULL, PRIMARY KEY (...)` 는 합법이고 PK 가 이겨 조용히 NOT NULL 이 된다.
   else if (needsExplicitNullToken(dialect, r.sql)) parts.push('NULL')
-  if (!auto && r.defaultValue !== null && r.defaultValue !== '') parts.push(`DEFAULT ${r.defaultValue}`)
+  if (!auto && r.defaultValue !== null && r.defaultValue !== '')
+    parts.push(`DEFAULT ${r.defaultValue}`)
   // ⚠️ **CHECK 앞이다.** MariaDB 는 컬럼 인라인 CHECK 를 **컬럼 정의의 맨 끝**에서만 받아
   // `CHECK (…) COMMENT '…'` 를 `ERROR 1064` 로 거절한다(11.8 실측). 뒤로 옮기면 허용값 도메인을
   // 쓰는 컬럼이 하나라도 있는 프로젝트의 DDL 이 통째로 실행되지 않는다.
@@ -133,14 +141,20 @@ function columnLine(model: ProjectModel, col: Column, dialect: Dialect): string 
 }
 
 function createTableBlock(
-  model: ProjectModel, table: Table, dialect: Dialect, rules: NamingRules,
+  model: ProjectModel,
+  table: Table,
+  dialect: Dialect,
+  rules: NamingRules,
   tableOptions?: TableOptions,
 ): string {
   const tableName = composeTablePhysicalName(table, model, rules)
   const cols = tableColumns(model, table.id)
   const lines = cols.map((c) => columnLine(model, c, dialect))
   const pks = cols.filter((c) => c.isPk)
-  if (pks.length > 0) lines.push(`  PRIMARY KEY (${pks.map((c) => quoteIdentifier(c.physicalName, dialect)).join(', ')})`)
+  if (pks.length > 0)
+    lines.push(
+      `  PRIMARY KEY (${pks.map((c) => quoteIdentifier(c.physicalName, dialect)).join(', ')})`,
+    )
   let block = `CREATE TABLE ${quoteIdentifier(tableName, dialect)} (\n${lines.join(',\n')}\n)`
   // ⚠️ **`COMMENT` 앞에 둔다.** 파서의 테이블 코멘트 추출이 꼬리에서 첫 `COMMENT` 키워드를
   // 찾으므로 옵션이 앞이어야 그 스캔이 그대로 맞는다(설계 §5.4). 빈 문자열이면 한 글자도
@@ -160,7 +174,9 @@ function createTableBlock(
  * generateDdl의 제외와 ddlWarnings의 경고가 같은 판정을 써야 하므로 여기 하나만 둔다.
  */
 export function hasEmptyPhysicalName(
-  model: ProjectModel, table: Table, rules: NamingRules,
+  model: ProjectModel,
+  table: Table,
+  rules: NamingRules,
 ): boolean {
   // ⚠️ 부분이 비어도 접두가 있으면 유효한 이름이다 — 조합 결과로 판정한다(설계 3.3).
   if (composeTablePhysicalName(table, model, rules).trim() === '') return true
@@ -171,7 +187,11 @@ export function hasEmptyPhysicalName(
  * DDL 로 낼 수 있는 테이블 — 컬럼이 있고 물리명이 비지 않았다. `generateDdl` 과 변경 기록의
  * 스키마 투영이 같은 판정을 쓴다(guide 「기록 대상 — 스키마 투영」).
  */
-export function exportableTables(model: ProjectModel, scope: DdlScope, rules: NamingRules): Table[] {
+export function exportableTables(
+  model: ProjectModel,
+  scope: DdlScope,
+  rules: NamingRules,
+): Table[] {
   return selectTables(model, scope, rules).filter(
     (t) => tableColumns(model, t.id).length > 0 && !hasEmptyPhysicalName(model, t, rules),
   )
@@ -184,7 +204,7 @@ export function exportableTables(model: ProjectModel, scope: DdlScope, rules: Na
  */
 function warningLabel(t: Table, model: ProjectModel, rules: NamingRules): string {
   const name = composeTablePhysicalName(t, model, rules)
-  return name.trim() === '' ? (composeTableLogicalName(t, model, rules) || t.id) : name
+  return name.trim() === '' ? composeTableLogicalName(t, model, rules) || t.id : name
 }
 
 function selectedRelationships(model: ProjectModel, selectedIds: Set<string>): Relationship[] {
@@ -201,7 +221,9 @@ export type ConstraintNames = { fk: string; unique: string | null }
  * 인용은 출력하는 쪽이 한다.
  */
 export function relationshipConstraintNames(
-  model: ProjectModel, selectedIds: Set<string>, rules: NamingRules,
+  model: ProjectModel,
+  selectedIds: Set<string>,
+  rules: NamingRules,
 ): Map<string, ConstraintNames> {
   const used = new Set<string>()
   const out = new Map<string, ConstraintNames>()
@@ -214,7 +236,9 @@ export function relationshipConstraintNames(
     const fk = uniqueConstraintName(fkBaseName(rel, childName, parentName), used)
     let unique: string | null = null
     if (rel.cardinality === '1:1') {
-      const rawChildCols = rel.columnMappings.map((m) => model.columns[m.childColumnId]?.physicalName ?? '')
+      const rawChildCols = rel.columnMappings.map(
+        (m) => model.columns[m.childColumnId]?.physicalName ?? '',
+      )
       unique = uniqueConstraintName(`UQ_${childName}_${rawChildCols.join('_')}`, used)
     }
     out.set(rel.id, { fk, unique })
@@ -223,7 +247,10 @@ export function relationshipConstraintNames(
 }
 
 function fkStatements(
-  model: ProjectModel, selectedIds: Set<string>, dialect: Dialect, rules: NamingRules,
+  model: ProjectModel,
+  selectedIds: Set<string>,
+  dialect: Dialect,
+  rules: NamingRules,
 ): string[] {
   const compose = (t: Table) => composeTablePhysicalName(t, model, rules)
   const names = relationshipConstraintNames(model, selectedIds, rules)
@@ -234,20 +261,29 @@ function fkStatements(
     const child = model.tables[rel.childTableId]
     const n = names.get(rel.id)
     if (!parent || !child || n === undefined) continue
-    const childCols = rel.columnMappings.map((m) => q(model.columns[m.childColumnId]?.physicalName ?? ''))
-    const parentCols = rel.columnMappings.map((m) => q(model.columns[m.parentColumnId]?.physicalName ?? ''))
+    const childCols = rel.columnMappings.map((m) =>
+      q(model.columns[m.childColumnId]?.physicalName ?? ''),
+    )
+    const parentCols = rel.columnMappings.map((m) =>
+      q(model.columns[m.parentColumnId]?.physicalName ?? ''),
+    )
     statements.push(
       `ALTER TABLE ${q(compose(child))} ADD CONSTRAINT ${q(n.fk)} FOREIGN KEY (${childCols.join(', ')}) REFERENCES ${q(compose(parent))} (${parentCols.join(', ')});`,
     )
     if (n.unique !== null) {
-      statements.push(`ALTER TABLE ${q(compose(child))} ADD CONSTRAINT ${q(n.unique)} UNIQUE (${childCols.join(', ')});`)
+      statements.push(
+        `ALTER TABLE ${q(compose(child))} ADD CONSTRAINT ${q(n.unique)} UNIQUE (${childCols.join(', ')});`,
+      )
     }
   }
   return statements
 }
 
 function indexStatements(
-  model: ProjectModel, selectedIds: Set<string>, dialect: Dialect, rules: NamingRules,
+  model: ProjectModel,
+  selectedIds: Set<string>,
+  dialect: Dialect,
+  rules: NamingRules,
 ): string[] {
   const indexes = Object.values(model.indexes).filter((ix) => selectedIds.has(ix.tableId))
   const q = (s: string) => quoteIdentifier(s, dialect)
@@ -267,18 +303,26 @@ function indexStatements(
 }
 
 function commentStatements(
-  model: ProjectModel, tables: Table[], dialect: Dialect, rules: NamingRules,
+  model: ProjectModel,
+  tables: Table[],
+  dialect: Dialect,
+  rules: NamingRules,
 ): string[] {
   const statements: string[] = []
   for (const table of tables) {
     const tableName = composeTablePhysicalName(table, model, rules)
     // 「논리명==물리명이면 생략」 판정은 **양쪽 다 최종 이름**으로 한다(설계 D5).
-    const tableText = commentText(composeTableLogicalName(table, model, rules), tableName, table.comment)
+    const tableText = commentText(
+      composeTableLogicalName(table, model, rules),
+      tableName,
+      table.comment,
+    )
     if (tableText !== null) statements.push(tableCommentStatement(dialect, tableName, tableText))
     const cols = tableColumns(model, table.id)
     for (const col of cols) {
       const colText = commentText(col.logicalName, col.physicalName, col.comment)
-      if (colText !== null) statements.push(columnCommentStatement(dialect, tableName, col.physicalName, colText))
+      if (colText !== null)
+        statements.push(columnCommentStatement(dialect, tableName, col.physicalName, colText))
     }
   }
   return statements
@@ -296,7 +340,12 @@ function tableCommentStatement(dialect: Dialect, tableName: string, text: string
   }
 }
 
-function columnCommentStatement(dialect: Dialect, tableName: string, columnName: string, text: string): string {
+function columnCommentStatement(
+  dialect: Dialect,
+  tableName: string,
+  columnName: string,
+  text: string,
+): string {
   switch (dialect) {
     case 'postgresql':
     case 'oracle':
@@ -314,31 +363,42 @@ function columnCommentStatement(dialect: Dialect, tableName: string, columnName:
  * core 테스트만으로는 절대 안 잡힌다(설계 §5.4·§8.2).
  */
 export function generateDdl(
-  model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }, rules: NamingRules,
+  model: ProjectModel,
+  dialect: Dialect,
+  scope: DdlScope = { kind: 'all' },
+  rules: NamingRules,
   tableOptions?: TableOptions,
 ): string {
   const tables = exportableTables(model, scope, rules)
   const selectedIds = new Set(tables.map((t) => t.id))
 
-  const createBlocks = tables.map((table) => createTableBlock(model, table, dialect, rules, tableOptions))
+  const createBlocks = tables.map((table) =>
+    createTableBlock(model, table, dialect, rules, tableOptions),
+  )
   const fk = fkStatements(model, selectedIds, dialect, rules).join('\n')
   const index = indexStatements(model, selectedIds, dialect, rules).join('\n')
-  const comment = dialect === 'mysql' ? '' : commentStatements(model, tables, dialect, rules).join('\n')
+  const comment =
+    dialect === 'mysql' ? '' : commentStatements(model, tables, dialect, rules).join('\n')
 
   const header = serializeNameMeta(buildNameMeta(model, tables, rules), '--')
   const body = [createBlocks.join('\n\n'), fk, index, comment]
-    .filter((s) => s.trim() !== '').join('\n\n')
+    .filter((s) => s.trim() !== '')
+    .join('\n\n')
   return header === null ? body : `${header}\n${body}`
 }
 
 /** DDL 생성 시 사용자가 알아야 할 경고 목록(0컬럼 제외, 타입 변환 등). scope를 반영한다. */
 export function ddlWarnings(
-  model: ProjectModel, dialect: Dialect, scope: DdlScope = { kind: 'all' }, rules: NamingRules,
+  model: ProjectModel,
+  dialect: Dialect,
+  scope: DdlScope = { kind: 'all' },
+  rules: NamingRules,
 ): string[] {
   const inScope = selectTables(model, scope, rules)
   const out: string[] = []
   for (const t of inScope) {
-    if (tableColumns(model, t.id).length === 0) out.push(`${warningLabel(t, model, rules)}: 컬럼이 없어 내보내기에서 제외됨`)
+    if (tableColumns(model, t.id).length === 0)
+      out.push(`${warningLabel(t, model, rules)}: 컬럼이 없어 내보내기에서 제외됨`)
   }
   for (const t of inScope) {
     if (!hasEmptyPhysicalName(model, t, rules)) continue
@@ -351,7 +411,8 @@ export function ddlWarnings(
       // 방언별 물리 타입 오버라이드가 있으면 `resolveColumn` 이 경고를 내지 않는다 —
       // 사용자가 고른 물리 타입의 범위를 우리가 알 수 없으므로 그것이 맞다.
       const { warning } = resolveColumn(c, model, dialect)
-      if (warning) out.push(`${composeTablePhysicalName(t, model, rules)}.${c.physicalName}: ${warning}`)
+      if (warning)
+        out.push(`${composeTablePhysicalName(t, model, rules)}.${c.physicalName}: ${warning}`)
     }
   }
   return out

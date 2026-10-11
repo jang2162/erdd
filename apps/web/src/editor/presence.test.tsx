@@ -8,7 +8,10 @@ import { PresenceBar } from './presence.js'
 const ME = 'u-me'
 const peer = (userId: string, name: string): Peer => ({ userId, name, selections: [] })
 
-afterEach(() => { cleanup(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  useEditorStore.getState().reset()
+})
 
 describe('PresenceBar', () => {
   it('나 말고 아무도 없으면 아무것도 그리지 않는다', () => {
@@ -26,9 +29,15 @@ describe('PresenceBar', () => {
   })
 
   it('3명을 넘으면 나머지를 +N으로 접는다', () => {
-    useEditorStore.getState().setPeers([
-      peer(ME, '나'), peer('u2', '둘'), peer('u3', '셋'), peer('u4', '넷'), peer('u5', '다섯'),
-    ])
+    useEditorStore
+      .getState()
+      .setPeers([
+        peer(ME, '나'),
+        peer('u2', '둘'),
+        peer('u3', '셋'),
+        peer('u4', '넷'),
+        peer('u5', '다섯'),
+      ])
     render(<PresenceBar selfUserId={ME} />)
     expect(screen.getByTitle('둘')).toBeInTheDocument()
     expect(screen.queryByTitle('다섯')).not.toBeInTheDocument()

@@ -11,7 +11,14 @@ import { Pagination } from '@/components/ui/pagination'
  * 쪽을 넘기거나 검색해도 체크가 남는다. 일괄 버튼(`actions`)도 보이는 쪽이 아니라 **구역 전체**에 적용된다 —
  * 그래서 검색 중이거나 쪽이 여럿이면 버튼 옆에 「구역 전체 N건에 적용」을 적어 오해를 막는다.
  */
-export function PagedSection<T>({ title, rows, fields, renderRow, actions, children }: {
+export function PagedSection<T>({
+  title,
+  rows,
+  fields,
+  renderRow,
+  actions,
+  children,
+}: {
   title: string
   rows: readonly T[]
   /** 검색 대상 칸(논리명·물리명). 모듈 수준 상수 함수로 넘긴다. */
@@ -29,11 +36,15 @@ export function PagedSection<T>({ title, rows, fields, renderRow, actions, child
   return (
     <section ref={sectionRef} aria-label={title} className="grid gap-1.5">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold">{title} ({formatCount(rows.length)})</h4>
+        <h4 className="text-sm font-semibold">
+          {title} ({formatCount(rows.length)})
+        </h4>
         {actions !== undefined && rows.length > 0 && (
           <span className="flex items-center gap-1">
             {(searching || view.pageCount > 1) && (
-              <span className="text-xs text-muted-foreground">구역 전체 {formatCount(rows.length)}건에 적용</span>
+              <span className="text-xs text-muted-foreground">
+                구역 전체 {formatCount(rows.length)}건에 적용
+              </span>
             )}
             {actions}
           </span>
@@ -41,15 +52,26 @@ export function PagedSection<T>({ title, rows, fields, renderRow, actions, child
       </div>
       {children}
       {rows.length > 0 && (
-        <Input aria-label={`${title} 검색`} placeholder="논리명·물리명 검색" className="h-8"
-          value={list.query} onChange={(e) => list.setQuery(e.target.value)} />
+        <Input
+          aria-label={`${title} 검색`}
+          placeholder="논리명·물리명 검색"
+          className="h-8"
+          value={list.query}
+          onChange={(e) => list.setQuery(e.target.value)}
+        />
       )}
       {searching && view.total === 0 && (
         <p className="text-xs text-muted-foreground">검색 결과가 없습니다</p>
       )}
       <ul className="grid gap-1">{view.rows.map(renderRow)}</ul>
-      <Pagination label={title} page={view.page} pageCount={view.pageCount} total={view.total}
-        onPageChange={list.setPage} listRef={sectionRef} />
+      <Pagination
+        label={title}
+        page={view.page}
+        pageCount={view.pageCount}
+        total={view.total}
+        onPageChange={list.setPage}
+        listRef={sectionRef}
+      />
     </section>
   )
 }

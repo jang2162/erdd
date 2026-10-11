@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import { CustomFieldSchema, DomainSchema, TermSchema, WordSchema } from './model.js'
 import {
-  CustomFieldSchema, DomainSchema, TermSchema, WordSchema,
-} from './model.js'
-import {
-  RESOURCE_KINDS, RESOURCE_COLLECTION_BY_KIND, RESOURCE_KIND_LABEL,
-  RESOURCE_PAYLOAD_SCHEMAS, resourceDisplayName, resourcePayloadOf, resourceSecondaryName,
+  RESOURCE_KINDS,
+  RESOURCE_COLLECTION_BY_KIND,
+  RESOURCE_KIND_LABEL,
+  RESOURCE_PAYLOAD_SCHEMAS,
+  resourceDisplayName,
+  resourcePayloadOf,
+  resourceSecondaryName,
 } from './resource.js'
 
 describe('resource kinds', () => {
@@ -22,23 +25,28 @@ describe('resource kinds', () => {
 
 describe('RESOURCE_PAYLOAD_SCHEMAS', () => {
   const ENTITY_SHAPES = {
-    domain: DomainSchema, word: WordSchema, term: TermSchema, customField: CustomFieldSchema,
+    domain: DomainSchema,
+    word: WordSchema,
+    term: TermSchema,
+    customField: CustomFieldSchema,
   } as const
 
   it('엔티티 스키마에서 id·origin(+customField의 order)만 뺀 형태다', () => {
     for (const kind of RESOURCE_KINDS) {
-      const dropped = kind === 'customField'
-        ? ['id', 'origin', 'order']
-        : ['id', 'origin']
+      const dropped = kind === 'customField' ? ['id', 'origin', 'order'] : ['id', 'origin']
       const expected = Object.keys(ENTITY_SHAPES[kind].shape)
-        .filter((k) => !dropped.includes(k)).sort()
+        .filter((k) => !dropped.includes(k))
+        .sort()
       expect(Object.keys(RESOURCE_PAYLOAD_SCHEMAS[kind].shape).sort()).toEqual(expected)
     }
   })
 
   it('id가 섞인 payload를 거부한다', () => {
     const res = RESOURCE_PAYLOAD_SCHEMAS.word.safeParse({
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR', description: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      description: null,
     })
     expect(res.success).toBe(false)
   })
@@ -47,9 +55,14 @@ describe('RESOURCE_PAYLOAD_SCHEMAS', () => {
 describe('resourcePayloadOf', () => {
   it('도메인에서 id·origin을 뺀다', () => {
     const entity = {
-      id: 'd1', name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+      id: 'd1',
+      name: '금액',
+      category: null,
+      logicalType: 'DECIMAL(15,2)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
       origin: { libraryId: 'l', sourceId: 's', sourceVersion: 1, base: {} },
     }
     const payload = resourcePayloadOf('domain', entity)
@@ -61,8 +74,15 @@ describe('resourcePayloadOf', () => {
 
   it('커스텀 항목에서는 order도 뺀다 (순서는 프로젝트의 표시 관심사)', () => {
     const payload = resourcePayloadOf('customField', {
-      id: 'f1', name: '개인정보여부', target: 'column', type: 'text',
-      options: [], required: false, defaultValue: null, order: 7, origin: null,
+      id: 'f1',
+      name: '개인정보여부',
+      target: 'column',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 7,
+      origin: null,
     })
     expect(payload.order).toBeUndefined()
     expect(RESOURCE_PAYLOAD_SCHEMAS.customField.safeParse(payload).success).toBe(true)
@@ -85,12 +105,16 @@ describe('resourceDisplayName', () => {
 describe('resourceSecondaryName — 물리명 칸', () => {
   it('단어는 약어, 용어는 물리명이다', () => {
     expect(resourceSecondaryName('word', { logicalName: '회원', abbreviation: 'MBR' })).toBe('MBR')
-    expect(resourceSecondaryName('term', { logicalName: '회원번호', physicalName: 'MBR_NO' })).toBe('MBR_NO')
+    expect(resourceSecondaryName('term', { logicalName: '회원번호', physicalName: 'MBR_NO' })).toBe(
+      'MBR_NO',
+    )
   })
 
   it('도메인·커스텀 항목은 물리명 칸이 없다 — 같은 이름의 키가 있어도 null', () => {
     expect(resourceSecondaryName('domain', { name: '금액', physicalName: 'X' })).toBeNull()
-    expect(resourceSecondaryName('customField', { name: '개인정보여부', abbreviation: 'X' })).toBeNull()
+    expect(
+      resourceSecondaryName('customField', { name: '개인정보여부', abbreviation: 'X' }),
+    ).toBeNull()
   })
 
   it('값이 없거나 문자열이 아니면 null 이다', () => {

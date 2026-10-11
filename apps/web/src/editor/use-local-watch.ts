@@ -39,7 +39,8 @@ export function useLocalWatch(projectId: string, enabled: boolean): void {
         // **모델을 나르지 않는다** — 드래그 중에 도착해도 화면이 튀지 않는다. 서버가 진실이라
         // 낙관적으로 켜 둔 값이 있어도 이것이 이긴다.
         useEditorStore.getState().setLocalSaveStatus({
-          dirty: payload.dirty, external: payload.external,
+          dirty: payload.dirty,
+          external: payload.external,
         })
         return
       }
@@ -68,6 +69,8 @@ export function useLocalWatch(projectId: string, enabled: boolean): void {
         }
       })
     }
-    return () => { es.close() }
+    return () => {
+      es.close()
+    }
   }, [enabled, projectId, queryClient, trpc])
 }

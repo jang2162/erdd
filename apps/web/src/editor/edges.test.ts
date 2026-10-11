@@ -7,9 +7,35 @@ import { nextTablePhysicalName } from './model-edits.js'
 
 function model(): ProjectModel {
   const m = createEmptyModel()
-  m.tables['P'] = { id: 'P', logicalName: 'P', physicalName: 'P', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
-  m.tables['C'] = { id: 'C', logicalName: 'C', physicalName: 'C', comment: null, groupId: null, position: { x: 400, y: 0 }, groupPosition: null, custom: {} }
-  m.relationships['R'] = { id: 'R', parentTableId: 'P', childTableId: 'C', columnMappings: [], cardinality: '1:N', identifying: false, name: null }
+  m.tables['P'] = {
+    id: 'P',
+    logicalName: 'P',
+    physicalName: 'P',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
+  }
+  m.tables['C'] = {
+    id: 'C',
+    logicalName: 'C',
+    physicalName: 'C',
+    comment: null,
+    groupId: null,
+    position: { x: 400, y: 0 },
+    groupPosition: null,
+    custom: {},
+  }
+  m.relationships['R'] = {
+    id: 'R',
+    parentTableId: 'P',
+    childTableId: 'C',
+    columnMappings: [],
+    cardinality: '1:N',
+    identifying: false,
+    name: null,
+  }
   return m
 }
 
@@ -32,12 +58,36 @@ describe('buildEdges', () => {
 
   it('단일 FK 는 양 끝 모두 컬럼 앵커 핸들에 붙는다', () => {
     const m = model()
-    m.columns['pc'] = { id: 'pc', tableId: 'P', logicalName: 'pc', physicalName: 'pc',
-      type: 'INT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {} }
-    m.columns['cc'] = { id: 'cc', tableId: 'C', logicalName: 'cc', physicalName: 'cc',
-      type: 'INT', isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {} }
+    m.columns['pc'] = {
+      id: 'pc',
+      tableId: 'P',
+      logicalName: 'pc',
+      physicalName: 'pc',
+      type: 'INT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
+    m.columns['cc'] = {
+      id: 'cc',
+      tableId: 'C',
+      logicalName: 'cc',
+      physicalName: 'cc',
+      type: 'INT',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
     m.relationships['R']!.columnMappings = [{ childColumnId: 'cc', parentColumnId: 'pc' }]
     const e = buildEdges(m)[0]!
     // 자식 C(x=400)가 부모 P(x=0)보다 오른쪽 → 자식은 왼쪽, 부모는 오른쪽.
@@ -48,11 +98,26 @@ describe('buildEdges', () => {
   it('복합 FK 는 양 끝 모두 합성 앵커 핸들에 붙는다', () => {
     const m = model()
     for (const [id, tableId, order] of [
-      ['p1', 'P', 0], ['p2', 'P', 1], ['c1', 'C', 0], ['c2', 'C', 1],
+      ['p1', 'P', 0],
+      ['p2', 'P', 1],
+      ['c1', 'C', 0],
+      ['c2', 'C', 1],
     ] as const) {
-      m.columns[id] = { id, tableId, logicalName: id, physicalName: id, type: 'INT',
-        isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
-        order, comment: null, domainId: null, custom: {} }
+      m.columns[id] = {
+        id,
+        tableId,
+        logicalName: id,
+        physicalName: id,
+        type: 'INT',
+        isPk: false,
+        autoIncrement: false,
+        nullable: true,
+        defaultValue: null,
+        order,
+        comment: null,
+        domainId: null,
+        custom: {},
+      }
     }
     m.relationships['R']!.columnMappings = [
       { childColumnId: 'c1', parentColumnId: 'p1' },
@@ -72,24 +137,60 @@ describe('buildEdges', () => {
 
   it('한쪽 매핑만 깨졌으면 그 끝만 중앙으로 폴백한다', () => {
     const m = model()
-    m.columns['pc'] = { id: 'pc', tableId: 'P', logicalName: 'pc', physicalName: 'pc',
-      type: 'INT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {} }
+    m.columns['pc'] = {
+      id: 'pc',
+      tableId: 'P',
+      logicalName: 'pc',
+      physicalName: 'pc',
+      type: 'INT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
     m.relationships['R']!.columnMappings = [{ childColumnId: 'GONE', parentColumnId: 'pc' }]
     const e = buildEdges(m)[0]!
-    expect(e.sourceHandle).toBe('l')          // 자식 끝만 폴백
-    expect(e.targetHandle).toBe('r:c:pc')     // 부모 끝은 앵커
+    expect(e.sourceHandle).toBe('l') // 자식 끝만 폴백
+    expect(e.targetHandle).toBe('r:c:pc') // 부모 끝은 앵커
   })
 
   it('부모가 자식보다 오른쪽이면 좌우가 뒤집힌다', () => {
     const m = model()
     m.tables['P']!.position = { x: 800, y: 0 } // 부모를 오른쪽으로
-    m.columns['pc'] = { id: 'pc', tableId: 'P', logicalName: 'pc', physicalName: 'pc',
-      type: 'INT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {} }
-    m.columns['cc'] = { id: 'cc', tableId: 'C', logicalName: 'cc', physicalName: 'cc',
-      type: 'INT', isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {} }
+    m.columns['pc'] = {
+      id: 'pc',
+      tableId: 'P',
+      logicalName: 'pc',
+      physicalName: 'pc',
+      type: 'INT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
+    m.columns['cc'] = {
+      id: 'cc',
+      tableId: 'C',
+      logicalName: 'cc',
+      physicalName: 'cc',
+      type: 'INT',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
     m.relationships['R']!.columnMappings = [{ childColumnId: 'cc', parentColumnId: 'pc' }]
     const e = buildEdges(m)[0]!
     expect(e.sourceHandle).toBe('r:c:cc')
@@ -105,23 +206,48 @@ describe('buildEdges 핸들 휴리스틱', () => {
   })
   it('참조 테이블이 없어도 throw하지 않는다', () => {
     const m = createEmptyModel()
-    m.relationships['R'] = { id: 'R', parentTableId: 'GONE', childTableId: 'ALSO_GONE', columnMappings: [], cardinality: '1:N', identifying: false, name: null }
+    m.relationships['R'] = {
+      id: 'R',
+      parentTableId: 'GONE',
+      childTableId: 'ALSO_GONE',
+      columnMappings: [],
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
+    }
     expect(() => buildEdges(m)).not.toThrow()
     expect(buildEdges(m)).toHaveLength(1)
   })
   it('visibleTableIds가 주어지면 양 끝이 모두 포함된 엣지만 반환한다', () => {
     const m = model() // P(부모)·C(자식) 관계 R 하나
     expect(buildEdges(m, new Set(['P', 'C']))).toHaveLength(1)
-    expect(buildEdges(m, new Set(['C']))).toHaveLength(0)     // 부모 미포함 → 제외
+    expect(buildEdges(m, new Set(['C']))).toHaveLength(0) // 부모 미포함 → 제외
     expect(buildEdges(m, new Set())).toHaveLength(0)
   })
 })
 
 describe('planConnection', () => {
-  const gen = () => { let n = 0; return () => `id${++n}` }
+  const gen = () => {
+    let n = 0
+    return () => `id${++n}`
+  }
   it('source=자식, target=부모로 매핑하고 부모 PK 수만큼 컬럼 id를 만든다', () => {
     const m = model() // P(부모)·C(자식). model()의 P에는 기본적으로 PK 컬럼이 없으므로 여기서 추가.
-    m.columns['PPK'] = { id: 'PPK', tableId: 'P', logicalName: 'PPK', physicalName: 'ID', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null, domainId: null, custom: {} }
+    m.columns['PPK'] = {
+      id: 'PPK',
+      tableId: 'P',
+      logicalName: 'PPK',
+      physicalName: 'ID',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
     const plan = planConnection(m, { source: 'C', target: 'P' }, gen())
     expect(plan.ok).toBe(true)
     if (plan.ok) {
@@ -131,10 +257,16 @@ describe('planConnection', () => {
     }
   })
   it('자기 연결은 거부한다', () => {
-    expect(planConnection(model(), { source: 'A', target: 'A' }, gen())).toEqual({ ok: false, reason: 'self' })
+    expect(planConnection(model(), { source: 'A', target: 'A' }, gen())).toEqual({
+      ok: false,
+      reason: 'self',
+    })
   })
   it('source/target 누락은 invalid', () => {
-    expect(planConnection(model(), { source: null, target: 'P' }, gen())).toEqual({ ok: false, reason: 'invalid' })
+    expect(planConnection(model(), { source: null, target: 'P' }, gen())).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
   })
   it('부모 PK가 없으면 no-parent-pk', () => {
     const plan = planConnection(model(), { source: 'C', target: 'P' }, gen()) // model()의 P에 PK 없음
@@ -142,8 +274,36 @@ describe('planConnection', () => {
   })
   it('복합 PK면 컬럼 id를 그 수만큼 만든다', () => {
     const m = model()
-    m.columns['PPK1'] = { id: 'PPK1', tableId: 'P', logicalName: 'a', physicalName: 'A', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0, comment: null, domainId: null, custom: {} }
-    m.columns['PPK2'] = { id: 'PPK2', tableId: 'P', logicalName: 'b', physicalName: 'B', type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 1, comment: null, domainId: null, custom: {} }
+    m.columns['PPK1'] = {
+      id: 'PPK1',
+      tableId: 'P',
+      logicalName: 'a',
+      physicalName: 'A',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
+    m.columns['PPK2'] = {
+      id: 'PPK2',
+      tableId: 'P',
+      logicalName: 'b',
+      physicalName: 'B',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 1,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
     const plan = planConnection(m, { source: 'C', target: 'P' }, gen())
     if (plan.ok) expect(plan.newColumnIds).toHaveLength(2)
     else throw new Error('expected ok')
@@ -158,16 +318,26 @@ describe('nextTablePhysicalName', () => {
 
   it('이미 쓰이는 번호를 건너뛴다', () => {
     const base = buildSampleModel()
-    const m = { ...base, tables: {
-      ...base.tables,
-      x1: { ...base.tables['t1']!, id: 'x1', physicalName: 'TABLE_1' },
-      x2: { ...base.tables['t1']!, id: 'x2', physicalName: 'TABLE_2' },
-    } }
+    const m = {
+      ...base,
+      tables: {
+        ...base.tables,
+        x1: { ...base.tables['t1']!, id: 'x1', physicalName: 'TABLE_1' },
+        x2: { ...base.tables['t1']!, id: 'x2', physicalName: 'TABLE_2' },
+      },
+    }
     expect(nextTablePhysicalName(m)).toBe('TABLE_3')
   })
 })
 
-const RULES: NamingRules = { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' }
+const RULES: NamingRules = {
+  case: 'UPPER_SNAKE',
+  separator: '_',
+  logicalSeparator: '_',
+  maxLengthBytes: 30,
+  tablePhysicalTemplate: '',
+  tableLogicalTemplate: '',
+}
 const CTX = { namingRules: RULES, activeGroupView: null }
 
 /**
@@ -178,17 +348,31 @@ function buildSampleModelWithDownstream(): ProjectModel {
   const base = buildSampleModel()
   return {
     ...base,
-    tables: { ...base.tables,
-      t3: { ...base.tables['t2']!, id: 't3', logicalName: '배송', physicalName: 'DLV' } },
-    columns: { ...base.columns,
+    tables: {
+      ...base.tables,
+      t3: { ...base.tables['t2']!, id: 't3', logicalName: '배송', physicalName: 'DLV' },
+    },
+    columns: {
+      ...base.columns,
       c4: { ...base.columns['c4']!, isPk: true },
       c5: { ...base.columns['c2']!, id: 'c5', tableId: 't3', isPk: false, autoIncrement: false },
-      c6: { ...base.columns['c4']!, id: 'c6', tableId: 't3', isPk: false, order: 1 } },
-    relationships: { ...base.relationships,
-      r2: { id: 'r2', parentTableId: 't2', childTableId: 't3', cardinality: '1:N',
-            identifying: false, name: null,
-            columnMappings: [{ childColumnId: 'c5', parentColumnId: 'c2' },
-                             { childColumnId: 'c6', parentColumnId: 'c4' }] } },
+      c6: { ...base.columns['c4']!, id: 'c6', tableId: 't3', isPk: false, order: 1 },
+    },
+    relationships: {
+      ...base.relationships,
+      r2: {
+        id: 'r2',
+        parentTableId: 't2',
+        childTableId: 't3',
+        cardinality: '1:N',
+        identifying: false,
+        name: null,
+        columnMappings: [
+          { childColumnId: 'c5', parentColumnId: 'c2' },
+          { childColumnId: 'c6', parentColumnId: 'c4' },
+        ],
+      },
+    },
   }
 }
 
@@ -208,20 +392,38 @@ describe('planJunction', () => {
 
   it('용어 사전에 완전일치가 있으면 그 물리명을 쓴다', () => {
     const base = buildSampleModel()
-    const m = { ...base, terms: {
-      tm1: { id: 'tm1', logicalName: '회원등급회원', physicalName: 'MBR_GRD_MBR',
-             domainId: null, description: null, origin: null },
-    } }
+    const m = {
+      ...base,
+      terms: {
+        tm1: {
+          id: 'tm1',
+          logicalName: '회원등급회원',
+          physicalName: 'MBR_GRD_MBR',
+          domainId: null,
+          description: null,
+          origin: null,
+        },
+      },
+    }
     const plan = planJunction(m, 'r1', ids(), CTX)
     expect(plan.ok && plan.junction.physicalName).toBe('MBR_GRD_MBR')
   })
 
   it('단어 사전이 일부만 알면 아는 부분으로 물리명을 만든다', () => {
     const base = buildSampleModel()
-    const m = { ...base, words: {
-      w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-            englishName: null, description: null, origin: null },
-    } }
+    const m = {
+      ...base,
+      words: {
+        w1: {
+          id: 'w1',
+          logicalName: '회원',
+          abbreviation: 'MBR',
+          englishName: null,
+          description: null,
+          origin: null,
+        },
+      },
+    }
     const plan = planJunction(m, 'r1', ids(), CTX)
     // '회원등급회원' 을 최장일치로 분해하면 회원(MBR) · 등급(모름) · 회원(MBR) 이라
     // 아는 것만 이어 붙는다. '등급' 은 기존 미등록 단어 경고가 따로 알린다.
@@ -240,8 +442,13 @@ describe('planJunction', () => {
     if (!plan.ok) return
     expect(plan.a.newColumnIds).toHaveLength(1) // t1 의 PK 는 c1 하나
     expect(plan.b.newColumnIds).toHaveLength(1) // t2 의 PK 는 c2 하나
-    const all = [plan.junction.id, plan.a.relationshipId, plan.b.relationshipId,
-                 ...plan.a.newColumnIds, ...plan.b.newColumnIds]
+    const all = [
+      plan.junction.id,
+      plan.a.relationshipId,
+      plan.b.relationshipId,
+      ...plan.a.newColumnIds,
+      ...plan.b.newColumnIds,
+    ]
     expect(new Set(all).size).toBe(all.length) // 모두 서로 다르다
   })
 
@@ -250,9 +457,13 @@ describe('planJunction', () => {
     // 자식이 교차 테이블에 넘길 PK 는 c2 하나뿐이다. 삭제 '전' 개수로 세면 2개가 나오는데,
     // createRelationshipFromParentPk 는 남는 id 를 조용히 버려 다른 곳에서는 드러나지 않는다.
     const base = buildSampleModel()
-    const m = { ...base, columns: {
-      ...base.columns, c4: { ...base.columns['c4']!, isPk: true },
-    } }
+    const m = {
+      ...base,
+      columns: {
+        ...base.columns,
+        c4: { ...base.columns['c4']!, isPk: true },
+      },
+    }
     const plan = planJunction(m, 'r1', ids(), CTX)
     expect(plan.ok).toBe(true)
     if (!plan.ok) return
@@ -260,8 +471,10 @@ describe('planJunction', () => {
   })
 
   it('활성 그룹뷰가 있으면 교차 테이블을 그 그룹에 넣는다', () => {
-    const plan = planJunction(buildSampleModel(), 'r1', ids(),
-      { namingRules: RULES, activeGroupView: 'g1' })
+    const plan = planJunction(buildSampleModel(), 'r1', ids(), {
+      namingRules: RULES,
+      activeGroupView: 'g1',
+    })
     expect(plan.ok && plan.junction.groupId).toBe('g1')
     // t1 groupPosition (10,10), t2 (310,10) 의 중점
     expect(plan.ok && plan.junction.groupPosition).toEqual({ x: 160, y: 10 })
@@ -283,10 +496,19 @@ describe('planJunction', () => {
     // b 와 대칭인 단언이다. a 를 과소 발급하면 createRelationshipFromParentPk 가
     // 'FK 컬럼 id가 부족합니다' 로 throw 한다 — b 의 과다 발급(조용히 무시)보다 나쁘다.
     const base = buildSampleModel()
-    const m = { ...base, columns: {
-      ...base.columns,
-      c5: { ...base.columns['c1']!, id: 'c5', logicalName: '등급명', physicalName: 'GRD_NM', order: 1 },
-    } }
+    const m = {
+      ...base,
+      columns: {
+        ...base.columns,
+        c5: {
+          ...base.columns['c1']!,
+          id: 'c5',
+          logicalName: '등급명',
+          physicalName: 'GRD_NM',
+          order: 1,
+        },
+      },
+    }
     const plan = planJunction(m, 'r1', ids(), CTX)
     expect(plan.ok).toBe(true)
     if (!plan.ok) return
@@ -297,33 +519,46 @@ describe('planJunction', () => {
     const base = buildSampleModel()
     // t1 의 PK c1 을 비-PK 로 → 교차 테이블에 넘겨줄 PK 가 없다.
     // 가드가 없으면 core 가 모델을 그대로 돌려줘 diff 0건 → 토스트조차 없이 아무 일도 없다.
-    const m = { ...base, columns: {
-      ...base.columns, c1: { ...base.columns['c1']!, isPk: false },
-    } }
+    const m = {
+      ...base,
+      columns: {
+        ...base.columns,
+        c1: { ...base.columns['c1']!, isPk: false },
+      },
+    }
     expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'no-pk' })
   })
 
   it('없는 관계는 missing 이다', () => {
-    expect(planJunction(buildSampleModel(), 'nope', ids(), CTX))
-      .toEqual({ ok: false, reason: 'missing' })
+    expect(planJunction(buildSampleModel(), 'nope', ids(), CTX)).toEqual({
+      ok: false,
+      reason: 'missing',
+    })
   })
 
   it('식별 관계는 identifying 이다', () => {
     const base = buildSampleModel()
-    const m = { ...base, relationships: {
-      ...base.relationships, r1: { ...base.relationships['r1']!, identifying: true },
-    } }
+    const m = {
+      ...base,
+      relationships: {
+        ...base.relationships,
+        r1: { ...base.relationships['r1']!, identifying: true },
+      },
+    }
     expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'identifying' })
   })
 
   it('FK 가 자식의 유일한 PK면 no-pk 다', () => {
     const base = buildSampleModel()
     // t2 의 PK c2 를 비-PK 로, FK c4 를 PK 로 → 지우면 t2 의 PK 가 0개가 된다
-    const m = { ...base, columns: {
-      ...base.columns,
-      c2: { ...base.columns['c2']!, isPk: false },
-      c4: { ...base.columns['c4']!, isPk: true },
-    } }
+    const m = {
+      ...base,
+      columns: {
+        ...base.columns,
+        c2: { ...base.columns['c2']!, isPk: false },
+        c4: { ...base.columns['c4']!, isPk: true },
+      },
+    }
     expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'no-pk' })
   })
 
@@ -340,10 +575,13 @@ describe('planJunction', () => {
       },
       relationships: {
         ...base.relationships,
-        r1: { ...base.relationships['r1']!, columnMappings: [
-          { childColumnId: 'c4', parentColumnId: 'c1' },
-          { childColumnId: 'c4', parentColumnId: 'c1' },
-        ] },
+        r1: {
+          ...base.relationships['r1']!,
+          columnMappings: [
+            { childColumnId: 'c4', parentColumnId: 'c1' },
+            { childColumnId: 'c4', parentColumnId: 'c1' },
+          ],
+        },
       },
     }
     // 중복을 세면 droppedPk 가 2가 되어 1 - 2 = -1 이 되고, '=== 0' 비교를 빠져나가
@@ -359,10 +597,13 @@ describe('planJunction', () => {
       columns: { ...base.columns, c4: { ...base.columns['c4']!, isPk: true } },
       relationships: {
         ...base.relationships,
-        r1: { ...base.relationships['r1']!, columnMappings: [
-          { childColumnId: 'c4', parentColumnId: 'c1' },
-          { childColumnId: 'c4', parentColumnId: 'c1' },
-        ] },
+        r1: {
+          ...base.relationships['r1']!,
+          columnMappings: [
+            { childColumnId: 'c4', parentColumnId: 'c1' },
+            { childColumnId: 'c4', parentColumnId: 'c1' },
+          ],
+        },
       },
     }
     // 중복을 세면 2 - 2 = 0 이 되어 있지도 않은 no-pk 로 막는다(dedup 단독 구분력).
@@ -378,13 +619,19 @@ describe('planJunction', () => {
     // 도달할 수 없다. dedup 으로는 막지 못하는(중복이 없다) 경우라 '<= 0' 이중 방어를
     // 단독으로 잠근다: '=== 0' 이면 1 - 2 = -1 이 비교를 빠져나가 ok:true 가 된다.
     const base = buildSampleModel()
-    const m = { ...base, relationships: {
-      ...base.relationships,
-      r1: { ...base.relationships['r1']!, columnMappings: [
-        { childColumnId: 'c1', parentColumnId: 'c1' },
-        { childColumnId: 'c2', parentColumnId: 'c1' },
-      ] },
-    } }
+    const m = {
+      ...base,
+      relationships: {
+        ...base.relationships,
+        r1: {
+          ...base.relationships['r1']!,
+          columnMappings: [
+            { childColumnId: 'c1', parentColumnId: 'c1' },
+            { childColumnId: 'c2', parentColumnId: 'c1' },
+          ],
+        },
+      },
+    }
     expect(planJunction(m, 'r1', ids(), CTX)).toEqual({ ok: false, reason: 'no-pk' })
   })
 
@@ -402,9 +649,13 @@ describe('planJunction', () => {
     // groupPosition 을 건드리지 않으므로 그룹에 든 테이블의 groupPosition 이 null 로 남는다.
     // 폴백이 없으면 중점이 NaN 이 되어 교차 테이블이 그룹뷰에서 사라진다.
     const base = buildSampleModel()
-    const m = { ...base, tables: {
-      ...base.tables, t1: { ...base.tables['t1']!, groupPosition: null },
-    } }
+    const m = {
+      ...base,
+      tables: {
+        ...base.tables,
+        t1: { ...base.tables['t1']!, groupPosition: null },
+      },
+    }
     const plan = planJunction(m, 'r1', ids(), { namingRules: RULES, activeGroupView: 'g1' })
     expect(plan.ok).toBe(true)
     if (!plan.ok) return

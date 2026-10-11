@@ -19,16 +19,46 @@ function renderNode(data: Parameters<typeof TableNode>[0]['data']) {
 
 const DATA = {
   table: {
-    id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 't1',
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   },
   columns: [
-    { id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO',
-      type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
-      defaultValue: null, order: 0, comment: null, domainId: null, custom: {} },
-    { id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM',
-      type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: true,
-      defaultValue: null, order: 1, comment: null, domainId: null, custom: {} },
+    {
+      id: 'c1',
+      tableId: 't1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      type: 'BIGINT',
+      isPk: true,
+      autoIncrement: true,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    },
+    {
+      id: 'c2',
+      tableId: 't1',
+      logicalName: '회원명',
+      physicalName: 'MBR_NM',
+      type: 'VARCHAR(100)',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 1,
+      comment: null,
+      domainId: null,
+      custom: {},
+    },
   ],
   selected: false,
 }
@@ -59,7 +89,8 @@ describe('TableNode', () => {
 describe('peer 선택 하이라이트', () => {
   it('peer가 선택한 테이블에 참여자 이름 라벨을 그린다', () => {
     renderNode({
-      ...DATA, viewMode: 'physical',
+      ...DATA,
+      viewMode: 'physical',
       peers: [{ userId: 'u2', name: '동료', color: '#DB2777' }],
     })
     expect(screen.getByText('동료')).toBeInTheDocument()
@@ -124,7 +155,8 @@ describe('TableNode — 앵커 핸들과 합성 행', () => {
 
   it('단일 앵커 컬럼 행에 좌·우 핸들이 붙는다', () => {
     const { container } = renderNode({
-      ...DATA, viewMode: 'physical',
+      ...DATA,
+      viewMode: 'physical',
       anchors: [{ key: 'c:c1', columnIds: ['c1'] }],
     })
     expect(handleIds(container)).toEqual(expect.arrayContaining(['l:c:c1', 'r:c:c1']))
@@ -132,7 +164,8 @@ describe('TableNode — 앵커 핸들과 합성 행', () => {
 
   it('앵커가 아닌 컬럼에는 핸들이 없다', () => {
     const { container } = renderNode({
-      ...DATA, viewMode: 'physical',
+      ...DATA,
+      viewMode: 'physical',
       anchors: [{ key: 'c:c1', columnIds: ['c1'] }],
     })
     expect(handleIds(container)).not.toContain('l:c:c2')
@@ -146,7 +179,8 @@ describe('TableNode — 앵커 핸들과 합성 행', () => {
 
   it('복합 앵커는 컬럼 목록 맨 아래에 합성 행으로 렌더된다', () => {
     const { container } = renderNode({
-      ...DATA, viewMode: 'physical',
+      ...DATA,
+      viewMode: 'physical',
       anchors: [{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }],
     })
     expect(screen.getByText('(MBR_NO, MBR_NM)')).toBeInTheDocument()
@@ -158,7 +192,8 @@ describe('TableNode — 앵커 핸들과 합성 행', () => {
 
   it('합성 행 라벨은 논리 모드에서 논리명을 쓴다', () => {
     renderNode({
-      ...DATA, viewMode: 'logical',
+      ...DATA,
+      viewMode: 'logical',
       anchors: [{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }],
     })
     expect(screen.getByText('(회원번호, 회원명)')).toBeInTheDocument()
@@ -167,7 +202,8 @@ describe('TableNode — 앵커 핸들과 합성 행', () => {
   it('혼합 모드에서 합성 행은 물리명만 쓴다', () => {
     // 컬럼 2~3개의 논리명·물리명을 한 줄에 다 넣으면 노드가 과하게 넓어진다(설계 D-4).
     renderNode({
-      ...DATA, viewMode: 'mixed',
+      ...DATA,
+      viewMode: 'mixed',
       anchors: [{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }],
     })
     expect(screen.getByText('(MBR_NO, MBR_NM)')).toBeInTheDocument()
@@ -177,7 +213,9 @@ describe('TableNode — 앵커 핸들과 합성 행', () => {
   it('합성 행을 클릭해도 컬럼 선택이 일어나지 않는다', async () => {
     const onColumnClick = vi.fn()
     renderNode({
-      ...DATA, viewMode: 'physical', onColumnClick,
+      ...DATA,
+      viewMode: 'physical',
+      onColumnClick,
       anchors: [{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }],
     })
     await userEvent.click(screen.getByText('(MBR_NO, MBR_NM)'))

@@ -4,8 +4,12 @@ import type { ProjectModel } from './model.js'
 import { createEmptyModel } from './model.js'
 import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
 import {
-  buildChangeSheet, buildDictTemplateSheets, buildExcelSheets as buildExcelSheetsRaw,
-  CHANGE_HEADERS, EXCEL_SHEET_NAME, type ExcelSheetKey,
+  buildChangeSheet,
+  buildDictTemplateSheets,
+  buildExcelSheets as buildExcelSheetsRaw,
+  CHANGE_HEADERS,
+  EXCEL_SHEET_NAME,
+  type ExcelSheetKey,
 } from './excel-sheets.js'
 import type { ExportScope } from './ddl.js'
 import { diffModelsForDisplay } from './model-diff.js'
@@ -30,35 +34,67 @@ function richModel(): ProjectModel {
     ...m,
     domains: {
       d1: {
-        id: 'd1', name: '등급코드', category: '코드', logicalType: 'CHAR(2)',
+        id: 'd1',
+        name: '등급코드',
+        category: '코드',
+        logicalType: 'CHAR(2)',
         dialectTypes: { postgresql: 'char(2)', mysql: null, oracle: null, mssql: null },
-        defaultValue: "'01'", allowedValues: ['01', '02'], description: '회원 등급', origin: null,
+        defaultValue: "'01'",
+        allowedValues: ['01', '02'],
+        description: '회원 등급',
+        origin: null,
       },
     },
     words: {
       w1: {
-        id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-        englishName: 'MEMBER', description: null, origin: null,
+        id: 'w1',
+        logicalName: '회원',
+        abbreviation: 'MBR',
+        englishName: 'MEMBER',
+        description: null,
+        origin: null,
       },
       w2: {
-        id: 'w2', logicalName: '번호', abbreviation: 'NO',
-        englishName: null, description: '순번', origin: null,
+        id: 'w2',
+        logicalName: '번호',
+        abbreviation: 'NO',
+        englishName: null,
+        description: '순번',
+        origin: null,
       },
     },
     terms: {
       tm1: {
-        id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NO',
-        domainId: 'd1', description: '회원 식별자', origin: null,
+        id: 'tm1',
+        logicalName: '회원번호',
+        physicalName: 'MBR_NO',
+        domainId: 'd1',
+        description: '회원 식별자',
+        origin: null,
       },
     },
     customFields: {
       cf1: {
-        id: 'cf1', name: '업무구분', target: 'table', type: 'text',
-        options: [], required: false, defaultValue: '공통', order: 0, origin: null,
+        id: 'cf1',
+        name: '업무구분',
+        target: 'table',
+        type: 'text',
+        options: [],
+        required: false,
+        defaultValue: '공통',
+        order: 0,
+        origin: null,
       },
       cf2: {
-        id: 'cf2', name: '개인정보여부', target: 'column', type: 'select',
-        options: ['Y', 'N'], required: false, defaultValue: 'N', order: 0, origin: null,
+        id: 'cf2',
+        name: '개인정보여부',
+        target: 'column',
+        type: 'select',
+        options: ['Y', 'N'],
+        required: false,
+        defaultValue: 'N',
+        order: 0,
+        origin: null,
       },
     },
     columns: {
@@ -71,9 +107,19 @@ function richModel(): ProjectModel {
 describe('buildExcelSheets', () => {
   it('5개 시트를 고정 순서로 낸다', () => {
     const sheets = buildExcelSheets(buildSampleModel())
-    expect(sheets.map((s) => s.key)).toEqual(['tableList', 'tableSpec', 'words', 'terms', 'domains'])
+    expect(sheets.map((s) => s.key)).toEqual([
+      'tableList',
+      'tableSpec',
+      'words',
+      'terms',
+      'domains',
+    ])
     expect(sheets.map((s) => s.name)).toEqual([
-      '테이블 목록', '테이블정의서', '단어사전', '용어사전', '도메인정의서',
+      '테이블 목록',
+      '테이블정의서',
+      '단어사전',
+      '용어사전',
+      '도메인정의서',
     ])
   })
 
@@ -90,12 +136,33 @@ describe('buildExcelSheets', () => {
   it('테이블정의서: 컬럼마다 한 행, 순번은 테이블 안에서 1부터', () => {
     const s = sheetOf(buildExcelSheets(buildSampleModel()), 'tableSpec')!
     expect(s.headers).toEqual([
-      '그룹', '테이블 논리명', '테이블 물리명', '순번', '논리명', '물리명',
-      '도메인', '타입', 'PK', 'NOT NULL', '기본값', '설명',
+      '그룹',
+      '테이블 논리명',
+      '테이블 물리명',
+      '순번',
+      '논리명',
+      '물리명',
+      '도메인',
+      '타입',
+      'PK',
+      'NOT NULL',
+      '기본값',
+      '설명',
     ])
     expect(s.rows).toHaveLength(4)
     expect(s.rows[0]).toEqual([
-      '회원관리', '회원', 'MBR', '1', '회원번호', 'MBR_NO', '', 'BIGINT', 'Y', 'Y', '', '',
+      '회원관리',
+      '회원',
+      'MBR',
+      '1',
+      '회원번호',
+      'MBR_NO',
+      '',
+      'BIGINT',
+      'Y',
+      'Y',
+      '',
+      '',
     ])
   })
 
@@ -112,16 +179,16 @@ describe('buildExcelSheets', () => {
       },
     }
     const rows = sheetOf(buildExcelSheets(shifted), 'tableSpec')!.rows.filter((r) => r[2] === 'MBR')
-    expect(rows.map((r) => r[5])).toEqual(['MBR_NO', 'MBR_NM', 'GRD_CD'])   // order 오름차순 정렬은 유지
+    expect(rows.map((r) => r[5])).toEqual(['MBR_NO', 'MBR_NM', 'GRD_CD']) // order 오름차순 정렬은 유지
     expect(rows.map((r) => r[3])).toEqual(['1', '2', '3'])
   })
 
   it('도메인 지정 컬럼은 도메인 이름·논리 타입·기본값을 따른다', () => {
     const s = sheetOf(buildExcelSheets(richModel()), 'tableSpec')!
     const row = s.rows.find((r) => r[5] === 'GRD_CD' && r[2] === 'MBR_GRD')!
-    expect(row[6]).toBe('등급코드')     // 도메인
-    expect(row[7]).toBe('CHAR(2)')      // 타입
-    expect(row[10]).toBe("'01'")        // 기본값(도메인 기본값 라이브 해석)
+    expect(row[6]).toBe('등급코드') // 도메인
+    expect(row[7]).toBe('CHAR(2)') // 타입
+    expect(row[10]).toBe("'01'") // 기본값(도메인 기본값 라이브 해석)
   })
 
   it('커스텀 항목을 정의 순서대로 컬럼으로 붙이고 미입력은 기본값으로 채운다', () => {
@@ -133,9 +200,9 @@ describe('buildExcelSheets', () => {
     const spec = sheetOf(sheets, 'tableSpec')!
     expect(spec.headers.at(-1)).toBe('개인정보여부')
     const withValue = spec.rows.find((r) => r[5] === 'GRD_CD' && r[2] === 'MBR_GRD')!
-    expect(withValue.at(-1)).toBe('Y')                        // 입력값
+    expect(withValue.at(-1)).toBe('Y') // 입력값
     const withDefault = spec.rows.find((r) => r[5] === 'MBR_NO')!
-    expect(withDefault.at(-1)).toBe('N')                      // 정의 기본값
+    expect(withDefault.at(-1)).toBe('N') // 정의 기본값
   })
 
   it('커스텀 항목 정의가 없으면 추가 컬럼이 붙지 않는다', () => {
@@ -167,7 +234,8 @@ describe('buildExcelSheets', () => {
     expect(withSep.rows[0]![1]).toBe('회원, 번호')
 
     const noSep = sheetOf(
-      buildExcelSheets(m, { rules: { ...DEFAULT_NAMING_RULES, logicalSeparator: '' } }), 'terms',
+      buildExcelSheets(m, { rules: { ...DEFAULT_NAMING_RULES, logicalSeparator: '' } }),
+      'terms',
     )!
     expect(noSep.rows[0]![1]).toBe('회원, _, 번호')
   })
@@ -175,7 +243,16 @@ describe('buildExcelSheets', () => {
   it('도메인정의서: 방언별 타입과 허용값을 낸다', () => {
     const s = sheetOf(buildExcelSheets(richModel()), 'domains')!
     expect(s.headers).toEqual([
-      '이름', '분류', '논리 타입', 'PostgreSQL', 'MySQL', 'Oracle', 'MSSQL', '기본값', '허용값', '설명',
+      '이름',
+      '분류',
+      '논리 타입',
+      'PostgreSQL',
+      'MySQL',
+      'Oracle',
+      'MSSQL',
+      '기본값',
+      '허용값',
+      '설명',
     ])
     expect(s.rows).toEqual([
       ['등급코드', '코드', 'CHAR(2)', 'char(2)', '', '', '', "'01'", '01, 02', '회원 등급'],
@@ -212,8 +289,14 @@ describe('buildExcelSheets', () => {
       tables: {
         ...m.tables,
         t9: {
-          id: 't9', logicalName: '빈테이블', physicalName: 'EMPTY', comment: null,
-          groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+          id: 't9',
+          logicalName: '빈테이블',
+          physicalName: 'EMPTY',
+          comment: null,
+          groupId: null,
+          position: { x: 0, y: 0 },
+          groupPosition: null,
+          custom: {},
         },
       },
     }
@@ -233,7 +316,9 @@ describe('buildDictTemplateSheets', () => {
     const sheets = buildDictTemplateSheets()
     expect(sheets.map((s) => s.key)).toEqual(['words', 'terms', 'domains'])
     expect(sheets.map((s) => s.name)).toEqual([
-      EXCEL_SHEET_NAME.words, EXCEL_SHEET_NAME.terms, EXCEL_SHEET_NAME.domains,
+      EXCEL_SHEET_NAME.words,
+      EXCEL_SHEET_NAME.terms,
+      EXCEL_SHEET_NAME.domains,
     ])
     expect(sheets.every((s) => s.rows.length === 0)).toBe(true)
     expect(sheets[0]!.headers).toEqual(['논리명', '약어', '영문명', '설명'])
@@ -289,7 +374,10 @@ describe('buildChangeSheet', () => {
 })
 
 describe('물리명 템플릿', () => {
-  const TPL: NamingRules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
+  const TPL: NamingRules = {
+    ...DEFAULT_NAMING_RULES,
+    tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+  }
   function m(): ProjectModel {
     const x = buildSampleModel()
     x.tableGroups['g1'] = { ...x.tableGroups['g1']!, alias: 'MBR' }
@@ -298,7 +386,7 @@ describe('물리명 템플릿', () => {
 
   it('테이블 목록 시트의 물리명 열이 조합 이름이다', () => {
     const s = sheetOf(buildExcelSheetsRaw(m(), { rules: TPL }), 'tableList')!
-    const names = s.rows.map((r) => r[2])          // [그룹, 논리명, 물리명, 설명, …]
+    const names = s.rows.map((r) => r[2]) // [그룹, 논리명, 물리명, 설명, …]
     expect(names).toContain('TB_MBR_MBR')
     expect(names).not.toContain('MBR')
   })
@@ -322,14 +410,22 @@ describe('물리명 템플릿', () => {
     // 같은 그룹 안에서 접두가 갈리는 템플릿을 쓴다 — 그래야 부분 기준과 조합 기준이 갈린다.
     const x = m()
     x.customFields['cf9'] = {
-      id: 'cf9', name: '서브시스템', target: 'table', type: 'text',
-      options: [], required: false, defaultValue: null, order: 0, origin: null,
+      id: 'cf9',
+      name: '서브시스템',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     // 부분 기준: MBR(t2) < MBR_GRD(t1). 조합 기준: AA_MBR_GRD(t1) < ZZ_MBR(t2) 로 뒤집힌다.
     x.tables['t2'] = { ...x.tables['t2']!, custom: { cf9: 'ZZ' } }
     x.tables['t1'] = { ...x.tables['t1']!, custom: { cf9: 'AA' } }
     const rules: NamingRules = {
-      ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: '{커스텀:서브시스템}_{물리명}',
+      ...DEFAULT_NAMING_RULES,
+      tablePhysicalTemplate: '{커스텀:서브시스템}_{물리명}',
     }
     const names = sheetOf(buildExcelSheetsRaw(x, { rules }), 'tableList')!.rows.map((r) => r[2])
     expect(names).toEqual(['AA_MBR_GRD', 'ZZ_MBR'])
@@ -338,7 +434,8 @@ describe('물리명 템플릿', () => {
 
 describe('논리명 템플릿', () => {
   const RULES: NamingRules = {
-    ...DEFAULT_NAMING_RULES, tableLogicalTemplate: '{그룹명}_{논리명}',
+    ...DEFAULT_NAMING_RULES,
+    tableLogicalTemplate: '{그룹명}_{논리명}',
   }
   function m(): ProjectModel {
     const x = buildSampleModel()
@@ -348,7 +445,7 @@ describe('논리명 템플릿', () => {
 
   it('테이블 목록 시트의 논리명 열이 조합된다', () => {
     const s = sheetOf(buildExcelSheetsRaw(m(), { rules: RULES }), 'tableList')!
-    const names = s.rows.map((r) => r[1])          // [그룹, 논리명, 물리명, 설명, …]
+    const names = s.rows.map((r) => r[1]) // [그룹, 논리명, 물리명, 설명, …]
     expect(names).toContain('SALES_회원')
     expect(names).not.toContain('회원')
   })
@@ -364,8 +461,12 @@ describe('논리명 템플릿', () => {
   it('용어사전 시트의 논리명은 조합되지 않는다', () => {
     const x = m()
     x.terms['tm1'] = {
-      id: 'tm1', logicalName: '주문', physicalName: 'ORD',
-      domainId: null, description: null, origin: null,
+      id: 'tm1',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      domainId: null,
+      description: null,
+      origin: null,
     }
     const s = sheetOf(buildExcelSheetsRaw(x, { rules: RULES }), 'terms')!
     expect(s.rows.map((r) => r[0])).toContain('주문')
@@ -376,4 +477,3 @@ describe('논리명 템플릿', () => {
     expect(s.rows.map((r) => r[1])).toContain('회원')
   })
 })
-

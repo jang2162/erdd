@@ -1,12 +1,24 @@
 import {
-  type Word, type Term, type Table, type Column, type ProjectModel, type NamingRules,
-  generatePhysicalName, decomposeByWords, restoreLogicalName, findTermByLogicalName,
+  type Word,
+  type Term,
+  type Table,
+  type Column,
+  type ProjectModel,
+  type NamingRules,
+  generatePhysicalName,
+  decomposeByWords,
+  restoreLogicalName,
+  findTermByLogicalName,
 } from '@erdd/core'
 
 export function createWord(model: ProjectModel, word: Word): ProjectModel {
   return { ...model, words: { ...model.words, [word.id]: word } }
 }
-export function updateWord(model: ProjectModel, id: string, patch: Partial<Omit<Word, 'id'>>): ProjectModel {
+export function updateWord(
+  model: ProjectModel,
+  id: string,
+  patch: Partial<Omit<Word, 'id'>>,
+): ProjectModel {
   const cur = model.words[id]
   if (!cur) return model
   return { ...model, words: { ...model.words, [id]: { ...cur, ...patch } } }
@@ -21,7 +33,11 @@ export function removeWord(model: ProjectModel, id: string): ProjectModel {
 export function createTerm(model: ProjectModel, term: Term): ProjectModel {
   return { ...model, terms: { ...model.terms, [term.id]: term } }
 }
-export function updateTerm(model: ProjectModel, id: string, patch: Partial<Omit<Term, 'id'>>): ProjectModel {
+export function updateTerm(
+  model: ProjectModel,
+  id: string,
+  patch: Partial<Omit<Term, 'id'>>,
+): ProjectModel {
   const cur = model.terms[id]
   if (!cur) return model
   return { ...model, terms: { ...model.terms, [id]: { ...cur, ...patch } } }
@@ -42,16 +58,20 @@ export function removeTerm(model: ProjectModel, id: string): ProjectModel {
 export type RegisterCheck = { ok: boolean; reason?: 'empty' | 'duplicate'; abbrClash?: boolean }
 
 export function canRegisterWord(
-  model: ProjectModel, w: { logicalName: string; abbreviation: string },
+  model: ProjectModel,
+  w: { logicalName: string; abbreviation: string },
 ): RegisterCheck {
   const logicalName = w.logicalName.trim()
   const abbreviation = w.abbreviation.trim()
   if (logicalName === '' || abbreviation === '') return { ok: false, reason: 'empty' }
   const values = Object.values(model.words)
-  if (values.some((x) => x.logicalName.trim() === logicalName)) return { ok: false, reason: 'duplicate' }
+  if (values.some((x) => x.logicalName.trim() === logicalName))
+    return { ok: false, reason: 'duplicate' }
   // 약어 충돌은 막지 않는다 — abbreviationIndex 가 id 가 작은 쪽으로 결정론적으로 고르므로
   // 무결성 문제가 아니고, 같은 약어를 쓰는 단어가 실제로 존재한다(표시만 경고한다).
-  const abbrClash = values.some((x) => x.abbreviation.trim().toUpperCase() === abbreviation.toUpperCase())
+  const abbrClash = values.some(
+    (x) => x.abbreviation.trim().toUpperCase() === abbreviation.toUpperCase(),
+  )
   return { ok: true, abbrClash }
 }
 
@@ -62,7 +82,9 @@ export function canRegisterWord(
  * (UI 가 「중복 아님」이라 하고 엔진은 「중복」으로 취급하는 어긋남).
  */
 export function canRegisterTerm(
-  model: ProjectModel, t: { logicalName: string; physicalName: string }, rules: NamingRules,
+  model: ProjectModel,
+  t: { logicalName: string; physicalName: string },
+  rules: NamingRules,
 ): RegisterCheck {
   const logicalName = t.logicalName.trim()
   const physicalName = t.physicalName.trim()
@@ -73,9 +95,7 @@ export function canRegisterTerm(
   return { ok: true }
 }
 
-export type DictUsageEntry =
-  | { kind: 'table'; entity: Table }
-  | { kind: 'column'; entity: Column }
+export type DictUsageEntry = { kind: 'table'; entity: Table } | { kind: 'column'; entity: Column }
 
 /**
  * 논리명 name이 완전일치하는 용어를 갖는지(naming.ts generatePhysicalName의 1단계 규칙과 동일).
@@ -86,7 +106,9 @@ export type DictUsageEntry =
  * generatePhysicalName 은 매칭하는데 이 함수만 못 하는 어긋남이다.
  */
 function matchesTermExactly(
-  name: string, terms: Record<string, Term>, rules: NamingRules,
+  name: string,
+  terms: Record<string, Term>,
+  rules: NamingRules,
 ): boolean {
   return findTermByLogicalName(name, terms, rules) !== undefined
 }
@@ -96,7 +118,10 @@ function matchesTermExactly(
  * wordId에 해당하는 단어가 실제로 매치에 쓰였는지 판정한다.
  */
 function usesWord(
-  logicalName: string, wordId: string, words: Record<string, Word>, terms: Record<string, Term>,
+  logicalName: string,
+  wordId: string,
+  words: Record<string, Word>,
+  terms: Record<string, Term>,
   rules: NamingRules,
 ): boolean {
   const name = logicalName.trim()
@@ -112,14 +137,18 @@ function usesWord(
  * 구분자를 끈 프로젝트에서 사용처가 실제와 어긋난다.
  */
 export function wordUsage(
-  model: ProjectModel, wordId: string, rules: NamingRules,
+  model: ProjectModel,
+  wordId: string,
+  rules: NamingRules,
 ): DictUsageEntry[] {
   const entries: DictUsageEntry[] = []
   for (const t of Object.values(model.tables)) {
-    if (usesWord(t.logicalName, wordId, model.words, model.terms, rules)) entries.push({ kind: 'table', entity: t })
+    if (usesWord(t.logicalName, wordId, model.words, model.terms, rules))
+      entries.push({ kind: 'table', entity: t })
   }
   for (const c of Object.values(model.columns)) {
-    if (usesWord(c.logicalName, wordId, model.words, model.terms, rules)) entries.push({ kind: 'column', entity: c })
+    if (usesWord(c.logicalName, wordId, model.words, model.terms, rules))
+      entries.push({ kind: 'column', entity: c })
   }
   return entries
 }
@@ -140,7 +169,10 @@ export function termUsage(model: ProjectModel, termId: string): DictUsageEntry[]
 }
 
 /** 사전 목록의 사용처 색인 — 단어·용어 id → 사용처. 모든 id 가 키로 있다(없으면 빈 배열). */
-export type UsageIndex = { words: Map<string, DictUsageEntry[]>; terms: Map<string, DictUsageEntry[]> }
+export type UsageIndex = {
+  words: Map<string, DictUsageEntry[]>
+  terms: Map<string, DictUsageEntry[]>
+}
 
 /**
  * 모델을 **한 번** 훑어 모든 단어·용어의 사용처를 만든다. 사전 목록이 행마다 `wordUsage`/`termUsage` 를 부르면
@@ -172,9 +204,12 @@ export function buildUsageIndex(model: ProjectModel, rules: NamingRules): UsageI
   const wordIdsOf = (name: string): ReadonlySet<string> => {
     const cached = wordIdsByName.get(name)
     if (cached) return cached
-    const ids = name === '' || matchesTermExactly(name, model.terms, rules)
-      ? new Set<string>()
-      : new Set(decomposeByWords(name, model.words, rules).flatMap((s) => (s.word ? [s.word.id] : [])))
+    const ids =
+      name === '' || matchesTermExactly(name, model.terms, rules)
+        ? new Set<string>()
+        : new Set(
+            decomposeByWords(name, model.words, rules).flatMap((s) => (s.word ? [s.word.id] : [])),
+          )
     wordIdsByName.set(name, ids)
     return ids
   }
@@ -217,15 +252,17 @@ export type TermPropagationPlan = { entries: TermPropagationEntry[] }
  * 채워 보내므로 이 구분이 없으면 안 바꾼 필드까지 전파된다).
  */
 export function planTermPropagation(
-  model: ProjectModel, termId: string, patch: Partial<Omit<Term, 'id'>>,
+  model: ProjectModel,
+  termId: string,
+  patch: Partial<Omit<Term, 'id'>>,
 ): TermPropagationPlan {
   const term = model.terms[termId]
   if (!term) return { entries: [] }
 
-  const nextLogicalName = 'logicalName' in patch
-    ? (patch.logicalName ?? '').trim() : term.logicalName.trim()
-  const nextPhysicalName = 'physicalName' in patch
-    ? (patch.physicalName ?? '').trim() : term.physicalName.trim()
+  const nextLogicalName =
+    'logicalName' in patch ? (patch.logicalName ?? '').trim() : term.logicalName.trim()
+  const nextPhysicalName =
+    'physicalName' in patch ? (patch.physicalName ?? '').trim() : term.physicalName.trim()
   const nextDomainId = 'domainId' in patch ? (patch.domainId ?? null) : term.domainId
 
   const logicalChanged = nextLogicalName !== '' && nextLogicalName !== term.logicalName.trim()
@@ -250,9 +287,10 @@ export function planTermPropagation(
       changes.push({ field: 'domainId', before: usage.entity.domainId, after: nextDomainId })
     }
     if (changes.length === 0) continue
-    const label = usage.kind === 'column'
-      ? `${model.tables[usage.entity.tableId]?.physicalName ?? '?'}.${usage.entity.physicalName}`
-      : usage.entity.physicalName
+    const label =
+      usage.kind === 'column'
+        ? `${model.tables[usage.entity.tableId]?.physicalName ?? '?'}.${usage.entity.physicalName}`
+        : usage.entity.physicalName
     entries.push({ kind: usage.kind, entityId: entity.id, label, changes })
   }
   return { entries }
@@ -275,7 +313,7 @@ export function applyTermPropagation(model: ProjectModel, plan: TermPropagationP
       const next = { ...cur }
       for (const c of entry.changes) {
         if (c.field === 'logicalName') {
-          if (cur.logicalName !== c.before) continue   // 남이 먼저 고쳤다 — 덮어쓰지 않는다
+          if (cur.logicalName !== c.before) continue // 남이 먼저 고쳤다 — 덮어쓰지 않는다
           next.logicalName = c.after ?? ''
         } else if (c.field === 'physicalName') {
           if (cur.physicalName !== c.before) continue

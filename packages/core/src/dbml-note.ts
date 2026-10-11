@@ -6,7 +6,9 @@ import { commentText } from './ddl.js'
  * 값이 빈 문자열인 항목은 미입력이므로(resolveCustomValue 의 판정과 같다) 싣지 않는다.
  */
 export function buildDbmlNote(
-  logicalName: string, physicalName: string, comment: string | null,
+  logicalName: string,
+  physicalName: string,
+  comment: string | null,
   custom: Record<string, string>,
 ): string | null {
   const entries = Object.entries(custom).filter(([, v]) => v !== '')
@@ -28,9 +30,11 @@ export function buildDbmlNote(
  * 값은 사용자 자유 입력이라 `{` 가 들어올 자리가 설명보다 좁지 않다. 앞에서부터 훑으면
  * 설명 속 `{중괄호}` 에서는 파싱이 실패해 그대로 넘어가므로 두 요구가 함께 성립한다.
  */
-export function splitDbmlNote(
-  text: string,
-): { logicalName: string; comment: string | null; custom: Record<string, string> } {
+export function splitDbmlNote(text: string): {
+  logicalName: string
+  comment: string | null
+  custom: Record<string, string>
+} {
   let head = text
   let custom: Record<string, string> = {}
   if (text.trimEnd().endsWith('}')) {

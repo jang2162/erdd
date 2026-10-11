@@ -28,13 +28,23 @@ import { assignLocation } from '@/lib/browser-nav'
  */
 function ShellForCurrentUser({ children }: { children: ReactNode }) {
   const isLocal = useIsLocal()
-  return <AppShell userMenu={isLocal ? undefined : <UserMenu />} isLocal={isLocal}>{children}</AppShell>
+  return (
+    <AppShell userMenu={isLocal ? undefined : <UserMenu />} isLocal={isLocal}>
+      {children}
+    </AppShell>
+  )
 }
 
 /** bare: true면 AppShell 없이 RequireAuth만 적용한다(에디터처럼 자체 전체화면 레이아웃을 쓰는 라우트용). */
-function Protected(
-  { children, adminOnly, bare }: { children: ReactNode; adminOnly?: boolean; bare?: boolean },
-) {
+function Protected({
+  children,
+  adminOnly,
+  bare,
+}: {
+  children: ReactNode
+  adminOnly?: boolean
+  bare?: boolean
+}) {
   if (bare) return <RequireAuth adminOnly={adminOnly}>{children}</RequireAuth>
   return (
     <RequireAuth adminOnly={adminOnly}>
@@ -92,12 +102,54 @@ export const routes: RouteObject[] = [
   // 유효한 일회용 토큰이 유일한 자격이고, 그 판정은 서버가 한다(설계 §3.5·§6.1).
   { path: '/invite/:token', element: <InviteAcceptPage /> },
   { path: '/reset/:token', element: <ResetPasswordPage /> },
-  { path: '/', element: <Protected><HomeOrEditor /></Protected> },
-  { path: '/org/:orgId', element: <Protected><OrgDetailPage /></Protected> },
-  { path: '/admin', element: <Protected adminOnly><AdminPage /></Protected> },
-  { path: '/settings', element: <Protected><SettingsPage /></Protected> },
-  { path: '/p/:projectId', element: <Protected bare><ProjectPage /></Protected> },
-  { path: '/p/:projectId/settings', element: <Protected><ProjectSettingsPage /></Protected> },
+  {
+    path: '/',
+    element: (
+      <Protected>
+        <HomeOrEditor />
+      </Protected>
+    ),
+  },
+  {
+    path: '/org/:orgId',
+    element: (
+      <Protected>
+        <OrgDetailPage />
+      </Protected>
+    ),
+  },
+  {
+    path: '/admin',
+    element: (
+      <Protected adminOnly>
+        <AdminPage />
+      </Protected>
+    ),
+  },
+  {
+    path: '/settings',
+    element: (
+      <Protected>
+        <SettingsPage />
+      </Protected>
+    ),
+  },
+  {
+    path: '/p/:projectId',
+    element: (
+      <Protected bare>
+        <ProjectPage />
+      </Protected>
+    ),
+  },
+  {
+    path: '/p/:projectId/settings',
+    element: (
+      <Protected>
+        <ProjectSettingsPage />
+      </Protected>
+    ),
+  },
   { path: '*', element: <NotFoundPage /> },
 ]
 

@@ -11,10 +11,13 @@ export async function createTestApp(): Promise<FastifyInstance> {
 
 /** 로그인해 세션 쿠키 값을 반환한다. */
 export async function loginAs(
-  app: FastifyInstance, email: string, password: string,
+  app: FastifyInstance,
+  email: string,
+  password: string,
 ): Promise<string> {
   const res = await app.inject({
-    method: 'POST', url: '/trpc/auth.login',
+    method: 'POST',
+    url: '/trpc/auth.login',
     headers: { 'content-type': 'application/json' },
     payload: JSON.stringify({ email, password }),
   })
@@ -36,12 +39,15 @@ export function withUuidIds(model: ProjectModel): ProjectModel {
     return map.get(old)!
   }
   const remapRecord = <T extends { id: string }>(
-    rec: Record<string, T>, fix: (e: T) => T,
+    rec: Record<string, T>,
+    fix: (e: T) => T,
   ): Record<string, T> =>
-    Object.fromEntries(Object.values(rec).map((e) => {
-      const next = fix({ ...e, id: nid(e.id) })
-      return [next.id, next]
-    }))
+    Object.fromEntries(
+      Object.values(rec).map((e) => {
+        const next = fix({ ...e, id: nid(e.id) })
+        return [next.id, next]
+      }),
+    )
   const remapCustom = (custom: Record<string, string>): Record<string, string> =>
     Object.fromEntries(Object.entries(custom).map(([fieldId, v]) => [nid(fieldId), v]))
 
@@ -76,7 +82,8 @@ export function withUuidIds(model: ProjectModel): ProjectModel {
     domains: remapRecord(model.domains, (d) => d),
     words: remapRecord(model.words, (w) => w),
     terms: remapRecord(model.terms, (t) => ({
-      ...t, domainId: t.domainId === null ? null : nid(t.domainId),
+      ...t,
+      domainId: t.domainId === null ? null : nid(t.domainId),
     })),
     customFields: remapRecord(model.customFields, (f) => f),
   }

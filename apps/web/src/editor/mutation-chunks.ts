@@ -14,7 +14,11 @@ export function chunkOps<T>(ops: readonly T[], size: number): T[][] {
 }
 
 /** `〈원래 요약〉 (i/n)`. 조각이 하나면 원래 요약 그대로다. */
-export function chunkSummary(summary: string | undefined, index: number, total: number): string | undefined {
+export function chunkSummary(
+  summary: string | undefined,
+  index: number,
+  total: number,
+): string | undefined {
   if (total <= 1) return summary
   const suffix = ` (${formatCount(index)}/${formatCount(total)})`
   const base = summary ?? CHUNKED_SUMMARY_FALLBACK

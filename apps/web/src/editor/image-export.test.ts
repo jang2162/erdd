@@ -19,11 +19,15 @@ describe('downloadCanvasImage 가드', () => {
   const rf = (nodes: unknown[]) => ({ getNodes: () => nodes }) as unknown as ReactFlowInstance
 
   it('노드가 없으면 오류를 던진다(다운로드 안 함)', async () => {
-    await expect(downloadCanvasImage(rf([]), { format: 'png' })).rejects.toThrow('내보낼 노드가 없습니다')
+    await expect(downloadCanvasImage(rf([]), { format: 'png' })).rejects.toThrow(
+      '내보낼 노드가 없습니다',
+    )
   })
 
   it('캔버스(.react-flow__viewport)가 없으면 오류를 던진다', async () => {
     // jsdom엔 뷰포트 요소가 없으므로 노드가 있어도 뷰포트 부재로 throw(html-to-image 호출 전).
-    await expect(downloadCanvasImage(rf([{ id: 'n1' }]), { format: 'png' })).rejects.toThrow('캔버스를 찾을 수 없습니다')
+    await expect(downloadCanvasImage(rf([{ id: 'n1' }]), { format: 'png' })).rejects.toThrow(
+      '캔버스를 찾을 수 없습니다',
+    )
   })
 })

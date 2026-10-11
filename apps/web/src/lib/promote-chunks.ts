@@ -36,7 +36,9 @@ export function toPromoteRequest(entry: PromoteEntry): PromoteRequestEntry {
  */
 export async function promoteInChunks(
   entries: readonly PromoteRequestEntry[],
-  send: (chunk: PromoteRequestEntry[]) => Promise<{ inserted: number; updated: number; skipped: readonly unknown[] }>,
+  send: (
+    chunk: PromoteRequestEntry[],
+  ) => Promise<{ inserted: number; updated: number; skipped: readonly unknown[] }>,
   onProgress?: (done: number, total: number) => void,
 ): Promise<PromoteRunResult> {
   const chunks: PromoteRequestEntry[][] = []
@@ -48,7 +50,11 @@ export async function promoteInChunks(
   // 진행 표시는 화면 일이다 — 콜백이 던져도 남은 조각을 보내지 않거나 실패로 갈리지 않게 삼킨다.
   const report = (n: number) => {
     if (total <= 1) return
-    try { onProgress?.(n, total) } catch { /* 진행 표시 실패는 승격을 좌우하지 않는다 */ }
+    try {
+      onProgress?.(n, total)
+    } catch {
+      /* 진행 표시 실패는 승격을 좌우하지 않는다 */
+    }
   }
   report(0)
   for (let i = 0; i < total; i++) {

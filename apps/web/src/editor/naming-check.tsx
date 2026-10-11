@@ -5,15 +5,13 @@ import { useEditorStore } from './store.js'
 import { useWarnings } from './use-warnings.js'
 import { Button } from '@/components/ui/button'
 import { formatCount } from '@/lib/format'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 const KIND_LABEL: Record<Warning['kind'], string> = {
   'unknown-word': '미등록 단어',
   'term-mismatch': '용어 불일치',
   'too-long': '길이 초과',
-  'reserved': '예약어',
+  reserved: '예약어',
   'duplicate-physical': '물리명 중복(컬럼)',
   'duplicate-physical-table': '물리명 중복(테이블)',
   'type-mismatch': '타입 불일치',
@@ -24,7 +22,10 @@ const KIND_LABEL: Record<Warning['kind'], string> = {
 }
 
 /** 경고가 가리키는 엔티티의 사람용 라벨(테이블/컬럼 물리명). */
-function entityLabel(model: ReturnType<typeof useEditorStore.getState>['model'], w: Warning): string {
+function entityLabel(
+  model: ReturnType<typeof useEditorStore.getState>['model'],
+  w: Warning,
+): string {
   if (w.scope === 'table') return model.tables[w.entityId]?.physicalName ?? '?'
   if (w.scope === 'column') {
     const c = model.columns[w.entityId]
@@ -39,7 +40,11 @@ function entityLabel(model: ReturnType<typeof useEditorStore.getState>['model'],
  *
  * 열림 상태는 제어형이다 — 트리거(건수 배지 포함)는 `header-tools.tsx`가 렌더한다(설계 D5).
  */
-export function NamingCheck({ projectId: _projectId, open, onOpenChange }: {
+export function NamingCheck({
+  projectId: _projectId,
+  open,
+  onOpenChange,
+}: {
   projectId: string
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -62,17 +67,22 @@ export function NamingCheck({ projectId: _projectId, open, onOpenChange }: {
 
   const goTo = (w: Warning) => {
     if (w.scope === 'relationship') selectRelationship(w.entityId)
-    else if (w.scope === 'column') { if (w.tableId) select(w.tableId) }
-    else select(w.entityId)
+    else if (w.scope === 'column') {
+      if (w.tableId) select(w.tableId)
+    } else select(w.entityId)
     onOpenChange(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>모델 검사</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>모델 검사</DialogTitle>
+        </DialogHeader>
         {warnings.length === 0 && (
-          <p className="text-sm text-muted-foreground">경고가 없습니다. 명명이 규칙에 부합합니다.</p>
+          <p className="text-sm text-muted-foreground">
+            경고가 없습니다. 명명이 규칙에 부합합니다.
+          </p>
         )}
         <div className="grid max-h-96 gap-4 overflow-y-auto">
           {groups.map(([kind, items]) => (
@@ -83,11 +93,16 @@ export function NamingCheck({ projectId: _projectId, open, onOpenChange }: {
               <ul className="grid gap-1">
                 {items.map((w, i) => (
                   <li key={`${w.entityId}-${i}`}>
-                    <button type="button" onClick={() => goTo(w)}
-                      className="flex w-full items-start gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-muted">
-                      {w.severity === 'error'
-                        ? <AlertCircle className="mt-0.5 size-3 shrink-0 text-destructive" />
-                        : <AlertTriangle className="mt-0.5 size-3 shrink-0 text-key" />}
+                    <button
+                      type="button"
+                      onClick={() => goTo(w)}
+                      className="flex w-full items-start gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-muted"
+                    >
+                      {w.severity === 'error' ? (
+                        <AlertCircle className="mt-0.5 size-3 shrink-0 text-destructive" />
+                      ) : (
+                        <AlertTriangle className="mt-0.5 size-3 shrink-0 text-key" />
+                      )}
                       <span className="grid">
                         <span className="font-mono font-medium">{entityLabel(model, w)}</span>
                         <span className="text-muted-foreground">{w.message}</span>

@@ -14,7 +14,10 @@ function stubClipboard(writeText: ((text: string) => Promise<void>) | null) {
   })
 }
 
-beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
+beforeEach(() => {
+  vi.mocked(toast.success).mockClear()
+  vi.mocked(toast.error).mockClear()
+})
 afterEach(() => {
   cleanup()
   Reflect.deleteProperty(navigator, 'clipboard')
@@ -27,8 +30,9 @@ describe('OneTimeLink', () => {
     await userEvent.click(screen.getByRole('button', { name: '복사' }))
 
     await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith('복사했습니다'))
-    expect(vi.mocked(navigator.clipboard.writeText).mock.calls[0]![0])
-      .toContain('/invite/erdd_inv_x')
+    expect(vi.mocked(navigator.clipboard.writeText).mock.calls[0]![0]).toContain(
+      '/invite/erdd_inv_x',
+    )
     expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
   })
 

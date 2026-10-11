@@ -1,13 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import type { PromoteEntry } from '@erdd/core'
 import {
-  carrySelection, initialSelection, promoteSummary, setAllForStatus,
+  carrySelection,
+  initialSelection,
+  promoteSummary,
+  setAllForStatus,
 } from './promote-selection.js'
 
-function entry(over: Partial<PromoteEntry> & Pick<PromoteEntry, 'entityId' | 'status'>): PromoteEntry {
+function entry(
+  over: Partial<PromoteEntry> & Pick<PromoteEntry, 'entityId' | 'status'>,
+): PromoteEntry {
   return {
-    kind: 'word', name: '이름', targetItemId: null, targetVersion: null,
-    payload: {}, changedFields: [], domainRef: null, sourceBehind: false, ...over,
+    kind: 'word',
+    name: '이름',
+    targetItemId: null,
+    targetVersion: null,
+    payload: {},
+    changedFields: [],
+    domainRef: null,
+    sourceBehind: false,
+    ...over,
   }
 }
 describe('initialSelection', () => {
@@ -44,26 +56,35 @@ describe('setAllForStatus', () => {
 
 describe('promoteSummary', () => {
   it('추가·갱신 건수를 알리고, 건너뛴 항목이 있으면 덧붙인다', () => {
-    expect(promoteSummary({ inserted: 2, updated: 1, skipped: [] }))
-      .toBe('추가 2건 · 갱신 1건을 올렸습니다')
-    expect(promoteSummary({ inserted: 0, updated: 0, skipped: [{ entityId: 'a', reason: 'missing' }] }))
-      .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다')
+    expect(promoteSummary({ inserted: 2, updated: 1, skipped: [] })).toBe(
+      '추가 2건 · 갱신 1건을 올렸습니다',
+    )
+    expect(
+      promoteSummary({ inserted: 0, updated: 0, skipped: [{ entityId: 'a', reason: 'missing' }] }),
+    ).toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다')
   })
 
   it('나눠 부른 승격의 건너뜀은 앞 조각이 이미 반영했을 수 있다고 말한다 — 한 조각이면 기존 문구 그대로', () => {
     const result = { inserted: 5000, updated: 0, skipped: [{ entityId: 't', reason: 'missing' }] }
-    expect(promoteSummary(result, 2))
-      .toBe('추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다')
-    expect(promoteSummary(result, 1))
-      .toBe('추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다')
+    expect(promoteSummary(result, 2)).toBe(
+      '추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다',
+    )
+    expect(promoteSummary(result, 1)).toBe(
+      '추가 5,000건 · 갱신 0건을 올렸습니다 — 1건은 그 사이 상태가 바뀌어 건너뛰었습니다',
+    )
   })
 
   it('건너뛴 건수도 천 단위로 끊는다', () => {
-    const skipped = Array.from({ length: 1234 }, (_, i) => ({ entityId: `s${i}`, reason: 'missing' }))
-    expect(promoteSummary({ inserted: 0, updated: 0, skipped }, 2))
-      .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1,234건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다')
-    expect(promoteSummary({ inserted: 0, updated: 0, skipped }))
-      .toBe('추가 0건 · 갱신 0건을 올렸습니다 — 1,234건은 그 사이 상태가 바뀌어 건너뛰었습니다')
+    const skipped = Array.from({ length: 1234 }, (_, i) => ({
+      entityId: `s${i}`,
+      reason: 'missing',
+    }))
+    expect(promoteSummary({ inserted: 0, updated: 0, skipped }, 2)).toBe(
+      '추가 0건 · 갱신 0건을 올렸습니다 — 1,234건은 이미 반영됐거나 그 사이 상태가 바뀌어 건너뛰었습니다',
+    )
+    expect(promoteSummary({ inserted: 0, updated: 0, skipped })).toBe(
+      '추가 0건 · 갱신 0건을 올렸습니다 — 1,234건은 그 사이 상태가 바뀌어 건너뛰었습니다',
+    )
   })
 })
 

@@ -8,8 +8,12 @@ export const TEST_CONFIG = {
   projectId: '018f6b0e-0000-7000-8000-000000000000',
   dialects: ['postgresql'] as const,
   namingRules: {
-    case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-    tablePhysicalTemplate: '', tableLogicalTemplate: '',
+    case: 'UPPER_SNAKE',
+    separator: '_',
+    logicalSeparator: '_',
+    maxLengthBytes: 30,
+    tablePhysicalTemplate: '',
+    tableLogicalTemplate: '',
   } as const,
   tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' } as const,
   dictionaries: [] as DictionaryRef[],
@@ -39,7 +43,8 @@ export type StubOpts = {
 
 /** model.get·project.get만 아는 스텁. mutate 호출은 pushCalls에 그대로 쌓인다. */
 export function stubClient(
-  server: ProjectModel, opts: StubOpts = {},
+  server: ProjectModel,
+  opts: StubOpts = {},
 ): { client: ApiClient; pushCalls: unknown[] } {
   const pushCalls: unknown[] = []
   const client: ApiClient = {

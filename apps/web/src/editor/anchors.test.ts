@@ -1,18 +1,36 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel, type Column, type ProjectModel, type Table } from '@erdd/core'
-import {
-  anchorSignatures, buildAnchors, changedAnchorTables, handleId,
-} from './anchors.js'
+import { anchorSignatures, buildAnchors, changedAnchorTables, handleId } from './anchors.js'
 import { reorderColumn } from './column-edits.js'
 
 function tbl(id: string): Table {
-  return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+  return {
+    id,
+    logicalName: id,
+    physicalName: id,
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
+  }
 }
 function col(id: string, tableId: string, order: number): Column {
-  return { id, tableId, logicalName: id, physicalName: id, type: 'VARCHAR(10)',
-    isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
-    order, comment: null, domainId: null, custom: {} }
+  return {
+    id,
+    tableId,
+    logicalName: id,
+    physicalName: id,
+    type: 'VARCHAR(10)',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order,
+    comment: null,
+    domainId: null,
+    custom: {},
+  }
 }
 
 /** 부모 P(p1, p2) · 자식 C(c1, c2). 관계는 테스트마다 따로 넣는다. */
@@ -29,8 +47,13 @@ function model(): ProjectModel {
 
 function withRel(m: ProjectModel, mappings: { childColumnId: string; parentColumnId: string }[]) {
   m.relationships['R'] = {
-    id: 'R', parentTableId: 'P', childTableId: 'C',
-    columnMappings: mappings, cardinality: '1:N', identifying: false, name: null,
+    id: 'R',
+    parentTableId: 'P',
+    childTableId: 'C',
+    columnMappings: mappings,
+    cardinality: '1:N',
+    identifying: false,
+    name: null,
   }
   return m
 }
@@ -45,10 +68,12 @@ describe('buildAnchors', () => {
 
   it('복합 매핑은 s: 키를 내고 컬럼은 order 순으로 고정 정렬된다', () => {
     // 매핑 배열을 일부러 역순으로 준다 — 입력 순서가 키에 새면 안 된다.
-    const a = buildAnchors(withRel(model(), [
-      { childColumnId: 'c2', parentColumnId: 'p2' },
-      { childColumnId: 'c1', parentColumnId: 'p1' },
-    ]))
+    const a = buildAnchors(
+      withRel(model(), [
+        { childColumnId: 'c2', parentColumnId: 'p2' },
+        { childColumnId: 'c1', parentColumnId: 'p1' },
+      ]),
+    )
     expect(a.byRelationship.get('R')).toEqual({ childKey: 's:c1+c2', parentKey: 's:p1+p2' })
     expect(a.byTable.get('C')).toEqual([{ key: 's:c1+c2', columnIds: ['c1', 'c2'] }])
   })
@@ -56,19 +81,23 @@ describe('buildAnchors', () => {
   it('order가 같으면 컬럼 id 사전순으로 결정된다', () => {
     const m = model()
     m.columns['c2']!.order = 0 // c1과 동률
-    const a = buildAnchors(withRel(m, [
-      { childColumnId: 'c2', parentColumnId: 'p2' },
-      { childColumnId: 'c1', parentColumnId: 'p1' },
-    ]))
+    const a = buildAnchors(
+      withRel(m, [
+        { childColumnId: 'c2', parentColumnId: 'p2' },
+        { childColumnId: 'c1', parentColumnId: 'p1' },
+      ]),
+    )
     expect(a.byRelationship.get('R')!.childKey).toBe('s:c1+c2')
   })
 
   it('같은 childColumnId가 두 번 담겨도 단일 앵커로 남는다', () => {
     // remapRelationshipChildColumn이 실제로 이런 매핑을 만든다.
-    const a = buildAnchors(withRel(model(), [
-      { childColumnId: 'c1', parentColumnId: 'p1' },
-      { childColumnId: 'c1', parentColumnId: 'p2' },
-    ]))
+    const a = buildAnchors(
+      withRel(model(), [
+        { childColumnId: 'c1', parentColumnId: 'p1' },
+        { childColumnId: 'c1', parentColumnId: 'p2' },
+      ]),
+    )
     expect(a.byRelationship.get('R')!.childKey).toBe('c:c1')
     expect(a.byRelationship.get('R')!.parentKey).toBe('s:p1+p2')
   })
@@ -97,13 +126,17 @@ describe('buildAnchors', () => {
     ])
     m.tables['C2'] = tbl('C2')
     m.relationships['R2'] = {
-      id: 'R2', parentTableId: 'C', childTableId: 'C2',
+      id: 'R2',
+      parentTableId: 'C',
+      childTableId: 'C2',
       // 부모(C) 쪽이 R과 같은 조합이다.
       columnMappings: [
         { childColumnId: 'c1', parentColumnId: 'c1' },
         { childColumnId: 'c2', parentColumnId: 'c2' },
       ],
-      cardinality: '1:N', identifying: false, name: null,
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
     }
     const a = buildAnchors(m)
     expect(a.byTable.get('C')).toHaveLength(1)
@@ -118,9 +151,13 @@ describe('buildAnchors', () => {
     m.tables['P2'] = tbl('P2')
     m.columns['q1'] = col('q1', 'P2', 0)
     m.relationships['R2'] = {
-      id: 'R2', parentTableId: 'P2', childTableId: 'C',
+      id: 'R2',
+      parentTableId: 'P2',
+      childTableId: 'C',
       columnMappings: [{ childColumnId: 'c2', parentColumnId: 'q1' }],
-      cardinality: '1:N', identifying: false, name: null,
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
     }
     const a = buildAnchors(m)
     expect(a.byTable.get('C')!.map((x) => x.key)).toEqual(['c:c2', 's:c1+c2'])

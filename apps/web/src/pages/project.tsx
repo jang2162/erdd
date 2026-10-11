@@ -32,7 +32,11 @@ export function ProjectPage() {
   useLocalWatch(projectId, isLocal)
 
   if (load.isError) {
-    return <p role="alert" className="p-8 text-destructive">{load.error.message}</p>
+    return (
+      <p role="alert" className="p-8 text-destructive">
+        {load.error.message}
+      </p>
+    )
   }
 
   return (
@@ -40,7 +44,9 @@ export function ProjectPage() {
       <ReactFlowProvider>
         <header className="flex h-12 shrink-0 items-center justify-between border-b bg-card px-4">
           <div className="flex items-center gap-2">
-            <Link to="/" aria-label="홈으로"><BrandWordmark /></Link>
+            <Link to="/" aria-label="홈으로">
+              <BrandWordmark />
+            </Link>
             <AppVersion />
           </div>
           <div className="flex items-center gap-2">
@@ -50,28 +56,35 @@ export function ProjectPage() {
             {loaded && isLocal && <LocalSaveControls />}
             {loaded && <HeaderTools projectId={projectId} />}
             <Button variant="ghost" size="sm" asChild>
-              <Link to={`/p/${projectId}/settings`}><Settings /> 설정</Link>
+              <Link to={`/p/${projectId}/settings`}>
+                <Settings /> 설정
+              </Link>
             </Button>
             {!isLocal && <UserMenu />}
           </div>
         </header>
         {blocked !== null && (
-          <div role="alert" className="shrink-0 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <div
+            role="alert"
+            className="shrink-0 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive"
+          >
             파일을 읽을 수 없어 편집이 잠겼습니다 — {blocked[0]!.path}: {blocked[0]!.message}
           </div>
         )}
         {/* 손상 배너 아래다 — 편집이 잠긴 것이 더 급한 사실이다. */}
         {isLocal && <LocalSaveBanner />}
         <div className="flex min-h-0 flex-1">
-          {loaded
-            ? (
-                <>
-                  <TableTree projectId={projectId} />
-                  <Canvas projectId={projectId} selfUserId={me.id} />
-                  <EditPanel projectId={projectId} />
-                </>
-              )
-            : <div className="flex flex-1 items-center justify-center text-muted-foreground">불러오는 중…</div>}
+          {loaded ? (
+            <>
+              <TableTree projectId={projectId} />
+              <Canvas projectId={projectId} selfUserId={me.id} />
+              <EditPanel projectId={projectId} />
+            </>
+          ) : (
+            <div className="flex flex-1 items-center justify-center text-muted-foreground">
+              불러오는 중…
+            </div>
+          )}
         </div>
         {loaded && <BottomBar projectId={projectId} />}
         {/* 드래그 고스트는 셸 루트에 하나만 둔다 — ReactFlow 뷰포트 안에 넣으면 캔버스 변환에 끌려간다. */}

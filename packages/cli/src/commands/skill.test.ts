@@ -10,13 +10,22 @@ let out: string[]
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'erdd-skill-'))
   out = []
-  vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
+  vi.spyOn(process.stdout, 'write').mockImplementation((c) => {
+    out.push(String(c))
+    return true
+  })
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 })
 afterEach(() => vi.restoreAllMocks())
 
 const ctx = (over: Record<string, unknown> = {}) => ({
-  cwd: dir, json: true, yes: false, strict: false, sub: 'install', force: false, ...over,
+  cwd: dir,
+  json: true,
+  yes: false,
+  strict: false,
+  sub: 'install',
+  force: false,
+  ...over,
 })
 
 describe('skill install', () => {
@@ -49,7 +58,9 @@ describe('skill install', () => {
     await mkdir(join(dir, '.claude/skills/erdd'), { recursive: true })
     await writeFile(join(dir, '.claude/skills/erdd/SKILL.md'), '내 것', 'utf8')
     expect(await skill(ctx({ force: true }))).toBe(0)
-    expect(await readFile(join(dir, '.claude/skills/erdd/SKILL.md'), 'utf8')).toContain('name: erdd')
+    expect(await readFile(join(dir, '.claude/skills/erdd/SKILL.md'), 'utf8')).toContain(
+      'name: erdd',
+    )
     expect(JSON.parse(out.join(''))).toMatchObject({ overwritten: true })
   })
 

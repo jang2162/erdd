@@ -14,7 +14,8 @@ export function ViewModeToggle() {
     <div className="flex rounded-md border p-0.5">
       {MODES.map((m) => (
         <Button
-          key={m.value} size="sm"
+          key={m.value}
+          size="sm"
           variant={viewMode === m.value ? 'secondary' : 'ghost'}
           className="h-7 px-2 text-xs"
           onClick={() => setViewMode(m.value)}

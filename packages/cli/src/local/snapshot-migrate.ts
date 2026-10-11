@@ -39,9 +39,10 @@ export async function migrateSnapshots(cwd: string): Promise<MigrationResult | n
   let items: unknown
   try {
     const parsed: unknown = JSON.parse(raw)
-    items = typeof parsed === 'object' && parsed !== null
-      ? (parsed as { snapshots?: unknown }).snapshots
-      : undefined
+    items =
+      typeof parsed === 'object' && parsed !== null
+        ? (parsed as { snapshots?: unknown }).snapshots
+        : undefined
   } catch {
     items = undefined
   }
@@ -55,7 +56,7 @@ export async function migrateSnapshots(cwd: string): Promise<MigrationResult | n
     // 멱등: 이미 새 포맷에 있으면 건너뛴다. `readSnapshot` 이 던지는 것(= 이미 있는데 손상)도
     // 「있다」로 본다 — 덮어써서 고칠 일이 아니다.
     try {
-      if (await readSnapshot(cwd, id) !== null) continue
+      if ((await readSnapshot(cwd, id)) !== null) continue
     } catch {
       continue
     }

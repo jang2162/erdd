@@ -10,19 +10,25 @@ import { ChangesSection } from './changes-section.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useIsLocal } from '@/components/require-auth'
 
 type Section = 'snapshot' | 'history' | 'diff' | 'changes'
 
 /** 스냅샷 목록의 한 항목: 이름/설명/리비전/생성일 + 복원·삭제. 클릭하면 snapshot.get으로 요약을 펼쳐 보여준다(열람). */
 function SnapshotRow({
-  projectId, item, onRestored,
+  projectId,
+  item,
+  onRestored,
 }: {
   projectId: string
-  item: { id: string; name: string; description: string; revisionSeq: number; createdAt: string | Date }
+  item: {
+    id: string
+    name: string
+    description: string
+    revisionSeq: number
+    createdAt: string | Date
+  }
   onRestored: () => void
 }) {
   const trpc = useTRPC()
@@ -52,13 +58,17 @@ function SnapshotRow({
 
   const del = useMutation(
     trpc.snapshot.delete.mutationOptions({
-      onSuccess: async () => { toast.success('스냅샷을 삭제했습니다'); await invalidateList() },
+      onSuccess: async () => {
+        toast.success('스냅샷을 삭제했습니다')
+        await invalidateList()
+      },
       onError: (err) => toast.error(err.message),
     }),
   )
 
   const onRestore = () => {
-    if (!window.confirm(`"${item.name}" 스냅샷으로 복원할까요? 현재 편집 중인 내용이 대체됩니다.`)) return
+    if (!window.confirm(`"${item.name}" 스냅샷으로 복원할까요? 현재 편집 중인 내용이 대체됩니다.`))
+      return
     restore.mutate({ projectId, snapshotId: item.id })
   }
   const onDelete = () => {
@@ -79,17 +89,28 @@ function SnapshotRow({
         >
           <span className="font-medium">{item.name}</span>
           <span className="text-xs text-muted-foreground">
-            {item.description || '설명 없음'} · rev {item.revisionSeq} · {formatCreatedAt(item.createdAt)}
+            {item.description || '설명 없음'} · rev {item.revisionSeq} ·{' '}
+            {formatCreatedAt(item.createdAt)}
           </span>
         </button>
         {canManage && (
           <div className="flex shrink-0 gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={restore.isPending} onClick={onRestore}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={restore.isPending}
+              onClick={onRestore}
+            >
               복원
             </Button>
             <Button
-              type="button" size="sm" variant="outline" className="text-destructive"
-              disabled={del.isPending} onClick={onDelete}
+              type="button"
+              size="sm"
+              variant="outline"
+              className="text-destructive"
+              disabled={del.isPending}
+              onClick={onDelete}
             >
               삭제
             </Button>
@@ -105,7 +126,10 @@ function SnapshotRow({
               <p>테이블 {formatCount(tables.length)}개</p>
               {tables.length > 0 && (
                 <p className="text-muted-foreground">
-                  {tables.slice(0, 5).map((t) => t.physicalName).join(', ')}
+                  {tables
+                    .slice(0, 5)
+                    .map((t) => t.physicalName)
+                    .join(', ')}
                   {tables.length > 5 ? ' 외' : ''}
                 </p>
               )}
@@ -130,7 +154,9 @@ function SnapshotSection({ projectId, onRestored }: { projectId: string; onResto
       onSuccess: async () => {
         toast.success('스냅샷을 만들었습니다')
         setName('')
-        await queryClient.invalidateQueries({ queryKey: trpc.snapshot.list.queryKey({ projectId }) })
+        await queryClient.invalidateQueries({
+          queryKey: trpc.snapshot.list.queryKey({ projectId }),
+        })
       },
       onError: (err) => toast.error(err.message),
     }),
@@ -149,18 +175,28 @@ function SnapshotSection({ projectId, onRestored }: { projectId: string; onResto
           <div className="grid flex-1 gap-2">
             <Label htmlFor="snap-name">이름</Label>
             <Input
-              id="snap-name" value={name} placeholder="예: 배포 전 백업"
+              id="snap-name"
+              value={name}
+              placeholder="예: 배포 전 백업"
               onChange={(e) => setName(e.target.value)}
             />
           </div>
-          <Button type="button" disabled={create.isPending || name.trim() === ''} onClick={onCreate}>
+          <Button
+            type="button"
+            disabled={create.isPending || name.trim() === ''}
+            onClick={onCreate}
+          >
             스냅샷 만들기
           </Button>
         </div>
       )}
 
       <div className="grid max-h-96 gap-2 overflow-y-auto">
-        {list.isError && <p role="alert" className="text-sm text-destructive">{list.error.message}</p>}
+        {list.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            {list.error.message}
+          </p>
+        )}
         {list.data?.items.length === 0 && (
           <p className="text-sm text-muted-foreground">아직 스냅샷이 없습니다</p>
         )}
@@ -177,7 +213,11 @@ function SnapshotSection({ projectId, onRestored }: { projectId: string; onResto
  *
  * 열림 상태는 제어형이다 — 트리거는 `header-tools.tsx`가 렌더한다(설계 D5).
  */
-export function VersionDialog({ projectId, open, onOpenChange }: {
+export function VersionDialog({
+  projectId,
+  open,
+  onOpenChange,
+}: {
   projectId: string
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -189,31 +229,41 @@ export function VersionDialog({ projectId, open, onOpenChange }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>버전</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>버전</DialogTitle>
+        </DialogHeader>
         <div className="flex gap-2">
           <Button
-            type="button" size="sm" variant={section === 'snapshot' ? 'default' : 'outline'}
+            type="button"
+            size="sm"
+            variant={section === 'snapshot' ? 'default' : 'outline'}
             onClick={() => setSection('snapshot')}
           >
             스냅샷
           </Button>
           {!isLocal && (
             <Button
-              type="button" size="sm" variant={section === 'history' ? 'default' : 'outline'}
+              type="button"
+              size="sm"
+              variant={section === 'history' ? 'default' : 'outline'}
               onClick={() => setSection('history')}
             >
               이력
             </Button>
           )}
           <Button
-            type="button" size="sm" variant={section === 'diff' ? 'default' : 'outline'}
+            type="button"
+            size="sm"
+            variant={section === 'diff' ? 'default' : 'outline'}
             onClick={() => setSection('diff')}
           >
             비교
           </Button>
           {isLocal && (
             <Button
-              type="button" size="sm" variant={section === 'changes' ? 'default' : 'outline'}
+              type="button"
+              size="sm"
+              variant={section === 'changes' ? 'default' : 'outline'}
               onClick={() => setSection('changes')}
             >
               변경 기록

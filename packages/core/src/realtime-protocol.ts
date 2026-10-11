@@ -27,8 +27,14 @@ export const WS_CLOSE_FORBIDDEN = 4403
  * 그룹 배경 위에 참여자 테두리가 겹치는데 같은 색이면 구분이 안 된다.
  */
 export const PEER_PALETTE = [
-  '#2563EB', '#DB2777', '#059669', '#D97706',
-  '#7C3AED', '#0891B2', '#DC2626', '#65A30D',
+  '#2563EB',
+  '#DB2777',
+  '#059669',
+  '#D97706',
+  '#7C3AED',
+  '#0891B2',
+  '#DC2626',
+  '#65A30D',
 ] as const
 
 /** userId → 색. 서버가 배정하지 않고 모든 클라이언트가 같은 값을 계산한다(재접속에도 색 유지). */
@@ -46,7 +52,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 function parseOneSelection(v: unknown): PeerSelection | undefined {
   if (!isRecord(v)) return undefined
   const { kind, id } = v
-  if (typeof kind !== 'string' || !(PEER_SELECTION_KINDS as readonly string[]).includes(kind)) return undefined
+  if (typeof kind !== 'string' || !(PEER_SELECTION_KINDS as readonly string[]).includes(kind))
+    return undefined
   if (typeof id !== 'string' || id === '') return undefined
   return { kind: kind as PeerSelectionKind, id }
 }
@@ -94,7 +101,11 @@ function parsePeers(v: unknown): Peer[] | null {
 /** 신뢰할 수 없는 소켓 프레임을 검증한다. 실패는 null — 호출부는 무시할 뿐 소켓을 끊지 않는다. */
 export function parseServerMessage(raw: string): ServerMessage | null {
   let value: unknown
-  try { value = JSON.parse(raw) } catch { return null }
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return null
+  }
   if (!isRecord(value)) return null
 
   if (value.type === 'presence') {
@@ -117,8 +128,11 @@ export function parseServerMessage(raw: string): ServerMessage | null {
       throw err
     }
     return {
-      type: 'ops', seq: value.seq as number, ops,
-      actorUserId: value.actorUserId, actorName: value.actorName,
+      type: 'ops',
+      seq: value.seq as number,
+      ops,
+      actorUserId: value.actorUserId,
+      actorName: value.actorName,
     }
   }
   return null
@@ -126,7 +140,11 @@ export function parseServerMessage(raw: string): ServerMessage | null {
 
 export function parseClientMessage(raw: string): ClientMessage | null {
   let value: unknown
-  try { value = JSON.parse(raw) } catch { return null }
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return null
+  }
   if (!isRecord(value) || value.type !== 'selection') return null
   const selections = parseSelections(value.selections)
   if (selections === undefined) return null

@@ -35,7 +35,11 @@ export function CustomFieldsSection(props: {
           return (
             <label key={f.id} className="flex items-center gap-2 text-sm">
               <input
-                id={id} type="checkbox" aria-label={f.name} checked={value === 'true'} disabled={!props.canEdit}
+                id={id}
+                type="checkbox"
+                aria-label={f.name}
+                checked={value === 'true'}
+                disabled={!props.canEdit}
                 onChange={(e) => {
                   const next = e.target.checked ? 'true' : 'false'
                   props.onChange(f.id, next)
@@ -50,9 +54,15 @@ export function CustomFieldsSection(props: {
           const orphan = value !== '' && !f.options.includes(value)
           return (
             <div key={f.id} className="grid gap-1.5">
-              <Label htmlFor={id}>{f.name}{f.required && <span className="text-destructive"> *</span>}</Label>
+              <Label htmlFor={id}>
+                {f.name}
+                {f.required && <span className="text-destructive"> *</span>}
+              </Label>
               <select
-                id={id} aria-label={f.name} value={value} disabled={!props.canEdit}
+                id={id}
+                aria-label={f.name}
+                value={value}
+                disabled={!props.canEdit}
                 className="h-9 rounded-md border bg-background px-2 text-sm"
                 onChange={(e) => {
                   const next = e.target.value
@@ -60,17 +70,32 @@ export function CustomFieldsSection(props: {
                 }}
               >
                 <option value="">선택 안 함</option>
-                {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                {orphan && <option value={value} disabled>{value} (삭제된 선택지)</option>}
+                {f.options.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+                {orphan && (
+                  <option value={value} disabled>
+                    {value} (삭제된 선택지)
+                  </option>
+                )}
               </select>
             </div>
           )
         }
         return (
           <div key={f.id} className="grid gap-1.5">
-            <Label htmlFor={id}>{f.name}{f.required && <span className="text-destructive"> *</span>}</Label>
+            <Label htmlFor={id}>
+              {f.name}
+              {f.required && <span className="text-destructive"> *</span>}
+            </Label>
             <Input
-              id={id} aria-label={f.name} defaultValue={value} key={value} readOnly={!props.canEdit}
+              id={id}
+              aria-label={f.name}
+              defaultValue={value}
+              key={value}
+              readOnly={!props.canEdit}
               onBlur={(e) => {
                 const next = e.target.value
                 if (next !== value) props.onChange(f.id, next)

@@ -11,8 +11,11 @@ const url = process.env.DATABASE_URL
 
 function post(app: FastifyInstance, path: string, token: string, input: unknown) {
   return app.inject({
-    method: 'POST', url: `/trpc/${path}`, cookies: { erdd_session: token },
-    headers: { 'content-type': 'application/json' }, payload: JSON.stringify(input),
+    method: 'POST',
+    url: `/trpc/${path}`,
+    cookies: { erdd_session: token },
+    headers: { 'content-type': 'application/json' },
+    payload: JSON.stringify(input),
   })
 }
 function get(app: FastifyInstance, path: string, token: string, input?: unknown) {
@@ -26,12 +29,26 @@ describe.skipIf(!url)('project', () => {
   let memberToken: string
   let orgId: string
 
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
   beforeEach(async () => {
     await resetDb(app.pgPool!)
-    await createAccount(app.db!, { email: 'o@test.dev', name: '오너', password: 'password-o', role: 'user' })
-    await createAccount(app.db!, { email: 'm@test.dev', name: '멤버', password: 'password-m', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'o@test.dev',
+      name: '오너',
+      password: 'password-o',
+      role: 'user',
+    })
+    await createAccount(app.db!, {
+      email: 'm@test.dev',
+      name: '멤버',
+      password: 'password-m',
+      role: 'user',
+    })
     ownerToken = await loginAs(app, 'o@test.dev', 'password-o')
     memberToken = await loginAs(app, 'm@test.dev', 'password-m')
     orgId = (await post(app, 'org.create', ownerToken, { name: '팀A' })).json().result.data.id
@@ -40,7 +57,9 @@ describe.skipIf(!url)('project', () => {
 
   async function createProject(): Promise<string> {
     const res = await post(app, 'project.create', ownerToken, {
-      orgId, name: '주문시스템', dialects: ['postgresql'],
+      orgId,
+      name: '주문시스템',
+      dialects: ['postgresql'],
     })
     expect(res.statusCode).toBe(200)
     return res.json().result.data.id as string
@@ -60,19 +79,23 @@ describe.skipIf(!url)('project', () => {
 
   it('plain org member cannot create a project', async () => {
     const res = await post(app, 'project.create', memberToken, {
-      orgId, name: 'X', dialects: ['mysql'],
+      orgId,
+      name: 'X',
+      dialects: ['mysql'],
     })
     expect(res.statusCode).toBe(403)
   })
 
   it('project member with viewer role can read but not update', async () => {
     const projectId = await createProject()
-    const orgMembers = (await get(app, 'org.members.list', ownerToken, { orgId }))
-      .json().result.data as Array<{ id: string; email: string }>
+    const orgMembers = (await get(app, 'org.members.list', ownerToken, { orgId })).json().result
+      .data as Array<{ id: string; email: string }>
     const m = orgMembers.find((x) => x.email === 'm@test.dev')!
 
     await post(app, 'project.members.add', ownerToken, {
-      projectId, memberId: m.id, role: 'viewer',
+      projectId,
+      memberId: m.id,
+      role: 'viewer',
     })
     const got = await get(app, 'project.get', memberToken, { projectId })
     expect(got.statusCode).toBe(200)
@@ -87,12 +110,15 @@ describe.skipIf(!url)('project', () => {
   it('update validates dialects and delete removes the project', async () => {
     const projectId = await createProject()
     const badDialect = await post(app, 'project.update', ownerToken, {
-      projectId, dialects: ['nosql'],
+      projectId,
+      dialects: ['nosql'],
     })
     expect(badDialect.statusCode).toBe(400)
 
     const upd = await post(app, 'project.update', ownerToken, {
-      projectId, name: '주문시스템v2', dialects: ['postgresql', 'oracle'],
+      projectId,
+      name: '주문시스템v2',
+      dialects: ['postgresql', 'oracle'],
     })
     expect(upd.statusCode).toBe(200)
 
@@ -104,12 +130,14 @@ describe.skipIf(!url)('project', () => {
 
   it('project member with editor role can read but not change settings', async () => {
     const projectId = await createProject()
-    const orgMembers = (await get(app, 'org.members.list', ownerToken, { orgId }))
-      .json().result.data as Array<{ id: string; email: string }>
+    const orgMembers = (await get(app, 'org.members.list', ownerToken, { orgId })).json().result
+      .data as Array<{ id: string; email: string }>
     const m = orgMembers.find((x) => x.email === 'm@test.dev')!
 
     await post(app, 'project.members.add', ownerToken, {
-      projectId, memberId: m.id, role: 'editor',
+      projectId,
+      memberId: m.id,
+      role: 'editor',
     })
     const got = await get(app, 'project.get', memberToken, { projectId })
     expect(got.statusCode).toBe(200)
@@ -140,7 +168,12 @@ describe.skipIf(!url)('project', () => {
     // isOrgManager 가지 하나만으로 만들어진 것이다(projectRole===undefined이므로 다른 가지는
     // 전부 false).
     const projectId = await createProject()
-    await createAccount(app.db!, { email: 'a@test.dev', name: '조직관리자', password: 'password-a', role: 'user' })
+    await createAccount(app.db!, {
+      email: 'a@test.dev',
+      name: '조직관리자',
+      password: 'password-a',
+      role: 'user',
+    })
     const adminToken = await loginAs(app, 'a@test.dev', 'password-a')
     await post(app, 'org.members.add', ownerToken, { orgId, email: 'a@test.dev', role: 'admin' })
 
@@ -163,7 +196,8 @@ describe.skipIf(!url)('project', () => {
     const projectId = await createProject()
     // 마이그레이션 이전 모양으로 되돌린다. ⚠️ DB 컬럼 기본값은 이 3키가 아니다 — 0014 가
     // 코드의 DEFAULT_NAMING_RULES(6키)로 맞췄다. 이 테스트는 값을 명시적으로 .set 하므로 무관하다.
-    await app.db!.update(projects)
+    await app
+      .db!.update(projects)
       .set({ namingRules: { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 } as never })
       .where(eq(projects.id, projectId))
 
@@ -173,11 +207,18 @@ describe.skipIf(!url)('project', () => {
 
   it('명시된 logicalSeparator 는 그대로 내려준다', async () => {
     const projectId = await createProject()
-    await app.db!.update(projects)
-      .set({ namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '',
-      } })
+    await app
+      .db!.update(projects)
+      .set({
+        namingRules: {
+          case: 'UPPER_SNAKE',
+          separator: '_',
+          logicalSeparator: '',
+          maxLengthBytes: 30,
+          tablePhysicalTemplate: '',
+          tableLogicalTemplate: '',
+        },
+      })
       .where(eq(projects.id, projectId))
 
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
@@ -192,8 +233,12 @@ describe.skipIf(!url)('project', () => {
     const off = await post(app, 'project.update', ownerToken, {
       projectId,
       namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+        tableLogicalTemplate: '',
       },
     })
     expect(off.statusCode).toBe(200)
@@ -210,10 +255,16 @@ describe.skipIf(!url)('project', () => {
 
   it('tablePhysicalTemplate 키가 없는 기존 행에 빈 문자열을 주입해 내려준다', async () => {
     const projectId = await createProject()
-    await app.db!.update(projects)
-      .set({ namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-      } as never })
+    await app
+      .db!.update(projects)
+      .set({
+        namingRules: {
+          case: 'UPPER_SNAKE',
+          separator: '_',
+          logicalSeparator: '_',
+          maxLengthBytes: 30,
+        } as never,
+      })
       .where(eq(projects.id, projectId))
 
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
@@ -222,11 +273,18 @@ describe.skipIf(!url)('project', () => {
 
   it('설정된 템플릿은 그대로 내려준다', async () => {
     const projectId = await createProject()
-    await app.db!.update(projects)
-      .set({ namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '',
-      } })
+    await app
+      .db!.update(projects)
+      .set({
+        namingRules: {
+          case: 'UPPER_SNAKE',
+          separator: '_',
+          logicalSeparator: '_',
+          maxLengthBytes: 30,
+          tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+          tableLogicalTemplate: '',
+        },
+      })
       .where(eq(projects.id, projectId))
 
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
@@ -240,8 +298,12 @@ describe.skipIf(!url)('project', () => {
     const set = await post(app, 'project.update', ownerToken, {
       projectId,
       namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'TB_{물리명}', tableLogicalTemplate: '',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: 'TB_{물리명}',
+        tableLogicalTemplate: '',
       },
     })
     expect(set.statusCode).toBe(200)
@@ -249,7 +311,12 @@ describe.skipIf(!url)('project', () => {
     const partial = await post(app, 'project.update', ownerToken, {
       projectId,
       // tablePhysicalTemplate 를 일부러 뺀 옛 클라이언트 페이로드
-      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30 },
+      namingRules: {
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+      },
     })
     expect(partial.statusCode).toBe(400)
 
@@ -259,11 +326,17 @@ describe.skipIf(!url)('project', () => {
 
   it('tableLogicalTemplate 키가 없는 기존 행에 빈 문자열을 주입해 내려준다', async () => {
     const projectId = await createProject()
-    await app.db!.update(projects)
-      .set({ namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'TB_{물리명}',
-      } as never })
+    await app
+      .db!.update(projects)
+      .set({
+        namingRules: {
+          case: 'UPPER_SNAKE',
+          separator: '_',
+          logicalSeparator: '_',
+          maxLengthBytes: 30,
+          tablePhysicalTemplate: 'TB_{물리명}',
+        } as never,
+      })
       .where(eq(projects.id, projectId))
 
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
@@ -278,8 +351,12 @@ describe.skipIf(!url)('project', () => {
     const set = await post(app, 'project.update', ownerToken, {
       projectId,
       namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '{그룹명}_{논리명}',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+        tableLogicalTemplate: '{그룹명}_{논리명}',
       },
     })
     expect(set.statusCode).toBe(200)
@@ -288,7 +365,10 @@ describe.skipIf(!url)('project', () => {
       projectId,
       // tableLogicalTemplate 을 일부러 뺀 옛 클라이언트 페이로드
       namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
         tablePhysicalTemplate: '',
       },
     })
@@ -303,8 +383,12 @@ describe.skipIf(!url)('project', () => {
     const res = await post(app, 'project.update', ownerToken, {
       projectId,
       namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '{그룹별칭}_{논리명}',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+        tableLogicalTemplate: '{그룹별칭}_{논리명}',
       },
     })
     expect(res.statusCode).toBe(200)
@@ -317,8 +401,12 @@ describe.skipIf(!url)('project', () => {
     const res = await post(app, 'project.update', ownerToken, {
       projectId,
       namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-        tablePhysicalTemplate: 'PRE_{논리명}', tableLogicalTemplate: '',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: 'PRE_{논리명}',
+        tableLogicalTemplate: '',
       },
     })
     expect(res.statusCode).toBe(200)
@@ -331,8 +419,12 @@ describe.skipIf(!url)('project', () => {
     const res = await post(app, 'project.update', ownerToken, {
       projectId,
       namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+        tableLogicalTemplate: '',
       },
     })
     expect(res.statusCode).toBe(200)
@@ -343,12 +435,17 @@ describe.skipIf(!url)('project', () => {
   it('project.update persists namingRules and project.get reflects the new value', async () => {
     const projectId = await createProject()
     const customRules = {
-      case: 'lower_snake' as const, separator: '' as const, logicalSeparator: '_' as const, maxLengthBytes: 63,
-      tablePhysicalTemplate: '' as const, tableLogicalTemplate: '' as const,
+      case: 'lower_snake' as const,
+      separator: '' as const,
+      logicalSeparator: '_' as const,
+      maxLengthBytes: 63,
+      tablePhysicalTemplate: '' as const,
+      tableLogicalTemplate: '' as const,
     }
 
     const upd = await post(app, 'project.update', ownerToken, {
-      projectId, namingRules: customRules,
+      projectId,
+      namingRules: customRules,
     })
     expect(upd.statusCode).toBe(200)
 
@@ -367,12 +464,18 @@ describe.skipIf(!url)('project', () => {
 
   it('키가 없는 옛 행에 기본값을 주입해 내려준다', async () => {
     const projectId = await createProject()
-    await app.db!.update(projects)
+    await app
+      .db!.update(projects)
       .set({ tableOptions: { mysql: 'ENGINE=InnoDB' } as never })
       .where(eq(projects.id, projectId))
 
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
-    expect(got.tableOptions).toEqual({ postgresql: '', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '' })
+    expect(got.tableOptions).toEqual({
+      postgresql: '',
+      mysql: 'ENGINE=InnoDB',
+      oracle: '',
+      mssql: '',
+    })
   })
 
   it('update 가 네 키를 쓴다', async () => {
@@ -380,15 +483,19 @@ describe.skipIf(!url)('project', () => {
     const res = await post(app, 'project.update', ownerToken, {
       projectId,
       tableOptions: {
-        postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
-        oracle: 'TABLESPACE users', mssql: '',
+        postgresql: '',
+        mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+        oracle: 'TABLESPACE users',
+        mssql: '',
       },
     })
     expect(res.statusCode).toBe(200)
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
     expect(got.tableOptions).toEqual({
-      postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
-      oracle: 'TABLESPACE users', mssql: '',
+      postgresql: '',
+      mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+      oracle: 'TABLESPACE users',
+      mssql: '',
     })
   })
 
@@ -406,20 +513,24 @@ describe.skipIf(!url)('project', () => {
     expect(set.statusCode).toBe(200)
 
     const partial = await post(app, 'project.update', ownerToken, {
-      projectId, tableOptions: { mysql: 'ENGINE=MyISAM' },
+      projectId,
+      tableOptions: { mysql: 'ENGINE=MyISAM' },
     })
     expect(partial.statusCode).toBe(400)
 
     const got = (await get(app, 'project.get', ownerToken, { projectId })).json().result.data
     expect(got.tableOptions).toEqual({
-      postgresql: 'TABLESPACE pg', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '',
+      postgresql: 'TABLESPACE pg',
+      mysql: 'ENGINE=InnoDB',
+      oracle: '',
+      mssql: '',
     })
   })
 
   it('manage 권한이 없으면 테이블 옵션을 바꿀 수 없다', async () => {
     const projectId = await createProject()
-    const members = (await get(app, 'org.members.list', ownerToken, { orgId }))
-      .json().result.data as Array<{ id: string; email: string }>
+    const members = (await get(app, 'org.members.list', ownerToken, { orgId })).json().result
+      .data as Array<{ id: string; email: string }>
     const memberId = members.find((m) => m.email === 'm@test.dev')!.id
     await post(app, 'project.members.add', ownerToken, { projectId, memberId, role: 'editor' })
 
@@ -432,14 +543,17 @@ describe.skipIf(!url)('project', () => {
 
   it('rejects a memberId that belongs to a different organization', async () => {
     const projectId = await createProject()
-    const otherOrgId = (await post(app, 'org.create', ownerToken, { name: '팀B' }))
-      .json().result.data.id as string
-    const otherOrgMembers = (await get(app, 'org.members.list', ownerToken, { orgId: otherOrgId }))
-      .json().result.data as Array<{ id: string }>
+    const otherOrgId = (await post(app, 'org.create', ownerToken, { name: '팀B' })).json().result
+      .data.id as string
+    const otherOrgMembers = (
+      await get(app, 'org.members.list', ownerToken, { orgId: otherOrgId })
+    ).json().result.data as Array<{ id: string }>
     const otherMemberId = otherOrgMembers[0]!.id
 
     const res = await post(app, 'project.members.add', ownerToken, {
-      projectId, memberId: otherMemberId, role: 'viewer',
+      projectId,
+      memberId: otherMemberId,
+      role: 'viewer',
     })
     expect(res.statusCode).toBe(404)
   })

@@ -16,13 +16,17 @@ export function libraryDomainsQueryKey(libraryId: string) {
  * 그 사이 지워져 짧은 페이지가 오면 거기서 멈춘다.
  */
 export async function fetchAllDomainOptions(
-  fetchPage: (offset: number) => Promise<{ items: { id: string; payload: Record<string, unknown> }[]; total: number }>,
+  fetchPage: (
+    offset: number,
+  ) => Promise<{ items: { id: string; payload: Record<string, unknown> }[]; total: number }>,
 ): Promise<DomainOption[]> {
   const out: DomainOption[] = []
   for (let offset = 0; ; offset += DOMAIN_PAGE_LIMIT) {
     const page = await fetchPage(offset)
-    for (const item of page.items) out.push({ id: item.id, name: resourceDisplayName('domain', item.payload) })
-    if (page.items.length < DOMAIN_PAGE_LIMIT || offset + DOMAIN_PAGE_LIMIT >= page.total) return out
+    for (const item of page.items)
+      out.push({ id: item.id, name: resourceDisplayName('domain', item.payload) })
+    if (page.items.length < DOMAIN_PAGE_LIMIT || offset + DOMAIN_PAGE_LIMIT >= page.total)
+      return out
   }
 }
 
@@ -35,11 +39,17 @@ export function useLibraryDomains(libraryId: string | null, enabled: boolean) {
   const queryClient = useQueryClient()
   return useQuery({
     queryKey: libraryDomainsQueryKey(libraryId ?? ''),
-    queryFn: () => fetchAllDomainOptions((offset) => queryClient.fetchQuery(
-      trpc.resource.items.page.queryOptions({
-        libraryId: libraryId!, kind: 'domain', offset, limit: DOMAIN_PAGE_LIMIT,
-      }),
-    )),
+    queryFn: () =>
+      fetchAllDomainOptions((offset) =>
+        queryClient.fetchQuery(
+          trpc.resource.items.page.queryOptions({
+            libraryId: libraryId!,
+            kind: 'domain',
+            offset,
+            limit: DOMAIN_PAGE_LIMIT,
+          }),
+        ),
+      ),
     enabled: enabled && libraryId !== null,
   })
 }

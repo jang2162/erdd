@@ -8,13 +8,17 @@ import { useEditorStore } from './store.js'
 import { ExportDialog } from './export-dialog.js'
 
 const { downloadExcelWorkbook } = vi.hoisted(() => ({
-  downloadExcelWorkbook: vi.fn<(sheets: SheetData[], fileName: string) => Promise<void>>(
-    () => Promise.resolve(),
+  downloadExcelWorkbook: vi.fn<(sheets: SheetData[], fileName: string) => Promise<void>>(() =>
+    Promise.resolve(),
   ),
 }))
 vi.mock('./excel-file.js', () => ({ downloadExcelWorkbook }))
 
-afterEach(() => { cleanup(); useEditorStore.getState().reset(); downloadExcelWorkbook.mockClear() })
+afterEach(() => {
+  cleanup()
+  useEditorStore.getState().reset()
+  downloadExcelWorkbook.mockClear()
+})
 
 // ExportDialog는 이미지 내보내기를 위해 useReactFlow를 사용하므로 React Flow 컨텍스트가 필요하다.
 function renderDialog() {
@@ -85,14 +89,18 @@ describe('ExportDialog', () => {
   it('DDL 섹션의 범위를 그룹 드롭다운으로 좁히면 미리보기가 그 그룹만 담는다', async () => {
     // 샘플 모델은 두 테이블이 모두 g1이므로, t2를 미배정으로 돌려 범위 효과가 보이게 한다.
     const m = buildSampleModel()
-    useEditorStore.getState().setLoaded(
-      { ...m, tables: { ...m.tables, t2: { ...m.tables['t2']!, groupId: null } } }, 1, 'p1',
-    )
+    useEditorStore
+      .getState()
+      .setLoaded(
+        { ...m, tables: { ...m.tables, t2: { ...m.tables['t2']!, groupId: null } } },
+        1,
+        'p1',
+      )
     renderDialog()
     await userEvent.selectOptions(screen.getByLabelText('그룹 선택'), 'g1')
     const preview = screen.getByLabelText('DDL 미리보기')
     expect(preview.textContent).toContain('CREATE TABLE MBR_GRD')
-    expect(preview.textContent).not.toContain('MBR_NM')   // t2 전용 컬럼이 빠졌다
+    expect(preview.textContent).not.toContain('MBR_NM') // t2 전용 컬럼이 빠졌다
   })
 
   it('Excel 다운로드가 선택한 시트만 담아 빌더를 호출한다', async () => {
@@ -115,16 +123,43 @@ describe('ExportDialog', () => {
   it('Excel 내보내기는 store 의 namingRules 로 구성 단어를 분해한다', async () => {
     const m = buildSampleModel()
     m.words = {
-      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
-      w2: { id:'w2', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null },
+      w1: {
+        id: 'w1',
+        logicalName: '회원',
+        abbreviation: 'MBR',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
+      w2: {
+        id: 'w2',
+        logicalName: '번호',
+        abbreviation: 'NO',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
     }
     m.terms = {
-      tm1: { id:'tm1', logicalName:'회원_번호', physicalName:'MBR_NO',
-             domainId:null, description:null, origin:null },
+      tm1: {
+        id: 'tm1',
+        logicalName: '회원_번호',
+        physicalName: 'MBR_NO',
+        domainId: null,
+        description: null,
+        origin: null,
+      },
     }
     useEditorStore.getState().setLoaded(m, 1, 'p1')
     useEditorStore.setState({
-      namingRules: { case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' },
+      namingRules: {
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+        tableLogicalTemplate: '',
+      },
     })
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: 'Excel' }))
@@ -144,7 +179,9 @@ describe('ExportDialog', () => {
         ...m,
         tableGroups: { g1: { ...m.tableGroups['g1']!, name: '회원/관리' } },
         tables: { ...m.tables, t2: { ...m.tables['t2']!, groupId: null } },
-      }, 1, 'p1',
+      },
+      1,
+      'p1',
     )
     renderDialog()
     await userEvent.click(screen.getByRole('button', { name: 'Excel' }))
@@ -154,7 +191,7 @@ describe('ExportDialog', () => {
     const [sheets, fileName] = downloadExcelWorkbook.mock.calls[0]!
     expect(fileName).toBe('erdd_정의서_회원_관리.xlsx')
     const rows = sheets.find((s) => s.key === 'tableList')!.rows
-    expect(rows.map((r) => r[2])).toEqual(['MBR_GRD'])          // 범위 밖 t2(MBR)는 빠졌다
+    expect(rows.map((r) => r[2])).toEqual(['MBR_GRD']) // 범위 밖 t2(MBR)는 빠졌다
     expect(rows.every((r) => r[0] === '회원/관리')).toBe(true)
   })
 
@@ -186,9 +223,11 @@ describe('ExportDialog — 범위 초기화', () => {
   it('열어 둔 채 그룹 뷰가 바뀌어도 범위는 그대로다', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     renderDialog()
-    expect(scopeSelect().value).toBe('')                      // 전체 뷰에서 열었다
+    expect(scopeSelect().value).toBe('') // 전체 뷰에서 열었다
 
-    act(() => { useEditorStore.getState().enterGroupView('g1') })
+    act(() => {
+      useEditorStore.getState().enterGroupView('g1')
+    })
 
     expect(scopeSelect().value).toBe('')
   })
@@ -204,7 +243,12 @@ describe('ExportDialog — 테이블 옵션 배선', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, 'p1')
     act(() => {
       useEditorStore.setState({
-        tableOptions: { postgresql: 'TABLESPACE pg_default', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '' },
+        tableOptions: {
+          postgresql: 'TABLESPACE pg_default',
+          mysql: 'ENGINE=InnoDB',
+          oracle: '',
+          mssql: '',
+        },
       })
     })
     renderDialog()

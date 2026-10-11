@@ -6,16 +6,19 @@ import { authedProcedure, router } from '../trpc.js'
 
 export const revisionRouter = router({
   list: authedProcedure
-    .input(z.object({
-      projectId: z.string().uuid(),
-      cursor: z.number().int().positive().optional(),
-      limit: z.number().int().min(1).max(100).default(50),
-    }))
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        cursor: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(100).default(50),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
-      const where = input.cursor === undefined
-        ? eq(revisions.projectId, input.projectId)
-        : and(eq(revisions.projectId, input.projectId), lt(revisions.seq, input.cursor))
+      const where =
+        input.cursor === undefined
+          ? eq(revisions.projectId, input.projectId)
+          : and(eq(revisions.projectId, input.projectId), lt(revisions.seq, input.cursor))
       const items = await ctx.db
         .select({
           seq: revisions.seq,

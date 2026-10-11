@@ -46,7 +46,9 @@ export function ResetPasswordPage() {
           <BrandWordmark className="mx-auto mb-2" />
           <CardTitle>비밀번호 재설정</CardTitle>
           {failure === null && (
-            <CardDescription>새 비밀번호를 정하면 다른 기기의 로그인이 모두 해제됩니다.</CardDescription>
+            <CardDescription>
+              새 비밀번호를 정하면 다른 기기의 로그인이 모두 해제됩니다.
+            </CardDescription>
           )}
         </CardHeader>
         <CardContent>
@@ -57,25 +59,47 @@ export function ResetPasswordPage() {
               className="grid gap-4"
               onSubmit={(e) => {
                 e.preventDefault()
-                if (password !== confirm) { setMismatch(true); return }
+                if (password !== confirm) {
+                  setMismatch(true)
+                  return
+                }
                 setMismatch(false)
                 reset.mutate({ token, newPassword: password })
               }}
             >
               <div className="grid gap-2">
                 <Label htmlFor="new">새 비밀번호</Label>
-                <Input id="new" type="password" required minLength={8} autoComplete="new-password"
-                  value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Input
+                  id="new"
+                  type="password"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="confirm">새 비밀번호 확인</Label>
-                <Input id="confirm" type="password" required autoComplete="new-password"
-                  value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+                <Input
+                  id="confirm"
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
               </div>
-              {mismatch && <p role="alert" className="text-sm text-destructive">비밀번호가 서로 다릅니다</p>}
+              {mismatch && (
+                <p role="alert" className="text-sm text-destructive">
+                  비밀번호가 서로 다릅니다
+                </p>
+              )}
               {/* 비종료성 오류. 재시도 수단은 아래 제출 버튼 그대로다 — 입력을 잃지 않는다. */}
               {reset.error && (
-                <p role="alert" className="text-sm text-destructive">{TRANSIENT_FAILURE_MESSAGE}</p>
+                <p role="alert" className="text-sm text-destructive">
+                  {TRANSIENT_FAILURE_MESSAGE}
+                </p>
               )}
               <Button type="submit" disabled={reset.isPending}>
                 {reset.isPending ? '설정 중…' : '비밀번호 설정'}

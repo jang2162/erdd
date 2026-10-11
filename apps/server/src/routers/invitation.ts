@@ -17,7 +17,10 @@ import { authedProcedure, dbProcedure, router } from '../trpc.js'
  */
 async function findLiveInvitation(db: DbOrTx, token: string) {
   const row = (
-    await db.select().from(invitations).where(eq(invitations.tokenHash, hashToken(token)))
+    await db
+      .select()
+      .from(invitations)
+      .where(eq(invitations.tokenHash, hashToken(token)))
   )[0]
   if (!row) throw new LinkDeadError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
   assertLive(row, 'invitation')
@@ -26,11 +29,13 @@ async function findLiveInvitation(db: DbOrTx, token: string) {
 
 export const invitationRouter = router({
   create: authedProcedure
-    .input(z.object({
-      orgId: z.string().uuid(),
-      email: z.string().email(),
-      orgRole: z.enum(['admin', 'member']),
-    }))
+    .input(
+      z.object({
+        orgId: z.string().uuid(),
+        email: z.string().email(),
+        orgRole: z.enum(['admin', 'member']),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await requireOrgManager(ctx.db, input.orgId, ctx.user.id)
       // 없는 조직은 여기 도달하지 않는다 — requireOrgManager가 멤버를 못 찾아 FORBIDDEN을 먼저
@@ -44,8 +49,10 @@ export const invitationRouter = router({
       }
       const email = normalizeEmail(input.email)
       const existing = (
-        await ctx.db.select({ id: users.id, isActive: users.isActive })
-          .from(users).where(eq(users.email, email))
+        await ctx.db
+          .select({ id: users.id, isActive: users.isActive })
+          .from(users)
+          .where(eq(users.email, email))
       )[0]
       if (existing) {
         // 안내는 대상의 활성 여부로 갈린다. **비활성 계정에 "멤버 추가를 쓰세요"는 막다른
@@ -67,18 +74,26 @@ export const invitationRouter = router({
       await ctx.db.transaction(async (tx) => {
         // 재발급은 이전 링크를 죽인다. 두 링크가 동시에 살아 있으면 첫 것이 어디로 갔는지
         // 아무도 모른다.
-        await tx.update(invitations)
+        await tx
+          .update(invitations)
           .set({ expiresAt: new Date() })
-          .where(and(
-            eq(invitations.email, email),
-            eq(invitations.orgId, input.orgId),
-            isNull(invitations.usedAt),
-          ))
+          .where(
+            and(
+              eq(invitations.email, email),
+              eq(invitations.orgId, input.orgId),
+              isNull(invitations.usedAt),
+            ),
+          )
         await tx.insert(invitations).values({
-          id, email, orgId: input.orgId, orgRole: input.orgRole,
+          id,
+          email,
+          orgId: input.orgId,
+          orgRole: input.orgRole,
           // 서비스 역할은 조직 관리자가 정하지 않는다 — 조직 초대로 admin이 생기면 안 된다.
           userRole: 'user',
-          tokenHash: hash, expiresAt, createdBy: ctx.user.id,
+          tokenHash: hash,
+          expiresAt,
+          createdBy: ctx.user.id,
         })
       })
       // 평문은 여기서만 나간다. 이후 조회할 방법은 없다 — 잃으면 재발급이다.
@@ -95,8 +110,11 @@ export const invitationRouter = router({
       // tokenHash는 select에 넣지 않는다 — 해시도 목록으로 나갈 이유가 없다.
       return ctx.db
         .select({
-          id: invitations.id, email: invitations.email, orgRole: invitations.orgRole,
-          expiresAt: invitations.expiresAt, usedAt: invitations.usedAt,
+          id: invitations.id,
+          email: invitations.email,
+          orgRole: invitations.orgRole,
+          expiresAt: invitations.expiresAt,
+          usedAt: invitations.usedAt,
           createdAt: invitations.createdAt,
         })
         .from(invitations)
@@ -110,13 +128,16 @@ export const invitationRouter = router({
       await requireOrgManager(ctx.db, input.orgId, ctx.user.id)
       // 조건부 UPDATE다 — 이미 사용된 초대를 되살리거나 덮어쓰지 않고,
       // 다른 조직의 초대도 건드리지 못한다.
-      const revoked = await ctx.db.update(invitations)
+      const revoked = await ctx.db
+        .update(invitations)
         .set({ expiresAt: new Date() })
-        .where(and(
-          eq(invitations.id, input.id),
-          eq(invitations.orgId, input.orgId),
-          isNull(invitations.usedAt),
-        ))
+        .where(
+          and(
+            eq(invitations.id, input.id),
+            eq(invitations.orgId, input.orgId),
+            isNull(invitations.usedAt),
+          ),
+        )
         .returning({ id: invitations.id })
       if (revoked.length === 0) {
         throw new TRPCError({ code: 'CONFLICT', message: '이미 사용되었거나 없는 초대입니다' })
@@ -129,28 +150,33 @@ export const invitationRouter = router({
    * query가 아니라 mutation인 것은 의도다 — 이 저장소의 tRPC query는 input을 GET URL의
    * 쿼리스트링에 싣는다. 그러면 토큰이 역방향 프록시·접근 로그에 평문으로 남는다.
    */
-  peek: dbProcedure
-    .input(z.object({ token: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const inv = await findLiveInvitation(ctx.db, input.token)
-      const org = inv.orgId === null ? undefined : (
-        await ctx.db.select({ name: organizations.name })
-          .from(organizations).where(eq(organizations.id, inv.orgId))
-      )[0]
-      // userRole은 내보내지 않는다 — 수락자가 알 이유가 없고 화면에도 쓰지 않는다.
-      return { email: inv.email, orgName: org?.name ?? null, orgRole: inv.orgRole }
-    }),
+  peek: dbProcedure.input(z.object({ token: z.string() })).mutation(async ({ ctx, input }) => {
+    const inv = await findLiveInvitation(ctx.db, input.token)
+    const org =
+      inv.orgId === null
+        ? undefined
+        : (
+            await ctx.db
+              .select({ name: organizations.name })
+              .from(organizations)
+              .where(eq(organizations.id, inv.orgId))
+          )[0]
+    // userRole은 내보내지 않는다 — 수락자가 알 이유가 없고 화면에도 쓰지 않는다.
+    return { email: inv.email, orgName: org?.name ?? null, orgRole: inv.orgRole }
+  }),
 
   /**
    * 공개(세션 불필요). 계정·개인조직·조직합류·초대소비가 **한 트랜잭션**이다 —
    * 중간에 끊기면 계정은 생겼는데 조직에 못 들어간 상태가 되고, 초대가 소비됐다면 복구 경로가 없다.
    */
   accept: dbProcedure
-    .input(z.object({
-      token: z.string(),
-      name: z.string().min(1),
-      password: z.string().min(8),
-    }))
+    .input(
+      z.object({
+        token: z.string(),
+        name: z.string().min(1),
+        password: z.string().min(8),
+      }),
+    )
     .mutation(({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
         const inv = await findLiveInvitation(tx, input.token)
@@ -160,7 +186,9 @@ export const invitationRouter = router({
         )[0]
         if (existing) {
           throw new LinkDeadError({
-            code: 'CONFLICT', message: '이미 가입한 이메일입니다', reissuable: false,
+            code: 'CONFLICT',
+            message: '이미 가입한 이메일입니다',
+            reissuable: false,
           })
         }
         // 서비스 역할은 초대 행이 정한다 — 입력으로 올릴 수 없다.
@@ -169,25 +197,33 @@ export const invitationRouter = router({
         let user: { id: string; email: string }
         try {
           user = await createAccount(tx, {
-            email: inv.email, name: input.name, password: input.password, role: inv.userRole,
+            email: inv.email,
+            name: input.name,
+            password: input.password,
+            role: inv.userRole,
           })
         } catch (err) {
           if (isUniqueViolation(err)) {
             throw new LinkDeadError({
-              code: 'CONFLICT', message: '이미 가입한 이메일입니다', reissuable: false,
+              code: 'CONFLICT',
+              message: '이미 가입한 이메일입니다',
+              reissuable: false,
             })
           }
           throw err
         }
         if (inv.orgId !== null) {
           await tx.insert(members).values({
-            id: uuidv7(), orgId: inv.orgId, userId: user.id,
+            id: uuidv7(),
+            orgId: inv.orgId,
+            userId: user.id,
             // orgId가 있으면 orgRole도 함께 저장된다(create가 둘을 같이 쓴다).
             // 그래도 비어 있다면 가장 낮은 권한으로 떨어뜨린다.
             role: inv.orgRole ?? 'member',
           })
         }
-        const used = await tx.update(invitations)
+        const used = await tx
+          .update(invitations)
           .set({ usedAt: new Date() })
           .where(and(eq(invitations.id, inv.id), isNull(invitations.usedAt)))
           .returning({ id: invitations.id })
@@ -195,7 +231,9 @@ export const invitationRouter = router({
         if (used.length === 0) {
           // 이긴 요청이 같은 트랜잭션에서 계정을 만들었다 — 그 이메일로 새 초대는 만들 수 없다.
           throw new LinkDeadError({
-            code: 'BAD_REQUEST', message: '이미 사용된 링크입니다', reissuable: false,
+            code: 'BAD_REQUEST',
+            message: '이미 사용된 링크입니다',
+            reissuable: false,
           })
         }
         return { ok: true as const, email: user.email }

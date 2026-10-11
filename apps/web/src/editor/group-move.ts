@@ -48,11 +48,16 @@ function tableRect(t: Table, counts: ReadonlyMap<string, number>): Bounds {
  * 겹침 회피)은 `columnCounts`를 한 번 만들어 넘겨야 O(테이블 × 컬럼)을 피한다.
  */
 export function tableBounds(
-  model: ProjectModel, tables: readonly Table[], counts?: ReadonlyMap<string, number>,
+  model: ProjectModel,
+  tables: readonly Table[],
+  counts?: ReadonlyMap<string, number>,
 ): Bounds | null {
   if (tables.length === 0) return null
   const cnt = counts ?? columnCounts(model)
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity
   for (const t of tables) {
     const r = tableRect(t, cnt)
     minX = Math.min(minX, r.minX)
@@ -114,7 +119,9 @@ function firstFreeTop(band: readonly Bounds[], topFrom: number, height: number):
  * 다른 그룹 소속이 되어 현재 뷰에서 사라지므로, 재배치 결과는 전체 뷰로 나가야 보인다.
  */
 export function planGroupMove(
-  model: ProjectModel, tableIds: readonly string[], targetGroupId: string | null,
+  model: ProjectModel,
+  tableIds: readonly string[],
+  targetGroupId: string | null,
 ): { id: string; position: Position }[] {
   if (targetGroupId === null) return []
   const moving = tableIds.map((id) => model.tables[id]).filter((t): t is Table => t !== undefined)
@@ -122,8 +129,9 @@ export function planGroupMove(
 
   const movingIds = new Set(moving.map((t) => t.id))
   const counts = columnCounts(model)
-  const anchors = Object.values(model.tables)
-    .filter((t) => t.groupId === targetGroupId && !movingIds.has(t.id))
+  const anchors = Object.values(model.tables).filter(
+    (t) => t.groupId === targetGroupId && !movingIds.has(t.id),
+  )
   const target = tableBounds(model, anchors, counts)
   if (target === null) return []
 

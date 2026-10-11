@@ -1,9 +1,23 @@
 import {
-  boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core'
 import {
-  DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS,
-  type Dialect, type NamingRules, type Op, type Origin, type ProjectModel, type TableOptions,
+  DEFAULT_NAMING_RULES,
+  DEFAULT_TABLE_OPTIONS,
+  type Dialect,
+  type NamingRules,
+  type Op,
+  type Origin,
+  type ProjectModel,
+  type TableOptions,
 } from '@erdd/core'
 
 export const users = pgTable('users', {
@@ -11,7 +25,9 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   name: text('name').notNull(),
-  role: text('role', { enum: ['admin', 'user'] }).notNull().default('user'),
+  role: text('role', { enum: ['admin', 'user'] })
+    .notNull()
+    .default('user'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -27,8 +43,12 @@ export const members = pgTable(
   'members',
   {
     id: uuid('id').primaryKey(),
-    orgId: uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -37,13 +57,18 @@ export const members = pgTable(
 
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey(),
-  orgId: uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   dialects: jsonb('dialects').$type<Dialect[]>().notNull(),
   namingRules: jsonb('naming_rules').$type<NamingRules>().notNull().default(DEFAULT_NAMING_RULES),
   // 프로젝트 수준 테이블 옵션(방언 4키 × 자유 문자열). naming_rules(0005)와 같은 모양이다.
-  tableOptions: jsonb('table_options').$type<TableOptions>().notNull().default(DEFAULT_TABLE_OPTIONS),
+  tableOptions: jsonb('table_options')
+    .$type<TableOptions>()
+    .notNull()
+    .default(DEFAULT_TABLE_OPTIONS),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -51,8 +76,12 @@ export const projectMembers = pgTable(
   'project_members',
   {
     id: uuid('id').primaryKey(),
-    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-    memberId: uuid('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    memberId: uuid('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
     role: text('role', { enum: ['admin', 'editor', 'viewer'] }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -61,14 +90,18 @@ export const projectMembers = pgTable(
 
 export const sessions = pgTable('sessions', {
   id: text('id').primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const accessTokens = pgTable('access_tokens', {
   id: uuid('id').primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   tokenHash: text('token_hash').notNull().unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -84,21 +117,29 @@ export const invitations = pgTable('invitations', {
   orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   orgRole: text('org_role', { enum: ['admin', 'member'] }),
   // 서비스 역할은 초대 행이 들고 있다 — 수락자가 스스로 admin이 될 수 있으면 안 된다.
-  userRole: text('user_role', { enum: ['admin', 'user'] }).notNull().default('user'),
+  userRole: text('user_role', { enum: ['admin', 'user'] })
+    .notNull()
+    .default('user'),
   tokenHash: text('token_hash').notNull().unique(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
-  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const passwordResetTokens = pgTable('password_reset_tokens', {
   id: uuid('id').primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull().unique(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
-  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -106,7 +147,9 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 
 export const modelTableGroups = pgTable('model_table_groups', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   color: text('color').notNull(),
   comment: text('comment'),
@@ -116,7 +159,9 @@ export const modelTableGroups = pgTable('model_table_groups', {
 
 export const modelTables = pgTable('model_tables', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
   logicalName: text('logical_name').notNull(),
   physicalName: text('physical_name').notNull(),
   comment: text('comment'),
@@ -128,8 +173,12 @@ export const modelTables = pgTable('model_tables', {
 
 export const modelColumns = pgTable('model_columns', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  tableId: uuid('table_id').notNull().references(() => modelTables.id),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  tableId: uuid('table_id')
+    .notNull()
+    .references(() => modelTables.id),
   logicalName: text('logical_name').notNull(),
   physicalName: text('physical_name').notNull(),
   type: text('type').notNull(),
@@ -145,12 +194,20 @@ export const modelColumns = pgTable('model_columns', {
 
 export const modelDomains = pgTable('model_domains', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   category: text('category'),
   logicalType: text('logical_type').notNull(),
   dialectTypes: jsonb('dialect_types')
-    .$type<{ postgresql: string | null; mysql: string | null; oracle: string | null; mssql: string | null }>().notNull(),
+    .$type<{
+      postgresql: string | null
+      mysql: string | null
+      oracle: string | null
+      mssql: string | null
+    }>()
+    .notNull(),
   defaultValue: text('default_value'),
   allowedValues: jsonb('allowed_values').$type<string[]>().notNull(),
   description: text('description'),
@@ -159,7 +216,9 @@ export const modelDomains = pgTable('model_domains', {
 
 export const modelWords = pgTable('model_words', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
   logicalName: text('logical_name').notNull(),
   abbreviation: text('abbreviation').notNull(),
   englishName: text('english_name'),
@@ -169,7 +228,9 @@ export const modelWords = pgTable('model_words', {
 
 export const modelTerms = pgTable('model_terms', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
   logicalName: text('logical_name').notNull(),
   physicalName: text('physical_name').notNull(),
   domainId: uuid('domain_id').references(() => modelDomains.id),
@@ -179,7 +240,9 @@ export const modelTerms = pgTable('model_terms', {
 
 export const modelCustomFields = pgTable('model_custom_fields', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   target: text('target', { enum: ['table', 'column'] }).notNull(),
   type: text('type', { enum: ['text', 'boolean', 'select'] }).notNull(),
@@ -192,11 +255,18 @@ export const modelCustomFields = pgTable('model_custom_fields', {
 
 export const modelRelationships = pgTable('model_relationships', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  parentTableId: uuid('parent_table_id').notNull().references(() => modelTables.id),
-  childTableId: uuid('child_table_id').notNull().references(() => modelTables.id),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  parentTableId: uuid('parent_table_id')
+    .notNull()
+    .references(() => modelTables.id),
+  childTableId: uuid('child_table_id')
+    .notNull()
+    .references(() => modelTables.id),
   columnMappings: jsonb('column_mappings')
-    .$type<Array<{ childColumnId: string; parentColumnId: string }>>().notNull(),
+    .$type<Array<{ childColumnId: string; parentColumnId: string }>>()
+    .notNull(),
   cardinality: text('cardinality', { enum: ['1:1', '1:N'] }).notNull(),
   identifying: boolean('identifying').notNull(),
   name: text('name'),
@@ -204,17 +274,24 @@ export const modelRelationships = pgTable('model_relationships', {
 
 export const modelIndexes = pgTable('model_indexes', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  tableId: uuid('table_id').notNull().references(() => modelTables.id),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  tableId: uuid('table_id')
+    .notNull()
+    .references(() => modelTables.id),
   name: text('name').notNull(),
   columns: jsonb('columns')
-    .$type<Array<{ columnId: string; direction: 'asc' | 'desc' }>>().notNull(),
+    .$type<Array<{ columnId: string; direction: 'asc' | 'desc' }>>()
+    .notNull(),
   unique: boolean('unique').notNull(),
 })
 
 export const modelNotes = pgTable('model_notes', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   position: jsonb('position').$type<{ x: number; y: number }>().notNull(),
   color: text('color').notNull(),
@@ -224,9 +301,13 @@ export const revisions = pgTable(
   'revisions',
   {
     id: uuid('id').primaryKey(),
-    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
     seq: integer('seq').notNull(),
-    actorUserId: uuid('actor_user_id').notNull().references(() => users.id),
+    actorUserId: uuid('actor_user_id')
+      .notNull()
+      .references(() => users.id),
     source: text('source', { enum: ['web', 'cli', 'system'] }).notNull(),
     ops: jsonb('ops').$type<Op[]>().notNull(),
     summary: text('summary').notNull(),
@@ -237,7 +318,9 @@ export const revisions = pgTable(
 
 export const snapshots = pgTable('snapshots', {
   id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   revisionSeq: integer('revision_seq').notNull(),
@@ -247,32 +330,41 @@ export const snapshots = pgTable('snapshots', {
 
 // ─── 공용 리소스 라이브러리 (프로젝트 모델 밖 — op 로그 대상이 아니다) ───
 
-export const resourceLibraries = pgTable('resource_libraries', {
-  id: uuid('id').primaryKey(),
-  scope: text('scope', { enum: ['global', 'org'] }).notNull(),
-  /** scope='org'일 때만 채워진다. 정합성은 라우터가 강제한다. */
-  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  description: text('description').notNull().default(''),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('ix_resource_libraries_org_id').on(t.orgId)])
+export const resourceLibraries = pgTable(
+  'resource_libraries',
+  {
+    id: uuid('id').primaryKey(),
+    scope: text('scope', { enum: ['global', 'org'] }).notNull(),
+    /** scope='org'일 때만 채워진다. 정합성은 라우터가 강제한다. */
+    orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ix_resource_libraries_org_id').on(t.orgId)],
+)
 
-export const resourceItems = pgTable('resource_items', {
-  id: uuid('id').primaryKey(),
-  libraryId: uuid('library_id').notNull()
-    .references(() => resourceLibraries.id, { onDelete: 'cascade' }),
-  kind: text('kind', { enum: ['domain', 'word', 'term', 'customField'] }).notNull(),
-  /** core RESOURCE_PAYLOAD_SCHEMAS[kind]를 통과한 값. term.domainId는 라이브러리 항목 id. */
-  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
-  version: integer('version').notNull().default(1),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  // 조회 모달이 (라이브러리, 종류)로 좁혀 페이지를 자른다. 기존 library_id 단일 인덱스는 이 인덱스의 앞 열과
-  // 겹쳐 지웠다 — library_id 만으로 거르는 조회(items.list·loadLibraryItems)도 이 인덱스를 탄다.
-  index('ix_resource_items_library_kind').on(t.libraryId, t.kind),
-])
+export const resourceItems = pgTable(
+  'resource_items',
+  {
+    id: uuid('id').primaryKey(),
+    libraryId: uuid('library_id')
+      .notNull()
+      .references(() => resourceLibraries.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['domain', 'word', 'term', 'customField'] }).notNull(),
+    /** core RESOURCE_PAYLOAD_SCHEMAS[kind]를 통과한 값. term.domainId는 라이브러리 항목 id. */
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    version: integer('version').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // 조회 모달이 (라이브러리, 종류)로 좁혀 페이지를 자른다. 기존 library_id 단일 인덱스는 이 인덱스의 앞 열과
+    // 겹쳐 지웠다 — library_id 만으로 거르는 조회(items.list·loadLibraryItems)도 이 인덱스를 탄다.
+    index('ix_resource_items_library_kind').on(t.libraryId, t.kind),
+  ],
+)
 
 /**
  * 승격 요청 큐 — op 로그 밖의 일반 테이블이다(resource_libraries와 같은 계층).
@@ -282,26 +374,36 @@ export const resourceItems = pgTable('resource_items', {
  * 조직 단위 조회는 resource_libraries.orgId 조인으로 얻고, 요청 생성이
  * library.orgId === project.orgId를 강제하므로 두 경로가 같은 값을 가리킨다.
  */
-export const promotionRequests = pgTable('promotion_requests', {
-  id: uuid('id').primaryKey(),
-  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  libraryId: uuid('library_id').notNull()
-    .references(() => resourceLibraries.id, { onDelete: 'cascade' }),
-  requesterId: uuid('requester_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  /** 프로젝트 엔티티 id 묶음. */
-  entityIds: jsonb('entity_ids').$type<string[]>().notNull(),
-  note: text('note').notNull().default(''),
-  status: text('status', { enum: ['pending', 'resolved', 'rejected', 'cancelled'] })
-    .notNull().default('pending'),
-  /** 처리자(승인·반려) 또는 취소자. */
-  resolvedBy: uuid('resolved_by').references(() => users.id, { onDelete: 'set null' }),
-  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
-  resolutionNote: text('resolution_note').notNull().default(''),
-  /** 실제로 승격된 엔티티 id(부분 승인의 결과). pending이면 null. */
-  approvedEntityIds: jsonb('approved_entity_ids').$type<string[]>(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index('ix_promotion_requests_library_status').on(t.libraryId, t.status),
-  index('ix_promotion_requests_project').on(t.projectId),
-])
+export const promotionRequests = pgTable(
+  'promotion_requests',
+  {
+    id: uuid('id').primaryKey(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    libraryId: uuid('library_id')
+      .notNull()
+      .references(() => resourceLibraries.id, { onDelete: 'cascade' }),
+    requesterId: uuid('requester_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** 프로젝트 엔티티 id 묶음. */
+    entityIds: jsonb('entity_ids').$type<string[]>().notNull(),
+    note: text('note').notNull().default(''),
+    status: text('status', { enum: ['pending', 'resolved', 'rejected', 'cancelled'] })
+      .notNull()
+      .default('pending'),
+    /** 처리자(승인·반려) 또는 취소자. */
+    resolvedBy: uuid('resolved_by').references(() => users.id, { onDelete: 'set null' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolutionNote: text('resolution_note').notNull().default(''),
+    /** 실제로 승격된 엔티티 id(부분 승인의 결과). pending이면 null. */
+    approvedEntityIds: jsonb('approved_entity_ids').$type<string[]>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('ix_promotion_requests_library_status').on(t.libraryId, t.status),
+    index('ix_promotion_requests_project').on(t.projectId),
+  ],
+)

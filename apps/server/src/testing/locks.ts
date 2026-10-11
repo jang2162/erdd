@@ -20,6 +20,8 @@ export async function waitForLockWaiter(client: pg.PoolClient): Promise<void> {
     if (Date.now() > deadline) {
       throw new Error('락을 기다리는 커넥션이 나타나지 않았다 — 경합이 재현되지 않았다')
     }
-    await new Promise((done) => { setTimeout(done, 25) })
+    await new Promise((done) => {
+      setTimeout(done, 25)
+    })
   }
 }

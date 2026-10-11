@@ -23,13 +23,21 @@ function renderDialog(onOpenChange: (open: boolean) => void = () => {}) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
-  render(<DdlImportDialog projectId={PROJECT_ID} open onOpenChange={onOpenChange} />, { wrapper: w })
+  render(<DdlImportDialog projectId={PROJECT_ID} open onOpenChange={onOpenChange} />, {
+    wrapper: w,
+  })
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('DdlImportDialog', () => {
   it('DDL을 붙여넣으면 미리보기에 개수가 뜬다', async () => {
@@ -53,7 +61,12 @@ describe('DdlImportDialog', () => {
 
   it('적용하면 단일 mutation이 나간다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
@@ -108,8 +121,14 @@ describe('DdlImportDialog', () => {
   it('건너뛴 테이블 이름을 미리보기에 보여준다', async () => {
     const model = createEmptyModel()
     model.tables['t1'] = {
-      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     grantEditPermission()
@@ -128,18 +147,26 @@ describe('DdlImportDialog', () => {
   it('DDL 안에서 겹쳐 건너뛴 테이블도 「건너뜀 N개」에 포함해 센다', async () => {
     const model = createEmptyModel()
     model.tables['t1'] = {
-      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     useEditorStore.getState().setLoaded(model, 1, PROJECT_ID)
     grantEditPermission()
     renderDialog()
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
-    await userEvent.paste([
-      'CREATE TABLE MBR (A bigint);',
-      'CREATE TABLE ORD (B bigint);',
-      'CREATE TABLE ORD (C bigint);',
-    ].join('\n'))
+    await userEvent.paste(
+      [
+        'CREATE TABLE MBR (A bigint);',
+        'CREATE TABLE ORD (B bigint);',
+        'CREATE TABLE ORD (C bigint);',
+      ].join('\n'),
+    )
     expect(await screen.findByText(/건너뜀 2개 \(이름이 겹침: MBR, ORD\)/)).toBeInTheDocument()
   })
 
@@ -153,7 +180,9 @@ describe('DdlImportDialog', () => {
       'model.mutate': (input) => {
         calls.push(input as { ops: unknown[]; summary?: string })
         if (calls.length === 1) return { data: { seq: 2 } }
-        return new Promise((resolve) => { release = () => resolve({ data: { seq: 3 } }) })
+        return new Promise((resolve) => {
+          release = () => resolve({ data: { seq: 3 } })
+        })
       },
     })
     const onOpenChange = vi.fn()
@@ -162,11 +191,19 @@ describe('DdlImportDialog', () => {
     renderDialog(onOpenChange)
     // 테이블 1 + 컬럼 5,001 = op 5,002 → 조각 5,000 + 2. 테이블을 하나로 두어 자동 배치 비용을 피한다.
     const columns = Array.from({ length: 5001 }, (_, i) => `C${i} int`).join(', ')
-    fireEvent.change(screen.getByRole('textbox', { name: 'DDL' }), { target: { value: `CREATE TABLE T (${columns});` } })
-    const apply = await screen.findByRole('button', { name: '1개 테이블 만들기' }, { timeout: 30000 })
+    fireEvent.change(screen.getByRole('textbox', { name: 'DDL' }), {
+      target: { value: `CREATE TABLE T (${columns});` },
+    })
+    const apply = await screen.findByRole(
+      'button',
+      { name: '1개 테이블 만들기' },
+      { timeout: 30000 },
+    )
     expect(screen.queryByText(/한 번에 가져올 수 있는 양을 넘었습니다/)).toBeNull()
     await userEvent.click(apply)
-    expect(await screen.findByRole('button', { name: '적용 중… 1 / 2' }, { timeout: 30000 })).toBeDisabled()
+    expect(
+      await screen.findByRole('button', { name: '적용 중… 1 / 2' }, { timeout: 30000 }),
+    ).toBeDisabled()
     release()
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false), { timeout: 30000 })
     expect(calls.map((c) => c.ops.length)).toEqual([5000, 2])
@@ -191,9 +228,15 @@ describe('DdlImportDialog', () => {
     grantEditPermission()
     renderDialog(onOpenChange)
     const columns = Array.from({ length: 5001 }, (_, i) => `C${i} int`).join(', ')
-    fireEvent.change(screen.getByRole('textbox', { name: 'DDL' }), { target: { value: `CREATE TABLE T (${columns});` } })
-    await userEvent.click(await screen.findByRole('button', { name: '1개 테이블 만들기' }, { timeout: 30000 }))
-    expect(await screen.findByRole('button', { name: '적용 중… 0 / 2' }, { timeout: 30000 })).toBeDisabled()
+    fireEvent.change(screen.getByRole('textbox', { name: 'DDL' }), {
+      target: { value: `CREATE TABLE T (${columns});` },
+    })
+    await userEvent.click(
+      await screen.findByRole('button', { name: '1개 테이블 만들기' }, { timeout: 30000 }),
+    )
+    expect(
+      await screen.findByRole('button', { name: '적용 중… 0 / 2' }, { timeout: 30000 }),
+    ).toBeDisabled()
     fail()
     await waitFor(
       () => expect(screen.getByRole('button', { name: '1개 테이블 만들기' })).toBeEnabled(),
@@ -220,13 +263,19 @@ describe('DdlImportDialog — DBML 형식', () => {
 
   it('DBML 을 고르면 DBML 파서로 미리보기를 만든다', async () => {
     await openDbml()
-    typeSchema(screen.getByRole('textbox', { name: 'DBML' }), 'Table "MBR" {\n  "MBR_NO" bigint [pk]\n}')
+    typeSchema(
+      screen.getByRole('textbox', { name: 'DBML' }),
+      'Table "MBR" {\n  "MBR_NO" bigint [pk]\n}',
+    )
     expect(await screen.findByText(/테이블 1개/)).toBeInTheDocument()
   })
 
   it('DBML 의 database_type 으로 방언을 자동 감지한다', async () => {
     await openDbml()
-    typeSchema(screen.getByRole('textbox', { name: 'DBML' }), "Project \"P\" {\n  database_type: 'Oracle'\n}")
+    typeSchema(
+      screen.getByRole('textbox', { name: 'DBML' }),
+      'Project "P" {\n  database_type: \'Oracle\'\n}',
+    )
     await waitFor(() => {
       expect((screen.getByLabelText('방언') as HTMLSelectElement).value).toBe('oracle')
     })
@@ -249,13 +298,17 @@ describe('DdlImportDialog — DBML 형식', () => {
  * 않는다. 그래서 `model.mutate` **뒤에** `project.update` 를 따로 부르고, 그 사실을 문구로 알린다.
  */
 describe('DdlImportDialog — 테이블 옵션', () => {
-  const OPT_DDL = 'CREATE TABLE ORD (ORD_NO bigint NOT NULL, PRIMARY KEY (ORD_NO))'
-    + ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'
+  const OPT_DDL =
+    'CREATE TABLE ORD (ORD_NO bigint NOT NULL, PRIMARY KEY (ORD_NO))' +
+    ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'
   const box = () => screen.getByRole('checkbox', { name: /프로젝트의 테이블 옵션/ })
 
-  const setup = async (over: {
-    mysql?: string; canManage?: boolean
-  } = {}) => {
+  const setup = async (
+    over: {
+      mysql?: string
+      canManage?: boolean
+    } = {},
+  ) => {
     useEditorStore.getState().setLoaded(createEmptyModel(), 1, PROJECT_ID)
     grantEditPermission({ canEdit: true, canManage: over.canManage ?? true })
     useEditorStore.setState({
@@ -303,12 +356,18 @@ describe('DdlImportDialog — 테이블 옵션', () => {
   it('켠 채로 적용하면 model.mutate 뒤에 project.update 를 부른다', async () => {
     const calls: string[] = []
     mockTrpcFetch({
-      'model.mutate': () => { calls.push('model.mutate'); return { data: { seq: 2, ops: [] } } },
+      'model.mutate': () => {
+        calls.push('model.mutate')
+        return { data: { seq: 2, ops: [] } }
+      },
       'project.update': (input) => {
         calls.push('project.update')
         expect(input).toMatchObject({
           tableOptions: {
-            postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', oracle: '', mssql: '',
+            postgresql: '',
+            mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+            oracle: '',
+            mssql: '',
           },
         })
         return { data: { ok: true } }
@@ -322,8 +381,14 @@ describe('DdlImportDialog — 테이블 옵션', () => {
   it('끈 채로 적용하면 project.update 를 부르지 않는다', async () => {
     const calls: string[] = []
     mockTrpcFetch({
-      'model.mutate': () => { calls.push('model.mutate'); return { data: { seq: 2, ops: [] } } },
-      'project.update': () => { calls.push('project.update'); return { data: { ok: true } } },
+      'model.mutate': () => {
+        calls.push('model.mutate')
+        return { data: { seq: 2, ops: [] } }
+      },
+      'project.update': () => {
+        calls.push('project.update')
+        return { data: { ok: true } }
+      },
     })
     await setup({ mysql: '' })
     await userEvent.click(box())

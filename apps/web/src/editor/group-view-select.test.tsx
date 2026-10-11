@@ -4,7 +4,10 @@ import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { useEditorStore } from './store.js'
 import { GroupViewSelect } from './group-view-select.js'
 
-afterEach(() => { cleanup(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  useEditorStore.getState().reset()
+})
 
 describe('GroupViewSelect', () => {
   it('활성 그룹이 존재하면 해당 그룹을 선택 상태로 보여준다', () => {
@@ -22,7 +25,10 @@ describe('GroupViewSelect', () => {
     useEditorStore.setState((s) => ({
       model: {
         ...s.model,
-        tableGroups: { ...s.model.tableGroups, g2: { id: 'g2', name: '주문', color: '#000', comment: null, alias: '' } },
+        tableGroups: {
+          ...s.model.tableGroups,
+          g2: { id: 'g2', name: '주문', color: '#000', comment: null, alias: '' },
+        },
       },
     }))
     useEditorStore.getState().enterGroupView('g1')

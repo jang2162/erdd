@@ -4,19 +4,34 @@ import { buildAnchors } from './anchors.js'
 import { createEmptyModel, type ProjectModel, type Table, type Relationship } from '@erdd/core'
 
 function tbl(id: string, groupId: string | null): Table {
-  return { id, logicalName: id, physicalName: id, comment: null, groupId,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
+  return {
+    id,
+    logicalName: id,
+    physicalName: id,
+    comment: null,
+    groupId,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
+  }
 }
 function model(): ProjectModel {
   const m = createEmptyModel()
   m.tableGroups['G1'] = { id: 'G1', name: '주문', color: '#000', comment: null, alias: '' }
   m.tableGroups['G2'] = { id: 'G2', name: '회원', color: '#111', comment: null, alias: '' }
-  m.tables['ORD'] = tbl('ORD', 'G1')   // 그룹 내
-  m.tables['USR'] = tbl('USR', 'G2')   // 다른 그룹
-  m.tables['LOG'] = tbl('LOG', null)   // 미분류
-  m.tables['FAR'] = tbl('FAR', 'G2')   // 관계 없음
+  m.tables['ORD'] = tbl('ORD', 'G1') // 그룹 내
+  m.tables['USR'] = tbl('USR', 'G2') // 다른 그룹
+  m.tables['LOG'] = tbl('LOG', null) // 미분류
+  m.tables['FAR'] = tbl('FAR', 'G2') // 관계 없음
   const rel = (id: string, p: string, c: string): Relationship => ({
-    id, parentTableId: p, childTableId: c, columnMappings: [], cardinality: '1:N', identifying: false, name: null })
+    id,
+    parentTableId: p,
+    childTableId: c,
+    columnMappings: [],
+    cardinality: '1:N',
+    identifying: false,
+    name: null,
+  })
   m.relationships['R1'] = rel('R1', 'USR', 'ORD') // USR(외부)↔ORD(내부)
   m.relationships['R2'] = rel('R2', 'ORD', 'LOG') // ORD(내부)↔LOG(미분류 외부)
   return m
@@ -55,8 +70,15 @@ describe('buildGhostNodes', () => {
   it('한 외부 테이블이 여러 관계로 연결돼도 고스트는 하나다(dedup)', () => {
     const m = model()
     // USR↔ORD가 이미 R1. 두 번째 관계 R3도 USR(외부)↔ORD(내부).
-    m.relationships['R3'] = { id: 'R3', parentTableId: 'ORD', childTableId: 'USR',
-      columnMappings: [], cardinality: '1:N', identifying: false, name: null }
+    m.relationships['R3'] = {
+      id: 'R3',
+      parentTableId: 'ORD',
+      childTableId: 'USR',
+      columnMappings: [],
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
+    }
     const usrGhosts = buildGhostNodes(m, 'G1').filter((g) => g.id === 'USR')
     expect(usrGhosts).toHaveLength(1)
   })
@@ -67,19 +89,65 @@ describe('buildGhostNodes — 앵커 전달', () => {
     // 그룹 g1 안의 자식 C 가 그룹 밖 부모 P 를 참조한다 → P 가 고스트로 나온다.
     const m = createEmptyModel()
     m.tableGroups['g1'] = { id: 'g1', name: 'G', color: '#000', comment: null, alias: '' }
-    m.tables['P'] = { id: 'P', logicalName: 'P', physicalName: 'P', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
-    m.tables['C'] = { id: 'C', logicalName: 'C', physicalName: 'C', comment: null,
-      groupId: 'g1', position: { x: 300, y: 0 }, groupPosition: null, custom: {} }
-    m.columns['p1'] = { id: 'p1', tableId: 'P', logicalName: 'p1', physicalName: 'p1',
-      type: 'INT', isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {} }
-    m.columns['c1'] = { id: 'c1', tableId: 'C', logicalName: 'c1', physicalName: 'c1',
-      type: 'INT', isPk: false, autoIncrement: false, nullable: true, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {} }
-    m.relationships['R'] = { id: 'R', parentTableId: 'P', childTableId: 'C',
+    m.tables['P'] = {
+      id: 'P',
+      logicalName: 'P',
+      physicalName: 'P',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
+    }
+    m.tables['C'] = {
+      id: 'C',
+      logicalName: 'C',
+      physicalName: 'C',
+      comment: null,
+      groupId: 'g1',
+      position: { x: 300, y: 0 },
+      groupPosition: null,
+      custom: {},
+    }
+    m.columns['p1'] = {
+      id: 'p1',
+      tableId: 'P',
+      logicalName: 'p1',
+      physicalName: 'p1',
+      type: 'INT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
+    m.columns['c1'] = {
+      id: 'c1',
+      tableId: 'C',
+      logicalName: 'c1',
+      physicalName: 'c1',
+      type: 'INT',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
+    }
+    m.relationships['R'] = {
+      id: 'R',
+      parentTableId: 'P',
+      childTableId: 'C',
       columnMappings: [{ childColumnId: 'c1', parentColumnId: 'p1' }],
-      cardinality: '1:N', identifying: false, name: null }
+      cardinality: '1:N',
+      identifying: false,
+      name: null,
+    }
 
     const ghosts = buildGhostNodes(m, 'g1', buildAnchors(m))
     expect(ghosts).toHaveLength(1)

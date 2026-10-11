@@ -1,11 +1,11 @@
 import type { ConflictReason, MergeConflict } from '@erdd/core'
 
 const REASON_LABEL: Record<ConflictReason, string> = {
-  field: '',                                   // 필드 단위는 필드 이름을 그대로 쓴다
-  'both-added': '',                            // 〃
+  field: '', // 필드 단위는 필드 이름을 그대로 쓴다
+  'both-added': '', // 〃
   'local-delete': '로컬에서 삭제, 서버에서 수정',
   'server-delete': '로컬에서 수정, 서버에서 삭제',
-  'duplicate-origin': '',                      // field 로 갈린다(DUPLICATE_ORIGIN_LABEL)
+  'duplicate-origin': '', // field 로 갈린다(DUPLICATE_ORIGIN_LABEL)
 }
 
 const DUPLICATE_PREFIX = '같은 공용 사전 항목이 두 번 들어왔습니다 — '
@@ -41,7 +41,8 @@ export function renderConflicts(conflicts: readonly MergeConflict[]): string {
   for (const path of [...byPath.keys()].sort()) {
     lines.push('', path)
     const group = [...byPath.get(path)!].sort((a, b) =>
-      a.label === b.label ? a.field.localeCompare(b.field) : a.label.localeCompare(b.label))
+      a.label === b.label ? a.field.localeCompare(b.field) : a.label.localeCompare(b.label),
+    )
     for (const c of group) {
       lines.push(`  ${c.label} · ${heading(c)}`)
       lines.push(`    기준  ${show(c, c.base)}`)

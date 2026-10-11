@@ -6,18 +6,33 @@ import { PagedSection } from './paged-section'
 type Row = { id: string; name: string; code: string | null }
 const FIELDS = (r: Row) => [r.name, r.code]
 const rows = (n: number): Row[] =>
-  Array.from({ length: n }, (_, i) => ({ id: `r${i}`, name: `이름${String(i).padStart(2, '0')}`, code: `C${i}` }))
+  Array.from({ length: n }, (_, i) => ({
+    id: `r${i}`,
+    name: `이름${String(i).padStart(2, '0')}`,
+    code: `C${i}`,
+  }))
 
 function renderSection(list: Row[], onAll = vi.fn()) {
   render(
-    <PagedSection title="신규 추가" rows={list} fields={FIELDS}
+    <PagedSection
+      title="신규 추가"
+      rows={list}
+      fields={FIELDS}
       renderRow={(r) => <li key={r.id}>{r.name}</li>}
-      actions={<button type="button" onClick={onAll}>모두 선택</button>} />,
+      actions={
+        <button type="button" onClick={onAll}>
+          모두 선택
+        </button>
+      }
+    />,
   )
   return within(screen.getByRole('region', { name: '신규 추가' }))
 }
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 describe('PagedSection', () => {
   it('제목에 구역 전체 건수를 적고 50건씩 보이며 다음 쪽으로 넘긴다', async () => {
@@ -55,15 +70,24 @@ describe('PagedSection', () => {
   })
 
   it('쪽을 넘길 때 구역 머리가 바깥 스크롤 영역 위로 벗어나 있으면 머리를 영역 위에 맞춘다', async () => {
-    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {})
+    const scrollIntoView = vi
+      .spyOn(Element.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
     render(
       <div data-testid="scroller" style={{ overflowY: 'auto' }}>
-        <PagedSection title="신규 추가" rows={rows(60)} fields={FIELDS} renderRow={(r) => <li key={r.id}>{r.name}</li>} />
+        <PagedSection
+          title="신규 추가"
+          rows={rows(60)}
+          fields={FIELDS}
+          renderRow={(r) => <li key={r.id}>{r.name}</li>}
+        />
       </div>,
     )
     const region = screen.getByRole('region', { name: '신규 추가' })
-    vi.spyOn(screen.getByTestId('scroller'), 'getBoundingClientRect').mockReturnValue({ top: 100 } as DOMRect)
-    vi.spyOn(region, 'getBoundingClientRect').mockReturnValue({ top: -900 } as DOMRect)   // 끝까지 내려 머리가 위로 벗어났다
+    vi.spyOn(screen.getByTestId('scroller'), 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+    } as DOMRect)
+    vi.spyOn(region, 'getBoundingClientRect').mockReturnValue({ top: -900 } as DOMRect) // 끝까지 내려 머리가 위로 벗어났다
     await userEvent.click(within(region).getByRole('button', { name: '다음' }))
     expect(within(region).getByText('이름50')).toBeInTheDocument()
     expect(scrollIntoView).toHaveBeenCalledTimes(1)

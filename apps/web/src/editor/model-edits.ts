@@ -21,11 +21,18 @@ function nextTableLogicalName(model: ProjectModel): string {
  * 물리명이 빈 테이블은 DDL에서 제외되고(core ddl.ts) required-empty 경고가 붙는다.
  */
 export function addTable(
-  model: ProjectModel, { id, position }: { id: string; position: Position },
+  model: ProjectModel,
+  { id, position }: { id: string; position: Position },
 ): ProjectModel {
   const table: Table = {
-    id, logicalName: nextTableLogicalName(model), physicalName: '',
-    comment: null, groupId: null, position, groupPosition: null, custom: {},
+    id,
+    logicalName: nextTableLogicalName(model),
+    physicalName: '',
+    comment: null,
+    groupId: null,
+    position,
+    groupPosition: null,
+    custom: {},
   }
   return { ...model, tables: { ...model.tables, [id]: table } }
 }
@@ -36,7 +43,11 @@ export function moveTable(model: ProjectModel, id: string, position: Position): 
   return { ...model, tables: { ...model.tables, [id]: { ...table, position } } }
 }
 
-export function moveTableGroupPosition(model: ProjectModel, id: string, position: Position): ProjectModel {
+export function moveTableGroupPosition(
+  model: ProjectModel,
+  id: string,
+  position: Position,
+): ProjectModel {
   const table = model.tables[id]
   if (!table) return model
   return { ...model, tables: { ...model.tables, [id]: { ...table, groupPosition: position } } }
@@ -56,7 +67,8 @@ export function clearTableGroupPosition(model: ProjectModel, id: string): Projec
 }
 
 export function updateTable(
-  model: ProjectModel, id: string,
+  model: ProjectModel,
+  id: string,
   patch: Partial<Pick<Table, 'logicalName' | 'physicalName' | 'comment'>>,
 ): ProjectModel {
   const table = model.tables[id]

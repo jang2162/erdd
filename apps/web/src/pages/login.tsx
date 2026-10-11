@@ -62,7 +62,11 @@ export function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            {login.error && <p role="alert" className="text-sm text-destructive">{login.error.message}</p>}
+            {login.error && (
+              <p role="alert" className="text-sm text-destructive">
+                {login.error.message}
+              </p>
+            )}
             <Button type="submit" disabled={login.isPending}>
               {login.isPending ? '확인 중…' : '로그인'}
             </Button>

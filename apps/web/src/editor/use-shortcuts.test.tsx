@@ -32,7 +32,9 @@ function Harness({ withDialog = false }: { withDialog?: boolean }) {
         projectId={PROJECT_ID}
         ids={del.confirmingIds}
         open={del.confirmingIds.length > 0}
-        onOpenChange={(v) => { if (!v) del.closeConfirm() }}
+        onOpenChange={(v) => {
+          if (!v) del.closeConfirm()
+        }}
       />
       <input aria-label="텍스트" />
       {withDialog && (
@@ -55,7 +57,9 @@ function renderHarness(props: { withDialog?: boolean } = {}) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   return render(<Harness {...props} />, { wrapper: w })
@@ -99,7 +103,11 @@ beforeEach(() => {
   useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
   grantEditPermission()
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('useEditorShortcuts', () => {
   it('테이블을 선택하고 Cmd+C를 누르면 클립보드에 tables 페이로드가 쓰인다', async () => {
@@ -200,7 +208,9 @@ describe('useEditorShortcuts', () => {
     })
     document.dispatchEvent(e)
     await waitFor(() => {
-      const cols = Object.values(useEditorStore.getState().model.columns).filter((c) => c.tableId === 't1')
+      const cols = Object.values(useEditorStore.getState().model.columns).filter(
+        (c) => c.tableId === 't1',
+      )
       expect(cols).toHaveLength(2)
     })
   })
@@ -254,7 +264,12 @@ describe('useEditorShortcuts', () => {
    */
   it('테이블 2개를 선택하고 Delete하면 바로 지우지 않고 확인을 요구한다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().selectTables(['t1', 't2'])
     renderHarness()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
@@ -290,7 +305,12 @@ describe('useEditorShortcuts', () => {
    */
   it('Esc로 취소된다 — 아무것도 지워지지 않는다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().selectTables(['t1', 't2'])
     renderHarness()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
@@ -342,7 +362,7 @@ describe('useEditorShortcuts', () => {
 
   it('paste 이벤트로 테이블을 붙여넣으면 원본에서 밀린 위치에 놓이고 새 테이블이 선택된다', async () => {
     mockModelMutate()
-    const payload = serializeTables(buildSampleModel(), ['t2'])   // t2.position = { x: 300, y: 0 }
+    const payload = serializeTables(buildSampleModel(), ['t2']) // t2.position = { x: 300, y: 0 }
     useEditorStore.getState().select(null)
     renderHarness()
     const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
@@ -376,7 +396,7 @@ describe('useEditorShortcuts', () => {
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true, bubbles: true }))
     await new Promise((r) => setTimeout(r, 0))
-    expect(writeText).not.toHaveBeenCalled()          // ← X의 유일한 방어선
+    expect(writeText).not.toHaveBeenCalled() // ← X의 유일한 방어선
     expect(useEditorStore.getState().model.tables['t2']).toBeDefined()
 
     const pasted = serializeColumns(buildSampleModel(), ['c2'])
@@ -461,9 +481,12 @@ describe('useEditorShortcuts', () => {
    */
   it('메모·관계 삭제 summary 가 패널 버튼과 같다', async () => {
     const inputs: { summary?: string }[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => {
-      inputs.push(input as { summary?: string }); return { data: { seq: 2 } }
-    } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        inputs.push(input as { summary?: string })
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().selectNote('n1')
     renderHarness()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
@@ -478,9 +501,12 @@ describe('useEditorShortcuts', () => {
 
   it('메모 잘라내기 summary 는 「메모 잘라내기」다', async () => {
     const inputs: { summary?: string }[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => {
-      inputs.push(input as { summary?: string }); return { data: { seq: 2 } }
-    } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        inputs.push(input as { summary?: string })
+        return { data: { seq: 2 } }
+      },
+    })
     useEditorStore.getState().selectNote('n1')
     renderHarness()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true, bubbles: true }))
@@ -492,19 +518,23 @@ describe('useEditorShortcuts', () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     renderHarness()
     const payload = {
-      __erdd: 1, v: 1, kind: 'notes',
+      __erdd: 1,
+      v: 1,
+      kind: 'notes',
       notes: [{ content: '붙인메모', color: '#fff', position: { x: 10, y: 20 } }],
     }
     const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
     Object.defineProperty(e, 'clipboardData', { value: { getData: () => JSON.stringify(payload) } })
     document.dispatchEvent(e)
     await waitFor(() => {
-      const added = Object.values(useEditorStore.getState().model.notes)
-        .find((n) => n.content === '붙인메모')
+      const added = Object.values(useEditorStore.getState().model.notes).find(
+        (n) => n.content === '붙인메모',
+      )
       expect(added?.position).toEqual({ x: 50, y: 60 })
     })
-    const added = Object.values(useEditorStore.getState().model.notes)
-      .find((n) => n.content === '붙인메모')!
+    const added = Object.values(useEditorStore.getState().model.notes).find(
+      (n) => n.content === '붙인메모',
+    )!
     expect(useEditorStore.getState().selectedNoteId).toBe(added.id)
   })
 
@@ -576,7 +606,9 @@ describe('useEditorShortcuts', () => {
     renderHarness()
     const before = Object.keys(useEditorStore.getState().model.notes).length
     const payload = {
-      __erdd: 1, v: 1, kind: 'notes',
+      __erdd: 1,
+      v: 1,
+      kind: 'notes',
       notes: [{ content: '붙인메모', color: '#fff', position: { x: 10, y: 20 } }],
     }
     const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
@@ -598,7 +630,9 @@ describe('useEditorShortcuts', () => {
     renderHarness()
     const before = Object.keys(useEditorStore.getState().model.notes).length
     const payload = {
-      __erdd: 1, v: 1, kind: 'notes',
+      __erdd: 1,
+      v: 1,
+      kind: 'notes',
       notes: [{ content: '붙인메모', color: '#fff', position: { x: 10, y: 20 } }],
     }
     const e = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent

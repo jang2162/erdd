@@ -27,7 +27,10 @@ function renderBar() {
   render(<BottomBar projectId={PROJECT_ID} />, { wrapper: w })
 }
 
-afterEach(() => { cleanup(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  useEditorStore.getState().reset()
+})
 
 describe('BottomBar', () => {
   it('편집 권한이 있으면 편집 도구와 뷰 상태와 줌이 함께 보인다', () => {

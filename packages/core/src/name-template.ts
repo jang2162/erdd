@@ -11,11 +11,20 @@ export function parseTemplate(template: string): TemplateToken[] {
   let lit = ''
   while (i < template.length) {
     const open = template.indexOf('{', i)
-    if (open === -1) { lit += template.slice(i); break }
+    if (open === -1) {
+      lit += template.slice(i)
+      break
+    }
     const close = template.indexOf('}', open + 1)
-    if (close === -1) { lit += template.slice(i); break }
+    if (close === -1) {
+      lit += template.slice(i)
+      break
+    }
     lit += template.slice(i, open)
-    if (lit !== '') { tokens.push({ kind: 'lit', text: lit }); lit = '' }
+    if (lit !== '') {
+      tokens.push({ kind: 'lit', text: lit })
+      lit = ''
+    }
     tokens.push({ kind: 'var', name: template.slice(open + 1, close) })
     i = close + 1
   }
@@ -35,8 +44,9 @@ function resolveVar(name: string, table: Table, model: ProjectModel): string {
   if (name.startsWith(CUSTOM_PREFIX)) {
     const fieldName = name.slice(CUSTOM_PREFIX.length)
     // 값 맵의 키가 UUID 라 사람이 쓸 수 없다 — 정의 이름으로 지목한다(설계 D4).
-    const field = Object.values(model.customFields)
-      .find((f) => f.target === 'table' && f.name === fieldName)
+    const field = Object.values(model.customFields).find(
+      (f) => f.target === 'table' && f.name === fieldName,
+    )
     // 값 > 정의 기본값 > '' 은 custom-field.ts 의 정책이다. 여기서 다시 짜지 않는다.
     return field === undefined ? '' : resolveCustomValue(table, field)
   }
@@ -59,8 +69,11 @@ type Piece = { text: string; lit: boolean }
 function trimTrailingSeparator(out: Piece[]): void {
   for (let k = out.length - 1; k >= 0; k -= 1) {
     const p = out[k]!
-    if (p.text === '') { out.pop(); continue }
-    if (!p.lit) return                       // 변수 값 — 건드리지 않는다
+    if (p.text === '') {
+      out.pop()
+      continue
+    }
+    if (!p.lit) return // 변수 값 — 건드리지 않는다
     p.text = p.text.replace(/_+$/, '')
     if (p.text === '') out.pop()
     return
@@ -73,9 +86,15 @@ function compose(template: string, table: Table, model: ProjectModel): string {
   const out: Piece[] = []
   for (let i = 0; i < tokens.length; i += 1) {
     const tok = tokens[i]!
-    if (tok.kind === 'lit') { out.push({ text: tok.text, lit: true }); continue }
+    if (tok.kind === 'lit') {
+      out.push({ text: tok.text, lit: true })
+      continue
+    }
     const value = resolveVar(tok.name, table, model)
-    if (value !== '') { out.push({ text: value, lit: false }); continue }
+    if (value !== '') {
+      out.push({ text: value, lit: false })
+      continue
+    }
     const next = tokens[i + 1]
     if (next !== undefined && next.kind === 'lit') {
       // 뒤 리터럴을 통째로 버리지 않는다 — 선두 밑줄만 지우고 낱말은 남긴다.
@@ -99,7 +118,9 @@ function compose(template: string, table: Table, model: ProjectModel): string {
  * 정규식 후처리로 흉내내지 않는다 — 변수 값 안의 연속 밑줄(`A__B`)까지 접힌다.
  */
 export function composeTablePhysicalName(
-  table: Table, model: ProjectModel, rules: NamingRules,
+  table: Table,
+  model: ProjectModel,
+  rules: NamingRules,
 ): string {
   if (rules.tablePhysicalTemplate === '') return table.physicalName
   return compose(rules.tablePhysicalTemplate, table, model)
@@ -115,7 +136,9 @@ export function composeTablePhysicalName(
  * 아니다. 그래서 재귀가 원리적으로 불가능하다.
  */
 export function composeTableLogicalName(
-  table: Table, model: ProjectModel, rules: NamingRules,
+  table: Table,
+  model: ProjectModel,
+  rules: NamingRules,
 ): string {
   if (rules.tableLogicalTemplate === '') return table.logicalName
   return compose(rules.tableLogicalTemplate, table, model)

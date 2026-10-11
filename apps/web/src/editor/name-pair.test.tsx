@@ -22,9 +22,30 @@ function loadModel(
   terms?: { id: string; logicalName: string; physicalName: string }[],
 ) {
   let m = buildSampleModel()
-  m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
-  m = createWord(m, { id:'w2', logicalName:'주문', abbreviation:'ORD', englishName:null, description:null, origin:null })
-  m = createWord(m, { id:'w3', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null })
+  m = createWord(m, {
+    id: 'w1',
+    logicalName: '회원',
+    abbreviation: 'MBR',
+    englishName: null,
+    description: null,
+    origin: null,
+  })
+  m = createWord(m, {
+    id: 'w2',
+    logicalName: '주문',
+    abbreviation: 'ORD',
+    englishName: null,
+    description: null,
+    origin: null,
+  })
+  m = createWord(m, {
+    id: 'w3',
+    logicalName: '번호',
+    abbreviation: 'NO',
+    englishName: null,
+    description: null,
+    origin: null,
+  })
   for (const t of terms ?? []) {
     m = createTerm(m, { ...t, domainId: null, description: null, origin: null })
   }
@@ -42,7 +63,9 @@ function renderLivePair() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   function Live() {
@@ -67,7 +90,9 @@ function renderPair(canEdit = true) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   const table = useEditorStore.getState().model.tables['t2']!
@@ -85,7 +110,11 @@ function renderPair(canEdit = true) {
   )
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('NamePair', () => {
   it('blur 하면 값을 커밋한다', async () => {
@@ -96,7 +125,9 @@ describe('NamePair', () => {
     await userEvent.clear(input)
     await userEvent.type(input, 'MEMBER')
     await userEvent.tab()
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MEMBER'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MEMBER'),
+    )
   })
 
   it('Enter 로도 커밋한다', async () => {
@@ -106,7 +137,9 @@ describe('NamePair', () => {
     const input = screen.getByLabelText(/테이블 물리명/) as HTMLInputElement
     await userEvent.clear(input)
     await userEvent.type(input, 'MEMBER{Enter}')
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MEMBER'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MEMBER'),
+    )
   })
 
   // ⚠️ 이 트랙의 핵심 회귀. onMouseDown 의 preventDefault 를 지우면 빨개진다.
@@ -116,25 +149,32 @@ describe('NamePair', () => {
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주문번호')      // blur 하지 않는다
+    await userEvent.type(logical, '회원주문번호') // blur 하지 않는다
     await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
     await waitFor(() => {
       const t = useEditorStore.getState().model.tables['t2']!
-      expect(t.physicalName).toBe('MBR_ORD_NO')      // 옛 값('회원')이면 'MBR' 이 나온다
-      expect(t.logicalName).toBe('회원주문번호')       // 친 값도 함께 확정된다
+      expect(t.physicalName).toBe('MBR_ORD_NO') // 옛 값('회원')이면 'MBR' 이 나온다
+      expect(t.logicalName).toBe('회원주문번호') // 친 값도 함께 확정된다
     })
   })
 
   it('화살표 한 번이 뮤테이션 한 건이다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     loadModel()
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원주문번호')
     await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD_NO'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD_NO'),
+    )
     expect(calls).toHaveLength(1)
   })
 
@@ -143,7 +183,9 @@ describe('NamePair', () => {
     loadModel({ logicalName: '', physicalName: 'MBR_ORD' })
     renderPair()
     await userEvent.click(screen.getByRole('button', { name: '논리명 채우기' }))
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'),
+    )
   })
 
   it('복원할 수 없으면 사유를 토스트로 알린다', async () => {
@@ -163,7 +205,9 @@ describe('NamePair', () => {
     const input = screen.getByLabelText(/테이블 물리명/) as HTMLInputElement
     await userEvent.type(input, 'MBR_ORD')
     await userEvent.tab()
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'),
+    )
   })
 
   it('논리명이 이미 있으면 물리명 커밋이 그것을 덮지 않는다', async () => {
@@ -173,7 +217,9 @@ describe('NamePair', () => {
     const input = screen.getByLabelText(/테이블 물리명/) as HTMLInputElement
     await userEvent.type(input, 'MBR_ORD')
     await userEvent.tab()
-    await waitFor(() => expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'),
+    )
     expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('기존이름')
   })
 
@@ -192,24 +238,28 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
 
   it('blur 는 이미 찬 상대를 덮지 않는다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
-    setup(); renderPair()
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원_주문')
     await userEvent.tab()
     await waitFor(() =>
-      expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'))
+      expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원_주문'),
+    )
     expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_X')
   })
 
   it('Enter 는 덮는다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
-    setup(); renderPair()
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원_주문{Enter}')
     await waitFor(() =>
-      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'),
+    )
   })
 
   // ⚠️ D6 의 근거는 「손으로 정한 값이 스쳐 지나가는 동작에 파괴되면 안 된다」이고,
@@ -218,8 +268,14 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
   //  그 가드가 무력해졌다.)
   it('고치지 않은 Enter 는 상대를 덮지 않고 뮤테이션도 내지 않는다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
-    setup(); renderPair()
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     logical.focus()
     await userEvent.keyboard('{Enter}')
@@ -229,19 +285,27 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
 
   it('화살표 버튼은 덮는다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
-    setup(); renderPair()
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원_주문')          // blur 하지 않는다
+    await userEvent.type(logical, '회원_주문') // blur 하지 않는다
     await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
     await waitFor(() =>
-      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'),
+    )
   })
 
   it('자동완성 확정은 상대 draft 를 바꾸되 커밋하지 않는다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
-    setup(); renderPair()
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원_주')
@@ -255,8 +319,14 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
 
   it('확정 뒤 blur 하면 두 필드가 한 뮤테이션으로 나간다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
-    setup(); renderPair()
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원_주')
@@ -275,7 +345,8 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
   // 더럽다. 그때 조기 반환하면 화면에 보이는 물리명이 저장되지 않고 조용히 사라진다(설계 3.7).
   it('내 값을 되돌려도 확정으로 바뀐 상대 draft 는 커밋된다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
-    setup(); renderPair()
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
     await userEvent.type(logical, '회원_주')
@@ -286,13 +357,15 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
     await userEvent.type(logical, '회원')
     await userEvent.tab()
     await waitFor(() =>
-      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'))
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_ORD'),
+    )
     expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원')
   })
 
   it('화살표를 눌러도 포커스가 입력란에 남는다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
-    setup(); renderPair()
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     logical.focus()
     await userEvent.click(screen.getByRole('button', { name: '물리명 채우기' }))
@@ -302,7 +375,8 @@ describe('상대 필드 적용 — 덮어쓰기 4경로', () => {
   // ⚠️ 라벨만 맞으면 버튼이 어느 칸에 있든 위 케이스가 전부 통과한다. 방향 혼동은 **배치** 문제라
   // 각 화살표가 자기 칸 안에 있는지를 따로 잠근다(설계 D5 — 누른 칸의 반대가 채워진다).
   it('화살표는 채우는 대상의 반대 칸에 놓인다', () => {
-    setup(); renderPair()
+    setup()
+    renderPair()
     const logical = screen.getByLabelText('논리명')
     const physical = screen.getByLabelText(/테이블 물리명/)
     expect(logical.parentElement!.querySelector('[aria-label="물리명 채우기"]')).not.toBeNull()
@@ -335,7 +409,12 @@ describe('NamePair 자동완성', () => {
 
   it('클릭으로 확정하면 꼬리만 치환되고 커밋은 나가지 않는다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     loadModel()
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
@@ -343,13 +422,18 @@ describe('NamePair 자동완성', () => {
     await userEvent.type(logical, '회원_주')
     await userEvent.click(await screen.findByRole('option', { name: /주문/ }))
     expect(logical.value).toBe('회원_주문')
-    expect(calls).toHaveLength(0)                 // 확정은 커밋이 아니다
+    expect(calls).toHaveLength(0) // 확정은 커밋이 아니다
     expect(useEditorStore.getState().model.tables['t2']!.logicalName).toBe('회원')
   })
 
   it('아래 화살표 + Enter 로 확정하고, 그 Enter 는 커밋으로 내려가지 않는다', async () => {
     const calls: unknown[] = []
-    mockTrpcFetch({ 'model.mutate': (input) => { calls.push(input); return { data: { seq: 2 } } } })
+    mockTrpcFetch({
+      'model.mutate': (input) => {
+        calls.push(input)
+        return { data: { seq: 2 } }
+      },
+    })
     loadModel()
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
@@ -464,8 +548,9 @@ describe('NamePair 미등록 칩', () => {
     await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'CPN')
     await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
     await waitFor(() => {
-      const added = Object.values(useEditorStore.getState().model.words)
-        .find((w) => w.logicalName === '쿠폰')
+      const added = Object.values(useEditorStore.getState().model.words).find(
+        (w) => w.logicalName === '쿠폰',
+      )
       expect(added?.abbreviation).toBe('CPN')
     })
   })
@@ -478,8 +563,9 @@ describe('NamePair 미등록 칩', () => {
     await userEvent.type(screen.getByLabelText('CPN 논리명'), '쿠폰')
     await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
     await waitFor(() => {
-      const added = Object.values(useEditorStore.getState().model.words)
-        .find((w) => w.abbreviation === 'CPN')
+      const added = Object.values(useEditorStore.getState().model.words).find(
+        (w) => w.abbreviation === 'CPN',
+      )
       expect(added?.logicalName).toBe('쿠폰')
     })
   })
@@ -492,11 +578,11 @@ describe('NamePair 미등록 칩', () => {
     renderPair()
     await userEvent.click(screen.getByRole('button', { name: 'CPN 등록' }))
     const input = screen.getByLabelText('CPN 논리명')
-    await userEvent.type(input, '주문')          // 사전에 있다(w2)
+    await userEvent.type(input, '주문') // 사전에 있다(w2)
     expect(screen.getByRole('button', { name: '단어 등록' })).toBeDisabled()
     expect(screen.getByText(/이미 있는 이름/)).toBeInTheDocument()
     await userEvent.clear(input)
-    await userEvent.type(input, '쿠폰')          // 사전에 없다
+    await userEvent.type(input, '쿠폰') // 사전에 없다
     expect(screen.getByRole('button', { name: '단어 등록' })).toBeEnabled()
   })
 
@@ -507,8 +593,16 @@ describe('NamePair 미등록 칩', () => {
     expect(screen.getByLabelText('쿠폰 약어')).toBeInTheDocument()
     const m = useEditorStore.getState().model
     useEditorStore.getState().setLoaded(
-      createWord(m, { id:'w9', logicalName:'쿠폰', abbreviation:'CPN', englishName:null, description:null, origin:null }),
-      2, PROJECT,
+      createWord(m, {
+        id: 'w9',
+        logicalName: '쿠폰',
+        abbreviation: 'CPN',
+        englishName: null,
+        description: null,
+        origin: null,
+      }),
+      2,
+      PROJECT,
     )
     grantEditPermission()
     await waitFor(() => expect(screen.queryByLabelText('쿠폰 약어')).not.toBeInTheDocument())
@@ -518,7 +612,7 @@ describe('NamePair 미등록 칩', () => {
     loadModel({ logicalName: '회원쿠폰', physicalName: 'MBR' })
     renderPair()
     await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
-    await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'MBR')   // w1과 겹친다
+    await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'MBR') // w1과 겹친다
     expect(screen.getByRole('button', { name: '단어 등록' })).toBeEnabled()
     expect(screen.getByText(/이미 쓰는 약어/)).toBeInTheDocument()
   })
@@ -531,7 +625,8 @@ describe('NamePair 미등록 칩', () => {
     await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'CPN')
     await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
     await waitFor(() =>
-      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_CPN'))
+      expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('MBR_CPN'),
+    )
   })
 
   it('반대편이 이미 차 있으면 등록이 그것을 덮지 않는다', async () => {
@@ -542,8 +637,10 @@ describe('NamePair 미등록 칩', () => {
     await userEvent.type(screen.getByLabelText('쿠폰 약어'), 'CPN')
     await userEvent.click(screen.getByRole('button', { name: '단어 등록' }))
     await waitFor(() =>
-      expect(Object.values(useEditorStore.getState().model.words).some((w) => w.logicalName === '쿠폰'))
-        .toBe(true))
+      expect(
+        Object.values(useEditorStore.getState().model.words).some((w) => w.logicalName === '쿠폰'),
+      ).toBe(true),
+    )
     expect(useEditorStore.getState().model.tables['t2']!.physicalName).toBe('기존물리명')
   })
 
@@ -562,12 +659,15 @@ describe('NamePair 원격 변경 동기화', () => {
     renderLivePair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.clear(logical)
-    await userEvent.type(logical, '회원주문번호')          // 커밋하지 않는다
+    await userEvent.type(logical, '회원주문번호') // 커밋하지 않는다
     const m = useEditorStore.getState().model
     useEditorStore.setState({ model: updateTable(m, 't2', { physicalName: 'CHANGED_BY_PEER' }) })
     await waitFor(() =>
-      expect((screen.getByLabelText(/테이블 물리명/) as HTMLInputElement).value).toBe('CHANGED_BY_PEER'))
-    expect(logical.value).toBe('회원주문번호')             // 내가 치던 값은 그대로다
+      expect((screen.getByLabelText(/테이블 물리명/) as HTMLInputElement).value).toBe(
+        'CHANGED_BY_PEER',
+      ),
+    )
+    expect(logical.value).toBe('회원주문번호') // 내가 치던 값은 그대로다
   })
 
   it('내 필드가 원격으로 바뀌면 그 값으로 맞춰진다', async () => {
@@ -608,15 +708,15 @@ describe('NamePair 접근성·목록 상태', () => {
     ])
     renderPair()
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
-    await userEvent.type(logical, '회원')          // query '' · 용어 후보 2건
+    await userEvent.type(logical, '회원') // query '' · 용어 후보 2건
     await screen.findByRole('listbox')
-    await userEvent.keyboard('{ArrowDown}')        // 활성 인덱스 1
+    await userEvent.keyboard('{ArrowDown}') // 활성 인덱스 1
     // 입력은 그대로 둔 채 사전만 바꾼다 — query 는 '' 로 고정이고 항목만 1건으로 줄어든다.
     // (타이핑으로 줄이면 도중에 query 가 '주' 로 바뀌어 우연히 리셋되므로 아무것도 잠기지 않는다.)
     useEditorStore.setState({ model: removeTerm(useEditorStore.getState().model, 'tm2') })
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
     await userEvent.keyboard('{Enter}')
-    expect(logical.value).toBe('회원_주문_번호')    // 리셋되지 않으면 items[1] 이 없어 아무 일도 없다
+    expect(logical.value).toBe('회원_주문_번호') // 리셋되지 않으면 items[1] 이 없어 아무 일도 없다
   })
 })
 
@@ -643,7 +743,7 @@ describe('NamePair 포커스 유지', () => {
     const logical = screen.getByLabelText('논리명') as HTMLInputElement
     await userEvent.click(logical)
     await userEvent.click(screen.getByRole('button', { name: '쿠폰 등록' }))
-    expect(screen.getByLabelText('쿠폰 약어')).toBeInTheDocument()   // 폼은 펼쳐진다
+    expect(screen.getByLabelText('쿠폰 약어')).toBeInTheDocument() // 폼은 펼쳐진다
     expect(logical).toHaveFocus()
   })
 

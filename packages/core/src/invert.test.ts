@@ -7,18 +7,28 @@ describe('invert', () => {
   it('inverts create to delete, delete to create, update by swapping', () => {
     const data = { id: 'n2', content: 'x', position: { x: 0, y: 0 }, color: '#fff' }
     expect(invertOp({ action: 'create', entity: 'note', entityId: 'n2', data })).toEqual({
-      action: 'delete', entity: 'note', entityId: 'n2', before: data,
+      action: 'delete',
+      entity: 'note',
+      entityId: 'n2',
+      before: data,
     })
     expect(invertOp({ action: 'delete', entity: 'note', entityId: 'n2', before: data })).toEqual({
-      action: 'create', entity: 'note', entityId: 'n2', data,
+      action: 'create',
+      entity: 'note',
+      entityId: 'n2',
+      data,
     })
     expect(
       invertOp({
-        action: 'update', entity: 'column', entityId: 'c3',
+        action: 'update',
+        entity: 'column',
+        entityId: 'c3',
         changes: { logicalName: { from: '회원명', to: '고객명' } },
       }),
     ).toEqual({
-      action: 'update', entity: 'column', entityId: 'c3',
+      action: 'update',
+      entity: 'column',
+      entityId: 'c3',
       changes: { logicalName: { from: '고객명', to: '회원명' } },
     })
   })
@@ -27,11 +37,15 @@ describe('invert', () => {
     const base = buildSampleModel()
     const ops: Op[] = [
       {
-        action: 'create', entity: 'note', entityId: 'n2',
+        action: 'create',
+        entity: 'note',
+        entityId: 'n2',
         data: { id: 'n2', content: '새 메모', position: { x: 1, y: 2 }, color: '#FFFFFF' },
       },
       {
-        action: 'update', entity: 'column', entityId: 'c3',
+        action: 'update',
+        entity: 'column',
+        entityId: 'c3',
         changes: { logicalName: { from: '회원명', to: '고객명' }, order: { from: 1, to: 5 } },
       },
       { action: 'delete', entity: 'index', entityId: 'i1', before: base.indexes.i1 },

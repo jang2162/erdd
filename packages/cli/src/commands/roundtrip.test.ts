@@ -2,9 +2,7 @@ import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  createEmptyModel, filesToModel, type Dialect, type ProjectModel,
-} from '@erdd/core'
+import { createEmptyModel, filesToModel, type Dialect, type ProjectModel } from '@erdd/core'
 import { writeConfig } from '../config.js'
 import { seedPulled, TEST_CONFIG } from '../testing/harness.js'
 import { readTree } from '../tree.js'
@@ -14,16 +12,25 @@ import { importCommand } from './import.js'
 let out: string[]
 let err: string[]
 beforeEach(() => {
-  out = []; err = []
-  vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
-  vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+  out = []
+  err = []
+  vi.spyOn(process.stdout, 'write').mockImplementation((c) => {
+    out.push(String(c))
+    return true
+  })
+  vi.spyOn(process.stderr, 'write').mockImplementation((c) => {
+    err.push(String(c))
+    return true
+  })
 })
 afterEach(() => vi.restoreAllMocks())
 
 async function project(dialect: Dialect = 'postgresql'): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'erdd-rt-'))
   await writeConfig(dir, {
-    ...TEST_CONFIG, dialects: [dialect], namingRules: { ...TEST_CONFIG.namingRules },
+    ...TEST_CONFIG,
+    dialects: [dialect],
+    namingRules: { ...TEST_CONFIG.namingRules },
   })
   return dir
 }
@@ -32,19 +39,30 @@ async function project(dialect: Dialect = 'postgresql'): Promise<string> {
 function shape(m: ProjectModel) {
   return {
     tables: Object.values(m.tables)
-      .map((t) => ({ physicalName: t.physicalName, logicalName: t.logicalName, comment: t.comment }))
+      .map((t) => ({
+        physicalName: t.physicalName,
+        logicalName: t.logicalName,
+        comment: t.comment,
+      }))
       .sort((a, b) => a.physicalName.localeCompare(b.physicalName)),
     columns: Object.values(m.columns)
       .map((c) => ({
         table: m.tables[c.tableId]!.physicalName,
-        physicalName: c.physicalName, logicalName: c.logicalName, type: c.type,
-        isPk: c.isPk, nullable: c.nullable, autoIncrement: c.autoIncrement,
-        defaultValue: c.defaultValue, order: c.order,
+        physicalName: c.physicalName,
+        logicalName: c.logicalName,
+        type: c.type,
+        isPk: c.isPk,
+        nullable: c.nullable,
+        autoIncrement: c.autoIncrement,
+        defaultValue: c.defaultValue,
+        order: c.order,
       }))
       .sort((a, b) => (a.table + a.physicalName).localeCompare(b.table + b.physicalName)),
     indexes: Object.values(m.indexes)
       .map((ix) => ({
-        table: m.tables[ix.tableId]!.physicalName, name: ix.name, unique: ix.unique,
+        table: m.tables[ix.tableId]!.physicalName,
+        name: ix.name,
+        unique: ix.unique,
         columns: ix.columns.map((c) => m.columns[c.columnId]!.physicalName),
       }))
       .sort((a, b) => a.name.localeCompare(b.name)),
@@ -52,7 +70,8 @@ function shape(m: ProjectModel) {
       .map((r) => ({
         parent: m.tables[r.parentTableId]!.physicalName,
         child: m.tables[r.childTableId]!.physicalName,
-        cardinality: r.cardinality, identifying: r.identifying,
+        cardinality: r.cardinality,
+        identifying: r.identifying,
         columns: r.columnMappings.map((cm) => ({
           child: m.columns[cm.childColumnId]!.physicalName,
           parent: m.columns[cm.parentColumnId]!.physicalName,
@@ -71,41 +90,100 @@ async function modelOf(dir: string): Promise<ProjectModel> {
 function sourceModel(): ProjectModel {
   const m = createEmptyModel()
   m.tables['t1'] = {
-    id: 't1', logicalName: '회원', physicalName: 'MBR', comment: '회원 기본 정보',
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 't1',
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: '회원 기본 정보',
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.tables['t2'] = {
-    id: 't2', logicalName: '주문', physicalName: 'ORD', comment: null,
-    groupId: null, position: { x: 300, y: 0 }, groupPosition: null, custom: {},
+    id: 't2',
+    logicalName: '주문',
+    physicalName: 'ORD',
+    comment: null,
+    groupId: null,
+    position: { x: 300, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['c1'] = {
-    id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-    isPk: true, autoIncrement: true, nullable: false, defaultValue: null, order: 0,
-    comment: null, domainId: null, custom: {},
+    id: 'c1',
+    tableId: 't1',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: true,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c2'] = {
-    id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM', type: 'VARCHAR(100)',
-    isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 1,
-    comment: null, domainId: null, custom: {},
+    id: 'c2',
+    tableId: 't1',
+    logicalName: '회원명',
+    physicalName: 'MBR_NM',
+    type: 'VARCHAR(100)',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order: 1,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c3'] = {
-    id: 'c3', tableId: 't2', logicalName: '주문번호', physicalName: 'ORD_NO', type: 'BIGINT',
-    isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-    comment: null, domainId: null, custom: {},
+    id: 'c3',
+    tableId: 't2',
+    logicalName: '주문번호',
+    physicalName: 'ORD_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c4'] = {
-    id: 'c4', tableId: 't2', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-    isPk: false, autoIncrement: false, nullable: false, defaultValue: null, order: 1,
-    comment: null, domainId: null, custom: {},
+    id: 'c4',
+    tableId: 't2',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: false,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 1,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.indexes['ix1'] = {
-    id: 'ix1', tableId: 't1', name: 'IX_MBR_NM', unique: false,
+    id: 'ix1',
+    tableId: 't1',
+    name: 'IX_MBR_NM',
+    unique: false,
     columns: [{ columnId: 'c2', direction: 'asc' }],
   }
   m.relationships['r1'] = {
-    id: 'r1', parentTableId: 't1', childTableId: 't2',
+    id: 'r1',
+    parentTableId: 't1',
+    childTableId: 't2',
     columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
-    cardinality: '1:N', identifying: false, name: null,
+    cardinality: '1:N',
+    identifying: false,
+    name: null,
   }
   return m
 }
@@ -173,7 +251,9 @@ describe('erdd export → erdd import 왕복', () => {
     const from = join(base, '내 프로젝트 v2')
     await mkdir(from)
     await writeConfig(from, {
-      ...TEST_CONFIG, dialects: ['mysql'], namingRules: { ...TEST_CONFIG.namingRules },
+      ...TEST_CONFIG,
+      dialects: ['mysql'],
+      namingRules: { ...TEST_CONFIG.namingRules },
     })
     await seedPulled(from, sourceModel())
     const file = join(from, 'schema.dbml')
@@ -201,16 +281,21 @@ describe('erdd export → erdd import 왕복', () => {
   it('MySQL INT UNSIGNED·ENGINE·CHARSET 이 왕복에서 보존된다 (피드백 1·2번)', async () => {
     const dir = await project('mysql')
     const src = join(dir, 'mysql.sql')
-    await writeFile(src, `CREATE TABLE ORD (
+    await writeFile(
+      src,
+      `CREATE TABLE ORD (
   ORD_NO int unsigned NOT NULL AUTO_INCREMENT,
   QTY smallint unsigned NOT NULL,
   PRIMARY KEY (ORD_NO)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`, 'utf8')
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+      'utf8',
+    )
 
     out.length = 0
     expect(await importCommand({ cwd: dir, ...yes, file: src, dryRun: false })).toBe(0)
-    const kinds = (JSON.parse(out.join('')) as { warnings: Array<{ kind: string }> })
-      .warnings.map((w) => w.kind)
+    const kinds = (JSON.parse(out.join('')) as { warnings: Array<{ kind: string }> }).warnings.map(
+      (w) => w.kind,
+    )
     expect(new Set(kinds)).toEqual(new Set(['unknown-word']))
 
     out.length = 0

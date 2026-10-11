@@ -1,6 +1,11 @@
 import {
-  DEFAULT_TABLE_OPTIONS, modelToFiles,
-  type Dialect, type FileIssue, type NamingRules, type ProjectModel, type TableOptions,
+  DEFAULT_TABLE_OPTIONS,
+  modelToFiles,
+  type Dialect,
+  type FileIssue,
+  type NamingRules,
+  type ProjectModel,
+  type TableOptions,
 } from '@erdd/core'
 import type { ApiClient } from '../client.js'
 import { readConfig, writeBase, writeConfig, writeSync, type Connection } from '../config.js'
@@ -17,16 +22,19 @@ export type SyncDownResult = {
 
 /** 서버에서 받아 트리·base·sync·config를 쓴다. pull과 push(성공 후)가 공유한다. */
 export async function syncDown(
-  cwd: string, connection: Connection, client: ApiClient,
+  cwd: string,
+  connection: Connection,
+  client: ApiClient,
 ): Promise<SyncDownResult> {
   const project = await client.query<{
-    name: string; dialects: Dialect[]; namingRules: NamingRules; tableOptions?: TableOptions
-  }>(
-    'project.get', { projectId: connection.projectId },
-  )
-  const { model, seq } = await client.query<{ model: ProjectModel; seq: number }>(
-    'model.get', { projectId: connection.projectId },
-  )
+    name: string
+    dialects: Dialect[]
+    namingRules: NamingRules
+    tableOptions?: TableOptions
+  }>('project.get', { projectId: connection.projectId })
+  const { model, seq } = await client.query<{ model: ProjectModel; seq: number }>('model.get', {
+    projectId: connection.projectId,
+  })
 
   const { tree, issues } = modelToFiles(model)
   // 네 쓰기는 원자적이지 않다. 중간에 중단되면(Ctrl+C 등) base가 트리보다 오래된 상태로
@@ -43,7 +51,9 @@ export async function syncDown(
   // 구독은 서버가 모르는 로컬 값이다 — 보존한다.
   const { dictionaries } = await readConfig(cwd)
   await writeConfig(cwd, {
-    ...connection, dialects: project.dialects, namingRules: project.namingRules,
+    ...connection,
+    dialects: project.dialects,
+    namingRules: project.namingRules,
     tableOptions: project.tableOptions ?? { ...DEFAULT_TABLE_OPTIONS },
     dictionaries,
   })

@@ -18,14 +18,18 @@ function wrapper() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
 }
 
 const NOTE = {
   id: '018f6b0e-0000-7000-8000-000000000001',
-  content: '메모', position: { x: 0, y: 0 }, color: '#fff',
+  content: '메모',
+  position: { x: 0, y: 0 },
+  color: '#fff',
 }
 
 afterEach(() => {
@@ -35,11 +39,16 @@ afterEach(() => {
 
 describe('useModelMutation', () => {
   it('derives ops via diffModels, optimistically updates the store, and reconciles seq', async () => {
-    useEditorStore.getState().setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore
+      .getState()
+      .setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
     grantEditPermission()
     const captured: unknown[] = []
     mockTrpcFetch({
-      'model.mutate': (input) => { captured.push(input); return { data: { seq: 4 } } },
+      'model.mutate': (input) => {
+        captured.push(input)
+        return { data: { seq: 4 } }
+      },
     })
     const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
       wrapper: wrapper(),
@@ -54,21 +63,27 @@ describe('useModelMutation', () => {
   })
 
   it('is a no-op when the producer changes nothing', async () => {
-    useEditorStore.getState().setLoaded(createEmptyModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore
+      .getState()
+      .setLoaded(createEmptyModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     grantEditPermission()
     const fetchMock = mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
       wrapper: wrapper(),
     })
     let outcome: string | undefined
-    await act(async () => { outcome = await result.current((m) => m) })
+    await act(async () => {
+      outcome = await result.current((m) => m)
+    })
     expect(outcome).toBe('noop')
     expect(fetchMock).not.toHaveBeenCalled()
     expect(useEditorStore.getState().seq).toBe(1)
   })
 
   it('resyncs from the server when the returned seq skips ahead (concurrent commit interleaved)', async () => {
-    useEditorStore.getState().setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore
+      .getState()
+      .setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
     grantEditPermission()
     const NOTE_B = { ...NOTE, id: '018f6b0e-0000-7000-8000-000000000002', content: '남의 메모' }
     const freshModel = { ...createEmptyModel(), notes: { [NOTE_B.id]: NOTE_B } }
@@ -93,7 +108,9 @@ describe('useModelMutation', () => {
   })
 
   it('rolls back to the server model on mutation error', async () => {
-    useEditorStore.getState().setLoaded(createEmptyModel(), 5, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore
+      .getState()
+      .setLoaded(createEmptyModel(), 5, '018f6b0e-0000-7000-8000-0000000000aa')
     grantEditPermission()
     mockTrpcFetch({
       'model.mutate': () => ({ error: { code: -32600, message: '무결성 위반' } }),
@@ -113,14 +130,18 @@ describe('useModelMutation', () => {
     // 거기서 걷어내지 않으면 툴바 삭제·undo·DDL 임포트가 저마다 선택을 정리해야 하고,
     // 실제로 툴바는 select(null)로 **통째 비우는** 방식이라 3개 중 1개만 지워도 셋 다 풀린다.
     // 선택을 비우는 것이 아니라 **사라진 것만** 걷어내는지를 겨눈다.
-    useEditorStore.getState().setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore
+      .getState()
+      .setLoaded(buildSampleModel(), 1, '018f6b0e-0000-7000-8000-0000000000aa')
     grantEditPermission()
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().selectTables(['t1', 't2'])
     const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
       wrapper: wrapper(),
     })
-    await act(async () => { await result.current((m) => removeTable(m, 't1')) })
+    await act(async () => {
+      await result.current((m) => removeTable(m, 't1'))
+    })
     expect(useEditorStore.getState().model.tables.t1).toBeUndefined()
     expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])
   })
@@ -135,11 +156,13 @@ describe('useModelMutation', () => {
     const PID = '018f6b0e-0000-7000-8000-0000000000aa'
     useEditorStore.getState().setLoaded(buildSampleModel(), 5, PID)
     grantEditPermission()
-    useEditorStore.getState().enterGroupView('g1')       // 선택보다 먼저 — 그룹 뷰 진입은 선택을 비운다
+    useEditorStore.getState().enterGroupView('g1') // 선택보다 먼저 — 그룹 뷰 진입은 선택을 비운다
     useEditorStore.getState().setPeers([{ userId: 'u2', name: '동료', selections: [] }])
     useEditorStore.getState().selectTables(['t1', 't2'])
     mockTrpcFetch({
-      'model.mutate': () => ({ error: { code: -32600, message: 'op[0] update table t1: 존재하지 않음' } }),
+      'model.mutate': () => ({
+        error: { code: -32600, message: 'op[0] update table t1: 존재하지 않음' },
+      }),
       // 서버에는 이미 t1이 없다(B가 지웠다).
       'model.get': () => ({ data: { model: removeTable(buildSampleModel(), 't1'), seq: 6 } }),
     })
@@ -149,17 +172,22 @@ describe('useModelMutation', () => {
     })
 
     await waitFor(() => expect(useEditorStore.getState().model.tables['t1']).toBeUndefined())
-    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2'])   // 죽은 t1만 빠진다
-    expect(useEditorStore.getState().activeGroupView).toBe('g1')         // setLoaded면 null로 튕긴다
-    expect(useEditorStore.getState().peers).toHaveLength(1)              // setLoaded면 통째로 비워진다
+    expect(useEditorStore.getState().selectedTableIds).toEqual(['t2']) // 죽은 t1만 빠진다
+    expect(useEditorStore.getState().activeGroupView).toBe('g1') // setLoaded면 null로 튕긴다
+    expect(useEditorStore.getState().peers).toHaveLength(1) // setLoaded면 통째로 비워진다
   })
 
   it('편집 권한이 없으면 서버로 보내지도, 모델을 바꾸지도 않는다', async () => {
-    useEditorStore.getState().setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
+    useEditorStore
+      .getState()
+      .setLoaded(createEmptyModel(), 3, '018f6b0e-0000-7000-8000-0000000000aa')
     // grantEditPermission을 부르지 않는다 — store 기본값 canEdit=false 그대로 검증한다.
     const captured: unknown[] = []
     mockTrpcFetch({
-      'model.mutate': (input) => { captured.push(input); return { data: { seq: 4 } } },
+      'model.mutate': (input) => {
+        captured.push(input)
+        return { data: { seq: 4 } }
+      },
     })
     const { result } = renderHook(() => useModelMutation('018f6b0e-0000-7000-8000-0000000000aa'), {
       wrapper: wrapper(),
@@ -169,8 +197,8 @@ describe('useModelMutation', () => {
       outcome = await result.current((m) => ({ ...m, notes: { ...m.notes, [NOTE.id]: NOTE } }))
     })
     expect(outcome).toBe('error')
-    expect(captured).toHaveLength(0)                          // 서버 왕복 없음
-    expect(useEditorStore.getState().model.notes).toEqual({})  // 낙관적 적용 없음
+    expect(captured).toHaveLength(0) // 서버 왕복 없음
+    expect(useEditorStore.getState().model.notes).toEqual({}) // 낙관적 적용 없음
   })
 })
 

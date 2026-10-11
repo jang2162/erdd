@@ -1,7 +1,9 @@
 export type InvitationStatus = 'pending' | 'used' | 'expired'
 
 export const INVITATION_STATUS_LABEL: Record<InvitationStatus, string> = {
-  pending: '대기 중', used: '사용됨', expired: '만료됨',
+  pending: '대기 중',
+  used: '사용됨',
+  expired: '만료됨',
 }
 
 /**
@@ -14,9 +16,10 @@ export const INVITATION_STATUS_LABEL: Record<InvitationStatus, string> = {
  *
  * 취소는 별도 상태가 아니다 — 서버가 `expiresAt`을 현재로 당기므로 만료로 보인다.
  */
-export function invitationStatus(
-  row: { expiresAt: Date | string; usedAt: Date | string | null },
-): InvitationStatus {
+export function invitationStatus(row: {
+  expiresAt: Date | string
+  usedAt: Date | string | null
+}): InvitationStatus {
   if (row.usedAt !== null) return 'used'
   return new Date(row.expiresAt).getTime() <= Date.now() ? 'expired' : 'pending'
 }

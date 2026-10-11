@@ -48,13 +48,17 @@ function customFieldNames(model: ProjectModel): Map<string, string> {
   return new Map(Object.values(model.customFields).map((f) => [f.id, f.name]))
 }
 
-function toClipboardColumn(model: ProjectModel, columnId: string, names: Map<string, string>): ClipboardColumn | null {
+function toClipboardColumn(
+  model: ProjectModel,
+  columnId: string,
+  names: Map<string, string>,
+): ClipboardColumn | null {
   const c = model.columns[columnId]
   if (!c) return null
   const custom: Record<string, string> = {}
   for (const [fieldId, value] of Object.entries(c.custom)) {
     const name = names.get(fieldId)
-    if (name !== undefined) custom[name] = value   // dangling 키는 버린다
+    if (name !== undefined) custom[name] = value // dangling 키는 버린다
   }
   return {
     logicalName: c.logicalName,
@@ -70,7 +74,10 @@ function toClipboardColumn(model: ProjectModel, columnId: string, names: Map<str
   }
 }
 
-export function serializeTables(model: ProjectModel, tableIds: readonly string[]): ClipboardPayload {
+export function serializeTables(
+  model: ProjectModel,
+  tableIds: readonly string[],
+): ClipboardPayload {
   const names = customFieldNames(model)
   const tables: ClipboardTable[] = []
   for (const tableId of tableIds) {
@@ -91,7 +98,9 @@ export function serializeTables(model: ProjectModel, tableIds: readonly string[]
       comment: t.comment,
       position: { ...t.position },
       custom,
-      columns: cols.map((c) => toClipboardColumn(model, c.id, names)).filter((c): c is ClipboardColumn => c !== null),
+      columns: cols
+        .map((c) => toClipboardColumn(model, c.id, names))
+        .filter((c): c is ClipboardColumn => c !== null),
       indexes: Object.values(model.indexes)
         .filter((ix) => ix.tableId === tableId)
         .map((ix) => ({
@@ -103,21 +112,28 @@ export function serializeTables(model: ProjectModel, tableIds: readonly string[]
               const col = byId.get(c.columnId)
               return col ? { columnPhysicalName: col.physicalName, direction: c.direction } : null
             })
-            .filter((c): c is { columnPhysicalName: string; direction: 'asc' | 'desc' } => c !== null),
+            .filter(
+              (c): c is { columnPhysicalName: string; direction: 'asc' | 'desc' } => c !== null,
+            ),
         })),
     })
   }
   return { __erdd: 1, v: CLIPBOARD_VERSION, kind: 'tables', tables }
 }
 
-export function serializeColumns(model: ProjectModel, columnIds: readonly string[]): ClipboardPayload {
+export function serializeColumns(
+  model: ProjectModel,
+  columnIds: readonly string[],
+): ClipboardPayload {
   const names = customFieldNames(model)
   const ordered = columnIds
     .map((id) => model.columns[id])
     .filter((c): c is NonNullable<typeof c> => c !== undefined)
     .sort((a, b) => a.order - b.order)
   return {
-    __erdd: 1, v: CLIPBOARD_VERSION, kind: 'columns',
+    __erdd: 1,
+    v: CLIPBOARD_VERSION,
+    kind: 'columns',
     columns: ordered
       .map((c) => toClipboardColumn(model, c.id, names))
       .filter((c): c is ClipboardColumn => c !== null),

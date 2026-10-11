@@ -57,7 +57,10 @@ export function exportCommand(ctx: ExportCtx): Promise<number> {
       // validate 와 같은 봉투다 — 같은 파일 오류를 두 명령이 다른 모양으로 말하면 안 된다.
       emit(
         ctx.json,
-        [`파싱 오류 ${result.issues.length}건`, ...result.issues.map((i) => `  ${i.path}: ${i.message}`)].join('\n'),
+        [
+          `파싱 오류 ${result.issues.length}건`,
+          ...result.issues.map((i) => `  ${i.path}: ${i.message}`),
+        ].join('\n'),
         { ok: false, parseErrors: result.issues, integrityIssues: [], warnings: [] },
       )
       return 1
@@ -67,13 +70,22 @@ export function exportCommand(ctx: ExportCtx): Promise<number> {
     // config 에 없는 방언도 유효하기만 하면 낸다 — 일회성으로 다른 DB 의 DDL 이 필요한 것은
     // 정상적인 쓰임이다. 다만 조용히 하지는 않는다(설정과 다른 산출물이 나간 것이다).
     if (!config.dialects.includes(dialect)) {
-      note(`알림: ${dialect}는 erdd.config.yaml의 dialects에 없습니다(${config.dialects.join(', ')}). 그대로 내보냅니다`)
+      note(
+        `알림: ${dialect}는 erdd.config.yaml의 dialects에 없습니다(${config.dialects.join(', ')}). 그대로 내보냅니다`,
+      )
     }
 
     const rules = config.namingRules
-    const content = ctx.format === 'ddl'
-      ? generateDdl(result.model, dialect, { kind: 'all' }, rules, config.tableOptions)
-      : generateDbml(result.model, dialect, { kind: 'all' }, { projectName: dbmlProjectName(ctx.cwd) }, rules)
+    const content =
+      ctx.format === 'ddl'
+        ? generateDdl(result.model, dialect, { kind: 'all' }, rules, config.tableOptions)
+        : generateDbml(
+            result.model,
+            dialect,
+            { kind: 'all' },
+            { projectName: dbmlProjectName(ctx.cwd) },
+            rules,
+          )
     const warnings = ddlWarnings(result.model, dialect, { kind: 'all' }, rules)
     for (const w of warnings) note(`경고: ${w}`)
 
@@ -85,7 +97,11 @@ export function exportCommand(ctx: ExportCtx): Promise<number> {
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, content.endsWith('\n') ? content : `${content}\n`, 'utf8')
     emit(ctx.json, `${path}에 ${ctx.format}을 썼습니다`, {
-      format: ctx.format, dialect, path, content: null, warnings,
+      format: ctx.format,
+      dialect,
+      path,
+      content: null,
+      warnings,
     })
     return 0
   })

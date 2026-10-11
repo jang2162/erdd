@@ -4,7 +4,12 @@ import { toast } from 'sonner'
 import { MAX_LIBRARY_FILE_ITEMS, planPromote, type LibraryItem, type PromotePlan } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { useEditorStore } from './store.js'
-import { carrySelection, initialSelection, promoteSummary, setAllForStatus } from '@/lib/promote-selection'
+import {
+  carrySelection,
+  initialSelection,
+  promoteSummary,
+  setAllForStatus,
+} from '@/lib/promote-selection'
 import { formatCount, formatProgress } from '@/lib/format'
 import { promoteFailureMessage, promoteInChunks, toPromoteRequest } from '@/lib/promote-chunks'
 import type { LibraryRow } from './resource-panel.js'
@@ -26,8 +31,12 @@ const EMPTY_PLAN: PromotePlan = { libraryId: '', entries: [], syncedCount: 0, li
  * 하지 않고 대기 목록만 무효화한다.
  */
 export function ResourcePromoteTab({
-  projectId, library,
-}: { projectId: string; library: LibraryRow }) {
+  projectId,
+  library,
+}: {
+  projectId: string
+  library: LibraryRow
+}) {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
   const model = useEditorStore((s) => s.model)
@@ -44,9 +53,11 @@ export function ResourcePromoteTab({
   useEffect(() => {
     const prevPlan = prevPlanRef.current
     prevPlanRef.current = plan
-    setSelected((prev) => (prevPlan !== null && prevPlan.libraryId === plan.libraryId
-      ? carrySelection(prevPlan.entries, prev, plan.entries)
-      : initialSelection(plan.entries)))
+    setSelected((prev) =>
+      prevPlan !== null && prevPlan.libraryId === plan.libraryId
+        ? carrySelection(prevPlan.entries, prev, plan.entries)
+        : initialSelection(plan.entries),
+    )
   }, [plan])
 
   // 조각마다 부르므로 onSuccess/onError 를 쓰지 않고 promoteInChunks 가 결과를 모은다.
@@ -69,40 +80,56 @@ export function ResourcePromoteTab({
   }
 
   const [note, setNote] = useState('')
-  const requests = useQuery(trpc.promotion.listForProject.queryOptions({
-    projectId, status: 'pending',
-  }))
-  const invalidateRequests = () => queryClient.invalidateQueries({
-    queryKey: trpc.promotion.listForProject.queryKey({ projectId, status: 'pending' }),
-  })
+  const requests = useQuery(
+    trpc.promotion.listForProject.queryOptions({
+      projectId,
+      status: 'pending',
+    }),
+  )
+  const invalidateRequests = () =>
+    queryClient.invalidateQueries({
+      queryKey: trpc.promotion.listForProject.queryKey({ projectId, status: 'pending' }),
+    })
 
-  const request = useMutation(trpc.promotion.create.mutationOptions({
-    onSuccess: async (result) => {
-      // 서버가 모델을 바꾸지 않았다 — resync도 model.get도 하지 않는다.
-      await invalidateRequests()
-      setNote('')
-      toast.success(result.dropped.length === 0
-        ? `${formatCount(result.requested)}건을 승격 요청했습니다`
-        : `${formatCount(result.requested)}건을 요청했습니다 — ${formatCount(result.dropped.length)}건은 이미 반영됐거나 삭제되어 빠졌습니다`)
-    },
-    onError: (err) => toast.error(err.message),
-  }))
+  const request = useMutation(
+    trpc.promotion.create.mutationOptions({
+      onSuccess: async (result) => {
+        // 서버가 모델을 바꾸지 않았다 — resync도 model.get도 하지 않는다.
+        await invalidateRequests()
+        setNote('')
+        toast.success(
+          result.dropped.length === 0
+            ? `${formatCount(result.requested)}건을 승격 요청했습니다`
+            : `${formatCount(result.requested)}건을 요청했습니다 — ${formatCount(result.dropped.length)}건은 이미 반영됐거나 삭제되어 빠졌습니다`,
+        )
+      },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
 
-  const cancel = useMutation(trpc.promotion.cancel.mutationOptions({
-    onSuccess: async () => { await invalidateRequests(); toast.success('요청을 취소했습니다') },
-    onError: (err) => toast.error(err.message),
-  }))
+  const cancel = useMutation(
+    trpc.promotion.cancel.mutationOptions({
+      onSuccess: async () => {
+        await invalidateRequests()
+        toast.success('요청을 취소했습니다')
+      },
+      onError: (err) => toast.error(err.message),
+    }),
+  )
 
   const onRequest = () => {
     const entries = plan.entries.filter((entry) => selected.has(entry.entityId))
     if (entries.length === 0) return
     // 요청은 나눠 부르지 않는다 — 서버 `promotion.create` 의 입력 상한을 넘기면 zod 원문 대신 여기서 막는다.
     if (entries.length > MAX_LIBRARY_FILE_ITEMS) {
-      toast.error(`한 번에 요청할 수 있는 항목은 ${formatCount(MAX_LIBRARY_FILE_ITEMS)}건까지입니다. 나눠 선택해 주세요.`)
+      toast.error(
+        `한 번에 요청할 수 있는 항목은 ${formatCount(MAX_LIBRARY_FILE_ITEMS)}건까지입니다. 나눠 선택해 주세요.`,
+      )
       return
     }
     request.mutate({
-      projectId, libraryId: library.id,
+      projectId,
+      libraryId: library.id,
       entityIds: entries.map((entry) => entry.entityId),
       note,
     })
@@ -138,7 +165,12 @@ export function ResourcePromoteTab({
     }
   }
 
-  if (items.isError) return <p role="alert" className="text-destructive">{items.error.message}</p>
+  if (items.isError)
+    return (
+      <p role="alert" className="text-destructive">
+        {items.error.message}
+      </p>
+    )
 
   return (
     <>
@@ -154,8 +186,12 @@ export function ResourcePromoteTab({
                     {row.requesterName} · {formatCount(row.entityIds.length)}건
                     {row.note !== '' && ` · ${row.note}`}
                   </span>
-                  <Button size="sm" variant="ghost" disabled={cancel.isPending}
-                    onClick={() => cancel.mutate({ requestId: row.id })}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={cancel.isPending}
+                    onClick={() => cancel.mutate({ requestId: row.id })}
+                  >
                     요청 취소
                   </Button>
                 </li>
@@ -171,28 +207,48 @@ export function ResourcePromoteTab({
         entries={plan.entries}
         selected={selected}
         syncedCount={plan.syncedCount}
-        onToggle={(entityId, on) => setSelected((prev) => {
-          const next = new Set(prev)
-          if (on) next.add(entityId)
-          else next.delete(entityId)
-          return next
-        })}
-        onSetAll={(status, on) => setSelected((prev) => setAllForStatus(prev, plan.entries, status, on))}
+        onToggle={(entityId, on) =>
+          setSelected((prev) => {
+            const next = new Set(prev)
+            if (on) next.add(entityId)
+            else next.delete(entityId)
+            return next
+          })
+        }
+        onSetAll={(status, on) =>
+          setSelected((prev) => setAllForStatus(prev, plan.entries, status, on))
+        }
       />
 
       <div className="grid gap-2 border-t pt-2">
         {!library.canWrite && (
-          <Input placeholder="요청 메모 (선택)" value={note} maxLength={500}
-            onChange={(e) => setNote(e.target.value)} />
+          <Input
+            placeholder="요청 메모 (선택)"
+            value={note}
+            maxLength={500}
+            onChange={(e) => setNote(e.target.value)}
+          />
         )}
         <div className="flex items-center justify-end gap-2">
-          <span className="text-xs text-muted-foreground">올릴 항목 {formatCount(selected.size)}건</span>
+          <span className="text-xs text-muted-foreground">
+            올릴 항목 {formatCount(selected.size)}건
+          </span>
           {library.canWrite ? (
-            <Button type="button" disabled={selected.size === 0 || promoting} onClick={() => { void onPromote() }}>
+            <Button
+              type="button"
+              disabled={selected.size === 0 || promoting}
+              onClick={() => {
+                void onPromote()
+              }}
+            >
               {progress !== null ? formatProgress(progress.done, progress.total) : '승격'}
             </Button>
           ) : (
-            <Button type="button" disabled={selected.size === 0 || request.isPending} onClick={onRequest}>
+            <Button
+              type="button"
+              disabled={selected.size === 0 || request.isPending}
+              onClick={onRequest}
+            >
               승격 요청
             </Button>
           )}

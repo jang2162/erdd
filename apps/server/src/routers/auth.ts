@@ -23,18 +23,27 @@ export const authRouter = router({
     .input(z.object({ email: z.string(), password: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const user = (
-        await ctx.db.select().from(users).where(eq(users.email, normalizeEmail(input.email)))
+        await ctx.db
+          .select()
+          .from(users)
+          .where(eq(users.email, normalizeEmail(input.email)))
       )[0]
       const valid = await verifyPassword(input.password, user?.passwordHash ?? DUMMY_HASH)
       const ok = user !== undefined && user.isActive && valid
       if (!ok) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: '이메일 또는 비밀번호가 올바르지 않습니다' })
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: '이메일 또는 비밀번호가 올바르지 않습니다',
+        })
       }
       const token = randomBytes(32).toString('base64url')
       const expiresAt = new Date(Date.now() + SESSION_TTL_MS)
       await ctx.db.insert(sessions).values({ id: token, userId: user.id, expiresAt })
       ctx.res.setCookie(SESSION_COOKIE, token, {
-        path: '/', httpOnly: true, sameSite: 'lax', expires: expiresAt,
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        expires: expiresAt,
         secure: process.env.NODE_ENV === 'production',
       })
       return { id: user.id, email: user.email, name: user.name, role: user.role }
@@ -52,7 +61,10 @@ export const authRouter = router({
   // ⚠️ 반환 타입을 RunMode 로 명시해야 한다 — 명시하지 않으면 tRPC 의 출력 타입 추론이 리터럴
   // "server"로 좁혀, 로컬 라우터가 내는 'local'과 서로를 만족하지 못해 계약 잠금 테스트
   // (`packages/cli/src/local/router.test.ts`)가 깨진다.
-  me: apiProcedure.query(({ ctx }): SessionUser & { mode: RunMode } => ({ ...ctx.user, mode: 'server' })),
+  me: apiProcedure.query(({ ctx }): SessionUser & { mode: RunMode } => ({
+    ...ctx.user,
+    mode: 'server',
+  })),
 
   changePassword: authedProcedure
     .input(z.object({ currentPassword: z.string(), newPassword: z.string().min(8) }))
@@ -61,12 +73,14 @@ export const authRouter = router({
       if (!user || !(await verifyPassword(input.currentPassword, user.passwordHash))) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: '현재 비밀번호가 올바르지 않습니다' })
       }
-      await ctx.db.update(users)
+      await ctx.db
+        .update(users)
         .set({ passwordHash: await hashPassword(input.newPassword) })
         .where(eq(users.id, user.id))
       const token = ctx.req.cookies[SESSION_COOKIE]
       if (token) {
-        await ctx.db.delete(sessions)
+        await ctx.db
+          .delete(sessions)
           .where(and(eq(sessions.userId, user.id), ne(sessions.id, token)))
       }
       return { ok: true as const }
@@ -85,20 +99,21 @@ export const authRouter = router({
       const passwordHash = await hashPassword(input.newPassword)
       return ctx.db.transaction(async (tx) => {
         const row = (
-          await tx.select().from(passwordResetTokens)
+          await tx
+            .select()
+            .from(passwordResetTokens)
             .where(eq(passwordResetTokens.tokenHash, hashToken(input.token)))
         )[0]
         // 없는 토큰과 기한이 지난 토큰을 같은 문구로 거절한다 — 갈리면 임의 토큰을 던져
         // "그 링크가 존재하는가"를 물을 수 있게 된다(존재 오라클).
-        if (!row) throw new LinkDeadError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
+        if (!row)
+          throw new LinkDeadError({ code: 'BAD_REQUEST', message: '기한이 지난 링크입니다' })
         assertLive(row, 'reset')
         await tx.update(users).set({ passwordHash }).where(eq(users.id, row.userId))
-        const used = await tx.update(passwordResetTokens)
+        const used = await tx
+          .update(passwordResetTokens)
           .set({ usedAt: new Date() })
-          .where(and(
-            eq(passwordResetTokens.id, row.id),
-            isNull(passwordResetTokens.usedAt),
-          ))
+          .where(and(eq(passwordResetTokens.id, row.id), isNull(passwordResetTokens.usedAt)))
           .returning({ id: passwordResetTokens.id })
         // 같은 토큰으로 동시에 들어온 두 요청 중 하나만 소비한다.
         if (used.length === 0) {
@@ -113,8 +128,10 @@ export const authRouter = router({
     list: authedProcedure.query(async ({ ctx }) =>
       ctx.db
         .select({
-          id: accessTokens.id, name: accessTokens.name,
-          createdAt: accessTokens.createdAt, lastUsedAt: accessTokens.lastUsedAt,
+          id: accessTokens.id,
+          name: accessTokens.name,
+          createdAt: accessTokens.createdAt,
+          lastUsedAt: accessTokens.lastUsedAt,
         })
         .from(accessTokens)
         .where(and(eq(accessTokens.userId, ctx.user.id), isNull(accessTokens.revokedAt)))
@@ -126,7 +143,10 @@ export const authRouter = router({
       .mutation(async ({ ctx, input }) => {
         const plain = generateToken()
         await ctx.db.insert(accessTokens).values({
-          id: uuidv7(), userId: ctx.user.id, name: input.name, tokenHash: hashToken(plain),
+          id: uuidv7(),
+          userId: ctx.user.id,
+          name: input.name,
+          tokenHash: hashToken(plain),
         })
         // 평문은 여기서만 나간다. 이후 조회할 방법은 없다.
         return { token: plain }
@@ -135,7 +155,8 @@ export const authRouter = router({
     revoke: authedProcedure
       .input(z.object({ id: z.string().uuid() }))
       .mutation(async ({ ctx, input }) => {
-        await ctx.db.update(accessTokens)
+        await ctx.db
+          .update(accessTokens)
           .set({ revokedAt: new Date() })
           .where(and(eq(accessTokens.id, input.id), eq(accessTokens.userId, ctx.user.id)))
         return { ok: true as const }

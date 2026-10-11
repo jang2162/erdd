@@ -5,9 +5,17 @@ import Fastify from 'fastify'
 import fastifyStatic from '@fastify/static'
 import { fastifyTRPCPlugin, type CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import {
-  LOCAL_DISCARD_PATH, LOCAL_EVENTS_PATH, LOCAL_KEEP_PATH, LOCAL_SAVE_PATH, type LocalEvent,
-  LOCAL_CHANGES_PATH, LOCAL_CHANGES_CREATE_PATH, LOCAL_CHANGES_LOCAL_ONLY_MESSAGE, LOCAL_CHANGES_UNSAVED_MESSAGE,
-  type LocalChangesCreateResult, type LocalChangesStatus,
+  LOCAL_DISCARD_PATH,
+  LOCAL_EVENTS_PATH,
+  LOCAL_KEEP_PATH,
+  LOCAL_SAVE_PATH,
+  type LocalEvent,
+  LOCAL_CHANGES_PATH,
+  LOCAL_CHANGES_CREATE_PATH,
+  LOCAL_CHANGES_LOCAL_ONLY_MESSAGE,
+  LOCAL_CHANGES_UNSAVED_MESSAGE,
+  type LocalChangesCreateResult,
+  type LocalChangesStatus,
 } from '@erdd/core'
 import { LOCAL_PROJECT_ID, readConfig, type ErddConfig } from '../config.js'
 import { note } from '../output.js'
@@ -26,8 +34,11 @@ const eventPayload = (state: StoreState): LocalEvent =>
  * 미저장·외부 변경 표시. **모델을 나르지 않는다** — 드래그 중에 도착해도 화면이 튀지 않는다.
  * 이것이 다른 탭의 표시까지 함께 맞춰 주는 유일한 경로다.
  */
-const statusPayload = (store: FileStore): LocalEvent =>
-  ({ type: 'status', dirty: store.dirty, external: store.external })
+const statusPayload = (store: FileStore): LocalEvent => ({
+  type: 'status',
+  dirty: store.dirty,
+  external: store.external,
+})
 
 export type LocalServer = { url: string; close: () => Promise<void> }
 
@@ -56,7 +67,7 @@ export type LocalServer = { url: string; close: () => Promise<void> }
  */
 export const webDistCandidates = (from: string): readonly string[] => [
   path.resolve(from, '../../../../apps/web/dist'), // 저장소 배치 — 항상 최신 빌드가 이긴다
-  path.resolve(from, '../../web'),                 // 게시된 패키지 배치
+  path.resolve(from, '../../web'), // 게시된 패키지 배치
 ]
 
 /** 존재하는 첫 후보. 둘 다 없으면 undefined — 그때는 정적 서빙을 등록하지 않는다. */
@@ -79,7 +90,9 @@ export async function startLocalServer(opts: {
   const migrated = await migrateSnapshots(cwd)
   if (migrated !== null) {
     if (migrated.moved.length > 0) {
-      note(`스냅샷 ${migrated.moved.length}개를 ${SNAPSHOTS_DIR}/ 로 옮겼습니다 — 이제 커밋 대상입니다. git add ${SNAPSHOTS_DIR}`)
+      note(
+        `스냅샷 ${migrated.moved.length}개를 ${SNAPSHOTS_DIR}/ 로 옮겼습니다 — 이제 커밋 대상입니다. git add ${SNAPSHOTS_DIR}`,
+      )
     }
     for (const s of migrated.skipped) {
       note(`⚠️ 손상된 스냅샷을 옮기지 않았습니다: ${s.name || '(이름 없음)'} (${s.id})`)
@@ -94,7 +107,9 @@ export async function startLocalServer(opts: {
   // 파일이 고쳐지는 순간 얹힌다.
   const corrupt = await store.adoptDraft()
   if (corrupt !== null) {
-    note(`⚠️ 저장하지 않은 편집을 읽지 못해 파일 상태로 열었습니다. 원본은 ${corrupt.corruptBackupPath} 에 있습니다`)
+    note(
+      `⚠️ 저장하지 않은 편집을 읽지 못해 파일 상태로 열었습니다. 원본은 ${corrupt.corruptBackupPath} 에 있습니다`,
+    )
   }
 
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024 * 1024 })
@@ -131,7 +146,11 @@ export async function startLocalServer(opts: {
     const origin = req.headers.origin
     if (origin !== undefined) {
       let originHost: string | null = null
-      try { originHost = new URL(origin).host.toLowerCase() } catch { originHost = null }
+      try {
+        originHost = new URL(origin).host.toLowerCase()
+      } catch {
+        originHost = null
+      }
       if (originHost === null || !allowedHosts.has(originHost)) {
         void reply.code(403).send({ error: '허용되지 않은 Origin 입니다' })
         return
@@ -144,8 +163,12 @@ export async function startLocalServer(opts: {
     prefix: '/trpc',
     trpcOptions: {
       router,
-      createContext: (_o: CreateFastifyContextOptions): LocalContext =>
-        ({ store, cwd, projectId, config }),
+      createContext: (_o: CreateFastifyContextOptions): LocalContext => ({
+        store,
+        cwd,
+        projectId,
+        config,
+      }),
     },
   })
 
@@ -163,8 +186,12 @@ export async function startLocalServer(opts: {
   const send = (payload: LocalEvent) => {
     for (const c of clients) c.write(`data: ${JSON.stringify(payload)}\n\n`)
   }
-  const broadcast = () => { send(eventPayload(store.state)) }
-  const broadcastStatus = () => { send(statusPayload(store)) }
+  const broadcast = () => {
+    send(eventPayload(store.state))
+  }
+  const broadcastStatus = () => {
+    send(statusPayload(store))
+  }
   // 편집이 미저장 상태를 만들거나 없앨 때 다른 탭의 표시도 함께 맞춘다. **모델을 나르지
   // 않으므로** 편집 중인 탭이 이것을 받아도 화면이 튀지 않는다(reload 와 다른 점이다).
   store.onStatusChange(broadcastStatus)
@@ -179,7 +206,9 @@ export async function startLocalServer(opts: {
     reply.raw.flushHeaders()
     const client = { write: (s: string) => reply.raw.write(s), end: () => reply.raw.end() }
     clients.add(client)
-    req.raw.on('close', () => { clients.delete(client) })
+    req.raw.on('close', () => {
+      clients.delete(client)
+    })
     // 접속 시점의 현재 상태를 한 번 보낸다 — 이미 blocked 인 상태로 늦게 접속한 탭도
     // 재저장 없이 즉시 옳은 상태가 된다(그 전에는 알 다른 경로가 없다).
     client.write(`data: ${JSON.stringify(eventPayload(store.state))}\n\n`)
@@ -230,32 +259,52 @@ export async function startLocalServer(opts: {
   const serverLinked = () => config.serverUrl !== null || config.projectId !== null
   app.post(LOCAL_CHANGES_PATH, async (): Promise<LocalChangesStatus> => {
     if (serverLinked()) {
-      return { records: [], pending: null, warnings: [], error: { file: null, line: null, message: LOCAL_CHANGES_LOCAL_ONLY_MESSAGE }, unsaved: store.unsaved }
+      return {
+        records: [],
+        pending: null,
+        warnings: [],
+        error: { file: null, line: null, message: LOCAL_CHANGES_LOCAL_ONLY_MESSAGE },
+        unsaved: store.unsaved,
+      }
     }
     const state = store.state
     if (!state.ok) {
-      return { records: [], pending: null, warnings: [], error: { file: null, line: null, message: BLOCKED_MESSAGE }, unsaved: store.unsaved }
+      return {
+        records: [],
+        pending: null,
+        warnings: [],
+        error: { file: null, line: null, message: BLOCKED_MESSAGE },
+        unsaved: store.unsaved,
+      }
     }
     const { plan } = await loadChangesPlan({ cwd, model: state.model, config })
     return toLocalStatus(plan, store.unsaved)
   })
   // 생성은 한 번에 하나씩 — 두 탭이 같은 기준선으로 계획해 같은 차이를 두 기록에 쓰지 않게 한다.
   let creating: Promise<unknown> = Promise.resolve()
-  app.post<{ Body: unknown }>(LOCAL_CHANGES_CREATE_PATH, async (req): Promise<LocalChangesCreateResult> => {
-    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
-    const name = typeof body['name'] === 'string' ? body['name'] : ''
-    const baseline = body['baseline'] === true
-    const create = async (): Promise<LocalChangesCreateResult> => {
-      if (serverLinked()) return { ok: false, reason: 'local-only', message: LOCAL_CHANGES_LOCAL_ONLY_MESSAGE }
-      const state = store.state
-      if (!state.ok) return { ok: false, reason: 'blocked', message: BLOCKED_MESSAGE }
-      if (store.unsaved) return { ok: false, reason: 'unsaved', message: LOCAL_CHANGES_UNSAVED_MESSAGE }
-      return writeChange({ cwd, model: state.model, config }, { name, baseline })
-    }
-    const result = creating.then(create)
-    creating = result.catch(() => undefined)
-    return result
-  })
+  app.post<{ Body: unknown }>(
+    LOCAL_CHANGES_CREATE_PATH,
+    async (req): Promise<LocalChangesCreateResult> => {
+      const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<
+        string,
+        unknown
+      >
+      const name = typeof body['name'] === 'string' ? body['name'] : ''
+      const baseline = body['baseline'] === true
+      const create = async (): Promise<LocalChangesCreateResult> => {
+        if (serverLinked())
+          return { ok: false, reason: 'local-only', message: LOCAL_CHANGES_LOCAL_ONLY_MESSAGE }
+        const state = store.state
+        if (!state.ok) return { ok: false, reason: 'blocked', message: BLOCKED_MESSAGE }
+        if (store.unsaved)
+          return { ok: false, reason: 'unsaved', message: LOCAL_CHANGES_UNSAVED_MESSAGE }
+        return writeChange({ cwd, model: state.model, config }, { name, baseline })
+      }
+      const result = creating.then(create)
+      creating = result.catch(() => undefined)
+      return result
+    },
+  )
 
   // 웹이 보는 config 만 서명한다. 구독(`dictionaries`)은 `erdd dict pull` 만 읽는 값이라
   // project.get 에 나가지 않는다 — 그것만 바뀐 것은 브라우저가 다시 읽을 사유가 아니다.
@@ -292,7 +341,10 @@ export async function startLocalServer(opts: {
       // blocked(파일 손상)는 위의 "달라진 것 없으면 거른다" 필터를 타지 않는다 — 그 필터는
       // 기동 창의 메아리만 막으려던 것이지, 이미 잠긴 상태의 재발화까지 삼키면 그 사이
       // 접속한 탭이 blocked 를 영영 못 받는다.
-      if (!state.ok) { broadcast(); return }
+      if (!state.ok) {
+        broadcast()
+        return
+      }
       // config 만 바뀐 경우도 모델 서명은 그대로라 위 modelChanged 필터에 걸리지 않는다 —
       // 자기 쓰기 판정과 무관하게(그 판정은 모델/레이아웃 서명만 본다) 여기서 직접 내보낸다.
       if (configChanged) broadcast()
@@ -300,11 +352,16 @@ export async function startLocalServer(opts: {
       // 배너를 띄우는 status 다(설계 D2). ⚠️ config 갈래에서도 보내야 한다 — config 와 파일이
       // 한 디바운스 창에 함께 바뀌면(`dict pull`, `git checkout`) 콜백이 하나로 합쳐지고,
       // external 플래그 변화는 onStatusChange 를 부르지 않아 여기 말고는 알릴 경로가 없다.
-      if (store.external) { broadcastStatus(); return }
+      if (store.external) {
+        broadcastStatus()
+        return
+      }
       if (configChanged) return
       // 디스크를 실제로 채택했을 때만 브라우저가 다시 읽는다.
       if (adopted) broadcast()
-    })().catch((err) => { console.warn('[local server] 감시 처리 중 오류:', err) })
+    })().catch((err) => {
+      console.warn('[local server] 감시 처리 중 오류:', err)
+    })
   })
 
   // ── 정적 서빙 ──

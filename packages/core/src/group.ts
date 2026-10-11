@@ -6,13 +6,18 @@ export function createGroup(
 ): ProjectModel {
   if (Object.hasOwn(model.tableGroups, args.id)) return model
   const group: TableGroup = {
-    id: args.id, name: args.name, color: args.color, comment: args.comment ?? null, alias: '',
+    id: args.id,
+    name: args.name,
+    color: args.color,
+    comment: args.comment ?? null,
+    alias: '',
   }
   return { ...model, tableGroups: { ...model.tableGroups, [args.id]: group } }
 }
 
 export function updateGroup(
-  model: ProjectModel, id: string,
+  model: ProjectModel,
+  id: string,
   patch: Partial<Pick<TableGroup, 'name' | 'color' | 'comment' | 'alias'>>,
 ): ProjectModel {
   const group = model.tableGroups[id]
@@ -21,7 +26,9 @@ export function updateGroup(
 }
 
 export function setTableGroup(
-  model: ProjectModel, tableId: string, groupId: string | null,
+  model: ProjectModel,
+  tableId: string,
+  groupId: string | null,
 ): ProjectModel {
   const table = model.tables[tableId]
   if (!table) return model

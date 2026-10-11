@@ -14,10 +14,21 @@ let err: string[]
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'erdd-export-'))
-  out = []; err = []
-  vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
-  vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
-  await writeConfig(dir, { ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects], namingRules: { ...TEST_CONFIG.namingRules } })
+  out = []
+  err = []
+  vi.spyOn(process.stdout, 'write').mockImplementation((c) => {
+    out.push(String(c))
+    return true
+  })
+  vi.spyOn(process.stderr, 'write').mockImplementation((c) => {
+    err.push(String(c))
+    return true
+  })
+  await writeConfig(dir, {
+    ...TEST_CONFIG,
+    dialects: [...TEST_CONFIG.dialects],
+    namingRules: { ...TEST_CONFIG.namingRules },
+  })
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -25,18 +36,40 @@ afterEach(() => vi.restoreAllMocks())
 function model(withEmptyTable = false): ProjectModel {
   const m = createEmptyModel()
   m.tables['tb1'] = {
-    id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 'tb1',
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['c1'] = {
-    id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-    isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-    comment: null, domainId: null, custom: {},
+    id: 'c1',
+    tableId: 'tb1',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   if (withEmptyTable) {
     m.tables['tb2'] = {
-      id: 'tb2', logicalName: '빈테이블', physicalName: 'EMPTY_TB', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 'tb2',
+      logicalName: '빈테이블',
+      physicalName: 'EMPTY_TB',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
   }
   return m
@@ -73,7 +106,9 @@ describe('export', () => {
 
   it('방언 기본값은 config.dialects[0] 이고 --dialect 로 덮는다', async () => {
     await writeConfig(dir, {
-      ...TEST_CONFIG, dialects: ['mysql'], namingRules: { ...TEST_CONFIG.namingRules },
+      ...TEST_CONFIG,
+      dialects: ['mysql'],
+      namingRules: { ...TEST_CONFIG.namingRules },
     })
     await seedPulled(dir, model())
     await exportCommand({ cwd: dir, json: true, ...base, format: 'ddl' })
@@ -84,8 +119,14 @@ describe('export', () => {
   })
 
   it('config.dialects 에 없는 유효한 방언은 허용하되 stderr 로 한 줄 알린다', async () => {
-    await seedPulled(dir, model())   // config.dialects 는 ['postgresql']
-    const code = await exportCommand({ cwd: dir, json: false, ...base, format: 'ddl', dialect: 'oracle' })
+    await seedPulled(dir, model()) // config.dialects 는 ['postgresql']
+    const code = await exportCommand({
+      cwd: dir,
+      json: false,
+      ...base,
+      format: 'ddl',
+      dialect: 'oracle',
+    })
     expect(code).toBe(0)
     expect(err.join('')).toContain('oracle')
     expect(err.join('')).toContain('erdd.config.yaml')
@@ -104,8 +145,11 @@ describe('export', () => {
     const code = await exportCommand({ cwd: dir, json: true, ...base, format: 'ddl' })
     expect(code).toBe(0)
     const parsed = JSON.parse(out.join('')) as {
-      format: string; dialect: string; path: string | null
-      content: string | null; warnings: string[]
+      format: string
+      dialect: string
+      path: string | null
+      content: string | null
+      warnings: string[]
     }
     expect(parsed.format).toBe('ddl')
     expect(parsed.dialect).toBe('postgresql')
@@ -146,25 +190,53 @@ describe('export', () => {
 describe('export — 테이블 옵션 배선', () => {
   it('erdd.config.yaml 의 테이블 옵션이 DDL 에 나간다', async () => {
     await writeConfig(dir, {
-      ...TEST_CONFIG, dialects: ['mysql'], namingRules: { ...TEST_CONFIG.namingRules },
-      tableOptions: { postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', oracle: '', mssql: '' },
+      ...TEST_CONFIG,
+      dialects: ['mysql'],
+      namingRules: { ...TEST_CONFIG.namingRules },
+      tableOptions: {
+        postgresql: '',
+        mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+        oracle: '',
+        mssql: '',
+      },
     })
     await seedPulled(dir, model())
     const file = join(dir, 'out.sql')
-    expect(await exportCommand({ cwd: dir, json: false, yes: true, strict: false, format: 'ddl', out: file })).toBe(0)
+    expect(
+      await exportCommand({
+        cwd: dir,
+        json: false,
+        yes: true,
+        strict: false,
+        format: 'ddl',
+        out: file,
+      }),
+    ).toBe(0)
     // 옵션은 `)` 뒤, `COMMENT` **앞**이다(설계 §5.4 — 파서의 코멘트 스캔이 그대로 맞게).
-    expect(await readFile(file, 'utf8'))
-      .toContain(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT '회원';")
+    expect(await readFile(file, 'utf8')).toContain(
+      ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT '회원';",
+    )
   })
 
   it('그 방언의 칸이 비면 붙지 않는다', async () => {
     await writeConfig(dir, {
-      ...TEST_CONFIG, dialects: ['postgresql'], namingRules: { ...TEST_CONFIG.namingRules },
+      ...TEST_CONFIG,
+      dialects: ['postgresql'],
+      namingRules: { ...TEST_CONFIG.namingRules },
       tableOptions: { postgresql: '', mysql: 'ENGINE=InnoDB', oracle: '', mssql: '' },
     })
     await seedPulled(dir, model())
     const file = join(dir, 'out.sql')
-    expect(await exportCommand({ cwd: dir, json: false, yes: true, strict: false, format: 'ddl', out: file })).toBe(0)
+    expect(
+      await exportCommand({
+        cwd: dir,
+        json: false,
+        yes: true,
+        strict: false,
+        format: 'ddl',
+        out: file,
+      }),
+    ).toBe(0)
     expect(await readFile(file, 'utf8')).not.toContain('ENGINE')
   })
 })

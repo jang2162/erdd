@@ -23,8 +23,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const pkgRoot = path.resolve(here, '..')                          // packages/cli
-const srcDir = path.resolve(pkgRoot, '../../docs/manual')         // <저장소 루트>/docs/manual
+const pkgRoot = path.resolve(here, '..') // packages/cli
+const srcDir = path.resolve(pkgRoot, '../../docs/manual') // <저장소 루트>/docs/manual
 const destDir = path.join(pkgRoot, 'docs')
 
 // 넷이 서로를 상대 경로로 참조한다 — 하나라도 빠지면 동봉본의 링크가 깨진다.
@@ -34,8 +34,8 @@ const missing = manuals.filter((name) => !existsSync(path.join(srcDir, name)))
 if (missing.length > 0) {
   console.error(
     `동봉할 매뉴얼이 없습니다: ${missing.join(', ')} (찾은 경로: ${srcDir})\n` +
-    '저장소 루트의 docs/manual 아래에 네 문서가 모두 있어야 합니다.\n' +
-    '(일부만 동봉하면 설치본에서 문서끼리의 상대 링크가 깨집니다.)',
+      '저장소 루트의 docs/manual 아래에 네 문서가 모두 있어야 합니다.\n' +
+      '(일부만 동봉하면 설치본에서 문서끼리의 상대 링크가 깨집니다.)',
   )
   process.exit(1)
 }

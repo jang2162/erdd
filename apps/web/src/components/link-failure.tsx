@@ -20,12 +20,16 @@ import type { TerminalLinkFailure } from '@/lib/link-error'
 export function LinkFailure({ failure }: { failure: TerminalLinkFailure }) {
   return (
     <div className="grid gap-2 text-center">
-      <p role="alert" className="text-sm text-destructive">{failure.reason}</p>
+      <p role="alert" className="text-sm text-destructive">
+        {failure.reason}
+      </p>
       {failure.kind === 'registered' ? (
         <p className="text-sm text-muted-foreground">
           이 이메일에는 이미 계정이 있습니다 — 새 링크를 받을 수는 없으니{' '}
-          <Link to="/login" className="underline underline-offset-4">로그인</Link>하세요.
-          비밀번호를 모르면 관리자에게 재설정 링크를 요청하세요.
+          <Link to="/login" className="underline underline-offset-4">
+            로그인
+          </Link>
+          하세요. 비밀번호를 모르면 관리자에게 재설정 링크를 요청하세요.
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">관리자에게 문의해 새 링크를 받으세요.</p>

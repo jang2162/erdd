@@ -11,7 +11,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FieldLabel } from '@/components/field-label'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
 
 type DialectText = Record<Dialect, string>
@@ -36,7 +40,10 @@ function toDialectText(domain: Domain | null): DialectText {
  * (producer 안에서 이벤트 값을 lazy read하지 않는다).
  */
 export function DomainEditDialog({
-  projectId, domain, open, onOpenChange,
+  projectId,
+  domain,
+  open,
+  onOpenChange,
 }: {
   projectId: string
   domain: Domain | null
@@ -72,61 +79,87 @@ export function DomainEditDialog({
       mssql: dialectTypes.mssql.trim() === '' ? null : dialectTypes.mssql.trim(),
     }
     const trimmedDefaultValue = defaultValue.trim()
-    const nextAllowedValues = allowedValuesText.split(',').map((v) => v.trim()).filter((v) => v !== '')
+    const nextAllowedValues = allowedValuesText
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v !== '')
     const trimmedDescription = description.trim()
 
     if (domain === null) {
       const id = newId()
-      void mutate((m) => createDomain(m, {
-        id,
-        name: trimmedName,
-        category: trimmedCategory === '' ? null : trimmedCategory,
-        logicalType: trimmedLogicalType,
-        dialectTypes: nextDialectTypes,
-        defaultValue: trimmedDefaultValue === '' ? null : trimmedDefaultValue,
-        allowedValues: nextAllowedValues,
-        description: trimmedDescription === '' ? null : trimmedDescription,
-        origin: null,
-      }), { summary: '도메인 추가' })
+      void mutate(
+        (m) =>
+          createDomain(m, {
+            id,
+            name: trimmedName,
+            category: trimmedCategory === '' ? null : trimmedCategory,
+            logicalType: trimmedLogicalType,
+            dialectTypes: nextDialectTypes,
+            defaultValue: trimmedDefaultValue === '' ? null : trimmedDefaultValue,
+            allowedValues: nextAllowedValues,
+            description: trimmedDescription === '' ? null : trimmedDescription,
+            origin: null,
+          }),
+        { summary: '도메인 추가' },
+      )
       onOpenChange(false)
       return
     }
 
     const domainId = domain.id
     const affected = usageOf(model, domainId).length
-    if (affected > 0 && !window.confirm(`${formatCount(affected)}개 컬럼에 영향을 줍니다. 계속할까요?`)) return
-    void mutate((m) => updateDomain(m, domainId, {
-      name: trimmedName,
-      category: trimmedCategory === '' ? null : trimmedCategory,
-      logicalType: trimmedLogicalType,
-      dialectTypes: nextDialectTypes,
-      defaultValue: trimmedDefaultValue === '' ? null : trimmedDefaultValue,
-      allowedValues: nextAllowedValues,
-      description: trimmedDescription === '' ? null : trimmedDescription,
-    }), { summary: '도메인 수정' })
+    if (
+      affected > 0 &&
+      !window.confirm(`${formatCount(affected)}개 컬럼에 영향을 줍니다. 계속할까요?`)
+    )
+      return
+    void mutate(
+      (m) =>
+        updateDomain(m, domainId, {
+          name: trimmedName,
+          category: trimmedCategory === '' ? null : trimmedCategory,
+          logicalType: trimmedLogicalType,
+          dialectTypes: nextDialectTypes,
+          defaultValue: trimmedDefaultValue === '' ? null : trimmedDefaultValue,
+          allowedValues: nextAllowedValues,
+          description: trimmedDescription === '' ? null : trimmedDescription,
+        }),
+      { summary: '도메인 수정' },
+    )
     onOpenChange(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>{domain === null ? '도메인 추가' : '도메인 수정'}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{domain === null ? '도메인 추가' : '도메인 수정'}</DialogTitle>
+        </DialogHeader>
         <div className="grid max-h-[70vh] gap-3 overflow-y-auto">
           <div className="grid gap-1.5">
-            <FieldLabel htmlFor="dom-name" required>이름</FieldLabel>
+            <FieldLabel htmlFor="dom-name" required>
+              이름
+            </FieldLabel>
             <Input id="dom-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
             <FieldLabel htmlFor="dom-category">분류</FieldLabel>
             <Input
-              id="dom-category" value={category} placeholder="예: 금액, 상태코드"
+              id="dom-category"
+              value={category}
+              placeholder="예: 금액, 상태코드"
               onChange={(e) => setCategory(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
-            <FieldLabel htmlFor="dom-logical-type" required>논리 타입</FieldLabel>
+            <FieldLabel htmlFor="dom-logical-type" required>
+              논리 타입
+            </FieldLabel>
             <Input
-              id="dom-logical-type" className="font-mono" value={logicalType} placeholder="예: DECIMAL(15)"
+              id="dom-logical-type"
+              className="font-mono"
+              value={logicalType}
+              placeholder="예: DECIMAL(15)"
               onChange={(e) => setLogicalType(e.target.value)}
             />
           </div>
@@ -139,7 +172,9 @@ export function DomainEditDialog({
                     {DIALECT_LABEL[d]}
                   </Label>
                   <Input
-                    id={`dom-dialect-${d}`} className="font-mono" value={dialectTypes[d]}
+                    id={`dom-dialect-${d}`}
+                    className="font-mono"
+                    value={dialectTypes[d]}
                     onChange={(e) => {
                       const v = e.target.value
                       setDialectTypes((prev) => ({ ...prev, [d]: v }))
@@ -151,26 +186,38 @@ export function DomainEditDialog({
           </div>
           <div className="grid gap-1.5">
             <FieldLabel htmlFor="dom-default">기본값</FieldLabel>
-            <Input id="dom-default" value={defaultValue} onChange={(e) => setDefaultValue(e.target.value)} />
+            <Input
+              id="dom-default"
+              value={defaultValue}
+              onChange={(e) => setDefaultValue(e.target.value)}
+            />
           </div>
           <div className="grid gap-1.5">
             <FieldLabel htmlFor="dom-allowed">허용값 (쉼표로 구분)</FieldLabel>
             <Input
-              id="dom-allowed" value={allowedValuesText} placeholder="예: ACTIVE, INACTIVE"
+              id="dom-allowed"
+              value={allowedValuesText}
+              placeholder="예: ACTIVE, INACTIVE"
               onChange={(e) => setAllowedValuesText(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
             <FieldLabel htmlFor="dom-description">설명</FieldLabel>
             <textarea
-              id="dom-description" className="min-h-16 rounded-md border bg-background p-2 text-sm"
-              value={description} onChange={(e) => setDescription(e.target.value)}
+              id="dom-description"
+              className="min-h-16 rounded-md border bg-background p-2 text-sm"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
             />
           </div>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-          <Button type="button" disabled={nameInvalid || logicalTypeInvalid} onClick={onSave}>저장</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            취소
+          </Button>
+          <Button type="button" disabled={nameInvalid || logicalTypeInvalid} onClick={onSave}>
+            저장
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

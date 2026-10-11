@@ -15,12 +15,17 @@ import type { ParsedDbml } from './dbml-parse.js'
 
 // 이 파일의 기존 케이스는 「템플릿 없는 규칙」을 전제한다 — 심으로 그 전제를 한 줄에 적는다.
 const generateDdl = (
-  model: ProjectModel, dialect: Dialect,
-  scope: DdlScope = { kind: 'all' }, rules: NamingRules = DEFAULT_NAMING_RULES,
+  model: ProjectModel,
+  dialect: Dialect,
+  scope: DdlScope = { kind: 'all' },
+  rules: NamingRules = DEFAULT_NAMING_RULES,
 ) => generateDdlRaw(model, dialect, scope, rules)
 
-const plan = (ddl: string, model: ProjectModel = createEmptyModel(), dialect: Dialect = 'postgresql') =>
-  planDdlImport(model, parseDdl(ddl), dialect, DEFAULT_NAMING_RULES)
+const plan = (
+  ddl: string,
+  model: ProjectModel = createEmptyModel(),
+  dialect: Dialect = 'postgresql',
+) => planDdlImport(model, parseDdl(ddl), dialect, DEFAULT_NAMING_RULES)
 
 describe('planDdlImport', () => {
   it('테이블·컬럼·PK·관계·인덱스를 계획으로 만든다', () => {
@@ -34,15 +39,29 @@ describe('planDdlImport', () => {
       CREATE INDEX IX_MBR_01 ON MBR (MBR_NM);`)
     expect(p.tables.map((t) => t.physicalName)).toEqual(['MBR', 'ORD'])
     expect(p.tables[0]!.columns[0]).toMatchObject({
-      physicalName: 'MBR_NO', type: 'BIGINT', isPk: true, nullable: false,
+      physicalName: 'MBR_NO',
+      type: 'BIGINT',
+      isPk: true,
+      nullable: false,
     })
-    expect(p.tables[0]!.columns[1]).toMatchObject({ physicalName: 'MBR_NM', type: 'VARCHAR(100)', nullable: true })
-    expect(p.tables[0]!.indexes).toEqual([{ name: 'IX_MBR_01', columnPhysicalNames: ['MBR_NM'], unique: false }])
-    expect(p.relationships).toEqual([{
-      childPhysicalName: 'ORD', parentPhysicalName: 'MBR',
-      columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }], identifying: false,
-      cardinality: '1:N', name: null,
-    }])
+    expect(p.tables[0]!.columns[1]).toMatchObject({
+      physicalName: 'MBR_NM',
+      type: 'VARCHAR(100)',
+      nullable: true,
+    })
+    expect(p.tables[0]!.indexes).toEqual([
+      { name: 'IX_MBR_01', columnPhysicalNames: ['MBR_NM'], unique: false },
+    ])
+    expect(p.relationships).toEqual([
+      {
+        childPhysicalName: 'ORD',
+        parentPhysicalName: 'MBR',
+        columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }],
+        identifying: false,
+        cardinality: '1:N',
+        name: null,
+      },
+    ])
   })
 
   it('자식의 FK 컬럼이 전부 자식 PK면 식별 관계다', () => {
@@ -73,8 +92,22 @@ describe('planDdlImport', () => {
 
   it('코멘트가 없으면 사전으로 역매칭한다', () => {
     const words: Record<string, Word> = {
-      w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null, origin: null },
-      w2: { id: 'w2', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null },
+      w1: {
+        id: 'w1',
+        logicalName: '회원',
+        abbreviation: 'MBR',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
+      w2: {
+        id: 'w2',
+        logicalName: '번호',
+        abbreviation: 'NO',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
     }
     const model = { ...createEmptyModel(), words }
     const p = plan('CREATE TABLE MBR (MBR_NO bigint);', model)
@@ -86,24 +119,36 @@ describe('planDdlImport', () => {
   it('코멘트도 사전도 없으면 물리명을 논리명으로 두고 경고한다', () => {
     const p = plan('CREATE TABLE MBR (MBR_NO bigint);')
     expect(p.tables[0]!.columns[0]!.logicalName).toBe('MBR_NO')
-    expect(p.warnings.some((w) => w.kind === 'unknown-word' && w.target === 'MBR.MBR_NO')).toBe(true)
+    expect(p.warnings.some((w) => w.kind === 'unknown-word' && w.target === 'MBR.MBR_NO')).toBe(
+      true,
+    )
   })
 
   it('이름이 겹치는 테이블을 건너뛰고 그 테이블을 참조하는 FK도 뺀다', () => {
     const model = createEmptyModel()
     model.tables['t1'] = {
-      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
-    const p = plan(`
+    const p = plan(
+      `
       CREATE TABLE MBR (MBR_NO bigint);
-      CREATE TABLE ORD (MBR_NO bigint, FOREIGN KEY (MBR_NO) REFERENCES MBR (MBR_NO));`, model)
+      CREATE TABLE ORD (MBR_NO bigint, FOREIGN KEY (MBR_NO) REFERENCES MBR (MBR_NO));`,
+      model,
+    )
     expect(p.skippedTables).toEqual(['MBR'])
     expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])
     expect(p.relationships).toEqual([])
     // ⚠️ 문구까지 못 박는다 — 머릿말이 이름을 되돌린 경우와 갈라야 하는 자리다.
     expect(p.warnings).toContainEqual({
-      kind: 'table-conflict', target: 'MBR',
+      kind: 'table-conflict',
+      target: 'MBR',
       message: '같은 이름의 테이블이 이미 있어 건너뜁니다',
     })
     expect(p.warnings.some((w) => w.kind === 'unresolved-fk')).toBe(true)
@@ -113,11 +158,16 @@ describe('planDdlImport', () => {
     const p = plan(`
       CREATE TABLE MBR (MBR_NO bigint, PRIMARY KEY (MBR_NO));
       CREATE TABLE ORD (MBR_NO bigint, FOREIGN KEY (MBR_NO) REFERENCES MBR ON DELETE CASCADE);`)
-    expect(p.relationships).toEqual([{
-      childPhysicalName: 'ORD', parentPhysicalName: 'MBR',
-      columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }], identifying: false,
-      cardinality: '1:N', name: null,
-    }])
+    expect(p.relationships).toEqual([
+      {
+        childPhysicalName: 'ORD',
+        parentPhysicalName: 'MBR',
+        columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }],
+        identifying: false,
+        cardinality: '1:N',
+        name: null,
+      },
+    ])
     expect(p.warnings.some((w) => w.kind === 'unresolved-fk')).toBe(false)
   })
 
@@ -126,7 +176,9 @@ describe('planDdlImport', () => {
       CREATE TABLE MBR (MBR_NO bigint);
       CREATE TABLE ORD (MBR_NO bigint, FOREIGN KEY (MBR_NO) REFERENCES MBR);`)
     expect(p.relationships).toEqual([])
-    expect(p.warnings.some((w) => w.kind === 'unresolved-fk' && w.message.includes('참조 컬럼'))).toBe(true)
+    expect(
+      p.warnings.some((w) => w.kind === 'unresolved-fk' && w.message.includes('참조 컬럼')),
+    ).toBe(true)
   })
 
   it('참조 대상이 없는 FK를 경고한다', () => {
@@ -156,7 +208,7 @@ describe('planDdlImport', () => {
     // postgresql로는 CLOB이 알려진 타입이 아니라 unknown-type이 나므로 방언을 명시한다.
     const p = plan('CREATE TABLE A (C1 CLOB, C2 GEOMETRY);', createEmptyModel(), 'oracle')
     expect(p.tables[0]!.columns[0]).toMatchObject({ type: 'TEXT' })
-    expect(p.tables[0]!.columns[1]).toMatchObject({ type: 'GEOMETRY' })   // 원문 보존
+    expect(p.tables[0]!.columns[1]).toMatchObject({ type: 'GEOMETRY' }) // 원문 보존
     expect(p.warnings.some((w) => w.kind === 'ambiguous-type' && w.target === 'A.C1')).toBe(true)
     expect(p.warnings.some((w) => w.kind === 'unknown-type' && w.target === 'A.C2')).toBe(true)
   })
@@ -190,11 +242,16 @@ describe('planDdlImport', () => {
     const p = plan(`
       CREATE TABLE mbr (mbr_no bigint, PRIMARY KEY (MBR_NO));
       CREATE TABLE ord (mbr_no bigint, FOREIGN KEY (MBR_NO) REFERENCES MBR);`)
-    expect(p.relationships).toEqual([{
-      childPhysicalName: 'ord', parentPhysicalName: 'mbr',
-      columnPairs: [{ child: 'mbr_no', parent: 'mbr_no' }], identifying: false,
-      cardinality: '1:N', name: null,
-    }])
+    expect(p.relationships).toEqual([
+      {
+        childPhysicalName: 'ord',
+        parentPhysicalName: 'mbr',
+        columnPairs: [{ child: 'mbr_no', parent: 'mbr_no' }],
+        identifying: false,
+        cardinality: '1:N',
+        name: null,
+      },
+    ])
   })
 
   it('존재하지 않는 컬럼을 가리키는 인덱스는 만들지 않고 경고한다', () => {
@@ -202,7 +259,9 @@ describe('planDdlImport', () => {
       CREATE TABLE MBR (MBR_NO bigint);
       CREATE INDEX IX ON MBR (NOPE);`)
     expect(p.tables[0]!.indexes).toEqual([])
-    expect(p.warnings.some((w) => w.kind === 'unresolved-index' && w.message.includes('NOPE'))).toBe(true)
+    expect(
+      p.warnings.some((w) => w.kind === 'unresolved-index' && w.message.includes('NOPE')),
+    ).toBe(true)
   })
 
   it('존재하지 않는 부모 컬럼을 가리키는 FK는 만들지 않고 경고한다', () => {
@@ -227,7 +286,9 @@ describe('planDdlImport', () => {
       CREATE TABLE MBR (MBR_NO bigint, MBR_NM varchar(10), PRIMARY KEY (MBR_NO));
       ALTER TABLE MBR ADD CONSTRAINT UX_MBR UNIQUE (MBR_NM);`)
     expect(p.tables[0]!.indexes).toContainEqual({
-      name: 'UX_MBR', columnPhysicalNames: ['MBR_NM'], unique: true,
+      name: 'UX_MBR',
+      columnPhysicalNames: ['MBR_NM'],
+      unique: true,
     })
   })
 
@@ -242,7 +303,7 @@ describe('planDdlImport', () => {
     const p = plan('CREATE TABLE MBR (A bigint, B bigint, UNIQUE (A), UNIQUE (B));')
     const names = p.tables[0]!.indexes.map((i) => i.name)
     expect(names).toHaveLength(2)
-    expect(new Set(names).size).toBe(2)   // 서로 다른 이름
+    expect(new Set(names).size).toBe(2) // 서로 다른 이름
   })
 
   // I-2(b): alive에 없는 테이블의 인덱스를 조용히 버리지 않고 경고한다.
@@ -258,7 +319,9 @@ describe('planDdlImport', () => {
       CREATE TABLE ORD (X bigint);
       ALTER TABLE NOPE ADD CONSTRAINT UX1 UNIQUE (X);`)
     expect(p.tables[0]!.indexes).toEqual([])
-    expect(p.warnings.some((w) => w.kind === 'unresolved-index' && w.target === 'NOPE.UX1')).toBe(true)
+    expect(p.warnings.some((w) => w.kind === 'unresolved-index' && w.target === 'NOPE.UX1')).toBe(
+      true,
+    )
   })
 
   // I-2(c): 같은 이름의 CREATE TABLE이 두 번 오면 뒤엣것을 버리고 경고한다.
@@ -271,7 +334,8 @@ describe('planDdlImport', () => {
     expect(p.tables).toHaveLength(1)
     expect(p.tables[0]!.columns.map((c) => c.physicalName)).toEqual(['A'])
     expect(p.warnings).toContainEqual({
-      kind: 'table-conflict', target: 'MBR',
+      kind: 'table-conflict',
+      target: 'MBR',
       message: 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다',
     })
   })
@@ -301,46 +365,115 @@ describe('planDdlImport', () => {
 function roundTripModel(): ProjectModel {
   const m = createEmptyModel()
   m.tables['t1'] = {
-    id: 't1', logicalName: '회원', physicalName: 'MBR', comment: '회원 기본 정보',
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 't1',
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: '회원 기본 정보',
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.tables['t2'] = {
-    id: 't2', logicalName: '주문', physicalName: 'ORD', comment: null,
-    groupId: null, position: { x: 300, y: 0 }, groupPosition: null, custom: {},
+    id: 't2',
+    logicalName: '주문',
+    physicalName: 'ORD',
+    comment: null,
+    groupId: null,
+    position: { x: 300, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['c1'] = {
-    id: 'c1', tableId: 't1', logicalName: '회원번호', physicalName: 'MBR_NO',
-    type: 'BIGINT', isPk: true, autoIncrement: true, nullable: false,
-    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    id: 'c1',
+    tableId: 't1',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: true,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c2'] = {
-    id: 'c2', tableId: 't1', logicalName: '회원명', physicalName: 'MBR_NM',
-    type: 'VARCHAR(100)', isPk: false, autoIncrement: false, nullable: true,
-    defaultValue: null, order: 1, comment: '표시용 이름', domainId: null, custom: {},
+    id: 'c2',
+    tableId: 't1',
+    logicalName: '회원명',
+    physicalName: 'MBR_NM',
+    type: 'VARCHAR(100)',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order: 1,
+    comment: '표시용 이름',
+    domainId: null,
+    custom: {},
   }
   m.columns['c3'] = {
-    id: 'c3', tableId: 't2', logicalName: '주문번호', physicalName: 'ORD_NO',
-    type: 'BIGINT', isPk: true, autoIncrement: false, nullable: false,
-    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    id: 'c3',
+    tableId: 't2',
+    logicalName: '주문번호',
+    physicalName: 'ORD_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c4'] = {
-    id: 'c4', tableId: 't2', logicalName: '회원번호', physicalName: 'MBR_NO',
-    type: 'BIGINT', isPk: false, autoIncrement: false, nullable: false,
-    defaultValue: null, order: 1, comment: null, domainId: null, custom: {},
+    id: 'c4',
+    tableId: 't2',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: false,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 1,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.columns['c5'] = {
-    id: 'c5', tableId: 't2', logicalName: '주문상태', physicalName: 'ORD_STTUS',
-    type: 'VARCHAR(20)', isPk: false, autoIncrement: false, nullable: false,
-    defaultValue: "'PENDING'", order: 2, comment: null, domainId: null, custom: {},
+    id: 'c5',
+    tableId: 't2',
+    logicalName: '주문상태',
+    physicalName: 'ORD_STTUS',
+    type: 'VARCHAR(20)',
+    isPk: false,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: "'PENDING'",
+    order: 2,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   m.indexes['ix1'] = {
-    id: 'ix1', tableId: 't1', name: 'IX_MBR_NM', unique: false,
+    id: 'ix1',
+    tableId: 't1',
+    name: 'IX_MBR_NM',
+    unique: false,
     columns: [{ columnId: 'c2', direction: 'asc' }],
   }
   m.relationships['r1'] = {
-    id: 'r1', parentTableId: 't1', childTableId: 't2',
+    id: 'r1',
+    parentTableId: 't1',
+    childTableId: 't2',
     columnMappings: [{ childColumnId: 'c4', parentColumnId: 'c1' }],
-    cardinality: '1:N', identifying: false, name: null,
+    cardinality: '1:N',
+    identifying: false,
+    name: null,
   }
   return m
 }
@@ -351,7 +484,12 @@ function assertRoundTrip(dialect: Dialect): void {
   const p = planDdlImport(createEmptyModel(), parseDdl(ddl), dialect, DEFAULT_NAMING_RULES)
 
   // 이 셋은 "미리보기가 통과시킨 걸 무결성 검사가 거절하는" I-3류 결함의 회귀 방어다.
-  expect(p.warnings.filter((w) => w.kind === 'unresolved-index' || w.kind === 'unresolved-fk' || w.kind === 'table-conflict')).toEqual([])
+  expect(
+    p.warnings.filter(
+      (w) =>
+        w.kind === 'unresolved-index' || w.kind === 'unresolved-fk' || w.kind === 'table-conflict',
+    ),
+  ).toEqual([])
 
   expect(p.tables).toHaveLength(2)
   const mbr = p.tables.find((t) => t.physicalName === 'MBR')!
@@ -361,28 +499,44 @@ function assertRoundTrip(dialect: Dialect): void {
   expect(mbr.comment).toBe('회원 기본 정보')
   expect(mbr.columns.map((c) => c.physicalName)).toEqual(['MBR_NO', 'MBR_NM'])
   expect(mbr.columns[0]).toMatchObject({
-    logicalName: '회원번호', type: 'BIGINT', isPk: true, nullable: false, autoIncrement: true,
+    logicalName: '회원번호',
+    type: 'BIGINT',
+    isPk: true,
+    nullable: false,
+    autoIncrement: true,
   })
   expect(mbr.columns[1]).toMatchObject({
-    logicalName: '회원명', type: 'VARCHAR(100)', isPk: false, nullable: true,
+    logicalName: '회원명',
+    type: 'VARCHAR(100)',
+    isPk: false,
+    nullable: true,
     comment: '표시용 이름',
   })
-  expect(mbr.indexes).toEqual([{ name: 'IX_MBR_NM', columnPhysicalNames: ['MBR_NM'], unique: false }])
+  expect(mbr.indexes).toEqual([
+    { name: 'IX_MBR_NM', columnPhysicalNames: ['MBR_NM'], unique: false },
+  ])
 
   expect(ord.logicalName).toBe('주문')
   expect(ord.columns.map((c) => c.physicalName)).toEqual(['ORD_NO', 'MBR_NO', 'ORD_STTUS'])
   expect(ord.columns[2]).toMatchObject({ defaultValue: "'PENDING'" })
 
-  expect(p.relationships).toEqual([{
-    childPhysicalName: 'ORD', parentPhysicalName: 'MBR',
-    columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }], identifying: false,
-    cardinality: '1:N', name: null,
-  }])
+  expect(p.relationships).toEqual([
+    {
+      childPhysicalName: 'ORD',
+      parentPhysicalName: 'MBR',
+      columnPairs: [{ child: 'MBR_NO', parent: 'MBR_NO' }],
+      identifying: false,
+      cardinality: '1:N',
+      name: null,
+    },
+  ])
 }
 
 describe('왕복 — 내보낸 DDL을 다시 읽으면 같은 계획이 나온다', () => {
   for (const dialect of DIALECTS.filter((d) => d !== 'mssql')) {
-    it(`${dialect}`, () => { assertRoundTrip(dialect) })
+    it(`${dialect}`, () => {
+      assertRoundTrip(dialect)
+    })
   }
 
   it('mssql — 코멘트가 sp_addextendedproperty로 나가 논리명이 복원되지 않는다(알려진 한계)', () => {
@@ -416,11 +570,16 @@ describe('planDdlImport — 컬럼 인라인 제약', () => {
                   references organizations
                   on delete cascade
       );`)
-    expect(p.relationships).toEqual([{
-      childPhysicalName: 'members', parentPhysicalName: 'organizations',
-      columnPairs: [{ child: 'org_id', parent: 'id' }], identifying: false,
-      cardinality: '1:N', name: null,
-    }])
+    expect(p.relationships).toEqual([
+      {
+        childPhysicalName: 'members',
+        parentPhysicalName: 'organizations',
+        columnPairs: [{ child: 'org_id', parent: 'id' }],
+        identifying: false,
+        cardinality: '1:N',
+        name: null,
+      },
+    ])
     expect(p.warnings.filter((w) => w.kind === 'unresolved-fk')).toEqual([])
   })
 
@@ -449,34 +608,64 @@ describe('planDdlImport — 컬럼 인라인 제약', () => {
 
 describe('planDdlImport — DBML 확장 필드', () => {
   const parsedOf = (over: Partial<ParsedDbml>): ParsedDbml => ({
-    tables: [{ name: 'MBR', columns: [{
-      name: 'MBR_NO', rawType: 'bigint', notNull: true, defaultValue: null,
-      autoIncrement: false, inlinePk: true, comment: null,
-    }] }],
-    constraints: [], indexes: [], comments: [], skipped: [],
-    groups: [], customValues: [], databaseType: null,
+    tables: [
+      {
+        name: 'MBR',
+        columns: [
+          {
+            name: 'MBR_NO',
+            rawType: 'bigint',
+            notNull: true,
+            defaultValue: null,
+            autoIncrement: false,
+            inlinePk: true,
+            comment: null,
+          },
+        ],
+      },
+    ],
+    constraints: [],
+    indexes: [],
+    comments: [],
+    skipped: [],
+    groups: [],
+    customValues: [],
+    databaseType: null,
     ...over,
   })
 
   it('그룹을 계획에 싣는다', () => {
     const p = planDdlImport(
       createEmptyModel(),
-      parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR'] }] }),
-      'postgresql', DEFAULT_NAMING_RULES,
+      parsedOf({
+        groups: [{ name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR'] }],
+      }),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
     )
-    expect(p.groups).toEqual([{
-      // 블록만 있는 경로다 — 별칭은 머릿말에만 실려 오므로 빈 문자열이어야 한다.
-      name: '회원 관리', color: '#0E7A6C', comment: null, alias: '',
-      tablePhysicalNames: ['MBR'], existingId: null,
-    }])
+    expect(p.groups).toEqual([
+      {
+        // 블록만 있는 경로다 — 별칭은 머릿말에만 실려 오므로 빈 문자열이어야 한다.
+        name: '회원 관리',
+        color: '#0E7A6C',
+        comment: null,
+        alias: '',
+        tablePhysicalNames: ['MBR'],
+        existingId: null,
+      },
+    ])
   })
 
   it('같은 이름의 그룹이 있으면 existingId 를 채운다', () => {
     const m = createEmptyModel()
     m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null, alias: '' }
     const p = planDdlImport(
-      m, parsedOf({ groups: [{ name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR'] }] }),
-      'postgresql', DEFAULT_NAMING_RULES,
+      m,
+      parsedOf({
+        groups: [{ name: '회원 관리', color: '#0E7A6C', comment: null, tables: ['MBR'] }],
+      }),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
     )
     expect(p.groups[0]!.existingId).toBe('g1')
   })
@@ -489,12 +678,20 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const m = createEmptyModel()
     m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null, alias: '' }
     m.tables['t1'] = {
-      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: 'g1',
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const p = planDdlImport(
-      m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
-      'postgresql', DEFAULT_NAMING_RULES,
+      m,
+      parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
     )
     expect(p.groups).toEqual([])
   })
@@ -505,12 +702,20 @@ describe('planDdlImport — DBML 확장 필드', () => {
   it('블록 그룹만 있고 모델의 같은 이름 테이블은 그룹이 없으면 둘 다 들어온다', () => {
     const m = createEmptyModel()
     m.tables['t1'] = {
-      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const p = planDdlImport(
-      m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
-      'postgresql', DEFAULT_NAMING_RULES,
+      m,
+      parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
     )
     expect(p.tables.map((t) => t.physicalName)).toEqual(['MBR'])
     expect(p.skippedTables).toEqual([])
@@ -524,18 +729,27 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const m = createEmptyModel()
     m.tableGroups['g1'] = { id: 'g1', name: '회원 관리', color: '#111', comment: null, alias: '' }
     m.tables['t1'] = {
-      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: 'g1',
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const p = planDdlImport(
-      m, parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
-      'postgresql', DEFAULT_NAMING_RULES,
+      m,
+      parsedOf({ groups: [{ name: '회원 관리', color: null, comment: null, tables: ['MBR'] }] }),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
     )
     expect(p.tables).toEqual([])
     expect(p.skippedTables).toEqual(['MBR'])
     // 이름을 되돌린 것이 아니므로(머릿말이 없다) 옛 문구 그대로다.
     expect(p.warnings).toContainEqual({
-      kind: 'table-conflict', target: 'MBR',
+      kind: 'table-conflict',
+      target: 'MBR',
       message: '같은 이름의 테이블이 이미 있어 건너뜁니다',
     })
   })
@@ -544,21 +758,36 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const withGroup = planDdlImport(
       createEmptyModel(),
       parsedOf({ groups: [{ name: 'G', color: null, comment: null, tables: ['MBR'] }] }),
-      'postgresql', DEFAULT_NAMING_RULES,
+      'postgresql',
+      DEFAULT_NAMING_RULES,
     )
-    const without = planDdlImport(createEmptyModel(), parsedOf({}), 'postgresql', DEFAULT_NAMING_RULES)
+    const without = planDdlImport(
+      createEmptyModel(),
+      parsedOf({}),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(withGroup.opCountEstimate).toBe(without.opCountEstimate + 1)
   })
 
   it('커스텀 값을 정의 id 키로 옮긴다', () => {
     const m = createEmptyModel()
     m.customFields['f1'] = {
-      id: 'f1', name: '보안등급', target: 'table', type: 'text', options: [],
-      required: false, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '보안등급',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     const p = planDdlImport(
-      m, parsedOf({ customValues: [{ table: 'MBR', column: null, values: { 보안등급: '2' } }] }),
-      'postgresql', DEFAULT_NAMING_RULES,
+      m,
+      parsedOf({ customValues: [{ table: 'MBR', column: null, values: { 보안등급: '2' } }] }),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
     )
     expect(p.tables[0]!.custom).toEqual({ f1: '2' })
   })
@@ -567,11 +796,13 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const p = planDdlImport(
       createEmptyModel(),
       parsedOf({ customValues: [{ table: 'MBR', column: null, values: { 없는항목: 'x' } }] }),
-      'postgresql', DEFAULT_NAMING_RULES,
+      'postgresql',
+      DEFAULT_NAMING_RULES,
     )
     expect(p.tables[0]!.custom).toEqual({})
     expect(p.warnings).toContainEqual({
-      kind: 'unknown-custom-field', target: 'MBR',
+      kind: 'unknown-custom-field',
+      target: 'MBR',
       message: '커스텀 항목 정의가 없어 "없는항목" 값을 버렸습니다',
     })
   })
@@ -579,15 +810,46 @@ describe('planDdlImport — DBML 확장 필드', () => {
   it('oneToOne 인 FK 는 cardinality 1:1 이 된다', () => {
     const parsed = parsedOf({
       tables: [
-        { name: 'MBR', columns: [{ name: 'MBR_NO', rawType: 'bigint', notNull: true,
-          defaultValue: null, autoIncrement: false, inlinePk: true, comment: null }] },
-        { name: 'ORD', columns: [{ name: 'MBR_NO', rawType: 'bigint', notNull: true,
-          defaultValue: null, autoIncrement: false, inlinePk: false, comment: null }] },
+        {
+          name: 'MBR',
+          columns: [
+            {
+              name: 'MBR_NO',
+              rawType: 'bigint',
+              notNull: true,
+              defaultValue: null,
+              autoIncrement: false,
+              inlinePk: true,
+              comment: null,
+            },
+          ],
+        },
+        {
+          name: 'ORD',
+          columns: [
+            {
+              name: 'MBR_NO',
+              rawType: 'bigint',
+              notNull: true,
+              defaultValue: null,
+              autoIncrement: false,
+              inlinePk: false,
+              comment: null,
+            },
+          ],
+        },
       ],
-      constraints: [{
-        kind: 'fk', table: 'ORD', name: 'FK_ORD_MBR', columns: ['MBR_NO'],
-        refTable: 'MBR', refColumns: ['MBR_NO'], oneToOne: true,
-      }],
+      constraints: [
+        {
+          kind: 'fk',
+          table: 'ORD',
+          name: 'FK_ORD_MBR',
+          columns: ['MBR_NO'],
+          refTable: 'MBR',
+          refColumns: ['MBR_NO'],
+          oneToOne: true,
+        },
+      ],
     })
     const p = planDdlImport(createEmptyModel(), parsed, 'postgresql', DEFAULT_NAMING_RULES)
     expect(p.relationships[0]).toMatchObject({ cardinality: '1:1', name: 'FK_ORD_MBR' })
@@ -595,7 +857,11 @@ describe('planDdlImport — DBML 확장 필드', () => {
 
   it('DDL 경로(확장 필드 없음)는 1:N·이름 null 이다', () => {
     const parsed: ParsedDdl = {
-      tables: parsedOf({}).tables, constraints: [], indexes: [], comments: [], skipped: [],
+      tables: parsedOf({}).tables,
+      constraints: [],
+      indexes: [],
+      comments: [],
+      skipped: [],
     }
     const p = planDdlImport(createEmptyModel(), parsed, 'postgresql', DEFAULT_NAMING_RULES)
     expect(p.groups).toEqual([])
@@ -609,7 +875,12 @@ describe('planDdlImport — DBML 확장 필드', () => {
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
     const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
     const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
-    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    const imported = planDdlImport(
+      createEmptyModel(),
+      parseDdl(ddl),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
   })
 
@@ -623,12 +894,18 @@ describe('planDdlImport — DBML 확장 필드', () => {
     m.tables['t1'] = { ...m.tables['t1']!, physicalName: 'mbr_grd' }
     m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'mbr' }
     const rules: NamingRules = {
-      ...DEFAULT_NAMING_RULES, case: 'lower_snake',
+      ...DEFAULT_NAMING_RULES,
+      case: 'lower_snake',
       tablePhysicalTemplate: 'tb_{그룹별칭}_{물리명}',
     }
     const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
-    expect(ddl).toContain('"tb_mbr_mbr":')          // 머릿말의 키는 소문자 원문이다
-    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    expect(ddl).toContain('"tb_mbr_mbr":') // 머릿말의 키는 소문자 원문이다
+    const imported = planDdlImport(
+      createEmptyModel(),
+      parseDdl(ddl),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['mbr', 'mbr_grd'])
   })
 
@@ -639,10 +916,16 @@ describe('planDdlImport — DBML 확장 필드', () => {
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
     const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
     const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
-    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    const imported = planDdlImport(
+      createEmptyModel(),
+      parseDdl(ddl),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(imported.relationships).toHaveLength(1)
     expect(imported.relationships[0]).toMatchObject({
-      childPhysicalName: 'MBR', parentPhysicalName: 'MBR_GRD',
+      childPhysicalName: 'MBR',
+      parentPhysicalName: 'MBR_GRD',
     })
     const mbr = imported.tables.find((t) => t.physicalName === 'MBR')!
     expect(mbr.indexes.map((ix) => ix.name)).toEqual(['UX_MBR_01'])
@@ -654,10 +937,19 @@ describe('planDdlImport — DBML 확장 필드', () => {
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
     const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
     const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
-      .split('\n').filter((l) => !l.startsWith('-- erdd:')).join('\n')   // 머릿말만 떼어낸다
-    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
-    expect(imported.tables.map((t) => t.physicalName).sort())
-      .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
+      .split('\n')
+      .filter((l) => !l.startsWith('-- erdd:'))
+      .join('\n') // 머릿말만 떼어낸다
+    const imported = planDdlImport(
+      createEmptyModel(),
+      parseDdl(ddl),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
+    expect(imported.tables.map((t) => t.physicalName).sort()).toEqual([
+      'TB_MBR_MBR',
+      'TB_MBR_MBR_GRD',
+    ])
   })
 
   it('두 번 왕복해도 접두가 겹치지 않는다', () => {
@@ -665,7 +957,12 @@ describe('planDdlImport — DBML 확장 필드', () => {
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
     const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
     const once = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
-    const back = planDdlImport(createEmptyModel(), parseDdl(once), 'postgresql', DEFAULT_NAMING_RULES)
+    const back = planDdlImport(
+      createEmptyModel(),
+      parseDdl(once),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(back.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
     expect(once).not.toContain('TB_MBR_TB_MBR_')
   })
@@ -680,10 +977,15 @@ describe('planDdlImport — DBML 확장 필드', () => {
       tableLogicalTemplate: '{그룹명}_{논리명}',
     }
     const ddl = generateDdlRaw(m, 'postgresql', { kind: 'all' }, rules)
-    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    const imported = planDdlImport(
+      createEmptyModel(),
+      parseDdl(ddl),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     const mbr = imported.tables.find((t) => t.physicalName === 'MBR')!
-    expect(mbr.logicalName).toBe('회원')                 // 'SALES_회원' 이 아니다
-    expect(mbr.comment).toBe('서비스 가입 회원')          // 설명은 코멘트에서 그대로
+    expect(mbr.logicalName).toBe('회원') // 'SALES_회원' 이 아니다
+    expect(mbr.comment).toBe('서비스 가입 회원') // 설명은 코멘트에서 그대로
   })
 
   // ⚠️ 설계 D6 — 사용자가 DDL 의 이름을 손으로 고치면 키가 안 맞아 현행 동작으로 떨어진다.
@@ -692,7 +994,12 @@ describe('planDdlImport — DBML 확장 필드', () => {
       '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"주문"}}',
       'CREATE TABLE TB_MBR_ORDER (ID BIGINT NOT NULL);',
     ].join('\n')
-    const imported = planDdlImport(createEmptyModel(), parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
+    const imported = planDdlImport(
+      createEmptyModel(),
+      parseDdl(ddl),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(imported.tables[0]!.physicalName).toBe('TB_MBR_ORDER')
   })
 
@@ -701,7 +1008,12 @@ describe('planDdlImport — DBML 확장 필드', () => {
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
     const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
     const dbml = generateDbmlRaw(m, 'postgresql', { kind: 'all' }, {}, rules)
-    const imported = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
+    const imported = planDdlImport(
+      createEmptyModel(),
+      parseDbml(dbml),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(imported.tables.map((t) => t.physicalName).sort()).toEqual(['MBR', 'MBR_GRD'])
     // 그룹 소속도 복원된 이름으로 맞춰진다.
     expect(imported.groups[0]!.tablePhysicalNames.sort()).toEqual(['MBR', 'MBR_GRD'])
@@ -713,8 +1025,14 @@ describe('planDdlImport — DBML 확장 필드', () => {
   it('복원된 이름이 기존 테이블과 부딪히면 건너뛴다', () => {
     const m = createEmptyModel()
     m.tables['t1'] = {
-      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const ddl = [
       '-- erdd:v1 {"TB_MBR_ORD":{"p":"ORD","l":"주문"}}',
@@ -727,10 +1045,13 @@ describe('planDdlImport — DBML 확장 필드', () => {
     // TB_MBR_ORD 라, 「같은 이름의 테이블이 이미 있어」만 적으면 사용자가 사이드바에서
     // TB_MBR_ORD 를 찾다 못 찾고 경고를 거짓으로 판단한다(브라우저 스모크에서 실제 관측).
     expect(imported.warnings).toContainEqual({
-      kind: 'table-conflict', target: 'TB_MBR_ORD',
+      kind: 'table-conflict',
+      target: 'TB_MBR_ORD',
       message: '머릿말이 TB_MBR_ORD을 ORD로 되돌렸는데 그 이름의 테이블이 이미 있어 건너뜁니다',
     })
-    expect(imported.warnings.map((w) => w.message)).not.toContain('같은 이름의 테이블이 이미 있어 건너뜁니다')
+    expect(imported.warnings.map((w) => w.message)).not.toContain(
+      '같은 이름의 테이블이 이미 있어 건너뜁니다',
+    )
   })
 
   // ⚠️ 설계 D6 — 원본에서 그룹이 갈라 정상 공존하던 두 ORD 는 둘 다 들어와야 한다.
@@ -767,15 +1088,21 @@ describe('planDdlImport — DBML 확장 필드', () => {
     const m = createEmptyModel()
     m.tableGroups['g1'] = { id: 'g1', name: '회원', color: '#111', comment: null, alias: 'MBR' }
     m.tables['t1'] = {
-      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: 'g1',
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const ddl = [
       '-- erdd:v2 {"t":{"TB_PRD_ORD":{"p":"ORD","l":"상품주문","g":"상품"}},"g":{"상품":{"a":"PRD"}}}',
       'CREATE TABLE TB_PRD_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
     ].join('\n')
     const p = planDdlImport(m, parseDdl(ddl), 'postgresql', DEFAULT_NAMING_RULES)
-    expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD'])   // 그룹이 달라 안 부딪힌다
+    expect(p.tables.map((t) => t.physicalName)).toEqual(['ORD']) // 그룹이 달라 안 부딪힌다
     expect(p.skippedTables).toEqual([])
   })
 
@@ -786,9 +1113,10 @@ describe('planDdlImport — DBML 확장 필드', () => {
   //   T3(`A`+`BC`)  과 T4(`AB`+`C`)   → 구분자가 아예 없으면 둘 다 `ABC`
   // NUL 은 그룹 이름에도 물리명에도 들어갈 수 없어 어느 쪽으로도 뭉개지지 않는다.
   it('그룹 이름과 부분 이름의 경계가 구분자로 뭉개지지 않는다', () => {
-    const meta = '{"t":{"T1":{"p":"C","l":"가","g":"A_B"},"T2":{"p":"B_C","l":"나","g":"A"},'
-      + '"T3":{"p":"BC","l":"다","g":"A"},"T4":{"p":"C","l":"라","g":"AB"}},'
-      + '"g":{"A_B":{},"A":{},"AB":{}}}'
+    const meta =
+      '{"t":{"T1":{"p":"C","l":"가","g":"A_B"},"T2":{"p":"B_C","l":"나","g":"A"},' +
+      '"T3":{"p":"BC","l":"다","g":"A"},"T4":{"p":"C","l":"라","g":"AB"}},' +
+      '"g":{"A_B":{},"A":{},"AB":{}}}'
     const ddl = [
       `-- erdd:v2 ${meta}`,
       'CREATE TABLE T1 (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
@@ -825,8 +1153,10 @@ describe('planDdlImport — DBML 확장 필드', () => {
     //     판단해 넘긴다. target 은 DDL 원문 이름이다 — 사용자가 입력에서 찾을 수 있는 이름은
     //     그것뿐이고(ORD 는 머릿말 JSON 밖에 안 나온다) skippedTables·형제 분기와도 같은 기준이다.
     expect(p2.warnings).toContainEqual({
-      kind: 'table-conflict', target: 'TB_PRD_ORD',
-      message: '머릿말이 TB_PRD_ORD을 ORD로 되돌렸는데 그 이름을 앞의 테이블이 이미 써서 건너뜁니다',
+      kind: 'table-conflict',
+      target: 'TB_PRD_ORD',
+      message:
+        '머릿말이 TB_PRD_ORD을 ORD로 되돌렸는데 그 이름을 앞의 테이블이 이미 써서 건너뜁니다',
     })
     // 진짜 중복 CREATE TABLE 의 문구가 새지 않는다.
     expect(p2.warnings.map((w) => w.message)).not.toContain(
@@ -848,10 +1178,19 @@ describe('planDdlImport — DBML 확장 필드', () => {
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, alias: 'MBR' }
     const rules = { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' }
     const dbml = generateDbmlRaw(m, 'postgresql', { kind: 'all' }, {}, rules)
-      .split('\n').filter((l) => !l.startsWith('// erdd:')).join('\n')
-    const imported = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
-    expect(imported.tables.map((t) => t.physicalName).sort())
-      .toEqual(['TB_MBR_MBR', 'TB_MBR_MBR_GRD'])
+      .split('\n')
+      .filter((l) => !l.startsWith('// erdd:'))
+      .join('\n')
+    const imported = planDdlImport(
+      createEmptyModel(),
+      parseDbml(dbml),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
+    expect(imported.tables.map((t) => t.physicalName).sort()).toEqual([
+      'TB_MBR_MBR',
+      'TB_MBR_MBR_GRD',
+    ])
   })
 })
 
@@ -864,8 +1203,12 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
   }
 
   it('DDL 왕복에서 그룹과 별칭이 살아난다', () => {
-    const sql = generateDdlRaw(source(), 'postgresql', { kind: 'all' },
-      { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' })
+    const sql = generateDdlRaw(
+      source(),
+      'postgresql',
+      { kind: 'all' },
+      { ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}' },
+    )
     const p = planDdlImport(createEmptyModel(), parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
 
     expect(p.groups).toHaveLength(1)
@@ -891,7 +1234,7 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
     expect(p.groups).toHaveLength(1)
     expect(p.groups[0]!.alias).toBe('MBR')
-    expect(p.groups[0]!.color).toBe('#4A90D9')       // 블록의 #999999 가 아니다
+    expect(p.groups[0]!.color).toBe('#4A90D9') // 블록의 #999999 가 아니다
   })
 
   // ⚠️ 남이 준 DBML 은 머릿말이 없다 — 블록만으로 지금처럼 동작한다.
@@ -933,7 +1276,7 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
     expect(p.groups).toHaveLength(1)
     expect([...p.groups[0]!.tablePhysicalNames].sort()).toEqual(['MBR', 'ORD'])
-    expect(p.groups[0]!.color).toBe('#4A90D9')      // 속성은 여전히 머릿말이 이긴다(블록의 #999999 가 아니다)
+    expect(p.groups[0]!.color).toBe('#4A90D9') // 속성은 여전히 머릿말이 이긴다(블록의 #999999 가 아니다)
   })
 
   /**
@@ -948,13 +1291,13 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
       'Table "MBR" {',
       '  "ID" bigint [pk]',
       '}',
-      "TableGroup \"회원관리\" [color: #999999, note: '블록이 쓴 설명'] {",
+      'TableGroup "회원관리" [color: #999999, note: \'블록이 쓴 설명\'] {',
       '  MBR',
       '}',
     ].join('\n')
     const p = planDdlImport(createEmptyModel(), parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
     expect(p.groups).toHaveLength(1)
-    expect(p.groups[0]!.color).toBeNull()            // 웹이 팔레트에서 고른다
+    expect(p.groups[0]!.color).toBeNull() // 웹이 팔레트에서 고른다
     expect(p.groups[0]!.comment).toBeNull()
     expect(p.groups[0]!.alias).toBe('MBR')
   })
@@ -974,7 +1317,7 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
       'Table "MBR" {',
       '  "ID" bigint [pk]',
       '}',
-      "TableGroup \"회원관리\" [color: #999999, note: '블록이 쓴 설명'] {",
+      'TableGroup "회원관리" [color: #999999, note: \'블록이 쓴 설명\'] {',
       '  MBR',
       '}',
     ].join('\n')
@@ -982,7 +1325,7 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     expect(p.groups).toHaveLength(1)
     expect(p.groups[0]!.color).toBe('#999999')
     expect(p.groups[0]!.comment).toBe('블록이 쓴 설명')
-    expect(p.groups[0]!.alias).toBe('')              // 별칭은 머릿말에만 있다
+    expect(p.groups[0]!.alias).toBe('') // 별칭은 머릿말에만 있다
   })
 
   /**
@@ -998,10 +1341,10 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     'Table "ORD" {',
     '  "ID" bigint [pk]',
     '}',
-    "TableGroup \"Sales\" [color: #111111, note: '앞'] {",
+    'TableGroup "Sales" [color: #111111, note: \'앞\'] {',
     '  MBR',
     '}',
-    "TableGroup \"SALES\" [color: #999999, note: '뒤'] {",
+    'TableGroup "SALES" [color: #999999, note: \'뒤\'] {',
     '  ORD',
     '}',
   ].join('\n')
@@ -1014,7 +1357,11 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
    */
   it('머릿말 없는 DBML 의 동명 블록 둘은 한 그룹으로 합쳐진다', () => {
     const p = planDdlImport(
-      createEmptyModel(), parseDbml(twinBlocks), 'postgresql', DEFAULT_NAMING_RULES)
+      createEmptyModel(),
+      parseDbml(twinBlocks),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(p.groups).toHaveLength(1)
     expect([...p.groups[0]!.tablePhysicalNames].sort()).toEqual(['MBR', 'ORD'])
   })
@@ -1029,8 +1376,12 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
    */
   it('동명 블록이 합쳐질 때 먼저 나온 블록의 이름·색·코멘트가 이긴다', () => {
     const p = planDdlImport(
-      createEmptyModel(), parseDbml(twinBlocks), 'postgresql', DEFAULT_NAMING_RULES)
-    expect(p.groups[0]!.name).toBe('Sales')          // 'SALES'(뒤엣것)가 아니다
+      createEmptyModel(),
+      parseDbml(twinBlocks),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
+    expect(p.groups[0]!.name).toBe('Sales') // 'SALES'(뒤엣것)가 아니다
     expect(p.groups[0]!.color).toBe('#111111')
     expect(p.groups[0]!.comment).toBe('앞')
   })
@@ -1047,8 +1398,14 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
   it('충돌 판정이 블록 그룹을 보고 들여보낸 테이블은 실제로 그 그룹에 들어간다', () => {
     const m = createEmptyModel()
     m.tables['t1'] = {
-      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const dbml = [
       '// erdd:v2 {"t":{"MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR"}}}',
@@ -1064,7 +1421,7 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
       '}',
     ].join('\n')
     const p = planDdlImport(m, parseDbml(dbml), 'postgresql', DEFAULT_NAMING_RULES)
-    expect(p.skippedTables).toEqual([])                       // 키가 (회원관리, ORD) 라 부딪히지 않는다
+    expect(p.skippedTables).toEqual([]) // 키가 (회원관리, ORD) 라 부딪히지 않는다
     expect(p.groups).toHaveLength(1)
     // 그 판정대로 실제로 회원관리에 들어간다 — 그룹 없이 만들어지면 모델의 ORD 와 중복이 된다.
     expect([...p.groups[0]!.tablePhysicalNames].sort()).toEqual(['MBR', 'ORD'])
@@ -1101,9 +1458,9 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     const m = buildSampleModel()
     m.tableGroups['g1'] = { ...m.tableGroups['g1']!, name: 'Sales_Domain' }
     const sql = generateDdlRaw(m, 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES)
-    expect(sql).toContain('"Sales_Domain"')            // 머릿말은 원문 그대로 적는다
+    expect(sql).toContain('"Sales_Domain"') // 머릿말은 원문 그대로 적는다
     const p = planDdlImport(createEmptyModel(), parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
-    expect(p.groups.map((g) => g.name)).toEqual(['Sales_Domain'])   // 'SALES_DOMAIN' 이 아니다
+    expect(p.groups.map((g) => g.name)).toEqual(['Sales_Domain']) // 'SALES_DOMAIN' 이 아니다
   })
 
   // ⚠️ 머릿말 경로도 **살아남은 테이블만** 그룹에 담는다. 블록 경로의 「건너뛴 테이블은 그룹
@@ -1117,19 +1474,25 @@ describe('planDdlImport — 머릿말 그룹 복원', () => {
     const m = createEmptyModel()
     m.tableGroups['g1'] = { id: 'g1', name: '회원관리', color: '#111', comment: null, alias: 'MBR' }
     m.tables['t1'] = {
-      id: 't1', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: 'g1', position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: 'g1',
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const sql = [
-      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원관리"},'
-        + '"TB_MBR_MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR"}}}',
+      '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원관리"},' +
+        '"TB_MBR_MBR":{"p":"MBR","l":"회원","g":"회원관리"}},"g":{"회원관리":{"a":"MBR"}}}',
       'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL);',
       'CREATE TABLE TB_MBR_MBR (ID BIGINT NOT NULL);',
     ].join('\n')
     const p = planDdlImport(m, parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
-    expect(p.skippedTables).toEqual(['TB_MBR_ORD'])    // 모델의 기존 ORD 와 부딪힌다
+    expect(p.skippedTables).toEqual(['TB_MBR_ORD']) // 모델의 기존 ORD 와 부딪힌다
     expect(p.groups).toHaveLength(1)
-    expect(p.groups[0]!.tablePhysicalNames).toEqual(['MBR'])   // ORD 가 섞이지 않는다
+    expect(p.groups[0]!.tablePhysicalNames).toEqual(['MBR']) // ORD 가 섞이지 않는다
   })
 })
 
@@ -1146,19 +1509,28 @@ describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
   ].join('\n')
 
   it('별칭이 다르면 기존 값을 유지하고 경고한다', () => {
-    const p = planDdlImport(withGroup('MB', '#4A90D9', '회원 도메인'), parseDdl(incoming),
-      'postgresql', DEFAULT_NAMING_RULES)
+    const p = planDdlImport(
+      withGroup('MB', '#4A90D9', '회원 도메인'),
+      parseDdl(incoming),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(p.groups[0]!.existingId).toBe('g1')
     expect(p.warnings).toContainEqual({
-      kind: 'group-conflict', target: '회원',
+      kind: 'group-conflict',
+      target: '회원',
       message: '머릿말의 별칭 MBR 과 기존 그룹의 별칭 MB 가 달라 기존 값을 유지합니다',
     })
   })
 
   // ⚠️ D3 의 반대편 — 색·코멘트는 갈려도 이름을 안 바꾸므로 조용히 유지한다.
   it('색·코멘트만 다르면 경고가 없다', () => {
-    const p = planDdlImport(withGroup('MBR', '#999999', '다른 설명'), parseDdl(incoming),
-      'postgresql', DEFAULT_NAMING_RULES)
+    const p = planDdlImport(
+      withGroup('MBR', '#999999', '다른 설명'),
+      parseDdl(incoming),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
   })
 
@@ -1168,8 +1540,12 @@ describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
       '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원"}},"g":{"회원":{"c":"#4A90D9"}}}',
       'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
     ].join('\n')
-    const p = planDdlImport(withGroup('MB', '#4A90D9', null), parseDdl(noAlias),
-      'postgresql', DEFAULT_NAMING_RULES)
+    const p = planDdlImport(
+      withGroup('MB', '#4A90D9', null),
+      parseDdl(noAlias),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
   })
 
@@ -1182,8 +1558,12 @@ describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
       '-- erdd:v2 {"t":{"TB_MBR_ORD":{"p":"ORD","l":"주문","g":"회원"}},"g":{"회원":{"a":"","c":"#4A90D9"}}}',
       'CREATE TABLE TB_MBR_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
     ].join('\n')
-    const p = planDdlImport(withGroup('MB', '#4A90D9', null), parseDdl(emptyAlias),
-      'postgresql', DEFAULT_NAMING_RULES)
+    const p = planDdlImport(
+      withGroup('MB', '#4A90D9', null),
+      parseDdl(emptyAlias),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(p.warnings.filter((w) => w.kind === 'group-conflict')).toEqual([])
   })
 
@@ -1192,10 +1572,15 @@ describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
   // 때문이다. 다만 문구가 갈려야 한다: 한 문구로 뭉치면 「기존 그룹의 별칭  가 달라」처럼 공백이
   // 둘 붙어 말이 안 된다. **createGroup 이 새 그룹을 전부 alias:'' 로 만들므로 드문 자리가 아니다.**
   it('기존 그룹에 별칭이 없으면 경고는 내되 문구가 갈린다', () => {
-    const p = planDdlImport(withGroup('', '#4A90D9', '회원 도메인'), parseDdl(incoming),
-      'postgresql', DEFAULT_NAMING_RULES)
+    const p = planDdlImport(
+      withGroup('', '#4A90D9', '회원 도메인'),
+      parseDdl(incoming),
+      'postgresql',
+      DEFAULT_NAMING_RULES,
+    )
     expect(p.warnings).toContainEqual({
-      kind: 'group-conflict', target: '회원',
+      kind: 'group-conflict',
+      target: '회원',
       message: '머릿말의 별칭 MBR 을 적용하지 않습니다 — 기존 그룹에는 별칭이 없습니다',
     })
   })
@@ -1206,15 +1591,22 @@ describe('planDdlImport — 별칭이 다른 기존 그룹', () => {
   // 골랐다). 뭉개진 이름을 내보내면 사용자가 사이드바에서 그 그룹을 찾지 못한다.
   it('경고의 target 은 대문자 색인 키가 아니라 기존 그룹의 원문 이름이다', () => {
     const m = createEmptyModel()
-    m.tableGroups['g1'] = { id: 'g1', name: 'Sales_Domain', color: '#111', comment: null, alias: 'SLS' }
+    m.tableGroups['g1'] = {
+      id: 'g1',
+      name: 'Sales_Domain',
+      color: '#111',
+      comment: null,
+      alias: 'SLS',
+    }
     const sql = [
-      '-- erdd:v2 {"t":{"TB_SLS_ORD":{"p":"ORD","l":"주문","g":"Sales_Domain"}},'
-        + '"g":{"Sales_Domain":{"a":"SALES"}}}',
+      '-- erdd:v2 {"t":{"TB_SLS_ORD":{"p":"ORD","l":"주문","g":"Sales_Domain"}},' +
+        '"g":{"Sales_Domain":{"a":"SALES"}}}',
       'CREATE TABLE TB_SLS_ORD (ID BIGINT NOT NULL, PRIMARY KEY (ID));',
     ].join('\n')
     const p = planDdlImport(m, parseDdl(sql), 'postgresql', DEFAULT_NAMING_RULES)
     expect(p.warnings).toContainEqual({
-      kind: 'group-conflict', target: 'Sales_Domain',        // 'SALES_DOMAIN' 이 아니다
+      kind: 'group-conflict',
+      target: 'Sales_Domain', // 'SALES_DOMAIN' 이 아니다
       message: '머릿말의 별칭 SALES 과 기존 그룹의 별칭 SLS 가 달라 기존 값을 유지합니다',
     })
   })
@@ -1234,25 +1626,35 @@ describe('planDdlImport — unsigned-dropped', () => {
   it('허용 집합 밖(DECIMAL)은 부호 없음만 떨어뜨리고 경고한다', () => {
     const p = plan('CREATE TABLE ORD (AMT decimal(10,2) unsigned);')
     expect(p.tables[0]!.columns[0]!.type).toBe('DECIMAL(10,2)')
-    expect(p.warnings.filter((w) => w.kind === 'unsigned-dropped')).toEqual([{
-      kind: 'unsigned-dropped', target: 'ORD.AMT',
-      message: 'DECIMAL(10,2)에는 부호 없음을 붙일 수 없어 떨어뜨렸습니다 (원문 decimal(10,2) unsigned)',
-    }])
+    expect(p.warnings.filter((w) => w.kind === 'unsigned-dropped')).toEqual([
+      {
+        kind: 'unsigned-dropped',
+        target: 'ORD.AMT',
+        message:
+          'DECIMAL(10,2)에는 부호 없음을 붙일 수 없어 떨어뜨렸습니다 (원문 decimal(10,2) unsigned)',
+      },
+    ])
   })
 
   it('TINYINT(1) → BOOLEAN 승격 갈래도 원문과 결과를 함께 적는다', () => {
     const p = plan('CREATE TABLE ORD (FLG tinyint(1) unsigned);')
     expect(p.tables[0]!.columns[0]!.type).toBe('BOOLEAN')
-    expect(p.warnings.filter((w) => w.kind === 'unsigned-dropped')).toEqual([{
-      kind: 'unsigned-dropped', target: 'ORD.FLG',
-      message: 'BOOLEAN에는 부호 없음을 붙일 수 없어 떨어뜨렸습니다 (원문 tinyint(1) unsigned)',
-    }])
+    expect(p.warnings.filter((w) => w.kind === 'unsigned-dropped')).toEqual([
+      {
+        kind: 'unsigned-dropped',
+        target: 'ORD.FLG',
+        message: 'BOOLEAN에는 부호 없음을 붙일 수 없어 떨어뜨렸습니다 (원문 tinyint(1) unsigned)',
+      },
+    ])
   })
 
   it('정수 3종에는 경고가 없다', () => {
     const p = plan('CREATE TABLE ORD (A int unsigned, B bigint(20) unsigned, C smallint unsigned);')
-    expect(p.tables[0]!.columns.map((c) => c.type))
-      .toEqual(['INT UNSIGNED', 'BIGINT UNSIGNED', 'SMALLINT UNSIGNED'])
+    expect(p.tables[0]!.columns.map((c) => c.type)).toEqual([
+      'INT UNSIGNED',
+      'BIGINT UNSIGNED',
+      'SMALLINT UNSIGNED',
+    ])
     expect(p.warnings.filter((w) => w.kind === 'unsigned-dropped')).toEqual([])
     expect(p.warnings.filter((w) => w.kind === 'unknown-type')).toEqual([])
   })
@@ -1269,7 +1671,9 @@ describe('planDdlImport — 테이블 옵션 다수결', () => {
   const t = (name: string, tail: string) => `CREATE TABLE ${name} (A INT)${tail};`
 
   it('허용 목록(ENGINE·CHARSET·COLLATE)만 취하고 정규화한다', () => {
-    const p = plan(t('A', ' ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC'))
+    const p = plan(
+      t('A', ' ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC'),
+    )
     expect(p.tableOptions).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
   })
 
@@ -1296,29 +1700,37 @@ describe('planDdlImport — 테이블 옵션 다수결', () => {
   })
 
   it('다수결 — 3 테이블(A,A,B) 에서 최다 득표를 채택하고 다른 테이블마다 경고 1건', () => {
-    const p = plan([
-      t('T1', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'),
-      t('T2', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'),
-      t('T3', ' ENGINE=MyISAM'),
-    ].join('\n'))
+    const p = plan(
+      [
+        t('T1', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'),
+        t('T2', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'),
+        t('T3', ' ENGINE=MyISAM'),
+      ].join('\n'),
+    )
     expect(p.tableOptions).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
-    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict')).toEqual([{
-      kind: 'table-option-conflict', target: 'T3',
-      message: "테이블 옵션이 'ENGINE=MyISAM'이라 채택값 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'과"
-        + ' 다릅니다 — 채택값을 씁니다',
-    }])
+    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict')).toEqual([
+      {
+        kind: 'table-option-conflict',
+        target: 'T3',
+        message:
+          "테이블 옵션이 'ENGINE=MyISAM'이라 채택값 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'과" +
+          ' 다릅니다 — 채택값을 씁니다',
+      },
+    ])
   })
 
   it('동수면 DDL 에 먼저 나온 것 — 결정적이어야 한다', () => {
     const p = plan(`${t('T1', ' ENGINE=MyISAM')}\n${t('T2', ' ENGINE=InnoDB')}`)
     expect(p.tableOptions).toBe('ENGINE=MyISAM')
-    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict').map((w) => w.target)).toEqual(['T2'])
+    expect(
+      p.warnings.filter((w) => w.kind === 'table-option-conflict').map((w) => w.target),
+    ).toEqual(['T2'])
   })
 
   it('⚠️ 빈 꼬리는 투표하지 않는다 — 절반이 생략한 덤프에서 있는 값을 잃으면 안 된다', () => {
-    const p = plan([
-      t('T1', ''), t('T2', ''), t('T3', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'),
-    ].join('\n'))
+    const p = plan(
+      [t('T1', ''), t('T2', ''), t('T3', ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')].join('\n'),
+    )
     expect(p.tableOptions).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
     // 옵션이 없는 테이블은 「다르다」고 경고하지도 않는다 — 적은 적이 없기 때문이다.
     expect(p.warnings.filter((w) => w.kind === 'table-option-conflict')).toEqual([])
@@ -1329,8 +1741,11 @@ describe('planDdlImport — 테이블 옵션 다수결', () => {
   })
 
   it('target 은 DDL 원문 이름이다 — 사용자가 입력에서 찾을 수 있어야 한다', () => {
-    const p = plan(`${t('Ord_Log', ' ENGINE=MyISAM')}\n${t('Ord', ' ENGINE=InnoDB')}\n${t('Ord2', ' ENGINE=InnoDB')}`)
-    expect(p.warnings.filter((w) => w.kind === 'table-option-conflict').map((w) => w.target))
-      .toEqual(['Ord_Log'])
+    const p = plan(
+      `${t('Ord_Log', ' ENGINE=MyISAM')}\n${t('Ord', ' ENGINE=InnoDB')}\n${t('Ord2', ' ENGINE=InnoDB')}`,
+    )
+    expect(
+      p.warnings.filter((w) => w.kind === 'table-option-conflict').map((w) => w.target),
+    ).toEqual(['Ord_Log'])
   })
 })

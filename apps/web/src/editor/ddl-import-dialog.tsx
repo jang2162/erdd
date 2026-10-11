@@ -2,8 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  DIALECTS, detectDialect, dialectFromDatabaseType, parseDbml, parseDdl,
-  planDdlImport, type Dialect, type ParsedDbml,
+  DIALECTS,
+  detectDialect,
+  dialectFromDatabaseType,
+  parseDbml,
+  parseDdl,
+  planDdlImport,
+  type Dialect,
+  type ParsedDbml,
 } from '@erdd/core'
 import { useTRPC } from '@/lib/trpc'
 import { formatCount, formatProgress } from '@/lib/format'
@@ -14,7 +20,11 @@ import { newId } from './uid.js'
 import { DIALECT_LABEL } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
 
 /**
@@ -32,7 +42,11 @@ import {
  */
 type Format = 'ddl' | 'dbml'
 
-export function DdlImportDialog({ projectId, open, onOpenChange }: {
+export function DdlImportDialog({
+  projectId,
+  open,
+  onOpenChange,
+}: {
   projectId: string
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -75,7 +89,8 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
   // 적용 중에는 제출한 계획을 그대로 보인다 — 낙관적 반영으로 모델이 바뀌면 plan 이 다시 계산돼
   // 방금 만든 테이블이 전부 「이름이 겹침」으로 보인다. progress 는 조각이 둘 이상일 때만 채워진다.
   const [applying, setApplying] = useState<{
-    plan: NonNullable<typeof plan>; progress: { done: number; total: number } | null
+    plan: NonNullable<typeof plan>
+    progress: { done: number; total: number } | null
   } | null>(null)
   const shown = applying?.plan ?? plan
 
@@ -96,7 +111,7 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
 
   const onApply = async () => {
     if (plan === null || applying !== null) return
-    const captured = plan                       // producer 진입 전에 캡처한다(마이크로태스크 지연 대비)
+    const captured = plan // producer 진입 전에 캡처한다(마이크로태스크 지연 대비)
     const summary = format === 'ddl' ? 'DDL 가져오기' : 'DBML 가져오기'
     setApplying({ plan: captured, progress: null })
     try {
@@ -109,10 +124,12 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
       // 「편집 1건 = 실행 취소 1회」가 반쪽이 된다(설정은 되돌아가지 않는다).
       if (canApplyOption && applyOption && captured.tableOptions !== null) {
         await updateProject.mutateAsync({
-          projectId, tableOptions: { ...tableOptions, [dialect]: captured.tableOptions },
+          projectId,
+          tableOptions: { ...tableOptions, [dialect]: captured.tableOptions },
         })
       }
-      onOpenChange(false); setText('')
+      onOpenChange(false)
+      setText('')
     } finally {
       setApplying(null)
     }
@@ -124,17 +141,29 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>DDL·DBML 가져오기</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>DDL·DBML 가져오기</DialogTitle>
+        </DialogHeader>
         <div className="flex gap-2">
           <Button
-            type="button" size="sm" variant={format === 'ddl' ? 'default' : 'outline'}
-            onClick={() => { setFormat('ddl'); setManualDialect(null) }}
+            type="button"
+            size="sm"
+            variant={format === 'ddl' ? 'default' : 'outline'}
+            onClick={() => {
+              setFormat('ddl')
+              setManualDialect(null)
+            }}
           >
             DDL
           </Button>
           <Button
-            type="button" size="sm" variant={format === 'dbml' ? 'default' : 'outline'}
-            onClick={() => { setFormat('dbml'); setManualDialect(null) }}
+            type="button"
+            size="sm"
+            variant={format === 'dbml' ? 'default' : 'outline'}
+            onClick={() => {
+              setFormat('dbml')
+              setManualDialect(null)
+            }}
           >
             DBML
           </Button>
@@ -149,7 +178,8 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
           >
             {DIALECTS.map((d) => (
               <option key={d} value={d}>
-                {DIALECT_LABEL[d]}{d === detected ? ' (자동 감지)' : ''}
+                {DIALECT_LABEL[d]}
+                {d === detected ? ' (자동 감지)' : ''}
               </option>
             ))}
           </select>
@@ -157,30 +187,36 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
         <textarea
           aria-label={format === 'ddl' ? 'DDL' : 'DBML'}
           className="min-h-40 rounded-md border bg-muted p-3 font-mono text-xs"
-          placeholder={format === 'ddl'
-            ? 'CREATE TABLE ... 형태의 DDL을 붙여넣으세요'
-            : 'Table "..." { ... } 형태의 DBML을 붙여넣으세요'}
+          placeholder={
+            format === 'ddl'
+              ? 'CREATE TABLE ... 형태의 DDL을 붙여넣으세요'
+              : 'Table "..." { ... } 형태의 DBML을 붙여넣으세요'
+          }
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
         {shown !== null && (
           <>
             <p className="text-sm">
-              테이블 {formatCount(shown.tables.length)}개 · 컬럼 {formatCount(columnCount)}개 · 관계 {formatCount(shown.relationships.length)}개
-              {' '}· 인덱스 {formatCount(indexCount)}개
+              테이블 {formatCount(shown.tables.length)}개 · 컬럼 {formatCount(columnCount)}개 · 관계{' '}
+              {formatCount(shown.relationships.length)}개 · 인덱스 {formatCount(indexCount)}개
               {shown.groups.length > 0 && ` · 그룹 ${formatCount(shown.groups.length)}개`}
               {/* ⚠️ 여기 나열되는 것은 **DDL 원문 이름**이다. 머릿말이 이름을 되돌리면 실제로
                   부딪힌 이름은 그것과 다르므로(TB_MBR_ORD → ORD) 「이미 있는 이름」이라고 적으면
                   거짓이 된다 — 사용자가 사이드바에서 그 이름을 못 찾는다. 겹쳤다는 사실만 적고
                   무엇과 겹쳤는지는 아래 경고 목록이 테이블마다 정확히 말한다. */}
-              {shown.skippedTables.length > 0
-                && ` · 건너뜀 ${formatCount(shown.skippedTables.length)}개 (이름이 겹침: ${shown.skippedTables.join(', ')})`}
+              {shown.skippedTables.length > 0 &&
+                ` · 건너뜀 ${formatCount(shown.skippedTables.length)}개 (이름이 겹침: ${shown.skippedTables.join(', ')})`}
             </p>
             {shown.warnings.length > 0 && (
-              <ul aria-label="가져오기 경고" className="grid max-h-48 gap-0.5 overflow-y-auto text-xs text-key">
+              <ul
+                aria-label="가져오기 경고"
+                className="grid max-h-48 gap-0.5 overflow-y-auto text-xs text-key"
+              >
                 {shown.warnings.map((w, i) => (
                   <li key={i}>
-                    ⚠ <span className="font-mono text-muted-foreground">{w.target}</span> {w.message}
+                    ⚠ <span className="font-mono text-muted-foreground">{w.target}</span>{' '}
+                    {w.message}
                   </li>
                 ))}
               </ul>
@@ -189,23 +225,35 @@ export function DdlImportDialog({ projectId, open, onOpenChange }: {
               <div className="grid gap-1">
                 <label className="flex items-center gap-2 text-sm">
                   <input
-                    type="checkbox" checked={applyOption}
+                    type="checkbox"
+                    checked={applyOption}
                     onChange={(e) => setApplyOption(e.target.checked)}
                   />
                   프로젝트의 테이블 옵션도 갱신
                 </label>
                 <p className="text-xs text-muted-foreground">
                   <span className="font-mono">{dialect}</span> 칸을
-                  {currentOption.trim() === ''
-                    ? ' '
-                    : <> <span className="font-mono">{currentOption}</span> 에서 </>}
-                  <span className="font-mono">{planOption}</span> 로 바꿉니다.
-                  ⚠️ 테이블 생성은 되돌리기로 취소되지만 이 설정은 되돌아가지 않습니다.
+                  {currentOption.trim() === '' ? (
+                    ' '
+                  ) : (
+                    <>
+                      {' '}
+                      <span className="font-mono">{currentOption}</span> 에서{' '}
+                    </>
+                  )}
+                  <span className="font-mono">{planOption}</span> 로 바꿉니다. ⚠️ 테이블 생성은
+                  되돌리기로 취소되지만 이 설정은 되돌아가지 않습니다.
                 </p>
               </div>
             )}
             <DialogFooter>
-              <Button type="button" disabled={applying !== null} onClick={() => { void onApply() }}>
+              <Button
+                type="button"
+                disabled={applying !== null}
+                onClick={() => {
+                  void onApply()
+                }}
+              >
                 {applying?.progress
                   ? formatProgress(applying.progress.done, applying.progress.total)
                   : `${formatCount(shown.tables.length)}개 테이블 만들기`}

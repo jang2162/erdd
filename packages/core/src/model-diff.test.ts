@@ -21,8 +21,14 @@ describe('diffModelsForDisplay', () => {
     const base = buildSampleModel()
     const target = clone(base)
     target.tables['t9'] = {
-      id: 't9', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't9',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     const d = diffModelsForDisplay(base, target)
     const e = d.entries.find((x) => x.entityId === 't9')!
@@ -83,7 +89,9 @@ describe('diffModelsForDisplay', () => {
     expect(e.changeKind).toBe('changed')
     const byField = Object.fromEntries(e.fields.map((f) => [f.field, f]))
     expect(byField['physicalName']).toMatchObject({
-      label: '물리명', before: 'MBR_NM', after: 'MBR_NAME',
+      label: '물리명',
+      before: 'MBR_NM',
+      after: 'MBR_NAME',
     })
     expect(byField['nullable']).toMatchObject({ label: 'NULL 허용', before: '', after: 'Y' })
     expect(e.fields).toHaveLength(2)
@@ -120,31 +128,51 @@ describe('diffModelsForDisplay', () => {
   it('사전·도메인·커스텀 항목 변경도 잡는다', () => {
     const base = createEmptyModel()
     base.words['w1'] = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: null, description: null, origin: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
     }
     const target = clone(base)
     target.words['w1']!.abbreviation = 'MEM'
     target.domains['d1'] = {
-      id: 'd1', name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+      id: 'd1',
+      name: '금액',
+      category: null,
+      logicalType: 'DECIMAL(15,2)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
     const d = diffModelsForDisplay(base, target)
     expect(d.entries.find((e) => e.entityId === 'w1')).toMatchObject({
-      kind: 'word', changeKind: 'changed', label: '회원',
+      kind: 'word',
+      changeKind: 'changed',
+      label: '회원',
     })
     expect(d.entries.find((e) => e.entityId === 'd1')).toMatchObject({
-      kind: 'domain', changeKind: 'added', label: '금액',
+      kind: 'domain',
+      changeKind: 'added',
+      label: '금액',
     })
   })
 
   it('객체·배열 속성을 안정적인 문자열로 만든다', () => {
     const base = createEmptyModel()
     base.domains['d1'] = {
-      id: 'd1', name: '상태', category: null, logicalType: 'CHAR(1)',
+      id: 'd1',
+      name: '상태',
+      category: null,
+      logicalType: 'CHAR(1)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: ['Y'], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: ['Y'],
+      description: null,
+      origin: null,
     }
     const target = clone(base)
     target.domains['d1']!.allowedValues = ['Y', 'N']
@@ -157,21 +185,31 @@ describe('diffModelsForDisplay', () => {
   it('출처는 base payload 를 풀어 쓰지 않고 버전과 항목 id 끝자리로 짧게 보여 준다', () => {
     const base = createEmptyModel()
     base.words['w1'] = {
-      id: 'w1', logicalName: '고객', abbreviation: 'CUST',
-      englishName: null, description: null, origin: null,
+      id: 'w1',
+      logicalName: '고객',
+      abbreviation: 'CUST',
+      englishName: null,
+      description: null,
+      origin: null,
     }
     const origin = {
-      libraryId: '0191c0de-0000-7000-8000-000000000001', sourceId: '0191c0ff-0000-7000-8000-00000000abcd',
-      sourceVersion: 3, base: { logicalName: '고객', abbreviation: 'CUST' },
+      libraryId: '0191c0de-0000-7000-8000-000000000001',
+      sourceId: '0191c0ff-0000-7000-8000-00000000abcd',
+      sourceVersion: 3,
+      base: { logicalName: '고객', abbreviation: 'CUST' },
     }
     const attached = clone(base)
     attached.words['w1']!.origin = origin
     const bumped = clone(attached)
     bumped.words['w1']!.origin = { ...origin, sourceVersion: 4 }
 
-    const f1 = diffModelsForDisplay(base, attached).entries[0]!.fields.find((x) => x.field === 'origin')!
+    const f1 = diffModelsForDisplay(base, attached).entries[0]!.fields.find(
+      (x) => x.field === 'origin',
+    )!
     expect(f1).toMatchObject({ label: '원본 참조', before: '', after: 'v3 · 항목 …0000abcd' })
-    const f2 = diffModelsForDisplay(attached, bumped).entries[0]!.fields.find((x) => x.field === 'origin')!
+    const f2 = diffModelsForDisplay(attached, bumped).entries[0]!.fields.find(
+      (x) => x.field === 'origin',
+    )!
     expect(f2).toMatchObject({ before: 'v3 · 항목 …0000abcd', after: 'v4 · 항목 …0000abcd' })
   })
 
@@ -179,17 +217,37 @@ describe('diffModelsForDisplay', () => {
     const base = createEmptyModel()
     const target = clone(base)
     target.words['w1'] = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: null, description: null, origin: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
     }
     target.tables['t1'] = {
-      id: 't1', logicalName: '회원', physicalName: 'MBR', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '회원',
+      physicalName: 'MBR',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     target.columns['c1'] = {
-      id: 'c1', tableId: 't1', logicalName: '번호', physicalName: 'NO', type: 'INT',
-      isPk: true, autoIncrement: false, nullable: false, defaultValue: null,
-      order: 0, comment: null, domainId: null, custom: {},
+      id: 'c1',
+      tableId: 't1',
+      logicalName: '번호',
+      physicalName: 'NO',
+      type: 'INT',
+      isPk: true,
+      autoIncrement: false,
+      nullable: false,
+      defaultValue: null,
+      order: 0,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     const kinds = diffModelsForDisplay(base, target).entries.map((e) => e.kind)
     expect(kinds).toEqual(['table', 'column', 'word'])
@@ -204,16 +262,28 @@ describe('diffModelsForDisplay', () => {
       // 이름(금액/비율)이 id(d1/d2)와 확실히 다르게 — 짧은 픽스처 id로도 검증되게 한다.
       const base = buildSampleModel()
       base.domains['d1'] = {
-        id: 'd1', name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+        id: 'd1',
+        name: '금액',
+        category: null,
+        logicalType: 'DECIMAL(15,2)',
         dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-        defaultValue: null, allowedValues: [], description: null, origin: null,
+        defaultValue: null,
+        allowedValues: [],
+        description: null,
+        origin: null,
       }
       base.columns['c1']!.domainId = 'd1'
       const target = clone(base)
       target.domains['d2'] = {
-        id: 'd2', name: '비율', category: null, logicalType: 'DECIMAL(5,4)',
+        id: 'd2',
+        name: '비율',
+        category: null,
+        logicalType: 'DECIMAL(5,4)',
         dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-        defaultValue: null, allowedValues: [], description: null, origin: null,
+        defaultValue: null,
+        allowedValues: [],
+        description: null,
+        origin: null,
       }
       target.columns['c1']!.domainId = 'd2'
       const d = diffModelsForDisplay(base, target)
@@ -237,7 +307,13 @@ describe('diffModelsForDisplay', () => {
     it('groupId는 소속 그룹 이름으로 표시한다', () => {
       const base = buildSampleModel()
       const target = clone(base)
-      target.tableGroups['g2'] = { id: 'g2', name: '인사관리', color: '#000', comment: null, alias: '' }
+      target.tableGroups['g2'] = {
+        id: 'g2',
+        name: '인사관리',
+        color: '#000',
+        comment: null,
+        alias: '',
+      }
       target.tables['t1']!.groupId = 'g2'
       const d = diffModelsForDisplay(base, target)
       const e = d.entries.find((x) => x.entityId === 't1')!
@@ -287,8 +363,15 @@ describe('diffModelsForDisplay', () => {
     it('custom은 커스텀 항목 이름 기준 "이름=값"으로 표시한다', () => {
       const base = buildSampleModel()
       base.customFields['cf1'] = {
-        id: 'cf1', name: '개인정보여부', target: 'table', type: 'boolean',
-        options: [], required: false, defaultValue: null, order: 0, origin: null,
+        id: 'cf1',
+        name: '개인정보여부',
+        target: 'table',
+        type: 'boolean',
+        options: [],
+        required: false,
+        defaultValue: null,
+        order: 0,
+        origin: null,
       }
       const target = clone(base)
       target.tables['t1']!.custom = { cf1: 'Y' }
@@ -304,8 +387,15 @@ describe('diffModelsForDisplay', () => {
       // 바뀌었다고 값을 건드리지 않은 테이블까지 '변경'으로 잘못 잡히면 안 된다.
       const base = buildSampleModel()
       base.customFields['cf1'] = {
-        id: 'cf1', name: '개인정보여부', target: 'table', type: 'boolean',
-        options: [], required: false, defaultValue: null, order: 0, origin: null,
+        id: 'cf1',
+        name: '개인정보여부',
+        target: 'table',
+        type: 'boolean',
+        options: [],
+        required: false,
+        defaultValue: null,
+        order: 0,
+        origin: null,
       }
       base.tables['t1']!.custom = { cf1: 'Y' }
       const target = clone(base)
@@ -347,9 +437,7 @@ describe('diffModelsForDisplay', () => {
     it('관계 columnMappings는 "부모물리명 → 자식물리명" 나열로 표시한다(관계 라벨과 같은 방향)', () => {
       const base = buildSampleModel()
       const target = clone(base)
-      target.relationships['r1']!.columnMappings = [
-        { childColumnId: 'c3', parentColumnId: 'c1' },
-      ]
+      target.relationships['r1']!.columnMappings = [{ childColumnId: 'c3', parentColumnId: 'c1' }]
       const d = diffModelsForDisplay(base, target)
       const e = d.entries.find((x) => x.entityId === 'r1')!
       const f = e.fields.find((x) => x.field === 'columnMappings')!
@@ -363,9 +451,15 @@ describe('diffModelsForDisplay', () => {
       // target에서 도메인을 지워 base 해석이 실제로 쓰이는지를 검증한다.
       const base = buildSampleModel()
       base.domains['d1'] = {
-        id: 'd1', name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+        id: 'd1',
+        name: '금액',
+        category: null,
+        logicalType: 'DECIMAL(15,2)',
         dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-        defaultValue: null, allowedValues: [], description: null, origin: null,
+        defaultValue: null,
+        allowedValues: [],
+        description: null,
+        origin: null,
       }
       base.columns['c1']!.domainId = 'd1'
       const target = clone(base)

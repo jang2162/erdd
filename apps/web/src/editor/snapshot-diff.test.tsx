@@ -19,7 +19,9 @@ function renderDiff(onNavigate = () => {}) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<SnapshotDiff projectId={PROJECT_ID} onNavigate={onNavigate} />, { wrapper: w })
@@ -28,18 +30,37 @@ function renderDiff(onNavigate = () => {}) {
 /** 스냅샷 1개(= 현재 모델에서 컬럼 하나를 지운 상태)를 돌려주는 tRPC 스텁. */
 function mockSnapshot(model: unknown) {
   mockTrpcFetch({
-    'snapshot.list': () => ({ data: { items: [{
-      id: SNAP_ID, name: 'v1.0', description: '', revisionSeq: 1,
-      createdAt: '2026-07-01T00:00:00.000Z',
-    }] } }),
-    'snapshot.get': () => ({ data: {
-      id: SNAP_ID, name: 'v1.0', description: '', revisionSeq: 1,
-      createdAt: '2026-07-01T00:00:00.000Z', model,
-    } }),
+    'snapshot.list': () => ({
+      data: {
+        items: [
+          {
+            id: SNAP_ID,
+            name: 'v1.0',
+            description: '',
+            revisionSeq: 1,
+            createdAt: '2026-07-01T00:00:00.000Z',
+          },
+        ],
+      },
+    }),
+    'snapshot.get': () => ({
+      data: {
+        id: SNAP_ID,
+        name: 'v1.0',
+        description: '',
+        revisionSeq: 1,
+        createdAt: '2026-07-01T00:00:00.000Z',
+        model,
+      },
+    }),
   })
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('SnapshotDiff', () => {
   it('스냅샷이 없으면 안내만 보여준다', async () => {
@@ -51,7 +72,7 @@ describe('SnapshotDiff', () => {
 
   it('기준 스냅샷과 현재를 비교해 변경 목록과 요약을 보여준다', async () => {
     const snapModel = structuredClone(buildSampleModel())
-    delete snapModel.columns['c3']            // 스냅샷에는 없던 컬럼 → 현재에서 '추가'
+    delete snapModel.columns['c3'] // 스냅샷에는 없던 컬럼 → 현재에서 '추가'
     mockSnapshot(snapModel)
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     renderDiff()
@@ -99,8 +120,12 @@ describe('SnapshotDiff', () => {
     const snapModel = structuredClone(buildSampleModel())
     const current = structuredClone(buildSampleModel())
     current.words['w1'] = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: null, description: null, origin: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
     }
     mockSnapshot(snapModel)
     useEditorStore.getState().setLoaded(current, 1, PROJECT_ID)
@@ -114,8 +139,14 @@ describe('SnapshotDiff', () => {
     // 이동은 항상 현재 모델의 캔버스로 가므로 현재에 없는 대상은 버튼이면 안 된다.
     const snapModel = structuredClone(buildSampleModel())
     snapModel.tables['t9'] = {
-      id: 't9', logicalName: '주문', physicalName: 'ORD', comment: null,
-      groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't9',
+      logicalName: '주문',
+      physicalName: 'ORD',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     mockSnapshot(snapModel)
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
@@ -126,10 +157,19 @@ describe('SnapshotDiff', () => {
 
   it('스냅샷을 불러오지 못하면 에러를 보여주고 "차이가 없습니다"라고 하지 않는다', async () => {
     mockTrpcFetch({
-      'snapshot.list': () => ({ data: { items: [{
-        id: SNAP_ID, name: 'v1.0', description: '', revisionSeq: 1,
-        createdAt: '2026-07-01T00:00:00.000Z',
-      }] } }),
+      'snapshot.list': () => ({
+        data: {
+          items: [
+            {
+              id: SNAP_ID,
+              name: 'v1.0',
+              description: '',
+              revisionSeq: 1,
+              createdAt: '2026-07-01T00:00:00.000Z',
+            },
+          ],
+        },
+      }),
       'snapshot.get': () => ({ error: { code: -32004, message: '스냅샷을 찾을 수 없습니다' } }),
     })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)

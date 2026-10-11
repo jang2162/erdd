@@ -26,7 +26,10 @@ function renderShell(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   )
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('AppShell', () => {
   it('대기 요청이 있으면 어느 화면에 있든 헤더에 배지가 보인다', async () => {
@@ -49,7 +52,9 @@ describe('AppShell', () => {
     renderShell({ 'promotion.pendingCount': pendingCount })
     // 조회가 끝난 뒤에 확인한다 — 바로 단언하면 아직 응답 전이라 무엇이든 통과한다.
     await vi.waitFor(() => expect(pendingCount).toHaveBeenCalled())
-    await new Promise((done) => { setTimeout(done, 20) })
+    await new Promise((done) => {
+      setTimeout(done, 20)
+    })
     expect(screen.queryByRole('link', { name: /승격 요청/ })).toBeNull()
     expect(screen.getByText('내 메뉴')).toBeTruthy()
   })

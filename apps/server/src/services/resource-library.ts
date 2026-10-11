@@ -13,7 +13,10 @@ type Actor = { id: string; role: 'admin' | 'user' }
 export function parsePayload(kind: ResourceKind, payload: unknown): Record<string, unknown> {
   const parsed = RESOURCE_PAYLOAD_SCHEMAS[kind].safeParse(payload)
   if (!parsed.success) {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: `항목 형식 오류 — ${parsed.error.message}` })
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `항목 형식 오류 — ${parsed.error.message}`,
+    })
   }
   return parsed.data as Record<string, unknown>
 }
@@ -28,7 +31,10 @@ async function loadLibrary(db: Db, libraryId: string): Promise<LibraryRow> {
 
 /** 전역은 인증 사용자 전체, 조직은 해당 조직 멤버만 읽는다. */
 export async function requireScopeRead(
-  db: Db, scope: 'global' | 'org', orgId: string | null, actor: Actor,
+  db: Db,
+  scope: 'global' | 'org',
+  orgId: string | null,
+  actor: Actor,
 ): Promise<void> {
   if (scope === 'global') return
   if (!orgId || !(await getOrgMember(db, orgId, actor.id))) {
@@ -38,11 +44,17 @@ export async function requireScopeRead(
 
 /** 전역은 서비스 관리자, 조직은 Org Owner/Admin만 쓴다. */
 export async function requireScopeWrite(
-  db: Db, scope: 'global' | 'org', orgId: string | null, actor: Actor,
+  db: Db,
+  scope: 'global' | 'org',
+  orgId: string | null,
+  actor: Actor,
 ): Promise<void> {
   if (scope === 'global') {
     if (actor.role !== 'admin') {
-      throw new TRPCError({ code: 'FORBIDDEN', message: '전역 리소스는 서비스 관리자만 관리할 수 있습니다' })
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: '전역 리소스는 서비스 관리자만 관리할 수 있습니다',
+      })
     }
     return
   }
@@ -52,13 +64,21 @@ export async function requireScopeWrite(
   }
 }
 
-export async function requireLibraryRead(db: Db, libraryId: string, actor: Actor): Promise<LibraryRow> {
+export async function requireLibraryRead(
+  db: Db,
+  libraryId: string,
+  actor: Actor,
+): Promise<LibraryRow> {
   const library = await loadLibrary(db, libraryId)
   await requireScopeRead(db, library.scope, library.orgId, actor)
   return library
 }
 
-export async function requireLibraryWrite(db: Db, libraryId: string, actor: Actor): Promise<LibraryRow> {
+export async function requireLibraryWrite(
+  db: Db,
+  libraryId: string,
+  actor: Actor,
+): Promise<LibraryRow> {
   const library = await loadLibrary(db, libraryId)
   await requireScopeWrite(db, library.scope, library.orgId, actor)
   return library
@@ -75,30 +95,50 @@ const STARTER_WORDS = [
 
 const STARTER_DOMAINS = [
   {
-    name: '식별번호', category: '번호', logicalType: 'BIGINT',
+    name: '식별번호',
+    category: '번호',
+    logicalType: 'BIGINT',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: [], description: '순번형 식별자',
+    defaultValue: null,
+    allowedValues: [],
+    description: '순번형 식별자',
   },
   {
-    name: '이름100', category: '명칭', logicalType: 'VARCHAR(100)',
+    name: '이름100',
+    category: '명칭',
+    logicalType: 'VARCHAR(100)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: [], description: '일반 명칭',
+    defaultValue: null,
+    allowedValues: [],
+    description: '일반 명칭',
   },
   {
-    name: '금액', category: '수량/금액', logicalType: 'DECIMAL(15,2)',
+    name: '금액',
+    category: '수량/금액',
+    logicalType: 'DECIMAL(15,2)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: '0', allowedValues: [], description: '통화 금액',
+    defaultValue: '0',
+    allowedValues: [],
+    description: '통화 금액',
   },
 ]
 
 const STARTER_CUSTOM_FIELDS = [
   {
-    name: '개인정보여부', target: 'column' as const, type: 'select' as const,
-    options: ['해당없음', '개인정보', '민감정보'], required: false, defaultValue: '해당없음',
+    name: '개인정보여부',
+    target: 'column' as const,
+    type: 'select' as const,
+    options: ['해당없음', '개인정보', '민감정보'],
+    required: false,
+    defaultValue: '해당없음',
   },
   {
-    name: '비고', target: 'table' as const, type: 'text' as const,
-    options: [], required: false, defaultValue: null,
+    name: '비고',
+    target: 'table' as const,
+    type: 'text' as const,
+    options: [],
+    required: false,
+    defaultValue: null,
   },
 ]
 
@@ -112,19 +152,31 @@ const STARTER_CUSTOM_FIELDS = [
 export async function ensureStarterGlobalLibrary(db: Db): Promise<void> {
   await db.transaction(async (tx) => {
     const existing = (
-      await tx.select({ id: resourceLibraries.id }).from(resourceLibraries)
-        .where(eq(resourceLibraries.scope, 'global')).limit(1)
+      await tx
+        .select({ id: resourceLibraries.id })
+        .from(resourceLibraries)
+        .where(eq(resourceLibraries.scope, 'global'))
+        .limit(1)
     )[0]
     if (existing) return
 
     const libraryId = uuidv7()
     await tx.insert(resourceLibraries).values({
-      id: libraryId, scope: 'global', orgId: null,
+      id: libraryId,
+      scope: 'global',
+      orgId: null,
       name: '표준 사전(예시)',
-      description: '가져오기·재동기화를 시험해 볼 수 있는 예시 데이터입니다. 행안부 표준 사전 실데이터는 별도 소싱 예정입니다.',
+      description:
+        '가져오기·재동기화를 시험해 볼 수 있는 예시 데이터입니다. 행안부 표준 사전 실데이터는 별도 소싱 예정입니다.',
     })
 
-    const rows: { id: string; libraryId: string; kind: 'domain' | 'word' | 'term' | 'customField'; payload: Record<string, unknown>; version: number }[] = []
+    const rows: {
+      id: string
+      libraryId: string
+      kind: 'domain' | 'word' | 'term' | 'customField'
+      payload: Record<string, unknown>
+      version: number
+    }[] = []
     const domainIdByName = new Map<string, string>()
     for (const payload of STARTER_DOMAINS) {
       const id = uuidv7()
@@ -135,9 +187,24 @@ export async function ensureStarterGlobalLibrary(db: Db): Promise<void> {
       rows.push({ id: uuidv7(), libraryId, kind: 'word', payload, version: 1 })
     }
     const terms = [
-      { logicalName: '회원번호', physicalName: 'MBR_NO', domainId: domainIdByName.get('식별번호')!, description: null },
-      { logicalName: '회원명', physicalName: 'MBR_NM', domainId: domainIdByName.get('이름100')!, description: null },
-      { logicalName: '주문금액', physicalName: 'ORD_AMT', domainId: domainIdByName.get('금액')!, description: null },
+      {
+        logicalName: '회원번호',
+        physicalName: 'MBR_NO',
+        domainId: domainIdByName.get('식별번호')!,
+        description: null,
+      },
+      {
+        logicalName: '회원명',
+        physicalName: 'MBR_NM',
+        domainId: domainIdByName.get('이름100')!,
+        description: null,
+      },
+      {
+        logicalName: '주문금액',
+        physicalName: 'ORD_AMT',
+        domainId: domainIdByName.get('금액')!,
+        description: null,
+      },
     ]
     for (const payload of terms) {
       rows.push({ id: uuidv7(), libraryId, kind: 'term', payload, version: 1 })
@@ -157,7 +224,10 @@ export function escapeLike(text: string): string {
 
 /** 종류별 논리명 칸 — 정렬 키이고, core `resourceDisplayName` 이 읽는 키와 같다. */
 const NAME_FIELD: Record<ResourceKind, string> = {
-  domain: 'name', word: 'logicalName', term: 'logicalName', customField: 'name',
+  domain: 'name',
+  word: 'logicalName',
+  term: 'logicalName',
+  customField: 'name',
 }
 
 /**
@@ -196,13 +266,18 @@ export async function loadLibraryItemPage(
   const where = and(
     eq(resourceItems.libraryId, input.libraryId),
     eq(resourceItems.kind, input.kind),
-    q === '' ? undefined : or(...PAGE_SEARCH_FIELDS[input.kind].map((f) => sql`${payloadText(f)} ILIKE ${pattern}`)),
+    q === ''
+      ? undefined
+      : or(...PAGE_SEARCH_FIELDS[input.kind].map((f) => sql`${payloadText(f)} ILIKE ${pattern}`)),
   )
   const [items, totals] = await Promise.all([
-    db.select({
-      id: resourceItems.id, kind: resourceItems.kind,
-      payload: resourceItems.payload, version: resourceItems.version,
-    })
+    db
+      .select({
+        id: resourceItems.id,
+        kind: resourceItems.kind,
+        payload: resourceItems.payload,
+        version: resourceItems.version,
+      })
       .from(resourceItems)
       .where(where)
       .orderBy(asc(sql`${payloadText(NAME_FIELD[input.kind])} COLLATE "C"`), asc(resourceItems.id))

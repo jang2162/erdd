@@ -30,7 +30,9 @@ import { canonical } from '../tree.js'
  * 반환은 실제로 기록한 상대 경로들이다(정렬됨).
  */
 export async function reserveIds(
-  cwd: string, local: FileTree, assigned: FileTree | undefined,
+  cwd: string,
+  local: FileTree,
+  assigned: FileTree | undefined,
 ): Promise<string[]> {
   if (assigned === undefined) return []
   const written: string[] = []
@@ -55,8 +57,8 @@ export async function reserveIds(
     } catch (err) {
       throw new CliError(
         'VALIDATION',
-        `${rel}에 신규 id를 기록하지 못해 서버로 보내지 않았습니다. `
-          + `그 파일의 경로와 쓰기 권한을 확인하고 다시 push하세요 (${(err as Error).message})`,
+        `${rel}에 신규 id를 기록하지 못해 서버로 보내지 않았습니다. ` +
+          `그 파일의 경로와 쓰기 권한을 확인하고 다시 push하세요 (${(err as Error).message})`,
       )
     }
     written.push(rel)

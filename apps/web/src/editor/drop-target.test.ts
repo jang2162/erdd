@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { dropAttrValue, dropTargetOf } from './drop-target.js'
 
-afterEach(() => { document.body.innerHTML = '' })
+afterEach(() => {
+  document.body.innerHTML = ''
+})
 
 describe('dropTargetOf', () => {
   it('그룹 블록 안의 자손에서 그룹 id를 찾는다', () => {
@@ -24,7 +26,8 @@ describe('dropTargetOf', () => {
   })
 
   it('중첩되면 가장 가까운 타깃을 고른다', () => {
-    document.body.innerHTML = '<div data-drop-group="g1"><div data-drop-group="g2"><i id="w"></i></div></div>'
+    document.body.innerHTML =
+      '<div data-drop-group="g1"><div data-drop-group="g2"><i id="w"></i></div></div>'
     expect(dropTargetOf(document.getElementById('w'))).toEqual({ groupId: 'g2' })
   })
 

@@ -3,14 +3,24 @@ import { and, asc, count, eq, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  deepEqual, diffModels, exportLibraryFile, MAX_OPS_PER_MUTATION, OpApplyError,
-  RESOURCE_KINDS, type ProjectModel, type ResourceKind,
+  deepEqual,
+  diffModels,
+  exportLibraryFile,
+  MAX_OPS_PER_MUTATION,
+  OpApplyError,
+  RESOURCE_KINDS,
+  type ProjectModel,
+  type ResourceKind,
 } from '@erdd/core'
 import type { Db } from '../db/client.js'
 import { resourceItems, resourceLibraries } from '../db/schema.js'
 import { getOrgMember, requireProjectAccess } from '../services/perm.js'
 import {
-  loadLibraryItemPage, parsePayload, requireLibraryRead, requireLibraryWrite, requireScopeRead,
+  loadLibraryItemPage,
+  parsePayload,
+  requireLibraryRead,
+  requireLibraryWrite,
+  requireScopeRead,
   requireScopeWrite,
 } from '../services/resource-library.js'
 import { emptyOutcome, loadLibraryItems, runPromoteInTx } from '../services/promote.js'
@@ -22,7 +32,9 @@ const KindEnum = z.enum(RESOURCE_KINDS)
 
 /** 종류 하나의 항목 수. left join 이라 항목이 없는 라이브러리는 0 이다. */
 function kindCount(kind: ResourceKind) {
-  return sql<number>`count(${resourceItems.id}) filter (where ${resourceItems.kind} = ${kind})`.mapWith(Number)
+  return sql<number>`count(${resourceItems.id}) filter (where ${resourceItems.kind} = ${kind})`.mapWith(
+    Number,
+  )
 }
 
 /**
@@ -33,11 +45,17 @@ function kindCount(kind: ResourceKind) {
 async function listWithCounts(db: Db, where: SQL | undefined) {
   const rows = await db
     .select({
-      id: resourceLibraries.id, scope: resourceLibraries.scope, orgId: resourceLibraries.orgId,
-      name: resourceLibraries.name, description: resourceLibraries.description,
-      updatedAt: resourceLibraries.updatedAt, itemCount: count(resourceItems.id),
-      domainCount: kindCount('domain'), wordCount: kindCount('word'),
-      termCount: kindCount('term'), customFieldCount: kindCount('customField'),
+      id: resourceLibraries.id,
+      scope: resourceLibraries.scope,
+      orgId: resourceLibraries.orgId,
+      name: resourceLibraries.name,
+      description: resourceLibraries.description,
+      updatedAt: resourceLibraries.updatedAt,
+      itemCount: count(resourceItems.id),
+      domainCount: kindCount('domain'),
+      wordCount: kindCount('word'),
+      termCount: kindCount('term'),
+      customFieldCount: kindCount('customField'),
     })
     .from(resourceLibraries)
     .leftJoin(resourceItems, eq(resourceItems.libraryId, resourceLibraries.id))
@@ -47,7 +65,10 @@ async function listWithCounts(db: Db, where: SQL | undefined) {
   return rows.map(({ domainCount, wordCount, termCount, customFieldCount, ...row }) => ({
     ...row,
     countsByKind: {
-      domain: domainCount, word: wordCount, term: termCount, customField: customFieldCount,
+      domain: domainCount,
+      word: wordCount,
+      term: termCount,
+      customField: customFieldCount,
     } satisfies Record<ResourceKind, number>,
   }))
 }
@@ -62,14 +83,17 @@ export const resourceRouter = router({
           throw new TRPCError({ code: 'BAD_REQUEST', message: '조직 id가 필요합니다' })
         }
         await requireScopeRead(ctx.db, input.scope, input.orgId ?? null, ctx.user)
-        const where = input.scope === 'global'
-          ? eq(resourceLibraries.scope, 'global')
-          : and(eq(resourceLibraries.scope, 'org'), eq(resourceLibraries.orgId, input.orgId!))
+        const where =
+          input.scope === 'global'
+            ? eq(resourceLibraries.scope, 'global')
+            : and(eq(resourceLibraries.scope, 'org'), eq(resourceLibraries.orgId, input.orgId!))
         // 클라가 역할 조합식을 재현하지 않도록 쓰기 가능 여부를 서버가 판정해 싣는다(listForProject 와 같다).
-        const me = input.scope === 'org' ? await getOrgMember(ctx.db, input.orgId!, ctx.user.id) : undefined
-        const canWrite = input.scope === 'global'
-          ? ctx.user.role === 'admin'
-          : me?.role === 'owner' || me?.role === 'admin'
+        const me =
+          input.scope === 'org' ? await getOrgMember(ctx.db, input.orgId!, ctx.user.id) : undefined
+        const canWrite =
+          input.scope === 'global'
+            ? ctx.user.role === 'admin'
+            : me?.role === 'owner' || me?.role === 'admin'
         return (await listWithCounts(ctx.db, where)).map((row) => ({ ...row, canWrite }))
       }),
 
@@ -78,10 +102,13 @@ export const resourceRouter = router({
       .input(z.object({ projectId: z.string().uuid() }))
       .query(async ({ ctx, input }) => {
         const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
-        const rows = await listWithCounts(ctx.db, or(
-          and(eq(resourceLibraries.scope, 'global'), isNull(resourceLibraries.orgId)),
-          eq(resourceLibraries.orgId, access.project.orgId),
-        ))
+        const rows = await listWithCounts(
+          ctx.db,
+          or(
+            and(eq(resourceLibraries.scope, 'global'), isNull(resourceLibraries.orgId)),
+            eq(resourceLibraries.orgId, access.project.orgId),
+          ),
+        )
         // 클라가 역할 조합식을 재현하지 않도록 쓰기 가능 여부를 서버가 판정해 싣는다.
         // 목록의 조직 라이브러리는 전부 이 프로젝트의 조직 것이다.
         const isServiceAdmin = ctx.user.role === 'admin'
@@ -93,33 +120,45 @@ export const resourceRouter = router({
       }),
 
     create: authedProcedure
-      .input(z.object({
-        scope: z.enum(['global', 'org']),
-        orgId: z.string().uuid().optional(),
-        name: z.string().min(1).max(100),
-        description: z.string().max(500).default(''),
-      }))
+      .input(
+        z.object({
+          scope: z.enum(['global', 'org']),
+          orgId: z.string().uuid().optional(),
+          name: z.string().min(1).max(100),
+          description: z.string().max(500).default(''),
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
         if (input.scope === 'org' && !input.orgId) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: '조직 id가 필요합니다' })
         }
         await requireScopeWrite(ctx.db, input.scope, input.orgId ?? null, ctx.user)
-        return (await ctx.db.insert(resourceLibraries).values({
-          id: uuidv7(), scope: input.scope,
-          orgId: input.scope === 'org' ? input.orgId! : null,
-          name: input.name, description: input.description,
-        }).returning())[0]!
+        return (
+          await ctx.db
+            .insert(resourceLibraries)
+            .values({
+              id: uuidv7(),
+              scope: input.scope,
+              orgId: input.scope === 'org' ? input.orgId! : null,
+              name: input.name,
+              description: input.description,
+            })
+            .returning()
+        )[0]!
       }),
 
     update: authedProcedure
-      .input(z.object({
-        libraryId: z.string().uuid(),
-        name: z.string().min(1).max(100).optional(),
-        description: z.string().max(500).optional(),
-      }))
+      .input(
+        z.object({
+          libraryId: z.string().uuid(),
+          name: z.string().min(1).max(100).optional(),
+          description: z.string().max(500).optional(),
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
         await requireLibraryWrite(ctx.db, input.libraryId, ctx.user)
-        await ctx.db.update(resourceLibraries)
+        await ctx.db
+          .update(resourceLibraries)
           .set({
             ...(input.name === undefined ? {} : { name: input.name }),
             ...(input.description === undefined ? {} : { description: input.description }),
@@ -148,20 +187,26 @@ export const resourceRouter = router({
 
     // CLI(erdd library import)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
     import: apiProcedure
-      .input(z.object({
-        target: z.union([
-          z.object({ libraryId: z.string().uuid() }),
-          z.object({ create: z.object({
-            scope: z.enum(['global', 'org']), orgId: z.string().uuid().optional(),
-            name: z.string().min(1).max(100), description: z.string().max(500).default(''),
-          }) }),
-        ]),
-        text: z.string().max(16 * 1024 * 1024),
-        prune: z.boolean().default(false),
-        includeStale: z.boolean().default(false),
-        dryRun: z.boolean().default(false),
-        expectedStateHash: z.string().optional(),
-      }))
+      .input(
+        z.object({
+          target: z.union([
+            z.object({ libraryId: z.string().uuid() }),
+            z.object({
+              create: z.object({
+                scope: z.enum(['global', 'org']),
+                orgId: z.string().uuid().optional(),
+                name: z.string().min(1).max(100),
+                description: z.string().max(500).default(''),
+              }),
+            }),
+          ]),
+          text: z.string().max(16 * 1024 * 1024),
+          prune: z.boolean().default(false),
+          includeStale: z.boolean().default(false),
+          dryRun: z.boolean().default(false),
+          expectedStateHash: z.string().optional(),
+        }),
+      )
       .mutation(({ ctx, input }) => runLibraryImport(ctx.db, ctx.user, input)),
   }),
 
@@ -179,13 +224,15 @@ export const resourceRouter = router({
     // 관리 화면 조회 모달 전용 — 세션만 받는다. 토큰 소비처가 없으므로 apiProcedure 로 열지 않는다
     // (guides/cli.md 「액세스 토큰 인증」 — 토큰에 여는 것은 명시적 opt-in).
     page: authedProcedure
-      .input(z.object({
-        libraryId: z.string().uuid(),
-        kind: KindEnum,
-        query: z.string().max(200).optional(),
-        offset: z.number().int().min(0),
-        limit: z.number().int().min(1).max(200),
-      }))
+      .input(
+        z.object({
+          libraryId: z.string().uuid(),
+          kind: KindEnum,
+          query: z.string().max(200).optional(),
+          offset: z.number().int().min(0),
+          limit: z.number().int().min(1).max(200),
+        }),
+      )
       .query(async ({ ctx, input }) => {
         // items.list 와 같은 판정이다 — 한쪽만 고치면 볼 수 없는 라이브러리가 다른 경로로 샌다.
         await requireLibraryRead(ctx.db, input.libraryId, ctx.user)
@@ -193,16 +240,31 @@ export const resourceRouter = router({
       }),
 
     create: authedProcedure
-      .input(z.object({
-        libraryId: z.string().uuid(), kind: KindEnum, payload: z.unknown(),
-      }))
+      .input(
+        z.object({
+          libraryId: z.string().uuid(),
+          kind: KindEnum,
+          payload: z.unknown(),
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
         await requireLibraryWrite(ctx.db, input.libraryId, ctx.user)
         const payload = parsePayload(input.kind, input.payload)
-        const row = (await ctx.db.insert(resourceItems).values({
-          id: uuidv7(), libraryId: input.libraryId, kind: input.kind, payload, version: 1,
-        }).returning())[0]!
-        await ctx.db.update(resourceLibraries).set({ updatedAt: new Date() })
+        const row = (
+          await ctx.db
+            .insert(resourceItems)
+            .values({
+              id: uuidv7(),
+              libraryId: input.libraryId,
+              kind: input.kind,
+              payload,
+              version: 1,
+            })
+            .returning()
+        )[0]!
+        await ctx.db
+          .update(resourceLibraries)
+          .set({ updatedAt: new Date() })
           .where(eq(resourceLibraries.id, input.libraryId))
         return row
       }),
@@ -219,9 +281,13 @@ export const resourceRouter = router({
         // 같은 값 저장이 전 프로젝트에 재동기화 알림을 뿌리지 않도록 실제 변경일 때만 올린다.
         if (deepEqual(item.payload, payload)) return { ok: true as const, version: item.version }
         const version = item.version + 1
-        await ctx.db.update(resourceItems).set({ payload, version, updatedAt: new Date() })
+        await ctx.db
+          .update(resourceItems)
+          .set({ payload, version, updatedAt: new Date() })
           .where(eq(resourceItems.id, input.itemId))
-        await ctx.db.update(resourceLibraries).set({ updatedAt: new Date() })
+        await ctx.db
+          .update(resourceLibraries)
+          .set({ updatedAt: new Date() })
           .where(eq(resourceLibraries.id, item.libraryId))
         return { ok: true as const, version }
       }),
@@ -262,23 +328,33 @@ export const resourceRouter = router({
    */
   // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
   promote: apiProcedure
-    .input(z.object({
-      projectId: z.string().uuid(),
-      libraryId: z.string().uuid(),
-      entries: z.array(z.object({
-        entityId: z.string().uuid(),
-        expectedStatus: z.enum(['new', 'update', 'name-match']),
-        expectedTargetItemId: z.string().uuid().nullable(),
-        expectedTargetVersion: z.number().int().nullable(),
-      })).min(1).max(MAX_OPS_PER_MUTATION),
-    }))
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        libraryId: z.string().uuid(),
+        entries: z
+          .array(
+            z.object({
+              entityId: z.string().uuid(),
+              expectedStatus: z.enum(['new', 'update', 'name-match']),
+              expectedTargetItemId: z.string().uuid().nullable(),
+              expectedTargetVersion: z.number().int().nullable(),
+            }),
+          )
+          .min(1)
+          .max(MAX_OPS_PER_MUTATION),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'edit')
       const library = await requireLibraryWrite(ctx.db, input.libraryId, ctx.user)
       // 전역은 서비스 관리자만 requireLibraryWrite를 통과한다. 조직은 반드시 이 프로젝트의
       // 조직이어야 한다 — 없으면 두 조직에 속한 사용자가 남의 조직으로 사전을 흘릴 수 있다.
       if (library.scope === 'org' && library.orgId !== access.project.orgId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: '이 프로젝트의 조직 라이브러리가 아닙니다' })
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: '이 프로젝트의 조직 라이브러리가 아닙니다',
+        })
       }
 
       const outcome = emptyOutcome()
@@ -292,7 +368,10 @@ export const resourceRouter = router({
           source: ctx.authKind === 'token' ? 'cli' : 'web',
           prepare: async (tx, model) => {
             state.next = await runPromoteInTx(tx, {
-              libraryId: input.libraryId, model, entries: input.entries, outcome,
+              libraryId: input.libraryId,
+              model,
+              entries: input.entries,
+              outcome,
             })
           },
           deriveOps: (model) => (state.next ? diffModels(model, state.next) : []),

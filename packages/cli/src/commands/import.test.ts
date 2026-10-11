@@ -14,11 +14,20 @@ let err: string[]
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'erdd-import-'))
-  out = []; err = []
-  vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
-  vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+  out = []
+  err = []
+  vi.spyOn(process.stdout, 'write').mockImplementation((c) => {
+    out.push(String(c))
+    return true
+  })
+  vi.spyOn(process.stderr, 'write').mockImplementation((c) => {
+    err.push(String(c))
+    return true
+  })
   await writeConfig(dir, {
-    ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects], namingRules: { ...TEST_CONFIG.namingRules },
+    ...TEST_CONFIG,
+    dialects: [...TEST_CONFIG.dialects],
+    namingRules: { ...TEST_CONFIG.namingRules },
   })
 })
 afterEach(() => vi.restoreAllMocks())
@@ -26,13 +35,29 @@ afterEach(() => vi.restoreAllMocks())
 function model(): ProjectModel {
   const m = createEmptyModel()
   m.tables['tb1'] = {
-    id: 'tb1', logicalName: '회원', physicalName: 'MBR', comment: null,
-    groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: 'tb1',
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
   m.columns['c1'] = {
-    id: 'c1', tableId: 'tb1', logicalName: '회원번호', physicalName: 'MBR_NO', type: 'BIGINT',
-    isPk: true, autoIncrement: false, nullable: false, defaultValue: null, order: 0,
-    comment: null, domainId: null, custom: {},
+    id: 'c1',
+    tableId: 'tb1',
+    logicalName: '회원번호',
+    physicalName: 'MBR_NO',
+    type: 'BIGINT',
+    isPk: true,
+    autoIncrement: false,
+    nullable: false,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   }
   return m
 }
@@ -59,7 +84,13 @@ const yes = { yes: true, ...base } as const
 describe('import', () => {
   it('.sql 은 DDL 로 읽고 테이블 파일을 만든다', async () => {
     await seedPulled(dir, model())
-    const code = await importCommand({ cwd: dir, json: true, ...yes, file: await ddlFile(), dryRun: false })
+    const code = await importCommand({
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile(),
+      dryRun: false,
+    })
     expect(code).toBe(0)
     const names = await readdir(join(dir, 'erdd/tables'))
     expect(names.sort()).toEqual(['MBR.yaml', 'ORD.yaml'])
@@ -68,7 +99,11 @@ describe('import', () => {
   it('.dbml 은 DBML 로 읽는다', async () => {
     await seedPulled(dir, model())
     const code = await importCommand({
-      cwd: dir, json: true, ...yes, file: await ddlFile('schema.dbml', DBML), dryRun: false,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile('schema.dbml', DBML),
+      dryRun: false,
     })
     expect(code).toBe(0)
     expect((await readdir(join(dir, 'erdd/tables'))).sort()).toEqual(['MBR.yaml', 'PRD.yaml'])
@@ -78,8 +113,12 @@ describe('import', () => {
     await seedPulled(dir, model())
     // 확장자는 .sql 인데 내용은 DBML 이다 — --format 을 안 보면 테이블이 하나도 안 생긴다.
     const code = await importCommand({
-      cwd: dir, json: true, ...yes, file: await ddlFile('weird.sql', DBML),
-      format: 'dbml', dryRun: false,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile('weird.sql', DBML),
+      format: 'dbml',
+      dryRun: false,
     })
     expect(code).toBe(0)
     expect((await readdir(join(dir, 'erdd/tables'))).sort()).toEqual(['MBR.yaml', 'PRD.yaml'])
@@ -88,7 +127,11 @@ describe('import', () => {
   it('확장자로 형식을 못 정하면 내용을 추정하지 않고 USAGE(2)로 끝난다', async () => {
     await seedPulled(dir, model())
     const code = await importCommand({
-      cwd: dir, json: true, ...yes, file: await ddlFile('schema.txt'), dryRun: false,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile('schema.txt'),
+      dryRun: false,
     })
     expect(code).toBe(2)
     expect(JSON.parse(out.join('')).error.code).toBe('USAGE')
@@ -101,16 +144,25 @@ describe('import', () => {
     expect(JSON.parse(out.join('')).dialect).toBe('postgresql')
     // (2) 본문에 mysql 특징 토큰이 있으면 detectDialect 가 이긴다
     out.length = 0
-    const mysqlDdl = 'CREATE TABLE ORD (ORD_NO bigint NOT NULL AUTO_INCREMENT, PRIMARY KEY (ORD_NO));'
+    const mysqlDdl =
+      'CREATE TABLE ORD (ORD_NO bigint NOT NULL AUTO_INCREMENT, PRIMARY KEY (ORD_NO));'
     await importCommand({
-      cwd: dir, json: true, ...yes, file: await ddlFile('m.sql', mysqlDdl), dryRun: true,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile('m.sql', mysqlDdl),
+      dryRun: true,
     })
     expect(JSON.parse(out.join('')).dialect).toBe('mysql')
     // (3) --dialect 가 그 위다
     out.length = 0
     await importCommand({
-      cwd: dir, json: true, ...yes, file: await ddlFile('m2.sql', mysqlDdl),
-      dialect: 'oracle', dryRun: true,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile('m2.sql', mysqlDdl),
+      dialect: 'oracle',
+      dryRun: true,
     })
     expect(JSON.parse(out.join('')).dialect).toBe('oracle')
   })
@@ -126,8 +178,18 @@ describe('import', () => {
   it('새 엔티티 id 를 uuidv7 로 파일에 바로 박는다 — new: 임시 id 가 새지 않는다', async () => {
     await seedPulled(dir, model())
     // 사용자가 손으로 만든 id 없는 테이블 파일. filesToModel 이 임시 id 를 붙이는 자리다.
-    await writeFile(join(dir, 'erdd/tables/CUST.yaml'), 'name: CUST\nlogicalName: 고객\ncolumns:\n  - name: CUST_NO\n    logicalName: 고객번호\n    type: BIGINT\n    pk: true\n', 'utf8')
-    const code = await importCommand({ cwd: dir, json: true, ...yes, file: await ddlFile(), dryRun: false })
+    await writeFile(
+      join(dir, 'erdd/tables/CUST.yaml'),
+      'name: CUST\nlogicalName: 고객\ncolumns:\n  - name: CUST_NO\n    logicalName: 고객번호\n    type: BIGINT\n    pk: true\n',
+      'utf8',
+    )
+    const code = await importCommand({
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile(),
+      dryRun: false,
+    })
     expect(code).toBe(0)
     const names = await readdir(join(dir, 'erdd/tables'))
     for (const n of names) {
@@ -142,7 +204,13 @@ describe('import', () => {
   it('--dry-run 은 파일을 하나도 건드리지 않는다', async () => {
     await seedPulled(dir, model())
     const before = await readTree(dir)
-    const code = await importCommand({ cwd: dir, json: true, ...yes, file: await ddlFile(), dryRun: true })
+    const code = await importCommand({
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile(),
+      dryRun: true,
+    })
     expect(code).toBe(0)
     expect(await readTree(dir)).toEqual(before)
     const parsed = JSON.parse(out.join('')) as { dryRun: boolean; added: number; written: string[] }
@@ -156,7 +224,13 @@ describe('import', () => {
     const before = await readTree(dir)
     const confirm = vi.fn(async () => false)
     const code = await importCommand({
-      cwd: dir, json: true, yes: false, ...base, confirm, file: await ddlFile(), dryRun: false,
+      cwd: dir,
+      json: true,
+      yes: false,
+      ...base,
+      confirm,
+      file: await ddlFile(),
+      dryRun: false,
     })
     expect(confirm).toHaveBeenCalled()
     expect(code).toBe(1)
@@ -167,7 +241,12 @@ describe('import', () => {
   it('비대화형에서 확인할 수 없으면 --yes 를 가리키며 멈춘다', async () => {
     await seedPulled(dir, model())
     const code = await importCommand({
-      cwd: dir, json: true, yes: false, ...base, file: await ddlFile(), dryRun: false,
+      cwd: dir,
+      json: true,
+      yes: false,
+      ...base,
+      file: await ddlFile(),
+      dryRun: false,
     })
     expect(code).toBe(1)
     const parsed = JSON.parse(out.join('')) as { error: { code: string; message: string } }
@@ -178,7 +257,8 @@ describe('import', () => {
   it('가져오기 경고를 사람용 출력과 --json 양쪽에 싣는다', async () => {
     await seedPulled(dir, model())
     // 모르는 타입 → unknown-type 경고
-    const odd = 'CREATE TABLE ORD (ORD_NO bigint NOT NULL, MEMO weirdtype(3), PRIMARY KEY (ORD_NO));'
+    const odd =
+      'CREATE TABLE ORD (ORD_NO bigint NOT NULL, MEMO weirdtype(3), PRIMARY KEY (ORD_NO));'
     const file = await ddlFile('odd.sql', odd)
     await importCommand({ cwd: dir, json: true, ...yes, file, dryRun: true })
     const parsed = JSON.parse(out.join('')) as { warnings: Array<{ kind: string }> }
@@ -198,7 +278,11 @@ describe('import', () => {
   it('파일이 없으면 NOT_FOUND 로 1이다', async () => {
     await seedPulled(dir, model())
     const code = await importCommand({
-      cwd: dir, json: true, ...yes, file: join(dir, 'nope.sql'), dryRun: false,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: join(dir, 'nope.sql'),
+      dryRun: false,
     })
     expect(code).toBe(1)
     expect(JSON.parse(out.join('')).error.code).toBe('NOT_FOUND')
@@ -210,7 +294,13 @@ describe('import', () => {
     ;(tree['erdd/tables/MBR.yaml'] as Record<string, unknown>)['group'] = '없는그룹'
     await writeTree(dir, tree)
     out.length = 0
-    const code = await importCommand({ cwd: dir, json: true, ...yes, file: await ddlFile(), dryRun: false })
+    const code = await importCommand({
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile(),
+      dryRun: false,
+    })
     expect(code).toBe(1)
     const parsed = JSON.parse(out.join('')) as { ok: boolean; parseErrors: unknown[] }
     expect(parsed.ok).toBe(false)
@@ -224,7 +314,7 @@ describe('import', () => {
    * 읽혔다). 웹 다이얼로그와 같이 `Project { database_type }` 을 본다.
    */
   it('DBML 의 방언은 database_type 을 따르고, 없으면 config 로 떨어진다 — mssql 로 새지 않는다', async () => {
-    await seedPulled(dir, model())   // config.dialects 는 ['postgresql']
+    await seedPulled(dir, model()) // config.dialects 는 ['postgresql']
     // (1) database_type 이 있으면 그것이다
     const withType = `Project "P" {
   database_type: 'MySQL'
@@ -233,20 +323,32 @@ Table "PRD" {
   "PRD_NO" bigint [pk]
 }`
     await importCommand({
-      cwd: dir, json: true, ...yes, file: await ddlFile('a.dbml', withType), dryRun: true,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile('a.dbml', withType),
+      dryRun: true,
     })
     expect(JSON.parse(out.join('')).dialect).toBe('mysql')
     // (2) 없으면 config.dialects[0] — detectDialect 를 태웠다면 여기서 mssql 이 나온다
     out.length = 0
     await importCommand({
-      cwd: dir, json: true, ...yes, file: await ddlFile('b.dbml', DBML), dryRun: true,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile('b.dbml', DBML),
+      dryRun: true,
     })
     expect(JSON.parse(out.join('')).dialect).toBe('postgresql')
     // (3) --dialect 가 그 위다
     out.length = 0
     await importCommand({
-      cwd: dir, json: true, ...yes, file: await ddlFile('c.dbml', withType),
-      dialect: 'oracle', dryRun: true,
+      cwd: dir,
+      json: true,
+      ...yes,
+      file: await ddlFile('c.dbml', withType),
+      dialect: 'oracle',
+      dryRun: true,
     })
     expect(JSON.parse(out.join('')).dialect).toBe('oracle')
   })
@@ -256,14 +358,24 @@ Table "PRD" {
     await importCommand({ cwd: dir, json: false, ...yes, file: await ddlFile(), dryRun: true })
     expect(out.join('')).toContain('erdd.config.yaml')
     out.length = 0
-    const mysqlDdl = 'CREATE TABLE ORD (ORD_NO bigint NOT NULL AUTO_INCREMENT, PRIMARY KEY (ORD_NO));'
+    const mysqlDdl =
+      'CREATE TABLE ORD (ORD_NO bigint NOT NULL AUTO_INCREMENT, PRIMARY KEY (ORD_NO));'
     await importCommand({
-      cwd: dir, json: false, ...yes, file: await ddlFile('m3.sql', mysqlDdl), dryRun: true,
+      cwd: dir,
+      json: false,
+      ...yes,
+      file: await ddlFile('m3.sql', mysqlDdl),
+      dryRun: true,
     })
     expect(out.join('')).toContain('본문에서 감지')
     out.length = 0
     await importCommand({
-      cwd: dir, json: false, ...yes, file: await ddlFile(), dialect: 'oracle', dryRun: true,
+      cwd: dir,
+      json: false,
+      ...yes,
+      file: await ddlFile(),
+      dialect: 'oracle',
+      dryRun: true,
     })
     expect(out.join('')).toContain('--dialect')
   })
@@ -276,36 +388,57 @@ Table "PRD" {
  * ⚠️ **「안 쓴다」쪽 두 건이 없으면 「항상 덮어쓴다」로 바꿔도 초록이다.** 세 갈래를 각각 잠근다.
  */
 describe('import — 테이블 옵션 반영', () => {
-  const OPT_DDL = 'CREATE TABLE ORD (ORD_NO bigint NOT NULL, PRIMARY KEY (ORD_NO))'
-    + ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'
+  const OPT_DDL =
+    'CREATE TABLE ORD (ORD_NO bigint NOT NULL, PRIMARY KEY (ORD_NO))' +
+    ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;'
 
-  const writeCfg = (mysql: string, connected = true) => writeConfig(dir, {
-    ...TEST_CONFIG,
-    serverUrl: connected ? TEST_CONFIG.serverUrl : null,
-    projectId: connected ? TEST_CONFIG.projectId : null,
-    dialects: ['mysql'], namingRules: { ...TEST_CONFIG.namingRules },
-    tableOptions: { postgresql: '', mysql, oracle: '', mssql: '' },
-  })
-  const cfgMysql = async () =>
-    ((await readConfig(dir)).tableOptions).mysql
-  const json = () => JSON.parse(out.join('')) as {
-    tableOptions: string | null; tableOptionsApplied: boolean
-  }
+  const writeCfg = (mysql: string, connected = true) =>
+    writeConfig(dir, {
+      ...TEST_CONFIG,
+      serverUrl: connected ? TEST_CONFIG.serverUrl : null,
+      projectId: connected ? TEST_CONFIG.projectId : null,
+      dialects: ['mysql'],
+      namingRules: { ...TEST_CONFIG.namingRules },
+      tableOptions: { postgresql: '', mysql, oracle: '', mssql: '' },
+    })
+  const cfgMysql = async () => (await readConfig(dir)).tableOptions.mysql
+  const json = () =>
+    JSON.parse(out.join('')) as {
+      tableOptions: string | null
+      tableOptionsApplied: boolean
+    }
 
   it('비어 있으면 반영한다', async () => {
     await writeCfg('', false)
     await seedPulled(dir, createEmptyModel())
-    expect(await importCommand({ cwd: dir, ...yes, json: true, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(
+      await importCommand({
+        cwd: dir,
+        ...yes,
+        json: true,
+        dryRun: false,
+        file: await ddlFile('m.sql', OPT_DDL),
+      }),
+    ).toBe(0)
     expect(await cfgMysql()).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
     expect(json()).toMatchObject({
-      tableOptions: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', tableOptionsApplied: true,
+      tableOptions: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+      tableOptionsApplied: true,
     })
   })
 
   it('같으면 아무 일도 없다', async () => {
     await writeCfg('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', false)
     await seedPulled(dir, createEmptyModel())
-    expect(await importCommand({ cwd: dir, ...yes, json: true, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(
+      await importCommand({
+        cwd: dir,
+        ...yes,
+        json: true,
+        dryRun: false,
+        file: await ddlFile('m.sql', OPT_DDL),
+      }),
+    ).toBe(0)
     expect(await cfgMysql()).toBe('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
     expect(json().tableOptionsApplied).toBe(false)
   })
@@ -313,7 +446,15 @@ describe('import — 테이블 옵션 반영', () => {
   it('⚠️ 값이 있고 다르면 반영하지 않고 알린다 — 설정한 값을 조용히 덮어쓰지 않는다', async () => {
     await writeCfg('ENGINE=MyISAM', false)
     await seedPulled(dir, createEmptyModel())
-    expect(await importCommand({ cwd: dir, ...yes, json: false, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(
+      await importCommand({
+        cwd: dir,
+        ...yes,
+        json: false,
+        dryRun: false,
+        file: await ddlFile('m.sql', OPT_DDL),
+      }),
+    ).toBe(0)
     expect(await cfgMysql()).toBe('ENGINE=MyISAM')
     expect(out.join('')).toContain('erdd.config.yaml')
     expect(out.join('')).toContain('ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
@@ -322,30 +463,60 @@ describe('import — 테이블 옵션 반영', () => {
   it('⚠️ 연결된 프로젝트에서는 서버에 안 올라가고 다음 pull 이 덮어쓴다는 것을 함께 출력한다', async () => {
     await writeCfg('', true)
     await seedPulled(dir, createEmptyModel())
-    expect(await importCommand({ cwd: dir, ...yes, json: false, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(
+      await importCommand({
+        cwd: dir,
+        ...yes,
+        json: false,
+        dryRun: false,
+        file: await ddlFile('m.sql', OPT_DDL),
+      }),
+    ).toBe(0)
     expect(out.join('')).toContain('pull')
   })
 
   it('로컬 전용 프로젝트에는 그 주의 문구가 없다', async () => {
     await writeCfg('', false)
     await seedPulled(dir, createEmptyModel())
-    expect(await importCommand({ cwd: dir, ...yes, json: false, dryRun: false, file: await ddlFile('m.sql', OPT_DDL) })).toBe(0)
+    expect(
+      await importCommand({
+        cwd: dir,
+        ...yes,
+        json: false,
+        dryRun: false,
+        file: await ddlFile('m.sql', OPT_DDL),
+      }),
+    ).toBe(0)
     expect(out.join('')).not.toContain('pull')
   })
 
   it('--dry-run 은 config 를 쓰지 않는다', async () => {
     await writeCfg('', false)
     await seedPulled(dir, createEmptyModel())
-    expect(await importCommand({
-      cwd: dir, ...yes, json: true, dryRun: true, file: await ddlFile('m.sql', OPT_DDL),
-    })).toBe(0)
+    expect(
+      await importCommand({
+        cwd: dir,
+        ...yes,
+        json: true,
+        dryRun: true,
+        file: await ddlFile('m.sql', OPT_DDL),
+      }),
+    ).toBe(0)
     expect(await cfgMysql()).toBe('')
   })
 
   it('채택할 옵션이 없으면 config 를 건드리지 않는다', async () => {
     await writeCfg('ENGINE=MyISAM', false)
     await seedPulled(dir, createEmptyModel())
-    expect(await importCommand({ cwd: dir, ...yes, json: true, dryRun: false, file: await ddlFile('m.sql', DDL) })).toBe(0)
+    expect(
+      await importCommand({
+        cwd: dir,
+        ...yes,
+        json: true,
+        dryRun: false,
+        file: await ddlFile('m.sql', DDL),
+      }),
+    ).toBe(0)
     expect(await cfgMysql()).toBe('ENGINE=MyISAM')
     expect(json()).toMatchObject({ tableOptions: null, tableOptionsApplied: false })
   })

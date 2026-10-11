@@ -4,9 +4,20 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { uuidv7 } from 'uuidv7'
 import {
   MAX_OPS_PER_MUTATION,
-  applyLayout, applyOps, createEmptyModel, filesToModel, layoutFromModel, modelToFiles,
-  OpApplyError, validateModelIntegrity,
-  type FileTree, type LayoutData, type LocalSaveResult, type Note, type Op, type Position,
+  applyLayout,
+  applyOps,
+  createEmptyModel,
+  filesToModel,
+  layoutFromModel,
+  modelToFiles,
+  OpApplyError,
+  validateModelIntegrity,
+  type FileTree,
+  type LayoutData,
+  type LocalSaveResult,
+  type Note,
+  type Op,
+  type Position,
   type ProjectModel,
   type TableLayout,
 } from '@erdd/core'
@@ -30,7 +41,8 @@ export type StoreState =
 const EMPTY_LAYOUT: LayoutData = { tables: [], notes: [] }
 
 /** 저장·재읽기가 같은 문구를 쓴다 — 사용자가 배너와 토스트에서 같은 말을 봐야 한다. */
-const EXTERNAL_MESSAGE = '파일이 밖에서 바뀌었습니다 — 내 편집을 유지할지 파일을 다시 읽을지 고르세요'
+const EXTERNAL_MESSAGE =
+  '파일이 밖에서 바뀌었습니다 — 내 편집을 유지할지 파일을 다시 읽을지 고르세요'
 
 /**
  * 겹친 편집 때문에 확정하지 못한 로드를 몇 번까지 다시 읽을지. 한 번이면 대개 충분하다
@@ -109,9 +121,12 @@ async function readLayout(cwd: string): Promise<LayoutData> {
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 
 const isPosition = (v: unknown): v is Position =>
-  typeof v === 'object' && v !== null
-  && typeof (v as Position).x === 'number' && Number.isFinite((v as Position).x)
-  && typeof (v as Position).y === 'number' && Number.isFinite((v as Position).y)
+  typeof v === 'object' &&
+  v !== null &&
+  typeof (v as Position).x === 'number' &&
+  Number.isFinite((v as Position).x) &&
+  typeof (v as Position).y === 'number' &&
+  Number.isFinite((v as Position).y)
 
 /**
  * layout.yaml 은 사람이 손으로 고칠 수 있는 커밋 대상 파일이다. 좌표가 없거나 숫자가 아닌
@@ -129,8 +144,13 @@ function isTableLayout(v: unknown): v is TableLayout {
 function isNote(v: unknown): v is Note {
   if (typeof v !== 'object' || v === null) return false
   const n = v as Note
-  return typeof n.id === 'string' && n.id !== ''
-    && typeof n.content === 'string' && typeof n.color === 'string' && isPosition(n.position)
+  return (
+    typeof n.id === 'string' &&
+    n.id !== '' &&
+    typeof n.content === 'string' &&
+    typeof n.color === 'string' &&
+    isPosition(n.position)
+  )
 }
 
 export class FileStore {
@@ -161,8 +181,12 @@ export class FileStore {
    * 프로젝트가 열자마자 「미저장」이 된다** — 그리고 그것은 「연다고 저장소가 더러워지지 않는다」는
    * 이 사이클의 목적과 정면으로 어긋난다. `#dirty` 는 **모델이 디스크의 모델과 다른가**이다.
    */
-  #base: { tree: FileTree; layout: LayoutData; signature: string; modelSignature: string } =
-    { tree: {}, layout: EMPTY_LAYOUT, signature: '', modelSignature: '' }
+  #base: { tree: FileTree; layout: LayoutData; signature: string; modelSignature: string } = {
+    tree: {},
+    layout: EMPTY_LAYOUT,
+    signature: '',
+    modelSignature: '',
+  }
 
   /**
    * 디스크가 `#base` 와 달라졌는데 **사용자가 아직 고르지 않았다**(설계 D2 — 자동 병합 없음).
@@ -184,31 +208,43 @@ export class FileStore {
    */
   #onStatusChange: (() => void) | null = null
 
-  onStatusChange(fn: () => void): void { this.#onStatusChange = fn }
+  onStatusChange(fn: () => void): void {
+    this.#onStatusChange = fn
+  }
 
   constructor(cwd: string) {
     this.#cwd = cwd
   }
 
-  get cwd(): string { return this.#cwd }
-  get state(): StoreState { return this.#state }
+  get cwd(): string {
+    return this.#cwd
+  }
+  get state(): StoreState {
+    return this.#state
+  }
 
   /**
    * **저장할 것**이 남았는가. 플래그가 아니라 **내용 비교 결과**다(`flush()` 가 갱신한다) —
    * 되돌리는 편집(A→B→A)에서 `#draftPending` 은 참이고 이것은 거짓이다. 합치면 「미저장」
    * 표시가 거짓말을 하고 저장 버튼이 쓸 것 없는 저장을 하게 된다.
    */
-  get dirty(): boolean { return this.#dirty }
+  get dirty(): boolean {
+    return this.#dirty
+  }
 
   /**
    * 저장하지 않은 것이 **조금이라도** 있는가. `#dirty` 는 디바운스된 `flush()` 에서만 갱신되므로
    * 편집 직후 300ms 동안은 거짓이다 — 「미저장이면 막는다」류의 **가드는 이것을 써야** 그 창에서
    * 새지 않는다.
    */
-  get unsaved(): boolean { return this.#dirty || this.#draftPending }
+  get unsaved(): boolean {
+    return this.#dirty || this.#draftPending
+  }
 
   /** 디스크가 밖에서 바뀌었는데 사용자가 아직 「유지/다시 읽기」를 고르지 않았는가. */
-  get external(): boolean { return this.#external }
+  get external(): boolean {
+    return this.#external
+  }
 
   /**
    * 지금 아는 디스크 상태의 서명. **이 값이 움직였다 = 디스크 내용을 실제로 채택했다.**
@@ -216,7 +252,9 @@ export class FileStore {
    * 서버가 「브라우저에 reload 를 보낼까」를 판정하는 근거다. 메모리 모델의 변화로 판정하면
    * **내 편집도 「바뀌었다」가 되어** 자기 편집을 되돌려 받아 드래그가 튄다.
    */
-  get baseSignature(): string { return this.#base.signature }
+  get baseSignature(): string {
+    return this.#base.signature
+  }
 
   /**
    * 파일에서 모델을 다시 읽는다. **실패해도 마지막 정상 모델을 버리지 않는다** — 호출자가
@@ -341,7 +379,12 @@ export class FileStore {
   ): Promise<LoadAttempt> {
     return this.#serialize(async () => {
       if (!outcome.ok) {
-        this.#state = { ok: false, model: this.#state.model, seq: this.#state.seq, failures: outcome.failures }
+        this.#state = {
+          ok: false,
+          model: this.#state.model,
+          seq: this.#state.seq,
+          failures: outcome.failures,
+        }
         return { state: this.#state, stale: false }
       }
       if (this.#state.seq !== seqAtStart) return { state: this.#state, stale: true }
@@ -386,7 +429,10 @@ export class FileStore {
   /** 서버의 프로젝트 행 FOR UPDATE 락에 대응하는 자리. 모든 쓰기가 이 체인을 지난다. */
   #serialize<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.#chain.then(fn, fn)
-    this.#chain = run.then(() => undefined, () => undefined)
+    this.#chain = run.then(
+      () => undefined,
+      () => undefined,
+    )
     return run
   }
 
@@ -446,7 +492,9 @@ export class FileStore {
   #scheduleFlush(): void {
     this.#draftPending = true
     if (this.#timer !== null) clearTimeout(this.#timer)
-    this.#timer = setTimeout(() => { this.flush().catch(() => {}) }, WRITE_DEBOUNCE_MS)
+    this.#timer = setTimeout(() => {
+      this.flush().catch(() => {})
+    }, WRITE_DEBOUNCE_MS)
   }
 
   /**
@@ -464,7 +512,10 @@ export class FileStore {
    */
   async flush(): Promise<void> {
     return this.#serialize(async () => {
-      if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
+      if (this.#timer !== null) {
+        clearTimeout(this.#timer)
+        this.#timer = null
+      }
       if (!this.#draftPending) return
       const model = this.#state.model
       const dirty = modelSignatureOf(model) !== this.#base.modelSignature
@@ -500,7 +551,10 @@ export class FileStore {
    */
   async save(): Promise<LocalSaveResult> {
     return this.#serialize(async () => {
-      if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
+      if (this.#timer !== null) {
+        clearTimeout(this.#timer)
+        this.#timer = null
+      }
       if (!this.#state.ok) {
         return { ok: false, reason: 'blocked', message: '파일을 읽을 수 없어 저장이 잠겨 있습니다' }
       }
@@ -539,7 +593,10 @@ export class FileStore {
       }
 
       this.#base = {
-        tree, layout, signature: signatureOf(tree, layout), modelSignature: modelSignatureOf(model),
+        tree,
+        layout,
+        signature: signatureOf(tree, layout),
+        modelSignature: modelSignatureOf(model),
       }
       this.#draftPending = false
       this.#dirty = false
@@ -556,7 +613,10 @@ export class FileStore {
    */
   async discard(): Promise<void> {
     await this.#serialize(async () => {
-      if (this.#timer !== null) { clearTimeout(this.#timer); this.#timer = null }
+      if (this.#timer !== null) {
+        clearTimeout(this.#timer)
+        this.#timer = null
+      }
       this.#draftPending = false
       this.#dirty = false
       this.#external = false
@@ -619,7 +679,10 @@ export class FileStore {
     if (read.kind === 'corrupt') return { corruptBackupPath: read.backupPath }
     if (read.kind !== 'ok') return null
     await this.#serialize(async () => {
-      if (!this.#state.ok) { this.#pendingDraft = read.draft; return }
+      if (!this.#state.ok) {
+        this.#pendingDraft = read.draft
+        return
+      }
       this.#applyDraft(read.draft)
     })
     return null

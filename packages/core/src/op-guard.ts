@@ -49,7 +49,12 @@ export function parseOps(value: unknown): Op[] {
     }
     if (action === 'delete') {
       if (!('before' in raw)) throw new OpParseError(`${label}: delete에는 before가 필요합니다`)
-      return { action: 'delete' as const, entity: entity as EntityKind, entityId, before: raw.before }
+      return {
+        action: 'delete' as const,
+        entity: entity as EntityKind,
+        entityId,
+        before: raw.before,
+      }
     }
     const changes = raw.changes
     if (!isRecord(changes) || Object.keys(changes).length === 0) {

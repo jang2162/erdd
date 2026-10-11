@@ -9,18 +9,27 @@ const OK = { ok: true, seq: 1, written: ['erdd/tables/MBR.yaml'], deleted: [] }
 /** `status` 를 주면 그 코드로 응답한다 — 200 이 아니면 훅이 오류로 다뤄야 한다. */
 function mockPost(result: unknown = OK, status = 200): string[] {
   const calls: string[] = []
-  vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
-    calls.push(`${init?.method ?? 'GET'} ${url}`)
-    return Promise.resolve({
-      ok: status >= 200 && status < 300, status, json: () => Promise.resolve(result),
-    } as Response)
-  }))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`)
+      return Promise.resolve({
+        ok: status >= 200 && status < 300,
+        status,
+        json: () => Promise.resolve(result),
+      } as Response)
+    }),
+  )
   return calls
 }
 
 // ⚠️ `cleanup()` 이 없으면 앞선 테스트가 마운트한 훅의 keydown 리스너가 document 에 남아
 // 「언마운트하면 리스너를 뗀다」가 남의 리스너를 재게 된다.
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 describe('useLocalSave', () => {
   it('save 는 POST /local/save 를 부른다', async () => {
@@ -56,19 +65,30 @@ describe('useLocalSave', () => {
 
     const input = document.createElement('input')
     document.body.appendChild(input)
-    const e = new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true })
+    const e = new KeyboardEvent('keydown', {
+      key: 's',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
     input.dispatchEvent(e)
 
     expect(e.defaultPrevented).toBe(true)
-    await waitFor(() => { expect(calls).toEqual([`POST ${LOCAL_SAVE_PATH}`]) })
+    await waitFor(() => {
+      expect(calls).toEqual([`POST ${LOCAL_SAVE_PATH}`])
+    })
     input.remove()
   })
 
   it('Ctrl+S 도 같다', async () => {
     const calls = mockPost()
     renderHook(() => useLocalSave())
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }))
-    await waitFor(() => { expect(calls.length).toBe(1) })
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }),
+    )
+    await waitFor(() => {
+      expect(calls.length).toBe(1)
+    })
   })
 
   it('수식키 없는 s 는 저장하지 않는다', async () => {

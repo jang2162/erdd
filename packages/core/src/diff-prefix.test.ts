@@ -5,8 +5,15 @@ import { diffModels } from './diff.js'
 import { validateModelIntegrity } from './integrity.js'
 import { MAX_OPS_PER_MUTATION } from './op-guard.js'
 import {
-  createEmptyModel, type Column, type Domain, type IndexDef, type ProjectModel, type Relationship,
-  type Table, type TableGroup, type Term,
+  createEmptyModel,
+  type Column,
+  type Domain,
+  type IndexDef,
+  type ProjectModel,
+  type Relationship,
+  type Table,
+  type TableGroup,
+  type Term,
 } from './model.js'
 import { buildSampleModel } from './testing/fixtures.js'
 
@@ -28,34 +35,81 @@ function group(id: string): TableGroup {
 }
 function domain(id: string): Domain {
   return {
-    id, name: id, category: null, logicalType: 'VARCHAR(10)',
+    id,
+    name: id,
+    category: null,
+    logicalType: 'VARCHAR(10)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: [], description: null, origin: null,
+    defaultValue: null,
+    allowedValues: [],
+    description: null,
+    origin: null,
   }
 }
 function term(id: string, domainId: string | null): Term {
-  return { id, logicalName: id, physicalName: id.toUpperCase(), domainId, description: null, origin: null }
+  return {
+    id,
+    logicalName: id,
+    physicalName: id.toUpperCase(),
+    domainId,
+    description: null,
+    origin: null,
+  }
 }
 function table(id: string, groupId: string | null): Table {
   return {
-    id, logicalName: id, physicalName: id.toUpperCase(), comment: null, groupId,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id,
+    logicalName: id,
+    physicalName: id.toUpperCase(),
+    comment: null,
+    groupId,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   }
 }
 function column(id: string, tableId: string, order: number, domainId: string | null): Column {
   return {
-    id, tableId, logicalName: id, physicalName: id.toUpperCase(), type: 'BIGINT', isPk: false,
-    autoIncrement: false, nullable: true, defaultValue: null, order, comment: null, domainId, custom: {},
+    id,
+    tableId,
+    logicalName: id,
+    physicalName: id.toUpperCase(),
+    type: 'BIGINT',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order,
+    comment: null,
+    domainId,
+    custom: {},
   }
 }
-function relationship(id: string, parentTableId: string, childTableId: string, childColumnId: string, parentColumnId: string): Relationship {
+function relationship(
+  id: string,
+  parentTableId: string,
+  childTableId: string,
+  childColumnId: string,
+  parentColumnId: string,
+): Relationship {
   return {
-    id, parentTableId, childTableId, columnMappings: [{ childColumnId, parentColumnId }],
-    cardinality: '1:N', identifying: false, name: null,
+    id,
+    parentTableId,
+    childTableId,
+    columnMappings: [{ childColumnId, parentColumnId }],
+    cardinality: '1:N',
+    identifying: false,
+    name: null,
   }
 }
 function index(id: string, tableId: string, columnId: string): IndexDef {
-  return { id, tableId, name: id.toUpperCase(), columns: [{ columnId, direction: 'asc' }], unique: false }
+  return {
+    id,
+    tableId,
+    name: id.toUpperCase(),
+    columns: [{ columnId, direction: 'asc' }],
+    unique: false,
+  }
 }
 
 /** ops 를 size 씩 잘라 차례로 적용한다 — 웹의 나눠 보내기와 같은 자름. 조각마다 무결성을 본다. */
@@ -64,7 +118,10 @@ function applyInChunks(base: ProjectModel, ops: readonly Op[], size: number): Pr
   for (let start = 0; start < ops.length; start += size) {
     // applyOps 는 끝에서 무결성을 검사하고 어기면 OpApplyError 를 던진다 — 던지면 그 조각 경계가 깨진 것이다.
     model = applyOps(model, ops.slice(start, start + size))
-    expect(validateModelIntegrity(model), `op[${start}..${start + size - 1}] 까지 적용한 상태`).toEqual([])
+    expect(
+      validateModelIntegrity(model),
+      `op[${start}..${start + size - 1}] 까지 적용한 상태`,
+    ).toEqual([])
   }
   return model
 }
@@ -74,7 +131,10 @@ function expectEveryPrefixValid(base: ProjectModel, ops: readonly Op[]): Project
   let model = base
   ops.forEach((op, i) => {
     model = applyOps(model, [op])
-    expect(validateModelIntegrity(model), `op[${i}] ${op.action} ${op.entity} ${op.entityId} 까지`).toEqual([])
+    expect(
+      validateModelIntegrity(model),
+      `op[${i}] ${op.action} ${op.entity} ${op.entityId} 까지`,
+    ).toEqual([])
   })
   return model
 }
@@ -93,12 +153,12 @@ function mixedPair(): { before: ProjectModel; after: ProjectModel } {
   before.indexes.i1 = index('i1', 't2', 'c2')
 
   const after = createEmptyModel()
-  after.tableGroups.g2 = group('g2')                       // g1 삭제, g2 추가
-  after.domains.dNew = domain('dNew')                      // dOld 삭제, dNew 추가
-  after.terms.tm1 = term('tm1', 'dNew')                    // 갱신: 삭제될 도메인 → 새 도메인
-  after.tables.t1 = table('t1', 'g2')                      // 갱신: 삭제될 그룹 → 새 그룹
-  after.columns.c1 = column('c1', 't1', 0, 'dNew')         // 갱신: 도메인 이동
-  after.tables.t3 = table('t3', 'g2')                      // t2(와 c2·r1·i1) 삭제, t3 추가
+  after.tableGroups.g2 = group('g2') // g1 삭제, g2 추가
+  after.domains.dNew = domain('dNew') // dOld 삭제, dNew 추가
+  after.terms.tm1 = term('tm1', 'dNew') // 갱신: 삭제될 도메인 → 새 도메인
+  after.tables.t1 = table('t1', 'g2') // 갱신: 삭제될 그룹 → 새 그룹
+  after.columns.c1 = column('c1', 't1', 0, 'dNew') // 갱신: 도메인 이동
+  after.tables.t3 = table('t3', 'g2') // t2(와 c2·r1·i1) 삭제, t3 추가
   after.columns.c3 = column('c3', 't3', 0, 'dNew')
   after.relationships.r2 = relationship('r2', 't1', 't3', 'c3', 'c1')
   after.indexes.i2 = index('i2', 't3', 'c3')
@@ -145,7 +205,11 @@ describe('diffModels — 모든 접두사 무결성(나눠 보내기의 정확�
 
     const ops = diffModels(base, target)
     // 픽스처가 겨눈 경계가 실제로 참조 사이에 오는지부터 본다 — 아니면 이 테스트는 아무것도 잠그지 않는다.
-    expect(ops[MAX_OPS_PER_MUTATION - 1]).toMatchObject({ action: 'create', entity: 'domain', entityId: last })
+    expect(ops[MAX_OPS_PER_MUTATION - 1]).toMatchObject({
+      action: 'create',
+      entity: 'domain',
+      entityId: last,
+    })
     expect(ops[MAX_OPS_PER_MUTATION]).toMatchObject({ action: 'create', entity: 'term' })
     expect(applyInChunks(base, ops, MAX_OPS_PER_MUTATION)).toEqual(target)
 
@@ -167,7 +231,10 @@ describe('diffModels — 모든 접두사 무결성(나눠 보내기의 정확�
 
     const ops = diffModels(base, target)
     // 관계 삭제 5,000 이 첫 조각을 채우고, 둘째 조각이 그 관계들이 가리키던 컬럼·테이블 삭제로 시작한다.
-    expect(ops[MAX_OPS_PER_MUTATION - 1]).toMatchObject({ action: 'delete', entity: 'relationship' })
+    expect(ops[MAX_OPS_PER_MUTATION - 1]).toMatchObject({
+      action: 'delete',
+      entity: 'relationship',
+    })
     expect(ops[MAX_OPS_PER_MUTATION]).toMatchObject({ action: 'delete', entity: 'column' })
     expect(applyInChunks(base, ops, MAX_OPS_PER_MUTATION)).toEqual(target)
 

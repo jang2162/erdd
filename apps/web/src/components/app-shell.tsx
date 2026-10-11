@@ -12,8 +12,14 @@ import { PendingPromotionsBadge } from '@/components/pending-promotions-badge'
  * `Protected`(RequireAuth 안)가 하고 여기로 내린다. **필수 prop 이다** — 옵셔널이면 호출부가
  * 빠뜨려도 타입 오류 없이 서버 동작(배지 폴링)으로 조용히 열린다(리뷰 M-1).
  */
-export function AppShell({ children, userMenu, isLocal }: {
-  children: ReactNode; userMenu?: ReactNode; isLocal: boolean
+export function AppShell({
+  children,
+  userMenu,
+  isLocal,
+}: {
+  children: ReactNode
+  userMenu?: ReactNode
+  isLocal: boolean
 }) {
   return (
     <div className="min-h-dvh">

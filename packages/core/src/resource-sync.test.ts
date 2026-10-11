@@ -4,7 +4,12 @@ import { validateModelIntegrity } from './integrity.js'
 import { diffModels } from './diff.js'
 import { planPromote } from './resource-promote.js'
 import {
-  adoptAssignments, adoptTargetOf, applyResyncPlan, planAdoption, planResync, type LibraryItem,
+  adoptAssignments,
+  adoptTargetOf,
+  applyResyncPlan,
+  planAdoption,
+  planResync,
+  type LibraryItem,
 } from './resource-sync.js'
 
 const LIB = 'lib-1'
@@ -14,31 +19,57 @@ function wordItem(id: string, logicalName: string, abbreviation: string, version
 }
 function domainItem(id: string, name: string, version = 1): LibraryItem {
   return {
-    id, kind: 'domain', version,
+    id,
+    kind: 'domain',
+    version,
     payload: {
-      name, category: null, logicalType: 'VARCHAR(100)',
+      name,
+      category: null,
+      logicalType: 'VARCHAR(100)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
     },
   }
 }
-function termItem(id: string, logicalName: string, physicalName: string,
-  domainSourceId: string | null, version = 1): LibraryItem {
+function termItem(
+  id: string,
+  logicalName: string,
+  physicalName: string,
+  domainSourceId: string | null,
+  version = 1,
+): LibraryItem {
   return {
-    id, kind: 'term', version,
+    id,
+    kind: 'term',
+    version,
     payload: { logicalName, physicalName, domainId: domainSourceId, description: null },
   }
 }
 function customFieldItem(id: string, name: string, version = 1): LibraryItem {
   return {
-    id, kind: 'customField', version,
-    payload: { name, target: 'column', type: 'text', options: [], required: false, defaultValue: null },
+    id,
+    kind: 'customField',
+    version,
+    payload: {
+      name,
+      target: 'column',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: null,
+    },
   }
 }
 
 /** 이 라이브러리 항목을 가져온 상태의 프로젝트 단어. */
 function forkedWord(
-  id: string, sourceId: string, logicalName: string, abbreviation: string, sourceVersion = 1,
+  id: string,
+  sourceId: string,
+  logicalName: string,
+  abbreviation: string,
+  sourceVersion = 1,
 ): Word {
   const payload = { logicalName, abbreviation, englishName: null, description: null }
   return { id, ...payload, origin: { libraryId: LIB, sourceId, sourceVersion, base: payload } }
@@ -59,7 +90,8 @@ describe('planResync — 분류', () => {
 
   it('버전이 같으면 목록에 없고 keptSynced로 센다', () => {
     const model: ProjectModel = {
-      ...createEmptyModel(), words: { w1: forkedWord('w1', 's1', '회원', 'MBR', 1) },
+      ...createEmptyModel(),
+      words: { w1: forkedWord('w1', 's1', '회원', 'MBR', 1) },
     }
     const plan = planResync(model, LIB, [wordItem('s1', '회원', 'MBR', 1)])
     expect(plan.entries).toHaveLength(0)
@@ -68,7 +100,8 @@ describe('planResync — 분류', () => {
 
   it('원본만 바뀌면 auto-update', () => {
     const model: ProjectModel = {
-      ...createEmptyModel(), words: { w1: forkedWord('w1', 's1', '회원', 'MBR', 1) },
+      ...createEmptyModel(),
+      words: { w1: forkedWord('w1', 's1', '회원', 'MBR', 1) },
     }
     const plan = planResync(model, LIB, [wordItem('s1', '회원', 'MEMBER', 2)])
     expect(plan.entries[0]!.status).toBe('auto-update')
@@ -80,7 +113,8 @@ describe('planResync — 분류', () => {
   it('원본도 바뀌고 프로젝트도 고쳤으면 conflict', () => {
     const forked = forkedWord('w1', 's1', '회원', 'MBR', 1)
     const model: ProjectModel = {
-      ...createEmptyModel(), words: { w1: { ...forked, abbreviation: 'MB' } },
+      ...createEmptyModel(),
+      words: { w1: { ...forked, abbreviation: 'MB' } },
     }
     const plan = planResync(model, LIB, [wordItem('s1', '회원', 'MEMBER', 2)])
     expect(plan.entries[0]!.status).toBe('conflict')
@@ -88,8 +122,12 @@ describe('planResync — 분류', () => {
 
   it('origin이 없는 항목은 keptLocal이고 계획에 영향이 없다', () => {
     const local: Word = {
-      id: 'w9', logicalName: '쿠폰', abbreviation: 'CPN',
-      englishName: null, description: null, origin: null,
+      id: 'w9',
+      logicalName: '쿠폰',
+      abbreviation: 'CPN',
+      englishName: null,
+      description: null,
+      origin: null,
     }
     const model: ProjectModel = { ...createEmptyModel(), words: { w9: local } }
     const plan = planResync(model, LIB, [])
@@ -99,7 +137,8 @@ describe('planResync — 분류', () => {
 
   it('원본에서 사라진 항목은 keptDetached로만 센다 (삭제 제안 없음)', () => {
     const model: ProjectModel = {
-      ...createEmptyModel(), words: { w1: forkedWord('w1', 's1', '회원', 'MBR', 1) },
+      ...createEmptyModel(),
+      words: { w1: forkedWord('w1', 's1', '회원', 'MBR', 1) },
     }
     const plan = planResync(model, LIB, [])
     expect(plan.keptDetached).toBe(1)
@@ -119,8 +158,12 @@ describe('planResync — 분류', () => {
 
   it('added인데 같은 종류에 같은 이름이 있으면 nameClash', () => {
     const local: Word = {
-      id: 'w9', logicalName: '회원', abbreviation: 'MEM',
-      englishName: null, description: null, origin: null,
+      id: 'w9',
+      logicalName: '회원',
+      abbreviation: 'MEM',
+      englishName: null,
+      description: null,
+      origin: null,
     }
     const model: ProjectModel = { ...createEmptyModel(), words: { w9: local } }
     const plan = planResync(model, LIB, [wordItem('s1', '회원', 'MBR')])
@@ -146,7 +189,9 @@ describe('applyResyncPlan', () => {
     const created = Object.values(next.words)[0]!
     expect(created.logicalName).toBe('회원')
     expect(created.origin).toEqual({
-      libraryId: LIB, sourceId: 's1', sourceVersion: 3,
+      libraryId: LIB,
+      sourceId: 's1',
+      sourceVersion: 3,
       base: { logicalName: '회원', abbreviation: 'MBR', description: null },
     })
   })
@@ -159,7 +204,8 @@ describe('applyResyncPlan', () => {
 
   it('auto-update + apply가 내용과 origin을 함께 갱신한다', () => {
     const model: ProjectModel = {
-      ...createEmptyModel(), words: { w1: forkedWord('w1', 's1', '회원', 'MBR', 1) },
+      ...createEmptyModel(),
+      words: { w1: forkedWord('w1', 's1', '회원', 'MBR', 1) },
     }
     const plan = planResync(model, LIB, [wordItem('s1', '회원', 'MEMBER', 2)])
     const next = applyResyncPlan(model, plan, { s1: 'apply' }, newId)
@@ -170,15 +216,19 @@ describe('applyResyncPlan', () => {
   it('conflict + keep은 내용을 유지하고 origin만 갱신한다 — 다음엔 안 뜨고, 원본이 또 바뀌면 다시 충돌', () => {
     const forked = forkedWord('w1', 's1', '회원', 'MBR', 1)
     const model: ProjectModel = {
-      ...createEmptyModel(), words: { w1: { ...forked, abbreviation: 'MB' } },
+      ...createEmptyModel(),
+      words: { w1: { ...forked, abbreviation: 'MB' } },
     }
     const plan = planResync(model, LIB, [wordItem('s1', '회원', 'MEMBER', 2)])
     const kept = applyResyncPlan(model, plan, { s1: 'keep' }, newId)
 
-    expect(kept.words.w1!.abbreviation).toBe('MB')          // 프로젝트 값 유지
+    expect(kept.words.w1!.abbreviation).toBe('MB') // 프로젝트 값 유지
     expect(kept.words.w1!.origin!.sourceVersion).toBe(2)
-    expect(kept.words.w1!.origin!.base).toEqual(
-      { logicalName: '회원', abbreviation: 'MEMBER', description: null })  // 원본 현재값
+    expect(kept.words.w1!.origin!.base).toEqual({
+      logicalName: '회원',
+      abbreviation: 'MEMBER',
+      description: null,
+    }) // 원본 현재값
 
     // 같은 원본으로 다시 계획하면 목록에 없다
     expect(planResync(kept, LIB, [wordItem('s1', '회원', 'MEMBER', 2)]).entries).toHaveLength(0)
@@ -200,7 +250,10 @@ describe('applyResyncPlan', () => {
 
   it('도메인을 빼고 용어만 추가하면 domainId는 null', () => {
     const model = createEmptyModel()
-    const plan = planResync(model, LIB, [domainItem('sd', '금액'), termItem('st', '주문금액', 'ORD_AMT', 'sd')])
+    const plan = planResync(model, LIB, [
+      domainItem('sd', '금액'),
+      termItem('st', '주문금액', 'ORD_AMT', 'sd'),
+    ])
     const next = applyResyncPlan(model, plan, { st: 'apply' }, newId)
     expect(Object.values(next.terms)[0]!.domainId).toBeNull()
     expect(Object.keys(next.domains)).toHaveLength(0)
@@ -209,13 +262,24 @@ describe('applyResyncPlan', () => {
   it('커스텀 항목 추가는 같은 target 최대 order+1을 받고, 자동 갱신은 order를 보존한다', () => {
     const existing = {
       f0: {
-        id: 'f0', name: '기존', target: 'column' as const, type: 'text' as const,
-        options: [], required: false, defaultValue: null, order: 4, origin: null,
+        id: 'f0',
+        name: '기존',
+        target: 'column' as const,
+        type: 'text' as const,
+        options: [],
+        required: false,
+        defaultValue: null,
+        order: 4,
+        origin: null,
       },
     }
     const model: ProjectModel = { ...createEmptyModel(), customFields: existing }
     const added = applyResyncPlan(
-      model, planResync(model, LIB, [customFieldItem('s1', '비고')]), { s1: 'apply' }, newId)
+      model,
+      planResync(model, LIB, [customFieldItem('s1', '비고')]),
+      { s1: 'apply' },
+      newId,
+    )
     const created = Object.values(added.customFields).find((f) => f.name === '비고')!
     expect(created.order).toBe(5)
 
@@ -226,11 +290,14 @@ describe('applyResyncPlan', () => {
 
   it('결과 모델이 무결성을 통과하고 diffModels가 정상 op 배치를 낸다', () => {
     const model = createEmptyModel()
-    const plan = planResync(model, LIB, [domainItem('sd', '금액'), termItem('st', '주문금액', 'ORD_AMT', 'sd')])
+    const plan = planResync(model, LIB, [
+      domainItem('sd', '금액'),
+      termItem('st', '주문금액', 'ORD_AMT', 'sd'),
+    ])
     const next = applyResyncPlan(model, plan, { sd: 'apply', st: 'apply' }, newId)
     expect(validateModelIntegrity(next)).toEqual([])
     const ops = diffModels(model, next)
-    expect(ops.map((o) => o.entity)).toEqual(['domain', 'term'])   // 부모 우선 순서
+    expect(ops.map((o) => o.entity)).toEqual(['domain', 'term']) // 부모 우선 순서
     expect(ops.every((o) => o.action === 'create')).toBe(true)
   })
 
@@ -243,8 +310,12 @@ describe('applyResyncPlan', () => {
 })
 
 describe('adopt', () => {
-  const libWord = (id: string, version: number, payload: Record<string, unknown>) =>
-    ({ id, kind: 'word' as const, version, payload })
+  const libWord = (id: string, version: number, payload: Record<string, unknown>) => ({
+    id,
+    kind: 'word' as const,
+    version,
+    payload,
+  })
   function localWord(id: string, abbreviation: string, origin: Origin | null = null) {
     return { id, logicalName: '고객', abbreviation, englishName: null, description: null, origin }
   }
@@ -252,41 +323,105 @@ describe('adopt', () => {
   it('같은 이름의 로컬 항목에 내용은 두고 출처만 붙인다 — base 는 투영된 원본 값', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST')
-    const items = [libWord('S1', 4, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })]
+    const items = [
+      libWord('S1', 4, {
+        logicalName: '고객',
+        abbreviation: 'CUST',
+        englishName: null,
+        description: null,
+      }),
+    ]
     const plan = planResync(m, 'L1', items)
     expect(plan.entries[0]).toMatchObject({ status: 'added', nameClash: true })
     const next = applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')
     expect(Object.keys(next.words)).toEqual(['w1'])
     expect(next.words['w1']).toMatchObject({ abbreviation: 'CUST' })
     expect(next.words['w1']!.origin).toEqual({
-      libraryId: 'L1', sourceId: 'S1', sourceVersion: 4,
+      libraryId: 'L1',
+      sourceId: 'S1',
+      sourceVersion: 4,
       base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null },
     })
-    expect(planResync(next, 'L1', items).entries).toEqual([])   // 곧바로 동기 상태
+    expect(planResync(next, 'L1', items).entries).toEqual([]) // 곧바로 동기 상태
   })
 
   it('내용이 다르게 연결된 항목은 원본이 바뀌면 충돌로 뜬다', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CSTMR')
-    const v1 = [libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })]
+    const v1 = [
+      libWord('S1', 1, {
+        logicalName: '고객',
+        abbreviation: 'CUST',
+        englishName: null,
+        description: null,
+      }),
+    ]
     const adopted = applyResyncPlan(m, planResync(m, 'L1', v1), { S1: 'adopt' }, () => 'unused')
-    const v2 = [libWord('S1', 2, { logicalName: '고객', abbreviation: 'CUS', englishName: null, description: null })]
+    const v2 = [
+      libWord('S1', 2, {
+        logicalName: '고객',
+        abbreviation: 'CUS',
+        englishName: null,
+        description: null,
+      }),
+    ]
     expect(planResync(adopted, 'L1', v2).entries[0]).toMatchObject({ status: 'conflict' })
   })
 
   it('같은 배치에서 연결한 도메인을 용어의 base.domainId 가 프로젝트 id 로 가리킨다', () => {
     const m = createEmptyModel()
     m.domains['d1'] = {
-      id: 'd1', name: 'NO', category: null, logicalType: 'string',
+      id: 'd1',
+      name: 'NO',
+      category: null,
+      logicalType: 'string',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
-    m.terms['t1'] = { id: 't1', logicalName: '고객번호', physicalName: 'CUST_NO', domainId: 'd1', description: null, origin: null }
+    m.terms['t1'] = {
+      id: 't1',
+      logicalName: '고객번호',
+      physicalName: 'CUST_NO',
+      domainId: 'd1',
+      description: null,
+      origin: null,
+    }
     const items = [
-      { id: 'SD', kind: 'domain' as const, version: 1, payload: { name: 'NO', category: null, logicalType: 'string', dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null }, defaultValue: null, allowedValues: [], description: null } },
-      { id: 'ST', kind: 'term' as const, version: 1, payload: { logicalName: '고객번호', physicalName: 'CUST_NO', domainId: 'SD', description: null } },
+      {
+        id: 'SD',
+        kind: 'domain' as const,
+        version: 1,
+        payload: {
+          name: 'NO',
+          category: null,
+          logicalType: 'string',
+          dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+          defaultValue: null,
+          allowedValues: [],
+          description: null,
+        },
+      },
+      {
+        id: 'ST',
+        kind: 'term' as const,
+        version: 1,
+        payload: {
+          logicalName: '고객번호',
+          physicalName: 'CUST_NO',
+          domainId: 'SD',
+          description: null,
+        },
+      },
     ]
-    const next = applyResyncPlan(m, planResync(m, 'L1', items), { SD: 'adopt', ST: 'adopt' }, () => 'unused')
+    const next = applyResyncPlan(
+      m,
+      planResync(m, 'L1', items),
+      { SD: 'adopt', ST: 'adopt' },
+      () => 'unused',
+    )
     expect(next.terms['t1']!.origin!.base).toMatchObject({ domainId: 'd1' })
     expect(planResync(next, 'L1', items).entries).toEqual([])
   })
@@ -294,28 +429,82 @@ describe('adopt', () => {
   it('도메인 없이 용어만 연결하면 base.domainId 는 null — 원본이 바뀌면 자동 갱신이 아니라 충돌', () => {
     const m = createEmptyModel()
     m.domains['d1'] = {
-      id: 'd1', name: 'NO', category: null, logicalType: 'string',
+      id: 'd1',
+      name: 'NO',
+      category: null,
+      logicalType: 'string',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
-    m.terms['t1'] = { id: 't1', logicalName: '고객번호', physicalName: 'CUST_NO', domainId: 'd1', description: null, origin: null }
-    const domain = { id: 'SD', kind: 'domain' as const, version: 1, payload: { name: 'NO', category: null, logicalType: 'string', dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null }, defaultValue: null, allowedValues: [], description: null } }
-    const term = (version: number, description: string | null) =>
-      ({ id: 'ST', kind: 'term' as const, version, payload: { logicalName: '고객번호', physicalName: 'CUST_NO', domainId: 'SD', description } })
-    const next = applyResyncPlan(m, planResync(m, 'L1', [domain, term(1, null)]), { ST: 'adopt' }, () => 'unused')
-    expect(next.terms['t1']!.domainId).toBe('d1')                     // 내용은 그대로
-    expect(next.terms['t1']!.origin!.base).toMatchObject({ domainId: null })   // base 는 투영값
+    m.terms['t1'] = {
+      id: 't1',
+      logicalName: '고객번호',
+      physicalName: 'CUST_NO',
+      domainId: 'd1',
+      description: null,
+      origin: null,
+    }
+    const domain = {
+      id: 'SD',
+      kind: 'domain' as const,
+      version: 1,
+      payload: {
+        name: 'NO',
+        category: null,
+        logicalType: 'string',
+        dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+        defaultValue: null,
+        allowedValues: [],
+        description: null,
+      },
+    }
+    const term = (version: number, description: string | null) => ({
+      id: 'ST',
+      kind: 'term' as const,
+      version,
+      payload: { logicalName: '고객번호', physicalName: 'CUST_NO', domainId: 'SD', description },
+    })
+    const next = applyResyncPlan(
+      m,
+      planResync(m, 'L1', [domain, term(1, null)]),
+      { ST: 'adopt' },
+      () => 'unused',
+    )
+    expect(next.terms['t1']!.domainId).toBe('d1') // 내용은 그대로
+    expect(next.terms['t1']!.origin!.base).toMatchObject({ domainId: null }) // base 는 투영값
     // 자동 갱신이 도메인 연결을 조용히 지우지 못한다
-    expect(planResync(next, 'L1', [domain, term(2, '고객 식별 번호')]).entries
-      .map((e) => [e.sourceId, e.status, e.changedFields]))
-      .toEqual([['SD', 'added', []], ['ST', 'conflict', ['description']]])
+    expect(
+      planResync(next, 'L1', [domain, term(2, '고객 식별 번호')]).entries.map((e) => [
+        e.sourceId,
+        e.status,
+        e.changedFields,
+      ]),
+    ).toEqual([
+      ['SD', 'added', []],
+      ['ST', 'conflict', ['description']],
+    ])
   })
 
   it('added 가 아닌 항목은 같은 이름의 무출처 엔티티가 있어도 adopt 대상이 없다', () => {
     const m = createEmptyModel()
-    m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } })
+    m.words['w1'] = localWord('w1', 'CUST', {
+      libraryId: 'L1',
+      sourceId: 'S1',
+      sourceVersion: 1,
+      base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null },
+    })
     m.words['w0'] = localWord('w0', 'CSTMR')
-    const plan = planResync(m, 'L1', [libWord('S1', 2, { logicalName: '고객', abbreviation: 'CUS', englishName: null, description: null })])
+    const plan = planResync(m, 'L1', [
+      libWord('S1', 2, {
+        logicalName: '고객',
+        abbreviation: 'CUS',
+        englishName: null,
+        description: null,
+      }),
+    ])
     expect(plan.entries[0]!.status).toBe('auto-update')
     expect(adoptTargetOf(m, plan.entries[0]!)).toBeNull()
   })
@@ -323,24 +512,50 @@ describe('adopt', () => {
   it('이름은 trim 해 비교한다 — nameClash 로 뜬 항목은 연결할 수 있다', () => {
     const m = createEmptyModel()
     m.words['w1'] = { ...localWord('w1', 'CUST'), logicalName: '고객 ' }
-    const plan = planResync(m, 'L1', [libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })])
+    const plan = planResync(m, 'L1', [
+      libWord('S1', 1, {
+        logicalName: '고객',
+        abbreviation: 'CUST',
+        englishName: null,
+        description: null,
+      }),
+    ])
     expect(plan.entries[0]!.nameClash).toBe(true)
     expect(adoptTargetOf(m, plan.entries[0]!)).toBe('w1')
   })
 
   it('이미 다른 출처가 붙은 항목은 대상이 아니다', () => {
     const m = createEmptyModel()
-    m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L0', sourceId: 'X', sourceVersion: 1, base: {} })
-    const plan = planResync(m, 'L1', [libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })])
+    m.words['w1'] = localWord('w1', 'CUST', {
+      libraryId: 'L0',
+      sourceId: 'X',
+      sourceVersion: 1,
+      base: {},
+    })
+    const plan = planResync(m, 'L1', [
+      libWord('S1', 1, {
+        logicalName: '고객',
+        abbreviation: 'CUST',
+        englishName: null,
+        description: null,
+      }),
+    ])
     expect(adoptTargetOf(m, plan.entries[0]!)).toBeNull()
-    expect(applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')).toBe(m)   // 전부 no-op 이면 입력 그대로
+    expect(applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')).toBe(m) // 전부 no-op 이면 입력 그대로
   })
 
   it('후보가 둘이면 id 오름차순 첫 항목에 붙인다', () => {
     const m = createEmptyModel()
     m.words['w2'] = localWord('w2', 'CUST')
     m.words['w1'] = localWord('w1', 'CUST')
-    const plan = planResync(m, 'L1', [libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })])
+    const plan = planResync(m, 'L1', [
+      libWord('S1', 1, {
+        logicalName: '고객',
+        abbreviation: 'CUST',
+        englishName: null,
+        description: null,
+      }),
+    ])
     const next = applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')
     expect(next.words['w1']!.origin).not.toBeNull()
     expect(next.words['w2']!.origin).toBeNull()
@@ -350,7 +565,14 @@ describe('adopt', () => {
     const m = createEmptyModel()
     m.words['a1'] = localWord('a1', 'CUST')
     m.words['B1'] = localWord('B1', 'CUST')
-    const plan = planResync(m, 'L1', [libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })])
+    const plan = planResync(m, 'L1', [
+      libWord('S1', 1, {
+        logicalName: '고객',
+        abbreviation: 'CUST',
+        englishName: null,
+        description: null,
+      }),
+    ])
     // localeCompare 면 a1 < B1 이다(대소문자 무시 우선). 코드 단위로는 'B'(0x42) < 'a'(0x61).
     expect(adoptTargetOf(m, plan.entries[0]!)).toBe('B1')
   })
@@ -359,8 +581,18 @@ describe('adopt', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST')
     const items = [
-      libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null }),
-      libWord('S2', 1, { logicalName: '고객', abbreviation: 'CSTMR', englishName: null, description: null }),
+      libWord('S1', 1, {
+        logicalName: '고객',
+        abbreviation: 'CUST',
+        englishName: null,
+        description: null,
+      }),
+      libWord('S2', 1, {
+        logicalName: '고객',
+        abbreviation: 'CSTMR',
+        englishName: null,
+        description: null,
+      }),
     ]
     const plan = planResync(m, 'L1', items)
     expect(plan.entries.map((e) => e.sourceId)).toEqual(['S1', 'S2'])
@@ -368,16 +600,27 @@ describe('adopt', () => {
     expect(Object.keys(next.words)).toEqual(['w1'])
     expect(next.words['w1']!.origin).toMatchObject({ sourceId: 'S1' })
     // 밀려난 원본은 연결되지 않은 채 다음 계획에 다시 added 로 뜬다
-    expect(planResync(next, 'L1', items).entries)
-      .toEqual([expect.objectContaining({ sourceId: 'S2', status: 'added', nameClash: true })])
+    expect(planResync(next, 'L1', items).entries).toEqual([
+      expect.objectContaining({ sourceId: 'S2', status: 'added', nameClash: true }),
+    ])
   })
 
   it('adoptAssignments 는 배치 단위로 배정한다 — 동명 원본 둘이 한 대상을 고르면 한 건만', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST')
     const items = [
-      libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null }),
-      libWord('S2', 1, { logicalName: '고객', abbreviation: 'CSTMR', englishName: null, description: null }),
+      libWord('S1', 1, {
+        logicalName: '고객',
+        abbreviation: 'CUST',
+        englishName: null,
+        description: null,
+      }),
+      libWord('S2', 1, {
+        logicalName: '고객',
+        abbreviation: 'CSTMR',
+        englishName: null,
+        description: null,
+      }),
     ]
     const plan = planResync(m, 'L1', items)
     // 단건 후보는 둘 다 w1 이다 — 배치 배정 없이 항목마다 세면 연결을 부풀린다
@@ -390,26 +633,47 @@ describe('adopt', () => {
   it('동명 원본의 선착은 입력 순서가 아니라 sourceId 로 정해진다', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST')
-    const s1 = libWord('S1', 1, { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null })
-    const s2 = libWord('S2', 1, { logicalName: '고객', abbreviation: 'CSTMR', englishName: null, description: null })
+    const s1 = libWord('S1', 1, {
+      logicalName: '고객',
+      abbreviation: 'CUST',
+      englishName: null,
+      description: null,
+    })
+    const s2 = libWord('S2', 1, {
+      logicalName: '고객',
+      abbreviation: 'CSTMR',
+      englishName: null,
+      description: null,
+    })
     const decisions = { S1: 'adopt', S2: 'adopt' } as const
-    for (const items of [[s1, s2], [s2, s1]]) {
+    for (const items of [
+      [s1, s2],
+      [s2, s1],
+    ]) {
       const plan = planResync(m, 'L1', items)
       expect(plan.entries.map((e) => e.sourceId)).toEqual(['S1', 'S2'])
       expect([...adoptAssignments(m, plan, decisions)]).toEqual([['S1', 'w1']])
-      expect(applyResyncPlan(m, plan, decisions, () => 'unused').words['w1']!.origin)
-        .toMatchObject({ sourceId: 'S1' })
+      expect(applyResyncPlan(m, plan, decisions, () => 'unused').words['w1']!.origin).toMatchObject(
+        { sourceId: 'S1' },
+      )
     }
   })
 
   it('커스텀 항목은 이름이 같아도 target 이 다르면 대상이 아니다', () => {
     const m = createEmptyModel()
     const field = {
-      id: 'f1', name: '비고', target: 'table' as const, type: 'text' as const,
-      options: [], required: false, defaultValue: null, order: 0, origin: null,
+      id: 'f1',
+      name: '비고',
+      target: 'table' as const,
+      type: 'text' as const,
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.customFields['f1'] = field
-    const item = customFieldItem('S1', '비고')   // target: 'column'
+    const item = customFieldItem('S1', '비고') // target: 'column'
     expect(adoptTargetOf(m, planResync(m, 'L1', [item]).entries[0]!)).toBeNull()
     m.customFields['f1'] = { ...field, target: 'column' }
     expect(adoptTargetOf(m, planResync(m, 'L1', [item]).entries[0]!)).toBe('f1')
@@ -417,31 +681,75 @@ describe('adopt', () => {
 
   it('added 가 아닌 항목의 adopt 는 무시한다(keep 으로 새지 않는다)', () => {
     const m = createEmptyModel()
-    m.words['w1'] = localWord('w1', 'CUST', { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null } })
-    const plan = planResync(m, 'L1', [libWord('S1', 2, { logicalName: '고객', abbreviation: 'CUS', englishName: null, description: null })])
+    m.words['w1'] = localWord('w1', 'CUST', {
+      libraryId: 'L1',
+      sourceId: 'S1',
+      sourceVersion: 1,
+      base: { logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null },
+    })
+    const plan = planResync(m, 'L1', [
+      libWord('S1', 2, {
+        logicalName: '고객',
+        abbreviation: 'CUS',
+        englishName: null,
+        description: null,
+      }),
+    ])
     expect(plan.entries[0]!.status).toBe('auto-update')
     expect(applyResyncPlan(m, plan, { S1: 'adopt' }, () => 'unused')).toBe(m)
   })
 })
 
 describe('planAdoption — 내용이 같은 항목만 연결', () => {
-  const W = (abbreviation: string) =>
-    ({ logicalName: '고객', abbreviation, englishName: null, description: null })
-  const libWord = (id: string, abbreviation: string): LibraryItem =>
-    ({ id, kind: 'word', version: 3, payload: W(abbreviation) })
-  const localWord = (id: string, abbreviation: string): Word => ({ id, ...W(abbreviation), origin: null })
+  const W = (abbreviation: string) => ({
+    logicalName: '고객',
+    abbreviation,
+    englishName: null,
+    description: null,
+  })
+  const libWord = (id: string, abbreviation: string): LibraryItem => ({
+    id,
+    kind: 'word',
+    version: 3,
+    payload: W(abbreviation),
+  })
+  const localWord = (id: string, abbreviation: string): Word => ({
+    id,
+    ...W(abbreviation),
+    origin: null,
+  })
   const NO_DOMAIN = {
-    name: 'NO', category: null, logicalType: 'string',
+    name: 'NO',
+    category: null,
+    logicalType: 'string',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: [], description: null,
+    defaultValue: null,
+    allowedValues: [],
+    description: null,
   }
-  const libDomain = (name = 'NO'): LibraryItem => ({ id: 'SD', kind: 'domain', version: 1, payload: { ...NO_DOMAIN, name } })
-  const libTerm = (domainId: string | null): LibraryItem =>
-    ({ id: 'ST', kind: 'term', version: 1, payload: { logicalName: '고객번호', physicalName: 'CUST_NO', domainId, description: null } })
+  const libDomain = (name = 'NO'): LibraryItem => ({
+    id: 'SD',
+    kind: 'domain',
+    version: 1,
+    payload: { ...NO_DOMAIN, name },
+  })
+  const libTerm = (domainId: string | null): LibraryItem => ({
+    id: 'ST',
+    kind: 'term',
+    version: 1,
+    payload: { logicalName: '고객번호', physicalName: 'CUST_NO', domainId, description: null },
+  })
   function withTerm(domainId: string | null): ProjectModel {
     const m = createEmptyModel()
     m.domains['d1'] = { id: 'd1', ...NO_DOMAIN, origin: null }
-    m.terms['t1'] = { id: 't1', logicalName: '고객번호', physicalName: 'CUST_NO', domainId, description: null, origin: null }
+    m.terms['t1'] = {
+      id: 't1',
+      logicalName: '고객번호',
+      physicalName: 'CUST_NO',
+      domainId,
+      description: null,
+      origin: null,
+    }
     return m
   }
 
@@ -449,13 +757,19 @@ describe('planAdoption — 내용이 같은 항목만 연결', () => {
     const m = createEmptyModel()
     m.words['w1'] = localWord('w1', 'CUST')
     const same = planResync(m, 'L1', [libWord('S1', 'CUST')])
-    expect(planAdoption(m, same, { S1: 'adopt' }, { sameContentOnly: true }))
-      .toEqual({ assigned: new Map([['S1', 'w1']]), differs: new Map() })
+    expect(planAdoption(m, same, { S1: 'adopt' }, { sameContentOnly: true })).toEqual({
+      assigned: new Map([['S1', 'w1']]),
+      differs: new Map(),
+    })
     const other = planResync(m, 'L1', [libWord('S1', 'CSTMR')])
-    expect(planAdoption(m, other, { S1: 'adopt' }, { sameContentOnly: true }))
-      .toEqual({ assigned: new Map(), differs: new Map([['S1', ['abbreviation']]]) })
+    expect(planAdoption(m, other, { S1: 'adopt' }, { sameContentOnly: true })).toEqual({
+      assigned: new Map(),
+      differs: new Map([['S1', ['abbreviation']]]),
+    })
     // sameContentOnly 가 아니면 예전처럼 배정한다(= adoptAssignments)
-    expect([...planAdoption(m, other, { S1: 'adopt' }, { sameContentOnly: false }).assigned]).toEqual([['S1', 'w1']])
+    expect([
+      ...planAdoption(m, other, { S1: 'adopt' }, { sameContentOnly: false }).assigned,
+    ]).toEqual([['S1', 'w1']])
     expect([...adoptAssignments(m, other, { S1: 'adopt' })]).toEqual([['S1', 'w1']])
   })
 
@@ -475,8 +789,16 @@ describe('planAdoption — 내용이 같은 항목만 연결', () => {
   it('용어는 같은 배치에서 연결한 도메인을 거쳐 비교한다', () => {
     const m = withTerm('d1')
     const plan = planResync(m, 'L1', [libDomain(), libTerm('SD')])
-    const { assigned, differs } = planAdoption(m, plan, { SD: 'adopt', ST: 'adopt' }, { sameContentOnly: true })
-    expect([...assigned]).toEqual([['SD', 'd1'], ['ST', 't1']])
+    const { assigned, differs } = planAdoption(
+      m,
+      plan,
+      { SD: 'adopt', ST: 'adopt' },
+      { sameContentOnly: true },
+    )
+    expect([...assigned]).toEqual([
+      ['SD', 'd1'],
+      ['ST', 't1'],
+    ])
     expect(differs.size).toBe(0)
   })
 
@@ -495,7 +817,12 @@ describe('planAdoption — 내용이 같은 항목만 연결', () => {
     delete m.domains['d1']
     m.terms['t1']!.domainId = null
     const plan = planResync(m, 'L1', [libDomain(), libTerm('SD')])
-    const { differs } = planAdoption(m, plan, { SD: 'apply', ST: 'adopt' }, { sameContentOnly: true })
+    const { differs } = planAdoption(
+      m,
+      plan,
+      { SD: 'apply', ST: 'adopt' },
+      { sameContentOnly: true },
+    )
     expect([...differs]).toEqual([['ST', ['domainId']]])
   })
 

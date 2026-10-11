@@ -13,15 +13,31 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 const ORG_ID = 'o1'
 const ROW = {
-  id: 'r1', projectId: 'p1', projectName: '회원 시스템',
-  libraryId: 'l2', libraryName: '조직 표준', requesterName: '에디터',
-  note: '올려 주세요', entityIds: ['w1', 'w2'], itemCount: 2,
-  status: 'pending', createdAt: '2026-08-04T00:00:00.000Z',
-  resolvedAt: null, resolutionNote: '', approvedEntityIds: null,
+  id: 'r1',
+  projectId: 'p1',
+  projectName: '회원 시스템',
+  libraryId: 'l2',
+  libraryName: '조직 표준',
+  requesterName: '에디터',
+  note: '올려 주세요',
+  entityIds: ['w1', 'w2'],
+  itemCount: 2,
+  status: 'pending',
+  createdAt: '2026-08-04T00:00:00.000Z',
+  resolvedAt: null,
+  resolutionNote: '',
+  approvedEntityIds: null,
 }
 const ENTRY = {
-  kind: 'word', entityId: 'w1', name: '회원', status: 'new',
-  targetItemId: null, targetVersion: null, payload: {}, changedFields: [], domainRef: null,
+  kind: 'word',
+  entityId: 'w1',
+  name: '회원',
+  status: 'new',
+  targetItemId: null,
+  targetVersion: null,
+  payload: {},
+  changedFields: [],
+  domainRef: null,
   sourceBehind: false,
 }
 
@@ -30,15 +46,16 @@ const ENTRY = {
  * 응답하므로 로딩 상태를 관찰하려면 fetch를 한 겹 더 감싸야 한다.
  */
 function renderSection(
-  handlers: Parameters<typeof mockTrpcFetch>[0], canManage = true,
+  handlers: Parameters<typeof mockTrpcFetch>[0],
+  canManage = true,
   opts: { stall?: string } = {},
 ) {
   const base = mockTrpcFetch(handlers)
   if (opts.stall !== undefined) {
     const stalled = opts.stall
-    vi.stubGlobal('fetch', (url: RequestInfo | URL, init?: RequestInit) => (
-      String(url).includes(stalled) ? new Promise<Response>(() => {}) : base(url, init)
-    ))
+    vi.stubGlobal('fetch', (url: RequestInfo | URL, init?: RequestInit) =>
+      String(url).includes(stalled) ? new Promise<Response>(() => {}) : base(url, init),
+    )
   }
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
@@ -54,13 +71,19 @@ function renderSection(
 
 /** 무효화된 queryKey들을 평평한 문자열로 — 키 내부 형태에 의존하지 않고 검사한다. */
 function invalidatedKeys(spy: { mock: { calls: unknown[][] } }): string[] {
-  return spy.mock.calls.map(
-    (call) => JSON.stringify((call[0] as { queryKey?: unknown } | undefined)?.queryKey),
+  return spy.mock.calls.map((call) =>
+    JSON.stringify((call[0] as { queryKey?: unknown } | undefined)?.queryKey),
   )
 }
 
-beforeEach(() => { vi.mocked(toast.success).mockClear(); vi.mocked(toast.error).mockClear() })
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+beforeEach(() => {
+  vi.mocked(toast.success).mockClear()
+  vi.mocked(toast.error).mockClear()
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('PromotionRequestsSection', () => {
   it('관리 권한이 없으면 렌더도 조회도 하지 않는다', async () => {
@@ -69,7 +92,9 @@ describe('PromotionRequestsSection', () => {
     expect(screen.queryByText(/승격 요청/)).toBeNull()
     // 렌더를 막는 것만으로는 부족하다 — 권한 없는 사용자의 조회 자체가 나가면 안 된다.
     // react-query는 마운트 뒤 비동기로 요청을 띄우므로 바로 단언하면 무엇이든 통과한다.
-    await new Promise((done) => { setTimeout(done, 50) })
+    await new Promise((done) => {
+      setTimeout(done, 50)
+    })
     expect(listForOrg).not.toHaveBeenCalled()
   })
 
@@ -83,10 +108,13 @@ describe('PromotionRequestsSection', () => {
   it('검토를 열면 지금 계산된 계획과 unavailable을 보여준다', async () => {
     renderSection({
       'promotion.listForOrg': () => ({ data: [ROW] }),
-      'promotion.get': () => ({ data: {
-        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
-        entries: [ENTRY], unavailable: ['w2'],
-      } }),
+      'promotion.get': () => ({
+        data: {
+          request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+          entries: [ENTRY],
+          unavailable: ['w2'],
+        },
+      }),
     })
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
     expect(await screen.findByLabelText('회원 선택')).toBeTruthy()
@@ -96,13 +124,18 @@ describe('PromotionRequestsSection', () => {
   it('처리할 수 없는 항목 수를 천 단위로 끊는다', async () => {
     renderSection({
       'promotion.listForOrg': () => ({ data: [ROW] }),
-      'promotion.get': () => ({ data: {
-        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
-        entries: [ENTRY], unavailable: Array.from({ length: 1234 }, (_, i) => `gone${i}`),
-      } }),
+      'promotion.get': () => ({
+        data: {
+          request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+          entries: [ENTRY],
+          unavailable: Array.from({ length: 1234 }, (_, i) => `gone${i}`),
+        },
+      }),
     })
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
-    expect(await screen.findByText(/1,234건은 이미 반영됐거나 삭제되어 처리할 수 없습니다/)).toBeTruthy()
+    expect(
+      await screen.findByText(/1,234건은 이미 반영됐거나 삭제되어 처리할 수 없습니다/),
+    ).toBeTruthy()
   })
 
   /**
@@ -112,34 +145,56 @@ describe('PromotionRequestsSection', () => {
   it('원본이 요청자가 받은 버전보다 새로운 항목은 기본 미선택이고 승인자용 배지를 단다', async () => {
     renderSection({
       'promotion.listForOrg': () => ({ data: [ROW] }),
-      'promotion.get': () => ({ data: {
-        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
-        entries: [ENTRY, {
-          ...ENTRY, entityId: 'w2', name: '고객', status: 'update',
-          targetItemId: 's2', targetVersion: 3, changedFields: ['abbreviation'], sourceBehind: true,
-        }],
-        unavailable: [],
-      } }),
+      'promotion.get': () => ({
+        data: {
+          request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+          entries: [
+            ENTRY,
+            {
+              ...ENTRY,
+              entityId: 'w2',
+              name: '고객',
+              status: 'update',
+              targetItemId: 's2',
+              targetVersion: 3,
+              changedFields: ['abbreviation'],
+              sourceBehind: true,
+            },
+          ],
+          unavailable: [],
+        },
+      }),
     })
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
     expect(await screen.findByLabelText('고객 선택')).toHaveProperty('checked', false)
     expect(screen.getByLabelText('회원 선택')).toHaveProperty('checked', true)
-    const badge = screen.getByText('원본이 요청자가 받은 버전보다 새롭습니다 — 승인하면 최신 원본을 요청자의 값으로 되돌립니다')
+    const badge = screen.getByText(
+      '원본이 요청자가 받은 버전보다 새롭습니다 — 승인하면 최신 원본을 요청자의 값으로 되돌립니다',
+    )
     expect(badge.closest('li')!.textContent).toContain('고객')
     expect(screen.queryByText(/먼저 가져오기\(재동기화\)로 받으세요/)).toBeNull()
   })
 
   it('선택한 항목만 승인한다', async () => {
-    const resolve = vi.fn((_input: unknown) => ({ data: {
-      status: 'resolved', seq: 5, inserted: 1, updated: 0, skipped: [],
-    } }))
+    const resolve = vi.fn((_input: unknown) => ({
+      data: {
+        status: 'resolved',
+        seq: 5,
+        inserted: 1,
+        updated: 0,
+        skipped: [],
+      },
+    }))
     const modelGet = vi.fn(() => ({ data: { model: null, seq: 9 } }))
     renderSection({
       'promotion.listForOrg': () => ({ data: [ROW] }),
-      'promotion.get': () => ({ data: {
-        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
-        entries: [ENTRY], unavailable: [],
-      } }),
+      'promotion.get': () => ({
+        data: {
+          request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+          entries: [ENTRY],
+          unavailable: [],
+        },
+      }),
       'promotion.resolve': resolve,
       'model.get': modelGet,
     })
@@ -149,10 +204,14 @@ describe('PromotionRequestsSection', () => {
     await waitFor(() => expect(resolve).toHaveBeenCalled())
     expect(resolve.mock.calls[0]![0]).toMatchObject({
       requestId: 'r1',
-      approve: [{
-        entityId: 'w1', expectedStatus: 'new',
-        expectedTargetItemId: null, expectedTargetVersion: null,
-      }],
+      approve: [
+        {
+          entityId: 'w1',
+          expectedStatus: 'new',
+          expectedTargetItemId: null,
+          expectedTargetVersion: null,
+        },
+      ],
     })
     // 조직 화면은 모델을 만지지 않는다 — 그 프로젝트를 열고 있는 사용자에게는
     // 승격 op가 실시간 채널로 전파된다(Task 6의 요청 경로와 같은 규약).
@@ -162,14 +221,19 @@ describe('PromotionRequestsSection', () => {
 
   it('승격 버튼의 건수를 천 단위로 보인다', async () => {
     const entries = Array.from({ length: 1234 }, (_, i) => ({
-      ...ENTRY, entityId: `w${String(i).padStart(4, '0')}`, name: `단어${String(i).padStart(4, '0')}`,
+      ...ENTRY,
+      entityId: `w${String(i).padStart(4, '0')}`,
+      name: `단어${String(i).padStart(4, '0')}`,
     }))
     renderSection({
       'promotion.listForOrg': () => ({ data: [ROW] }),
-      'promotion.get': () => ({ data: {
-        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
-        entries, unavailable: [],
-      } }),
+      'promotion.get': () => ({
+        data: {
+          request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+          entries,
+          unavailable: [],
+        },
+      }),
     })
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
     expect(await screen.findByRole('button', { name: '1,234건 승격' })).toBeInTheDocument()
@@ -182,23 +246,40 @@ describe('PromotionRequestsSection', () => {
       'promotion.listForOrg': () => ({ data: [ROW] }),
       'promotion.get': () => {
         calls += 1
-        return { data: calls === 1
-          ? { request, entries: [ENTRY, { ...ENTRY, entityId: 'w2', name: '고객' }], unavailable: [] }
-          : {
-              request, unavailable: [],
-              entries: [
-                ENTRY,
-                { ...ENTRY, entityId: 'w2', name: '고객', status: 'update', targetItemId: 's2', targetVersion: 1 },
-                { ...ENTRY, entityId: 'w3', name: '상품' },
-              ],
-            } }
+        return {
+          data:
+            calls === 1
+              ? {
+                  request,
+                  entries: [ENTRY, { ...ENTRY, entityId: 'w2', name: '고객' }],
+                  unavailable: [],
+                }
+              : {
+                  request,
+                  unavailable: [],
+                  entries: [
+                    ENTRY,
+                    {
+                      ...ENTRY,
+                      entityId: 'w2',
+                      name: '고객',
+                      status: 'update',
+                      targetItemId: 's2',
+                      targetVersion: 1,
+                    },
+                    { ...ENTRY, entityId: 'w3', name: '상품' },
+                  ],
+                },
+        }
       },
     })
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
     await userEvent.click(await screen.findByLabelText('회원 선택'))
     await userEvent.click(screen.getByLabelText('고객 선택'))
     expect(screen.getByRole('button', { name: '반려' })).toBeInTheDocument()
-    await act(async () => { await queryClient.invalidateQueries() })
+    await act(async () => {
+      await queryClient.invalidateQueries()
+    })
     expect(await screen.findByLabelText('상품 선택')).toBeChecked()
     expect(screen.getByLabelText('회원 선택')).not.toBeChecked()
     // new → update 로 상태가 바뀌었다 — 승인자가 본 선택지가 달라졌으므로 해제를 잇지 않는다.
@@ -212,13 +293,22 @@ describe('PromotionRequestsSection', () => {
     // "항목 0개"를 계속 보여 주고 삭제 확인창이 거짓을 말한다.
     const queryClient = renderSection({
       'promotion.listForOrg': () => ({ data: [ROW] }),
-      'promotion.get': () => ({ data: {
-        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
-        entries: [ENTRY], unavailable: [],
-      } }),
-      'promotion.resolve': () => ({ data: {
-        status: 'resolved', seq: 5, inserted: 1, updated: 0, skipped: [],
-      } }),
+      'promotion.get': () => ({
+        data: {
+          request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+          entries: [ENTRY],
+          unavailable: [],
+        },
+      }),
+      'promotion.resolve': () => ({
+        data: {
+          status: 'resolved',
+          seq: 5,
+          inserted: 1,
+          updated: 0,
+          skipped: [],
+        },
+      }),
     })
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
 
@@ -228,7 +318,12 @@ describe('PromotionRequestsSection', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
 
     const keys = invalidatedKeys(invalidate)
-    expect(keys).toContain(JSON.stringify([['resource', 'items', 'page'], { input: { libraryId: 'l2' }, type: 'query' }]))
+    expect(keys).toContain(
+      JSON.stringify([
+        ['resource', 'items', 'page'],
+        { input: { libraryId: 'l2' }, type: 'query' },
+      ]),
+    )
     expect(keys).toContain(JSON.stringify(['library-domain-options', 'l2']))
     expect(keys.some((k) => k.includes('"library"') && k.includes('"list"'))).toBe(true)
   })
@@ -238,22 +333,44 @@ describe('PromotionRequestsSection', () => {
     return vi.fn((input: unknown) => {
       switch ((input as { status?: string } | undefined)?.status) {
         case 'resolved':
-          return { data: [{
-            ...ROW, id: 'r9', status: 'resolved',
-            resolutionNote: '좋습니다 — 두 건만 올렸습니다',
-            approvedEntityIds: ['w1'], resolvedAt: '2026-08-04T01:00:00.000Z',
-          }] }
+          return {
+            data: [
+              {
+                ...ROW,
+                id: 'r9',
+                status: 'resolved',
+                resolutionNote: '좋습니다 — 두 건만 올렸습니다',
+                approvedEntityIds: ['w1'],
+                resolvedAt: '2026-08-04T01:00:00.000Z',
+              },
+            ],
+          }
         case 'rejected':
-          return { data: [{
-            ...ROW, id: 'r8', status: 'rejected',
-            resolutionNote: '아직 이릅니다 — 이름부터 합의해 주세요',
-            approvedEntityIds: [], resolvedAt: '2026-08-04T02:00:00.000Z',
-          }] }
+          return {
+            data: [
+              {
+                ...ROW,
+                id: 'r8',
+                status: 'rejected',
+                resolutionNote: '아직 이릅니다 — 이름부터 합의해 주세요',
+                approvedEntityIds: [],
+                resolvedAt: '2026-08-04T02:00:00.000Z',
+              },
+            ],
+          }
         case 'cancelled':
-          return { data: [{
-            ...ROW, id: 'r7', status: 'cancelled', resolutionNote: '',
-            approvedEntityIds: [], resolvedAt: '2026-08-04T03:00:00.000Z',
-          }] }
+          return {
+            data: [
+              {
+                ...ROW,
+                id: 'r7',
+                status: 'cancelled',
+                resolutionNote: '',
+                approvedEntityIds: [],
+                resolvedAt: '2026-08-04T03:00:00.000Z',
+              },
+            ],
+          }
         default:
           return { data: [ROW] }
       }
@@ -319,30 +436,50 @@ describe('PromotionRequestsSection', () => {
 
   it('항목 칸의 개수는 천 단위로 끊는다 — 대기와 승인 모두', async () => {
     const many = Array.from({ length: 16565 }, (_, i) => `w${i}`)
-    renderSection({ 'promotion.listForOrg': (input: unknown) => ({ data: [
-      (input as { status?: string } | undefined)?.status === 'resolved'
-        ? { ...ROW, id: 'r9', status: 'resolved', entityIds: many, itemCount: 16565, approvedEntityIds: many }
-        : { ...ROW, entityIds: many, itemCount: 16565 },
-    ] }) })
+    renderSection({
+      'promotion.listForOrg': (input: unknown) => ({
+        data: [
+          (input as { status?: string } | undefined)?.status === 'resolved'
+            ? {
+                ...ROW,
+                id: 'r9',
+                status: 'resolved',
+                entityIds: many,
+                itemCount: 16565,
+                approvedEntityIds: many,
+              }
+            : { ...ROW, entityIds: many, itemCount: 16565 },
+        ],
+      }),
+    })
     expect(await screen.findByText('16,565건')).toBeTruthy()
     await pickStatus('승인됨')
     expect(await screen.findByText('16,565/16,565건 승격')).toBeTruthy()
   })
 
   it('선택을 모두 풀면 버튼이 반려로 바뀌고 빈 approve를 보낸다', async () => {
-    const resolve = vi.fn((_input: unknown) => ({ data: {
-      status: 'rejected', seq: null, inserted: 0, updated: 0, skipped: [],
-    } }))
+    const resolve = vi.fn((_input: unknown) => ({
+      data: {
+        status: 'rejected',
+        seq: null,
+        inserted: 0,
+        updated: 0,
+        skipped: [],
+      },
+    }))
     renderSection({
       'promotion.listForOrg': () => ({ data: [ROW] }),
-      'promotion.get': () => ({ data: {
-        request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
-        entries: [ENTRY], unavailable: [],
-      } }),
+      'promotion.get': () => ({
+        data: {
+          request: { ...ROW, projectName: '회원 시스템', requesterName: '에디터' },
+          entries: [ENTRY],
+          unavailable: [],
+        },
+      }),
       'promotion.resolve': resolve,
     })
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
-    await userEvent.click(await screen.findByLabelText('회원 선택'))   // 기본 선택을 해제
+    await userEvent.click(await screen.findByLabelText('회원 선택')) // 기본 선택을 해제
     await userEvent.click(screen.getByRole('button', { name: '반려' }))
     await waitFor(() => expect(resolve).toHaveBeenCalled())
     expect(resolve.mock.calls[0]![0]).toMatchObject({ requestId: 'r1', approve: [] })
@@ -351,13 +488,23 @@ describe('PromotionRequestsSection', () => {
   it('계획을 아직 못 받았으면 반려 버튼이 비활성이다', async () => {
     // promotion.get을 영원히 붙들어 로딩 상태를 유지한다. 이때 selected가 비어 라벨은
     // '반려'인데, 누를 수 있으면 승인자가 내용을 보지 못한 채 요청을 닫아 버린다.
-    const resolve = vi.fn((_input: unknown) => ({ data: {
-      status: 'rejected', seq: null, inserted: 0, updated: 0, skipped: [],
-    } }))
-    renderSection({
-      'promotion.listForOrg': () => ({ data: [ROW] }),
-      'promotion.resolve': resolve,
-    }, true, { stall: 'promotion.get' })
+    const resolve = vi.fn((_input: unknown) => ({
+      data: {
+        status: 'rejected',
+        seq: null,
+        inserted: 0,
+        updated: 0,
+        skipped: [],
+      },
+    }))
+    renderSection(
+      {
+        'promotion.listForOrg': () => ({ data: [ROW] }),
+        'promotion.resolve': resolve,
+      },
+      true,
+      { stall: 'promotion.get' },
+    )
     await userEvent.click(await screen.findByRole('button', { name: '검토' }))
     expect(await screen.findByText(/계획을 계산하는 중입니다/)).toBeTruthy()
     // 로딩 중에 "처리할 항목이 없습니다"로 오인하게 두지 않는다.

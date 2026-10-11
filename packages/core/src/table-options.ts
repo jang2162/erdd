@@ -17,7 +17,10 @@ import { DIALECTS, type Dialect } from './dialect.js'
 export type TableOptions = Record<Dialect, string>
 
 export const DEFAULT_TABLE_OPTIONS: TableOptions = {
-  postgresql: '', mysql: '', oracle: '', mssql: '',
+  postgresql: '',
+  mysql: '',
+  oracle: '',
+  mssql: '',
 }
 
 /**

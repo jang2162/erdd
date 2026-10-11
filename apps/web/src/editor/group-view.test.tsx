@@ -5,22 +5,38 @@ import { moveTableGroupPosition } from './model-edits.js'
 import { useEditorStore } from './store.js'
 import type { Table } from '@erdd/core'
 
-beforeEach(() => { act(() => useEditorStore.getState().reset()) })
+beforeEach(() => {
+  act(() => useEditorStore.getState().reset())
+})
 
 function tbl(id: string): Table {
-  return { id, logicalName: id, physicalName: id, comment: null, groupId: null,
-    position: { x: 10, y: 20 }, groupPosition: null, custom: {} }
+  return {
+    id,
+    logicalName: id,
+    physicalName: id,
+    comment: null,
+    groupId: null,
+    position: { x: 10, y: 20 },
+    groupPosition: null,
+    custom: {},
+  }
 }
 
 describe('store activeGroupView', () => {
   it('enterGroupView는 뷰를 설정하고 선택을 해제한다', () => {
-    act(() => { useEditorStore.getState().select('T'); useEditorStore.getState().enterGroupView('G1') })
+    act(() => {
+      useEditorStore.getState().select('T')
+      useEditorStore.getState().enterGroupView('G1')
+    })
     const s = useEditorStore.getState()
     expect(s.activeGroupView).toBe('G1')
     expect(s.selectedTableIds).toEqual([])
   })
   it('exitGroupView는 전체 뷰로 되돌린다', () => {
-    act(() => { useEditorStore.getState().enterGroupView('G1'); useEditorStore.getState().exitGroupView() })
+    act(() => {
+      useEditorStore.getState().enterGroupView('G1')
+      useEditorStore.getState().exitGroupView()
+    })
     expect(useEditorStore.getState().activeGroupView).toBeNull()
   })
   it('setLoaded는 activeGroupView를 null로 초기화한다', () => {

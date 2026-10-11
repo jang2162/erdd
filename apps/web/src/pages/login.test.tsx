@@ -44,7 +44,9 @@ describe('LoginPage', () => {
 
   it('shows the server error message on failure', async () => {
     mockTrpcFetch({
-      'auth.login': () => ({ error: { code: -32001, message: '이메일 또는 비밀번호가 올바르지 않습니다' } }),
+      'auth.login': () => ({
+        error: { code: -32001, message: '이메일 또는 비밀번호가 올바르지 않습니다' },
+      }),
     })
     renderLogin()
     await userEvent.type(screen.getByLabelText('이메일'), 'a@b.dev')

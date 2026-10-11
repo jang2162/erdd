@@ -43,13 +43,17 @@ export function TableTree({ projectId }: { projectId: string }) {
 
   const allTables = useMemo(() => {
     const match = (t: { physicalName: string; logicalName: string }) =>
-      query === '' || t.physicalName.toLowerCase().includes(query) || t.logicalName.toLowerCase().includes(query)
-    return Object.values(model.tables).filter(match)
+      query === '' ||
+      t.physicalName.toLowerCase().includes(query) ||
+      t.logicalName.toLowerCase().includes(query)
+    return Object.values(model.tables)
+      .filter(match)
       .sort((a, b) => a.physicalName.localeCompare(b.physicalName))
   }, [model.tables, query])
   const groups = useMemo(
     () => Object.values(model.tableGroups).sort((a, b) => a.name.localeCompare(b.name)),
-    [model.tableGroups])
+    [model.tableGroups],
+  )
 
   // 그룹 멤버 목록은 표시와 범위 계산이 **같은 목록**이어야 한다 — 둘이 갈리면 화면에 없는
   // 테이블이 Shift 범위에 끌려 들어온다. 그룹마다 전체 테이블을 훑으면 그 스캔이
@@ -60,7 +64,7 @@ export function TableTree({ projectId }: { projectId: string }) {
     for (const t of allTables) {
       const bucket = t.groupId !== null ? byGroup.get(t.groupId) : undefined
       if (bucket) bucket.push(t)
-      else rest.push(t)   // groupId가 null이거나 이미 사라진 그룹을 가리킨다
+      else rest.push(t) // groupId가 null이거나 이미 사라진 그룹을 가리킨다
     }
     return { membersByGroup: byGroup, unassigned: rest }
   }, [allTables, groups])
@@ -68,8 +72,8 @@ export function TableTree({ projectId }: { projectId: string }) {
 
   // 유효 활성 그룹: 설정됐고 실제로 존재할 때만 스코핑한다(삭제된 경우 전체 뷰로 폴백 — canvas와 일치).
   // 드래그 중에는 스코핑을 푼다 — 그룹 뷰에서 "이건 다른 그룹으로 보내야겠다"가 막히면 안 된다(설계 5.5).
-  const scopedGroupId = !dragging && activeGroupView && model.tableGroups[activeGroupView]
-    ? activeGroupView : null
+  const scopedGroupId =
+    !dragging && activeGroupView && model.tableGroups[activeGroupView] ? activeGroupView : null
   const visibleGroups = scopedGroupId ? groups.filter((g) => g.id === scopedGroupId) : groups
   // 드래그 중 미분류를 여는 것은 `scopedGroupId`의 `!dragging`이 이미 한다 — 드래그 중에는
   // 스코핑이 풀리고, 그룹이 하나라도 있으면 아래 둘째 절이 참이 된다.
@@ -96,7 +100,11 @@ export function TableTree({ projectId }: { projectId: string }) {
 
   // 선택은 뷰 상태이지 모델 변경이 아니다 — canEdit과 무관하게 Viewer도 고를 수 있다.
   const onItemClick = (e: ReactMouseEvent, id: string) => {
-    if (e.metaKey || e.ctrlKey) { setAnchorId(id); toggleTable(id); return }
+    if (e.metaKey || e.ctrlKey) {
+      setAnchorId(id)
+      toggleTable(id)
+      return
+    }
     // Shift+클릭은 앵커를 옮기지 않는다 — 한 칸씩 넓혀 조준하려면 시작점이 고정돼야 한다.
     if (e.shiftKey) {
       const a = rangeStart()
@@ -144,9 +152,20 @@ export function TableTree({ projectId }: { projectId: string }) {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
       <div className="flex items-center gap-1 border-b p-2">
-        <Input placeholder="테이블 검색" value={q} onChange={(e) => setQ(e.target.value)} className="h-8" />
+        <Input
+          placeholder="테이블 검색"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className="h-8"
+        />
         {canEdit && (
-          <Button size="icon" variant="ghost" className="size-8 shrink-0" aria-label="그룹 추가" onClick={onAddGroup}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8 shrink-0"
+            aria-label="그룹 추가"
+            onClick={onAddGroup}
+          >
             <FolderPlus className="size-4" />
           </Button>
         )}
@@ -158,21 +177,37 @@ export function TableTree({ projectId }: { projectId: string }) {
           // 테이블을 원하는 그룹에 놓을 수 없다(설계 5.5).
           if (query !== '' && members.length === 0 && !dragging) return null
           return (
-            <div key={g.id} data-drop-group={dropAttrValue(g.id)}
-              className={cn('mb-1 rounded', dragOverGroupId === g.id && 'ring-2 ring-primary')}>
-              <button type="button" onClick={() => selectGroup(g.id)}
-                className={cn('flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-accent',
+            <div
+              key={g.id}
+              data-drop-group={dropAttrValue(g.id)}
+              className={cn('mb-1 rounded', dragOverGroupId === g.id && 'ring-2 ring-primary')}
+            >
+              <button
+                type="button"
+                onClick={() => selectGroup(g.id)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-accent',
                   g.id === selectedGroupId && 'bg-accent',
-                  g.id === scopedGroupId && 'ring-1 ring-inset ring-ring')}>
+                  g.id === scopedGroupId && 'ring-1 ring-inset ring-ring',
+                )}
+              >
                 <span className="size-2.5 shrink-0 rounded-sm" style={{ background: g.color }} />
                 <span className="flex-1 truncate text-xs font-semibold">{g.name}</span>
-                <span className="text-[10px] text-muted-foreground">{formatCount(members.length)}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {formatCount(members.length)}
+                </span>
               </button>
               <ul className="ml-3 border-l pl-1">
                 {members.map((t) => (
-                  <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)} draggable={canEdit}
+                  <TableItem
+                    key={t.id}
+                    t={t}
+                    selected={selectedIds.has(t.id)}
+                    draggable={canEdit}
                     onClick={(e) => onItemClick(e, t.id)}
-                    onDragStart={onDragStartItem} onDrop={onDropItem} />
+                    onDragStart={onDragStartItem}
+                    onDrop={onDropItem}
+                  />
                 ))}
               </ul>
             </div>
@@ -180,16 +215,27 @@ export function TableTree({ projectId }: { projectId: string }) {
         })}
 
         {showUnassigned && (
-          <div data-drop-group={dropAttrValue(null)}
-            className={cn('mb-1 rounded', dragging && dragOver?.groupId === null && 'ring-2 ring-primary')}>
+          <div
+            data-drop-group={dropAttrValue(null)}
+            className={cn(
+              'mb-1 rounded',
+              dragging && dragOver?.groupId === null && 'ring-2 ring-primary',
+            )}
+          >
             {groups.length > 0 && (
               <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">미분류</div>
             )}
             <ul className={groups.length > 0 ? 'ml-3 border-l pl-1' : undefined}>
               {unassigned.map((t) => (
-                <TableItem key={t.id} t={t} selected={selectedIds.has(t.id)} draggable={canEdit}
+                <TableItem
+                  key={t.id}
+                  t={t}
+                  selected={selectedIds.has(t.id)}
+                  draggable={canEdit}
                   onClick={(e) => onItemClick(e, t.id)}
-                  onDragStart={onDragStartItem} onDrop={onDropItem} />
+                  onDragStart={onDragStartItem}
+                  onDrop={onDropItem}
+                />
               ))}
             </ul>
           </div>
@@ -208,7 +254,14 @@ export function TableTree({ projectId }: { projectId: string }) {
 /** 클릭과 드래그를 가르는 이동 거리(px). 이보다 작으면 손떨림으로 보고 클릭으로 남긴다. */
 const DRAG_THRESHOLD = 4
 
-function TableItem({ t, selected, draggable, onClick, onDragStart, onDrop }: {
+function TableItem({
+  t,
+  selected,
+  draggable,
+  onClick,
+  onDragStart,
+  onDrop,
+}: {
   t: { id: string; physicalName: string; logicalName: string }
   selected: boolean
   /**
@@ -226,7 +279,8 @@ function TableItem({ t, selected, draggable, onClick, onDragStart, onDrop }: {
 
   return (
     <li>
-      <button type="button"
+      <button
+        type="button"
         /*
          * 선택 상태를 보조기술에 노출하는 **유일한 채널**이다. 표시가 `bg-accent` 클래스뿐이면
          * 스크린리더 사용자는 무엇이 선택됐는지 알 방법이 없다 — 단일 선택 시절엔 편집 패널이
@@ -237,7 +291,9 @@ function TableItem({ t, selected, draggable, onClick, onDragStart, onDrop }: {
          */
         aria-pressed={selected}
         // 드래그로 끝난 pointerup 뒤에는 click이 한 번 더 온다 — 선택이 튀지 않게 억제한다.
-        onClick={(e) => { if (!dragging.current) onClick(e) }}
+        onClick={(e) => {
+          if (!dragging.current) onClick(e)
+        }}
         onPointerDown={(e) => {
           if (!draggable || e.button !== 0) return
           origin.current = { x: e.clientX, y: e.clientY }
@@ -249,7 +305,11 @@ function TableItem({ t, selected, draggable, onClick, onDragStart, onDrop }: {
           const o = origin.current
           if (!o) return
           if (!dragging.current) {
-            if (Math.abs(e.clientX - o.x) < DRAG_THRESHOLD && Math.abs(e.clientY - o.y) < DRAG_THRESHOLD) return
+            if (
+              Math.abs(e.clientX - o.x) < DRAG_THRESHOLD &&
+              Math.abs(e.clientY - o.y) < DRAG_THRESHOLD
+            )
+              return
             dragging.current = true
             onDragStart(t.id)
           }
@@ -264,7 +324,9 @@ function TableItem({ t, selected, draggable, onClick, onDragStart, onDrop }: {
           onDrop()
           // 뒤따라오는 click을 흘려보낸 뒤 억제를 푼다. 지우면 키보드(Enter/Space)로 그 버튼을
           // 활성화해도 무시된다 — click은 pointerdown 없이 온다.
-          setTimeout(() => { dragging.current = false }, 0)
+          setTimeout(() => {
+            dragging.current = false
+          }, 0)
         }}
         onPointerCancel={() => {
           // 브라우저가 드래그를 취소하면(터치 세로 팬·컨텍스트 메뉴) pointerup이 오지 않는다.
@@ -275,7 +337,11 @@ function TableItem({ t, selected, draggable, onClick, onDragStart, onDrop }: {
           dragging.current = false
           useDragStore.getState().end()
         }}
-        className={cn('flex w-full flex-col items-start rounded px-2 py-1.5 text-left hover:bg-accent', selected && 'bg-accent')}>
+        className={cn(
+          'flex w-full flex-col items-start rounded px-2 py-1.5 text-left hover:bg-accent',
+          selected && 'bg-accent',
+        )}
+      >
         <span className="font-mono text-xs font-medium">{t.physicalName}</span>
         <span className="text-xs text-muted-foreground">{t.logicalName}</span>
       </button>

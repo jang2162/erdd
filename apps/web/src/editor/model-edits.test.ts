@@ -29,8 +29,12 @@ describe('model-edits', () => {
     const next = moveTable(base, id, { x: 999, y: 888 })
     const ops = diffModels(base, next)
     expect(ops).toEqual([
-      { action: 'update', entity: 'table', entityId: id,
-        changes: { position: { from: base.tables[id]!.position, to: { x: 999, y: 888 } } } },
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: id,
+        changes: { position: { from: base.tables[id]!.position, to: { x: 999, y: 888 } } },
+      },
     ])
   })
 
@@ -60,7 +64,7 @@ describe('model-edits', () => {
 
 describe('clearTableGroupPosition', () => {
   it('그룹 뷰 좌표를 null로 비운다', () => {
-    const m = buildSampleModel()   // t1.groupPosition = { x: 10, y: 10 }
+    const m = buildSampleModel() // t1.groupPosition = { x: 10, y: 10 }
     expect(clearTableGroupPosition(m, 't1').tables['t1']?.groupPosition).toBeNull()
   })
 
@@ -70,8 +74,12 @@ describe('clearTableGroupPosition', () => {
     expect(next.tables['t1']?.position).toEqual(m.tables['t1']!.position)
     const ops = diffModels(m, next)
     expect(ops).toEqual([
-      { action: 'update', entity: 'table', entityId: 't1',
-        changes: { groupPosition: { from: { x: 10, y: 10 }, to: null } } },
+      {
+        action: 'update',
+        entity: 'table',
+        entityId: 't1',
+        changes: { groupPosition: { from: { x: 10, y: 10 }, to: null } },
+      },
     ])
   })
 

@@ -3,7 +3,13 @@ import { readFileSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
-import { DIALECTS, RESOURCE_KINDS, type Dialect, type NamingRules, type ResourceKind } from '@erdd/core'
+import {
+  DIALECTS,
+  RESOURCE_KINDS,
+  type Dialect,
+  type NamingRules,
+  type ResourceKind,
+} from '@erdd/core'
 import { dictList } from './commands/dict-list.js'
 import { dictPull } from './commands/dict-pull.js'
 import { dictPush } from './commands/dict-push.js'
@@ -113,11 +119,19 @@ function interactive(json: boolean) {
   return {
     prompt: async (q: string) => {
       const i = rl()
-      try { return await i.question(`${q}: `) } finally { i.close() }
+      try {
+        return await i.question(`${q}: `)
+      } finally {
+        i.close()
+      }
     },
     confirm: async (q: string) => {
       const i = rl()
-      try { return /^y(es)?$/i.test((await i.question(`${q} [y/N] `)).trim()) } finally { i.close() }
+      try {
+        return /^y(es)?$/i.test((await i.question(`${q} [y/N] `)).trim())
+      } finally {
+        i.close()
+      }
     },
     choose: async (q: string, options: { id: string; label: string }[]) => {
       const i = rl()
@@ -128,7 +142,9 @@ function interactive(json: boolean) {
         const picked = options[Number(raw.trim()) - 1]
         if (picked === undefined) throw new Error('잘못된 번호입니다')
         return picked.id
-      } finally { i.close() }
+      } finally {
+        i.close()
+      }
     },
   }
 }
@@ -140,7 +156,9 @@ function interactive(json: boolean) {
  * (`--port`가 같은 이유로 같은 모양을 쓴다.)
  */
 function enumFlag<T extends string>(
-  argv: string[], name: string, allowed: readonly T[],
+  argv: string[],
+  name: string,
+  allowed: readonly T[],
 ): { ok: true; value: T | undefined } | { ok: false; message: string } {
   if (!argv.includes(`--${name}`)) return { ok: true, value: undefined }
   const raw = flagValue(argv, name)
@@ -159,7 +177,10 @@ const NAMING_CASES = ['UPPER_SNAKE', 'lower_snake'] as const
 /** --json이면 stdout에 오류 봉투를, 아니면 stderr에 사용법을 낸다. */
 function usageError(json: boolean, message: string): number {
   if (json) emitError(true, new CliError('USAGE', message))
-  else { note(message); note(USAGE) }
+  else {
+    note(message)
+    note(USAGE)
+  }
   return 2
 }
 
@@ -169,7 +190,11 @@ function usageError(json: boolean, message: string): number {
  * 저장소와 설치본 양쪽에서 같은 파일이다. 소스에 적어 두면 릴리스 때 올릴 곳이 둘이 된다.
  */
 function cliVersion(): string {
-  return (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version
+  return (
+    JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version: string
+    }
+  ).version
 }
 
 export async function main(argv: string[], cwd: string): Promise<number> {
@@ -189,14 +214,18 @@ export async function main(argv: string[], cwd: string): Promise<number> {
   const command = argv[0]
   if (command === undefined) return usageError(json, '명령이 필요합니다')
   const ctx = {
-    cwd, json, yes: argv.includes('--yes'), strict: argv.includes('--strict'),
+    cwd,
+    json,
+    yes: argv.includes('--yes'),
+    strict: argv.includes('--strict'),
     ...interactive(json),
   }
   switch (command) {
     case 'init': {
       const local = argv.includes('--local')
       const create = argv.includes('--create')
-      if (create && argv.includes('--project')) return usageError(json, '--create와 --project는 함께 쓸 수 없습니다')
+      if (create && argv.includes('--project'))
+        return usageError(json, '--create와 --project는 함께 쓸 수 없습니다')
       if (create && local) return usageError(json, '--create와 --local은 함께 쓸 수 없습니다')
       // 값이 빠진 --org·--name 이 조용히 대화형 선택·입력으로 흐르면 사용자는 자기가 적은 것이
       // 무시된 줄 모른다.
@@ -212,7 +241,10 @@ export async function main(argv: string[], cwd: string): Promise<number> {
       // 연결 모드에서는 서버 프로젝트 설정이 진실이다 — 그 둘을 여기서 받으면 init이 만든
       // config가 첫 pull에 곧바로 덮여, 사용자는 자기가 준 값이 왜 사라졌는지 알 수 없다.
       if (!local && !create && (dialect.value !== undefined || namingCase.value !== undefined)) {
-        return usageError(json, '--dialect·--case는 init --local·--create 전용입니다 — 기존 프로젝트에 연결할 때는 서버 프로젝트 설정을 따릅니다')
+        return usageError(
+          json,
+          '--dialect·--case는 init --local·--create 전용입니다 — 기존 프로젝트에 연결할 때는 서버 프로젝트 설정을 따릅니다',
+        )
       }
       return init({
         ...ctx,
@@ -227,11 +259,16 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         name: flagValue(argv, 'name'),
       })
     }
-    case 'pull': return pull(ctx)
-    case 'push': return push({ ...ctx, message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm') })
-    case 'diff': return diff(ctx)
-    case 'status': return status(ctx)
-    case 'validate': return validate(ctx)
+    case 'pull':
+      return pull(ctx)
+    case 'push':
+      return push({ ...ctx, message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm') })
+    case 'diff':
+      return diff(ctx)
+    case 'status':
+      return status(ctx)
+    case 'validate':
+      return validate(ctx)
     case 'export':
     case 'import': {
       const format = enumFlag<ExportFormat>(argv, 'format', EXPORT_FORMATS)
@@ -244,7 +281,10 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         const first = argv[1]
         const file = first !== undefined && !first.startsWith('-') ? first : undefined
         return importCommand({
-          ...ctx, file, format: format.value, dialect: dialect.value,
+          ...ctx,
+          file,
+          format: format.value,
+          dialect: dialect.value,
           dryRun: argv.includes('--dry-run'),
         })
       }
@@ -275,7 +315,10 @@ export async function main(argv: string[], cwd: string): Promise<number> {
       const sub = argv[1]?.startsWith('-') === true ? undefined : argv[1]
       if (sub === 'list') return dictList(ctx)
       if (sub === 'pull') {
-        const conflicts = enumFlag<'theirs' | 'ours'>(argv, 'conflicts', ['theirs', 'ours'] as const)
+        const conflicts = enumFlag<'theirs' | 'ours'>(argv, 'conflicts', [
+          'theirs',
+          'ours',
+        ] as const)
         if (!conflicts.ok) return usageError(json, conflicts.message)
         if (argv.includes('--library') && flagValue(argv, 'library') === undefined) {
           return usageError(json, '--library 값이 올바르지 않습니다: (값 없음)')
@@ -284,17 +327,30 @@ export async function main(argv: string[], cwd: string): Promise<number> {
           return usageError(json, '--file 값이 올바르지 않습니다: (값 없음)')
         }
         return dictPull({
-          ...ctx, library: flagValue(argv, 'library'), file: flagValue(argv, 'file'), adopt: argv.includes('--adopt'),
-          conflicts: conflicts.value, dryRun: argv.includes('--dry-run'),
+          ...ctx,
+          library: flagValue(argv, 'library'),
+          file: flagValue(argv, 'file'),
+          adopt: argv.includes('--adopt'),
+          conflicts: conflicts.value,
+          dryRun: argv.includes('--dry-run'),
         })
       }
       if (sub === 'push') {
         if (argv.includes('--library') && flagValue(argv, 'library') === undefined) {
           return usageError(json, '--library 값이 올바르지 않습니다: (값 없음)')
         }
-        const kinds = argv.includes('--kind') ? (flagValue(argv, 'kind') ?? '').split(',').filter(Boolean) : undefined
-        if (kinds !== undefined && (kinds.length === 0 || !kinds.every((k) => (RESOURCE_KINDS as readonly string[]).includes(k)))) {
-          return usageError(json, `--kind 값이 올바르지 않습니다: ${flagValue(argv, 'kind') ?? '(값 없음)'} — ${RESOURCE_KINDS.join(' | ')}`)
+        const kinds = argv.includes('--kind')
+          ? (flagValue(argv, 'kind') ?? '').split(',').filter(Boolean)
+          : undefined
+        if (
+          kinds !== undefined &&
+          (kinds.length === 0 ||
+            !kinds.every((k) => (RESOURCE_KINDS as readonly string[]).includes(k)))
+        ) {
+          return usageError(
+            json,
+            `--kind 값이 올바르지 않습니다: ${flagValue(argv, 'kind') ?? '(값 없음)'} — ${RESOURCE_KINDS.join(' | ')}`,
+          )
         }
         // --name 은 반복할 수 있다. 값이 빠진 --name 은 조용히 무시하지 않는다 — 전부 올라간다.
         const nameAt = argv.flatMap((a, i) => (a === '--name' ? [i] : []))
@@ -303,8 +359,11 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         }
         const names = nameAt.map((i) => argv[i + 1]!)
         return dictPush({
-          ...ctx, library: flagValue(argv, 'library'), kinds: kinds as ResourceKind[] | undefined,
-          names: names.length > 0 ? names : undefined, includeNameMatch: argv.includes('--include-name-match'),
+          ...ctx,
+          library: flagValue(argv, 'library'),
+          kinds: kinds as ResourceKind[] | undefined,
+          names: names.length > 0 ? names : undefined,
+          includeNameMatch: argv.includes('--include-name-match'),
           message: flagValue(argv, 'message') ?? shortFlagValue(argv, 'm'),
         })
       }
@@ -313,11 +372,15 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         if (!status.ok) return usageError(json, status.message)
         return dictRequests({ ...ctx, status: status.value })
       }
-      return usageError(json, `알 수 없는 dict 하위 명령: ${sub ?? '(없음)'} — list | pull | push | requests`)
+      return usageError(
+        json,
+        `알 수 없는 dict 하위 명령: ${sub ?? '(없음)'} — list | pull | push | requests`,
+      )
     }
     case 'library': {
       const sub = argv[1]?.startsWith('-') === true ? undefined : argv[1]
-      if (argv.includes('--server') && flagValue(argv, 'server') === undefined) return usageError(json, '--server 값이 빠졌습니다')
+      if (argv.includes('--server') && flagValue(argv, 'server') === undefined)
+        return usageError(json, '--server 값이 빠졌습니다')
       const server = flagValue(argv, 'server')
       if (sub === 'list') return libraryList({ ...ctx, server })
       // 위치 인자는 하위 명령 바로 뒤다. 거기 플래그가 오면 빠진 것이다.
@@ -334,19 +397,34 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         const scope = enumFlag<'global' | 'org'>(argv, 'scope', ['global', 'org'] as const)
         if (!scope.ok) return usageError(json, scope.message)
         for (const name of ['library', 'create', 'org']) {
-          if (argv.includes(`--${name}`) && flagValue(argv, name) === undefined) return usageError(json, `--${name} 값이 빠졌습니다`)
+          if (argv.includes(`--${name}`) && flagValue(argv, name) === undefined)
+            return usageError(json, `--${name} 값이 빠졌습니다`)
         }
         return libraryImport({
-          ...ctx, server, file: positional, library: flagValue(argv, 'library'), create: flagValue(argv, 'create'),
-          scope: scope.value, org: flagValue(argv, 'org'), prune: argv.includes('--prune'),
-          includeStale: argv.includes('--include-stale'), dryRun: argv.includes('--dry-run'),
+          ...ctx,
+          server,
+          file: positional,
+          library: flagValue(argv, 'library'),
+          create: flagValue(argv, 'create'),
+          scope: scope.value,
+          org: flagValue(argv, 'org'),
+          prune: argv.includes('--prune'),
+          includeStale: argv.includes('--include-stale'),
+          dryRun: argv.includes('--dry-run'),
         })
       }
-      return usageError(json, `알 수 없는 library 하위 명령: ${sub ?? '(없음)'} — list | export | import`)
+      return usageError(
+        json,
+        `알 수 없는 library 하위 명령: ${sub ?? '(없음)'} — list | export | import`,
+      )
     }
-    case 'skill': return skill({
-      ...ctx, sub: argv[1], dir: flagValue(argv, 'dir'), force: argv.includes('--force'),
-    })
+    case 'skill':
+      return skill({
+        ...ctx,
+        sub: argv[1],
+        dir: flagValue(argv, 'dir'),
+        force: argv.includes('--force'),
+      })
     case 'changes': {
       const sub = argv[1]
       if (sub === 'new') {
@@ -354,10 +432,18 @@ export async function main(argv: string[], cwd: string): Promise<number> {
         if (name === undefined || name.startsWith('-')) {
           return usageError(json, '사용법: erdd changes new <이름> [--baseline]')
         }
-        return changes({ ...ctx, sub: 'new', name, baseline: argv.includes('--baseline'), check: false })
+        return changes({
+          ...ctx,
+          sub: 'new',
+          name,
+          baseline: argv.includes('--baseline'),
+          check: false,
+        })
       }
-      if (sub !== undefined && !sub.startsWith('-')) return usageError(json, `알 수 없는 하위 명령: changes ${sub}`)
-      if (argv.includes('--baseline')) return usageError(json, '--baseline 은 changes new 전용입니다')
+      if (sub !== undefined && !sub.startsWith('-'))
+        return usageError(json, `알 수 없는 하위 명령: changes ${sub}`)
+      if (argv.includes('--baseline'))
+        return usageError(json, '--baseline 은 changes new 전용입니다')
       return changes({ ...ctx, sub: 'status', baseline: false, check: argv.includes('--check') })
     }
     default:
@@ -375,7 +461,7 @@ if (invoked !== undefined) {
   try {
     direct = fileURLToPath(import.meta.url) === realpathSync(resolve(invoked))
   } catch {
-    direct = false   // argv[1]이 존재하지 않는 경로면 직접 실행이 아니다
+    direct = false // argv[1]이 존재하지 않는 경로면 직접 실행이 아니다
   }
   if (direct) process.exit(await main(process.argv.slice(2), process.cwd()))
 }

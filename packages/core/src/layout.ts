@@ -21,8 +21,13 @@ export type LayoutData = {
 function orderedTables(model: ProjectModel) {
   return Object.values(model.tables).sort((a, b) =>
     a.physicalName === b.physicalName
-      ? (a.id < b.id ? -1 : 1)
-      : (a.physicalName < b.physicalName ? -1 : 1))
+      ? a.id < b.id
+        ? -1
+        : 1
+      : a.physicalName < b.physicalName
+        ? -1
+        : 1,
+  )
 }
 
 export function layoutFromModel(model: ProjectModel): LayoutData {
@@ -75,7 +80,9 @@ export function applyLayout(model: ProjectModel, layout: LayoutData): ProjectMod
       Object.entries(tables).filter(([id]) => !missing.includes(id)),
     )
     const spots = gridPositions({ ...model, tables: placed }, missing.length)
-    missing.forEach((id, i) => { tables[id] = { ...tables[id]!, position: spots[i]! } })
+    missing.forEach((id, i) => {
+      tables[id] = { ...tables[id]!, position: spots[i]! }
+    })
   }
 
   const notes: ProjectModel['notes'] = {}

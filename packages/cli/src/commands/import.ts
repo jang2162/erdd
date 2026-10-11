@@ -2,9 +2,18 @@ import { readFile } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
 import { uuidv7 } from 'uuidv7'
 import {
-  applyDdlImport, detectDialect, dialectFromDatabaseType, filesToModel, modelToFiles,
-  parseDbml, parseDdl, planDdlImport,
-  type DdlImportPlan, type Dialect, type ParsedDbml, type ParsedDdl,
+  applyDdlImport,
+  detectDialect,
+  dialectFromDatabaseType,
+  filesToModel,
+  modelToFiles,
+  parseDbml,
+  parseDdl,
+  planDdlImport,
+  type DdlImportPlan,
+  type Dialect,
+  type ParsedDbml,
+  type ParsedDdl,
 } from '@erdd/core'
 import { readConfig, writeConfig, type ErddConfig } from '../config.js'
 import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
@@ -28,9 +37,13 @@ export type ImportCtx = CommandCtx & {
  */
 function formatFromExtension(path: string): ExportFormat | null {
   switch (extname(path).toLowerCase()) {
-    case '.sql': case '.ddl': return 'ddl'
-    case '.dbml': return 'dbml'
-    default: return null
+    case '.sql':
+    case '.ddl':
+      return 'ddl'
+    case '.dbml':
+      return 'dbml'
+    default:
+      return null
   }
 }
 
@@ -45,8 +58,11 @@ function formatFromExtension(path: string): ExportFormat | null {
  * 되읽자 mssql 로 읽혔다). DBML 은 웹 다이얼로그와 같이 `Project { database_type }` 을 본다.
  */
 function resolveDialect(
-  explicit: Dialect | undefined, format: ExportFormat, text: string,
-  parsed: ParsedDdl | ParsedDbml, config: ErddConfig,
+  explicit: Dialect | undefined,
+  format: ExportFormat,
+  text: string,
+  parsed: ParsedDdl | ParsedDbml,
+  config: ErddConfig,
 ): { dialect: Dialect; source: string } {
   if (explicit !== undefined) return { dialect: explicit, source: '--dialect' }
   if (format === 'ddl') {
@@ -61,7 +77,11 @@ function resolveDialect(
 }
 
 function planSummary(plan: DdlImportPlan): {
-  added: number; columns: number; indexes: number; relationships: number; groups: number
+  added: number
+  columns: number
+  indexes: number
+  relationships: number
+  groups: number
 } {
   return {
     added: plan.tables.length,
@@ -102,8 +122,8 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
     if (format === null) {
       throw new CliError(
         'USAGE',
-        `${ctx.file}의 형식을 확장자로 정할 수 없습니다 — --format ddl 또는 --format dbml을 주세요`
-          + '(확장자는 .sql·.ddl이면 ddl, .dbml이면 dbml입니다)',
+        `${ctx.file}의 형식을 확장자로 정할 수 없습니다 — --format ddl 또는 --format dbml을 주세요` +
+          '(확장자는 .sql·.ddl이면 ddl, .dbml이면 dbml입니다)',
       )
     }
 
@@ -123,14 +143,23 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
     if (!result.ok) {
       emit(
         ctx.json,
-        [`파싱 오류 ${result.issues.length}건`, ...result.issues.map((i) => `  ${i.path}: ${i.message}`)].join('\n'),
+        [
+          `파싱 오류 ${result.issues.length}건`,
+          ...result.issues.map((i) => `  ${i.path}: ${i.message}`),
+        ].join('\n'),
         { ok: false, parseErrors: result.issues, integrityIssues: [], warnings: [] },
       )
       return 1
     }
 
     const parsed = format === 'ddl' ? parseDdl(text) : parseDbml(text)
-    const { dialect, source: dialectSource } = resolveDialect(ctx.dialect, format, text, parsed, config)
+    const { dialect, source: dialectSource } = resolveDialect(
+      ctx.dialect,
+      format,
+      text,
+      parsed,
+      config,
+    )
     const plan = planDdlImport(result.model, parsed, dialect, config.namingRules)
     const summary = planSummary(plan)
 
@@ -140,34 +169,45 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
     // (`dialectSource` 를 싣는 것과 같은 정신).
     const currentOption = config.tableOptions[dialect]
     const tableOptionsApplied = plan.tableOptions !== null && currentOption.trim() === ''
-    const tableOptionsConflict = plan.tableOptions !== null
-      && currentOption.trim() !== '' && currentOption !== plan.tableOptions
+    const tableOptionsConflict =
+      plan.tableOptions !== null &&
+      currentOption.trim() !== '' &&
+      currentOption !== plan.tableOptions
     const optionLines = tableOptionsApplied
       ? [
           `테이블 옵션 '${plan.tableOptions!}'을 erdd.config.yaml 의 ${dialect} 칸에 반영합니다`,
           // ⚠️ 이 한 줄이 없으면 사용자는 서버에도 들어간 줄 안다.
           ...(config.projectId !== null
-            ? ['  (서버 프로젝트 설정에는 반영되지 않습니다 — 다음 erdd pull 이 이 값을 덮어씁니다)']
+            ? [
+                '  (서버 프로젝트 설정에는 반영되지 않습니다 — 다음 erdd pull 이 이 값을 덮어씁니다)',
+              ]
             : []),
         ]
       : tableOptionsConflict
-        ? [`테이블 옵션 '${plan.tableOptions!}'은 erdd.config.yaml 의 ${dialect} 칸`
-            + `('${currentOption}')과 달라 반영하지 않았습니다 — 바꾸려면 그 파일을 직접 고치세요`]
+        ? [
+            `테이블 옵션 '${plan.tableOptions!}'은 erdd.config.yaml 의 ${dialect} 칸` +
+              `('${currentOption}')과 달라 반영하지 않았습니다 — 바꾸려면 그 파일을 직접 고치세요`,
+          ]
         : []
     const warningLines = plan.warnings.map((w) => `  [${w.kind}] ${w.target}: ${w.message}`)
     const humanHead = [
-      `${format} · 방언 ${dialect}(${dialectSource}) · 추가 ${summary.added}개 테이블`
-        + `(컬럼 ${summary.columns} · 인덱스 ${summary.indexes} · 관계 ${summary.relationships}`
-        + `${summary.groups > 0 ? ` · 그룹 ${summary.groups}` : ''})`,
+      `${format} · 방언 ${dialect}(${dialectSource}) · 추가 ${summary.added}개 테이블` +
+        `(컬럼 ${summary.columns} · 인덱스 ${summary.indexes} · 관계 ${summary.relationships}` +
+        `${summary.groups > 0 ? ` · 그룹 ${summary.groups}` : ''})`,
       ...(plan.skippedTables.length > 0
-        ? [`이미 있는 이름이라 건너뛴 테이블 ${plan.skippedTables.length}개: ${plan.skippedTables.join(', ')}`]
+        ? [
+            `이미 있는 이름이라 건너뛴 테이블 ${plan.skippedTables.length}개: ${plan.skippedTables.join(', ')}`,
+          ]
         : []),
       ...(plan.warnings.length > 0 ? [`경고 ${plan.warnings.length}건`, ...warningLines] : []),
       ...optionLines,
     ]
     const payload = {
       ok: true,
-      format, dialect, dialectSource, dryRun: ctx.dryRun,
+      format,
+      dialect,
+      dialectSource,
+      dryRun: ctx.dryRun,
       ...summary,
       skipped: plan.skippedTables,
       warnings: plan.warnings,
@@ -179,7 +219,8 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
 
     if (ctx.dryRun) {
       emit(ctx.json, [...humanHead, '--dry-run이라 파일을 쓰지 않았습니다'].join('\n'), {
-        ...payload, tableOptionsApplied: false,
+        ...payload,
+        tableOptionsApplied: false,
       })
       return 0
     }
@@ -189,9 +230,12 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
       // push의 confirmDeletes와 같은 문구다 — 아무도 취소하지 않았는데 "취소했습니다"라고 하면
       // 이 CLI의 주 소비자(에이전트)가 원인도 해결책도 알 수 없다.
       if (ctx.confirm === undefined) {
-        throw new CliError('CANCELLED', '파일을 덮어씁니다 — 비대화형(--json)에서는 --yes를 함께 주세요')
+        throw new CliError(
+          'CANCELLED',
+          '파일을 덮어씁니다 — 비대화형(--json)에서는 --yes를 함께 주세요',
+        )
       }
-      if (!await ctx.confirm('로컬 파일에 반영할까요?')) {
+      if (!(await ctx.confirm('로컬 파일에 반영할까요?'))) {
         throw new CliError('CANCELLED', '사용자가 취소했습니다')
       }
     }
@@ -210,9 +254,17 @@ export function importCommand(ctx: ImportCtx): Promise<number> {
     for (const i of issues) note(`경고: ${i.path}: ${i.message}`)
     const { written, deleted } = await writeTree(ctx.cwd, tree)
 
-    emit(ctx.json, [...humanHead, `파일 ${written.length}개를 썼습니다. erdd push로 서버에 반영하세요`].join('\n'), {
-      ...payload, written, deleted,
-    })
+    emit(
+      ctx.json,
+      [...humanHead, `파일 ${written.length}개를 썼습니다. erdd push로 서버에 반영하세요`].join(
+        '\n',
+      ),
+      {
+        ...payload,
+        written,
+        deleted,
+      },
+    )
     return 0
   })
 }

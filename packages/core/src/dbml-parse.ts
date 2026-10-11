@@ -1,5 +1,10 @@
 import type {
-  ParsedColumn, ParsedComment, ParsedConstraint, ParsedDdl, ParsedIndex, ParsedTable,
+  ParsedColumn,
+  ParsedComment,
+  ParsedConstraint,
+  ParsedDdl,
+  ParsedIndex,
+  ParsedTable,
   SkippedStatement,
 } from './ddl-parse.js'
 import type { Dialect } from './dialect.js'
@@ -7,10 +12,15 @@ import { splitDbmlNote } from './dbml-note.js'
 import { parseNameMeta } from './name-meta.js'
 
 export type ParsedGroup = {
-  name: string; color: string | null; comment: string | null; tables: string[]
+  name: string
+  color: string | null
+  comment: string | null
+  tables: string[]
 }
 export type ParsedCustomValue = {
-  table: string; column: string | null; values: Record<string, string>
+  table: string
+  column: string | null
+  values: Record<string, string>
 }
 export type ParsedDbml = ParsedDdl & {
   groups: ParsedGroup[]
@@ -39,8 +49,10 @@ export function dialectFromDatabaseType(s: string): Dialect | null {
 export function dbmlDefaultToRaw(token: string): string {
   const t = token.trim()
   if (t.startsWith('`') && t.endsWith('`') && t.length >= 2) return unescapeDbml(t.slice(1, -1))
-  if ((t.startsWith("'''") && t.endsWith("'''") && t.length >= 6)
-      || (t.startsWith("'") && t.endsWith("'") && t.length >= 2)) {
+  if (
+    (t.startsWith("'''") && t.endsWith("'''") && t.length >= 6) ||
+    (t.startsWith("'") && t.endsWith("'") && t.length >= 2)
+  ) {
     return `'${unquote(t).replace(/'/g, "''")}'`
   }
   if (/^true$/i.test(t)) return 'TRUE'
@@ -60,7 +72,10 @@ function skipQuoted(s: string, i: number): number {
   const close = triple ? "'''" : c
   let j = i + (triple ? 3 : 1)
   while (j < s.length) {
-    if (s[j] === '\\') { j += 2; continue }
+    if (s[j] === '\\') {
+      j += 2
+      continue
+    }
     if (s.startsWith(close, j)) return j + close.length
     j++
   }
@@ -84,7 +99,10 @@ function stripComments(src: string): string {
       continue
     }
     if (c === '/' && s[i + 1] === '/') {
-      while (i < s.length && s[i] !== '\n') { out += ' '; i++ }
+      while (i < s.length && s[i] !== '\n') {
+        out += ' '
+        i++
+      }
       continue
     }
     if (c === '/' && s[i + 1] === '*') {
@@ -102,16 +120,19 @@ function stripComments(src: string): string {
 /** 이스케이프 해석은 이 함수 하나가 한다 — 인용 4종이 같은 규칙을 쓰게 하기 위해서다. */
 function unescapeDbml(s: string): string {
   return s.replace(/\\(['"`\\ntr])/g, (_, c: string) =>
-    c === 'n' ? '\n' : c === 't' ? '\t' : c === 'r' ? '\r' : c)
+    c === 'n' ? '\n' : c === 't' ? '\t' : c === 'r' ? '\r' : c,
+  )
 }
 
 /** 문자열·따옴표 식별자를 벗긴다. 트리플 쿼트의 내용은 개행째 그대로 살린다. */
 function unquote(raw: string): string {
   const t = raw.trim()
   if (t.startsWith("'''") && t.endsWith("'''") && t.length >= 6) return unescapeDbml(t.slice(3, -3))
-  if (t.length >= 2 && (
-    (t.startsWith("'") && t.endsWith("'")) || (t.startsWith('"') && t.endsWith('"'))
-  )) return unescapeDbml(t.slice(1, -1))
+  if (
+    t.length >= 2 &&
+    ((t.startsWith("'") && t.endsWith("'")) || (t.startsWith('"') && t.endsWith('"')))
+  )
+    return unescapeDbml(t.slice(1, -1))
   if (t.length >= 2 && t.startsWith('`') && t.endsWith('`')) return unescapeDbml(t.slice(1, -1))
   return t
 }
@@ -148,7 +169,12 @@ function splitTop(src: string, sep: string): string[] {
     }
     if (c === '(' || c === '[' || c === '{') depth++
     else if (c === ')' || c === ']' || c === '}') depth--
-    else if (c === sep && depth === 0) { out.push(buf); buf = ''; i++; continue }
+    else if (c === sep && depth === 0) {
+      out.push(buf)
+      buf = ''
+      i++
+      continue
+    }
     buf += c
     i++
   }
@@ -182,7 +208,10 @@ function topLevelIndexOf(src: string, ch: string): number {
   let i = 0
   while (i < src.length) {
     const c = src[i]!
-    if (c === "'" || c === '"' || c === '`') { i = skipQuoted(src, i); continue }
+    if (c === "'" || c === '"' || c === '`') {
+      i = skipQuoted(src, i)
+      continue
+    }
     // 찾는 문자가 괄호일 수 있으므로(예: `[`) 깊이 갱신보다 먼저 본다.
     if (c === ch && depth === 0) return i
     if (c === '(' || c === '[' || c === '{') depth++
@@ -242,9 +271,15 @@ function matchBrace(s: string, open: number): number {
   let i = open
   while (i < s.length) {
     const c = s[i]!
-    if (c === "'" || c === '"' || c === '`') { i = skipQuoted(s, i); continue }
+    if (c === "'" || c === '"' || c === '`') {
+      i = skipQuoted(s, i)
+      continue
+    }
     if (c === '{') depth++
-    else if (c === '}') { depth--; if (depth === 0) return i }
+    else if (c === '}') {
+      depth--
+      if (depth === 0) return i
+    }
     i++
   }
   return -1
@@ -303,11 +338,17 @@ function findRefOperator(expr: string): { op: string; index: number } | null {
   let i = 0
   while (i < expr.length) {
     const c = expr[i]!
-    if (c === "'" || c === '"' || c === '`') { i = skipQuoted(expr, i); continue }
+    if (c === "'" || c === '"' || c === '`') {
+      i = skipQuoted(expr, i)
+      continue
+    }
     if (c === '(') depth++
     else if (c === ')') depth--
-    else if (depth === 0 && (c === '<' || c === '>' || c === '-')
-             && (i === 0 || /\s/.test(expr[i - 1]!))) {
+    else if (
+      depth === 0 &&
+      (c === '<' || c === '>' || c === '-') &&
+      (i === 0 || /\s/.test(expr[i - 1]!))
+    ) {
       if (c === '<' && expr[i + 1] === '>') return { op: '<>', index: i }
       return { op: c, index: i }
     }
@@ -326,7 +367,9 @@ function parseRefExpr(out: Out, expr: string, name: string | null, line: number)
   if (found === null) return
   if (found.op === '<>') {
     out.skipped.push({
-      keyword: 'Ref(<>)', line, excerpt: expr.replace(/\s+/g, ' ').trim().slice(0, 80),
+      keyword: 'Ref(<>)',
+      line,
+      excerpt: expr.replace(/\s+/g, ' ').trim().slice(0, 80),
     })
     return
   }
@@ -336,14 +379,23 @@ function parseRefExpr(out: Out, expr: string, name: string | null, line: number)
   const [child, parent] = found.op === '<' ? [right, left] : [left, right]
   if (child.columns.length !== parent.columns.length) return
   out.constraints.push({
-    kind: 'fk', table: child.table, name, columns: child.columns,
-    refTable: parent.table, refColumns: parent.columns, oneToOne: found.op === '-',
+    kind: 'fk',
+    table: child.table,
+    name,
+    columns: child.columns,
+    refTable: parent.table,
+    refColumns: parent.columns,
+    oneToOne: found.op === '-',
   })
 }
 
 /** 컬럼 설정의 인라인 `ref: > 대상`. 왼쪽은 그 컬럼이므로 오른쪽만 파싱한다. */
 function parseInlineRef(
-  out: Out, table: string, column: string, value: string, line: number,
+  out: Out,
+  table: string,
+  column: string,
+  value: string,
+  line: number,
 ): void {
   parseRefExpr(out, `${quoteName(table)}.${quoteName(column)} ${value.trim()}`, null, line)
 }
@@ -362,14 +414,16 @@ function parseIndexesBlock(out: Out, table: string, item: Item): void {
   for (const line of splitItems(body, item.line)) {
     const br = topLevelIndexOf(line.text, '[')
     const head = (br < 0 ? line.text : line.text.slice(0, br)).trim()
-    const settings = br < 0
-      ? new Map<string, string | true>()
-      : parseSettings(line.text.slice(br + 1, Math.max(br + 1, line.text.lastIndexOf(']'))))
+    const settings =
+      br < 0
+        ? new Map<string, string | true>()
+        : parseSettings(line.text.slice(br + 1, Math.max(br + 1, line.text.lastIndexOf(']'))))
 
     // 백틱 표현식 인덱스는 컬럼으로 해소되지 않는다 — 인덱스를 만들지 않고 건너뛴다.
     if (head.includes('`')) {
       out.skipped.push({
-        keyword: 'indexes(expression)', line: line.line,
+        keyword: 'indexes(expression)',
+        line: line.line,
         excerpt: line.text.replace(/\s+/g, ' ').trim().slice(0, 80),
       })
       continue
@@ -428,13 +482,19 @@ function parseColumnItem(out: Out, table: string, item: Item): ParsedColumn | nu
   const br = topLevelIndexOf(rest, '[')
   const rawType = (br < 0 ? rest : rest.slice(0, br)).trim()
   if (rawType === '') return null
-  const settings = br < 0
-    ? new Map<string, string | true>()
-    : parseSettings(rest.slice(br + 1, Math.max(br + 1, rest.lastIndexOf(']'))))
+  const settings =
+    br < 0
+      ? new Map<string, string | true>()
+      : parseSettings(rest.slice(br + 1, Math.max(br + 1, rest.lastIndexOf(']'))))
 
   const col: ParsedColumn = {
-    name: id.name, rawType, notNull: false, defaultValue: null,
-    autoIncrement: false, inlinePk: false, comment: null,
+    name: id.name,
+    rawType,
+    notNull: false,
+    defaultValue: null,
+    autoIncrement: false,
+    inlinePk: false,
+    comment: null,
   }
   for (const [key, value] of settings) {
     if (key === 'pk' || key === 'primary key') col.inlinePk = true
@@ -478,7 +538,10 @@ function parseTableBlock(out: Out, header: string, body: string, bodyLine: numbe
 
   const columns: ParsedColumn[] = []
   for (const item of splitItems(body, bodyLine)) {
-    if (/^indexes\b/i.test(item.text)) { parseIndexesBlock(out, name, item); continue }
+    if (/^indexes\b/i.test(item.text)) {
+      parseIndexesBlock(out, name, item)
+      continue
+    }
     if (/^note\s*:/i.test(item.text)) {
       takeNote(out, name, null, item.text.slice(item.text.indexOf(':') + 1))
       continue
@@ -506,8 +569,15 @@ export function parseDbml(text: string): ParsedDbml {
   const nameMeta = parseNameMeta(text) ?? undefined
   const s = stripComments(text)
   const out: Out = {
-    tables: [], constraints: [], indexes: [], comments: [], skipped: [],
-    groups: [], customValues: [], databaseType: null, headerColors: new Map(),
+    tables: [],
+    constraints: [],
+    indexes: [],
+    comments: [],
+    skipped: [],
+    groups: [],
+    customValues: [],
+    databaseType: null,
+    headerColors: new Map(),
   }
 
   let i = 0
@@ -518,9 +588,15 @@ export function parseDbml(text: string): ParsedDbml {
   }
 
   while (i < s.length) {
-    if (/\s/.test(s[i]!)) { advance(i + 1); continue }
+    if (/\s/.test(s[i]!)) {
+      advance(i + 1)
+      continue
+    }
     const kw = /^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(i))
-    if (!kw) { advance(i + 1); continue }
+    if (!kw) {
+      advance(i + 1)
+      continue
+    }
     const keyword = kw[0]
     const startLine = line
     const afterKw = i + keyword.length
@@ -531,11 +607,20 @@ export function parseDbml(text: string): ParsedDbml {
     let lineEnd = -1
     while (j < s.length) {
       const c = s[j]!
-      if (c === "'" || c === '"' || c === '`') { j = skipQuoted(s, j); continue }
-      if (c === '{') { brace = j; break }
+      if (c === "'" || c === '"' || c === '`') {
+        j = skipQuoted(s, j)
+        continue
+      }
+      if (c === '{') {
+        brace = j
+        break
+      }
       if (c === '\n') {
         const nxt = /\S/.exec(s.slice(j))
-        if (nxt && s[j + nxt.index] === '{') { j += nxt.index; continue }
+        if (nxt && s[j + nxt.index] === '{') {
+          j += nxt.index
+          continue
+        }
         lineEnd = j
         break
       }
@@ -556,8 +641,13 @@ export function parseDbml(text: string): ParsedDbml {
       // 않는다 — 깨진 붙여넣기가 절반만 들어온 것을 사용자가 알아야 한다.
       if (close < 0) {
         out.skipped.push({
-          keyword: `${keyword}(닫히지 않음)`, line: startLine,
-          excerpt: s.slice(i, brace + 1).replace(/\s+/g, ' ').trim().slice(0, 80),
+          keyword: `${keyword}(닫히지 않음)`,
+          line: startLine,
+          excerpt: s
+            .slice(i, brace + 1)
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 80),
         })
       }
     } else {
@@ -582,7 +672,9 @@ export function parseDbml(text: string): ParsedDbml {
       }
     } else {
       out.skipped.push({
-        keyword, line: startLine, excerpt: construct.replace(/\s+/g, ' ').trim().slice(0, 80),
+        keyword,
+        line: startLine,
+        excerpt: construct.replace(/\s+/g, ' ').trim().slice(0, 80),
       })
     }
     advance(end)
@@ -594,13 +686,22 @@ export function parseDbml(text: string): ParsedDbml {
     if (g.color !== null) continue
     for (const t of g.tables) {
       const c = out.headerColors.get(t.toUpperCase())
-      if (c !== undefined) { g.color = c; break }
+      if (c !== undefined) {
+        g.color = c
+        break
+      }
     }
   }
 
   return {
-    tables: out.tables, constraints: out.constraints, indexes: out.indexes,
-    comments: out.comments, skipped: out.skipped, nameMeta,
-    groups: out.groups, customValues: out.customValues, databaseType: out.databaseType,
+    tables: out.tables,
+    constraints: out.constraints,
+    indexes: out.indexes,
+    comments: out.comments,
+    skipped: out.skipped,
+    nameMeta,
+    groups: out.groups,
+    customValues: out.customValues,
+    databaseType: out.databaseType,
   }
 }

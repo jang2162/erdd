@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import {
-  applyOps, createEmptyModel, diffModels, type CustomField, type Domain, type Term, type Word,
+  applyOps,
+  createEmptyModel,
+  diffModels,
+  type CustomField,
+  type Domain,
+  type Term,
+  type Word,
 } from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { uuidv7 } from 'uuidv7'
@@ -15,15 +21,23 @@ const url = process.env.DATABASE_URL
 describe.skipIf(!url)('model-store', () => {
   let app: FastifyInstance
   let projectId: string
-  beforeAll(async () => { app = await createTestApp() })
-  afterAll(async () => { await app.close() })
+  beforeAll(async () => {
+    app = await createTestApp()
+  })
+  afterAll(async () => {
+    await app.close()
+  })
   beforeEach(async () => {
     await resetDb(app.pgPool!)
     const orgId = uuidv7()
     projectId = uuidv7()
     await app.db!.insert(organizations).values({ id: orgId, name: '테스트', kind: 'team' })
     await app.db!.insert(projects).values({
-      id: projectId, orgId, name: 'P', description: '', dialects: ['postgresql'],
+      id: projectId,
+      orgId,
+      name: 'P',
+      description: '',
+      dialects: ['postgresql'],
     })
   })
 
@@ -54,11 +68,20 @@ describe.skipIf(!url)('model-store', () => {
 
     const domainId = uuidv7()
     const domain: Domain = {
-      id: domainId, name: '금액', category: '금융', logicalType: 'DECIMAL',
+      id: domainId,
+      name: '금액',
+      category: '금융',
+      logicalType: 'DECIMAL',
       dialectTypes: {
-        postgresql: 'NUMERIC(15,2)', mysql: 'DECIMAL(15,2)', oracle: 'NUMBER(15,2)', mssql: 'DECIMAL(15,2)',
+        postgresql: 'NUMERIC(15,2)',
+        mysql: 'DECIMAL(15,2)',
+        oracle: 'NUMBER(15,2)',
+        mssql: 'DECIMAL(15,2)',
       },
-      defaultValue: '0', allowedValues: [], description: '금액 도메인', origin: null,
+      defaultValue: '0',
+      allowedValues: [],
+      description: '금액 도메인',
+      origin: null,
     }
     const columnId = Object.keys(base.columns)[0]!
 
@@ -66,7 +89,9 @@ describe.skipIf(!url)('model-store', () => {
     await persistOps(app.db!, projectId, [
       { action: 'create', entity: 'domain', entityId: domainId, data: domain },
       {
-        action: 'update', entity: 'column', entityId: columnId,
+        action: 'update',
+        entity: 'column',
+        entityId: columnId,
         changes: { domainId: { from: null, to: domainId } },
       },
     ])
@@ -78,7 +103,9 @@ describe.skipIf(!url)('model-store', () => {
     const updatedDomain: Domain = { ...domain, name: '금액(개정)', allowedValues: ['0', '100'] }
     await persistOps(app.db!, projectId, [
       {
-        action: 'update', entity: 'domain', entityId: domainId,
+        action: 'update',
+        entity: 'domain',
+        entityId: domainId,
         changes: {
           name: { from: domain.name, to: updatedDomain.name },
           allowedValues: { from: domain.allowedValues, to: updatedDomain.allowedValues },
@@ -91,7 +118,9 @@ describe.skipIf(!url)('model-store', () => {
     // 참조 해제 후 도메인 삭제
     await persistOps(app.db!, projectId, [
       {
-        action: 'update', entity: 'column', entityId: columnId,
+        action: 'update',
+        entity: 'column',
+        entityId: columnId,
         changes: { domainId: { from: domainId, to: null } },
       },
       { action: 'delete', entity: 'domain', entityId: domainId, before: updatedDomain },
@@ -108,11 +137,20 @@ describe.skipIf(!url)('model-store', () => {
     const target = buildSampleModel()
     const domainId = 'dm1'
     target.domains[domainId] = {
-      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL',
+      id: domainId,
+      name: '금액',
+      category: null,
+      logicalType: 'DECIMAL',
       dialectTypes: {
-        postgresql: null, mysql: null, oracle: null, mssql: null,
+        postgresql: null,
+        mysql: null,
+        oracle: null,
+        mssql: null,
       },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
     target.columns.c1!.domainId = domainId
     const full = withUuidIds(target)
@@ -141,19 +179,36 @@ describe.skipIf(!url)('model-store', () => {
     const raw = buildSampleModel()
     const domainId = 'dm1'
     raw.domains[domainId] = {
-      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL',
+      id: domainId,
+      name: '금액',
+      category: null,
+      logicalType: 'DECIMAL',
       dialectTypes: {
-        postgresql: null, mysql: null, oracle: null, mssql: null,
+        postgresql: null,
+        mysql: null,
+        oracle: null,
+        mssql: null,
       },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
     const word: Word = {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: null, description: null, origin: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
     }
     raw.words[word.id] = word
     const term: Term = {
-      id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId, description: '회원 식별자',
+      id: 'tm1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      domainId,
+      description: '회원 식별자',
       origin: null,
     }
     raw.terms[term.id] = term
@@ -167,15 +222,28 @@ describe.skipIf(!url)('model-store', () => {
   it('persists term create/update/delete ops with domainId FK roundtrip', async () => {
     const domainId = uuidv7()
     const domain: Domain = {
-      id: domainId, name: '금액', category: '금융', logicalType: 'DECIMAL',
+      id: domainId,
+      name: '금액',
+      category: '금융',
+      logicalType: 'DECIMAL',
       dialectTypes: {
-        postgresql: 'NUMERIC(15,2)', mysql: 'DECIMAL(15,2)', oracle: 'NUMBER(15,2)', mssql: 'DECIMAL(15,2)',
+        postgresql: 'NUMERIC(15,2)',
+        mysql: 'DECIMAL(15,2)',
+        oracle: 'NUMBER(15,2)',
+        mssql: 'DECIMAL(15,2)',
       },
-      defaultValue: '0', allowedValues: [], description: '금액 도메인', origin: null,
+      defaultValue: '0',
+      allowedValues: [],
+      description: '금액 도메인',
+      origin: null,
     }
     const termId = uuidv7()
     const term: Term = {
-      id: termId, logicalName: '주문금액', physicalName: 'ORD_AMT', domainId, description: null,
+      id: termId,
+      logicalName: '주문금액',
+      physicalName: 'ORD_AMT',
+      domainId,
+      description: null,
       origin: null,
     }
 
@@ -191,7 +259,9 @@ describe.skipIf(!url)('model-store', () => {
     const updatedTerm: Term = { ...term, physicalName: 'ORD_AMT_V2', description: '주문 총액' }
     await persistOps(app.db!, projectId, [
       {
-        action: 'update', entity: 'term', entityId: termId,
+        action: 'update',
+        entity: 'term',
+        entityId: termId,
         changes: {
           physicalName: { from: term.physicalName, to: updatedTerm.physicalName },
           description: { from: term.description, to: updatedTerm.description },
@@ -204,7 +274,9 @@ describe.skipIf(!url)('model-store', () => {
     // 참조 해제 후 도메인 삭제, 용어 자체 삭제
     await persistOps(app.db!, projectId, [
       {
-        action: 'update', entity: 'term', entityId: termId,
+        action: 'update',
+        entity: 'term',
+        entityId: termId,
         changes: { domainId: { from: domainId, to: null } },
       },
       { action: 'delete', entity: 'domain', entityId: domainId, before: domain },
@@ -214,7 +286,12 @@ describe.skipIf(!url)('model-store', () => {
     expect(loaded.terms[termId]!.domainId).toBeNull()
 
     await persistOps(app.db!, projectId, [
-      { action: 'delete', entity: 'term', entityId: termId, before: { ...updatedTerm, domainId: null } },
+      {
+        action: 'delete',
+        entity: 'term',
+        entityId: termId,
+        before: { ...updatedTerm, domainId: null },
+      },
     ])
     loaded = await loadProjectModel(app.db!, projectId)
     expect(loaded.terms[termId]).toBeUndefined()
@@ -228,14 +305,27 @@ describe.skipIf(!url)('model-store', () => {
     const target = buildSampleModel()
     const domainId = 'dm1'
     target.domains[domainId] = {
-      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL',
+      id: domainId,
+      name: '금액',
+      category: null,
+      logicalType: 'DECIMAL',
       dialectTypes: {
-        postgresql: null, mysql: null, oracle: null, mssql: null,
+        postgresql: null,
+        mysql: null,
+        oracle: null,
+        mssql: null,
       },
-      defaultValue: null, allowedValues: [], description: null, origin: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
+      origin: null,
     }
     target.terms.tm1 = {
-      id: 'tm1', logicalName: '주문금액', physicalName: 'ORD_AMT', domainId, description: null,
+      id: 'tm1',
+      logicalName: '주문금액',
+      physicalName: 'ORD_AMT',
+      domainId,
+      description: null,
       origin: null,
     }
     const full = withUuidIds(target)
@@ -268,7 +358,11 @@ describe.skipIf(!url)('model-store', () => {
     const orgId = uuidv7()
     await app.db!.insert(organizations).values({ id: orgId, name: '다른', kind: 'team' })
     await app.db!.insert(projects).values({
-      id: otherProject, orgId, name: 'Q', description: '', dialects: ['mysql'],
+      id: otherProject,
+      orgId,
+      name: 'Q',
+      description: '',
+      dialects: ['mysql'],
     })
     // 다른 프로젝트 스코프로 기존 노트를 삭제 시도 → 행이 남아 있어야 함
     const noteId = Object.keys(base.notes)[0]!
@@ -285,15 +379,24 @@ describe.skipIf(!url)('model-store', () => {
 
     const fieldId = uuidv7()
     const field: CustomField = {
-      id: fieldId, name: '개인정보여부', target: 'column', type: 'select',
-      options: ['Y', 'N'], required: true, defaultValue: 'N', order: 0, origin: null,
+      id: fieldId,
+      name: '개인정보여부',
+      target: 'column',
+      type: 'select',
+      options: ['Y', 'N'],
+      required: true,
+      defaultValue: 'N',
+      order: 0,
+      origin: null,
     }
     const columnId = Object.keys(base.columns)[0]!
 
     await persistOps(app.db!, projectId, [
       { action: 'create', entity: 'customField', entityId: fieldId, data: field },
       {
-        action: 'update', entity: 'column', entityId: columnId,
+        action: 'update',
+        entity: 'column',
+        entityId: columnId,
         changes: { custom: { from: {}, to: { [fieldId]: 'Y' } } },
       },
     ])
@@ -304,7 +407,9 @@ describe.skipIf(!url)('model-store', () => {
     const updated: CustomField = { ...field, name: '개인정보', options: ['Y', 'N', 'X'], order: 2 }
     await persistOps(app.db!, projectId, [
       {
-        action: 'update', entity: 'customField', entityId: fieldId,
+        action: 'update',
+        entity: 'customField',
+        entityId: fieldId,
         changes: {
           name: { from: field.name, to: updated.name },
           options: { from: field.options, to: updated.options },
@@ -317,7 +422,9 @@ describe.skipIf(!url)('model-store', () => {
 
     await persistOps(app.db!, projectId, [
       {
-        action: 'update', entity: 'column', entityId: columnId,
+        action: 'update',
+        entity: 'column',
+        entityId: columnId,
         changes: { custom: { from: { [fieldId]: 'Y' }, to: {} } },
       },
       { action: 'delete', entity: 'customField', entityId: fieldId, before: updated },
@@ -333,8 +440,15 @@ describe.skipIf(!url)('model-store', () => {
     const target = buildSampleModel()
     const fieldId = 'cf1'
     target.customFields[fieldId] = {
-      id: fieldId, name: '개인정보여부', target: 'column', type: 'boolean',
-      options: [], required: false, defaultValue: null, order: 0, origin: null,
+      id: fieldId,
+      name: '개인정보여부',
+      target: 'column',
+      type: 'boolean',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     target.columns.c1!.custom = { [fieldId]: 'true' }
     const full = withUuidIds(target)
@@ -355,18 +469,31 @@ describe.skipIf(!url)('model-store', () => {
     const libraryId = uuidv7()
     const domainId = uuidv7()
     const termId = uuidv7()
-    const origin = (sourceId: string, base: Record<string, unknown>) =>
-      ({ libraryId, sourceId, sourceVersion: 2, base })
+    const origin = (sourceId: string, base: Record<string, unknown>) => ({
+      libraryId,
+      sourceId,
+      sourceVersion: 2,
+      base,
+    })
 
     const domain = {
-      id: domainId, name: '금액', category: null, logicalType: 'DECIMAL(15,2)',
+      id: domainId,
+      name: '금액',
+      category: null,
+      logicalType: 'DECIMAL(15,2)',
       dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-      defaultValue: null, allowedValues: [], description: null,
+      defaultValue: null,
+      allowedValues: [],
+      description: null,
       origin: origin(uuidv7(), { name: '금액' }),
     }
     const term = {
-      id: termId, logicalName: '주문금액', physicalName: 'ORD_AMT',
-      domainId, description: null, origin: origin(uuidv7(), { logicalName: '주문금액' }),
+      id: termId,
+      logicalName: '주문금액',
+      physicalName: 'ORD_AMT',
+      domainId,
+      description: null,
+      origin: origin(uuidv7(), { logicalName: '주문금액' }),
     }
 
     await app.db!.transaction(async (tx) => {
@@ -384,10 +511,20 @@ describe.skipIf(!url)('model-store', () => {
   it('origin이 없는 행은 null로 로드된다', async () => {
     const wordId = uuidv7()
     await app.db!.transaction(async (tx) => {
-      await persistOps(tx, projectId, [{
-        action: 'create', entity: 'word', entityId: wordId,
-        data: { id: wordId, logicalName: '회원', abbreviation: 'MBR', description: null, origin: null },
-      }])
+      await persistOps(tx, projectId, [
+        {
+          action: 'create',
+          entity: 'word',
+          entityId: wordId,
+          data: {
+            id: wordId,
+            logicalName: '회원',
+            abbreviation: 'MBR',
+            description: null,
+            origin: null,
+          },
+        },
+      ])
     })
     expect((await loadProjectModel(app.db!, projectId)).words[wordId]!.origin).toBeNull()
   })
@@ -399,8 +536,12 @@ describe.skipIf(!url)('model-store', () => {
       ...base,
       words: {
         [wordId]: {
-          id: wordId, logicalName: '회원', abbreviation: 'MBR',
-          englishName: 'MEMBER', description: '서비스 가입 주체', origin: null,
+          id: wordId,
+          logicalName: '회원',
+          abbreviation: 'MBR',
+          englishName: 'MEMBER',
+          description: '서비스 가입 주체',
+          origin: null,
         },
       },
     }
@@ -412,7 +553,10 @@ describe.skipIf(!url)('model-store', () => {
   it('englishName 없이 만든 단어는 null로 읽힌다 (구 리비전 하위호환)', async () => {
     const wordId = uuidv7()
     const legacyPayload = {
-      id: wordId, logicalName: '주문', abbreviation: 'ORD', description: null,
+      id: wordId,
+      logicalName: '주문',
+      abbreviation: 'ORD',
+      description: null,
     }
     // CreateOp.data는 unknown이라 englishName이 빠진 옛 페이로드를 그대로 넣을 수 있다.
     await persistOps(app.db!, projectId, [

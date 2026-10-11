@@ -26,24 +26,34 @@ export function createGroupWith(mutate: Mutate, tableIds: readonly string[]): st
   if (!useEditorStore.getState().canEdit) return null
   // id는 producer 밖에서 발급한다 — 반환해야 하는 값이기 때문이다.
   const id = newId()
-  void mutate((m) => {
-    // 이름·색은 **producer가 받은 모델**에서 계산한다. store 스냅샷을 쓰면 낙관적 체인에서 앞선
-    // 뮤테이션이 만든 그룹을 못 보고 이름·색이 겹친다.
-    const groups = Object.values(m.tableGroups)
-    const usedNames = new Set(groups.map((g) => g.name))
-    // 개수 기반이 아니라 미사용 최소 번호를 찾는다(삭제 후 재추가 시 이름 충돌 방지).
-    let n = 1
-    while (usedNames.has(`그룹${n}`)) n++
-    let next = createGroup(m, {
-      id, name: `그룹${n}`, color: nextGroupColor(groups.map((g) => g.color)),
-    })
-    for (const tid of tableIds) {
-      next = setTableGroup(next, tid, id)
-      // 옛 그룹 뷰 좌표를 남기면 새 그룹의 그룹 뷰에서 멤버가 갈라진다 — 옛 그룹에 있던 것은 옛
-      // 좌표, 미분류였던 것은 폴백 좌표에 선다. 전원 비워야 모두 전체 뷰 좌표로 폴백해 나란히 선다.
-      next = clearTableGroupPosition(next, tid)
-    }
-    return next
-  }, { summary: tableIds.length === 0 ? '그룹 추가' : `그룹 추가 (테이블 ${formatCount(tableIds.length)}개)` })
+  void mutate(
+    (m) => {
+      // 이름·색은 **producer가 받은 모델**에서 계산한다. store 스냅샷을 쓰면 낙관적 체인에서 앞선
+      // 뮤테이션이 만든 그룹을 못 보고 이름·색이 겹친다.
+      const groups = Object.values(m.tableGroups)
+      const usedNames = new Set(groups.map((g) => g.name))
+      // 개수 기반이 아니라 미사용 최소 번호를 찾는다(삭제 후 재추가 시 이름 충돌 방지).
+      let n = 1
+      while (usedNames.has(`그룹${n}`)) n++
+      let next = createGroup(m, {
+        id,
+        name: `그룹${n}`,
+        color: nextGroupColor(groups.map((g) => g.color)),
+      })
+      for (const tid of tableIds) {
+        next = setTableGroup(next, tid, id)
+        // 옛 그룹 뷰 좌표를 남기면 새 그룹의 그룹 뷰에서 멤버가 갈라진다 — 옛 그룹에 있던 것은 옛
+        // 좌표, 미분류였던 것은 폴백 좌표에 선다. 전원 비워야 모두 전체 뷰 좌표로 폴백해 나란히 선다.
+        next = clearTableGroupPosition(next, tid)
+      }
+      return next
+    },
+    {
+      summary:
+        tableIds.length === 0
+          ? '그룹 추가'
+          : `그룹 추가 (테이블 ${formatCount(tableIds.length)}개)`,
+    },
+  )
   return id
 }

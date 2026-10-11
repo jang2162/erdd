@@ -7,7 +7,9 @@ export type OrgRole = 'owner' | 'admin' | 'member'
 export type ProjectRole = 'admin' | 'editor' | 'viewer'
 
 export async function getOrgMember(
-  db: Db, orgId: string, userId: string,
+  db: Db,
+  orgId: string,
+  userId: string,
 ): Promise<{ id: string; role: OrgRole } | undefined> {
   const rows = await db
     .select({ id: members.id, role: members.role })
@@ -18,7 +20,9 @@ export async function getOrgMember(
 
 /** Org Owner/Admin만 통과시킨다. 조직 멤버 관리·초대가 같은 기준을 쓴다. */
 export async function requireOrgManager(
-  db: Db, orgId: string, userId: string,
+  db: Db,
+  orgId: string,
+  userId: string,
 ): Promise<{ id: string; role: OrgRole }> {
   const me = await getOrgMember(db, orgId, userId)
   if (!me || (me.role !== 'owner' && me.role !== 'admin')) {
@@ -40,7 +44,9 @@ export type ProjectAccess = {
 }
 
 export async function getProjectAccess(
-  db: Db, projectId: string, userId: string,
+  db: Db,
+  projectId: string,
+  userId: string,
 ): Promise<ProjectAccess | undefined> {
   const project = (await db.select().from(projects).where(eq(projects.id, projectId)))[0]
   if (!project) return undefined
@@ -48,12 +54,12 @@ export async function getProjectAccess(
   let projectRole: ProjectRole | undefined
   if (orgMember) {
     const pm = (
-      await db.select({ role: projectMembers.role })
+      await db
+        .select({ role: projectMembers.role })
         .from(projectMembers)
-        .where(and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.memberId, orgMember.id),
-        ))
+        .where(
+          and(eq(projectMembers.projectId, projectId), eq(projectMembers.memberId, orgMember.id)),
+        )
     )[0]
     projectRole = pm?.role
   }
@@ -69,7 +75,10 @@ export async function getProjectAccess(
 }
 
 export async function requireProjectAccess(
-  db: Db, projectId: string, userId: string, level: 'view' | 'edit' | 'manage',
+  db: Db,
+  projectId: string,
+  userId: string,
+  level: 'view' | 'edit' | 'manage',
 ): Promise<ProjectAccess> {
   const access = await getProjectAccess(db, projectId, userId)
   if (!access) throw new TRPCError({ code: 'NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' })

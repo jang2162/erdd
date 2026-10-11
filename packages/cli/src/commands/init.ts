@@ -2,13 +2,25 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { z } from 'zod'
 import {
-  createEmptyModel, DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS, modelToFiles,
-  NamingRulesStrictSchema, TableOptionsStrictSchema,
-  type Dialect, type NamingRules, type TableOptions,
+  createEmptyModel,
+  DEFAULT_NAMING_RULES,
+  DEFAULT_TABLE_OPTIONS,
+  modelToFiles,
+  NamingRulesStrictSchema,
+  TableOptionsStrictSchema,
+  type Dialect,
+  type NamingRules,
+  type TableOptions,
 } from '@erdd/core'
 import { createClient, type ApiClient } from '../client.js'
 import {
-  CONFIG_FILE, ensureGitignore, readConfig, writeBase, writeConfig, writeSync, writeToken,
+  CONFIG_FILE,
+  ensureGitignore,
+  readConfig,
+  writeBase,
+  writeConfig,
+  writeSync,
+  writeToken,
   type DictionaryRef,
 } from '../config.js'
 import { CliError, emit, note } from '../output.js'
@@ -46,7 +58,8 @@ function normalizeServerUrl(url: string): string {
 }
 
 async function ask(ctx: InitCtx, question: string): Promise<string> {
-  if (ctx.prompt === undefined) throw new CliError('USAGE', `${question} — 비대화형에서는 인자로 주세요`)
+  if (ctx.prompt === undefined)
+    throw new CliError('USAGE', `${question} — 비대화형에서는 인자로 주세요`)
   return (await ctx.prompt(question)).trim()
 }
 
@@ -82,8 +95,8 @@ export function init(ctx: InitCtx): Promise<number> {
       return 0
     }
 
-    const serverUrl = normalizeServerUrl(ctx.serverUrl ?? await ask(ctx, '서버 URL을 입력하세요'))
-    const token = ctx.token ?? await ask(ctx, '액세스 토큰을 입력하세요')
+    const serverUrl = normalizeServerUrl(ctx.serverUrl ?? (await ask(ctx, '서버 URL을 입력하세요')))
+    const token = ctx.token ?? (await ask(ctx, '액세스 토큰을 입력하세요'))
     const client: ApiClient = ctx.client ?? createClient(serverUrl, token)
 
     // 토큰이 실제로 통하는지 먼저 확인한다 — 잘못된 토큰으로 config를 만들지 않는다.
@@ -91,21 +104,34 @@ export function init(ctx: InitCtx): Promise<number> {
 
     let projectId = ctx.projectId
     if (projectId === undefined) {
-      if (ctx.choose === undefined) throw new CliError('USAGE', '--project를 주거나 대화형으로 실행하세요')
+      if (ctx.choose === undefined)
+        throw new CliError('USAGE', '--project를 주거나 대화형으로 실행하세요')
       const orgs = await client.query<{ id: string; name: string }[]>('org.list', {})
       if (orgs.length === 0) throw new CliError('NOT_FOUND', '접근 가능한 조직이 없습니다')
-      const orgId = await ctx.choose('조직을 고르세요', orgs.map((o) => ({ id: o.id, label: o.name })))
+      const orgId = await ctx.choose(
+        '조직을 고르세요',
+        orgs.map((o) => ({ id: o.id, label: o.name })),
+      )
       const projects = await client.query<{ id: string; name: string }[]>('project.list', { orgId })
       if (projects.length === 0) throw new CliError('NOT_FOUND', '접근 가능한 프로젝트가 없습니다')
-      projectId = await ctx.choose('프로젝트를 고르세요', projects.map((p) => ({ id: p.id, label: p.name })))
+      projectId = await ctx.choose(
+        '프로젝트를 고르세요',
+        projects.map((p) => ({ id: p.id, label: p.name })),
+      )
     }
 
     const project = await client.query<{
-      name: string; dialects: Dialect[]; namingRules: NamingRules; tableOptions?: TableOptions
+      name: string
+      dialects: Dialect[]
+      namingRules: NamingRules
+      tableOptions?: TableOptions
     }>('project.get', { projectId })
 
     await writeConfig(ctx.cwd, {
-      serverUrl, projectId, dialects: project.dialects, namingRules: project.namingRules,
+      serverUrl,
+      projectId,
+      dialects: project.dialects,
+      namingRules: project.namingRules,
       tableOptions: project.tableOptions ?? { ...DEFAULT_TABLE_OPTIONS },
       dictionaries: configExists ? await keptSubscriptions(ctx.cwd, serverUrl, projectId) : [],
     })
@@ -113,7 +139,9 @@ export function init(ctx: InitCtx): Promise<number> {
     await ensureGitignore(ctx.cwd)
 
     emit(ctx.json, `${project.name}에 연결했습니다. erdd pull로 스키마를 받으세요.`, {
-      configPath: CONFIG_FILE, projectId, projectName: project.name,
+      configPath: CONFIG_FILE,
+      projectId,
+      projectName: project.name,
     })
     return 0
   })
@@ -127,7 +155,11 @@ export function init(ctx: InitCtx): Promise<number> {
  * (M-9) — 저장소 안 파일을 가리킬 뿐이라 「다른 프로젝트의 선택」이라는 논리가 적용되지 않는다.
  * 옛 config 가 깨져 있으면 이을 것이 없다 — 재-init 은 그 config 를 덮어 고치는 길이라 막지 않는다.
  */
-async function keptSubscriptions(cwd: string, serverUrl: string, projectId: string): Promise<DictionaryRef[]> {
+async function keptSubscriptions(
+  cwd: string,
+  serverUrl: string,
+  projectId: string,
+): Promise<DictionaryRef[]> {
   let old
   try {
     old = await readConfig(cwd)
@@ -142,11 +174,18 @@ async function keptSubscriptions(cwd: string, serverUrl: string, projectId: stri
 }
 
 /** 서버 `project.create` 의 입력 스키마로 config 값을 먼저 읽어, 틀린 키를 사람이 읽는 문구로 알린다. */
-function assertServerSettings(field: 'namingRules' | 'tableOptions', schema: z.ZodType, value: unknown): void {
+function assertServerSettings(
+  field: 'namingRules' | 'tableOptions',
+  schema: z.ZodType,
+  value: unknown,
+): void {
   const result = schema.safeParse(value)
   if (result.success) return
   const key = result.error.issues[0]?.path[0]
-  throw new CliError('VALIDATION', `${CONFIG_FILE}의 ${key === undefined ? field : `${field}.${String(key)}`}가 올바르지 않습니다`)
+  throw new CliError(
+    'VALIDATION',
+    `${CONFIG_FILE}의 ${key === undefined ? field : `${field}.${String(key)}`}가 올바르지 않습니다`,
+  )
 }
 
 /**
@@ -157,10 +196,16 @@ function assertServerSettings(field: 'namingRules' | 'tableOptions', schema: z.Z
 async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<number> {
   const existing = configExists ? await readConfig(ctx.cwd) : null
   if (existing !== null && existing.projectId !== null) {
-    throw new CliError('VALIDATION', '이미 서버 프로젝트에 연결돼 있습니다 — 다른 프로젝트로 바꾸려면 erdd init --project <id> --yes')
+    throw new CliError(
+      'VALIDATION',
+      '이미 서버 프로젝트에 연결돼 있습니다 — 다른 프로젝트로 바꾸려면 erdd init --project <id> --yes',
+    )
   }
   if (existing !== null && (ctx.dialect !== undefined || ctx.namingCase !== undefined)) {
-    throw new CliError('USAGE', `로컬 프로젝트를 이관할 때는 ${CONFIG_FILE}의 방언·명명 규칙을 씁니다 — --dialect·--case를 빼세요`)
+    throw new CliError(
+      'USAGE',
+      `로컬 프로젝트를 이관할 때는 ${CONFIG_FILE}의 방언·명명 규칙을 씁니다 — --dialect·--case를 빼세요`,
+    )
   }
   // 서버 입력은 strict 스키마(모든 키 필수)다. 이관 쪽은 readConfig 가 옛 config 의 누락 키
   // (logicalSeparator·템플릿·테이블 옵션)를 이미 채워 두었다.
@@ -181,18 +226,25 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
   const writeEmptyTree = Object.keys(await readTree(ctx.cwd)).length === 0
 
   // 대화형 입력(ask)처럼 플래그 값도 다듬는다 — 서버의 min(1) 은 공백뿐인 이름을 통과시킨다.
-  const name = (ctx.name ?? await ask(ctx, '서버에 만들 프로젝트 이름을 입력하세요')).trim()
+  const name = (ctx.name ?? (await ask(ctx, '서버에 만들 프로젝트 이름을 입력하세요'))).trim()
   if (name === '') throw new CliError('USAGE', '프로젝트 이름이 비었습니다')
   if (existing !== null && !ctx.yes) {
-    const ok = ctx.confirm === undefined ? false : await ctx.confirm(`이 로컬 프로젝트를 서버 프로젝트 "${name}"로 연결합니다. 계속할까요?`)
+    const ok =
+      ctx.confirm === undefined
+        ? false
+        : await ctx.confirm(`이 로컬 프로젝트를 서버 프로젝트 "${name}"로 연결합니다. 계속할까요?`)
     if (!ok) {
-      throw new CliError('CANCELLED', ctx.confirm === undefined
-        ? '확인이 필요합니다 — 비대화형(--json)에서는 --yes를 함께 주세요' : '사용자가 취소했습니다')
+      throw new CliError(
+        'CANCELLED',
+        ctx.confirm === undefined
+          ? '확인이 필요합니다 — 비대화형(--json)에서는 --yes를 함께 주세요'
+          : '사용자가 취소했습니다',
+      )
     }
   }
 
-  const serverUrl = normalizeServerUrl(ctx.serverUrl ?? await ask(ctx, '서버 URL을 입력하세요'))
-  const token = ctx.token ?? await ask(ctx, '액세스 토큰을 입력하세요')
+  const serverUrl = normalizeServerUrl(ctx.serverUrl ?? (await ask(ctx, '서버 URL을 입력하세요')))
+  const token = ctx.token ?? (await ask(ctx, '액세스 토큰을 입력하세요'))
   const client: ApiClient = ctx.client ?? createClient(serverUrl, token)
   // 토큰이 실제로 통하는지 먼저 확인한다 — 잘못된 토큰으로 config를 만들지 않는다.
   await client.query('auth.me', {})
@@ -202,30 +254,46 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
   if (ctx.org !== undefined) {
     const hit = orgs.filter((o) => o.id === ctx.org || o.name === ctx.org)
     if (hit.length !== 1) {
-      throw new CliError(hit.length === 0 ? 'NOT_FOUND' : 'USAGE',
-        hit.length === 0 ? `조직 ${ctx.org}을(를) 찾지 못했습니다` : `이름이 ${ctx.org}인 조직이 여럿입니다 — id로 지정하세요`)
+      throw new CliError(
+        hit.length === 0 ? 'NOT_FOUND' : 'USAGE',
+        hit.length === 0
+          ? `조직 ${ctx.org}을(를) 찾지 못했습니다`
+          : `이름이 ${ctx.org}인 조직이 여럿입니다 — id로 지정하세요`,
+      )
     }
     orgId = hit[0]!.id
   } else {
-    if (ctx.choose === undefined) throw new CliError('USAGE', '--org를 주거나 대화형으로 실행하세요')
+    if (ctx.choose === undefined)
+      throw new CliError('USAGE', '--org를 주거나 대화형으로 실행하세요')
     if (orgs.length === 0) throw new CliError('NOT_FOUND', '접근 가능한 조직이 없습니다')
-    orgId = await ctx.choose('조직을 고르세요', orgs.map((o) => ({ id: o.id, label: o.name })))
+    orgId = await ctx.choose(
+      '조직을 고르세요',
+      orgs.map((o) => ({ id: o.id, label: o.name })),
+    )
   }
 
   let project: { id: string; name: string }
   try {
     // 토큰으로 여는 새 기능이다 — 옛 서버의 세션 전용 거절을 「서버 업그레이드」로 번역한다.
-    project = await guardFeature(() => client.mutate<{ id: string; name: string }>('project.create', {
-      orgId, name, dialects: settings.dialects,
-      namingRules: settings.namingRules, tableOptions: settings.tableOptions,
-    }))
+    project = await guardFeature(() =>
+      client.mutate<{ id: string; name: string }>('project.create', {
+        orgId,
+        name,
+        dialects: settings.dialects,
+        namingRules: settings.namingRules,
+        tableOptions: settings.tableOptions,
+      }),
+    )
   } catch (err) {
     if (err instanceof CliError && err.code === 'FORBIDDEN') {
       // 이관 중에는 --project 로 연결하라고 보내지 않는다 — 그 연결에는 기준선이 없어 다음 pull 이
       // erdd/ 를 서버의 빈 상태로 덮는다. 커밋해 두고 되얹는 수동 절차가 그 함정을 피한다.
-      throw new CliError('FORBIDDEN', existing !== null
-        ? '프로젝트 생성 권한이 없습니다 — 조직 관리자에게 빈 프로젝트를 만들어 달라고 한 뒤, erdd/ 를 git 에 커밋하고 매뉴얼 「로컬로 시작한 프로젝트를 서버로 옮기기」의 수동 절차를 따르세요'
-        : '프로젝트 생성 권한이 없습니다 — 조직 관리자에게 프로젝트를 만들어 달라고 한 뒤 erdd init --project <id> 로 연결하세요')
+      throw new CliError(
+        'FORBIDDEN',
+        existing !== null
+          ? '프로젝트 생성 권한이 없습니다 — 조직 관리자에게 빈 프로젝트를 만들어 달라고 한 뒤, erdd/ 를 git 에 커밋하고 매뉴얼 「로컬로 시작한 프로젝트를 서버로 옮기기」의 수동 절차를 따르세요'
+          : '프로젝트 생성 권한이 없습니다 — 조직 관리자에게 프로젝트를 만들어 달라고 한 뒤 erdd init --project <id> 로 연결하세요',
+      )
     }
     throw err
   }
@@ -242,8 +310,11 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
   await writeSync(ctx.cwd, { revisionSeq: 0, pulledAt: new Date().toISOString() })
   await ensureGitignore(ctx.cwd)
   await writeConfig(ctx.cwd, {
-    serverUrl, projectId: project.id, dialects: settings.dialects,
-    namingRules: settings.namingRules, tableOptions: settings.tableOptions,
+    serverUrl,
+    projectId: project.id,
+    dialects: settings.dialects,
+    namingRules: settings.namingRules,
+    tableOptions: settings.tableOptions,
     dictionaries: existing?.dictionaries ?? [],
   })
 
@@ -251,13 +322,19 @@ async function createAndConnect(ctx: InitCtx, configExists: boolean): Promise<nu
   // 지웠거나 다른 곳에서 받아 둔 파일)다. 후자도 push 가 전부 「추가」로 올리므로 diff 로 먼저 보게 한다.
   const pushNext = existing !== null || !writeEmptyTree
   // push 는 저장된 파일만 올린다 — 미저장 편집은 serve 에서 저장해야 이관에 실린다.
-  if (pushNext && await hasDraft(ctx.cwd)) note(UNSAVED_NOTICE)
-  emit(ctx.json, pushNext
-    ? `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.`
-    : `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd serve로 편집을 시작하세요.`,
-  {
-    configPath: CONFIG_FILE, projectId: project.id, projectName: project.name,
-    migrated: existing !== null, hasLocalFiles: !writeEmptyTree,
-  })
+  if (pushNext && (await hasDraft(ctx.cwd))) note(UNSAVED_NOTICE)
+  emit(
+    ctx.json,
+    pushNext
+      ? `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd diff로 확인한 뒤 erdd push로 올리세요.`
+      : `서버 프로젝트 ${project.name}을(를) 만들어 연결했습니다. erdd serve로 편집을 시작하세요.`,
+    {
+      configPath: CONFIG_FILE,
+      projectId: project.id,
+      projectName: project.name,
+      migrated: existing !== null,
+      hasLocalFiles: !writeEmptyTree,
+    },
+  )
   return 0
 }

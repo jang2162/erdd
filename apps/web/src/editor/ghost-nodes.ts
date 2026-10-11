@@ -10,10 +10,14 @@ export type GhostNodeData = {
 }
 
 export function buildGhostNodes(
-  model: ProjectModel, groupId: string, anchors: AnchorIndex = buildAnchors(model),
+  model: ProjectModel,
+  groupId: string,
+  anchors: AnchorIndex = buildAnchors(model),
 ): Node<GhostNodeData>[] {
   const memberIds = new Set(
-    Object.values(model.tables).filter((t) => t.groupId === groupId).map((t) => t.id),
+    Object.values(model.tables)
+      .filter((t) => t.groupId === groupId)
+      .map((t) => t.id),
   )
   const externalIds = new Set<string>()
   for (const rel of Object.values(model.relationships)) {

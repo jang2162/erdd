@@ -1,7 +1,7 @@
 {
   "name": "@erdd/server",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",

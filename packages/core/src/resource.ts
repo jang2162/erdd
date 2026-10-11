@@ -1,6 +1,11 @@
 import type { z } from 'zod'
 import {
-  CustomFieldSchema, DomainSchema, TermSchema, WordSchema, type Origin, type ProjectModel,
+  CustomFieldSchema,
+  DomainSchema,
+  TermSchema,
+  WordSchema,
+  type Origin,
+  type ProjectModel,
 } from './model.js'
 
 /** 공용 리소스로 다루는 엔티티 종류. 배열 순서 = 화면 표시 순서. */
@@ -8,11 +13,17 @@ export const RESOURCE_KINDS = ['domain', 'word', 'term', 'customField'] as const
 export type ResourceKind = (typeof RESOURCE_KINDS)[number]
 
 export const RESOURCE_COLLECTION_BY_KIND = {
-  domain: 'domains', word: 'words', term: 'terms', customField: 'customFields',
+  domain: 'domains',
+  word: 'words',
+  term: 'terms',
+  customField: 'customFields',
 } as const satisfies Record<ResourceKind, keyof ProjectModel>
 
 export const RESOURCE_KIND_LABEL: Record<ResourceKind, string> = {
-  domain: '도메인', word: '단어', term: '용어', customField: '커스텀 항목',
+  domain: '도메인',
+  word: '단어',
+  term: '용어',
+  customField: '커스텀 항목',
 }
 
 /**
@@ -31,7 +42,8 @@ const DROPPED_KEYS = ['id', 'origin'] as const
 
 /** 엔티티 → payload 투영(비교·저장 공용). RESOURCE_PAYLOAD_SCHEMAS와 키 집합이 일치한다. */
 export function resourcePayloadOf(
-  kind: ResourceKind, entity: Record<string, unknown>,
+  kind: ResourceKind,
+  entity: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(entity)) {
@@ -43,9 +55,7 @@ export function resourcePayloadOf(
 }
 
 /** 목록·충돌 화면에 쓰는 표시 이름. */
-export function resourceDisplayName(
-  kind: ResourceKind, payload: Record<string, unknown>,
-): string {
+export function resourceDisplayName(kind: ResourceKind, payload: Record<string, unknown>): string {
   const key = kind === 'domain' || kind === 'customField' ? 'name' : 'logicalName'
   const value = payload[key]
   return typeof value === 'string' ? value : ''
@@ -57,7 +67,8 @@ export function resourceDisplayName(
  * 따로 읽으면 한쪽만 바뀐다. 논리명 칸은 `resourceDisplayName` 이다.
  */
 export function resourceSecondaryName(
-  kind: ResourceKind, payload: Record<string, unknown>,
+  kind: ResourceKind,
+  payload: Record<string, unknown>,
 ): string | null {
   const key = kind === 'word' ? 'abbreviation' : kind === 'term' ? 'physicalName' : null
   if (key === null) return null
@@ -67,9 +78,12 @@ export function resourceSecondaryName(
 
 /** 공용 리소스 4종의 프로젝트 엔티티 목록. planResync·planPromote가 함께 쓴다. */
 export function resourceEntitiesOf(
-  model: ProjectModel, kind: ResourceKind,
+  model: ProjectModel,
+  kind: ResourceKind,
 ): { id: string; origin: Origin | null }[] {
-  const collection = model[RESOURCE_COLLECTION_BY_KIND[kind]] as unknown as
-    Record<string, { id: string; origin: Origin | null }>
+  const collection = model[RESOURCE_COLLECTION_BY_KIND[kind]] as unknown as Record<
+    string,
+    { id: string; origin: Origin | null }
+  >
   return Object.values(collection)
 }

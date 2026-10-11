@@ -17,10 +17,20 @@ export function AnchorHandles({ anchorKey }: { anchorKey: string }) {
   const cls = '!h-0 !w-0 !min-h-0 !min-w-0 !border-0 !bg-transparent'
   return (
     <>
-      <Handle id={handleId('l', anchorKey)} type="source" position={Position.Left}
-        isConnectable={false} className={cls} />
-      <Handle id={handleId('r', anchorKey)} type="source" position={Position.Right}
-        isConnectable={false} className={cls} />
+      <Handle
+        id={handleId('l', anchorKey)}
+        type="source"
+        position={Position.Left}
+        isConnectable={false}
+        className={cls}
+      />
+      <Handle
+        id={handleId('r', anchorKey)}
+        type="source"
+        position={Position.Right}
+        isConnectable={false}
+        className={cls}
+      />
     </>
   )
 }

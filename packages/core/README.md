@@ -18,20 +18,20 @@ ERDD 의 **순수 로직 패키지**다. 모델 타입·명명 규칙·DDL/DBML 
 
 ### 요구 사항
 
-| 항목 | 값 |
-|---|---|
-| Node.js | **22 이상** (`engines.node: ">=22"`) |
-| TypeScript `target` | **`ES2022` 이상** (`ESNext` 도 됨) |
-| `moduleResolution` | `nodenext` / `bundler` 등 `package.json` 의 `main` 을 따라가는 것 |
+| 항목                | 값                                                                |
+| ------------------- | ----------------------------------------------------------------- |
+| Node.js             | **22 이상** (`engines.node: ">=22"`)                              |
+| TypeScript `target` | **`ES2022` 이상** (`ESNext` 도 됨)                                |
+| `moduleResolution`  | `nodenext` / `bundler` 등 `package.json` 의 `main` 을 따라가는 것 |
 
 ```jsonc
 // 소비처 tsconfig.json
 {
   "compilerOptions": {
-    "target": "ES2022",        // ← 하한. 낮추면 @erdd/core 안에서 오류가 난다
+    "target": "ES2022", // ← 하한. 낮추면 @erdd/core 안에서 오류가 난다
     "module": "nodenext",
-    "moduleResolution": "nodenext"
-  }
+    "moduleResolution": "nodenext",
+  },
 }
 ```
 
@@ -41,13 +41,13 @@ ERDD 의 **순수 로직 패키지**다. 모델 타입·명명 규칙·DDL/DBML 
 `target` 만 바꿔 가며 `tsc --noEmit` 을 돌린 결과다. 세 조건은 모든 실행에서 같았다 —
 `strict: true` · `skipLibCheck: true` · `exclude: ["node_modules"]`.
 
-| `target` | 결과 | 무엇이 깨지는가 |
-|---|---|---|
-| `ES2017` | 오류 45건 | `TS1501` 정규식 `s` 플래그 6곳(`ddl-parse.ts`) + `TS2550` `Object.fromEntries`·`String.trimEnd` 등 38건 |
-| `ES2018` | 오류 39건 | `TS1501` 은 사라지고 `TS2550` 이 남는다 |
-| `ES2020` | 오류 25건 | `TS2550` `Object.hasOwn` 24곳 · `String.prototype.at` 1곳 |
-| `ES2021` | 오류 25건 | 위와 같다 |
-| **`ES2022`** | **오류 0건 (EXIT=0)** | — |
+| `target`     | 결과                  | 무엇이 깨지는가                                                                                         |
+| ------------ | --------------------- | ------------------------------------------------------------------------------------------------------- |
+| `ES2017`     | 오류 45건             | `TS1501` 정규식 `s` 플래그 6곳(`ddl-parse.ts`) + `TS2550` `Object.fromEntries`·`String.trimEnd` 등 38건 |
+| `ES2018`     | 오류 39건             | `TS1501` 은 사라지고 `TS2550` 이 남는다                                                                 |
+| `ES2020`     | 오류 25건             | `TS2550` `Object.hasOwn` 24곳 · `String.prototype.at` 1곳                                               |
+| `ES2021`     | 오류 25건             | 위와 같다                                                                                               |
+| **`ES2022`** | **오류 0건 (EXIT=0)** | —                                                                                                       |
 
 ```
 $ tsc --noEmit -p tsconfig.json     # target: ES2017
@@ -86,10 +86,17 @@ EXIT=0
 
 ```ts
 import {
-  createEmptyModel, filesToModel, modelToFiles,
-  generateDdl, generateDbml, parseDdl, parseDbml,
-  planDdlImport, applyDdlImport,
-  DEFAULT_NAMING_RULES, type ProjectModel,
+  createEmptyModel,
+  filesToModel,
+  modelToFiles,
+  generateDdl,
+  generateDbml,
+  parseDdl,
+  parseDbml,
+  planDdlImport,
+  applyDdlImport,
+  DEFAULT_NAMING_RULES,
+  type ProjectModel,
 } from '@erdd/core'
 
 // 파일 트리 → 모델

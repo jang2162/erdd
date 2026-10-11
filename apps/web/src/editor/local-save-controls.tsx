@@ -4,10 +4,18 @@ import { useEditorStore } from './store.js'
 import { useLocalSave } from './use-local-save.js'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
 /**
@@ -45,8 +53,12 @@ export function LocalSaveControls() {
         // 포커스를 가져가지 않는다 — 입력란에 남겨야 저장이 Cmd+S 와 같은 길(blur → 대기 → 포커스 복원)을
         // 탄다. 가져가면 저장 중 disabled 가 그 포커스를 body 로 떨궈, 이어 친 Backspace 가 선택
         // 테이블을 지운다(docs/guides/editor-state.md 「저장은 편집 중인 입력을 먼저 반영한다(로컬 모드)」).
-        onMouseDown={(e) => { e.preventDefault() }}
-        onClick={() => { void save() }}
+        onMouseDown={(e) => {
+          e.preventDefault()
+        }}
+        onClick={() => {
+          void save()
+        }}
       >
         <Save />
         저장
@@ -78,8 +90,12 @@ export function LocalSaveControls() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(false)}>취소</Button>
-            <Button variant="destructive" onClick={onDiscard}>변경 버리기</Button>
+            <Button variant="outline" onClick={() => setConfirming(false)}>
+              취소
+            </Button>
+            <Button variant="destructive" onClick={onDiscard}>
+              변경 버리기
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -112,11 +128,19 @@ export function LocalSaveBanner() {
         className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-amber-500/10 px-4 py-2 text-sm"
       >
         <span>
-          파일이 밖에서 바뀌었습니다. <strong>내 편집을 유지하면 저장할 때 화면의 내용이 파일을
-          덮어씁니다.</strong>
+          파일이 밖에서 바뀌었습니다.{' '}
+          <strong>내 편집을 유지하면 저장할 때 화면의 내용이 파일을 덮어씁니다.</strong>
         </span>
         <span className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => { void keep() }}>내 편집 유지</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void keep()
+            }}
+          >
+            내 편집 유지
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setConfirming(true)}>
             파일 다시 읽기
           </Button>
@@ -132,8 +156,12 @@ export function LocalSaveBanner() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(false)}>취소</Button>
-            <Button variant="destructive" onClick={onReload}>파일 다시 읽기</Button>
+            <Button variant="outline" onClick={() => setConfirming(false)}>
+              취소
+            </Button>
+            <Button variant="destructive" onClick={onReload}>
+              파일 다시 읽기
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

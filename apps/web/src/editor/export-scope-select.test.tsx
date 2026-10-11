@@ -6,7 +6,10 @@ import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { useEditorStore } from './store.js'
 import { ExportScopeSelect } from './export-scope-select.js'
 
-afterEach(() => { cleanup(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  useEditorStore.getState().reset()
+})
 
 function loadWithGroups() {
   const m = buildSampleModel()

@@ -21,7 +21,11 @@ export function initialDecisions(plan: ResyncPlan): Decisions {
  * 신규도 기본(보류)으로 돌린다 — 이어 쓰면 중복 단어·용어가 조용히 생긴다.
  * 라이브러리가 바뀌었으면(`libraryId`) 잇지 않는다. 계획에서 빠진 항목의 결정은 버린다.
  */
-export function carryDecisions(prevPlan: ResyncPlan | null, prev: Decisions, next: ResyncPlan): Decisions {
+export function carryDecisions(
+  prevPlan: ResyncPlan | null,
+  prev: Decisions,
+  next: ResyncPlan,
+): Decisions {
   const out = initialDecisions(next)
   if (prevPlan === null || prevPlan.libraryId !== next.libraryId) return out
   const before = new Map(prevPlan.entries.map((entry) => [entry.sourceId, entry]))
@@ -36,7 +40,10 @@ export function carryDecisions(prevPlan: ResyncPlan | null, prev: Decisions, nex
 
 /** 특정 상태의 항목 전부를 한 결정으로 바꾼다(구역 일괄 버튼). */
 export function setAllForStatus(
-  decisions: Decisions, plan: ResyncPlan, status: ResyncStatus, decision: ResyncDecision,
+  decisions: Decisions,
+  plan: ResyncPlan,
+  status: ResyncStatus,
+  decision: ResyncDecision,
 ): Decisions {
   const out = { ...decisions }
   for (const entry of plan.entries) {

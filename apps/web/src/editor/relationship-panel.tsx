@@ -1,6 +1,12 @@
 import { useMemo } from 'react'
 import { Trash2 } from 'lucide-react'
-import { computeWarnings, setRelationshipIdentifying, deleteRelationship, remapRelationshipChildColumn, resolveManyToMany } from '@erdd/core'
+import {
+  computeWarnings,
+  setRelationshipIdentifying,
+  deleteRelationship,
+  remapRelationshipChildColumn,
+  resolveManyToMany,
+} from '@erdd/core'
 import { useEditorStore } from './store.js'
 import { useModelMutation } from './use-model.js'
 import { planJunction } from './edges.js'
@@ -43,8 +49,16 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
           <WarningBadge warnings={relWarnings} />
         </div>
         {canEdit && (
-          <Button size="icon" variant="ghost" className="size-7 text-destructive" aria-label="관계 삭제"
-            onClick={() => { selectRelationship(null); void mutate((m) => deleteRelationship(m, relId), { summary: '관계 삭제' }) }}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7 text-destructive"
+            aria-label="관계 삭제"
+            onClick={() => {
+              selectRelationship(null)
+              void mutate((m) => deleteRelationship(m, relId), { summary: '관계 삭제' })
+            }}
+          >
             <Trash2 className="size-4" />
           </Button>
         )}
@@ -58,44 +72,62 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
       <div className="grid gap-3">
         <div className="grid gap-1.5">
           <Label>카디널리티</Label>
-          <select className="h-9 rounded-md border bg-background px-2 text-sm" value={rel.cardinality}
+          <select
+            className="h-9 rounded-md border bg-background px-2 text-sm"
+            value={rel.cardinality}
             disabled={!canEdit}
             onChange={(e) => {
               const cardinality = e.target.value as '1:1' | '1:N'
               void mutate((m) => {
                 const r = m.relationships[relId]
                 if (!r) return m
-                return { ...m, relationships: { ...m.relationships, [relId]: { ...r, cardinality } } }
+                return {
+                  ...m,
+                  relationships: { ...m.relationships, [relId]: { ...r, cardinality } },
+                }
               })
-            }}>
+            }}
+          >
             <option value="1:N">1 : N</option>
             <option value="1:1">1 : 1</option>
           </select>
         </div>
 
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={rel.identifying} disabled={!canEdit}
+          <input
+            type="checkbox"
+            checked={rel.identifying}
+            disabled={!canEdit}
             onChange={(e) => {
               // e.target 값은 호출 시점에 즉시 읽는다. producer는 직렬화로 마이크로태스크에 지연
               // 실행되는데, 그 사이 controlled input이 리셋되어 지연 읽기는 옛 값을 본다.
               const identifying = e.target.checked
-              void mutate((m) => setRelationshipIdentifying(m, relId, identifying), { summary: '식별 관계 전환' })
-            }} />
+              void mutate((m) => setRelationshipIdentifying(m, relId, identifying), {
+                summary: '식별 관계 전환',
+              })
+            }}
+          />
           식별 관계 (자식 기본 키 편입)
         </label>
 
         <div className="grid gap-1.5">
           <Label>관계명</Label>
-          <input id={`rel-${relId}-name`} className="h-9 rounded-md border bg-background px-2 text-sm" defaultValue={rel.name ?? ''}
-            key={rel.name ?? ''} readOnly={!canEdit}
+          <input
+            id={`rel-${relId}-name`}
+            className="h-9 rounded-md border bg-background px-2 text-sm"
+            defaultValue={rel.name ?? ''}
+            key={rel.name ?? ''}
+            readOnly={!canEdit}
             onBlur={(e) => {
               const v = e.target.value.trim() === '' ? null : e.target.value
-              if (v !== rel.name) void mutate((m) => {
-                const r = m.relationships[relId]
-                if (!r) return m
-                return { ...m, relationships: { ...m.relationships, [relId]: { ...r, name: v } } }
-              })
-            }} />
+              if (v !== rel.name)
+                void mutate((m) => {
+                  const r = m.relationships[relId]
+                  if (!r) return m
+                  return { ...m, relationships: { ...m.relationships, [relId]: { ...r, name: v } } }
+                })
+            }}
+          />
         </div>
 
         <div className="grid gap-1.5">
@@ -104,27 +136,52 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
             {rel.columnMappings.map((mm) => {
               const p = model.columns[mm.parentColumnId]
               return (
-                <li key={mm.parentColumnId} className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-xs">
-                  <select className="h-8 rounded border bg-background px-1 font-mono" value={mm.childColumnId}
+                <li
+                  key={mm.parentColumnId}
+                  className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-xs"
+                >
+                  <select
+                    className="h-8 rounded border bg-background px-1 font-mono"
+                    value={mm.childColumnId}
                     disabled={!canEdit}
                     onChange={(e) => {
                       const newChildColumnId = e.target.value
-                      void mutate((m) => remapRelationshipChildColumn(m, { relationshipId: relId, parentColumnId: mm.parentColumnId, newChildColumnId }), { summary: '매핑 변경' })
-                    }}>
-                    {childColumns.map((c) => <option key={c.id} value={c.id}>{c.physicalName}</option>)}
+                      void mutate(
+                        (m) =>
+                          remapRelationshipChildColumn(m, {
+                            relationshipId: relId,
+                            parentColumnId: mm.parentColumnId,
+                            newChildColumnId,
+                          }),
+                        { summary: '매핑 변경' },
+                      )
+                    }}
+                  >
+                    {childColumns.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.physicalName}
+                      </option>
+                    ))}
                   </select>
                   <span className="text-muted-foreground">→</span>
-                  <span className="truncate font-mono text-muted-foreground">{p?.physicalName ?? '?'}</span>
+                  <span className="truncate font-mono text-muted-foreground">
+                    {p?.physicalName ?? '?'}
+                  </span>
                 </li>
               )
             })}
-            {rel.columnMappings.length === 0 && <li className="text-xs text-muted-foreground">매핑 없음</li>}
+            {rel.columnMappings.length === 0 && (
+              <li className="text-xs text-muted-foreground">매핑 없음</li>
+            )}
           </ul>
         </div>
 
         {canEdit && (
           <div className="grid gap-1.5 border-t pt-3">
-            <Button size="sm" variant="outline" disabled={!junctionPlan.ok}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!junctionPlan.ok}
               onClick={() => {
                 if (!junctionPlan.ok) return
                 const { junction, a, b } = junctionPlan
@@ -136,7 +193,8 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
                   (m) => resolveManyToMany(m, { relationshipId: relId, junction, a, b }),
                   { summary: '교차 테이블로 풀기' },
                 )
-              }}>
+              }}
+            >
               교차 테이블로 풀기
             </Button>
             {!junctionPlan.ok && junctionPlan.reason === 'identifying' && (
@@ -146,8 +204,8 @@ export function RelationshipPanel({ projectId }: { projectId: string }) {
             )}
             {!junctionPlan.ok && junctionPlan.reason === 'no-pk' && (
               <p className="text-xs text-muted-foreground">
-                교차 테이블에 넘길 기본 키가 없습니다 — 부모에 기본 키가 있어야 하고,
-                자식에는 이 관계의 FK 를 뺀 기본 키가 남아야 합니다
+                교차 테이블에 넘길 기본 키가 없습니다 — 부모에 기본 키가 있어야 하고, 자식에는 이
+                관계의 FK 를 뺀 기본 키가 남아야 합니다
               </p>
             )}
             {!junctionPlan.ok && junctionPlan.reason === 'downstream' && (

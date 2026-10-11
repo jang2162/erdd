@@ -11,5 +11,7 @@ export function useWarnings(): Warning[] {
   const namingRules = useEditorStore((s) => s.namingRules)
   const dialects = useEditorStore((s) => s.dialects)
   return useMemo(
-    () => computeWarnings(model, namingRules, dialects), [model, namingRules, dialects])
+    () => computeWarnings(model, namingRules, dialects),
+    [model, namingRules, dialects],
+  )
 }

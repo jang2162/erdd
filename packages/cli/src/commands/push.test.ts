@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import {
-  applyOps, createEmptyModel, filesToModel, modelToFiles, MAX_OPS_PER_MUTATION, type Op, type ProjectModel,
+  applyOps,
+  createEmptyModel,
+  filesToModel,
+  modelToFiles,
+  MAX_OPS_PER_MUTATION,
+  type Op,
+  type ProjectModel,
 } from '@erdd/core'
 import { fullModel } from '@erdd/core/src/testing/fixtures.js'
 import type { ApiClient } from '../client.js'
@@ -30,9 +36,16 @@ let err: string[]
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'erdd-push-'))
-  out = []; err = []
-  vi.spyOn(process.stdout, 'write').mockImplementation((c) => { out.push(String(c)); return true })
-  vi.spyOn(process.stderr, 'write').mockImplementation((c) => { err.push(String(c)); return true })
+  out = []
+  err = []
+  vi.spyOn(process.stdout, 'write').mockImplementation((c) => {
+    out.push(String(c))
+    return true
+  })
+  vi.spyOn(process.stderr, 'write').mockImplementation((c) => {
+    err.push(String(c))
+    return true
+  })
   await writeConfig(dir, { ...CONFIG, dialects: [...CONFIG.dialects] })
 })
 afterEach(() => vi.restoreAllMocks())
@@ -68,7 +81,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     const { client, pushCalls } = stub(server, { seq: 5 })
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
@@ -81,9 +97,12 @@ describe('push', () => {
 
   it('충돌이 있으면 model.push를 부르지 않고 1로 끝난다', async () => {
     const server = fullModel()
-    await seed(server)                         // base = 원래 서버 상태
+    await seed(server) // base = 원래 서버 상태
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
     // 서버도 같은 필드를 다르게 고쳤다.
     const moved = fullModel()
     moved.columns['c2']!.logicalName = '회원성명'
@@ -115,9 +134,12 @@ describe('push', () => {
     await seed(server)
     // SKILL.md가 시키는 개명 — 파일명은 그대로 두고 파일 안의 name만 고친다.
     const path = join(dir, 'erdd/tables/MBR_DTL.yaml')
-    await writeFile(path, (await readFile(path, 'utf8'))
-      .replace('name: MBR_DTL', 'name: MBR_DETAIL')
-      .replace('logicalName: 비고', 'logicalName: 비고 사항'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8'))
+        .replace('name: MBR_DTL', 'name: MBR_DETAIL')
+        .replace('logicalName: 비고', 'logicalName: 비고 사항'),
+    )
     // 서버도 같은 필드를 다르게 고쳤다 → 충돌.
     const moved = fullModel()
     moved.columns['c6']!.logicalName = '메모'
@@ -125,7 +147,9 @@ describe('push', () => {
     const { client, pushCalls } = stub(moved)
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
     expect(pushCalls).toHaveLength(0)
-    const payload = JSON.parse(out.join('')) as { conflicts: Array<{ entityId: string; path: string }> }
+    const payload = JSON.parse(out.join('')) as {
+      conflicts: Array<{ entityId: string; path: string }>
+    }
     expect(payload.conflicts).toHaveLength(1)
     expect(payload.conflicts[0]).toMatchObject({ entityId: 'c6', path: 'erdd/tables/MBR_DTL.yaml' })
   })
@@ -144,7 +168,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
     const moved = fullModel()
     moved.columns['c2']!.logicalName = '회원성명'
 
@@ -165,7 +192,11 @@ describe('push', () => {
     await rm(join(dir, 'erdd/tables/MBR_DTL.yaml'))
     const { client, pushCalls } = stub(server)
     const code = await push({
-      cwd: dir, json: false, yes: false, strict: false, client,
+      cwd: dir,
+      json: false,
+      yes: false,
+      strict: false,
+      client,
       confirm: async () => false,
     })
     expect(code).toBe(1)
@@ -177,7 +208,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     // stubClient의 model.get은 매번 같은 server 참조를 돌려준다 — buildPlan(반영 전)과
     // syncDown(반영 후)이 같은 model.get을 공유하므로, "반영 뒤 서버 상태"를 미리 채운
@@ -192,7 +226,10 @@ describe('push', () => {
     })
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
 
-    const base = JSON.parse(await readFile(join(dir, '.erdd/base.json'), 'utf8')) as Record<string, unknown>
+    const base = JSON.parse(await readFile(join(dir, '.erdd/base.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >
     expect(JSON.stringify(base)).toContain('회원 이름')
   })
 
@@ -200,7 +237,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     const { client: base, pushCalls } = stub(server, { seq: 5 })
     let queryCalls = 0
@@ -217,13 +257,15 @@ describe('push', () => {
 
     const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
     expect(code).toBe(1)
-    expect(pushCalls).toHaveLength(1)   // model.push는 정확히 한 번만 — 커밋 후 재전송하지 않는다
+    expect(pushCalls).toHaveLength(1) // model.push는 정확히 한 번만 — 커밋 후 재전송하지 않는다
     const payload = JSON.parse(out.join('')) as {
-      ok: boolean; committed: boolean; revisionSeq: number
+      ok: boolean
+      committed: boolean
+      revisionSeq: number
     }
     expect(payload.ok).toBe(false)
     expect(payload.committed).toBe(true)
-    expect(payload.revisionSeq).toBe(6)   // stub(server,{seq:5})의 기본 응답 = seq+1
+    expect(payload.revisionSeq).toBe(6) // stub(server,{seq:5})의 기본 응답 = seq+1
   })
 
   it('반영 후 syncDown에서 CONFLICT가 나도 model.push를 다시 부르지 않는다', async () => {
@@ -233,7 +275,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     const { client: base, pushCalls } = stub(server, { seq: 5 })
     let queryCalls = 0
@@ -252,7 +297,7 @@ describe('push', () => {
 
     const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
     expect(code).toBe(1)
-    expect(pushCalls).toHaveLength(1)   // 커밋은 이미 끝났다 — CONFLICT 재시도 대상이 아니다
+    expect(pushCalls).toHaveLength(1) // 커밋은 이미 끝났다 — CONFLICT 재시도 대상이 아니다
     const payload = JSON.parse(out.join('')) as { committed: boolean }
     expect(payload.committed).toBe(true)
   })
@@ -261,7 +306,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     let calls = 0
     const { client, pushCalls } = stub(server, {
@@ -280,7 +328,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     // seq를 스텁 밖에서 들고 있다가 첫 mutate가 실패하며 앞으로 민다 — buildPlan을 루프
     // 밖으로 끌어올리는 "최적화"를 하면 두 번째 model.push도 첫 번째와 같은 expectedSeq를
@@ -290,7 +341,7 @@ describe('push', () => {
       getImpl: () => ({ model: server, seq: serverSeq }),
       pushImpl: async () => {
         if (serverSeq === 1) {
-          serverSeq = 2   // 계산과 반영 사이에 남이 앞서 커밋한 것을 흉내낸다
+          serverSeq = 2 // 계산과 반영 사이에 남이 앞서 커밋한 것을 흉내낸다
           throw new CliError('CONFLICT', '서버가 앞서 있습니다')
         }
         return { seq: serverSeq + 1 }
@@ -307,10 +358,15 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     const { client, pushCalls } = stub(server, {
-      pushImpl: async () => { throw new CliError('CONFLICT', '서버가 앞서 있습니다') },
+      pushImpl: async () => {
+        throw new CliError('CONFLICT', '서버가 앞서 있습니다')
+      },
     })
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
     expect(pushCalls).toHaveLength(2)
@@ -330,7 +386,7 @@ describe('push', () => {
   it('base가 없으면 pull을 안내한다', async () => {
     const server = fullModel()
     const { tree } = modelToFiles(server)
-    await writeTree(dir, tree)               // base 없이 트리만
+    await writeTree(dir, tree) // base 없이 트리만
     const { client, pushCalls } = stub(server)
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
     expect(pushCalls).toHaveLength(0)
@@ -345,9 +401,19 @@ describe('push', () => {
     for (let i = 0; i < MAX_OPS_PER_MUTATION + 10; i += 1) {
       const id = `cx${String(i).padStart(6, '0')}`
       big.columns[id] = {
-        id, tableId: 'tb1', logicalName: `추가${i}`, physicalName: `EXTRA_${i}`, type: 'BIGINT',
-        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 100 + i,
-        comment: null, domainId: null, custom: {},
+        id,
+        tableId: 'tb1',
+        logicalName: `추가${i}`,
+        physicalName: `EXTRA_${i}`,
+        type: 'BIGINT',
+        isPk: false,
+        autoIncrement: false,
+        nullable: true,
+        defaultValue: null,
+        order: 100 + i,
+        comment: null,
+        domainId: null,
+        custom: {},
       }
     }
     // base는 갱신하지 않는다 — base(원래 3테이블)와 로컬(컬럼 5010개 추가)의 차이가 상한을 넘는다.
@@ -364,25 +430,42 @@ describe('push', () => {
     // 컬럼을 상한 이상 늘리면서 동시에 테이블 하나(MBR_DTL)를 통째로 지운다 —
     // 삭제 확인과 op 상한이 같은 계획 안에서 함께 걸리는 상황을 만든다.
     const big = fullModel()
-    delete big.tables['tb3']         // MBR_DTL 삭제 — c5·c6·r2도 파일에서 함께 빠진다
+    delete big.tables['tb3'] // MBR_DTL 삭제 — c5·c6·r2도 파일에서 함께 빠진다
     for (let i = 0; i < MAX_OPS_PER_MUTATION + 10; i += 1) {
       const id = `cx${String(i).padStart(6, '0')}`
       big.columns[id] = {
-        id, tableId: 'tb1', logicalName: `추가${i}`, physicalName: `EXTRA_${i}`, type: 'BIGINT',
-        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 100 + i,
-        comment: null, domainId: null, custom: {},
+        id,
+        tableId: 'tb1',
+        logicalName: `추가${i}`,
+        physicalName: `EXTRA_${i}`,
+        type: 'BIGINT',
+        isPk: false,
+        autoIncrement: false,
+        nullable: true,
+        defaultValue: null,
+        order: 100 + i,
+        comment: null,
+        domainId: null,
+        custom: {},
       }
     }
     await writeTree(dir, modelToFiles(big).tree)
     const { client, pushCalls } = stub(server)
     let confirmCalled = false
     const code = await push({
-      cwd: dir, json: true, yes: false, strict: false, client,
-      confirm: async () => { confirmCalled = true; return true },
+      cwd: dir,
+      json: true,
+      yes: false,
+      strict: false,
+      client,
+      confirm: async () => {
+        confirmCalled = true
+        return true
+      },
     })
     expect(code).toBe(1)
     expect(pushCalls).toHaveLength(0)
-    expect(confirmCalled).toBe(false)   // 삭제 확인 프롬프트까지 가지 않고 상한에서 먼저 막힌다
+    expect(confirmCalled).toBe(false) // 삭제 확인 프롬프트까지 가지 않고 상한에서 먼저 막힌다
     expect(out.join('')).toContain(String(MAX_OPS_PER_MUTATION))
   })
 
@@ -399,9 +482,19 @@ describe('push', () => {
 
     const local = fullModel()
     local.columns['cnew'] = {
-      id: 'cnew', tableId: 'tb2', logicalName: '추가', physicalName: 'EXTRA', type: 'BIGINT',
-      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 100,
-      comment: null, domainId: null, custom: {},
+      id: 'cnew',
+      tableId: 'tb2',
+      logicalName: '추가',
+      physicalName: 'EXTRA',
+      type: 'BIGINT',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 100,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     await writeTree(dir, modelToFiles(local).tree)
 
@@ -425,7 +518,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     // "-fix column"처럼 하이픈으로 시작하는 요약 — shortFlagValue가 예전처럼 단일 대시까지
     // 거절하면 여기서 undefined가 나와 아래 summary 단언이 자동 요약과 어긋나 실패한다.
@@ -443,7 +539,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     const argv = ['push', '--message', '커스텀 요약', '--json']
     const message = messageFrom(argv)
@@ -458,7 +557,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     // 값 자리에 빈 문자열이 온다 — ??는 ''를 통과시켜 서버의 z.string().min(1)에 걸린다.
     const argv = ['push', '-m', '', '--json']
@@ -477,7 +579,9 @@ describe('push', () => {
     await seed(server)
     const { tree } = modelToFiles(server)
     tree['erdd/tables/PAY.yaml'] = {
-      ...(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>), name: 'PAY', logicalName: '결제',
+      ...(tree['erdd/tables/MBR_DTL.yaml'] as Record<string, unknown>),
+      name: 'PAY',
+      logicalName: '결제',
     }
     await writeTree(dir, tree)
 
@@ -495,21 +599,29 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     const { client, pushCalls } = stub(server, {
-      pushImpl: async () => { throw new CliError('NETWORK', 'socket hang up') },
+      pushImpl: async () => {
+        throw new CliError('NETWORK', 'socket hang up')
+      },
     })
     const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
     expect(code).toBe(1)
-    expect(pushCalls).toHaveLength(1)          // 재전송하지 않는다 — 이미 커밋됐다면 리비전이 하나 더 생긴다
+    expect(pushCalls).toHaveLength(1) // 재전송하지 않는다 — 이미 커밋됐다면 리비전이 하나 더 생긴다
     const payload = lastJson<{
-      ok: boolean; outcomeUnknown: boolean; committed?: boolean; pushErrorCode?: string | null
+      ok: boolean
+      outcomeUnknown: boolean
+      committed?: boolean
+      pushErrorCode?: string | null
     }>()
     expect(payload.ok).toBe(false)
     expect(payload.outcomeUnknown).toBe(true)
-    expect(payload.committed).toBeUndefined()  // "커밋됨"과 구분된다
-    expect(payload.pushErrorCode).toBe('NETWORK')   // --json 소비자가 원인 코드로 분기할 수 있다
+    expect(payload.committed).toBeUndefined() // "커밋됨"과 구분된다
+    expect(payload.pushErrorCode).toBe('NETWORK') // --json 소비자가 원인 코드로 분기할 수 있다
   })
 
   it('model.push가 서버 응답 오류(FORBIDDEN)로 실패하면 outcome-unknown이 아니라 평범한 오류로 전달한다', async () => {
@@ -520,15 +632,23 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     const { client, pushCalls } = stub(server, {
-      pushImpl: async () => { throw new CliError('FORBIDDEN', '권한이 없습니다') },
+      pushImpl: async () => {
+        throw new CliError('FORBIDDEN', '권한이 없습니다')
+      },
     })
     const code = await push({ cwd: dir, json: true, yes: true, strict: false, client })
     expect(code).toBe(1)
     expect(pushCalls).toHaveLength(1)
-    const payload = lastJson<{ error?: { code: string; message: string }; outcomeUnknown?: boolean }>()
+    const payload = lastJson<{
+      error?: { code: string; message: string }
+      outcomeUnknown?: boolean
+    }>()
     expect(payload.error).toMatchObject({ code: 'FORBIDDEN' })
     expect(payload.outcomeUnknown).toBeUndefined()
   })
@@ -537,10 +657,15 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     const { client } = stub(server, {
-      pushImpl: async () => { throw new CliError('NETWORK', 'socket hang up') },
+      pushImpl: async () => {
+        throw new CliError('NETWORK', 'socket hang up')
+      },
     })
     expect(await push({ cwd: dir, json: false, yes: true, strict: false, client })).toBe(1)
     const text = out.join('')
@@ -564,16 +689,21 @@ describe('push', () => {
 
     const { client, pushCalls } = stub(server)
     const code = await push({
-      cwd: dir, json: false, yes: false, strict: false, client, confirm: async () => false,
+      cwd: dir,
+      json: false,
+      yes: false,
+      strict: false,
+      client,
+      confirm: async () => false,
     })
     expect(code).toBe(1)
     expect(pushCalls).toHaveLength(0)
     const text = err.join('')
-    expect(text).toContain('컬럼 MBR_DTL.MBR_NO')   // 삭제 목록 — 테이블로 한정된 컬럼
-    expect(text).toContain('관계 MBR_DTL→MBR')       // 삭제 목록 — 이름 없는 관계
-    expect(text).toContain('컬럼 MBR.MBR_NM')        // 정리(pruned) 목록도 같은 한정 규칙을 쓴다
-    expect(text).not.toContain('컬럼 MBR_NO\n')       // 한정 없는 옛 표기가 삭제 목록에 남으면 안 된다
-    expect(text).not.toContain('컬럼 MBR_NM (')       // 한정 없는 표기가 정리 목록에 남으면 안 된다
+    expect(text).toContain('컬럼 MBR_DTL.MBR_NO') // 삭제 목록 — 테이블로 한정된 컬럼
+    expect(text).toContain('관계 MBR_DTL→MBR') // 삭제 목록 — 이름 없는 관계
+    expect(text).toContain('컬럼 MBR.MBR_NM') // 정리(pruned) 목록도 같은 한정 규칙을 쓴다
+    expect(text).not.toContain('컬럼 MBR_NO\n') // 한정 없는 옛 표기가 삭제 목록에 남으면 안 된다
+    expect(text).not.toContain('컬럼 MBR_NM (') // 한정 없는 표기가 정리 목록에 남으면 안 된다
   })
 
   it('삭제 확인을 수락하면 그대로 반영한다', async () => {
@@ -585,8 +715,15 @@ describe('push', () => {
     const { client, pushCalls } = stub(server, { pushImpl: applyingPush(server, 2) })
     let asked: string | null = null
     const code = await push({
-      cwd: dir, json: false, yes: false, strict: false, client,
-      confirm: async (q) => { asked = q; return true },
+      cwd: dir,
+      json: false,
+      yes: false,
+      strict: false,
+      client,
+      confirm: async (q) => {
+        asked = q
+        return true
+      },
     })
     expect(code).toBe(0)
     expect(asked).not.toBeNull()
@@ -602,11 +739,21 @@ describe('push', () => {
     await seed(original)
 
     const local = fullModel()
-    local.columns['c2']!.logicalName = '회원 이름'     // 삭제가 아닌 update op 하나
+    local.columns['c2']!.logicalName = '회원 이름' // 삭제가 아닌 update op 하나
     local.columns['cnew'] = {
-      id: 'cnew', tableId: 'tb2', logicalName: '추가', physicalName: 'EXTRA', type: 'BIGINT',
-      isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 100,
-      comment: null, domainId: null, custom: {},
+      id: 'cnew',
+      tableId: 'tb2',
+      logicalName: '추가',
+      physicalName: 'EXTRA',
+      type: 'BIGINT',
+      isPk: false,
+      autoIncrement: false,
+      nullable: true,
+      defaultValue: null,
+      order: 100,
+      comment: null,
+      domainId: null,
+      custom: {},
     }
     await writeTree(dir, modelToFiles(local).tree)
 
@@ -621,8 +768,15 @@ describe('push', () => {
     const { client, pushCalls } = stub(server, { pushImpl: applyingPush(server, 2) })
     let asked = false
     const code = await push({
-      cwd: dir, json: false, yes: false, strict: false, client,
-      confirm: async () => { asked = true; return true },
+      cwd: dir,
+      json: false,
+      yes: false,
+      strict: false,
+      client,
+      confirm: async () => {
+        asked = true
+        return true
+      },
     })
     expect(code).toBe(0)
     expect(asked).toBe(true)
@@ -630,7 +784,7 @@ describe('push', () => {
     expect((pushCalls[0] as { ops: Op[] }).ops.every((o) => o.action !== 'delete')).toBe(true)
     const text = err.join('')
     expect(text).toContain('참조가 끊겨 함께 정리되는 항목')
-    expect(text).not.toContain('건이 서버에 반영됩니다')   // 삭제 목록은 나오지 않는다
+    expect(text).not.toContain('건이 서버에 반영됩니다') // 삭제 목록은 나오지 않는다
   })
 
   it('첫 push가 끝나면 파일이 발급된 id를 쥐고 있어 다음 push가 중복을 만들지 않는다', async () => {
@@ -659,7 +813,7 @@ describe('push', () => {
     const created = sent.find((o) => o.entity === 'table' && o.action === 'create')
     if (created === undefined) throw new Error('table create op가 sent에 없다')
     const file = await readFile(join(dir, 'erdd/tables/PAY.yaml'), 'utf8')
-    expect(file).toContain(created.entityId)      // 발급된 id가 파일에 채워졌다
+    expect(file).toContain(created.entityId) // 발급된 id가 파일에 채워졌다
 
     // 두 번째 push — 파일의 id가 서버 엔티티를 가리키므로 아무 op도 나오지 않는다.
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
@@ -684,7 +838,10 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
     // --json이 -m의 값 자리를 차지한다 — 삼키지 않고 값 없음으로 처리돼야 한다.
     const argv = ['push', '-m', '--json']
@@ -722,13 +879,18 @@ describe('push', () => {
    */
   const markUntouched = async (rel: string): Promise<void> => {
     const abs = join(dir, rel)
-    await writeFile(abs, `${await readFile(abs, 'utf8')}# 사용자가 쓴 주석 — 재작성되면 사라진다\n`, 'utf8')
+    await writeFile(
+      abs,
+      `${await readFile(abs, 'utf8')}# 사용자가 쓴 주석 — 재작성되면 사라진다\n`,
+      'utf8',
+    )
   }
 
   /** pushCalls[i]의 컬럼 create op가 쓴 entityId. */
   const createdColumnId = (calls: unknown[], i: number): string =>
-    (calls[i] as { ops: Array<{ entity: string; action: string; entityId: string }> }).ops
-      .find((o) => o.entity === 'column' && o.action === 'create')!.entityId
+    (calls[i] as { ops: Array<{ entity: string; action: string; entityId: string }> }).ops.find(
+      (o) => o.entity === 'column' && o.action === 'create',
+    )!.entityId
 
   it('커밋 뒤 응답이 유실돼도 다시 push하면 사본이 생기지 않는다', async () => {
     // 이 사이클의 핵심 회귀. 서버는 커밋을 마쳤는데 응답만 사라진 상황을 만든 뒤,
@@ -743,17 +905,25 @@ describe('push', () => {
         throw new CliError('NETWORK', 'socket hang up')
       },
     })
-    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client: first.client })).toBe(1)
+    expect(
+      await push({ cwd: dir, json: true, yes: true, strict: false, client: first.client }),
+    ).toBe(1)
     expect(lastJson<{ outcomeUnknown: boolean }>().outcomeUnknown).toBe(true)
-    expect(Object.values(server.columns).filter((c) => c.physicalName === 'NEW_COL')).toHaveLength(1)
+    expect(Object.values(server.columns).filter((c) => c.physicalName === 'NEW_COL')).toHaveLength(
+      1,
+    )
 
     // 파일은 그대로, 서버는 이미 반영된 상태. 다시 실행한다.
     const second = stub(server, { seq: 2 })
-    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client: second.client })).toBe(0)
-    expect(second.pushCalls).toHaveLength(0)          // 보낼 것이 없다
+    expect(
+      await push({ cwd: dir, json: true, yes: true, strict: false, client: second.client }),
+    ).toBe(0)
+    expect(second.pushCalls).toHaveLength(0) // 보낼 것이 없다
     expect(lastJson<{ ops: number }>().ops).toBe(0)
     // 사본이 없다. id를 기록하지 않으면 여기가 2가 된다.
-    expect(Object.values(server.columns).filter((c) => c.physicalName === 'NEW_COL')).toHaveLength(1)
+    expect(Object.values(server.columns).filter((c) => c.physicalName === 'NEW_COL')).toHaveLength(
+      1,
+    )
   })
 
   it('전송이 실패해 아무것도 커밋되지 않았어도 다음 push가 같은 id를 쓴다', async () => {
@@ -761,11 +931,19 @@ describe('push', () => {
     await seed(server)
     await addNewColumn()
 
-    const first = stub(server, { pushImpl: async () => { throw new CliError('NETWORK', 'lost') } })
-    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client: first.client })).toBe(1)
+    const first = stub(server, {
+      pushImpl: async () => {
+        throw new CliError('NETWORK', 'lost')
+      },
+    })
+    expect(
+      await push({ cwd: dir, json: true, yes: true, strict: false, client: first.client }),
+    ).toBe(1)
 
     const second = stub(server, { pushImpl: applyingPush(server, 2) })
-    expect(await push({ cwd: dir, json: true, yes: true, strict: false, client: second.client })).toBe(0)
+    expect(
+      await push({ cwd: dir, json: true, yes: true, strict: false, client: second.client }),
+    ).toBe(0)
     expect(createdColumnId(second.pushCalls, 0)).toBe(createdColumnId(first.pushCalls, 0))
   })
 
@@ -774,16 +952,27 @@ describe('push', () => {
     // 기록하면 같은 테이블이 두 파일에 남아 다음 filesToModel이 id 중복으로 막는다.
     const server = fullModel()
     await seed(server)
-    await writeFile(join(dir, 'erdd/tables/새테이블.yaml'), stringifyYaml({
-      name: 'NEWTBL', logicalName: '새테이블',
-      columns: [{ name: 'ID', logicalName: '아이디', type: 'INT' }],
-    }), 'utf8')
+    await writeFile(
+      join(dir, 'erdd/tables/새테이블.yaml'),
+      stringifyYaml({
+        name: 'NEWTBL',
+        logicalName: '새테이블',
+        columns: [{ name: 'ID', logicalName: '아이디', type: 'INT' }],
+      }),
+      'utf8',
+    )
 
     // 실패시켜야 syncDown이 파일을 정규화하기 전 상태를 볼 수 있다.
-    const { client } = stub(server, { pushImpl: async () => { throw new CliError('NETWORK', 'lost') } })
+    const { client } = stub(server, {
+      pushImpl: async () => {
+        throw new CliError('NETWORK', 'lost')
+      },
+    })
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
 
-    const written = parseYaml(await readFile(join(dir, 'erdd/tables/새테이블.yaml'), 'utf8')) as { id?: string }
+    const written = parseYaml(await readFile(join(dir, 'erdd/tables/새테이블.yaml'), 'utf8')) as {
+      id?: string
+    }
     expect(typeof written.id).toBe('string')
     await expect(readFile(join(dir, 'erdd/tables/NEWTBL.yaml'), 'utf8')).rejects.toThrow()
   })
@@ -815,8 +1004,11 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 로컬'))
-    await addNewColumn()                       // 기록할 신규 항목 — 같은 MBR.yaml에 들어간다
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 로컬'),
+    )
+    await addNewColumn() // 기록할 신규 항목 — 같은 MBR.yaml에 들어간다
 
     // 재계산 때 서버가 같은 필드를 다르게 고친 상태로 바뀐다 → 두 번째 buildPlan이 충돌을 낸다.
     const moved = fullModel()
@@ -824,10 +1016,13 @@ describe('push', () => {
     let attempt = 0
     const { client, pushCalls } = stub(server, {
       getImpl: () => (attempt === 0 ? { model: server, seq: 1 } : { model: moved, seq: 2 }),
-      pushImpl: async () => { attempt += 1; throw new CliError('CONFLICT', '서버가 앞서 있습니다') },
+      pushImpl: async () => {
+        attempt += 1
+        throw new CliError('CONFLICT', '서버가 앞서 있습니다')
+      },
     })
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
-    expect(pushCalls).toHaveLength(1)          // 재계산이 충돌로 끝나 두 번째 전송은 없다
+    expect(pushCalls).toHaveLength(1) // 재계산이 충돌로 끝나 두 번째 전송은 없다
     const payload = lastJson<{ ok: boolean; conflicts: unknown[]; reservedFiles: string[] }>()
     expect(payload.ok).toBe(false)
     expect(payload.conflicts.length).toBeGreaterThan(0)
@@ -838,15 +1033,25 @@ describe('push', () => {
     // 봉투를 못 만들고 던져서 끝나는 자리다 — 오류 객체에 실어 보낸다. 재계산 결과가
     // 첫 계산보다 커질 수 있는 것은 서버가 그 사이에 로컬과 같은 항목들을 잃었을 때다.
     const base = fullModel()
-    await seed(base)                           // base = 원본(추가 컬럼 없음)
+    await seed(base) // base = 원본(추가 컬럼 없음)
 
     const withExtras = fullModel()
     for (let i = 0; i < MAX_OPS_PER_MUTATION + 10; i += 1) {
       const id = `cx${String(i).padStart(6, '0')}`
       withExtras.columns[id] = {
-        id, tableId: 'tb1', logicalName: `추가${i}`, physicalName: `EXTRA_${i}`, type: 'BIGINT',
-        isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 100 + i,
-        comment: null, domainId: null, custom: {},
+        id,
+        tableId: 'tb1',
+        logicalName: `추가${i}`,
+        physicalName: `EXTRA_${i}`,
+        type: 'BIGINT',
+        isPk: false,
+        autoIncrement: false,
+        nullable: true,
+        defaultValue: null,
+        order: 100 + i,
+        comment: null,
+        domainId: null,
+        custom: {},
       }
     }
     // 로컬과 첫 서버가 그 컬럼들을 똑같이 갖고 있다(base에는 없다) → 첫 계산의 op는 신규 1건뿐.
@@ -860,12 +1065,18 @@ describe('push', () => {
 
     let attempt = 0
     const { client, pushCalls } = stub(parsed.model, {
-      getImpl: () => (attempt === 0 ? { model: parsed.model, seq: 1 } : { model: fullModel(), seq: 2 }),
-      pushImpl: async () => { attempt += 1; throw new CliError('CONFLICT', '서버가 앞서 있습니다') },
+      getImpl: () =>
+        attempt === 0 ? { model: parsed.model, seq: 1 } : { model: fullModel(), seq: 2 },
+      pushImpl: async () => {
+        attempt += 1
+        throw new CliError('CONFLICT', '서버가 앞서 있습니다')
+      },
     })
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
     expect(pushCalls).toHaveLength(1)
-    const payload = lastJson<{ error: { code: string; message: string; reservedFiles: string[] } }>()
+    const payload = lastJson<{
+      error: { code: string; message: string; reservedFiles: string[] }
+    }>()
     expect(payload.error.code).toBe('VALIDATION')
     expect(payload.error.message).toContain(String(MAX_OPS_PER_MUTATION))
     expect(payload.error.reservedFiles).toEqual(['erdd/tables/MBR.yaml'])
@@ -874,14 +1085,19 @@ describe('push', () => {
   it('삭제 확인에서 취소하면 파일에 아무것도 기록하지 않는다', async () => {
     const original = fullModel()
     await seed(original)
-    await rm(join(dir, 'erdd/tables/MBR_DTL.yaml'))   // 삭제를 만든다
-    await addNewColumn()                              // 신규 항목도 함께 만든다
-    await markUntouched('erdd/tables/MBR.yaml')       // 기록 대상 파일에 표식을 남긴다
+    await rm(join(dir, 'erdd/tables/MBR_DTL.yaml')) // 삭제를 만든다
+    await addNewColumn() // 신규 항목도 함께 만든다
+    await markUntouched('erdd/tables/MBR.yaml') // 기록 대상 파일에 표식을 남긴다
     const before = await rawTree()
 
     const { client, pushCalls } = stub(fullModel())
     const code = await push({
-      cwd: dir, json: false, yes: false, strict: false, client, confirm: async () => false,
+      cwd: dir,
+      json: false,
+      yes: false,
+      strict: false,
+      client,
+      confirm: async () => false,
     })
     expect(code).toBe(1)
     expect(pushCalls).toHaveLength(0)
@@ -894,22 +1110,32 @@ describe('push', () => {
     // 새 id를 발급해 사본 문제가 부활한다. 그 선택을 고정한다.
     const original = fullModel()
     await seed(original)
-    await rm(join(dir, 'erdd/tables/MBR_DTL.yaml'))   // 삭제 확인을 부르는 변경
-    await addNewColumn()                              // 기록할 신규 항목
+    await rm(join(dir, 'erdd/tables/MBR_DTL.yaml')) // 삭제 확인을 부르는 변경
+    await addNewColumn() // 기록할 신규 항목
 
     let attempt = 0
     const { client, pushCalls } = stub(original, {
       getImpl: () => ({ model: original, seq: attempt === 0 ? 1 : 2 }),
-      pushImpl: async () => { attempt += 1; throw new CliError('CONFLICT', '서버가 앞서 있습니다') },
+      pushImpl: async () => {
+        attempt += 1
+        throw new CliError('CONFLICT', '서버가 앞서 있습니다')
+      },
     })
     const asked: boolean[] = []
     // 첫 확인은 통과시키고(→ 기록 → CONFLICT → 재계산), 두 번째 확인에서 취소한다.
     const code = await push({
-      cwd: dir, json: true, yes: false, strict: false, client,
-      confirm: async () => { asked.push(true); return asked.length === 1 },
+      cwd: dir,
+      json: true,
+      yes: false,
+      strict: false,
+      client,
+      confirm: async () => {
+        asked.push(true)
+        return asked.length === 1
+      },
     })
     expect(code).toBe(1)
-    expect(asked).toHaveLength(2)                     // 재계산이 삭제 확인을 다시 물었다
+    expect(asked).toHaveLength(2) // 재계산이 삭제 확인을 다시 물었다
     expect(pushCalls).toHaveLength(1)
     expect(lastJson<{ error: { code: string } }>().error.code).toBe('CANCELLED')
 
@@ -917,7 +1143,7 @@ describe('push', () => {
       columns: Array<{ name: string; id?: string }>
     }
     const created = mbr.columns.find((c) => c.name === 'NEW_COL')
-    expect(typeof created?.id).toBe('string')         // 취소했어도 id는 남는다
+    expect(typeof created?.id).toBe('string') // 취소했어도 id는 남는다
   })
 
   it('충돌이 있으면 파일에 아무것도 기록하지 않는다', async () => {
@@ -925,7 +1151,10 @@ describe('push', () => {
     await seed(original)
     // 같은 필드를 로컬과 서버가 서로 다르게 고친다.
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 로컬'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 로컬'),
+    )
     await addNewColumn()
     await markUntouched('erdd/tables/MBR.yaml')
     const before = await rawTree()
@@ -967,7 +1196,9 @@ describe('push', () => {
     // afterEach·후속 정리까지 끌고 간다.
     try {
       const { client, pushCalls } = stub(server)
-      await expect(push({ cwd: dir, json: true, yes: true, strict: false, client })).resolves.toBe(1)
+      await expect(push({ cwd: dir, json: true, yes: true, strict: false, client })).resolves.toBe(
+        1,
+      )
       expect(pushCalls).toHaveLength(0)
       const payload = lastJson<{ error: { code: string; message: string } }>()
       expect(payload.error.code).toBe('VALIDATION')
@@ -984,7 +1215,7 @@ describe('push', () => {
     // 분기하는 에이전트는 그것을 전송 실패로 읽고 파일이 그대로인 채 영원히 재시도한다.
     const server = fullModel()
     await seed(server)
-    await addNewColumn()                       // reserveIds가 실제로 비교를 하도록 신규 항목을 만든다
+    await addNewColumn() // reserveIds가 실제로 비교를 하도록 신규 항목을 만든다
     await writeFile(
       join(dir, 'erdd/tables/CYC.yaml'),
       '&root\nname: CYC\nlogicalName: 순환\ncolumns: []\nself: *root\n',
@@ -993,7 +1224,7 @@ describe('push', () => {
 
     const { client, pushCalls } = stub(server)
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
-    expect(pushCalls).toHaveLength(0)          // 서버로 아무것도 나가지 않는다
+    expect(pushCalls).toHaveLength(0) // 서버로 아무것도 나가지 않는다
     const payload = lastJson<{ error: { code: string; message: string } }>()
     expect(payload.error.code).toBe('VALIDATION')
     expect(payload.error.message).toContain('erdd/tables/CYC.yaml')
@@ -1015,11 +1246,15 @@ describe('push', () => {
     await seed(server)
     await addNewColumn()
 
-    const { client } = stub(server, { pushImpl: async () => { throw new CliError('NETWORK', 'lost') } })
+    const { client } = stub(server, {
+      pushImpl: async () => {
+        throw new CliError('NETWORK', 'lost')
+      },
+    })
     expect(await push({ cwd: dir, json: false, yes: true, strict: false, client })).toBe(1)
     const text = out.join('')
     expect(text).toContain('반영 여부를 확인할 수 없습니다')
-    expect(text).toContain('id를 파일에 기록해 두었으므로')   // 실제로 기록한 경우에만 나오는 근거
+    expect(text).toContain('id를 파일에 기록해 두었으므로') // 실제로 기록한 경우에만 나오는 근거
     expect(text).toContain('중복 없이 수렴')
     // 확인 수단은 erdd diff다. erdd pull을 권하면 방금 기록한 id를 지우라고 말하는 셈이라
     // 같은 문장의 "그대로 다시 push하면 수렴한다"와 서로를 무효화한다.
@@ -1034,23 +1269,33 @@ describe('push', () => {
     const server = fullModel()
     await seed(server)
     const path = join(dir, 'erdd/tables/MBR.yaml')
-    await writeFile(path, (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'))
+    await writeFile(
+      path,
+      (await readFile(path, 'utf8')).replace('logicalName: 회원명', 'logicalName: 회원 이름'),
+    )
 
-    const { client } = stub(server, { pushImpl: async () => { throw new CliError('NETWORK', 'lost') } })
+    const { client } = stub(server, {
+      pushImpl: async () => {
+        throw new CliError('NETWORK', 'lost')
+      },
+    })
     expect(await push({ cwd: dir, json: false, yes: true, strict: false, client })).toBe(1)
     const text = out.join('')
     expect(text).toContain('반영 여부를 확인할 수 없습니다')
     expect(text).not.toContain('기록해 두었으므로')
     expect(text).toContain('중복 없이 수렴')
-    expect(text).toContain('erdd diff')     // 두 갈래 모두에 남는다
+    expect(text).toContain('erdd diff') // 두 갈래 모두에 남는다
     expect(text).toMatch(/erdd pull은[^.]*지웁니다/)
   })
 
   it('업그레이드 직후(base·로컬에 origins.yaml 이 없음) push 는 서버의 origin 을 지우지 않는다', async () => {
     const server = createEmptyModel()
     server.words['018f6b0e-0000-7000-8000-0000000000a1'] = {
-      id: '018f6b0e-0000-7000-8000-0000000000a1', logicalName: '고객', abbreviation: 'CUST',
-      englishName: null, description: null,
+      id: '018f6b0e-0000-7000-8000-0000000000a1',
+      logicalName: '고객',
+      abbreviation: 'CUST',
+      englishName: null,
+      description: null,
       origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
     }
     // 옛 CLI 가 쓴 트리 — origins.yaml 이 없다.
@@ -1059,7 +1304,11 @@ describe('push', () => {
     await writeTree(dir, tree)
     await writeBase(dir, tree)
     const { client } = stub(server)
-    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
+    const plan = await buildPlan(
+      dir,
+      { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId },
+      client,
+    )
     expect(plan.conflicts).toEqual([])
     expect(plan.ops).toEqual([])
   })
@@ -1068,7 +1317,11 @@ describe('push', () => {
     const id = '018f6b0e-0000-7000-8000-0000000000a1'
     const server = createEmptyModel()
     server.words[id] = {
-      id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null,
+      id,
+      logicalName: '고객',
+      abbreviation: 'CUST',
+      englishName: null,
+      description: null,
       origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
     }
     await seed(server)
@@ -1078,8 +1331,13 @@ describe('push', () => {
     const { client, pushCalls } = stub(server)
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(0)
     const sent = (pushCalls[0] as { ops: Op[] }).ops
-    expect(sent).toEqual([expect.objectContaining({ action: 'update', entity: 'word', entityId: id })])
-    expect(lastJson<{ ok: boolean; detachedOrigins: number }>()).toMatchObject({ ok: true, detachedOrigins: 1 })
+    expect(sent).toEqual([
+      expect.objectContaining({ action: 'update', entity: 'word', entityId: id }),
+    ])
+    expect(lastJson<{ ok: boolean; detachedOrigins: number }>()).toMatchObject({
+      ok: true,
+      detachedOrigins: 1,
+    })
     expect(err.join('')).toContain(
       '공용 사전 출처를 떼는 변경 1건이 포함됩니다 — 의도하지 않았다면 erdd pull 로 되돌리세요',
     )
@@ -1090,20 +1348,44 @@ describe('push', () => {
    * 남기고 무결성 검사도 통과해, 이후 재동기화가 한쪽만 보는 상태가 조용히 서버에 올라간다.
    */
   it('로컬이 추가한 항목이 서버 항목과 같은 공용 사전 원본을 가리키면 충돌로 막는다', async () => {
-    const origin = { libraryId: 'L1', sourceId: 'item-1', sourceVersion: 1, base: { logicalName: '고객' } }
-    const word = (id: string) => ({ id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null, origin })
+    const origin = {
+      libraryId: 'L1',
+      sourceId: 'item-1',
+      sourceVersion: 1,
+      base: { logicalName: '고객' },
+    }
+    const word = (id: string) => ({
+      id,
+      logicalName: '고객',
+      abbreviation: 'CUST',
+      englishName: null,
+      description: null,
+      origin,
+    })
     await seed(createEmptyModel())
     const local = createEmptyModel()
-    local.words['018f6b0e-0000-7000-8000-0000000000b2'] = word('018f6b0e-0000-7000-8000-0000000000b2')
+    local.words['018f6b0e-0000-7000-8000-0000000000b2'] = word(
+      '018f6b0e-0000-7000-8000-0000000000b2',
+    )
     await writeTree(dir, modelToFiles(local).tree)
     const server = createEmptyModel()
-    server.words['018f6b0e-0000-7000-8000-0000000000a1'] = word('018f6b0e-0000-7000-8000-0000000000a1')
+    server.words['018f6b0e-0000-7000-8000-0000000000a1'] = word(
+      '018f6b0e-0000-7000-8000-0000000000a1',
+    )
 
     const { client, pushCalls } = stub(server)
-    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
-    expect(plan.conflicts).toEqual([expect.objectContaining({
-      reason: 'duplicate-origin', entityId: '018f6b0e-0000-7000-8000-0000000000b2', path: 'erdd/words.yaml',
-    })])
+    const plan = await buildPlan(
+      dir,
+      { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId },
+      client,
+    )
+    expect(plan.conflicts).toEqual([
+      expect.objectContaining({
+        reason: 'duplicate-origin',
+        entityId: '018f6b0e-0000-7000-8000-0000000000b2',
+        path: 'erdd/words.yaml',
+      }),
+    ])
     expect(plan.ops).toEqual([])
     expect(await push({ cwd: dir, json: true, yes: true, strict: false, client })).toBe(1)
     expect(pushCalls).toHaveLength(0)
@@ -1113,7 +1395,11 @@ describe('push', () => {
     const id = '018f6b0e-0000-7000-8000-0000000000a1'
     const server = createEmptyModel()
     server.words[id] = {
-      id, logicalName: '고객', abbreviation: 'CUST', englishName: null, description: null,
+      id,
+      logicalName: '고객',
+      abbreviation: 'CUST',
+      englishName: null,
+      description: null,
       origin: { libraryId: 'L1', sourceId: 'S1', sourceVersion: 1, base: { logicalName: '고객' } },
     }
     // 옛 CLI 가 쓴 base — origins.yaml 이 없다. 로컬은 그 단어를 지웠다.
@@ -1122,8 +1408,14 @@ describe('push', () => {
     await writeBase(dir, tree)
     await writeTree(dir, { ...tree, 'erdd/words.yaml': { words: [] } })
     const { client } = stub(server)
-    const plan = await buildPlan(dir, { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId }, client)
+    const plan = await buildPlan(
+      dir,
+      { serverUrl: CONFIG.serverUrl, projectId: CONFIG.projectId },
+      client,
+    )
     expect(plan.conflicts).toEqual([])
-    expect(plan.ops).toEqual([expect.objectContaining({ action: 'delete', entity: 'word', entityId: id })])
+    expect(plan.ops).toEqual([
+      expect.objectContaining({ action: 'delete', entity: 'word', entityId: id }),
+    ])
   })
 })

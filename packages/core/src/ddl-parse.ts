@@ -3,12 +3,12 @@ import { parseNameMeta, type NameMeta } from './name-meta.js'
 
 export type ParsedColumn = {
   name: string
-  rawType: string              // 원문 그대로. 예: 'NUMBER(10)', 'VARCHAR2(100)'
+  rawType: string // 원문 그대로. 예: 'NUMBER(10)', 'VARCHAR2(100)'
   notNull: boolean
   defaultValue: string | null
   autoIncrement: boolean
   inlinePk: boolean
-  comment: string | null       // MySQL 인라인 COMMENT
+  comment: string | null // MySQL 인라인 COMMENT
 }
 export type ParsedTable = {
   name: string
@@ -27,8 +27,15 @@ export type ParsedConstraint =
   | { kind: 'pk'; table: string; columns: string[] }
   | { kind: 'unique'; table: string; name: string | null; columns: string[] }
   // oneToOne 은 DBML 파서만 채운다(`-` 연산자). DDL 파서는 채우지 않으므로 undefined 다.
-  | { kind: 'fk'; table: string; name: string | null; columns: string[]
-      refTable: string; refColumns: string[]; oneToOne?: boolean }
+  | {
+      kind: 'fk'
+      table: string
+      name: string | null
+      columns: string[]
+      refTable: string
+      refColumns: string[]
+      oneToOne?: boolean
+    }
 export type ParsedIndex = { table: string; name: string; columns: string[]; unique: boolean }
 export type ParsedComment = { table: string; column: string | null; text: string }
 export type SkippedStatement = { keyword: string; line: number; excerpt: string }
@@ -75,7 +82,11 @@ export function splitStatements(ddl: string): RawStatement[] {
     const c = src[i]!
     const next = src[i + 1]
 
-    if (c === '\n') { line += 1; buf += c; continue }
+    if (c === '\n') {
+      line += 1
+      buf += c
+      continue
+    }
 
     // 줄 주석
     if (c === '-' && next === '-') {
@@ -95,12 +106,22 @@ export function splitStatements(ddl: string): RawStatement[] {
     }
     // 문자열 리터럴 — '' 이스케이프 포함
     if (c === "'") {
-      if (!started) { startLine = line; started = true }
+      if (!started) {
+        startLine = line
+        started = true
+      }
       buf += c
       i++
       while (i < src.length) {
-        if (src[i] === "'" && src[i + 1] === "'") { buf += "''"; i += 2; continue }
-        if (src[i] === "'") { buf += "'"; break }
+        if (src[i] === "'" && src[i + 1] === "'") {
+          buf += "''"
+          i += 2
+          continue
+        }
+        if (src[i] === "'") {
+          buf += "'"
+          break
+        }
         if (src[i] === '\n') line += 1
         buf += src[i]!
         i++
@@ -110,12 +131,22 @@ export function splitStatements(ddl: string): RawStatement[] {
     // 따옴표 식별자 — 내용은 그대로 실어 보낸다(해제는 unquoteIdentifier가 한다)
     if (c === '"' || c === '`' || c === '[') {
       const close = c === '[' ? ']' : c
-      if (!started) { startLine = line; started = true }
+      if (!started) {
+        startLine = line
+        started = true
+      }
       buf += c
       i++
       while (i < src.length) {
-        if (src[i] === close && src[i + 1] === close) { buf += close + close; i += 2; continue }
-        if (src[i] === close) { buf += close; break }
+        if (src[i] === close && src[i + 1] === close) {
+          buf += close + close
+          i += 2
+          continue
+        }
+        if (src[i] === close) {
+          buf += close
+          break
+        }
         if (src[i] === '\n') line += 1
         buf += src[i]!
         i++
@@ -123,13 +154,24 @@ export function splitStatements(ddl: string): RawStatement[] {
       continue
     }
     // 구분자
-    if (c === ';') { flush(); continue }
+    if (c === ';') {
+      flush()
+      continue
+    }
     // Oracle 스크립트의 / — 줄에 그것만 있을 때만 구분자다
-    if (c === '/' && /(^|\n)[ \t]*$/.test(buf.slice(-40)) && /^[ \t]*(\n|$)/.test(src.slice(i + 1))) {
-      flush(); continue
+    if (
+      c === '/' &&
+      /(^|\n)[ \t]*$/.test(buf.slice(-40)) &&
+      /^[ \t]*(\n|$)/.test(src.slice(i + 1))
+    ) {
+      flush()
+      continue
     }
 
-    if (!started && c.trim() !== '') { startLine = line; started = true }
+    if (!started && c.trim() !== '') {
+      startLine = line
+      started = true
+    }
     buf += c
   }
   flush()
@@ -146,14 +188,22 @@ export function unquoteIdentifier(raw: string): string {
       const close = c === '[' ? ']' : c
       i++
       while (i < raw.length) {
-        if (raw[i] === close && raw[i + 1] === close) { cur += close; i += 2; continue }
+        if (raw[i] === close && raw[i + 1] === close) {
+          cur += close
+          i += 2
+          continue
+        }
         if (raw[i] === close) break
         cur += raw[i]!
         i++
       }
       continue
     }
-    if (c === '.') { parts.push(cur); cur = ''; continue }
+    if (c === '.') {
+      parts.push(cur)
+      cur = ''
+      continue
+    }
     cur += c
   }
   parts.push(cur)
@@ -170,7 +220,11 @@ const SIGNATURES: Array<{ dialect: Dialect; pattern: RegExp; weight: number }> =
   { dialect: 'oracle', pattern: /\b(CLOB|NCLOB|BINARY_DOUBLE|BINARY_FLOAT)\b/i, weight: 2 },
   { dialect: 'mssql', pattern: /\bIDENTITY\s*\(/i, weight: 3 },
   { dialect: 'mssql', pattern: /\[[A-Za-z_]/, weight: 2 },
-  { dialect: 'mssql', pattern: /\b(NVARCHAR|UNIQUEIDENTIFIER|DATETIME2|DATETIMEOFFSET)\b/i, weight: 2 },
+  {
+    dialect: 'mssql',
+    pattern: /\b(NVARCHAR|UNIQUEIDENTIFIER|DATETIME2|DATETIMEOFFSET)\b/i,
+    weight: 2,
+  },
   { dialect: 'postgresql', pattern: /\b(BIGSERIAL|SMALLSERIAL|SERIAL)\b/i, weight: 3 },
   { dialect: 'postgresql', pattern: /\b(JSONB|TIMESTAMPTZ|BYTEA)\b/i, weight: 3 },
 ]
@@ -188,8 +242,7 @@ const SIGNATURES: Array<{ dialect: Dialect; pattern: RegExp; weight: number }> =
 export function detectDialect(ddl: string): Dialect | null {
   const score: Record<Dialect, number> = { postgresql: 0, mysql: 0, oracle: 0, mssql: 0 }
   for (const s of SIGNATURES) if (s.pattern.test(ddl)) score[s.dialect] += s.weight
-  const ranked = (Object.entries(score) as Array<[Dialect, number]>)
-    .sort((a, b) => b[1] - a[1])
+  const ranked = (Object.entries(score) as Array<[Dialect, number]>).sort((a, b) => b[1] - a[1])
   const [top, second] = ranked
   if (!top || top[1] === 0) return null
   if (second && second[1] === top[1]) return null
@@ -199,10 +252,12 @@ export function detectDialect(ddl: string): Dialect | null {
 /** 문장 앞머리에서 skipped에 남길 키워드를 뽑는다. */
 function statementKeyword(text: string): string {
   const t = text.replace(/\s+/g, ' ').trim().toUpperCase()
-  const two = /^(CREATE\s+(?:TABLE|INDEX|UNIQUE\s+INDEX|SEQUENCE|VIEW|TRIGGER|PROCEDURE|FUNCTION)|ALTER\s+TABLE|COMMENT\s+ON)\b/
-    .exec(t)
+  const two =
+    /^(CREATE\s+(?:TABLE|INDEX|UNIQUE\s+INDEX|SEQUENCE|VIEW|TRIGGER|PROCEDURE|FUNCTION)|ALTER\s+TABLE|COMMENT\s+ON)\b/.exec(
+      t,
+    )
   if (two) return two[1]!.replace(/\s+/g, ' ')
-  return (/^[A-Z_]+/.exec(t)?.[0]) ?? '?'
+  return /^[A-Z_]+/.exec(t)?.[0] ?? '?'
 }
 
 /** 괄호 깊이 0의 쉼표로만 나눈다. 문자열 리터럴·따옴표 식별자 안은 건너뛴다. */
@@ -214,9 +269,14 @@ function splitTopLevel(body: string): string[] {
     const c = body[i]!
     if (c === "'" || c === '"' || c === '`' || c === '[') {
       const close = c === '[' ? ']' : c
-      cur += c; i++
+      cur += c
+      i++
       while (i < body.length) {
-        if (body[i] === close && body[i + 1] === close) { cur += close + close; i += 2; continue }
+        if (body[i] === close && body[i + 1] === close) {
+          cur += close + close
+          i += 2
+          continue
+        }
         cur += body[i]!
         if (body[i] === close) break
         i++
@@ -225,7 +285,11 @@ function splitTopLevel(body: string): string[] {
     }
     if (c === '(') depth++
     if (c === ')') depth--
-    if (c === ',' && depth === 0) { out.push(cur.trim()); cur = ''; continue }
+    if (c === ',' && depth === 0) {
+      out.push(cur.trim())
+      cur = ''
+      continue
+    }
     cur += c
   }
   if (cur.trim() !== '') out.push(cur.trim())
@@ -260,8 +324,8 @@ function firstParenGroup(text: string): { inner: string; tail: string } | null {
 }
 
 const AUTO_INCREMENT_PATTERNS = [
-  /\bAUTO_INCREMENT\b/i,                   // mysql
-  /\bIDENTITY\b/i,                         // mssql, oracle
+  /\bAUTO_INCREMENT\b/i, // mysql
+  /\bIDENTITY\b/i, // mssql, oracle
   /\bGENERATED\s+(BY\s+DEFAULT|ALWAYS)\s+AS\s+IDENTITY\b/i,
 ]
 const SERIAL_TYPES = /^(SERIAL|BIGSERIAL|SMALLSERIAL)$/i
@@ -295,12 +359,22 @@ function maskQuoted(text: string): string {
   for (let i = 0; i < text.length; i++) {
     const c = text[i]!
     const close = c === "'" || c === '"' || c === '`' ? c : c === '[' ? ']' : null
-    if (close === null) { out += c; continue }
+    if (close === null) {
+      out += c
+      continue
+    }
     out += FILL
     i++
     while (i < text.length) {
-      if (text[i] === close && text[i + 1] === close) { out += FILL + FILL; i += 2; continue }
-      if (text[i] === close) { out += FILL; break }
+      if (text[i] === close && text[i + 1] === close) {
+        out += FILL + FILL
+        i += 2
+        continue
+      }
+      if (text[i] === close) {
+        out += FILL
+        break
+      }
       out += FILL
       i++
     }
@@ -321,8 +395,16 @@ function maskParenContents(text: string): string {
   // 그것을 FILL 한 글자로 덮으면 길이가 줄어 뒤쪽 인덱스가 통째로 어긋난다.
   for (let i = 0; i < text.length; i++) {
     const c = text[i]!
-    if (c === '(') { out += c; depth++; continue }
-    if (c === ')') { depth = Math.max(0, depth - 1); out += c; continue }
+    if (c === '(') {
+      out += c
+      depth++
+      continue
+    }
+    if (c === ')') {
+      depth = Math.max(0, depth - 1)
+      out += c
+      continue
+    }
     out += depth > 0 ? FILL : c
   }
   return out
@@ -370,8 +452,10 @@ function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | 
   // ⚠️ 괄호 앞 공백은 `(?:\s*\(…\))?` 로 **괄호와 한 묶음**이어야 한다. 바깥에 `\s*` 로 두면
   // 그것이 `int unsigned` 의 공백을 먼저 먹어 뒤의 `\s+UNSIGNED` 가 못 맞고, 앵커가 없어
   // 역추적도 일어나지 않아 조용히 `int` 만 집는다(실측).
-  const typeMatch = /^((?:DOUBLE\s+PRECISION|CHARACTER\s+VARYING|TIMESTAMP\s+WITH(?:OUT)?\s+TIME\s+ZONE|[A-Za-z_][\w$]*)(?:\s*\([^)]*\))?(?:\s+(?:UNSIGNED|ZEROFILL))*)/i
-    .exec(rest)
+  const typeMatch =
+    /^((?:DOUBLE\s+PRECISION|CHARACTER\s+VARYING|TIMESTAMP\s+WITH(?:OUT)?\s+TIME\s+ZONE|[A-Za-z_][\w$]*)(?:\s*\([^)]*\))?(?:\s+(?:UNSIGNED|ZEROFILL))*)/i.exec(
+      rest,
+    )
   if (!typeMatch) return null
   const rawType = typeMatch[1]!.replace(/\s+/g, ' ').trim()
   const attrs = rest.slice(typeMatch[0].length)
@@ -384,7 +468,8 @@ function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | 
   // 'GENERATED BY DEFAULT AS IDENTITY'의 DEFAULT가 기본값 절로 오인되지 않게 먼저 걷어낸다.
   // (MSSQL의 IDENTITY(1,1)에는 DEFAULT가 없어 영향이 없다.)
   const attrsForDefault = attrs.replace(
-    /\bGENERATED\s+(?:BY\s+DEFAULT|ALWAYS)\s+AS\s+IDENTITY\b(?:\s*\([^)]*\))?/gi, ' ',
+    /\bGENERATED\s+(?:BY\s+DEFAULT|ALWAYS)\s+AS\s+IDENTITY\b(?:\s*\([^)]*\))?/gi,
+    ' ',
   )
   // DEFAULT 절의 시작·끝 위치는 마스킹본에서 찾는다(문자열 안의 DEFAULT·종결 키워드에
   // 속지 않기 위해). attrsForDefault와 길이가 같은 마스킹본이라 인덱스를 원본에 그대로 쓸 수 있다.
@@ -394,9 +479,15 @@ function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | 
   if (dIdx >= 0) {
     // 종결 키워드에 CONSTRAINT 가 들어 있어야 한다 — 컬럼 제약은 `[CONSTRAINT 이름] 제약`
     // 시퀀스라 DEFAULT 바로 뒤에 올 수 있고, 없으면 기본값이 제약명까지 삼킨다.
-    const end = /^DEFAULT\s+.+?(?=\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|REFERENCES|CONSTRAINT|COMMENT|COLLATE|CHECK)\b|$)/is
-      .exec(maskedForDefault.slice(dIdx))
-    if (end) defaultValue = attrsForDefault.slice(dIdx, dIdx + end[0].length).replace(/^DEFAULT\s+/i, '').trim()
+    const end =
+      /^DEFAULT\s+.+?(?=\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|REFERENCES|CONSTRAINT|COMMENT|COLLATE|CHECK)\b|$)/is.exec(
+        maskedForDefault.slice(dIdx),
+      )
+    if (end)
+      defaultValue = attrsForDefault
+        .slice(dIdx, dIdx + end[0].length)
+        .replace(/^DEFAULT\s+/i, '')
+        .trim()
   }
   const commentMatch = /\bCOMMENT\s+'((?:[^']|'')*)'/is.exec(attrs)
 
@@ -406,7 +497,8 @@ function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | 
       rawType,
       notNull: /\bNOT\s+NULL\b/i.test(attrsScan) || /\bPRIMARY\s+KEY\b/i.test(attrsScan),
       defaultValue,
-      autoIncrement: AUTO_INCREMENT_PATTERNS.some((p) => p.test(attrsScan)) || SERIAL_TYPES.test(rawType),
+      autoIncrement:
+        AUTO_INCREMENT_PATTERNS.some((p) => p.test(attrsScan)) || SERIAL_TYPES.test(rawType),
       inlinePk: /\bPRIMARY\s+KEY\b/i.test(attrsScan),
       comment: commentMatch ? commentMatch[1]!.replace(/''/g, "'") : null,
     },
@@ -415,7 +507,6 @@ function parseColumnDef(def: string): { column: ParsedColumn; attrs: string } | 
     attrs,
   }
 }
-
 
 /**
  * REFERENCES 뒤의 부모 테이블 이름을 잡는다.
@@ -462,7 +553,9 @@ function parseReferencesClause(text: string): { refTable: string; refColumns: st
  * 이미 다루고 ParsedConstraint의 pk 변형에는 이름 자리가 없어 여기서 취급하지 않는다.
  */
 function parseInlineColumnConstraints(
-  table: string, column: string, attrs: string,
+  table: string,
+  column: string,
+  attrs: string,
 ): ParsedConstraint[] {
   const scan = maskForKeywordScan(attrs)
 
@@ -498,11 +591,10 @@ function parseInlineColumnConstraints(
 /** 테이블 본문 항목 앞머리의 `CONSTRAINT <이름>`. */
 const NAMED_CONSTRAINT_RE = new RegExp(String.raw`^CONSTRAINT\s+(${IDENT_PART})\s+(.*)$`, 'is')
 
-const CREATE_TABLE_RE = /^CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|TEMP\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s*(?=\()/is
+const CREATE_TABLE_RE =
+  /^CREATE\s+(?:GLOBAL\s+TEMPORARY\s+|TEMPORARY\s+|TEMP\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s*(?=\()/is
 
-function parseCreateTable(
-  stmt: RawStatement, out: ParsedDdl,
-): boolean {
+function parseCreateTable(stmt: RawStatement, out: ParsedDdl): boolean {
   const head = CREATE_TABLE_RE.exec(stmt.text)
   if (!head) return false
   const group = firstParenGroup(stmt.text)
@@ -522,7 +614,13 @@ function parseCreateTable(
     }
     if (/^UNIQUE\b/i.test(body)) {
       const g = firstParenGroup(body)
-      if (g) out.constraints.push({ kind: 'unique', table, name: constraintName, columns: identifierList(g.inner) })
+      if (g)
+        out.constraints.push({
+          kind: 'unique',
+          table,
+          name: constraintName,
+          columns: identifierList(g.inner),
+        })
       continue
     }
     if (/^FOREIGN\s+KEY\b/i.test(body)) {
@@ -531,20 +629,30 @@ function parseCreateTable(
       const ref = parseReferencesClause(cols.tail)
       if (!ref) continue
       out.constraints.push({
-        kind: 'fk', table, name: constraintName,
+        kind: 'fk',
+        table,
+        name: constraintName,
         columns: identifierList(cols.inner),
         ...ref,
       })
       continue
     }
     if (/^CHECK\b/i.test(body)) {
-      out.skipped.push({ keyword: 'CHECK', line: stmt.line, excerpt: item.replace(/\s+/g, ' ').slice(0, 80) })
+      out.skipped.push({
+        keyword: 'CHECK',
+        line: stmt.line,
+        excerpt: item.replace(/\s+/g, ' ').slice(0, 80),
+      })
       continue
     }
 
     const parsed = parseColumnDef(item)
     if (!parsed) {
-      out.skipped.push({ keyword: '?', line: stmt.line, excerpt: item.replace(/\s+/g, ' ').slice(0, 80) })
+      out.skipped.push({
+        keyword: '?',
+        line: stmt.line,
+        excerpt: item.replace(/\s+/g, ' ').slice(0, 80),
+      })
       continue
     }
     const col = parsed.column
@@ -580,7 +688,9 @@ function parseCreateTable(
 }
 
 const ALTER_ADD_RE = new RegExp(
-  String.raw`^ALTER\s+TABLE\s+(?:ONLY\s+)?(.+?)\s+ADD\s+(?:CONSTRAINT\s+(${IDENT_PART})\s+)?(.*)$`, 'is')
+  String.raw`^ALTER\s+TABLE\s+(?:ONLY\s+)?(.+?)\s+ADD\s+(?:CONSTRAINT\s+(${IDENT_PART})\s+)?(.*)$`,
+  'is',
+)
 
 function parseAlterTable(stmt: RawStatement, out: ParsedDdl): boolean {
   const m = ALTER_ADD_RE.exec(stmt.text)
@@ -607,16 +717,19 @@ function parseAlterTable(stmt: RawStatement, out: ParsedDdl): boolean {
     const ref = parseReferencesClause(cols.tail)
     if (!ref) return false
     out.constraints.push({
-      kind: 'fk', table, name,
+      kind: 'fk',
+      table,
+      name,
       columns: identifierList(cols.inner),
       ...ref,
     })
     return true
   }
-  return false   // CHECK·그 밖의 ADD는 skipped로 간다
+  return false // CHECK·그 밖의 ADD는 skipped로 간다
 }
 
-const CREATE_INDEX_RE = /^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s+ON\s+(.+?)\s*(?=\()/is
+const CREATE_INDEX_RE =
+  /^CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?)\s+ON\s+(.+?)\s*(?=\()/is
 
 function parseCreateIndex(stmt: RawStatement, out: ParsedDdl): boolean {
   const m = CREATE_INDEX_RE.exec(stmt.text)
@@ -648,7 +761,9 @@ function parseCommentOn(stmt: RawStatement, out: ParsedDdl): boolean {
   const parts = splitQualified(target)
   if (parts.length < 2) return false
   out.comments.push({
-    table: parts[parts.length - 2]!, column: parts[parts.length - 1]!, text,
+    table: parts[parts.length - 2]!,
+    column: parts[parts.length - 1]!,
+    text,
   })
   return true
 }
@@ -663,13 +778,22 @@ function splitQualified(raw: string): string[] {
       const close = c === '[' ? ']' : c
       i++
       while (i < raw.length) {
-        if (raw[i] === close && raw[i + 1] === close) { cur += close; i += 2; continue }
+        if (raw[i] === close && raw[i + 1] === close) {
+          cur += close
+          i += 2
+          continue
+        }
         if (raw[i] === close) break
-        cur += raw[i]!; i++
+        cur += raw[i]!
+        i++
       }
       continue
     }
-    if (c === '.') { parts.push(cur.trim()); cur = ''; continue }
+    if (c === '.') {
+      parts.push(cur.trim())
+      cur = ''
+      continue
+    }
     cur += c
   }
   parts.push(cur.trim())
@@ -679,7 +803,11 @@ function splitQualified(raw: string): string[] {
 export function parseDdl(ddl: string): ParsedDdl {
   // ⚠️ splitStatements 가 주석을 걷어내므로 머릿말은 **원문에서** 먼저 읽어야 한다.
   const result: ParsedDdl = {
-    tables: [], constraints: [], indexes: [], comments: [], skipped: [],
+    tables: [],
+    constraints: [],
+    indexes: [],
+    comments: [],
+    skipped: [],
     nameMeta: parseNameMeta(ddl) ?? undefined,
   }
   for (const stmt of splitStatements(ddl)) {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { buildSampleModel } from './testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, type NamingRules } from './naming.js'
-import { composeTableLogicalName, composeTablePhysicalName, parseTemplate } from './name-template.js'
+import {
+  composeTableLogicalName,
+  composeTablePhysicalName,
+  parseTemplate,
+} from './name-template.js'
 import type { ProjectModel } from './model.js'
 
 /** g1 에 별칭 MBR 을 주고 t2 를 ORD/주문으로 바꾼 모델. */
@@ -11,8 +15,10 @@ function model(): ProjectModel {
   m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'ORD', logicalName: '주문' }
   return m
 }
-const rulesWith = (tablePhysicalTemplate: string): NamingRules =>
-  ({ ...DEFAULT_NAMING_RULES, tablePhysicalTemplate })
+const rulesWith = (tablePhysicalTemplate: string): NamingRules => ({
+  ...DEFAULT_NAMING_RULES,
+  tablePhysicalTemplate,
+})
 const compose = (tpl: string, m: ProjectModel = model()) =>
   composeTablePhysicalName(m.tables['t2']!, m, rulesWith(tpl))
 
@@ -51,8 +57,15 @@ describe('composeTablePhysicalName', () => {
   it('커스텀 항목을 정의 이름으로 지목한다', () => {
     const m = model()
     m.customFields['cf9'] = {
-      id: 'cf9', name: '서브시스템', target: 'table', type: 'text',
-      options: [], required: false, defaultValue: null, order: 0, origin: null,
+      id: 'cf9',
+      name: '서브시스템',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: null,
+      order: 0,
+      origin: null,
     }
     m.tables['t2'] = { ...m.tables['t2']!, custom: { cf9: 'SLS' } }
     expect(compose('{커스텀:서브시스템}', m)).toBe('SLS')
@@ -66,8 +79,15 @@ describe('composeTablePhysicalName', () => {
   it('커스텀 값이 없으면 정의 기본값을 쓴다', () => {
     const m = model()
     m.customFields['cf9'] = {
-      id: 'cf9', name: '서브시스템', target: 'table', type: 'text',
-      options: [], required: false, defaultValue: 'COM', order: 0, origin: null,
+      id: 'cf9',
+      name: '서브시스템',
+      target: 'table',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: 'COM',
+      order: 0,
+      origin: null,
     }
     expect(compose('{커스텀:서브시스템}', m)).toBe('COM')
   })
@@ -75,8 +95,15 @@ describe('composeTablePhysicalName', () => {
   it('컬럼용 커스텀 항목은 테이블 변수로 잡히지 않는다', () => {
     const m = model()
     m.customFields['cf8'] = {
-      id: 'cf8', name: '서브시스템', target: 'column', type: 'text',
-      options: [], required: false, defaultValue: 'X', order: 0, origin: null,
+      id: 'cf8',
+      name: '서브시스템',
+      target: 'column',
+      type: 'text',
+      options: [],
+      required: false,
+      defaultValue: 'X',
+      order: 0,
+      origin: null,
     }
     expect(compose('TB_{커스텀:서브시스템}_{물리명}', m)).toBe('TB_ORD')
   })
@@ -152,7 +179,9 @@ describe('빈 구간 접기', () => {
   it('앞 조각이 변수 값이면 말미 밑줄을 지우지 않는다', () => {
     const m = model()
     m.tables['t2'] = { ...m.tables['t2']!, physicalName: 'ORD_', groupId: null }
-    expect(composeTablePhysicalName(m.tables['t2']!, m, rulesWith('{물리명}{그룹별칭}'))).toBe('ORD_')
+    expect(composeTablePhysicalName(m.tables['t2']!, m, rulesWith('{물리명}{그룹별칭}'))).toBe(
+      'ORD_',
+    )
   })
 
   it('밑줄이 여럿이어도 선두 밑줄을 모두 지운다', () => {
@@ -166,8 +195,10 @@ describe('빈 구간 접기', () => {
 })
 
 describe('composeTableLogicalName', () => {
-  const withLogical = (tableLogicalTemplate: string): NamingRules =>
-    ({ ...DEFAULT_NAMING_RULES, tableLogicalTemplate })
+  const withLogical = (tableLogicalTemplate: string): NamingRules => ({
+    ...DEFAULT_NAMING_RULES,
+    tableLogicalTemplate,
+  })
   /** model(): g1 = 회원관리(별칭 MBR), t2 = 주문/ORD 소속. 파일 상단 헬퍼. */
   const composeL = (tpl: string, m: ProjectModel = model()) =>
     composeTableLogicalName(m.tables['t2']!, m, withLogical(tpl))
@@ -208,7 +239,7 @@ describe('composeTableLogicalName', () => {
       tableLogicalTemplate: '{물리명}',
     }
     expect(composeTablePhysicalName(m.tables['t2']!, m, rules)).toBe('TB_MBR_ORD')
-    expect(composeTableLogicalName(m.tables['t2']!, m, rules)).toBe('ORD')   // TB_MBR_ORD 가 아니다
+    expect(composeTableLogicalName(m.tables['t2']!, m, rules)).toBe('ORD') // TB_MBR_ORD 가 아니다
   })
 
   // ⚠️ 두 템플릿이 서로를 침범하지 않는지.

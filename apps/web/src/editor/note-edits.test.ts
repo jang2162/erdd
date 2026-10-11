@@ -6,7 +6,10 @@ describe('note-edits', () => {
   it('addNote inserts a note with default content and color', () => {
     const m = addNote(createEmptyModel(), { id: 'n1', position: { x: 10, y: 20 } })
     expect(m.notes['n1']).toMatchObject({
-      id: 'n1', content: '메모', color: '#FDF6E3', position: { x: 10, y: 20 },
+      id: 'n1',
+      content: '메모',
+      color: '#FDF6E3',
+      position: { x: 10, y: 20 },
     })
     const ops = diffModels(createEmptyModel(), m)
     expect(ops).toHaveLength(1)
@@ -18,8 +21,12 @@ describe('note-edits', () => {
     const next = moveNote(base, 'n1', { x: 999, y: 888 })
     const ops = diffModels(base, next)
     expect(ops).toEqual([
-      { action: 'update', entity: 'note', entityId: 'n1',
-        changes: { position: { from: { x: 0, y: 0 }, to: { x: 999, y: 888 } } } },
+      {
+        action: 'update',
+        entity: 'note',
+        entityId: 'n1',
+        changes: { position: { from: { x: 0, y: 0 }, to: { x: 999, y: 888 } } },
+      },
     ])
   })
 

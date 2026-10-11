@@ -6,9 +6,7 @@ import { ResourceResyncTab } from './resource-resync-tab.js'
 import { ResourcePromoteTab } from './resource-promote-tab.js'
 import { formatCount } from '@/lib/format'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 export type LibraryRow = {
   id: string
@@ -27,7 +25,11 @@ type Tab = 'resync' | 'promote'
  * - 가져오기: 라이브러리 → 프로젝트(최초 가져오기 = 전 항목이 신규인 재동기화)
  * - 조직으로 승격: 프로젝트 → 라이브러리(쓰기 권한이 있는 라이브러리에만)
  */
-export function ResourcePanel({ projectId, open, onOpenChange }: {
+export function ResourcePanel({
+  projectId,
+  open,
+  onOpenChange,
+}: {
   projectId: string
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -41,17 +43,19 @@ export function ResourcePanel({ projectId, open, onOpenChange }: {
   const rows = (libraries.data ?? []) as LibraryRow[]
   // 승격 탭에는 쓸 수 있는 라이브러리(직접 승격)와 이 조직의 라이브러리(요청)가 보인다.
   // 전역은 쓰기 권한이 있을 때만 — 요청 대상이 아니다.
-  const visible = tab === 'promote'
-    ? rows.filter((row) => row.canWrite || row.scope === 'org')
-    : rows
+  const visible =
+    tab === 'promote' ? rows.filter((row) => row.canWrite || row.scope === 'org') : rows
   const library = visible.find((row) => row.id === libraryId) ?? null
   const canPromote = canEdit && rows.some((row) => row.canWrite || row.scope === 'org')
 
   // 탭을 옮길 때 그 탭에서 못 쓰는 라이브러리 선택은 버린다.
   const switchTab = (next: Tab) => {
     setTab(next)
-    if (next === 'promote' && libraryId !== null
-      && !rows.some((row) => row.id === libraryId && (row.canWrite || row.scope === 'org'))) {
+    if (
+      next === 'promote' &&
+      libraryId !== null &&
+      !rows.some((row) => row.id === libraryId && (row.canWrite || row.scope === 'org'))
+    ) {
       setLibraryId(null)
     }
   }
@@ -61,15 +65,20 @@ export function ResourcePanel({ projectId, open, onOpenChange }: {
       <div className="grid content-start gap-1">
         <h4 className="text-xs font-semibold text-muted-foreground">라이브러리</h4>
         {libraries.isError && (
-          <p role="alert" className="text-destructive">{libraries.error.message}</p>
+          <p role="alert" className="text-destructive">
+            {libraries.error.message}
+          </p>
         )}
         {!libraries.isError && !libraries.isPending && visible.length === 0 && (
           <p className="text-sm text-muted-foreground">사용할 수 있는 라이브러리가 없습니다</p>
         )}
         {visible.map((lib) => (
-          <button key={lib.id} type="button"
+          <button
+            key={lib.id}
+            type="button"
             className={`rounded border px-2 py-1.5 text-left text-sm ${libraryId === lib.id ? 'border-primary' : ''}`}
-            onClick={() => setLibraryId(lib.id)}>
+            onClick={() => setLibraryId(lib.id)}
+          >
             <span className="block">{lib.name}</span>
             <span className="block text-xs text-muted-foreground">
               {lib.scope === 'global' ? '전역' : '조직'} · 항목 {formatCount(lib.itemCount)}개
@@ -99,20 +108,22 @@ export function ResourcePanel({ projectId, open, onOpenChange }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
-        <DialogHeader><DialogTitle>공용 리소스</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>공용 리소스</DialogTitle>
+        </DialogHeader>
         {/* 탭이 있으면 본문을 TabsContent 에 담는다 — 트리거의 aria-controls 가 실제 패널을 가리킨다. */}
-        {canPromote
-          ? (
-              <Tabs value={tab} onValueChange={(value) => switchTab(value as Tab)} className="gap-4">
-                <TabsList aria-label="공용 리소스 방향">
-                  <TabsTrigger value="resync">가져오기</TabsTrigger>
-                  <TabsTrigger value="promote">조직으로 승격</TabsTrigger>
-                </TabsList>
-                <TabsContent value="resync">{body}</TabsContent>
-                <TabsContent value="promote">{body}</TabsContent>
-              </Tabs>
-            )
-          : body}
+        {canPromote ? (
+          <Tabs value={tab} onValueChange={(value) => switchTab(value as Tab)} className="gap-4">
+            <TabsList aria-label="공용 리소스 방향">
+              <TabsTrigger value="resync">가져오기</TabsTrigger>
+              <TabsTrigger value="promote">조직으로 승격</TabsTrigger>
+            </TabsList>
+            <TabsContent value="resync">{body}</TabsContent>
+            <TabsContent value="promote">{body}</TabsContent>
+          </Tabs>
+        ) : (
+          body
+        )}
       </DialogContent>
     </Dialog>
   )

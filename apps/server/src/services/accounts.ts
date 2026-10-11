@@ -25,14 +25,26 @@ export async function createAccount(
   const passwordHash = await hashPassword(input.password)
   return db.transaction(async (tx) => {
     const user = (
-      await tx.insert(users).values({
-        id: uuidv7(), email, name: input.name, passwordHash, role: input.role,
-      }).returning({ id: users.id, email: users.email })
+      await tx
+        .insert(users)
+        .values({
+          id: uuidv7(),
+          email,
+          name: input.name,
+          passwordHash,
+          role: input.role,
+        })
+        .returning({ id: users.id, email: users.email })
     )[0]!
     const org = (
-      await tx.insert(organizations).values({
-        id: uuidv7(), name: `${input.name}의 공간`, kind: 'personal',
-      }).returning({ id: organizations.id })
+      await tx
+        .insert(organizations)
+        .values({
+          id: uuidv7(),
+          name: `${input.name}의 공간`,
+          kind: 'personal',
+        })
+        .returning({ id: organizations.id })
     )[0]!
     await tx.insert(members).values({ id: uuidv7(), orgId: org.id, userId: user.id, role: 'owner' })
     return user

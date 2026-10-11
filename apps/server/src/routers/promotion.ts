@@ -3,17 +3,26 @@ import { and, asc, count, eq, inArray } from 'drizzle-orm'
 import { uuidv7 } from 'uuidv7'
 import { z } from 'zod'
 import {
-  MAX_LIBRARY_FILE_ITEMS, OpApplyError, diffModels, planPromote, type ProjectModel,
+  MAX_LIBRARY_FILE_ITEMS,
+  OpApplyError,
+  diffModels,
+  planPromote,
+  type ProjectModel,
 } from '@erdd/core'
 import { members, projects, promotionRequests, resourceLibraries, users } from '../db/schema.js'
 import { loadProjectModel } from '../services/model-store.js'
 import { mutateAndPublish } from '../services/mutate-publish.js'
 import { requireProjectAccess } from '../services/perm.js'
 import {
-  emptyOutcome, loadLibraryItems, runPromoteInTx, type PromoteOutcome,
+  emptyOutcome,
+  loadLibraryItems,
+  runPromoteInTx,
+  type PromoteOutcome,
 } from '../services/promote.js'
 import {
-  requireLibraryRead, requireLibraryWrite, requireScopeWrite,
+  requireLibraryRead,
+  requireLibraryWrite,
+  requireScopeWrite,
 } from '../services/resource-library.js'
 import { apiProcedure, authedProcedure, router } from '../trpc.js'
 import type { Db } from '../db/client.js'
@@ -41,25 +50,31 @@ export const promotionRouter = router({
    */
   // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
   create: apiProcedure
-    .input(z.object({
-      projectId: z.string().uuid(),
-      libraryId: z.string().uuid(),
-      // 요청은 엔티티 id 목록을 저장할 뿐이고 승인은 서버가 한 트랜잭션으로 반영하므로 모델 op 상한
-      // (MAX_OPS_PER_MUTATION)과 무관하다. 나누지 않는다 — 요청을 쪼개면 승인자가 같은 요청을 여러 번
-      // 검토한다. 상한은 라이브러리 파일 상한과 같은 공유 상수다(guides/shared-resources.md 「요청·승인 큐」).
-      entityIds: z.array(z.string().uuid()).min(1).max(MAX_LIBRARY_FILE_ITEMS),
-      note: z.string().max(500).default(''),
-    }))
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        libraryId: z.string().uuid(),
+        // 요청은 엔티티 id 목록을 저장할 뿐이고 승인은 서버가 한 트랜잭션으로 반영하므로 모델 op 상한
+        // (MAX_OPS_PER_MUTATION)과 무관하다. 나누지 않는다 — 요청을 쪼개면 승인자가 같은 요청을 여러 번
+        // 검토한다. 상한은 라이브러리 파일 상한과 같은 공유 상수다(guides/shared-resources.md 「요청·승인 큐」).
+        entityIds: z.array(z.string().uuid()).min(1).max(MAX_LIBRARY_FILE_ITEMS),
+        note: z.string().max(500).default(''),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const access = await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'edit')
       const library = await requireLibraryRead(ctx.db, input.libraryId, ctx.user)
       if (library.scope !== 'org') {
         throw new TRPCError({
-          code: 'BAD_REQUEST', message: '전역 라이브러리로는 승격을 요청할 수 없습니다',
+          code: 'BAD_REQUEST',
+          message: '전역 라이브러리로는 승격을 요청할 수 없습니다',
         })
       }
       if (library.orgId !== access.project.orgId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: '이 프로젝트의 조직 라이브러리가 아닙니다' })
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: '이 프로젝트의 조직 라이브러리가 아닙니다',
+        })
       }
 
       const plan = await planFor(ctx.db, input.projectId, input.libraryId)
@@ -75,8 +90,12 @@ export const promotionRouter = router({
 
       const id = uuidv7()
       await ctx.db.insert(promotionRequests).values({
-        id, projectId: input.projectId, libraryId: input.libraryId,
-        requesterId: ctx.user.id, entityIds, note: input.note,
+        id,
+        projectId: input.projectId,
+        libraryId: input.libraryId,
+        requesterId: ctx.user.id,
+        entityIds,
+        note: input.note,
       })
       return { id, requested: entityIds.length, dropped }
     }),
@@ -87,30 +106,38 @@ export const promotionRouter = router({
    */
   // CLI(erdd dict)가 토큰으로 부른다 — guides/cli.md 「액세스 토큰 인증」.
   listForProject: apiProcedure
-    .input(z.object({
-      projectId: z.string().uuid(),
-      status: z.enum(['pending', 'resolved', 'rejected', 'cancelled']).optional(),
-    }))
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        status: z.enum(['pending', 'resolved', 'rejected', 'cancelled']).optional(),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       await requireProjectAccess(ctx.db, input.projectId, ctx.user.id, 'view')
       return ctx.db
         .select({
-          id: promotionRequests.id, libraryId: promotionRequests.libraryId,
-          entityIds: promotionRequests.entityIds, note: promotionRequests.note,
-          status: promotionRequests.status, createdAt: promotionRequests.createdAt,
+          id: promotionRequests.id,
+          libraryId: promotionRequests.libraryId,
+          entityIds: promotionRequests.entityIds,
+          note: promotionRequests.note,
+          status: promotionRequests.status,
+          createdAt: promotionRequests.createdAt,
           resolvedAt: promotionRequests.resolvedAt,
           resolutionNote: promotionRequests.resolutionNote,
           approvedEntityIds: promotionRequests.approvedEntityIds,
-          requesterId: promotionRequests.requesterId, requesterName: users.name,
+          requesterId: promotionRequests.requesterId,
+          requesterName: users.name,
         })
         .from(promotionRequests)
         .innerJoin(users, eq(users.id, promotionRequests.requesterId))
-        .where(input.status === undefined
-          ? eq(promotionRequests.projectId, input.projectId)
-          : and(
-            eq(promotionRequests.projectId, input.projectId),
-            eq(promotionRequests.status, input.status),
-          ))
+        .where(
+          input.status === undefined
+            ? eq(promotionRequests.projectId, input.projectId)
+            : and(
+                eq(promotionRequests.projectId, input.projectId),
+                eq(promotionRequests.status, input.status),
+              ),
+        )
         .orderBy(asc(promotionRequests.createdAt))
     }),
 
@@ -131,13 +158,19 @@ export const promotionRouter = router({
       // where에 status='pending'을 함께 건다. 이것이 없으면 위 읽기와 이 쓰기 사이에 resolve가
       // 끼어들었을 때 그 승인 결과(status·resolvedBy·approvedEntityIds)를 통째로 덮어써,
       // 라이브러리에는 항목이 올라갔는데 요청 행은 "취소됨"인 자기모순 상태가 된다.
-      const cancelled = await ctx.db.update(promotionRequests).set({
-        // 취소도 처리의 일종이라 같은 칸을 쓴다 — resolvedBy는 취소자다.
-        status: 'cancelled', resolvedBy: ctx.user.id, resolvedAt: new Date(), updatedAt: new Date(),
-      }).where(and(
-        eq(promotionRequests.id, input.requestId),
-        eq(promotionRequests.status, 'pending'),
-      )).returning({ id: promotionRequests.id })
+      const cancelled = await ctx.db
+        .update(promotionRequests)
+        .set({
+          // 취소도 처리의 일종이라 같은 칸을 쓴다 — resolvedBy는 취소자다.
+          status: 'cancelled',
+          resolvedBy: ctx.user.id,
+          resolvedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(eq(promotionRequests.id, input.requestId), eq(promotionRequests.status, 'pending')),
+        )
+        .returning({ id: promotionRequests.id })
       if (cancelled.length === 0) {
         throw new TRPCError({ code: 'CONFLICT', message: '이미 처리된 요청입니다' })
       }
@@ -149,20 +182,27 @@ export const promotionRouter = router({
    * 모델을 로드하게 된다). 오래된 순으로 정렬해 묵은 요청이 위로 온다.
    */
   listForOrg: authedProcedure
-    .input(z.object({
-      orgId: z.string().uuid(),
-      status: z.enum(['pending', 'resolved', 'rejected', 'cancelled']).optional(),
-    }))
+    .input(
+      z.object({
+        orgId: z.string().uuid(),
+        status: z.enum(['pending', 'resolved', 'rejected', 'cancelled']).optional(),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       await requireScopeWrite(ctx.db, 'org', input.orgId, ctx.user)
       const rows = await ctx.db
         .select({
-          id: promotionRequests.id, projectId: promotionRequests.projectId,
+          id: promotionRequests.id,
+          projectId: promotionRequests.projectId,
           projectName: projects.name,
-          libraryId: promotionRequests.libraryId, libraryName: resourceLibraries.name,
-          requesterName: users.name, note: promotionRequests.note,
-          entityIds: promotionRequests.entityIds, status: promotionRequests.status,
-          createdAt: promotionRequests.createdAt, resolvedAt: promotionRequests.resolvedAt,
+          libraryId: promotionRequests.libraryId,
+          libraryName: resourceLibraries.name,
+          requesterName: users.name,
+          note: promotionRequests.note,
+          entityIds: promotionRequests.entityIds,
+          status: promotionRequests.status,
+          createdAt: promotionRequests.createdAt,
+          resolvedAt: promotionRequests.resolvedAt,
           resolutionNote: promotionRequests.resolutionNote,
           approvedEntityIds: promotionRequests.approvedEntityIds,
         })
@@ -170,10 +210,12 @@ export const promotionRouter = router({
         .innerJoin(resourceLibraries, eq(resourceLibraries.id, promotionRequests.libraryId))
         .innerJoin(projects, eq(projects.id, promotionRequests.projectId))
         .innerJoin(users, eq(users.id, promotionRequests.requesterId))
-        .where(and(
-          eq(resourceLibraries.orgId, input.orgId),
-          eq(promotionRequests.status, input.status ?? 'pending'),
-        ))
+        .where(
+          and(
+            eq(resourceLibraries.orgId, input.orgId),
+            eq(promotionRequests.status, input.status ?? 'pending'),
+          ),
+        )
         .orderBy(asc(promotionRequests.createdAt))
       return rows.map((row) => ({ ...row, itemCount: row.entityIds.length }))
     }),
@@ -192,12 +234,16 @@ export const promotionRouter = router({
       await requireLibraryWrite(ctx.db, request.libraryId, ctx.user)
 
       const project = (
-        await ctx.db.select({ name: projects.name })
-          .from(projects).where(eq(projects.id, request.projectId))
+        await ctx.db
+          .select({ name: projects.name })
+          .from(projects)
+          .where(eq(projects.id, request.projectId))
       )[0]
       const requester = (
-        await ctx.db.select({ name: users.name })
-          .from(users).where(eq(users.id, request.requesterId))
+        await ctx.db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, request.requesterId))
       )[0]
 
       const plan = await planFor(ctx.db, request.projectId, request.libraryId)
@@ -210,7 +256,8 @@ export const promotionRouter = router({
       return {
         request: {
           ...request,
-          projectName: project?.name ?? '', requesterName: requester?.name ?? '',
+          projectName: project?.name ?? '',
+          requesterName: requester?.name ?? '',
         },
         entries,
         unavailable,
@@ -233,16 +280,22 @@ export const promotionRouter = router({
    * 락 안의 확인이다.
    */
   resolve: authedProcedure
-    .input(z.object({
-      requestId: z.string().uuid(),
-      approve: z.array(z.object({
-        entityId: z.string().uuid(),
-        expectedStatus: z.enum(['new', 'update', 'name-match']),
-        expectedTargetItemId: z.string().uuid().nullable(),
-        expectedTargetVersion: z.number().int().nullable(),
-      })).max(MAX_LIBRARY_FILE_ITEMS),
-      note: z.string().max(500).default(''),
-    }))
+    .input(
+      z.object({
+        requestId: z.string().uuid(),
+        approve: z
+          .array(
+            z.object({
+              entityId: z.string().uuid(),
+              expectedStatus: z.enum(['new', 'update', 'name-match']),
+              expectedTargetItemId: z.string().uuid().nullable(),
+              expectedTargetVersion: z.number().int().nullable(),
+            }),
+          )
+          .max(MAX_LIBRARY_FILE_ITEMS),
+        note: z.string().max(500).default(''),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const request = await loadRequest(ctx.db, input.requestId)
       await requireLibraryWrite(ctx.db, request.libraryId, ctx.user)
@@ -258,27 +311,43 @@ export const promotionRouter = router({
       }
       const allowed = new Set(request.entityIds)
       if (input.approve.some((entry) => !allowed.has(entry.entityId))) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: '요청에 없는 항목은 승인할 수 없습니다' })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '요청에 없는 항목은 승인할 수 없습니다',
+        })
       }
 
       if (input.approve.length === 0) {
         await ctx.db.transaction(async (tx) => {
           const locked = (
-            await tx.select().from(promotionRequests)
-              .where(eq(promotionRequests.id, input.requestId)).for('update')
+            await tx
+              .select()
+              .from(promotionRequests)
+              .where(eq(promotionRequests.id, input.requestId))
+              .for('update')
           )[0]
-          if (!locked) throw new TRPCError({ code: 'NOT_FOUND', message: '요청을 찾을 수 없습니다' })
+          if (!locked)
+            throw new TRPCError({ code: 'NOT_FOUND', message: '요청을 찾을 수 없습니다' })
           if (locked.status !== 'pending') {
             throw new TRPCError({ code: 'CONFLICT', message: '이미 처리된 요청입니다' })
           }
-          await tx.update(promotionRequests).set({
-            status: 'rejected', resolvedBy: ctx.user.id, resolvedAt: new Date(),
-            resolutionNote: input.note, approvedEntityIds: [], updatedAt: new Date(),
-          }).where(eq(promotionRequests.id, input.requestId))
+          await tx
+            .update(promotionRequests)
+            .set({
+              status: 'rejected',
+              resolvedBy: ctx.user.id,
+              resolvedAt: new Date(),
+              resolutionNote: input.note,
+              approvedEntityIds: [],
+              updatedAt: new Date(),
+            })
+            .where(eq(promotionRequests.id, input.requestId))
         })
         return {
           status: 'rejected' as const,
-          seq: null, inserted: 0, updated: 0,
+          seq: null,
+          inserted: 0,
+          updated: 0,
           skipped: [] as PromoteOutcome['skipped'],
         }
       }
@@ -293,25 +362,38 @@ export const promotionRouter = router({
           source: 'web',
           prepare: async (tx, model) => {
             const locked = (
-              await tx.select().from(promotionRequests)
-                .where(eq(promotionRequests.id, input.requestId)).for('update')
+              await tx
+                .select()
+                .from(promotionRequests)
+                .where(eq(promotionRequests.id, input.requestId))
+                .for('update')
             )[0]
-            if (!locked) throw new TRPCError({ code: 'NOT_FOUND', message: '요청을 찾을 수 없습니다' })
+            if (!locked)
+              throw new TRPCError({ code: 'NOT_FOUND', message: '요청을 찾을 수 없습니다' })
             if (locked.status !== 'pending') {
               throw new TRPCError({ code: 'CONFLICT', message: '이미 처리된 요청입니다' })
             }
             state.next = await runPromoteInTx(tx, {
-              libraryId: request.libraryId, model, entries: input.approve, outcome,
+              libraryId: request.libraryId,
+              model,
+              entries: input.approve,
+              outcome,
             })
             const skipped = new Set(outcome.skipped.map((s) => s.entityId))
-            await tx.update(promotionRequests).set({
-              status: 'resolved', resolvedBy: ctx.user.id, resolvedAt: new Date(),
-              resolutionNote: input.note, updatedAt: new Date(),
-              // 승인한 것이 아니라 **실제로 올라간 것**이다.
-              approvedEntityIds: input.approve
-                .map((entry) => entry.entityId)
-                .filter((id) => !skipped.has(id)),
-            }).where(eq(promotionRequests.id, input.requestId))
+            await tx
+              .update(promotionRequests)
+              .set({
+                status: 'resolved',
+                resolvedBy: ctx.user.id,
+                resolvedAt: new Date(),
+                resolutionNote: input.note,
+                updatedAt: new Date(),
+                // 승인한 것이 아니라 **실제로 올라간 것**이다.
+                approvedEntityIds: input.approve
+                  .map((entry) => entry.entityId)
+                  .filter((id) => !skipped.has(id)),
+              })
+              .where(eq(promotionRequests.id, input.requestId))
           },
           deriveOps: (model) => (state.next ? diffModels(model, state.next) : []),
           // 실제 승격 건수(outcome.inserted+updated)는 쓸 수 없다 — summary는 문자열 값이라
@@ -336,11 +418,14 @@ export const promotionRouter = router({
       .select({ orgId: resourceLibraries.orgId, count: count() })
       .from(promotionRequests)
       .innerJoin(resourceLibraries, eq(resourceLibraries.id, promotionRequests.libraryId))
-      .innerJoin(members, and(
-        eq(members.orgId, resourceLibraries.orgId),
-        eq(members.userId, ctx.user.id),
-        inArray(members.role, ['owner', 'admin']),
-      ))
+      .innerJoin(
+        members,
+        and(
+          eq(members.orgId, resourceLibraries.orgId),
+          eq(members.userId, ctx.user.id),
+          inArray(members.role, ['owner', 'admin']),
+        ),
+      )
       .where(eq(promotionRequests.status, 'pending'))
       .groupBy(resourceLibraries.orgId)
     const byOrg = rows

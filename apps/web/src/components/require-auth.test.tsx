@@ -16,10 +16,16 @@ function renderProbe(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   mockTrpcFetch(handlers)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
-  const Stub = createRoutesStub([{
-    path: '/',
-    Component: () => <RequireAuth><Probe /></RequireAuth>,
-  }])
+  const Stub = createRoutesStub([
+    {
+      path: '/',
+      Component: () => (
+        <RequireAuth>
+          <Probe />
+        </RequireAuth>
+      ),
+    },
+  ])
   render(
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>

@@ -1,26 +1,70 @@
 import { describe, expect, it } from 'vitest'
-import { createEmptyModel, DEFAULT_NAMING_RULES, type NamingRules, type ProjectModel } from '@erdd/core'
+import {
+  createEmptyModel,
+  DEFAULT_NAMING_RULES,
+  type NamingRules,
+  type ProjectModel,
+} from '@erdd/core'
 import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import {
-  createWord, updateWord, removeWord,
-  createTerm, updateTerm, removeTerm,
-  buildUsageIndex, wordUsage, termUsage, unregisteredWords, unregisteredAbbreviations,
-  planTermPropagation, applyTermPropagation,
-  canRegisterWord, canRegisterTerm,
+  createWord,
+  updateWord,
+  removeWord,
+  createTerm,
+  updateTerm,
+  removeTerm,
+  buildUsageIndex,
+  wordUsage,
+  termUsage,
+  unregisteredWords,
+  unregisteredAbbreviations,
+  planTermPropagation,
+  applyTermPropagation,
+  canRegisterWord,
+  canRegisterTerm,
 } from './dict-edits.js'
 
-const word = (id: string, over = {}) => (
-  { id, logicalName: '주문', abbreviation: 'ORD', englishName: null, description: null, origin: null, ...over }
-)
-const term = (id: string, over = {}) => (
-  { id, logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: null, origin: null, ...over }
-)
-const table = (id: string, logicalName: string) => (
-  { id, logicalName, physicalName: '', comment: null, groupId: null, position: { x: 0, y: 0 }, groupPosition: null, custom: {} }
-)
+const word = (id: string, over = {}) => ({
+  id,
+  logicalName: '주문',
+  abbreviation: 'ORD',
+  englishName: null,
+  description: null,
+  origin: null,
+  ...over,
+})
+const term = (id: string, over = {}) => ({
+  id,
+  logicalName: '주문번호',
+  physicalName: 'ORD_NO',
+  domainId: null,
+  description: null,
+  origin: null,
+  ...over,
+})
+const table = (id: string, logicalName: string) => ({
+  id,
+  logicalName,
+  physicalName: '',
+  comment: null,
+  groupId: null,
+  position: { x: 0, y: 0 },
+  groupPosition: null,
+  custom: {},
+})
 const column = (id: string, tableId: string, logicalName: string) => ({
-  id, tableId, logicalName, physicalName: '', type: 'INT',
-  isPk: false, autoIncrement: false, nullable: true, defaultValue: null, order: 0, comment: null, domainId: null,
+  id,
+  tableId,
+  logicalName,
+  physicalName: '',
+  type: 'INT',
+  isPk: false,
+  autoIncrement: false,
+  nullable: true,
+  defaultValue: null,
+  order: 0,
+  comment: null,
+  domainId: null,
   custom: {},
 })
 
@@ -133,13 +177,22 @@ describe('unregisteredAbbreviations', () => {
 
   it('사전에 없는 약어만 모은다', () => {
     let m = buildSampleModel()
-    m = { ...m, words: { w1: {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: null, description: null, origin: null,
-    } } }
+    m = {
+      ...m,
+      words: {
+        w1: {
+          id: 'w1',
+          logicalName: '회원',
+          abbreviation: 'MBR',
+          englishName: null,
+          description: null,
+          origin: null,
+        },
+      },
+    }
     // 픽스처: t1=MBR_GRD, t2=MBR, c1=GRD_CD, c2=MBR_NO, c3=MBR_NM, c4=GRD_CD
     const out = unregisteredAbbreviations(m, rules)
-    expect(out).not.toContain('MBR')          // 사전에 있다
+    expect(out).not.toContain('MBR') // 사전에 있다
     expect(out).toContain('GRD')
     expect(out).toContain('CD')
     expect(out).toContain('NO')
@@ -154,13 +207,51 @@ describe('unregisteredAbbreviations', () => {
   // ⚠️ 없으면 "전부 모은다"는 구현도 위를 통과한다.
   it('모든 약어가 사전에 있으면 빈 배열이다', () => {
     let m = buildSampleModel()
-    m = { ...m, words: {
-      w1: { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: null, description: null, origin: null },
-      w2: { id: 'w2', logicalName: '등급', abbreviation: 'GRD', englishName: null, description: null, origin: null },
-      w3: { id: 'w3', logicalName: '코드', abbreviation: 'CD', englishName: null, description: null, origin: null },
-      w4: { id: 'w4', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null },
-      w5: { id: 'w5', logicalName: '명', abbreviation: 'NM', englishName: null, description: null, origin: null },
-    } }
+    m = {
+      ...m,
+      words: {
+        w1: {
+          id: 'w1',
+          logicalName: '회원',
+          abbreviation: 'MBR',
+          englishName: null,
+          description: null,
+          origin: null,
+        },
+        w2: {
+          id: 'w2',
+          logicalName: '등급',
+          abbreviation: 'GRD',
+          englishName: null,
+          description: null,
+          origin: null,
+        },
+        w3: {
+          id: 'w3',
+          logicalName: '코드',
+          abbreviation: 'CD',
+          englishName: null,
+          description: null,
+          origin: null,
+        },
+        w4: {
+          id: 'w4',
+          logicalName: '번호',
+          abbreviation: 'NO',
+          englishName: null,
+          description: null,
+          origin: null,
+        },
+        w5: {
+          id: 'w5',
+          logicalName: '명',
+          abbreviation: 'NM',
+          englishName: null,
+          description: null,
+          origin: null,
+        },
+      },
+    }
     expect(unregisteredAbbreviations(m, rules)).toEqual([])
   })
 })
@@ -171,29 +262,41 @@ describe('unregisteredAbbreviations', () => {
  */
 function propagationModel() {
   let m = createEmptyModel()
-  m = createTerm(m, term('tm1'))                     // 주문번호 / ORD_NO / domainId null
+  m = createTerm(m, term('tm1')) // 주문번호 / ORD_NO / domainId null
   m = {
     ...m,
     domains: {
       d1: {
-        id: 'd1', name: '번호', category: null, logicalType: 'BIGINT',
+        id: 'd1',
+        name: '번호',
+        category: null,
+        logicalType: 'BIGINT',
         dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-        defaultValue: null, allowedValues: [], description: null, origin: null,
+        defaultValue: null,
+        allowedValues: [],
+        description: null,
+        origin: null,
       },
       d2: {
-        id: 'd2', name: '코드', category: null, logicalType: 'CHAR(2)',
+        id: 'd2',
+        name: '코드',
+        category: null,
+        logicalType: 'CHAR(2)',
         dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-        defaultValue: null, allowedValues: [], description: null, origin: null,
+        defaultValue: null,
+        allowedValues: [],
+        description: null,
+        origin: null,
       },
     },
     tables: {
-      t1: { ...table('t1', '주문번호'), physicalName: 'ORD_NO' },   // 용어와 논리명이 같은 테이블
-      t2: { ...table('t2', '주문'), physicalName: 'ORD' },          // 무관한 테이블(컬럼 소속용)
+      t1: { ...table('t1', '주문번호'), physicalName: 'ORD_NO' }, // 용어와 논리명이 같은 테이블
+      t2: { ...table('t2', '주문'), physicalName: 'ORD' }, // 무관한 테이블(컬럼 소속용)
     },
     columns: {
       c1: { ...column('c1', 't2', '주문번호'), physicalName: 'ORD_NO' },
       c2: { ...column('c2', 't2', '주문번호'), physicalName: 'OLD_NO', domainId: 'd2' },
-      c3: { ...column('c3', 't2', '주문일자'), physicalName: 'ORD_DT' },  // 무관한 컬럼
+      c3: { ...column('c3', 't2', '주문일자'), physicalName: 'ORD_DT' }, // 무관한 컬럼
     },
   }
   return m
@@ -209,10 +312,10 @@ describe('planTermPropagation / applyTermPropagation', () => {
 
     const next = applyTermPropagation(m, plan)
     expect(next.tables.t1!.physicalName).toBe('ORDER_NO')
-    expect(next.tables.t1!.logicalName).toBe('주문번호')      // 논리명 불변
+    expect(next.tables.t1!.logicalName).toBe('주문번호') // 논리명 불변
     expect(next.columns.c1!.physicalName).toBe('ORDER_NO')
     expect(next.columns.c2!.physicalName).toBe('ORDER_NO')
-    expect(next.columns.c3!.physicalName).toBe('ORD_DT')      // 무관한 컬럼 불변
+    expect(next.columns.c3!.physicalName).toBe('ORD_DT') // 무관한 컬럼 불변
   })
 
   it('논리명이 바뀌면 수정 전 논리명 기준으로 사용처를 찾는다', () => {
@@ -245,12 +348,12 @@ describe('planTermPropagation / applyTermPropagation', () => {
 
   it('domainId가 null로 바뀌면 전파하지 않는다(컬럼 도메인 보존)', () => {
     let m = propagationModel()
-    m = updateTerm(m, 'tm1', { domainId: 'd1' })        // 용어에 도메인이 있는 상태에서
+    m = updateTerm(m, 'tm1', { domainId: 'd1' }) // 용어에 도메인이 있는 상태에서
     const plan = planTermPropagation(m, 'tm1', { domainId: null })
     expect(plan.entries).toEqual([])
 
     const next = applyTermPropagation(m, plan)
-    expect(next.columns.c2!.domainId).toBe('d2')        // 기존 도메인 그대로
+    expect(next.columns.c2!.domainId).toBe('d2') // 기존 도메인 그대로
   })
 
   it('domainId가 null→값 / 값→다른 값이면 컬럼에만 전파한다', () => {
@@ -269,7 +372,10 @@ describe('planTermPropagation / applyTermPropagation', () => {
     const m = propagationModel()
     // 폼은 항상 모든 필드를 채워 보낸다 — 값이 같으면 전파 대상이 아니어야 한다.
     const plan = planTermPropagation(m, 'tm1', {
-      logicalName: '주문번호', physicalName: 'ORD_NO', domainId: null, description: '설명만 바꿈',
+      logicalName: '주문번호',
+      physicalName: 'ORD_NO',
+      domainId: null,
+      description: '설명만 바꿈',
     })
     expect(plan.entries).toEqual([])
   })
@@ -295,7 +401,7 @@ describe('planTermPropagation / applyTermPropagation', () => {
     const next = applyTermPropagation(m, plan)
     // 제자리 변형 회귀가 나면 diffModels(current, next)가 참조 동일을 보고 전파 op를 만들지 않는다.
     expect(JSON.stringify(m)).toBe(before)
-    expect(next.columns.c2!.physicalName).toBe('ORDER_NO')   // 반환값에는 반영돼 있다
+    expect(next.columns.c2!.physicalName).toBe('ORDER_NO') // 반환값에는 반영돼 있다
   })
 
   it('계획을 세운 뒤 남이 그 필드를 고쳤으면 덮어쓰지 않는다', () => {
@@ -307,8 +413,8 @@ describe('planTermPropagation / applyTermPropagation', () => {
       columns: { ...m.columns, c1: { ...m.columns.c1!, physicalName: 'JOIN_DT' } },
     }
     const next = applyTermPropagation(remote, plan)
-    expect(next.columns.c1!.physicalName).toBe('JOIN_DT')      // 남의 변경 보존
-    expect(next.columns.c2!.physicalName).toBe('ORDER_NO')     // 나머지는 정상 반영
+    expect(next.columns.c1!.physicalName).toBe('JOIN_DT') // 남의 변경 보존
+    expect(next.columns.c2!.physicalName).toBe('ORDER_NO') // 나머지는 정상 반영
   })
 })
 
@@ -316,18 +422,29 @@ describe('canRegisterWord', () => {
   const base = (): ProjectModel => ({
     ...createEmptyModel(),
     words: {
-      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
+      w1: {
+        id: 'w1',
+        logicalName: '회원',
+        abbreviation: 'MBR',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
     },
   })
 
   it('정상 등록', () => {
-    expect(canRegisterWord(base(), { logicalName: '주문', abbreviation: 'ORD' }))
-      .toEqual({ ok: true, abbrClash: false })
+    expect(canRegisterWord(base(), { logicalName: '주문', abbreviation: 'ORD' })).toEqual({
+      ok: true,
+      abbrClash: false,
+    })
   })
 
   it('같은 논리명이 이미 있으면 막는다', () => {
-    expect(canRegisterWord(base(), { logicalName: '회원', abbreviation: 'MEM' }))
-      .toEqual({ ok: false, reason: 'duplicate' })
+    expect(canRegisterWord(base(), { logicalName: '회원', abbreviation: 'MEM' })).toEqual({
+      ok: false,
+      reason: 'duplicate',
+    })
   })
 
   it('앞뒤 공백을 무시하고 중복을 판정한다', () => {
@@ -335,15 +452,21 @@ describe('canRegisterWord', () => {
   })
 
   it('약어가 겹치면 막지는 않고 표식만 세운다', () => {
-    expect(canRegisterWord(base(), { logicalName: '멤버', abbreviation: 'mbr' }))
-      .toEqual({ ok: true, abbrClash: true })
+    expect(canRegisterWord(base(), { logicalName: '멤버', abbreviation: 'mbr' })).toEqual({
+      ok: true,
+      abbrClash: true,
+    })
   })
 
   it('어느 한쪽이 비면 막는다', () => {
-    expect(canRegisterWord(base(), { logicalName: '', abbreviation: 'X' }))
-      .toEqual({ ok: false, reason: 'empty' })
-    expect(canRegisterWord(base(), { logicalName: '주문', abbreviation: '  ' }))
-      .toEqual({ ok: false, reason: 'empty' })
+    expect(canRegisterWord(base(), { logicalName: '', abbreviation: 'X' })).toEqual({
+      ok: false,
+      reason: 'empty',
+    })
+    expect(canRegisterWord(base(), { logicalName: '주문', abbreviation: '  ' })).toEqual({
+      ok: false,
+      reason: 'empty',
+    })
   })
 })
 
@@ -353,16 +476,45 @@ describe('usesWord 의 용어 완전일치 판정', () => {
   const model = (logicalName: string): ProjectModel => ({
     ...createEmptyModel(),
     words: {
-      w1: { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null },
-      w2: { id:'w2', logicalName:'번호', abbreviation:'NO', englishName:null, description:null, origin:null },
+      w1: {
+        id: 'w1',
+        logicalName: '회원',
+        abbreviation: 'MBR',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
+      w2: {
+        id: 'w2',
+        logicalName: '번호',
+        abbreviation: 'NO',
+        englishName: null,
+        description: null,
+        origin: null,
+      },
     },
     // 용어 저장값에는 구분자가 없다(공용 라이브러리에서 내려온 모양).
     terms: {
-      t1: { id:'t1', logicalName:'회원번호', physicalName:'MBR_NO', domainId:null, description:null, origin:null },
+      t1: {
+        id: 't1',
+        logicalName: '회원번호',
+        physicalName: 'MBR_NO',
+        domainId: null,
+        description: null,
+        origin: null,
+      },
     },
     tables: {
-      t: { id:'t', logicalName, physicalName:'MBR_NO', comment:null, groupId:null,
-           position:{x:0,y:0}, groupPosition:null, custom:{} },
+      t: {
+        id: 't',
+        logicalName,
+        physicalName: 'MBR_NO',
+        comment: null,
+        groupId: null,
+        position: { x: 0, y: 0 },
+        groupPosition: null,
+        custom: {},
+      },
     },
   })
 
@@ -384,38 +536,64 @@ describe('canRegisterTerm', () => {
   const base = (): ProjectModel => ({
     ...createEmptyModel(),
     terms: {
-      t1: { id:'t1', logicalName:'회원번호', physicalName:'MBR_NO', domainId:null, description:null, origin:null },
+      t1: {
+        id: 't1',
+        logicalName: '회원번호',
+        physicalName: 'MBR_NO',
+        domainId: null,
+        description: null,
+        origin: null,
+      },
     },
   })
 
   it('정상 등록', () => {
-    expect(canRegisterTerm(base(), { logicalName: '주문번호', physicalName: 'ORD_NO' }, DEFAULT_NAMING_RULES))
-      .toEqual({ ok: true })
+    expect(
+      canRegisterTerm(
+        base(),
+        { logicalName: '주문번호', physicalName: 'ORD_NO' },
+        DEFAULT_NAMING_RULES,
+      ),
+    ).toEqual({ ok: true })
   })
 
   it('같은 논리명이 이미 있으면 막는다', () => {
-    expect(canRegisterTerm(base(), { logicalName: '회원번호', physicalName: 'MEMBER_NO' }, DEFAULT_NAMING_RULES))
-      .toEqual({ ok: false, reason: 'duplicate' })
+    expect(
+      canRegisterTerm(
+        base(),
+        { logicalName: '회원번호', physicalName: 'MEMBER_NO' },
+        DEFAULT_NAMING_RULES,
+      ),
+    ).toEqual({ ok: false, reason: 'duplicate' })
   })
 
   it('어느 한쪽이 비면 막는다', () => {
-    expect(canRegisterTerm(base(), { logicalName: '주문번호', physicalName: '' }, DEFAULT_NAMING_RULES))
-      .toEqual({ ok: false, reason: 'empty' })
+    expect(
+      canRegisterTerm(base(), { logicalName: '주문번호', physicalName: '' }, DEFAULT_NAMING_RULES),
+    ).toEqual({ ok: false, reason: 'empty' })
   })
 
   // ⚠️ 중복 판정이 평문이면 `회원_번호` 가 통과해 같은 bare 이름의 용어가 둘 생긴다 —
   // generatePhysicalName 의 find 가 모델 순서로 하나를 골라 나머지는 유령이 된다(설계 D4).
   it('구분자 표기만 다른 용어는 중복으로 막는다', () => {
-    expect(canRegisterTerm(base(), { logicalName: '회원_번호', physicalName: 'MBR_NO2' }, DEFAULT_NAMING_RULES))
-      .toEqual({ ok: false, reason: 'duplicate' })
+    expect(
+      canRegisterTerm(
+        base(),
+        { logicalName: '회원_번호', physicalName: 'MBR_NO2' },
+        DEFAULT_NAMING_RULES,
+      ),
+    ).toEqual({ ok: false, reason: 'duplicate' })
   })
 
   // 대조군 — 구분자를 끈 규칙에서는 표기가 다르면 다른 이름이다(옛 세계).
   it('구분자를 끈 규칙에서는 표기가 다르면 등록된다', () => {
-    expect(canRegisterTerm(
-      base(), { logicalName: '회원_번호', physicalName: 'MBR_NO2' },
-      { ...DEFAULT_NAMING_RULES, logicalSeparator: '' },
-    )).toEqual({ ok: true })
+    expect(
+      canRegisterTerm(
+        base(),
+        { logicalName: '회원_번호', physicalName: 'MBR_NO2' },
+        { ...DEFAULT_NAMING_RULES, logicalSeparator: '' },
+      ),
+    ).toEqual({ ok: true })
   })
 })
 
@@ -425,26 +603,62 @@ describe('buildUsageIndex — 목록의 사용 수는 삭제·수정 경고와 �
    * (termUsage 는 빈 논리명과 맞춘다), 같은 단어가 두 번 든 이름(한 번만 센다), 앞뒤 공백, 빈 논리명.
    */
   function usageFixture(): ProjectModel {
-    let m = buildSampleModel()   // t1 회원등급 · t2 회원, c1·c4 등급코드 · c2 회원번호 · c3 회원명
+    let m = buildSampleModel() // t1 회원등급 · t2 회원, c1·c4 등급코드 · c2 회원번호 · c3 회원명
     const words: [string, string, string][] = [
-      ['w1', '회원', 'MBR'], ['w2', '번호', 'NO'], ['w3', '등급', 'GRD'], ['w4', '코드', 'CD'], ['w5', '명', 'NM'],
+      ['w1', '회원', 'MBR'],
+      ['w2', '번호', 'NO'],
+      ['w3', '등급', 'GRD'],
+      ['w4', '코드', 'CD'],
+      ['w5', '명', 'NM'],
       ['w6', '주문', 'ORD'],
     ]
     for (const [id, logicalName, abbreviation] of words) {
-      m = createWord(m, { id, logicalName, abbreviation, englishName: null, description: null, origin: null })
+      m = createWord(m, {
+        id,
+        logicalName,
+        abbreviation,
+        englishName: null,
+        description: null,
+        origin: null,
+      })
     }
     const terms: [string, string, string][] = [
-      ['tm1', '등급코드', 'GRD_CD'], ['tm2', '회원_번호', 'MBR_NO'], ['tm3', '없는용어', 'NONE'], ['tm4', '  ', 'BLANK'],
+      ['tm1', '등급코드', 'GRD_CD'],
+      ['tm2', '회원_번호', 'MBR_NO'],
+      ['tm3', '없는용어', 'NONE'],
+      ['tm4', '  ', 'BLANK'],
     ]
     for (const [id, logicalName, physicalName] of terms) {
-      m = createTerm(m, { id, logicalName, physicalName, domainId: null, description: null, origin: null })
+      m = createTerm(m, {
+        id,
+        logicalName,
+        physicalName,
+        domainId: null,
+        description: null,
+        origin: null,
+      })
     }
-    const tables = { ...m.tables, t3: { ...m.tables.t1!, id: 't3', logicalName: '회원_등급', physicalName: 'MBR_GRD2' } }
+    const tables = {
+      ...m.tables,
+      t3: { ...m.tables.t1!, id: 't3', logicalName: '회원_등급', physicalName: 'MBR_GRD2' },
+    }
     const columns = {
       ...m.columns,
-      c5: { ...m.columns.c3!, id: 'c5', tableId: 't3', logicalName: ' 회원회원 ', physicalName: 'MBR_MBR' },
+      c5: {
+        ...m.columns.c3!,
+        id: 'c5',
+        tableId: 't3',
+        logicalName: ' 회원회원 ',
+        physicalName: 'MBR_MBR',
+      },
       c6: { ...m.columns.c3!, id: 'c6', tableId: 't3', logicalName: '', physicalName: 'EMPTY' },
-      c7: { ...m.columns.c3!, id: 'c7', tableId: 't3', logicalName: '회원번호', physicalName: 'MBR_NO' },
+      c7: {
+        ...m.columns.c3!,
+        id: 'c7',
+        tableId: 't3',
+        logicalName: '회원번호',
+        physicalName: 'MBR_NO',
+      },
     }
     return { ...m, tables, columns }
   }
@@ -464,31 +678,67 @@ describe('buildUsageIndex — 목록의 사용 수는 삭제·수정 경고와 �
   function trickyFixture(): ProjectModel {
     let m = usageFixture()
     const words: [string, string, string][] = [
-      ['w7', '상태', 'STAT'], ['w8', '상태', 'STS'], ['w9', '', 'EMPTYWORD'], ['w10', 'ID', 'ID'],
+      ['w7', '상태', 'STAT'],
+      ['w8', '상태', 'STS'],
+      ['w9', '', 'EMPTYWORD'],
+      ['w10', 'ID', 'ID'],
     ]
     for (const [id, logicalName, abbreviation] of words) {
-      m = createWord(m, { id, logicalName, abbreviation, englishName: null, description: null, origin: null })
+      m = createWord(m, {
+        id,
+        logicalName,
+        abbreviation,
+        englishName: null,
+        description: null,
+        origin: null,
+      })
     }
     const terms: [string, string, string][] = [
-      ['tm5', '주문', 'ORD_TERM'], ['tm6', '주문상태', 'ORD_STAT'], ['tm7', '주문상태', 'ORD_STS'], ['tm8', '주문코드', 'ORD_CD'],
+      ['tm5', '주문', 'ORD_TERM'],
+      ['tm6', '주문상태', 'ORD_STAT'],
+      ['tm7', '주문상태', 'ORD_STS'],
+      ['tm8', '주문코드', 'ORD_CD'],
     ]
     for (const [id, logicalName, physicalName] of terms) {
-      m = createTerm(m, { id, logicalName, physicalName, domainId: null, description: null, origin: null })
+      m = createTerm(m, {
+        id,
+        logicalName,
+        physicalName,
+        domainId: null,
+        description: null,
+        origin: null,
+      })
     }
     const base = m.tables.t1!
     const tables = {
       ...m.tables,
       t4: { ...base, id: 't4', logicalName: '주문', physicalName: 'ORD', groupId: 'g1' },
-      t5: { ...base, id: 't5', logicalName: '회원_주문_번호', physicalName: 'MBR_ORD_NO', groupId: null },
+      t5: {
+        ...base,
+        id: 't5',
+        logicalName: '회원_주문_번호',
+        physicalName: 'MBR_ORD_NO',
+        groupId: null,
+      },
     }
     const col = m.columns.c3!
     const extra: [string, string][] = [
-      ['c8', '회원주문번호'], ['c9', '회원_주문번호'], ['c10', '회원_회원'], ['c11', '_회원__주문_'],
-      ['c12', '주문_코드'], ['c13', '_'], ['c14', '주문상태'], ['c15', '상태'], ['c16', '회원XYZ번호'],
-      ['c17', '회원ID'], ['c18', '주문_상태'], ['c19', '  주문  '],
+      ['c8', '회원주문번호'],
+      ['c9', '회원_주문번호'],
+      ['c10', '회원_회원'],
+      ['c11', '_회원__주문_'],
+      ['c12', '주문_코드'],
+      ['c13', '_'],
+      ['c14', '주문상태'],
+      ['c15', '상태'],
+      ['c16', '회원XYZ번호'],
+      ['c17', '회원ID'],
+      ['c18', '주문_상태'],
+      ['c19', '  주문  '],
     ]
     const columns = { ...m.columns }
-    for (const [id, logicalName] of extra) columns[id] = { ...col, id, tableId: 't5', logicalName, physicalName: '' }
+    for (const [id, logicalName] of extra)
+      columns[id] = { ...col, id, tableId: 't5', logicalName, physicalName: '' }
     const tableGroups = { ...m.tableGroups, g1: { ...m.tableGroups.g1!, alias: 'MBR' } }
     return { ...m, tables, columns, tableGroups }
   }
@@ -496,11 +746,19 @@ describe('buildUsageIndex — 목록의 사용 수는 삭제·수정 경고와 �
   const RULES: [string, NamingRules][] = [
     ['기본 규칙(논리명 구분자 _)', DEFAULT_NAMING_RULES],
     ['논리명 구분자 없음', { ...DEFAULT_NAMING_RULES, logicalSeparator: '' }],
-    ['형식 템플릿이 걸린 규칙', {
-      ...DEFAULT_NAMING_RULES, tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}', tableLogicalTemplate: '{그룹명}_{논리명}',
-    }],
+    [
+      '형식 템플릿이 걸린 규칙',
+      {
+        ...DEFAULT_NAMING_RULES,
+        tablePhysicalTemplate: 'TB_{그룹별칭}_{물리명}',
+        tableLogicalTemplate: '{그룹명}_{논리명}',
+      },
+    ],
   ]
-  const FIXTURES: [string, () => ProjectModel][] = [['기본 픽스처', usageFixture], ['까다로운 픽스처', trickyFixture]]
+  const FIXTURES: [string, () => ProjectModel][] = [
+    ['기본 픽스처', usageFixture],
+    ['까다로운 픽스처', trickyFixture],
+  ]
   for (const [fixtureLabel, fixture] of FIXTURES) {
     for (const [label, rules] of RULES) {
       it(`${fixtureLabel} · ${label}: 모든 단어·용어 id 에서 wordUsage·termUsage 와 같은 값이다`, () => {
@@ -508,8 +766,10 @@ describe('buildUsageIndex — 목록의 사용 수는 삭제·수정 경고와 �
         const index = buildUsageIndex(m, rules)
         expect([...index.words.keys()].sort()).toEqual(Object.keys(m.words).sort())
         expect([...index.terms.keys()].sort()).toEqual(Object.keys(m.terms).sort())
-        for (const id of Object.keys(m.words)) expect(index.words.get(id), `단어 ${id}`).toEqual(wordUsage(m, id, rules))
-        for (const id of Object.keys(m.terms)) expect(index.terms.get(id), `용어 ${id}`).toEqual(termUsage(m, id))
+        for (const id of Object.keys(m.words))
+          expect(index.words.get(id), `단어 ${id}`).toEqual(wordUsage(m, id, rules))
+        for (const id of Object.keys(m.terms))
+          expect(index.terms.get(id), `용어 ${id}`).toEqual(termUsage(m, id))
       })
     }
   }
@@ -531,7 +791,8 @@ describe('buildUsageIndex — 목록의 사용 수는 삭제·수정 경고와 �
     const m = trickyFixture()
     const withSep = buildUsageIndex(m, DEFAULT_NAMING_RULES)
     const noSep = buildUsageIndex(m, { ...DEFAULT_NAMING_RULES, logicalSeparator: '' })
-    const ids = (index: typeof withSep, kind: 'words' | 'terms', id: string) => index[kind].get(id)!.map((u) => u.entity.id)
+    const ids = (index: typeof withSep, kind: 'words' | 'terms', id: string) =>
+      index[kind].get(id)!.map((u) => u.entity.id)
     // 용어 tm5(주문)와 이름이 같은 t4·c19 는 단어 주문의 사용처가 아니고, 용어 쪽은 평문 trim 으로 둘 다 잡는다.
     expect(ids(withSep, 'words', 'w6')).not.toContain('t4')
     expect(ids(withSep, 'terms', 'tm5')).toEqual(['t4', 'c19'])

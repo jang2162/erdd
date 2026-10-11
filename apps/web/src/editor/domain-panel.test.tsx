@@ -20,7 +20,9 @@ function renderPanel() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<DomainPanel projectId={PROJECT_ID} open onOpenChange={() => {}} />, { wrapper: w })
@@ -29,21 +31,36 @@ function renderPanel() {
 function loadModelWithDomains(grant = true) {
   let m = buildSampleModel()
   m = createDomain(m, {
-    id: 'd1', name: '금액', category: '통화', logicalType: 'DECIMAL(15)',
+    id: 'd1',
+    name: '금액',
+    category: '통화',
+    logicalType: 'DECIMAL(15)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: [], description: null, origin: null,
+    defaultValue: null,
+    allowedValues: [],
+    description: null,
+    origin: null,
   })
   m = createDomain(m, {
-    id: 'd2', name: '상태코드', category: '코드', logicalType: 'CHAR(1)',
+    id: 'd2',
+    name: '상태코드',
+    category: '코드',
+    logicalType: 'CHAR(1)',
     dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-    defaultValue: null, allowedValues: ['Y', 'N'], description: null, origin: null,
+    defaultValue: null,
+    allowedValues: ['Y', 'N'],
+    description: null,
+    origin: null,
   })
   m = { ...m, columns: { ...m.columns, c1: { ...m.columns['c1']!, domainId: 'd2' } } }
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
   if (grant) grantEditPermission()
 }
 
-afterEach(() => { cleanup(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  useEditorStore.getState().reset()
+})
 
 describe('DomainPanel', () => {
   it('opens the dialog and lists domains grouped by category, with usage count shown', async () => {
@@ -91,9 +108,15 @@ describe('DomainPanel', () => {
     let m = createEmptyModel()
     for (let i = 0; i < n; i++) {
       m = createDomain(m, {
-        id: `d${i}`, name: `도메인${String(i).padStart(2, '0')}`, category: i < splitAt ? '가분류' : '나분류',
-        logicalType: 'INT', dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-        defaultValue: null, allowedValues: [], description: null, origin: null,
+        id: `d${i}`,
+        name: `도메인${String(i).padStart(2, '0')}`,
+        category: i < splitAt ? '가분류' : '나분류',
+        logicalType: 'INT',
+        dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
+        defaultValue: null,
+        allowedValues: [],
+        description: null,
+        origin: null,
       })
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
@@ -106,7 +129,7 @@ describe('DomainPanel', () => {
     expect(screen.getByText('가분류')).toBeInTheDocument()
     expect(screen.queryByText('나분류')).toBeNull()
     const list = screen.getByText('가분류').closest<HTMLElement>('[class*="overflow-y-auto"]')!
-    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
+    list.scrollTop = 400 // 끝까지 내려 「다음」을 누른다
     await userEvent.click(screen.getByRole('button', { name: '다음' }))
     expect(screen.getByText('나분류')).toBeInTheDocument()
     expect(list.scrollTop).toBe(0)

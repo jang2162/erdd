@@ -24,32 +24,49 @@ const PROJECT_ID = '018f6b0e-0000-7000-8000-0000000000aa'
 function mockLocalServer(opts: { rejectMutate?: boolean } = {}) {
   const applied: string[] = []
   const saved: string[][] = []
-  vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const u = String(url)
-    if (u === LOCAL_SAVE_PATH) {
-      saved.push([...applied])
-      return new Response(JSON.stringify({ ok: true, seq: 1, written: ['erdd/tables/T.yaml'], deleted: [] }))
-    }
-    if (u.includes('model.get')) {
-      // 거절 뒤 useSubmit 이 서버 상태로 되맞추는 재조회다.
-      return new Response(JSON.stringify([{ result: { data: { model: buildSampleModel(), seq: 1 } } }]), {
-        headers: { 'content-type': 'application/json' },
-      })
-    }
-    if (u.includes('model.mutate')) {
-      await new Promise((r) => setTimeout(r, 20))
-      if (opts.rejectMutate) {
-        return new Response(JSON.stringify([{ error: {
-          code: -32600, message: '거절됐다', data: { code: 'BAD_REQUEST', httpStatus: 400 },
-        } }]), { headers: { 'content-type': 'application/json' } })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (u === LOCAL_SAVE_PATH) {
+        saved.push([...applied])
+        return new Response(
+          JSON.stringify({ ok: true, seq: 1, written: ['erdd/tables/T.yaml'], deleted: [] }),
+        )
       }
-      applied.push(String(init?.body))
-      return new Response(JSON.stringify([{ result: { data: { seq: 1 + applied.length } } }]), {
-        headers: { 'content-type': 'application/json' },
-      })
-    }
-    throw new Error(`unexpected fetch ${u}`)
-  }))
+      if (u.includes('model.get')) {
+        // 거절 뒤 useSubmit 이 서버 상태로 되맞추는 재조회다.
+        return new Response(
+          JSON.stringify([{ result: { data: { model: buildSampleModel(), seq: 1 } } }]),
+          {
+            headers: { 'content-type': 'application/json' },
+          },
+        )
+      }
+      if (u.includes('model.mutate')) {
+        await new Promise((r) => setTimeout(r, 20))
+        if (opts.rejectMutate) {
+          return new Response(
+            JSON.stringify([
+              {
+                error: {
+                  code: -32600,
+                  message: '거절됐다',
+                  data: { code: 'BAD_REQUEST', httpStatus: 400 },
+                },
+              },
+            ]),
+            { headers: { 'content-type': 'application/json' } },
+          )
+        }
+        applied.push(String(init?.body))
+        return new Response(JSON.stringify([{ result: { data: { seq: 1 + applied.length } } }]), {
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      throw new Error(`unexpected fetch ${u}`)
+    }),
+  )
   return saved
 }
 
@@ -58,11 +75,18 @@ function renderEditor() {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(
-    <><LocalSaveControls /><EditPanel projectId={PROJECT_ID} /><Shortcuts /></>, { wrapper: w },
+    <>
+      <LocalSaveControls />
+      <EditPanel projectId={PROJECT_ID} />
+      <Shortcuts />
+    </>,
+    { wrapper: w },
   )
 }
 
@@ -84,10 +108,16 @@ function setup(opts: { rejectMutate?: boolean } = {}) {
 }
 
 const pressCmdS = (target: Element) => {
-  target.dispatchEvent(new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }))
+  target.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }),
+  )
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  useEditorStore.getState().reset()
+})
 
 /**
  * 입력란은 **blur 에서 커밋한다.** 저장이 그 커밋을 일으키지 않거나(Cmd+S 는 포커스를 옮기지
@@ -102,7 +132,9 @@ describe('저장은 편집 중인 입력을 먼저 반영한다', () => {
     await userEvent.clear(input)
     await userEvent.type(input, 'VARCHAR(77)')
     pressCmdS(input)
-    await waitFor(() => { expect(saved.length).toBe(1) })
+    await waitFor(() => {
+      expect(saved.length).toBe(1)
+    })
     expect(saved[0]!.join()).toContain('VARCHAR(77)')
   })
 
@@ -112,7 +144,9 @@ describe('저장은 편집 중인 입력을 먼저 반영한다', () => {
     await userEvent.clear(input)
     await userEvent.type(input, 'GRADE_X')
     pressCmdS(input)
-    await waitFor(() => { expect(saved.length).toBe(1) })
+    await waitFor(() => {
+      expect(saved.length).toBe(1)
+    })
     expect(saved[0]!.join()).toContain('GRADE_X')
   })
 
@@ -122,7 +156,9 @@ describe('저장은 편집 중인 입력을 먼저 반영한다', () => {
     await userEvent.clear(input)
     await userEvent.type(input, 'VARCHAR(99)')
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
-    await waitFor(() => { expect(saved.length).toBe(1) })
+    await waitFor(() => {
+      expect(saved.length).toBe(1)
+    })
     expect(saved[0]!.join()).toContain('VARCHAR(99)')
   })
 })
@@ -139,7 +175,9 @@ describe('Cmd+S 뒤 포커스는 원래 칸에 남는다', () => {
     await userEvent.clear(input)
     await userEvent.type(input, 'VARCHAR(77)')
     pressCmdS(input)
-    await waitFor(() => { expect(saved.length).toBe(1) })
+    await waitFor(() => {
+      expect(saved.length).toBe(1)
+    })
     const now = screen.getAllByLabelText('타입')[0] as HTMLInputElement
     expect(document.activeElement).toBe(now)
     expect(now.value).toBe('VARCHAR(77)')
@@ -158,8 +196,12 @@ describe('Cmd+S 뒤 포커스는 원래 칸에 남는다', () => {
     await userEvent.clear(input)
     await userEvent.type(input, 'VARCHAR(99)')
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
-    await waitFor(() => { expect(saved.length).toBe(1) })
-    await waitFor(() => { expect(useEditorStore.getState().localSave.saving).toBe(false) })
+    await waitFor(() => {
+      expect(saved.length).toBe(1)
+    })
+    await waitFor(() => {
+      expect(useEditorStore.getState().localSave.saving).toBe(false)
+    })
     expect(document.activeElement).toBe(screen.getAllByLabelText('타입')[0])
     await userEvent.keyboard('{Backspace}')
     expect(useEditorStore.getState().model.tables['t1']).toBeDefined()
@@ -171,7 +213,9 @@ describe('Cmd+S 뒤 포커스는 원래 칸에 남는다', () => {
     await userEvent.clear(input)
     await userEvent.type(input, 'GRADE_X')
     pressCmdS(input)
-    await waitFor(() => { expect(saved.length).toBe(1) })
+    await waitFor(() => {
+      expect(saved.length).toBe(1)
+    })
     expect(document.activeElement).toBe(screen.getByLabelText('테이블 물리명'))
     await userEvent.keyboard('{Backspace}')
     expect(useEditorStore.getState().model.tables['t1']).toBeDefined()
@@ -189,7 +233,9 @@ it('저장 전에 반영하던 편집이 거절되면 저장하지 않는다', a
   await userEvent.clear(input)
   await userEvent.type(input, 'VARCHAR(77)')
   pressCmdS(input)
-  await waitFor(() => { expect(useEditorStore.getState().localSave.saving).toBe(false) })
+  await waitFor(() => {
+    expect(useEditorStore.getState().localSave.saving).toBe(false)
+  })
   await new Promise((r) => setTimeout(r, 50))
   expect(saved).toEqual([])
 })

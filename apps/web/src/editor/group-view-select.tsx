@@ -22,7 +22,11 @@ export function GroupViewSelect() {
       }}
     >
       <option value="">전체 뷰</option>
-      {list.map((g) => <option key={g.id} value={g.id}>{g.name} 뷰</option>)}
+      {list.map((g) => (
+        <option key={g.id} value={g.id}>
+          {g.name} 뷰
+        </option>
+      ))}
     </select>
   )
 }

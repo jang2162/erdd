@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_NAMING_RULES, createEmptyModel, parseDdl, planDdlImport,
-} from '@erdd/core'
+import { DEFAULT_NAMING_RULES, createEmptyModel, parseDdl, planDdlImport } from '@erdd/core'
 import { computeAutoLayout } from './auto-layout.js'
 import { applyDdlImport } from './ddl-import-edits.js'
 
@@ -27,12 +25,17 @@ describe('applyDdlImport — web 은 dagre 배치를 주입한다', () => {
 
     // core 의 격자와 같은 입력(너비 260 · 높이 40 + 컬럼수*28 · FK 간선)으로 dagre 를 돌린다.
     const expected = computeAutoLayout(
-      plan.tables.map((t) => ({ id: t.physicalName, width: 260, height: 40 + t.columns.length * 28 })),
-      plan.relationships.map((r) => ({ source: r.parentPhysicalName, target: r.childPhysicalName })),
+      plan.tables.map((t) => ({
+        id: t.physicalName,
+        width: 260,
+        height: 40 + t.columns.length * 28,
+      })),
+      plan.relationships.map((r) => ({
+        source: r.parentPhysicalName,
+        target: r.childPhysicalName,
+      })),
     )
-    const actual = new Map(
-      Object.values(after.tables).map((t) => [t.physicalName, t.position]),
-    )
+    const actual = new Map(Object.values(after.tables).map((t) => [t.physicalName, t.position]))
     expect(actual.get('MBR')).toEqual(expected.get('MBR'))
     expect(actual.get('ORD')).toEqual(expected.get('ORD'))
 

@@ -6,28 +6,44 @@ import type { ParsedDbml, ParsedGroup } from './dbml-parse.js'
 import type { NameMetaEntry } from './name-meta.js'
 
 export type DdlImportWarning = {
-  kind: 'ambiguous-type' | 'unknown-type' | 'unknown-word'
-      | 'table-conflict' | 'unresolved-fk' | 'unresolved-index' | 'skipped-statement'
-      | 'unknown-custom-field' | 'group-conflict'
-      | 'unsigned-dropped' | 'table-option-conflict'
+  kind:
+    | 'ambiguous-type'
+    | 'unknown-type'
+    | 'unknown-word'
+    | 'table-conflict'
+    | 'unresolved-fk'
+    | 'unresolved-index'
+    | 'skipped-statement'
+    | 'unknown-custom-field'
+    | 'group-conflict'
+    | 'unsigned-dropped'
+    | 'table-option-conflict'
   target: string
   message: string
 }
 export type DdlImportColumn = {
-  physicalName: string; logicalName: string; type: string
-  isPk: boolean; nullable: boolean; autoIncrement: boolean
-  defaultValue: string | null; comment: string | null
+  physicalName: string
+  logicalName: string
+  type: string
+  isPk: boolean
+  nullable: boolean
+  autoIncrement: boolean
+  defaultValue: string | null
+  comment: string | null
   /** 키는 customField.id. DDL 경로에서는 항상 빈 객체다. */
   custom: Record<string, string>
 }
 export type DdlImportTable = {
-  physicalName: string; logicalName: string; comment: string | null
+  physicalName: string
+  logicalName: string
+  comment: string | null
   columns: DdlImportColumn[]
   indexes: Array<{ name: string; columnPhysicalNames: string[]; unique: boolean }>
   custom: Record<string, string>
 }
 export type DdlImportRelationship = {
-  childPhysicalName: string; parentPhysicalName: string
+  childPhysicalName: string
+  parentPhysicalName: string
   columnPairs: Array<{ child: string; parent: string }>
   identifying: boolean
   /** DDL 경로는 항상 '1:N' 이다(SQL 에 1:1 표현이 없다). */
@@ -36,10 +52,13 @@ export type DdlImportRelationship = {
   name: string | null
 }
 export type DdlImportGroup = {
-  name: string; color: string | null; comment: string | null
+  name: string
+  color: string | null
+  comment: string | null
   /** 그룹 별칭. 머릿말에만 실려 온다 — DBML 블록에는 자리가 없어 빈 문자열이다. */
   alias: string
-  tablePhysicalNames: string[]; existingId: string | null
+  tablePhysicalNames: string[]
+  existingId: string | null
 }
 export type DdlImportPlan = {
   tables: DdlImportTable[]
@@ -72,7 +91,10 @@ export type DdlImportPlan = {
  */
 const TABLE_OPTION_PATTERNS: ReadonlyArray<{ key: string; re: RegExp }> = [
   { key: 'ENGINE', re: /\bENGINE\s*=?\s*([A-Za-z0-9_]+)/i },
-  { key: 'DEFAULT CHARSET', re: /\b(?:DEFAULT\s+)?(?:CHARSET|CHARACTER\s+SET)\s*=?\s*([A-Za-z0-9_]+)/i },
+  {
+    key: 'DEFAULT CHARSET',
+    re: /\b(?:DEFAULT\s+)?(?:CHARSET|CHARACTER\s+SET)\s*=?\s*([A-Za-z0-9_]+)/i,
+  },
   { key: 'COLLATE', re: /\b(?:DEFAULT\s+)?COLLATE\s*=?\s*([A-Za-z0-9_]+)/i },
 ]
 
@@ -107,7 +129,10 @@ const isSubset = (a: string[], b: string[]) => {
 }
 
 export function planDdlImport(
-  model: ProjectModel, parsed: ImportInput, dialect: Dialect, rules: NamingRules,
+  model: ProjectModel,
+  parsed: ImportInput,
+  dialect: Dialect,
+  rules: NamingRules,
 ): DdlImportPlan {
   const warnings: DdlImportWarning[] = []
 
@@ -144,8 +169,11 @@ export function planDdlImport(
    */
   const groupOf = (raw: string): string => metaOf(raw)?.g ?? blockGroupOf.get(upper(raw)) ?? ''
 
-  const existing = new Set(Object.values(model.tables).map((t) => scopedKey(
-    t.groupId === null ? '' : groupNameById.get(t.groupId) ?? '', t.physicalName)))
+  const existing = new Set(
+    Object.values(model.tables).map((t) =>
+      scopedKey(t.groupId === null ? '' : (groupNameById.get(t.groupId) ?? ''), t.physicalName),
+    ),
+  )
   const skippedTables: string[] = []
   const alive = new Map<string, ParsedTable>()
   // ⚠️ 충돌은 **만들어질 이름**으로 본다 — 머릿말이 TB_MBR_ORD 를 ORD 로 되돌리면 모델의
@@ -171,7 +199,8 @@ export function planDdlImport(
     if (existing.has(madeKey)) {
       skippedTables.push(t.name)
       warnings.push({
-        kind: 'table-conflict', target: t.name,
+        kind: 'table-conflict',
+        target: t.name,
         message: restored
           ? `머릿말이 ${t.name}을 ${made}로 되돌렸는데 그 이름의 테이블이 이미 있어 건너뜁니다`
           : '같은 이름의 테이블이 이미 있어 건너뜁니다',
@@ -187,7 +216,8 @@ export function planDdlImport(
       // 세고 어떤 건너뜀은 안 세게 된다. 담는 값은 경고 target 과 같은 기준인 DDL 원문 이름이다.
       skippedTables.push(t.name)
       warnings.push({
-        kind: 'table-conflict', target: t.name,
+        kind: 'table-conflict',
+        target: t.name,
         message: dupRaw
           ? 'DDL에 같은 이름의 테이블이 두 번 있어 뒤엣것을 건너뜁니다'
           : `머릿말이 ${t.name}을 ${made}로 되돌렸는데 그 이름을 앞의 테이블이 이미 써서 건너뜁니다`,
@@ -203,8 +233,9 @@ export function planDdlImport(
   const fks: Array<Extract<ParsedConstraint, { kind: 'fk' }>> = []
   const uniques: Array<Extract<ParsedConstraint, { kind: 'unique' }>> = []
   for (const c of parsed.constraints) {
-    if (c.kind === 'pk') { if (!pkOf.has(upper(c.table))) pkOf.set(upper(c.table), c.columns) }
-    else if (c.kind === 'fk') fks.push(c)
+    if (c.kind === 'pk') {
+      if (!pkOf.has(upper(c.table))) pkOf.set(upper(c.table), c.columns)
+    } else if (c.kind === 'fk') fks.push(c)
     else uniques.push(c)
   }
 
@@ -219,7 +250,8 @@ export function planDdlImport(
   // 3b) 커스텀 항목 값 색인. 커스텀 항목 정의는 **이름으로** 찾는다 — 문서에 UUID 를
   // 노출하지 않으려고 DBML note 꼬리의 키를 정의 이름으로 냈기 때문이다(설계 §3).
   const fieldIdByName = new Map<string, string>()
-  for (const f of Object.values(model.customFields)) fieldIdByName.set(`${f.target}:${f.name}`, f.id)
+  for (const f of Object.values(model.customFields))
+    fieldIdByName.set(`${f.target}:${f.name}`, f.id)
 
   const customIndex = new Map<string, Record<string, string>>()
   for (const cv of parsed.customValues ?? []) {
@@ -230,14 +262,17 @@ export function planDdlImport(
   /** 이름 키를 정의 id 키로 옮긴다. 정의가 없으면 버리고 경고한다 — 이름 키를 그대로
    * 심으면 id 공간과 섞여, 나중에 같은 이름의 정의가 생겨도 연결되지 않는 죽은 값이 된다. */
   const resolveCustom = (
-    values: Record<string, string> | undefined, target: 'table' | 'column', warnTarget: string,
+    values: Record<string, string> | undefined,
+    target: 'table' | 'column',
+    warnTarget: string,
   ): Record<string, string> => {
     const out: Record<string, string> = {}
     for (const [name, v] of Object.entries(values ?? {})) {
       const id = fieldIdByName.get(`${target}:${name}`)
       if (id === undefined) {
         warnings.push({
-          kind: 'unknown-custom-field', target: warnTarget,
+          kind: 'unknown-custom-field',
+          target: warnTarget,
           message: `커스텀 항목 정의가 없어 "${name}" 값을 버렸습니다`,
         })
         continue
@@ -249,13 +284,16 @@ export function planDdlImport(
 
   /** 코멘트 → 사전 → 물리명. target은 경고에 쓸 이름이다. */
   const resolveName = (
-    physicalName: string, comment: string | undefined, target: string,
+    physicalName: string,
+    comment: string | undefined,
+    target: string,
   ): { logicalName: string; comment: string | null } => {
     if (comment !== undefined && comment.trim() !== '') return splitComment(comment)
     const restored = restoreLogicalName(physicalName, model.words, model.terms, rules)
     if (restored.ok) return { logicalName: restored.logicalName, comment: null }
     warnings.push({
-      kind: 'unknown-word', target,
+      kind: 'unknown-word',
+      target,
       message: `논리명을 복원하지 못했습니다 — 사전에 없는 단어: ${restored.unknownTokens.join(', ')}`,
     })
     return { logicalName: physicalName, comment: null }
@@ -280,20 +318,26 @@ export function planDdlImport(
       let type: string
       if (!mapped.ok) {
         type = mapped.raw
-        warnings.push({ kind: 'unknown-type', target, message: `${mapped.raw}를 알지 못해 타입을 그대로 두었습니다` })
+        warnings.push({
+          kind: 'unknown-type',
+          target,
+          message: `${mapped.raw}를 알지 못해 타입을 그대로 두었습니다`,
+        })
       } else {
         type = mapped.canonical
         // ⚠️ 문구에 **원문과 결과를 함께** 적는다 — 하나만 적으면 `tinyint(1) unsigned` 를
         // `BOOLEAN` 이라고만 말해 사용자가 자기 입력에서 그 자리를 못 찾는다.
         if (mapped.unsignedDropped) {
           warnings.push({
-            kind: 'unsigned-dropped', target,
+            kind: 'unsigned-dropped',
+            target,
             message: `${mapped.canonical}에는 부호 없음을 붙일 수 없어 떨어뜨렸습니다 (원문 ${c.rawType})`,
           })
         }
         if (mapped.alternatives.length > 0) {
           warnings.push({
-            kind: 'ambiguous-type', target,
+            kind: 'ambiguous-type',
+            target,
             message: `${c.rawType}을 ${mapped.canonical}로 읽었습니다 (${mapped.alternatives.join(', ')}일 수 있습니다)`,
           })
         }
@@ -303,14 +347,22 @@ export function planDdlImport(
       // 없을 때만 MySQL 인라인 COMMENT(c.comment)를 쓴다 — 한 컬럼에 둘 다 있을 일은 없다
       // (방언마다 코멘트 표현 방식이 다르므로). c.comment도 논리명 복원 대상이다(§5) —
       // 방언 이름만 다를 뿐 "코멘트가 논리명을 담는다"는 규칙은 동일해야 한다.
-      const rawComment = columnComment.get(`${upper(t.name)}.${upper(c.name)}`) ?? c.comment ?? undefined
+      const rawComment =
+        columnComment.get(`${upper(t.name)}.${upper(c.name)}`) ?? c.comment ?? undefined
       const colNamed = resolveName(c.name, rawComment, target)
       return {
-        physicalName: c.name, logicalName: colNamed.logicalName, type,
-        isPk, nullable: !c.notNull && !isPk, autoIncrement: c.autoIncrement,
-        defaultValue: c.defaultValue, comment: colNamed.comment,
+        physicalName: c.name,
+        logicalName: colNamed.logicalName,
+        type,
+        isPk,
+        nullable: !c.notNull && !isPk,
+        autoIncrement: c.autoIncrement,
+        defaultValue: c.defaultValue,
+        comment: colNamed.comment,
         custom: resolveCustom(
-          customIndex.get(`${upper(t.name)}.${upper(c.name)}`), 'column', target,
+          customIndex.get(`${upper(t.name)}.${upper(c.name)}`),
+          'column',
+          target,
         ),
       }
     })
@@ -322,7 +374,8 @@ export function planDdlImport(
       // 설명(' - ' 뒤)은 코멘트에서 그대로 가져온다.
       logicalName: meta?.l ?? named.logicalName,
       comment: named.comment,
-      columns, indexes: [],
+      columns,
+      indexes: [],
       custom: resolveCustom(customIndex.get(upper(t.name)), 'table', t.name),
     }
     tables.push(entry)
@@ -331,7 +384,8 @@ export function planDdlImport(
 
   /** rawCols를 그 테이블의 실제 컬럼 물리명으로 정규화한다. 하나라도 없으면 첫 실패 컬럼명을 돌려준다. */
   const resolveIndexColumns = (
-    tableKey: string, rawCols: string[],
+    tableKey: string,
+    rawCols: string[],
   ): { names: string[] } | { missing: string } => {
     const colMap = colMapByTable.get(tableKey)!
     const names: string[] = []
@@ -353,7 +407,8 @@ export function planDdlImport(
     const table = tableByUpper.get(tableKey)
     if (!table) {
       warnings.push({
-        kind: 'unresolved-index', target: `${ix.table}.${ix.name}`,
+        kind: 'unresolved-index',
+        target: `${ix.table}.${ix.name}`,
         message: `소속 테이블을 찾지 못해 인덱스 ${ix.name}을 만들지 않았습니다`,
       })
       continue
@@ -363,7 +418,8 @@ export function planDdlImport(
     const resolved = resolveIndexColumns(tableKey, ix.columns)
     if ('missing' in resolved) {
       warnings.push({
-        kind: 'unresolved-index', target: `${table.physicalName}.${ix.name}`,
+        kind: 'unresolved-index',
+        target: `${table.physicalName}.${ix.name}`,
         message: `컬럼 ${resolved.missing}을 찾지 못해 인덱스 ${ix.name}을 만들지 않았습니다`,
       })
       continue
@@ -377,7 +433,8 @@ export function planDdlImport(
   // UNIQUE가 함께 오는 것은 흔하다). 이름이 없으면 테이블 안에서 유일한 이름을 만든다.
   const usedIndexNames = new Map<string, Set<string>>()
   // 조회 키는 tableByUpper 와 같은 기준(DDL 원문 이름)이어야 한다.
-  for (const [key, t] of tableByUpper) usedIndexNames.set(key, new Set(t.indexes.map((ix) => ix.name)))
+  for (const [key, t] of tableByUpper)
+    usedIndexNames.set(key, new Set(t.indexes.map((ix) => ix.name)))
   for (const u of uniques) {
     const tableKey = upper(u.table)
     const table = tableByUpper.get(tableKey)
@@ -386,7 +443,8 @@ export function planDdlImport(
       // (오타·이름 충돌로 건너뛴 테이블·DDL 밖의 테이블). 인덱스와 같은 결함 클래스이므로
       // 같은 규칙으로 경고한다.
       warnings.push({
-        kind: 'unresolved-index', target: `${u.table}.${u.name ?? 'UNIQUE'}`,
+        kind: 'unresolved-index',
+        target: `${u.table}.${u.name ?? 'UNIQUE'}`,
         message: `소속 테이블을 찾지 못해 UNIQUE 제약을 인덱스로 만들지 않았습니다`,
       })
       continue
@@ -396,7 +454,8 @@ export function planDdlImport(
     const resolved = resolveIndexColumns(tableKey, u.columns)
     if ('missing' in resolved) {
       warnings.push({
-        kind: 'unresolved-index', target: `${table.physicalName}.${u.name ?? 'UNIQUE'}`,
+        kind: 'unresolved-index',
+        target: `${table.physicalName}.${u.name ?? 'UNIQUE'}`,
         message: `컬럼 ${resolved.missing}을 찾지 못해 UNIQUE 제약을 인덱스로 만들지 않았습니다`,
       })
       continue
@@ -419,17 +478,20 @@ export function planDdlImport(
     const parent = alive.get(upper(fk.refTable))
     // 참조 컬럼 생략(REFERENCES parent)은 "부모 PK를 참조한다"는 뜻이다. 파서는 이를
     // refColumns: []로 표현하고, 부모 PK를 아는 여기서 해석한다.
-    const refColumns = fk.refColumns.length > 0 ? fk.refColumns : (pkOf.get(upper(fk.refTable)) ?? [])
+    const refColumns =
+      fk.refColumns.length > 0 ? fk.refColumns : (pkOf.get(upper(fk.refTable)) ?? [])
     if (!child || !parent) {
       warnings.push({
-        kind: 'unresolved-fk', target: fk.table,
+        kind: 'unresolved-fk',
+        target: fk.table,
         message: `참조 대상 ${fk.refTable}을 찾지 못해 관계를 만들지 않았습니다`,
       })
       continue
     }
     if (refColumns.length === 0 || fk.columns.length !== refColumns.length) {
       warnings.push({
-        kind: 'unresolved-fk', target: fk.table,
+        kind: 'unresolved-fk',
+        target: fk.table,
         message: `${fk.refTable}의 참조 컬럼을 확정하지 못해 관계를 만들지 않았습니다`,
       })
       continue
@@ -443,13 +505,20 @@ export function planDdlImport(
       const rawParent = refColumns[i]!
       const childName = childColMap.get(upper(rawChild))
       const parentName = parentColMap.get(upper(rawParent))
-      if (childName === undefined) { unresolved = `${fk.table}.${rawChild}`; break }
-      if (parentName === undefined) { unresolved = `${fk.refTable}.${rawParent}`; break }
+      if (childName === undefined) {
+        unresolved = `${fk.table}.${rawChild}`
+        break
+      }
+      if (parentName === undefined) {
+        unresolved = `${fk.refTable}.${rawParent}`
+        break
+      }
       columnPairs.push({ child: childName, parent: parentName })
     }
     if (unresolved) {
       warnings.push({
-        kind: 'unresolved-fk', target: fk.table,
+        kind: 'unresolved-fk',
+        target: fk.table,
         message: `참조 컬럼 ${unresolved}을 찾지 못해 관계를 만들지 않았습니다`,
       })
       continue
@@ -458,7 +527,8 @@ export function planDdlImport(
     relationships.push({
       // ⚠️ 테이블이 부분으로 복원되면 관계도 그 이름을 가리켜야 한다 — 편집 적용부가
       // 물리명으로 테이블 id 를 찾으므로 어긋나면 관계가 통째로 깨진다.
-      childPhysicalName: madeName(child.name), parentPhysicalName: madeName(parent.name),
+      childPhysicalName: madeName(child.name),
+      parentPhysicalName: madeName(parent.name),
       columnPairs,
       identifying: childPk.length > 0 && isSubset(fk.columns, childPk),
       cardinality: fk.oneToOne === true ? '1:1' : '1:N',
@@ -472,7 +542,8 @@ export function planDdlImport(
   // 7) 건너뛴 문장
   for (const s of parsed.skipped) {
     warnings.push({
-      kind: 'skipped-statement', target: `${s.line}행`,
+      kind: 'skipped-statement',
+      target: `${s.line}행`,
       message: `${s.keyword} 구문을 건너뛰었습니다`,
     })
   }
@@ -492,9 +563,7 @@ export function planDdlImport(
   // 바뀌는 것은 **머릿말이 말한 적 없는 테이블**뿐인데, `buildNameMeta` 는 그룹도 템플릿도 없는
   // 테이블을 아예 안 싣는다 — 머릿말의 침묵은 「그룹이 없다」가 아니라 「말한 적이 없다」다.
   const groups: DdlImportGroup[] = []
-  const groupIdByName = new Map(
-    Object.values(model.tableGroups).map((g) => [upper(g.name), g.id]),
-  )
+  const groupIdByName = new Map(Object.values(model.tableGroups).map((g) => [upper(g.name), g.id]))
   // 블록 속성은 **머릿말이 그 그룹을 아예 말하지 않았을 때만** 본다(아래 attrs 참조).
   // ⚠️ **동명 블록이 둘이면 먼저 나온 것이 이긴다 — `buildNameMeta` 가 동명 그룹에 세운 규칙과
   // 같다.** 「동명 둘 중 어느 쪽 속성을 쓸 것인가」는 머릿말에서든 블록에서든 같은 질문이고, 한
@@ -543,14 +612,16 @@ export function planDdlImport(
       warnings.push({
         // ⚠️ target 은 **모델에 있는 원문 이름**이다. k 는 조회용 대문자 색인 키라 ASCII 이름을
         // SALES_DOMAIN 으로 뭉갠다 — 사용자가 사이드바에서 그 이름을 못 찾는다.
-        kind: 'group-conflict', target: existingGroup.name,
+        kind: 'group-conflict',
+        target: existingGroup.name,
         // ⚠️ 기존 별칭이 **빈 문자열인 갈래를 따로 둔다.** createGroup 이 새 그룹을 전부 alias:''
         // 로 만들므로 드문 자리가 아닌데, 한 문구로 뭉치면 「기존 그룹의 별칭  가 달라」처럼
         // 공백이 둘 붙어 말이 안 된다. 경고 자체는 그대로 낸다 — 머릿말이 말한 별칭이 안 붙으면
         // 조합될 최종 이름이 원본과 달라지므로 알릴 값이 있다.
-        message: existingGroup.alias === ''
-          ? `머릿말의 별칭 ${a} 을 적용하지 않습니다 — 기존 그룹에는 별칭이 없습니다`
-          : `머릿말의 별칭 ${a} 과 기존 그룹의 별칭 ${existingGroup.alias} 가 달라 기존 값을 유지합니다`,
+        message:
+          existingGroup.alias === ''
+            ? `머릿말의 별칭 ${a} 을 적용하지 않습니다 — 기존 그룹에는 별칭이 없습니다`
+            : `머릿말의 별칭 ${a} 과 기존 그룹의 별칭 ${existingGroup.alias} 가 달라 기존 값을 유지합니다`,
       })
     }
     groups.push({
@@ -589,18 +660,19 @@ export function planDdlImport(
       warnings.push({
         // ⚠️ target 은 **그 테이블의 DDL 원문 이름**이다(3.17 의 관례) — 어느 테이블이 달랐는지를
         // 못 찍으면 사용자가 원문에서 확인할 방법이 없다.
-        kind: 'table-option-conflict', target: v.name,
+        kind: 'table-option-conflict',
+        target: v.name,
         message: `테이블 옵션이 '${v.value}'이라 채택값 '${best}'과 다릅니다 — 채택값을 씁니다`,
       })
     }
   }
 
   const opCountEstimate =
-    tables.length
-    + tables.reduce((n, t) => n + t.columns.length + t.indexes.length, 0)
-    + relationships.length
+    tables.length +
+    tables.reduce((n, t) => n + t.columns.length + t.indexes.length, 0) +
+    relationships.length +
     // 기존 그룹에 넣는 경우는 테이블 create op 에 groupId 가 실려 나가므로 새 그룹만 센다.
-    + groups.filter((g) => g.existingId === null).length
+    groups.filter((g) => g.existingId === null).length
 
   return { tables, relationships, skippedTables, warnings, groups, tableOptions, opCountEstimate }
 }

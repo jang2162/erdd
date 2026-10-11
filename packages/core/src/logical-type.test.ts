@@ -1,12 +1,29 @@
 import { describe, expect, it } from 'vitest'
 import { parseLogicalType } from './logical-type.js'
 
-const canon = (s: string) => { const r = parseLogicalType(s); return r.ok ? r.canonical : `RAW:${r.raw}` }
+const canon = (s: string) => {
+  const r = parseLogicalType(s)
+  return r.ok ? r.canonical : `RAW:${r.raw}`
+}
 
 describe('parseLogicalType — 17종·별칭·정규화', () => {
   it('파라미터 없는 타입', () => {
-    for (const t of ['TEXT', 'SMALLINT', 'INT', 'BIGINT', 'FLOAT', 'DOUBLE', 'BOOLEAN',
-      'DATE', 'TIME', 'DATETIME', 'TIMESTAMPTZ', 'BLOB', 'JSON', 'UUID']) {
+    for (const t of [
+      'TEXT',
+      'SMALLINT',
+      'INT',
+      'BIGINT',
+      'FLOAT',
+      'DOUBLE',
+      'BOOLEAN',
+      'DATE',
+      'TIME',
+      'DATETIME',
+      'TIMESTAMPTZ',
+      'BLOB',
+      'JSON',
+      'UUID',
+    ]) {
       expect(canon(t.toLowerCase())).toBe(t)
     }
   })
@@ -50,7 +67,9 @@ describe('parseLogicalType — 부호 없음 접미', () => {
 
   it('정수 3종은 UNSIGNED 접미를 받는다', () => {
     expect(parsed('INT UNSIGNED')).toEqual({
-      ok: true, type: { kind: 'INT', unsigned: true }, canonical: 'INT UNSIGNED',
+      ok: true,
+      type: { kind: 'INT', unsigned: true },
+      canonical: 'INT UNSIGNED',
     })
     expect(canon('smallint unsigned')).toBe('SMALLINT UNSIGNED')
     expect(canon('bigint unsigned')).toBe('BIGINT UNSIGNED')
@@ -64,7 +83,11 @@ describe('parseLogicalType — 부호 없음 접미', () => {
     expect(canon('integer unsigned')).toBe('INT UNSIGNED')
   })
   it('부호 있는 정수는 unsigned:false 이고 canonical 이 바뀌지 않는다', () => {
-    expect(parsed('INT')).toEqual({ ok: true, type: { kind: 'INT', unsigned: false }, canonical: 'INT' })
+    expect(parsed('INT')).toEqual({
+      ok: true,
+      type: { kind: 'INT', unsigned: false },
+      canonical: 'INT',
+    })
     expect(canon('bigint')).toBe('BIGINT')
   })
   it('전치 표기와 접미 단독은 실패한다', () => {

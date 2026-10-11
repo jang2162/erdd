@@ -53,7 +53,9 @@ const gridLayout: LayoutFn = (nodes) => {
  * `groupPosition`은 `null`로 둔다 — 그룹 뷰 좌표는 그 뷰를 처음 열 때 계산된다.
  */
 export function applyDdlImport(
-  model: ProjectModel, plan: DdlImportPlan, newId: () => string,
+  model: ProjectModel,
+  plan: DdlImportPlan,
+  newId: () => string,
   opts: { layout?: LayoutFn } = {},
 ): ProjectModel {
   const tables = { ...model.tables }
@@ -72,7 +74,11 @@ export function applyDdlImport(
       const color = g.color ?? nextGroupColor(usedColors)
       usedColors.push(color)
       tableGroups[groupId] = {
-        id: groupId, name: g.name, color, comment: g.comment, alias: g.alias,
+        id: groupId,
+        name: g.name,
+        color,
+        comment: g.comment,
+        alias: g.alias,
       }
     }
     for (const name of g.tablePhysicalNames) groupIdByTable.set(name, groupId)
@@ -80,16 +86,21 @@ export function applyDdlImport(
 
   // 자동 배치 — 렌더 전이라 실측 크기가 없으므로 컬럼 수 기반 높이 추정을 쓴다.
   const layoutNodes = plan.tables.map((t) => ({
-    id: t.physicalName, width: NODE_WIDTH, height: rowHeight(t.columns.length),
+    id: t.physicalName,
+    width: NODE_WIDTH,
+    height: rowHeight(t.columns.length),
   }))
   const layoutEdges = plan.relationships.map((r) => ({
-    source: r.parentPhysicalName, target: r.childPhysicalName,
+    source: r.parentPhysicalName,
+    target: r.childPhysicalName,
   }))
   const layout = (opts.layout ?? gridLayout)(layoutNodes, layoutEdges)
 
   // 기존 테이블과 겹치지 않게 아래로 민다.
-  const existingMaxY = Object.values(model.tables)
-    .reduce((max, t) => Math.max(max, t.position.y), Number.NEGATIVE_INFINITY)
+  const existingMaxY = Object.values(model.tables).reduce(
+    (max, t) => Math.max(max, t.position.y),
+    Number.NEGATIVE_INFINITY,
+  )
   const offsetY = Number.isFinite(existingMaxY) ? existingMaxY + 200 : 0
 
   const tableIdByName = new Map<string, string>()
@@ -100,10 +111,14 @@ export function applyDdlImport(
     tableIdByName.set(t.physicalName, id)
     const pos = layout.get(t.physicalName)
     const table: Table = {
-      id, logicalName: t.logicalName, physicalName: t.physicalName, comment: t.comment,
+      id,
+      logicalName: t.logicalName,
+      physicalName: t.physicalName,
+      comment: t.comment,
       groupId: groupIdByTable.get(t.physicalName) ?? null,
       position: pos ? { x: pos.x, y: pos.y + offsetY } : { x: 0, y: offsetY },
-      groupPosition: null, custom: t.custom,
+      groupPosition: null,
+      custom: t.custom,
     }
     tables[id] = table
   }
@@ -114,9 +129,19 @@ export function applyDdlImport(
       const id = newId()
       columnIdByKey.set(`${t.physicalName}.${c.physicalName}`, id)
       const column: Column = {
-        id, tableId, logicalName: c.logicalName, physicalName: c.physicalName,
-        type: c.type, isPk: c.isPk, autoIncrement: c.autoIncrement, nullable: c.nullable,
-        defaultValue: c.defaultValue, order, comment: c.comment, domainId: null, custom: c.custom,
+        id,
+        tableId,
+        logicalName: c.logicalName,
+        physicalName: c.physicalName,
+        type: c.type,
+        isPk: c.isPk,
+        autoIncrement: c.autoIncrement,
+        nullable: c.nullable,
+        defaultValue: c.defaultValue,
+        order,
+        comment: c.comment,
+        domainId: null,
+        custom: c.custom,
       }
       columns[id] = column
     })
@@ -127,7 +152,10 @@ export function applyDdlImport(
     for (const ix of t.indexes) {
       const id = newId()
       const index: IndexDef = {
-        id, tableId, name: ix.name, unique: ix.unique,
+        id,
+        tableId,
+        name: ix.name,
+        unique: ix.unique,
         columns: ix.columnPhysicalNames.map((colName) => ({
           columnId: columnIdByKey.get(`${t.physicalName}.${colName}`)!,
           direction: 'asc',
@@ -142,7 +170,9 @@ export function applyDdlImport(
     const parentTableId = tableIdByName.get(r.parentPhysicalName)!
     const childTableId = tableIdByName.get(r.childPhysicalName)!
     const relationship: Relationship = {
-      id, parentTableId, childTableId,
+      id,
+      parentTableId,
+      childTableId,
       columnMappings: r.columnPairs.map((p) => ({
         childColumnId: columnIdByKey.get(`${r.childPhysicalName}.${p.child}`)!,
         parentColumnId: columnIdByKey.get(`${r.parentPhysicalName}.${p.parent}`)!,

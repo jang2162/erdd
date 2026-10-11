@@ -5,7 +5,9 @@ import { useTRPC } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 
 export type Me = {
-  id: string; email: string; name: string
+  id: string
+  email: string
+  name: string
   role: 'admin' | 'user'
   /** 'local'이면 백엔드 없이 파일 위에서 도는 로컬 서버다 — 계정·조직·협업 기능이 없다. */
   mode: 'server' | 'local'
@@ -24,13 +26,19 @@ export function RequireAuth({ children, adminOnly }: { children: ReactNode; admi
   const me = useQuery(trpc.auth.me.queryOptions(undefined, { retry: false }))
 
   if (me.isPending) {
-    return <div className="flex min-h-dvh items-center justify-center text-muted-foreground">불러오는 중…</div>
+    return (
+      <div className="flex min-h-dvh items-center justify-center text-muted-foreground">
+        불러오는 중…
+      </div>
+    )
   }
   if (me.isError) {
     if (me.error.data?.code === 'UNAUTHORIZED') return <Navigate to="/login" replace />
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 text-center">
-        <p role="alert" className="text-destructive">연결에 문제가 있습니다</p>
+        <p role="alert" className="text-destructive">
+          연결에 문제가 있습니다
+        </p>
         <Button onClick={() => me.refetch()}>다시 시도</Button>
       </div>
     )

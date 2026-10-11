@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { buildSampleModel, fullModel } from '@erdd/core/src/testing/fixtures.js'
-import { parseClipboard, serializeColumns, serializeNotes, serializeTables, uniqueName } from './clipboard.js'
+import {
+  parseClipboard,
+  serializeColumns,
+  serializeNotes,
+  serializeTables,
+  uniqueName,
+} from './clipboard.js'
 
 describe('serializeTables', () => {
   it('테이블·컬럼·인덱스를 싣고 id는 싣지 않는다', () => {
@@ -20,7 +26,11 @@ describe('serializeTables', () => {
   it('컬럼은 order 순으로 실린다', () => {
     const p = serializeTables(buildSampleModel(), ['t2'])
     if (p.kind !== 'tables') throw new Error('kind')
-    expect(p.tables[0]!.columns.map((c) => c.logicalName)).toEqual(['회원번호', '회원명', '등급코드'])
+    expect(p.tables[0]!.columns.map((c) => c.logicalName)).toEqual([
+      '회원번호',
+      '회원명',
+      '등급코드',
+    ])
   })
 
   it('관계는 싣지 않는다', () => {
@@ -32,7 +42,9 @@ describe('serializeTables', () => {
   it('인덱스의 컬럼 참조는 물리명으로 실린다', () => {
     const p = serializeTables(buildSampleModel(), ['t2'])
     if (p.kind !== 'tables') throw new Error('kind')
-    expect(p.tables[0]!.indexes[0]!.columns).toEqual([{ columnPhysicalName: 'MBR_NM', direction: 'asc' }])
+    expect(p.tables[0]!.indexes[0]!.columns).toEqual([
+      { columnPhysicalName: 'MBR_NM', direction: 'asc' },
+    ])
   })
 
   it('도메인은 이름으로 실린다', () => {
@@ -58,7 +70,7 @@ describe('serializeTables', () => {
     const p = serializeTables(model, ['tb1'])
     if (p.kind !== 'tables') throw new Error('kind')
     const c2 = p.tables[0]!.columns.find((c) => c.physicalName === 'MBR_NM')!
-    expect(c2.custom).toEqual({ '개인정보여부': 'true' })
+    expect(c2.custom).toEqual({ 개인정보여부: 'true' })
   })
 
   it('정의에 없는 dangling 커스텀 키는 버려진다', () => {
@@ -94,7 +106,9 @@ describe('parseClipboard', () => {
   })
 
   it('버전이 다르면 null', () => {
-    expect(parseClipboard(JSON.stringify({ __erdd: 1, v: 99, kind: 'tables', tables: [] }))).toBeNull()
+    expect(
+      parseClipboard(JSON.stringify({ __erdd: 1, v: 99, kind: 'tables', tables: [] })),
+    ).toBeNull()
   })
 
   it('JSON이 아니면 null', () => {
@@ -105,9 +119,16 @@ describe('parseClipboard', () => {
   // ⚠️ 예시로 쓰던 `notes`가 이제 **아는 kind**가 됐다. 모르는 kind의 대표로는 관계를 쓴다 —
   // 관계는 복사하지 않기로 확정돼 있어(설계 D3) 앞으로도 아는 kind가 될 일이 없다.
   it('kind가 모르는 값이면 null', () => {
-    expect(parseClipboard(JSON.stringify({
-      __erdd: 1, v: 1, kind: 'relationships', relationships: [],
-    }))).toBeNull()
+    expect(
+      parseClipboard(
+        JSON.stringify({
+          __erdd: 1,
+          v: 1,
+          kind: 'relationships',
+          relationships: [],
+        }),
+      ),
+    ).toBeNull()
   })
 })
 
@@ -116,7 +137,9 @@ describe('메모 클립보드', () => {
     const m = buildSampleModel()
     const payload = serializeNotes(m, ['n1'])
     expect(payload).toEqual({
-      __erdd: 1, v: 1, kind: 'notes',
+      __erdd: 1,
+      v: 1,
+      kind: 'notes',
       notes: [{ content: '회원 도메인 메모', color: '#FFF3B0', position: { x: 600, y: 0 } }],
     })
   })
@@ -160,7 +183,9 @@ describe('uniqueName', () => {
 
   it('접미사도 충돌하면 번호를 올린다', () => {
     expect(uniqueName('주문', new Set(['주문', '주문_사본']), '_사본')).toBe('주문_사본2')
-    expect(uniqueName('주문', new Set(['주문', '주문_사본', '주문_사본2']), '_사본')).toBe('주문_사본3')
+    expect(uniqueName('주문', new Set(['주문', '주문_사본', '주문_사본2']), '_사본')).toBe(
+      '주문_사본3',
+    )
   })
 
   it('물리명 접미사도 같은 규칙이다', () => {

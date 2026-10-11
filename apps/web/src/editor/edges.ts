@@ -12,13 +12,18 @@ export type RelationshipEdgeData = {
 }
 
 export function buildEdges(
-  model: ProjectModel, visibleTableIds?: Set<string>, peerMarks: PeerMarks = new Map(),
+  model: ProjectModel,
+  visibleTableIds?: Set<string>,
+  peerMarks: PeerMarks = new Map(),
   // 기본값을 자기 계산으로 둔다(nodes.ts 와 같은 이유) — 인자를 빠뜨려도 결과가 옳다.
   anchors: AnchorIndex = buildAnchors(model),
 ): Edge[] {
   const edges: Edge[] = []
   for (const rel of Object.values(model.relationships)) {
-    if (visibleTableIds && (!visibleTableIds.has(rel.parentTableId) || !visibleTableIds.has(rel.childTableId))) {
+    if (
+      visibleTableIds &&
+      (!visibleTableIds.has(rel.parentTableId) || !visibleTableIds.has(rel.childTableId))
+    ) {
       continue
     }
     const parent = model.tables[rel.parentTableId]
@@ -36,7 +41,9 @@ export function buildEdges(
       targetHandle: handleId(childRight ? 'r' : 'l', keys?.parentKey ?? null),
       type: 'relationship',
       data: {
-        cardinality: rel.cardinality, identifying: rel.identifying, peers: peerMarks.get(rel.id),
+        cardinality: rel.cardinality,
+        identifying: rel.identifying,
+        peers: peerMarks.get(rel.id),
       },
     })
   }
@@ -45,7 +52,13 @@ export function buildEdges(
 
 export type ConnectionPlan =
   | { ok: false; reason: 'invalid' | 'self' | 'no-parent-pk' }
-  | { ok: true; parentTableId: string; childTableId: string; relationshipId: string; newColumnIds: string[] }
+  | {
+      ok: true
+      parentTableId: string
+      childTableId: string
+      relationshipId: string
+      newColumnIds: string[]
+    }
 
 /**
  * 캔버스 드래그(자식→부모)를 관계 생성 계획으로 변환한다. 순수 함수(genId 주입).
@@ -136,8 +149,8 @@ export function planJunction(
   // 활성 그룹뷰가 이미 삭제된 그룹을 가리킬 수 있다 — 원격 resync 는 activeGroupView 를 일부러
   // 유지하므로(store.ts) 협업자가 그룹을 지우면 죽은 id 가 남는다. 없는 그룹을 참조하는 테이블은
   // 무결성 위반이라 mutation 이 통째로 거부되므로, core 의 setTableGroup 과 같이 미배정으로 떨군다.
-  const groupId = ctx.activeGroupView && model.tableGroups[ctx.activeGroupView]
-    ? ctx.activeGroupView : null
+  const groupId =
+    ctx.activeGroupView && model.tableGroups[ctx.activeGroupView] ? ctx.activeGroupView : null
   return {
     ok: true,
     junction: {

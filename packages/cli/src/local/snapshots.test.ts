@@ -5,8 +5,14 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createEmptyModel } from '@erdd/core'
 import {
-  SNAPSHOTS_DIR, SNAPSHOTS_INDEX, SnapshotCorruptError,
-  deleteSnapshot, listSnapshots, readSnapshot, writeSnapshot, type SnapshotRecord,
+  SNAPSHOTS_DIR,
+  SNAPSHOTS_INDEX,
+  SnapshotCorruptError,
+  deleteSnapshot,
+  listSnapshots,
+  readSnapshot,
+  writeSnapshot,
+  type SnapshotRecord,
 } from './snapshots.js'
 
 const dir = () => mkdtemp(join(tmpdir(), 'erdd-snap-'))
@@ -16,8 +22,12 @@ const ID_A = '018f6b0e-1111-7000-8000-000000000001'
 const ID_B = '018f6b12-2222-7000-8000-000000000002'
 
 const rec = (id: string, name: string): SnapshotRecord => ({
-  id, name, description: '설명', revisionSeq: 42,
-  model: createEmptyModel(), createdAt: '2026-09-03T05:25:30.000Z',
+  id,
+  name,
+  description: '설명',
+  revisionSeq: 42,
+  model: createEmptyModel(),
+  createdAt: '2026-09-03T05:25:30.000Z',
 })
 
 /** 라우터를 거치지 않아야 담을 수 있는 모양을 직접 만든다. */
@@ -30,8 +40,9 @@ describe('snapshots', () => {
   it('쓰고 읽으면 그대로 돌아온다 — 파일 하나당 스냅샷 하나', async () => {
     const cwd = await dir()
     await writeSnapshot(cwd, rec(ID_A, '1차'))
-    expect((await readdir(join(cwd, SNAPSHOTS_DIR))).sort())
-      .toEqual([`${ID_A}.json.gz`, 'index.yaml'].sort())
+    expect((await readdir(join(cwd, SNAPSHOTS_DIR))).sort()).toEqual(
+      [`${ID_A}.json.gz`, 'index.yaml'].sort(),
+    )
     const got = await readSnapshot(cwd, ID_A)
     expect(got).toMatchObject({ id: ID_A, name: '1차', description: '설명', revisionSeq: 42 })
     expect(got!.model).toEqual(createEmptyModel())
@@ -80,20 +91,24 @@ describe('snapshots', () => {
   it('파일 없는 인덱스 항목은 목록에 뜨지 않는다', async () => {
     const cwd = await dir()
     await writeSnapshot(cwd, rec(ID_A, '1차'))
-    await writeFile(join(cwd, SNAPSHOTS_INDEX), [
-      'snapshots:',
-      `  - id: ${ID_A}`,
-      '    name: 1차',
-      '    description: 설명',
-      '    revisionSeq: 42',
-      '    createdAt: 2026-09-03T05:25:30.000Z',
-      `  - id: ${ID_B}`,
-      '    name: 사라진 것',
-      '    description: ""',
-      '    revisionSeq: 1',
-      '    createdAt: 2026-09-03T05:25:30.000Z',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(cwd, SNAPSHOTS_INDEX),
+      [
+        'snapshots:',
+        `  - id: ${ID_A}`,
+        '    name: 1차',
+        '    description: 설명',
+        '    revisionSeq: 42',
+        '    createdAt: 2026-09-03T05:25:30.000Z',
+        `  - id: ${ID_B}`,
+        '    name: 사라진 것',
+        '    description: ""',
+        '    revisionSeq: 1',
+        '    createdAt: 2026-09-03T05:25:30.000Z',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
 
     expect((await listSnapshots(cwd)).map((s) => s.id)).toEqual([ID_A])
     expect(await readSnapshot(cwd, ID_B)).toBeNull()
@@ -117,16 +132,20 @@ describe('snapshots', () => {
     const cwd = await dir()
     await writeSnapshot(cwd, rec(ID_A, '아주 중요한 1차 정리'))
     // 실제 머지 충돌의 모양 — **양쪽 내용이 그대로 남고** 마커 때문에 YAML 이 아니게 된다.
-    await writeFile(join(cwd, SNAPSHOTS_INDEX), [
-      '<<<<<<< HEAD',
-      'snapshots:',
-      `  - id: ${ID_A}`,
-      '    name: 아주 중요한 1차 정리',
-      '=======',
-      'snapshots: []',
-      '>>>>>>> other',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(cwd, SNAPSHOTS_INDEX),
+      [
+        '<<<<<<< HEAD',
+        'snapshots:',
+        `  - id: ${ID_A}`,
+        '    name: 아주 중요한 1차 정리',
+        '=======',
+        'snapshots: []',
+        '>>>>>>> other',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
 
     await writeSnapshot(cwd, rec(ID_B, '2차'))
 
@@ -135,9 +154,13 @@ describe('snapshots', () => {
     expect(written).not.toContain('이름 없음')
     expect(written).toContain('2차')
     // 그리고 깨진 원본은 **지우지 않고 옮겨 둔다** — 사용자가 쓴 이름이 든 유일한 사본이다.
-    const backups = (await readdir(join(cwd, SNAPSHOTS_DIR))).filter((n) => n.startsWith('index.corrupt-'))
+    const backups = (await readdir(join(cwd, SNAPSHOTS_DIR))).filter((n) =>
+      n.startsWith('index.corrupt-'),
+    )
     expect(backups).toHaveLength(1)
-    expect(await readFile(join(cwd, SNAPSHOTS_DIR, backups[0]!), 'utf8')).toContain('아주 중요한 1차 정리')
+    expect(await readFile(join(cwd, SNAPSHOTS_DIR, backups[0]!), 'utf8')).toContain(
+      '아주 중요한 1차 정리',
+    )
   })
 
   /**
@@ -149,7 +172,10 @@ describe('snapshots', () => {
    * 없다는 말을 듣고 무엇을 고쳐야 하는지 알 수 없다.
    */
   const BROKEN: [name: string, body: string][] = [
-    ['model 키가 없다', JSON.stringify({ id: ID_B, name: 'x', description: '', revisionSeq: 0, createdAt: 'x' })],
+    [
+      'model 키가 없다',
+      JSON.stringify({ id: ID_B, name: 'x', description: '', revisionSeq: 0, createdAt: 'x' }),
+    ],
     ['model 이 빈 객체다', JSON.stringify({ id: ID_B, model: {} })],
     ['필수 컬렉션이 모자란다', JSON.stringify({ id: ID_B, model: { tables: {}, columns: {} } })],
     ['JSON 이 아니다', 'not json'],
@@ -180,13 +206,22 @@ describe('snapshots', () => {
   /** ⚠️ 옛 스냅샷에는 나중에 생긴 컬렉션 키가 없다. 반환이 **파싱 결과**여야 보충이 살아 온다. */
   it('옛 모양(누락 컬렉션)은 보충해서 읽는다', async () => {
     const cwd = await dir()
-    await writeRawGz(cwd, ID_B, JSON.stringify({
-      ...rec(ID_B, '옛 것'),
-      model: {
-        tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {},
-        tableGroups: {}, domains: {},
-      },
-    }))
+    await writeRawGz(
+      cwd,
+      ID_B,
+      JSON.stringify({
+        ...rec(ID_B, '옛 것'),
+        model: {
+          tables: {},
+          columns: {},
+          relationships: {},
+          indexes: {},
+          notes: {},
+          tableGroups: {},
+          domains: {},
+        },
+      }),
+    )
     const got = await readSnapshot(cwd, ID_B)
     expect(got!.model.words).toEqual({})
     expect(got!.model.terms).toEqual({})
@@ -230,10 +265,7 @@ describe('snapshots', () => {
    */
   it('동시에 만든 스냅샷 두 개가 둘 다 인덱스에 남는다', async () => {
     const cwd = await dir()
-    await Promise.all([
-      writeSnapshot(cwd, rec(ID_A, '가')),
-      writeSnapshot(cwd, rec(ID_B, '나')),
-    ])
+    await Promise.all([writeSnapshot(cwd, rec(ID_A, '가')), writeSnapshot(cwd, rec(ID_B, '나'))])
     expect((await listSnapshots(cwd)).map((s) => s.name).sort()).toEqual(['가', '나'])
   })
 })

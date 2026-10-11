@@ -21,7 +21,10 @@ export type DictImportApplied = { words: number; terms: number; domains: number 
  * 조각 수만큼 쌓인다 — guides/data-layer.md 「한 요청의 op 상한은 …」).
  */
 export function applyDictImport(
-  model: ProjectModel, plan: DictImportPlan, mode: DictImportMode, newId: () => string,
+  model: ProjectModel,
+  plan: DictImportPlan,
+  mode: DictImportMode,
+  newId: () => string,
 ): ProjectModel {
   const domains = { ...model.domains }
   const words = { ...model.words }
@@ -35,7 +38,8 @@ export function applyDictImport(
       if (!cur) continue
       const { dialectTypes, ...rest } = e.patch
       domains[e.existingId] = {
-        ...cur, ...rest,
+        ...cur,
+        ...rest,
         // 방언은 컬럼 단위로 인식하므로 있는 방언만 갈아끼운다.
         dialectTypes: { ...cur.dialectTypes, ...dialectTypes },
         id: e.existingId,
@@ -64,7 +68,7 @@ export function applyDictImport(
 
   /** 이름 → id. 빈 이름은 "도메인 없음"이다. */
   const resolveDomain = (name: string): string | null =>
-    (name === '' ? null : (domainIdByName.get(name) ?? null))
+    name === '' ? null : (domainIdByName.get(name) ?? null)
 
   for (const e of plan.entries) {
     if (e.kind !== 'term') continue
@@ -74,7 +78,8 @@ export function applyDictImport(
       if (!cur) continue
       const { domainName, ...rest } = e.patch
       terms[e.existingId] = {
-        ...cur, ...rest,
+        ...cur,
+        ...rest,
         // "기본 도메인" 컬럼이 없던 시트면 기존 domainId를 그대로 둔다.
         ...(domainName === undefined ? {} : { domainId: resolveDomain(domainName) }),
         id: e.existingId,
@@ -91,7 +96,8 @@ export function applyDictImport(
 
 /** mode를 반영해 실제로 반영될 건수를 센다. */
 export function countApplied(plan: DictImportPlan, mode: DictImportMode): DictImportApplied {
-  const n = (kind: 'word' | 'term' | 'domain') => plan.entries
-    .filter((e) => e.kind === kind && (mode === 'overwrite' || e.existingId === null)).length
+  const n = (kind: 'word' | 'term' | 'domain') =>
+    plan.entries.filter((e) => e.kind === kind && (mode === 'overwrite' || e.existingId === null))
+      .length
   return { words: n('word'), terms: n('term'), domains: n('domain') }
 }

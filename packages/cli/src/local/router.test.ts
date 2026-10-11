@@ -13,11 +13,15 @@ import { LOCAL_PROJECT_ID, readConfig } from '../config.js'
 
 async function ctx(): Promise<LocalContext> {
   const cwd = await mkdtemp(join(tmpdir(), 'erdd-router-'))
-  await writeFile(join(cwd, 'erdd.config.yaml'), [
-    'dialects: [postgresql]',
-    'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-    '',
-  ].join('\n'), 'utf8')
+  await writeFile(
+    join(cwd, 'erdd.config.yaml'),
+    [
+      'dialects: [postgresql]',
+      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+      '',
+    ].join('\n'),
+    'utf8',
+  )
   const store = new FileStore(cwd)
   await store.load()
   return { store, cwd, projectId: LOCAL_PROJECT_ID, config: await readConfig(cwd) }
@@ -34,8 +38,12 @@ const T1 = '018f6b0e-0000-7000-8000-000000000001'
 
 /** `NamingRulesStrictSchema` 는 모든 키를 요구한다 — 부분 페이로드는 통과하지 못한다. */
 const LOWER_SNAKE = {
-  case: 'lower_snake', separator: '_', logicalSeparator: '', maxLengthBytes: 64,
-  tablePhysicalTemplate: '', tableLogicalTemplate: '',
+  case: 'lower_snake',
+  separator: '_',
+  logicalSeparator: '',
+  maxLengthBytes: 64,
+  tablePhysicalTemplate: '',
+  tableLogicalTemplate: '',
 } as const
 
 const createTable = (entityId: string): Op => ({
@@ -43,8 +51,14 @@ const createTable = (entityId: string): Op => ({
   entity: 'table',
   entityId,
   data: {
-    id: entityId, logicalName: '회원', physicalName: 'MBR', comment: null, groupId: null,
-    position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+    id: entityId,
+    logicalName: '회원',
+    physicalName: 'MBR',
+    comment: null,
+    groupId: null,
+    position: { x: 0, y: 0 },
+    groupPosition: null,
+    custom: {},
   },
 })
 
@@ -57,9 +71,19 @@ const createOrphanColumn = (): Op => ({
   entity: 'column',
   entityId: ORPHAN_COLUMN,
   data: {
-    id: ORPHAN_COLUMN, tableId: MISSING_TABLE, logicalName: '이름', physicalName: 'NM',
-    type: 'VARCHAR(10)', isPk: false, autoIncrement: false, nullable: true,
-    defaultValue: null, order: 0, comment: null, domainId: null, custom: {},
+    id: ORPHAN_COLUMN,
+    tableId: MISSING_TABLE,
+    logicalName: '이름',
+    physicalName: 'NM',
+    type: 'VARCHAR(10)',
+    isPk: false,
+    autoIncrement: false,
+    nullable: true,
+    defaultValue: null,
+    order: 0,
+    comment: null,
+    domainId: null,
+    custom: {},
   },
 })
 
@@ -69,7 +93,10 @@ const MISSING_SNAPSHOT = '00000000-0000-7000-8000-0000000000aa'
  * 손상된 스냅샷 파일을 직접 만든다 — 라우터를 거치지 않아야 담을 수 있는 모양이다.
  * 새 포맷은 **하나당 파일 하나**(`erdd/snapshots/<id>.json.gz`)라 레코드마다 파일을 쓴다.
  */
-async function writeSnapshotsFile(cwd: string, snapshots: Record<string, unknown>[]): Promise<void> {
+async function writeSnapshotsFile(
+  cwd: string,
+  snapshots: Record<string, unknown>[],
+): Promise<void> {
   await mkdir(join(cwd, SNAPSHOTS_DIR), { recursive: true })
   for (const rec of snapshots) {
     await writeFile(
@@ -106,16 +133,21 @@ describe('로컬 라우터', () => {
     const c = await ctx()
     const call = createLocalRouter().createCaller(c)
 
-    await expect(call.project.update({
-      projectId: LOCAL_PROJECT_ID, dialects: ['nosuchdb'],
-    } as never)).rejects.toThrow()
+    await expect(
+      call.project.update({
+        projectId: LOCAL_PROJECT_ID,
+        dialects: ['nosuchdb'],
+      } as never),
+    ).rejects.toThrow()
 
     // ⚠️ 키 누락을 통과시키면 그것이 곧 「기본값으로 되쓰기」가 되어 꺼 둔 구분자가 조용히 켜진다
     // (서버가 읽기용이 아니라 strict 스키마를 쓰는 이유다).
-    await expect(call.project.update({
-      projectId: LOCAL_PROJECT_ID,
-      namingRules: { case: 'lower_snake', separator: '_', maxLengthBytes: 64 },
-    } as never)).rejects.toThrow()
+    await expect(
+      call.project.update({
+        projectId: LOCAL_PROJECT_ID,
+        namingRules: { case: 'lower_snake', separator: '_', maxLengthBytes: 64 },
+      } as never),
+    ).rejects.toThrow()
 
     const after = await readConfig(c.cwd)
     expect(after.dialects).toEqual(['postgresql'])
@@ -130,14 +162,20 @@ describe('로컬 라우터', () => {
   /** 구독은 웹 계약 밖이라 화면이 보내지 않는다 — 설정을 저장해도 config 에 그대로 남아야 한다. */
   it('project.update 는 구독(dictionaries)을 보존한다', async () => {
     const c = await ctx()
-    await writeFile(join(c.cwd, 'erdd.config.yaml'), [
-      'dialects: [postgresql]',
-      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-      'dictionaries: [{ id: L1, name: 표준 }]',
-      '',
-    ].join('\n'), 'utf8')
+    await writeFile(
+      join(c.cwd, 'erdd.config.yaml'),
+      [
+        'dialects: [postgresql]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        'dictionaries: [{ id: L1, name: 표준 }]',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
     c.config = await readConfig(c.cwd)
-    await createLocalRouter().createCaller(c).project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })
+    await createLocalRouter()
+      .createCaller(c)
+      .project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })
     const after = await readConfig(c.cwd)
     expect(after.dialects).toEqual(['mysql'])
     expect(after.dictionaries).toEqual([{ id: 'L1', name: '표준' }])
@@ -150,13 +188,19 @@ describe('로컬 라우터', () => {
   it('project.update 는 ctx.config 의 구독이 낡았어도 디스크의 구독을 보존한다', async () => {
     const c = await ctx()
     expect(c.config.dictionaries).toEqual([])
-    await writeFile(join(c.cwd, 'erdd.config.yaml'), [
-      'dialects: [postgresql]',
-      'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
-      'dictionaries: [{ id: L1, name: 표준 }]',
-      '',
-    ].join('\n'), 'utf8')
-    await createLocalRouter().createCaller(c).project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })
+    await writeFile(
+      join(c.cwd, 'erdd.config.yaml'),
+      [
+        'dialects: [postgresql]',
+        'namingRules: { case: UPPER_SNAKE, separator: _, maxLengthBytes: 30 }',
+        'dictionaries: [{ id: L1, name: 표준 }]',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    await createLocalRouter()
+      .createCaller(c)
+      .project.update({ projectId: LOCAL_PROJECT_ID, dialects: ['mysql'] })
     const after = await readConfig(c.cwd)
     expect(after.dialects).toEqual(['mysql'])
     expect(after.dictionaries).toEqual([{ id: 'L1', name: '표준' }])
@@ -180,8 +224,9 @@ describe('로컬 라우터', () => {
 
   it('다른 projectId 는 NOT_FOUND 로 거절한다', async () => {
     const call = await caller()
-    await expect(call.model.get({ projectId: '00000000-0000-7000-8000-0000000000ff' }))
-      .rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(
+      call.model.get({ projectId: '00000000-0000-7000-8000-0000000000ff' }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
   it('스냅샷을 만들고 목록·조회·복원·삭제한다', async () => {
@@ -230,12 +275,18 @@ describe('로컬 라우터', () => {
 
   it('없는 스냅샷은 조회·삭제 모두 NOT_FOUND 로 던진다', async () => {
     const call = await caller()
-    await expect(call.snapshot.get({
-      projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
-    })).rejects.toMatchObject({ code: 'NOT_FOUND' })
-    await expect(call.snapshot.delete({
-      projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
-    })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(
+      call.snapshot.get({
+        projectId: LOCAL_PROJECT_ID,
+        snapshotId: MISSING_SNAPSHOT,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(
+      call.snapshot.delete({
+        projectId: LOCAL_PROJECT_ID,
+        snapshotId: MISSING_SNAPSHOT,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
   /**
@@ -246,8 +297,9 @@ describe('로컬 라우터', () => {
   it('무결성을 깨는 op 은 BAD_REQUEST 로 거절하고 모델을 바꾸지 않는다', async () => {
     const call = await caller()
     // applyOps 의 OpApplyError → LocalStoreError(Task 5) → wrap() → BAD_REQUEST 경로다.
-    await expect(call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createOrphanColumn()] }))
-      .rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    await expect(
+      call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createOrphanColumn()] }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' })
     const after = await call.model.get({ projectId: LOCAL_PROJECT_ID })
     expect(after.seq).toBe(0)
     expect(after.model.columns[ORPHAN_COLUMN]).toBeUndefined()
@@ -257,8 +309,9 @@ describe('로컬 라우터', () => {
     const call = await caller()
     // 상한 검사는 저장소가 한다(라우터 입력 스키마에는 없다) — 그 LocalStoreError 가 400 이 돼야 한다.
     const tooMany = Array.from({ length: MAX_OPS_PER_MUTATION + 1 }, () => createTable(T1))
-    await expect(call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: tooMany }))
-      .rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    await expect(
+      call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: tooMany }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' })
   })
 
   it('5,000건을 넘는 편집을 웹처럼 조각으로 나눠 보내면 차례로 적용하고 seq 를 1씩 올린다', async () => {
@@ -267,16 +320,25 @@ describe('로컬 라우터', () => {
     for (let i = 0; i <= MAX_OPS_PER_MUTATION; i += 1) {
       const id = `018f6b0e-0000-7000-8000-${String(i).padStart(12, '0')}`
       target.words[id] = {
-        id, logicalName: `단어${i}`, abbreviation: `W${i}`, englishName: null, description: null, origin: null,
+        id,
+        logicalName: `단어${i}`,
+        abbreviation: `W${i}`,
+        englishName: null,
+        description: null,
+        origin: null,
       }
     }
     const ops = diffModels(createEmptyModel(), target)
     expect(ops).toHaveLength(MAX_OPS_PER_MUTATION + 1)
     const first = await call.model.mutate({
-      projectId: LOCAL_PROJECT_ID, ops: ops.slice(0, MAX_OPS_PER_MUTATION), summary: '단어 등록 (1/2)',
+      projectId: LOCAL_PROJECT_ID,
+      ops: ops.slice(0, MAX_OPS_PER_MUTATION),
+      summary: '단어 등록 (1/2)',
     })
     const second = await call.model.mutate({
-      projectId: LOCAL_PROJECT_ID, ops: ops.slice(MAX_OPS_PER_MUTATION), summary: '단어 등록 (2/2)',
+      projectId: LOCAL_PROJECT_ID,
+      ops: ops.slice(MAX_OPS_PER_MUTATION),
+      summary: '단어 등록 (2/2)',
     })
     expect(second.seq).toBe(first.seq + 1)
     const after = await call.model.get({ projectId: LOCAL_PROJECT_ID })
@@ -304,18 +366,29 @@ describe('로컬 라우터', () => {
       const call = createLocalRouter().createCaller(c)
       await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
 
-      await writeSnapshotsFile(c.cwd, [{
-        id: MISSING_SNAPSHOT, name: '깨진 것', description: '',
-        revisionSeq: 0, createdAt: new Date(0).toISOString(),
-        ...(model === undefined ? {} : { model }),
-      }])
+      await writeSnapshotsFile(c.cwd, [
+        {
+          id: MISSING_SNAPSHOT,
+          name: '깨진 것',
+          description: '',
+          revisionSeq: 0,
+          createdAt: new Date(0).toISOString(),
+          ...(model === undefined ? {} : { model }),
+        },
+      ])
 
-      await expect(call.snapshot.restore({
-        projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
-      })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
-      await expect(call.snapshot.get({
-        projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT,
-      })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+      await expect(
+        call.snapshot.restore({
+          projectId: LOCAL_PROJECT_ID,
+          snapshotId: MISSING_SNAPSHOT,
+        }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+      await expect(
+        call.snapshot.get({
+          projectId: LOCAL_PROJECT_ID,
+          snapshotId: MISSING_SNAPSHOT,
+        }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST' })
 
       // 요점은 이것이다 — 사용자 모델이 그대로 남아 있어야 한다.
       expect((await call.model.get({ projectId: LOCAL_PROJECT_ID })).model.tables[T1]).toBeDefined()
@@ -333,14 +406,24 @@ describe('로컬 라우터', () => {
     await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
 
     // words·terms·customFields 가 없는 옛 모양이다(나머지 일곱 컬렉션은 있다).
-    await writeSnapshotsFile(c.cwd, [{
-      id: MISSING_SNAPSHOT, name: '옛 것', description: '',
-      revisionSeq: 0, createdAt: new Date(0).toISOString(),
-      model: {
-        tables: {}, columns: {}, relationships: {}, indexes: {}, notes: {},
-        tableGroups: {}, domains: {},
+    await writeSnapshotsFile(c.cwd, [
+      {
+        id: MISSING_SNAPSHOT,
+        name: '옛 것',
+        description: '',
+        revisionSeq: 0,
+        createdAt: new Date(0).toISOString(),
+        model: {
+          tables: {},
+          columns: {},
+          relationships: {},
+          indexes: {},
+          notes: {},
+          tableGroups: {},
+          domains: {},
+        },
       },
-    }])
+    ])
 
     await call.snapshot.restore({ projectId: LOCAL_PROJECT_ID, snapshotId: MISSING_SNAPSHOT })
     const { model } = await call.model.get({ projectId: LOCAL_PROJECT_ID })
@@ -376,11 +459,12 @@ describe('미저장 상태의 스냅샷', () => {
     const c = await ctx()
     const call = createLocalRouter().createCaller(c)
     await call.model.mutate({ projectId: LOCAL_PROJECT_ID, ops: [createTable(T1)] })
-    await c.store.flush()          // 드래프트가 생긴다
+    await c.store.flush() // 드래프트가 생긴다
     expect(c.store.dirty).toBe(true)
 
-    await expect(call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' }))
-      .rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    await expect(
+      call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' })
     expect((await call.snapshot.list({ projectId: LOCAL_PROJECT_ID })).items).toEqual([])
   })
 
@@ -396,8 +480,9 @@ describe('미저장 상태의 스냅샷', () => {
     // flush 를 부르지 않는다 — dirty 는 아직 false 다.
     expect(c.store.dirty).toBe(false)
 
-    await expect(call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' }))
-      .rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    await expect(
+      call.snapshot.create({ projectId: LOCAL_PROJECT_ID, name: '1차' }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' })
   })
 
   /** 대조군 — 저장하면 막히던 것이 풀린다(「전부 거절」로 과하게 조인 것이 아니다). */
@@ -461,15 +546,17 @@ describe('서버 라우터와의 계약', () => {
    */
   type InputGaps = {
     [R in keyof LocalIn & keyof ServerIn]: {
-      [P in keyof LocalIn[R] & keyof ServerIn[R]]:
-        ServerIn[R][P] extends LocalIn[R][P] ? never : `${R & string}.${P & string}`
+      [P in keyof LocalIn[R] & keyof ServerIn[R]]: ServerIn[R][P] extends LocalIn[R][P]
+        ? never
+        : `${R & string}.${P & string}`
     }[keyof LocalIn[R] & keyof ServerIn[R]]
   }[keyof LocalIn & keyof ServerIn]
 
   type OutputGaps = {
     [R in keyof LocalOut & keyof ServerOut]: {
-      [P in keyof LocalOut[R] & keyof ServerOut[R]]:
-        LocalOut[R][P] extends ServerOut[R][P] ? never : `${R & string}.${P & string}`
+      [P in keyof LocalOut[R] & keyof ServerOut[R]]: LocalOut[R][P] extends ServerOut[R][P]
+        ? never
+        : `${R & string}.${P & string}`
     }[keyof LocalOut[R] & keyof ServerOut[R]]
   }[keyof LocalOut & keyof ServerOut]
 
@@ -497,9 +584,15 @@ describe('서버 라우터와의 계약', () => {
     const names = Object.keys(local._def.procedures).sort()
     expect(names).toEqual([
       'auth.me',
-      'model.get', 'model.mutate',
-      'project.get', 'project.update',
-      'snapshot.create', 'snapshot.delete', 'snapshot.get', 'snapshot.list', 'snapshot.restore',
+      'model.get',
+      'model.mutate',
+      'project.get',
+      'project.update',
+      'snapshot.create',
+      'snapshot.delete',
+      'snapshot.get',
+      'snapshot.list',
+      'snapshot.restore',
     ])
   })
 })

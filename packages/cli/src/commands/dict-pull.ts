@@ -1,7 +1,17 @@
 import { uuidv7 } from 'uuidv7'
 import {
-  RESOURCE_KIND_LABEL, applyResyncPlan, libraryItemsOf, modelToFiles, planAdoption, planResync,
-  type FileTree, type LibraryFileDoc, type ProjectModel, type ResyncDecision, type ResyncEntry, type ResyncPlan,
+  RESOURCE_KIND_LABEL,
+  applyResyncPlan,
+  libraryItemsOf,
+  modelToFiles,
+  planAdoption,
+  planResync,
+  type FileTree,
+  type LibraryFileDoc,
+  type ProjectModel,
+  type ResyncDecision,
+  type ResyncEntry,
+  type ResyncPlan,
 } from '@erdd/core'
 import { readConfig, writeConfig, type DictionaryRef } from '../config.js'
 import { UNSAVED_NOTICE, hasDraft } from '../local/draft.js'
@@ -10,7 +20,12 @@ import { writeTreeChanges } from '../tree.js'
 import { clientFor, run, type CommandCtx } from './context.js'
 import { readDistributionFile, subscriptionPath } from './dict-file.js'
 import {
-  DICTIONARY_FILES, fetchItems, listLibraries, readLocalModel, requireDictConnection, resolveLibrary,
+  DICTIONARY_FILES,
+  fetchItems,
+  listLibraries,
+  readLocalModel,
+  requireDictConnection,
+  resolveLibrary,
   type LibraryRow,
 } from './dict-shared.js'
 
@@ -61,7 +76,11 @@ type LibraryReport = {
  * 값으로 덮는다(shared-resources 「승격」의 「보고 나서 덮어쓴다」). `ours` 는 로컬 값 유지에 명시적으로
  * 동의한 것이라 그 결과가 의도다. `theirs` 는 이 갈래에서 연결하지 않는다.
  */
-function decide(model: ProjectModel, plan: ResyncPlan, ctx: DictPullCtx): {
+function decide(
+  model: ProjectModel,
+  plan: ResyncPlan,
+  ctx: DictPullCtx,
+): {
   decisions: Record<string, ResyncDecision>
   linkable: ReadonlyMap<string, string>
   differs: ReadonlyMap<string, string[]>
@@ -70,32 +89,52 @@ function decide(model: ProjectModel, plan: ResyncPlan, ctx: DictPullCtx): {
   for (const e of plan.entries) {
     if (e.status === 'added') decisions[e.sourceId] = e.nameClash ? 'adopt' : 'apply'
     else if (e.status === 'auto-update') decisions[e.sourceId] = 'apply'
-    else decisions[e.sourceId] = ctx.conflicts === 'theirs' ? 'apply' : ctx.conflicts === 'ours' ? 'keep' : 'defer'
+    else
+      decisions[e.sourceId] =
+        ctx.conflicts === 'theirs' ? 'apply' : ctx.conflicts === 'ours' ? 'keep' : 'defer'
   }
-  const { assigned: linkable, differs } =
-    planAdoption(model, plan, decisions, { sameContentOnly: ctx.conflicts !== 'ours' })
+  const { assigned: linkable, differs } = planAdoption(model, plan, decisions, {
+    sameContentOnly: ctx.conflicts !== 'ours',
+  })
   for (const e of plan.entries) {
-    if (decisions[e.sourceId] === 'adopt' && !(ctx.adopt && linkable.has(e.sourceId))) decisions[e.sourceId] = 'defer'
+    if (decisions[e.sourceId] === 'adopt' && !(ctx.adopt && linkable.has(e.sourceId)))
+      decisions[e.sourceId] = 'defer'
   }
   return { decisions, linkable, differs }
 }
 
 function report(
-  lib: { id: string; name: string; scope: LibraryRow['scope'] | null }, plan: ResyncPlan, decisions: Record<string, ResyncDecision>,
-  linkable: ReadonlyMap<string, string>, differs: ReadonlyMap<string, string[]>, file: string | null,
+  lib: { id: string; name: string; scope: LibraryRow['scope'] | null },
+  plan: ResyncPlan,
+  decisions: Record<string, ResyncDecision>,
+  linkable: ReadonlyMap<string, string>,
+  differs: ReadonlyMap<string, string[]>,
+  file: string | null,
 ): LibraryReport {
   const named = (e: ResyncEntry): Named => ({ kind: RESOURCE_KIND_LABEL[e.kind], name: e.name })
-  const clashDeferred = plan.entries.filter((e) => e.status === 'added' && e.nameClash && decisions[e.sourceId] === 'defer')
+  const clashDeferred = plan.entries.filter(
+    (e) => e.status === 'added' && e.nameClash && decisions[e.sourceId] === 'defer',
+  )
   return {
-    id: lib.id, name: lib.name, scope: lib.scope, file, missing: false, missingReason: null,
-    added: plan.entries.filter((e) => e.status === 'added' && decisions[e.sourceId] === 'apply').length,
+    id: lib.id,
+    name: lib.name,
+    scope: lib.scope,
+    file,
+    missing: false,
+    missingReason: null,
+    added: plan.entries.filter((e) => e.status === 'added' && decisions[e.sourceId] === 'apply')
+      .length,
     autoUpdated: plan.entries.filter((e) => e.status === 'auto-update').length,
     adopted: plan.entries.filter((e) => decisions[e.sourceId] === 'adopt').length,
     nameClashSkipped: clashDeferred.filter((e) => linkable.has(e.sourceId)).map(named),
-    adoptDiffers: clashDeferred.filter((e) => differs.has(e.sourceId))
+    adoptDiffers: clashDeferred
+      .filter((e) => differs.has(e.sourceId))
       .map((e) => ({ ...named(e), fields: differs.get(e.sourceId)! })),
-    unlinkable: clashDeferred.filter((e) => !linkable.has(e.sourceId) && !differs.has(e.sourceId)).map(named),
-    conflicts: plan.entries.filter((e) => e.status === 'conflict')
+    unlinkable: clashDeferred
+      .filter((e) => !linkable.has(e.sourceId) && !differs.has(e.sourceId))
+      .map(named),
+    conflicts: plan.entries
+      .filter((e) => e.status === 'conflict')
       .map((e) => ({ ...named(e), fields: e.changedFields, decision: decisions[e.sourceId]! })),
     kept: plan.keptSynced,
     detached: plan.keptDetached,
@@ -111,27 +150,43 @@ function pick(tree: FileTree, files: readonly string[]): FileTree {
  * `ORIGINS_FILE` 이 마지막인 것은 `writeTreeChanges` 가 보장한다(그 함수 주석의 이유).
  */
 function writeDictionaryFiles(
-  cwd: string, base: FileTree, next: FileTree,
+  cwd: string,
+  base: FileTree,
+  next: FileTree,
 ): Promise<{ written: string[]; deleted: string[] }> {
   return writeTreeChanges(cwd, pick(base, DICTIONARY_FILES), pick(next, DICTIONARY_FILES))
 }
 
-function render(reports: LibraryReport[], files: { written: string[]; deleted: string[] }, dryRun: boolean): string {
+function render(
+  reports: LibraryReport[],
+  files: { written: string[]; deleted: string[] },
+  dryRun: boolean,
+): string {
   const lines: string[] = []
   for (const r of reports) {
     if (r.missing) {
-      lines.push(r.missingReason === 'not-connected'
-        ? `${r.name} — 서버에 연결되지 않아 건너뛰었습니다`
-        : `${r.name} — 찾을 수 없어 건너뛰었습니다`)
+      lines.push(
+        r.missingReason === 'not-connected'
+          ? `${r.name} — 서버에 연결되지 않아 건너뛰었습니다`
+          : `${r.name} — 찾을 수 없어 건너뛰었습니다`,
+      )
       continue
     }
-    lines.push(`${r.name} (${r.file !== null ? `파일 ${r.file}` : r.scope === 'global' ? '전역' : '조직'})`)
-    lines.push(`  추가 ${r.added} · 자동 갱신 ${r.autoUpdated} · 연결 ${r.adopted} · 유지 ${r.kept}`)
+    lines.push(
+      `${r.name} (${r.file !== null ? `파일 ${r.file}` : r.scope === 'global' ? '전역' : '조직'})`,
+    )
+    lines.push(
+      `  추가 ${r.added} · 자동 갱신 ${r.autoUpdated} · 연결 ${r.adopted} · 유지 ${r.kept}`,
+    )
     if (r.conflicts.length > 0) {
       // 한 실행의 충돌은 모두 같은 결정이다(--conflicts 하나가 정한다).
       const decision = r.conflicts[0]!.decision
-      const what = decision === 'apply' ? '원본 반영' : decision === 'keep' ? '로컬 유지'
-        : '보류(--conflicts theirs|ours 로 정리)'
+      const what =
+        decision === 'apply'
+          ? '원본 반영'
+          : decision === 'keep'
+            ? '로컬 유지'
+            : '보류(--conflicts theirs|ours 로 정리)'
       lines.push(`  충돌 ${r.conflicts.length} — ${what}:`)
       for (const c of r.conflicts) lines.push(`    ${c.kind} ${c.name}  (${c.fields.join(', ')})`)
     }
@@ -139,17 +194,27 @@ function render(reports: LibraryReport[], files: { written: string[]; deleted: s
       lines.push(`  이름 중복 ${r.nameClashSkipped.length} — 건너뜀 (--adopt 로 연결)`)
     }
     if (r.adoptDiffers.length > 0) {
-      lines.push(`  이름 중복 ${r.adoptDiffers.length} — 내용이 달라 연결하지 않음 (--adopt --conflicts ours 로 로컬 값을 유지한 채 연결)`)
-      for (const d of r.adoptDiffers) lines.push(`    ${d.kind} ${d.name}  (${d.fields.join(', ')})`)
+      lines.push(
+        `  이름 중복 ${r.adoptDiffers.length} — 내용이 달라 연결하지 않음 (--adopt --conflicts ours 로 로컬 값을 유지한 채 연결)`,
+      )
+      for (const d of r.adoptDiffers)
+        lines.push(`    ${d.kind} ${d.name}  (${d.fields.join(', ')})`)
     }
     if (r.unlinkable.length > 0) {
-      lines.push(`  이름 중복 ${r.unlinkable.length} — 연결할 수 없음 (같은 이름 항목을 다른 원본이 차지했거나 커스텀 항목의 적용 대상이 다릅니다)`)
+      lines.push(
+        `  이름 중복 ${r.unlinkable.length} — 연결할 수 없음 (같은 이름 항목을 다른 원본이 차지했거나 커스텀 항목의 적용 대상이 다릅니다)`,
+      )
     }
     if (r.detached > 0) lines.push(`  원본에서 사라짐 ${r.detached} (로컬에 남겨 둠)`)
   }
   const changed = [...files.written, ...files.deleted]
-  lines.push(dryRun ? '미리보기입니다 — 파일을 쓰지 않았습니다'
-    : changed.length === 0 ? '바뀐 파일이 없습니다' : `반영했습니다 — ${changed.join(', ')}`)
+  lines.push(
+    dryRun
+      ? '미리보기입니다 — 파일을 쓰지 않았습니다'
+      : changed.length === 0
+        ? '바뀐 파일이 없습니다'
+        : `반영했습니다 — ${changed.join(', ')}`,
+  )
   return lines.join('\n')
 }
 
@@ -168,7 +233,7 @@ export function dictPull(ctx: DictPullCtx): Promise<number> {
     const { tree, model: initial } = await readLocalModel(ctx.cwd)
 
     let subscriptions: DictionaryRef[] = config.dictionaries
-    const docs = new Map<string, LibraryFileDoc>()   // 구독 id → 읽은 배포 파일
+    const docs = new Map<string, LibraryFileDoc>() // 구독 id → 읽은 배포 파일
     let targets: DictionaryRef[]
     if (ctx.file !== undefined) {
       const path = subscriptionPath(ctx.cwd, ctx.file)
@@ -181,10 +246,13 @@ export function dictPull(ctx: DictPullCtx): Promise<number> {
         : [...subscriptions, ref]
       targets = [ref]
     } else if (ctx.library !== undefined) {
-      targets = []   // 아래에서 서버 목록으로 채운다
+      targets = [] // 아래에서 서버 목록으로 채운다
     } else {
       if (subscriptions.length === 0) {
-        throw new CliError('USAGE', '구독한 라이브러리가 없습니다 — --library <이름|id> 또는 --file <경로> 로 지정하세요 (목록: erdd dict list)')
+        throw new CliError(
+          'USAGE',
+          '구독한 라이브러리가 없습니다 — --library <이름|id> 또는 --file <경로> 로 지정하세요 (목록: erdd dict list)',
+        )
       }
       targets = subscriptions
     }
@@ -194,7 +262,8 @@ export function dictPull(ctx: DictPullCtx): Promise<number> {
     const libraries = client !== null ? await listLibraries(client, config.projectId!) : []
     if (ctx.library !== undefined) {
       const lib = resolveLibrary(libraries, ctx.library)
-      if (!subscriptions.some((s) => s.id === lib.id)) subscriptions = [...subscriptions, { id: lib.id, name: lib.name }]
+      if (!subscriptions.some((s) => s.id === lib.id))
+        subscriptions = [...subscriptions, { id: lib.id, name: lib.name }]
       targets = [{ id: lib.id, name: lib.name }]
     }
 
@@ -202,25 +271,52 @@ export function dictPull(ctx: DictPullCtx): Promise<number> {
     const reports: LibraryReport[] = []
     for (const target of targets) {
       if (target.file !== undefined) {
-        const doc = docs.get(target.id) ?? await readDistributionFile(ctx.cwd, target.file)
+        const doc = docs.get(target.id) ?? (await readDistributionFile(ctx.cwd, target.file))
         if (doc.library.id !== target.id) {
-          throw new CliError('VALIDATION',
-            `구독 ${target.name}(${target.id}) 의 파일 ${target.file} 은 다른 라이브러리(${doc.library.id})입니다 — 다른 라이브러리로 바꾸려면 구독 줄을 지우고 --file 로 다시 받으세요`)
+          throw new CliError(
+            'VALIDATION',
+            `구독 ${target.name}(${target.id}) 의 파일 ${target.file} 은 다른 라이브러리(${doc.library.id})입니다 — 다른 라이브러리로 바꾸려면 구독 줄을 지우고 --file 로 다시 받으세요`,
+          )
         }
         docs.set(target.id, doc)
         const plan = planResync(model, target.id, libraryItemsOf(doc))
         const { decisions, linkable, differs } = decide(model, plan, ctx)
-        reports.push(report({ id: target.id, name: doc.library.name, scope: null }, plan, decisions, linkable, differs, target.file))
+        reports.push(
+          report(
+            { id: target.id, name: doc.library.name, scope: null },
+            plan,
+            decisions,
+            linkable,
+            differs,
+            target.file,
+          ),
+        )
         model = applyResyncPlan(model, plan, decisions, uuidv7)
         continue
       }
       const lib = client === null ? undefined : libraries.find((l) => l.id === target.id)
       if (lib === undefined) {
         const reason = client === null ? 'not-connected' : 'not-found'
-        if (reason === 'not-found') note(`경고: 라이브러리 ${target.name}(${target.id})을(를) 찾을 수 없어 건너뜁니다 — 삭제됐거나 권한이 없습니다`)
+        if (reason === 'not-found')
+          note(
+            `경고: 라이브러리 ${target.name}(${target.id})을(를) 찾을 수 없어 건너뜁니다 — 삭제됐거나 권한이 없습니다`,
+          )
         reports.push({
-          id: target.id, name: target.name, scope: null, file: null, missing: true, missingReason: reason,
-          added: 0, autoUpdated: 0, adopted: 0, nameClashSkipped: [], adoptDiffers: [], unlinkable: [], conflicts: [], kept: 0, detached: 0,
+          id: target.id,
+          name: target.name,
+          scope: null,
+          file: null,
+          missing: true,
+          missingReason: reason,
+          added: 0,
+          autoUpdated: 0,
+          adopted: 0,
+          nameClashSkipped: [],
+          adoptDiffers: [],
+          unlinkable: [],
+          conflicts: [],
+          kept: 0,
+          detached: 0,
         })
         continue
       }
@@ -232,7 +328,10 @@ export function dictPull(ctx: DictPullCtx): Promise<number> {
 
     // 표시 이름은 원본(서버 목록·파일)을 따른다. file 은 보존한다 — 떨어뜨리면 다음 pull 이 서버로 간다.
     subscriptions = subscriptions.map((s) => {
-      const name = s.file !== undefined ? docs.get(s.id)?.library.name : libraries.find((l) => l.id === s.id)?.name
+      const name =
+        s.file !== undefined
+          ? docs.get(s.id)?.library.name
+          : libraries.find((l) => l.id === s.id)?.name
       return name === undefined ? s : { ...s, name }
     })
 
@@ -244,7 +343,11 @@ export function dictPull(ctx: DictPullCtx): Promise<number> {
         await writeConfig(ctx.cwd, { ...config, dictionaries: subscriptions })
       }
     }
-    emit(ctx.json, render(reports, files, ctx.dryRun), { libraries: reports, ...files, dryRun: ctx.dryRun })
+    emit(ctx.json, render(reports, files, ctx.dryRun), {
+      libraries: reports,
+      ...files,
+      dryRun: ctx.dryRun,
+    })
     return 0
   })
 }

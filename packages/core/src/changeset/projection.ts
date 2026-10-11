@@ -1,12 +1,21 @@
 import {
-  commentText, effectiveAutoIncrement, exportableTables, relationshipConstraintNames, tableColumns,
+  commentText,
+  effectiveAutoIncrement,
+  exportableTables,
+  relationshipConstraintNames,
+  tableColumns,
 } from '../ddl.js'
 import type { Dialect } from '../dialect.js'
 import { resolveColumn } from '../domain-resolve.js'
 import type { Column, ProjectModel } from '../model.js'
 import { composeTableLogicalName, composeTablePhysicalName } from '../name-template.js'
 import type { NamingRules } from '../naming.js'
-import { emptyProjection, type DialectTypes, type ProjColumn, type SchemaProjection } from './types.js'
+import {
+  emptyProjection,
+  type DialectTypes,
+  type ProjColumn,
+  type SchemaProjection,
+} from './types.js'
 
 export type ProjectionSettings = { rules: NamingRules; dialects: readonly Dialect[] }
 
@@ -40,7 +49,9 @@ export function projectSchema(model: ProjectModel, settings: ProjectionSettings)
   for (const ix of Object.values(model.indexes)) {
     if (!selected.has(ix.tableId)) continue
     out.indexes[ix.id] = {
-      id: ix.id, tableId: ix.tableId, name: ix.name,
+      id: ix.id,
+      tableId: ix.tableId,
+      name: ix.name,
       columns: ix.columns.map((c) => ({ columnId: c.columnId, direction: c.direction })),
       unique: ix.unique,
     }

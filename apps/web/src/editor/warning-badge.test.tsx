@@ -15,7 +15,13 @@ describe('WarningBadge', () => {
 
   it('shows the count and an aria-label listing the messages when there are warnings', () => {
     const warnings: Warning[] = [
-      { kind: 'duplicate-physical', scope: 'column', entityId: 'c1', tableId: 't1', message: '물리명 중복' },
+      {
+        kind: 'duplicate-physical',
+        scope: 'column',
+        entityId: 'c1',
+        tableId: 't1',
+        message: '물리명 중복',
+      },
       { kind: 'incomplete-mapping', scope: 'relationship', entityId: 'r1', message: '매핑 불완전' },
     ]
     render(<WarningBadge warnings={warnings} />)
@@ -27,9 +33,13 @@ describe('WarningBadge', () => {
   })
 
   it('경고 수를 천 단위로 끊는다 — 배지 숫자와 aria-label 모두', () => {
-    const warnings: Warning[] = Array.from({ length: 1234 }, (_, i) => (
-      { kind: 'duplicate-physical', scope: 'column', entityId: `c${i}`, tableId: 't1', message: '물리명 중복' }
-    ))
+    const warnings: Warning[] = Array.from({ length: 1234 }, (_, i) => ({
+      kind: 'duplicate-physical',
+      scope: 'column',
+      entityId: `c${i}`,
+      tableId: 't1',
+      message: '물리명 중복',
+    }))
     render(<WarningBadge warnings={warnings} />)
     expect(screen.getByText('1,234')).toBeInTheDocument()
     expect(screen.getByLabelText(/^경고 1,234건: /)).toBeInTheDocument()

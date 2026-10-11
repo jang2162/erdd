@@ -10,7 +10,13 @@ import { buildSampleModel } from '@erdd/core/src/testing/fixtures.js'
 import { DEFAULT_NAMING_RULES, createEmptyModel } from '@erdd/core'
 import { useEditorStore } from './store.js'
 import {
-  buildUsageIndex, createWord, createTerm, termUsage, unregisteredAbbreviations, unregisteredWords, wordUsage,
+  buildUsageIndex,
+  createWord,
+  createTerm,
+  termUsage,
+  unregisteredAbbreviations,
+  unregisteredWords,
+  wordUsage,
 } from './dict-edits.js'
 import { updateTable } from './model-edits.js'
 import { DictPanel } from './dict-panel.js'
@@ -37,7 +43,9 @@ function renderPanel(open = true) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
   render(<DictPanel projectId={PROJECT_ID} open={open} onOpenChange={() => {}} />, { wrapper: w })
@@ -49,10 +57,14 @@ function renderPanelWithRerender(open: boolean) {
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
   const w = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>{children}</TRPCProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        {children}
+      </TRPCProvider>
     </QueryClientProvider>
   )
-  const panel = (o: boolean) => <DictPanel projectId={PROJECT_ID} open={o} onOpenChange={() => {}} />
+  const panel = (o: boolean) => (
+    <DictPanel projectId={PROJECT_ID} open={o} onOpenChange={() => {}} />
+  )
   const result = render(panel(open), { wrapper: w })
   return { rerender: (o: boolean) => result.rerender(panel(o)) }
 }
@@ -61,18 +73,31 @@ function loadModelWithDict(grant = true) {
   // buildSampleModel의 t2 테이블 논리명은 "회원", c2/c3/c4 컬럼 논리명은 "회원번호"/"회원명"/"등급코드".
   let m = buildSampleModel()
   m = createWord(m, {
-    id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-    englishName: null, description: null, origin: null,
+    id: 'w1',
+    logicalName: '회원',
+    abbreviation: 'MBR',
+    englishName: null,
+    description: null,
+    origin: null,
   })
   m = createTerm(m, {
-    id: 'term1', logicalName: '등급코드', physicalName: 'GRD_CD', domainId: null, description: null,
+    id: 'term1',
+    logicalName: '등급코드',
+    physicalName: 'GRD_CD',
+    domainId: null,
+    description: null,
     origin: null,
   })
   useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
   if (grant) grantEditPermission()
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); useEditorStore.getState().reset() })
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  useEditorStore.getState().reset()
+})
 
 describe('DictPanel', () => {
   it('단어 탭: 목록과 사용처 개수를 보여준다', async () => {
@@ -169,7 +194,14 @@ describe('DictPanel', () => {
     let m = createEmptyModel()
     for (let i = 0; i < 60; i++) {
       const n = String(i).padStart(2, '0')
-      m = createWord(m, { id: `w${i}`, logicalName: `단어${n}`, abbreviation: `AB${n}`, englishName: null, description: null, origin: null })
+      m = createWord(m, {
+        id: `w${i}`,
+        logicalName: `단어${n}`,
+        abbreviation: `AB${n}`,
+        englishName: null,
+        description: null,
+        origin: null,
+      })
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
@@ -178,7 +210,7 @@ describe('DictPanel', () => {
     expect(screen.getByText('단어49')).toBeInTheDocument()
     expect(screen.queryByText('단어50')).toBeNull()
     const list = screen.getByText('단어49').closest('ul')!
-    list.scrollTop = 400                                        // 끝까지 내려 「다음」을 누른다
+    list.scrollTop = 400 // 끝까지 내려 「다음」을 누른다
     await userEvent.click(screen.getByRole('button', { name: '다음' }))
     expect(screen.getByText('단어50')).toBeInTheDocument()
     expect(list.scrollTop).toBe(0)
@@ -189,10 +221,38 @@ describe('DictPanel', () => {
   })
   it('단어는 영문명으로, 용어는 물리명으로도 찾는다', async () => {
     let m = createEmptyModel()
-    m = createWord(m, { id: 'w1', logicalName: '회원', abbreviation: 'MBR', englishName: 'Member', description: null, origin: null })
-    m = createWord(m, { id: 'w2', logicalName: '주문', abbreviation: 'ORD', englishName: 'Order', description: null, origin: null })
-    m = createTerm(m, { id: 't1', logicalName: '회원번호', physicalName: 'MBR_NO', domainId: null, description: null, origin: null })
-    m = createTerm(m, { id: 't2', logicalName: '주문일자', physicalName: 'ORD_DT', domainId: null, description: null, origin: null })
+    m = createWord(m, {
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: 'Member',
+      description: null,
+      origin: null,
+    })
+    m = createWord(m, {
+      id: 'w2',
+      logicalName: '주문',
+      abbreviation: 'ORD',
+      englishName: 'Order',
+      description: null,
+      origin: null,
+    })
+    m = createTerm(m, {
+      id: 't1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      domainId: null,
+      description: null,
+      origin: null,
+    })
+    m = createTerm(m, {
+      id: 't2',
+      logicalName: '주문일자',
+      physicalName: 'ORD_DT',
+      domainId: null,
+      description: null,
+      origin: null,
+    })
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
@@ -209,7 +269,14 @@ describe('DictPanel', () => {
     let m = createEmptyModel()
     for (let i = 0; i < 60; i++) {
       const n = String(i).padStart(2, '0')
-      m = createTerm(m, { id: `t${i}`, logicalName: `용어${n}`, physicalName: `TRM_${n}`, domainId: null, description: null, origin: null })
+      m = createTerm(m, {
+        id: `t${i}`,
+        logicalName: `용어${n}`,
+        physicalName: `TRM_${n}`,
+        domainId: null,
+        description: null,
+        origin: null,
+      })
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
@@ -230,9 +297,18 @@ describe('DictPanel', () => {
     renderPanel(false)
     act(() => {
       const m = useEditorStore.getState().model
-      useEditorStore.getState().setLoaded(createWord(m, {
-        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
-      }), 2, PROJECT_ID)
+      useEditorStore.getState().setLoaded(
+        createWord(m, {
+          id: 'w9',
+          logicalName: '번호',
+          abbreviation: 'NO',
+          englishName: null,
+          description: null,
+          origin: null,
+        }),
+        2,
+        PROJECT_ID,
+      )
     })
     expect(useEditorStore.getState().model.words.w9).toBeDefined()
     expect(unregisteredWords).not.toHaveBeenCalled()
@@ -244,13 +320,19 @@ describe('DictPanel', () => {
     // jsdom 에는 애니메이션이 없어 Radix Presence 가 닫자마자 내용을 걷는다. 닫힘 상태에서 애니메이션이 도는 것처럼
     // 보이게 해 내용이 남아 있는 동안(브라우저의 페이드아웃 약 200ms)의 화면을 본다.
     const real = window.getComputedStyle.bind(window)
-    vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => new Proxy(real(el, pseudo), {
-      get: (target, prop) => {
-        if (prop === 'animationName') return el.getAttribute('data-state') === 'closed' ? 'exit' : 'enter'
-        const value = Reflect.get(target, prop) as unknown
-        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value
-      },
-    }))
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(
+      (el, pseudo) =>
+        new Proxy(real(el, pseudo), {
+          get: (target, prop) => {
+            if (prop === 'animationName')
+              return el.getAttribute('data-state') === 'closed' ? 'exit' : 'enter'
+            const value = Reflect.get(target, prop) as unknown
+            return typeof value === 'function'
+              ? (value as (...a: unknown[]) => unknown).bind(target)
+              : value
+          },
+        }),
+    )
     loadModelWithDict()
     const { rerender } = renderPanelWithRerender(true)
     const unregisteredTab = screen.getByRole('tab', { name: /^미등록 항목 \(\d+\)$/ })
@@ -263,9 +345,18 @@ describe('DictPanel', () => {
     rerender(false)
     act(() => {
       const m = useEditorStore.getState().model
-      useEditorStore.getState().setLoaded(createWord(m, {
-        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
-      }), 2, PROJECT_ID)
+      useEditorStore.getState().setLoaded(
+        createWord(m, {
+          id: 'w9',
+          logicalName: '번호',
+          abbreviation: 'NO',
+          englishName: null,
+          description: null,
+          origin: null,
+        }),
+        2,
+        PROJECT_ID,
+      )
     })
     expect(screen.getByRole('dialog', { hidden: true })).toHaveAttribute('data-state', 'closed')
     expect(screen.getByRole('tab', { name: unregisteredTitle!, hidden: true })).toBeInTheDocument()
@@ -278,20 +369,33 @@ describe('DictPanel', () => {
   it('닫힌 동안 모델이 바뀌었으면 다시 열 때 최신 모델로 미등록 건수와 사용처를 다시 계산한다', async () => {
     loadModelWithDict()
     const { rerender } = renderPanelWithRerender(true)
-    const before = Number(/\((\d+)\)/.exec(screen.getByRole('tab', { name: /^미등록 항목/ }).textContent!)![1])
+    const before = Number(
+      /\((\d+)\)/.exec(screen.getByRole('tab', { name: /^미등록 항목/ }).textContent!)![1],
+    )
     expect(screen.queryByText('NO')).toBeNull()
     rerender(false)
     act(() => {
       // 픽스처의 「회원번호」(MBR_NO) 컬럼이 쓰는 미등록 단어 「번호」/약어 「NO」를 등록한다 — 두 방향에서
       // 하나씩, 미등록이 둘 줄고 새 단어에 사용처가 생긴다.
       const m = useEditorStore.getState().model
-      useEditorStore.getState().setLoaded(createWord(m, {
-        id: 'w9', logicalName: '번호', abbreviation: 'NO', englishName: null, description: null, origin: null,
-      }), 2, PROJECT_ID)
+      useEditorStore.getState().setLoaded(
+        createWord(m, {
+          id: 'w9',
+          logicalName: '번호',
+          abbreviation: 'NO',
+          englishName: null,
+          description: null,
+          origin: null,
+        }),
+        2,
+        PROJECT_ID,
+      )
     })
     rerender(true)
     expect(before).toBeGreaterThan(2)
-    expect(screen.getByRole('tab', { name: /^미등록 항목/ })).toHaveTextContent(`미등록 항목 (${before - 2})`)
+    expect(screen.getByRole('tab', { name: /^미등록 항목/ })).toHaveTextContent(
+      `미등록 항목 (${before - 2})`,
+    )
     const row = screen.getByText('NO').closest('li')!
     expect(row).toHaveTextContent(/사용처 [1-9]\d*개/)
   })
@@ -364,9 +468,15 @@ describe('DictPanel 용어 전파', () => {
       ...m,
       domains: {
         dom1: {
-          id: 'dom1', name: '코드값', category: null, logicalType: 'CHAR(2)',
+          id: 'dom1',
+          name: '코드값',
+          category: null,
+          logicalType: 'CHAR(2)',
           dialectTypes: { postgresql: null, mysql: null, oracle: null, mssql: null },
-          defaultValue: null, allowedValues: [], description: null, origin: null,
+          defaultValue: null,
+          allowedValues: [],
+          description: null,
+          origin: null,
         },
       },
     }
@@ -396,7 +506,8 @@ describe('DictPanel 용어 전파', () => {
     expect(screen.queryByText(/함께 갱신할까요/)).not.toBeInTheDocument()
     // 확인 없이 '저장까지' 됐는지 확인 — 다이얼로그 부재만 보면 onSave가 즉시 리턴해도 통과한다.
     await waitFor(() =>
-      expect(useEditorStore.getState().model.terms.term1!.description).toBe('설명만 수정'))
+      expect(useEditorStore.getState().model.terms.term1!.description).toBe('설명만 수정'),
+    )
   })
 
   it('유지를 고르면 용어만 바뀌고 사용처는 그대로다', async () => {
@@ -411,11 +522,13 @@ describe('DictPanel 용어 전파', () => {
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
     await userEvent.click(await screen.findByRole('button', { name: '유지' }))
 
-    await waitFor(() => expect(useEditorStore.getState().model.terms.term1!.physicalName).toBe('GRADE_CD'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.terms.term1!.physicalName).toBe('GRADE_CD'),
+    )
     const m = useEditorStore.getState().model
-    expect(m.columns.c1!.physicalName).toBe('GRD_CD')   // 사용처는 그대로
+    expect(m.columns.c1!.physicalName).toBe('GRD_CD') // 사용처는 그대로
     expect(m.columns.c4!.physicalName).toBe('GRD_CD')
-    expect(fetchMock).toHaveBeenCalledTimes(1)   // 유지도 Revision 1건이다
+    expect(fetchMock).toHaveBeenCalledTimes(1) // 유지도 Revision 1건이다
   })
 
   it('반영을 고르면 용어와 사용처가 한 번의 mutation으로 함께 바뀐다', async () => {
@@ -427,7 +540,9 @@ describe('DictPanel 용어 전파', () => {
     await userEvent.click(screen.getByRole('button', { name: '저장' }))
     await userEvent.click(await screen.findByRole('button', { name: /2곳에 반영/ }))
 
-    await waitFor(() => expect(useEditorStore.getState().model.columns.c1!.physicalName).toBe('GRADE_CD'))
+    await waitFor(() =>
+      expect(useEditorStore.getState().model.columns.c1!.physicalName).toBe('GRADE_CD'),
+    )
     const m = useEditorStore.getState().model
     expect(m.terms.term1!.physicalName).toBe('GRADE_CD')
     expect(m.columns.c4!.physicalName).toBe('GRADE_CD')
@@ -457,7 +572,9 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     await userEvent.click(screen.getByRole('button', { name: /용어 추가/ }))
     const physical = screen.getByLabelText(/물리명/)
     const logical = screen.getByLabelText(/논리명/)
-    expect(physical.compareDocumentPosition(logical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      physical.compareDocumentPosition(logical) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 
   it('미등록 약어에 논리명을 입력해 일괄 등록하면 단어가 생긴다', async () => {
@@ -494,7 +611,14 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     // 논리명에 미등록 단어('쿠폰'), 물리명에 미등록 약어('XXX')가 각각 있는 모델
     let m = buildSampleModel()
     m = updateTable(m, 't2', { logicalName: '회원쿠폰', physicalName: 'MBR_XXX' })
-    m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
+    m = createWord(m, {
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
+    })
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
@@ -513,7 +637,14 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
   it('하위 탭에 각 방향의 건수가 붙는다', async () => {
     let m = buildSampleModel()
     m = updateTable(m, 't2', { logicalName: '회원쿠폰', physicalName: 'MBR_XXX' })
-    m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
+    m = createWord(m, {
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
+    })
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
@@ -530,9 +661,25 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
   it('통합 섹션이 store 명명 규칙을 받는다', async () => {
     let m = buildSampleModel()
     m = updateTable(m, 't2', { physicalName: 'MBRXXX' })
-    m = createWord(m, { id:'w1', logicalName:'회원', abbreviation:'MBR', englishName:null, description:null, origin:null })
+    m = createWord(m, {
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
+    })
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
-    useEditorStore.setState({ namingRules: { case: 'UPPER_SNAKE', separator: '', logicalSeparator: '_', maxLengthBytes: 30, tablePhysicalTemplate: '', tableLogicalTemplate: '' } })
+    useEditorStore.setState({
+      namingRules: {
+        case: 'UPPER_SNAKE',
+        separator: '',
+        logicalSeparator: '_',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+        tableLogicalTemplate: '',
+      },
+    })
     grantEditPermission()
     renderPanel()
     await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
@@ -551,12 +698,13 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     await userEvent.click(screen.getByRole('tab', { name: /^미등록 항목/ }))
     await userEvent.click(screen.getByRole('button', { name: /물리명 → 논리명/ }))
     await userEvent.type(screen.getByLabelText('GRD 논리명'), '등급')
-    await userEvent.type(screen.getByLabelText('CD 논리명'), '등급')     // 같은 논리명
+    await userEvent.type(screen.getByLabelText('CD 논리명'), '등급') // 같은 논리명
     expect(screen.getByText('위 항목과 겹칩니다')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '일괄 등록' }))
     await waitFor(() => {
-      const added = Object.values(useEditorStore.getState().model.words)
-        .filter((w) => w.logicalName === '등급')
+      const added = Object.values(useEditorStore.getState().model.words).filter(
+        (w) => w.logicalName === '등급',
+      )
       expect(added).toHaveLength(1)
     })
   })
@@ -564,7 +712,14 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
   it('역방향에서 사전에 이미 있는 논리명을 넣으면 등록되지 않고 사유가 보인다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     let m = buildSampleModel()
-    m = createWord(m, { id:'w1', logicalName:'등급', abbreviation:'GRADE', englishName:null, description:null, origin:null })
+    m = createWord(m, {
+      id: 'w1',
+      logicalName: '등급',
+      abbreviation: 'GRADE',
+      englishName: null,
+      description: null,
+      origin: null,
+    })
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
@@ -574,9 +729,10 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     expect(screen.getByText('사전에 이미 있습니다')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '일괄 등록' }))
     await waitFor(() => {
-      const added = Object.values(useEditorStore.getState().model.words)
-        .filter((w) => w.logicalName === '등급')
-      expect(added).toHaveLength(1)          // 원래 있던 하나뿐이다
+      const added = Object.values(useEditorStore.getState().model.words).filter(
+        (w) => w.logicalName === '등급',
+      )
+      expect(added).toHaveLength(1) // 원래 있던 하나뿐이다
     })
   })
 })
@@ -594,16 +750,30 @@ describe('DictPanel 사용처 계산의 명명 규칙', () => {
   const load = (logicalSeparator: '_' | '') => {
     let m = createEmptyModel()
     m = createWord(m, {
-      id: 'w1', logicalName: '회원', abbreviation: 'MBR',
-      englishName: null, description: null, origin: null,
+      id: 'w1',
+      logicalName: '회원',
+      abbreviation: 'MBR',
+      englishName: null,
+      description: null,
+      origin: null,
     })
     m = createTerm(m, {
-      id: 'tm1', logicalName: '회원번호', physicalName: 'MBR_NO',
-      domainId: null, description: null, origin: null,
+      id: 'tm1',
+      logicalName: '회원번호',
+      physicalName: 'MBR_NO',
+      domainId: null,
+      description: null,
+      origin: null,
     })
     m.tables['t1'] = {
-      id: 't1', logicalName: '회원_번호', physicalName: 'MBR_NO', comment: null, groupId: null,
-      position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+      id: 't1',
+      logicalName: '회원_번호',
+      physicalName: 'MBR_NO',
+      comment: null,
+      groupId: null,
+      position: { x: 0, y: 0 },
+      groupPosition: null,
+      custom: {},
     }
     useEditorStore.getState().setLoaded(m, 1, PROJECT_ID)
     useEditorStore.setState({ namingRules: { ...DEFAULT_NAMING_RULES, logicalSeparator } })
@@ -620,7 +790,7 @@ describe('DictPanel 사용처 계산의 명명 규칙', () => {
     load('_')
     renderPanel()
     // 사용처가 0이면 그 배지 자체가 렌더되지 않는다(`usage.length > 0` 가드).
-    expect(await screen.findByText('회원')).toBeInTheDocument()   // 목록은 떴다
+    expect(await screen.findByText('회원')).toBeInTheDocument() // 목록은 떴다
     expect(screen.queryByText(/사용처 \d+개/)).not.toBeInTheDocument()
   })
 })

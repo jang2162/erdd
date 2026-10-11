@@ -10,7 +10,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -37,16 +42,25 @@ function CreateOrgDialog() {
         <Button variant="outline">팀 조직 만들기</Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>팀 조직 만들기</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>팀 조직 만들기</DialogTitle>
+        </DialogHeader>
         <form
           className="grid gap-4"
-          onSubmit={(e) => { e.preventDefault(); create.mutate({ name }) }}
+          onSubmit={(e) => {
+            e.preventDefault()
+            create.mutate({ name })
+          }}
         >
           <div className="grid gap-2">
             <Label htmlFor="org-name">조직 이름</Label>
             <Input id="org-name" required value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <DialogFooter><Button type="submit" disabled={create.isPending}>만들기</Button></DialogFooter>
+          <DialogFooter>
+            <Button type="submit" disabled={create.isPending}>
+              만들기
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
@@ -61,9 +75,7 @@ export function HomePage() {
   // queryKey로 60초 폴링을 돌리고 홈은 AppShell 안이라 그 갱신을 함께 받는다. 배지를 셸에서
   // 떼면 이 카드의 건수도 함께 굳는다(app-shell.test.tsx가 그 배선을 지킨다).
   const pending = useQuery(trpc.promotion.pendingCount.queryOptions())
-  const pendingByOrg = new Map(
-    (pending.data?.byOrg ?? []).map((row) => [row.orgId, row.count]),
-  )
+  const pendingByOrg = new Map((pending.data?.byOrg ?? []).map((row) => [row.orgId, row.count]))
   const sorted = [...(orgs.data ?? [])].sort((a, b) =>
     a.kind === b.kind ? 0 : a.kind === 'personal' ? -1 : 1,
   )

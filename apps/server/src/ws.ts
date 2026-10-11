@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import {
-  parseClientMessage, WS_CLOSE_FORBIDDEN, WS_CLOSE_UNAUTHORIZED, type ServerMessage,
+  parseClientMessage,
+  WS_CLOSE_FORBIDDEN,
+  WS_CLOSE_UNAUTHORIZED,
+  type ServerMessage,
 } from '@erdd/core'
 import { SESSION_COOKIE } from './context.js'
 import type { Db } from './db/client.js'
@@ -16,9 +19,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const HEARTBEAT_MS = 30_000
 const MAX_MISSED_PONGS = 2
 
-export type SocketAuth =
-  | { ok: true; userId: string; name: string }
-  | { ok: false; code: number }
+export type SocketAuth = { ok: true; userId: string; name: string } | { ok: false; code: number }
 
 /**
  * 소켓 업그레이드 인증. 예외를 던지지 않고 close code로 결과를 알린다
@@ -26,7 +27,9 @@ export type SocketAuth =
  * 판정 기준은 tRPC의 createContext + requireProjectAccess('view')와 동일하다.
  */
 export async function authorizeSocket(
-  db: Db, token: string | undefined, projectId: string | undefined,
+  db: Db,
+  token: string | undefined,
+  projectId: string | undefined,
 ): Promise<SocketAuth> {
   if (!token) return { ok: false, code: WS_CLOSE_UNAUTHORIZED }
   // UUID가 아닌 projectId를 그대로 넘기면 postgres가 타입 오류를 던진다 — 먼저 거른다.
@@ -34,7 +37,10 @@ export async function authorizeSocket(
 
   const rows = await db
     .select({
-      id: users.id, name: users.name, isActive: users.isActive, expiresAt: sessions.expiresAt,
+      id: users.id,
+      name: users.name,
+      isActive: users.isActive,
+      expiresAt: sessions.expiresAt,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
@@ -92,7 +98,13 @@ export function wsPlugin(hub: RealtimeHub, db: Db | null) {
       let missed = 0
       try {
         const seq = await currentSeq(db, projectId)
-        socket.send(JSON.stringify({ type: 'ready', seq, peers: hub.peers(projectId) } satisfies ServerMessage))
+        socket.send(
+          JSON.stringify({
+            type: 'ready',
+            seq,
+            peers: hub.peers(projectId),
+          } satisfies ServerMessage),
+        )
       } catch {
         // ready 준비 중 DB 실패 — close 리스너는 이미 걸려 있으니 close()가 정리를 보장한다.
         socket.close(1011)
@@ -115,7 +127,9 @@ export function wsPlugin(hub: RealtimeHub, db: Db | null) {
       }, HEARTBEAT_MS)
       // 열린 소켓의 타이머가 프로세스·테스트 종료를 붙잡지 않게 한다.
       heartbeat.unref()
-      socket.on('pong', () => { missed = 0 })
+      socket.on('pong', () => {
+        missed = 0
+      })
     })
   }
 }

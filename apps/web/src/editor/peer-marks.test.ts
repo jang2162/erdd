@@ -29,7 +29,14 @@ describe('buildPeerMarks', () => {
 
   it('한 참여자가 여러 개를 고르면 각 엔티티에 모두 마크가 붙는다', () => {
     const many: Peer[] = [
-      { userId: 'u9', name: '아홉', selections: [{ kind: 'table', id: 't1' }, { kind: 'table', id: 't2' }] },
+      {
+        userId: 'u9',
+        name: '아홉',
+        selections: [
+          { kind: 'table', id: 't1' },
+          { kind: 'table', id: 't2' },
+        ],
+      },
     ]
     const marks = buildPeerMarks(many, 'me')
     expect(marks.get('t1')?.map((m) => m.userId)).toEqual(['u9'])

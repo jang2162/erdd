@@ -5,8 +5,11 @@ import { createRoutesStub } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import {
-  DEFAULT_NAMING_RULES, DEFAULT_TABLE_OPTIONS, createEmptyModel,
-  type NamingRules, type TableOptions,
+  DEFAULT_NAMING_RULES,
+  DEFAULT_TABLE_OPTIONS,
+  createEmptyModel,
+  type NamingRules,
+  type TableOptions,
 } from '@erdd/core'
 import { TRPCProvider } from '@/lib/trpc'
 import type { AppRouter } from '@erdd/server/src/router.js'
@@ -23,15 +26,17 @@ const ORG_ID = 'o1'
  * `project.get` 응답 모양은 `apps/server/src/routers/project.ts` 의 get 반환값과 같다 —
  * 프로젝트 행 전체 + namingRules · myRole · myOrgRole · canEdit · canManage.
  */
-function projectFixture(over: {
-  logicalSeparator?: NamingRules['logicalSeparator']
-  tablePhysicalTemplate?: string
-  tableLogicalTemplate?: string
-  canManage?: boolean
-  myRole?: string | null
-  myOrgRole?: string | null
-  tableOptions?: Partial<TableOptions>
-} = {}) {
+function projectFixture(
+  over: {
+    logicalSeparator?: NamingRules['logicalSeparator']
+    tablePhysicalTemplate?: string
+    tableLogicalTemplate?: string
+    canManage?: boolean
+    myRole?: string | null
+    myOrgRole?: string | null
+    tableOptions?: Partial<TableOptions>
+  } = {},
+) {
   return {
     id: PROJECT_ID,
     orgId: ORG_ID,
@@ -62,11 +67,19 @@ function projectFixture(over: {
 const MODEL_FIXTURE = {
   model: {
     ...createEmptyModel(),
-    tableGroups: { g1: { id: 'g1', name: '상품관리', color: '#eeeeee', comment: null, alias: 'PRD' } },
+    tableGroups: {
+      g1: { id: 'g1', name: '상품관리', color: '#eeeeee', comment: null, alias: 'PRD' },
+    },
     tables: {
       t1: {
-        id: 't1', logicalName: '품목', physicalName: 'ITEM', comment: null, groupId: 'g1',
-        position: { x: 0, y: 0 }, groupPosition: null, custom: {},
+        id: 't1',
+        logicalName: '품목',
+        physicalName: 'ITEM',
+        comment: null,
+        groupId: 'g1',
+        position: { x: 0, y: 0 },
+        groupPosition: null,
+        custom: {},
       },
     },
   },
@@ -76,7 +89,9 @@ const MODEL_FIXTURE = {
 // ProjectSettingsPage는 useIsLocal(→ useMe)을 쓴다 — RequireAuth 안에서만 렌더할 수 있다.
 function renderSettings(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   mockTrpcFetch({
-    'auth.me': () => ({ data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' } }),
+    'auth.me': () => ({
+      data: { id: 'u1', email: 'me@t.dev', name: '사용자', role: 'user', mode: 'server' },
+    }),
     'project.members.list': () => ({ data: [] }),
     'org.members.list': () => ({ data: [] }),
     'model.get': () => ({ data: MODEL_FIXTURE }),
@@ -84,10 +99,16 @@ function renderSettings(handlers: Parameters<typeof mockTrpcFetch>[0]) {
   })
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const trpcClient = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: '/trpc' })] })
-  const Stub = createRoutesStub([{
-    path: '/p/:projectId/settings',
-    Component: () => <RequireAuth><ProjectSettingsPage /></RequireAuth>,
-  }])
+  const Stub = createRoutesStub([
+    {
+      path: '/p/:projectId/settings',
+      Component: () => (
+        <RequireAuth>
+          <ProjectSettingsPage />
+        </RequireAuth>
+      ),
+    },
+  ])
   render(
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
@@ -183,7 +204,7 @@ describe('ProjectSettingsPage — 테이블 물리명 형식', () => {
       },
     })
     const input = await screen.findByLabelText(/테이블 물리명 형식/)
-    await userEvent.type(input, 'TB_{{그룹별칭}_{{물리명}')   // userEvent 에서 '{' 는 '{{' 로 이스케이프
+    await userEvent.type(input, 'TB_{{그룹별칭}_{{물리명}') // userEvent 에서 '{' 는 '{{' 로 이스케이프
     await userEvent.tab()
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(calls[0]!.namingRules.tablePhysicalTemplate).toBe('TB_{그룹별칭}_{물리명}')
@@ -236,7 +257,9 @@ describe('ProjectSettingsPage — 테이블 물리명 형식', () => {
 describe('ProjectSettingsPage — 테이블 논리명 형식', () => {
   it('현재 논리 템플릿을 입력란에 보여 준다', async () => {
     renderSettings({
-      'project.get': () => ({ data: projectFixture({ tableLogicalTemplate: '{그룹명}_{논리명}' }) }),
+      'project.get': () => ({
+        data: projectFixture({ tableLogicalTemplate: '{그룹명}_{논리명}' }),
+      }),
     })
     expect(await screen.findByLabelText(/테이블 논리명 형식/)).toHaveValue('{그룹명}_{논리명}')
   })
@@ -251,7 +274,7 @@ describe('ProjectSettingsPage — 테이블 논리명 형식', () => {
       },
     })
     const input = await screen.findByLabelText(/테이블 논리명 형식/)
-    await userEvent.type(input, '{{그룹명}_{{논리명}')     // userEvent 에서 '{' 는 '{{' 로 이스케이프
+    await userEvent.type(input, '{{그룹명}_{{논리명}') // userEvent 에서 '{' 는 '{{' 로 이스케이프
     await userEvent.tab()
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(calls[0]!.namingRules.tableLogicalTemplate).toBe('{그룹명}_{논리명}')
@@ -262,19 +285,24 @@ describe('ProjectSettingsPage — 테이블 논리명 형식', () => {
   // MODEL_FIXTURE 의 테이블은 그룹 '상품관리'(별칭 PRD) 소속 논리명 '품목'/물리명 'ITEM' 이다.
   it('논리 미리보기가 현재 모델의 테이블로 나온다', async () => {
     renderSettings({
-      'project.get': () => ({ data: projectFixture({ tableLogicalTemplate: '{그룹명}_{논리명}' }) }),
+      'project.get': () => ({
+        data: projectFixture({ tableLogicalTemplate: '{그룹명}_{논리명}' }),
+      }),
     })
     expect(await screen.findByText('상품관리_품목')).toBeInTheDocument()
   })
 
   it('두 미리보기가 서로를 침범하지 않는다', async () => {
     renderSettings({
-      'project.get': () => ({ data: projectFixture({
-        tablePhysicalTemplate: 'TB_{물리명}', tableLogicalTemplate: '{그룹명}_{논리명}',
-      }) }),
+      'project.get': () => ({
+        data: projectFixture({
+          tablePhysicalTemplate: 'TB_{물리명}',
+          tableLogicalTemplate: '{그룹명}_{논리명}',
+        }),
+      }),
     })
-    expect(await screen.findByText('TB_ITEM')).toBeInTheDocument()      // 물리 미리보기
-    expect(screen.getByText('상품관리_품목')).toBeInTheDocument()        // 논리 미리보기
+    expect(await screen.findByText('TB_ITEM')).toBeInTheDocument() // 물리 미리보기
+    expect(screen.getByText('상품관리_품목')).toBeInTheDocument() // 논리 미리보기
   })
 
   it('관리 권한이 없으면 논리 입력란도 없다', async () => {
@@ -316,7 +344,9 @@ describe('ProjectSettingsPage — 테이블 옵션', () => {
   it('blur 에 네 키를 전부 실어 update 를 보낸다', async () => {
     const calls: { tableOptions: TableOptions }[] = []
     renderSettings({
-      'project.get': () => ({ data: projectFixture({ tableOptions: { oracle: 'TABLESPACE users' } }) }),
+      'project.get': () => ({
+        data: projectFixture({ tableOptions: { oracle: 'TABLESPACE users' } }),
+      }),
       'project.update': (input) => {
         calls.push(input as { tableOptions: TableOptions })
         return { data: { ok: true } }
@@ -327,7 +357,10 @@ describe('ProjectSettingsPage — 테이블 옵션', () => {
     await userEvent.tab()
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(calls[0]!.tableOptions).toEqual({
-      postgresql: '', mysql: 'ENGINE=InnoDB', oracle: 'TABLESPACE users', mssql: '',
+      postgresql: '',
+      mysql: 'ENGINE=InnoDB',
+      oracle: 'TABLESPACE users',
+      mssql: '',
     })
   })
 
@@ -335,7 +368,10 @@ describe('ProjectSettingsPage — 테이블 옵션', () => {
     const calls: unknown[] = []
     renderSettings({
       'project.get': () => ({ data: projectFixture({ tableOptions: { mysql: 'ENGINE=InnoDB' } }) }),
-      'project.update': (input) => { calls.push(input); return { data: { ok: true } } },
+      'project.update': (input) => {
+        calls.push(input)
+        return { data: { ok: true } }
+      },
     })
     const mysql = await screen.findByLabelText('mysql')
     await userEvent.click(mysql)

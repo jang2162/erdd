@@ -18,7 +18,9 @@ export function SettingsPage() {
     trpc.auth.changePassword.mutationOptions({
       onSuccess: () => {
         toast.success('비밀번호를 변경했습니다')
-        setCurrentPassword(''); setNewPassword(''); setConfirm('')
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirm('')
       },
       onError: (err) => toast.error(err.message),
     }),
@@ -36,28 +38,56 @@ export function SettingsPage() {
             className="grid gap-4"
             onSubmit={(e) => {
               e.preventDefault()
-              if (newPassword !== confirm) { setMismatch(true); return }
+              if (newPassword !== confirm) {
+                setMismatch(true)
+                return
+              }
               setMismatch(false)
               change.mutate({ currentPassword, newPassword })
             }}
           >
             <div className="grid gap-2">
               <Label htmlFor="cur">현재 비밀번호</Label>
-              <Input id="cur" type="password" required autoComplete="current-password"
-                value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+              <Input
+                id="cur"
+                type="password"
+                required
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="new">새 비밀번호</Label>
-              <Input id="new" type="password" required minLength={8} autoComplete="new-password"
-                value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+              <Input
+                id="new"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="confirm">새 비밀번호 확인</Label>
-              <Input id="confirm" type="password" required autoComplete="new-password"
-                value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+              <Input
+                id="confirm"
+                type="password"
+                required
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+              />
             </div>
-            {mismatch && <p role="alert" className="text-sm text-destructive">새 비밀번호가 서로 다릅니다</p>}
-            <Button type="submit" disabled={change.isPending}>변경 사항 저장</Button>
+            {mismatch && (
+              <p role="alert" className="text-sm text-destructive">
+                새 비밀번호가 서로 다릅니다
+              </p>
+            )}
+            <Button type="submit" disabled={change.isPending}>
+              변경 사항 저장
+            </Button>
           </form>
         </CardContent>
       </Card>

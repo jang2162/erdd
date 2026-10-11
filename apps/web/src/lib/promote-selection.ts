@@ -21,15 +21,21 @@ export function initialSelection(entries: readonly PromoteEntry[]): Set<string> 
  * 다른 라이브러리의 계획에는 쓰지 않는다(엔티티 id 가 같아도 다른 결정이다) — 호출자가 가린다.
  */
 export function carrySelection(
-  prevEntries: readonly PromoteEntry[], prev: ReadonlySet<string>, next: readonly PromoteEntry[],
+  prevEntries: readonly PromoteEntry[],
+  prev: ReadonlySet<string>,
+  next: readonly PromoteEntry[],
 ): Set<string> {
   const out = initialSelection(next)
   const before = new Map(prevEntries.map((entry) => [entry.entityId, entry]))
   for (const entry of next) {
     const old = before.get(entry.entityId)
     if (old === undefined) continue
-    if (old.status !== entry.status || old.targetItemId !== entry.targetItemId
-      || old.sourceBehind !== entry.sourceBehind) continue
+    if (
+      old.status !== entry.status ||
+      old.targetItemId !== entry.targetItemId ||
+      old.sourceBehind !== entry.sourceBehind
+    )
+      continue
     if (prev.has(entry.entityId)) out.add(entry.entityId)
     else out.delete(entry.entityId)
   }
@@ -38,8 +44,10 @@ export function carrySelection(
 
 /** 특정 상태의 항목 전부를 한 번에 켜거나 끈다(구역 일괄 버튼). */
 export function setAllForStatus(
-  selected: ReadonlySet<string>, entries: readonly PromoteEntry[],
-  status: PromoteStatus, on: boolean,
+  selected: ReadonlySet<string>,
+  entries: readonly PromoteEntry[],
+  status: PromoteStatus,
+  on: boolean,
 ): Set<string> {
   const out = new Set(selected)
   for (const entry of entries) {

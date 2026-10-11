@@ -10,7 +10,11 @@ export function computeAutoLayout(
   opts: { rankdir?: 'TB' | 'LR'; ranksep?: number; nodesep?: number } = {},
 ): Map<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: opts.rankdir ?? 'TB', ranksep: opts.ranksep ?? 80, nodesep: opts.nodesep ?? 60 })
+  g.setGraph({
+    rankdir: opts.rankdir ?? 'TB',
+    ranksep: opts.ranksep ?? 80,
+    nodesep: opts.nodesep ?? 60,
+  })
   g.setDefaultEdgeLabel(() => ({}))
   for (const n of nodes) g.setNode(n.id, { width: n.width, height: n.height })
   for (const e of edges) if (e.source !== e.target) g.setEdge(e.source, e.target)

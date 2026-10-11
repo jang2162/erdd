@@ -3,24 +3,42 @@ import { chmod, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  readConfig, writeConfig, readSync, writeSync, readBase, writeBase,
-  resolveToken, writeToken, ensureGitignore, requireConnection, LOCAL_PROJECT_ID, CONFIG_FILE,
+  readConfig,
+  writeConfig,
+  readSync,
+  writeSync,
+  readBase,
+  writeBase,
+  resolveToken,
+  writeToken,
+  ensureGitignore,
+  requireConnection,
+  LOCAL_PROJECT_ID,
+  CONFIG_FILE,
 } from './config.js'
 import type { ErddConfig } from './config.js'
 import { stringify as stringifyYaml } from 'yaml'
 import { TEST_CONFIG } from './testing/harness.js'
 
 let dir: string
-beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'erdd-cli-')) })
-afterEach(() => { delete process.env['ERDD_TOKEN'] })
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), 'erdd-cli-'))
+})
+afterEach(() => {
+  delete process.env['ERDD_TOKEN']
+})
 
 const CONFIG: ErddConfig = {
   serverUrl: 'https://erdd.example.com',
   projectId: '018f6b0e-0000-7000-8000-000000000000',
   dialects: ['postgresql'],
   namingRules: {
-    case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '_', maxLengthBytes: 30,
-    tablePhysicalTemplate: '', tableLogicalTemplate: '',
+    case: 'UPPER_SNAKE',
+    separator: '_',
+    logicalSeparator: '_',
+    maxLengthBytes: 30,
+    tablePhysicalTemplate: '',
+    tableLogicalTemplate: '',
   },
   tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
   dictionaries: [],
@@ -88,30 +106,45 @@ describe('config', () => {
     ].join('\n')
     await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
     expect((await readConfig(dir)).tableOptions).toEqual({
-      postgresql: '', mysql: '', oracle: '', mssql: '',
+      postgresql: '',
+      mysql: '',
+      oracle: '',
+      mssql: '',
     })
   })
 
   it('한 방언만 적힌 tableOptions 는 나머지를 빈 문자열로 채운다', async () => {
     const yaml = [
-      'dialects:', '  - mysql',
+      'dialects:',
+      '  - mysql',
       'namingRules: {case: UPPER_SNAKE, separator: "_", maxLengthBytes: 30}',
       'tableOptions:',
       '  mysql: ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
     ].join('\n')
     await writeFile(join(dir, 'erdd.config.yaml'), yaml, 'utf8')
     expect((await readConfig(dir)).tableOptions).toEqual({
-      postgresql: '', mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4', oracle: '', mssql: '',
+      postgresql: '',
+      mysql: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+      oracle: '',
+      mssql: '',
     })
   })
 
   it('적어 둔 테이블 옵션은 그대로 읽는다', async () => {
     await writeConfig(dir, {
       ...CONFIG,
-      tableOptions: { postgresql: '', mysql: 'ENGINE=InnoDB', oracle: 'TABLESPACE users', mssql: '' },
+      tableOptions: {
+        postgresql: '',
+        mysql: 'ENGINE=InnoDB',
+        oracle: 'TABLESPACE users',
+        mssql: '',
+      },
     })
     expect((await readConfig(dir)).tableOptions).toEqual({
-      postgresql: '', mysql: 'ENGINE=InnoDB', oracle: 'TABLESPACE users', mssql: '',
+      postgresql: '',
+      mysql: 'ENGINE=InnoDB',
+      oracle: 'TABLESPACE users',
+      mssql: '',
     })
   })
 
@@ -174,8 +207,12 @@ describe('config', () => {
     await writeConfig(dir, {
       ...CONFIG,
       namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '',
+        case: 'UPPER_SNAKE',
+        separator: '_',
+        logicalSeparator: '',
+        maxLengthBytes: 30,
+        tablePhysicalTemplate: '',
+        tableLogicalTemplate: '',
       },
     })
     expect((await readConfig(dir)).namingRules.logicalSeparator).toBe('')
@@ -194,23 +231,32 @@ describe('config', () => {
   })
 
   it('dialects에 알 수 없는 방언이 있으면 VALIDATION이다', async () => {
-    await writeFile(join(dir, 'erdd.config.yaml'),
-      'serverUrl: https://x\nprojectId: p1\ndialects: [nope]\n'
-      + 'namingRules: {case: UPPER_SNAKE, separator: _, maxLengthBytes: 30}\n', 'utf8')
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      'serverUrl: https://x\nprojectId: p1\ndialects: [nope]\n' +
+        'namingRules: {case: UPPER_SNAKE, separator: _, maxLengthBytes: 30}\n',
+      'utf8',
+    )
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
   })
 
   it('dialects가 빈 배열이면 VALIDATION이다', async () => {
-    await writeFile(join(dir, 'erdd.config.yaml'),
-      'serverUrl: https://x\nprojectId: p1\ndialects: []\n'
-      + 'namingRules: {case: UPPER_SNAKE, separator: _, maxLengthBytes: 30}\n', 'utf8')
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      'serverUrl: https://x\nprojectId: p1\ndialects: []\n' +
+        'namingRules: {case: UPPER_SNAKE, separator: _, maxLengthBytes: 30}\n',
+      'utf8',
+    )
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
   })
 
   it('namingRules의 필드가 빠지면 VALIDATION이다', async () => {
-    await writeFile(join(dir, 'erdd.config.yaml'),
-      'serverUrl: https://x\nprojectId: p1\ndialects: [postgresql]\n'
-      + 'namingRules: {case: UPPER_SNAKE}\n', 'utf8')
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      'serverUrl: https://x\nprojectId: p1\ndialects: [postgresql]\n' +
+        'namingRules: {case: UPPER_SNAKE}\n',
+      'utf8',
+    )
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
   })
 
@@ -288,93 +334,186 @@ describe('연결 설정이 없는 config', () => {
   })
 
   it('둘 중 하나만 있으면 거절한다 — 오타를 로컬 모드로 삼키지 않는다', async () => {
-    await writeFile(join(dir, CONFIG_FILE), `serverUrl: https://e.example.com\n${localYaml}`, 'utf8')
+    await writeFile(
+      join(dir, CONFIG_FILE),
+      `serverUrl: https://e.example.com\n${localYaml}`,
+      'utf8',
+    )
     await expect(readConfig(dir)).rejects.toThrow(/serverUrl.*projectId|projectId.*serverUrl/)
   })
 
   it('requireConnection 이 연결 설정 없음을 NO_CONFIG 로 알린다', () => {
-    expect(() => requireConnection({
-      serverUrl: null, projectId: null, dialects: ['postgresql'],
-      namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '',
-      },
-      tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
-      dictionaries: [],
-    })).toThrow(/erdd init/)
+    expect(() =>
+      requireConnection({
+        serverUrl: null,
+        projectId: null,
+        dialects: ['postgresql'],
+        namingRules: {
+          case: 'UPPER_SNAKE',
+          separator: '_',
+          logicalSeparator: '',
+          maxLengthBytes: 30,
+          tablePhysicalTemplate: '',
+          tableLogicalTemplate: '',
+        },
+        tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
+        dictionaries: [],
+      }),
+    ).toThrow(/erdd init/)
   })
 
   it('requireConnection 은 값이 있으면 그대로 돌려준다', () => {
-    expect(requireConnection({
-      serverUrl: 'https://e.example.com', projectId: 'p1', dialects: ['postgresql'],
-      namingRules: {
-        case: 'UPPER_SNAKE', separator: '_', logicalSeparator: '', maxLengthBytes: 30,
-        tablePhysicalTemplate: '', tableLogicalTemplate: '',
-      },
-      tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
-      dictionaries: [],
-    })).toEqual({ serverUrl: 'https://e.example.com', projectId: 'p1' })
+    expect(
+      requireConnection({
+        serverUrl: 'https://e.example.com',
+        projectId: 'p1',
+        dialects: ['postgresql'],
+        namingRules: {
+          case: 'UPPER_SNAKE',
+          separator: '_',
+          logicalSeparator: '',
+          maxLengthBytes: 30,
+          tablePhysicalTemplate: '',
+          tableLogicalTemplate: '',
+        },
+        tableOptions: { postgresql: '', mysql: '', oracle: '', mssql: '' },
+        dictionaries: [],
+      }),
+    ).toEqual({ serverUrl: 'https://e.example.com', projectId: 'p1' })
   })
 
   it('config 모듈이 LOCAL_PROJECT_ID 를 넘겨준다', () => {
-    expect(LOCAL_PROJECT_ID).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    expect(LOCAL_PROJECT_ID).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    )
   })
 })
 
 describe('구독(dictionaries)', () => {
   it('dictionaries 가 없는 옛 config 는 빈 구독으로 읽고, 빈 구독은 파일에 쓰지 않는다', async () => {
-    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: undefined }))
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      stringifyYaml({ ...TEST_CONFIG, dictionaries: undefined }),
+    )
     expect((await readConfig(dir)).dictionaries).toEqual([])
     await writeConfig(dir, await readConfig(dir))
     expect(await readFile(join(dir, 'erdd.config.yaml'), 'utf8')).not.toContain('dictionaries')
   })
 
   it('구독을 쓰고 읽으면 같다', async () => {
-    const config = { ...CONFIG, dictionaries: [{ id: 'L1', name: '표준' }, { id: 'L2', name: '확장' }] }
+    const config = {
+      ...CONFIG,
+      dictionaries: [
+        { id: 'L1', name: '표준' },
+        { id: 'L2', name: '확장' },
+      ],
+    }
     await writeConfig(dir, config)
     expect(await readConfig(dir)).toEqual(config)
   })
 
   it('dictionaries 가 배열이 아니거나 항목에 id·name 이 없으면 VALIDATION', async () => {
-    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1' }] }))
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1' }] }),
+    )
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
-    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: 'L1' }))
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      stringifyYaml({ ...TEST_CONFIG, dictionaries: 'L1' }),
+    )
     await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION' })
   })
 
   it('값 없는 dictionaries: 키(null)는 빈 구독으로 읽는다 — 구독을 다 지운 사람의 모든 명령을 막지 않는다', async () => {
-    await writeFile(join(dir, 'erdd.config.yaml'), `${stringifyYaml({ ...TEST_CONFIG, dictionaries: undefined })}dictionaries:\n`)
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      `${stringifyYaml({ ...TEST_CONFIG, dictionaries: undefined })}dictionaries:\n`,
+    )
     expect((await readConfig(dir)).dictionaries).toEqual([])
   })
 
   it('같은 id 를 두 번 구독하면 VALIDATION — dict pull 이 같은 사전을 두 번 처리한다', async () => {
-    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({
-      ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: '표준' }, { id: 'L1', name: '표준(옛 이름)' }],
-    }))
-    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('L1') })
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      stringifyYaml({
+        ...TEST_CONFIG,
+        dictionaries: [
+          { id: 'L1', name: '표준' },
+          { id: 'L1', name: '표준(옛 이름)' },
+        ],
+      }),
+    )
+    await expect(readConfig(dir)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      message: expect.stringContaining('L1'),
+    })
   })
 
   it('dictionaries[].file 을 읽고 다시 쓸 때 보존한다', async () => {
-    await writeConfig(dir, { ...TEST_CONFIG, dialects: [...TEST_CONFIG.dialects], dictionaries: [{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }, { id: 'L2', name: '팀' }] })
+    await writeConfig(dir, {
+      ...TEST_CONFIG,
+      dialects: [...TEST_CONFIG.dialects],
+      dictionaries: [
+        { id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' },
+        { id: 'L2', name: '팀' },
+      ],
+    })
     const config = await readConfig(dir)
-    expect(config.dictionaries).toEqual([{ id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' }, { id: 'L2', name: '팀' }])
+    expect(config.dictionaries).toEqual([
+      { id: 'L1', name: '표준', file: 'vendor/std.erdd-lib.yaml' },
+      { id: 'L2', name: '팀' },
+    ])
     await writeConfig(dir, config)
-    expect((await readConfig(dir)).dictionaries[0]).toHaveProperty('file', 'vendor/std.erdd-lib.yaml')
+    expect((await readConfig(dir)).dictionaries[0]).toHaveProperty(
+      'file',
+      'vendor/std.erdd-lib.yaml',
+    )
   })
 
   it('dictionaries[].file 이 문자열이 아니면 거절한다', async () => {
-    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: 3 }] }))
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: 3 }] }),
+    )
     await expect(readConfig(dir)).rejects.toThrow(/dictionaries/)
   })
 
   it('dictionaries[].file 을 손으로 고쳐 규칙을 어기면(erdd/ 안·프로젝트 밖) 거절한다', async () => {
     // --file 입구(subscriptionPath)만 규칙을 거치면 손으로 고친 config 는 검사를 피해 간다 — 인자
     // 없는 dict pull·dict list 는 이 값을 그대로 읽는다. readConfig 에서 다시 검증한다(M-6).
-    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: 'erdd/std.erdd-lib.yaml' }] }))
-    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('erdd/') })
-    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: '../outside/std.erdd-lib.yaml' }] }))
-    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('프로젝트 안') })
-    await writeFile(join(dir, 'erdd.config.yaml'), stringifyYaml({ ...TEST_CONFIG, dictionaries: [{ id: 'L1', name: 'x', file: '/tmp/std.erdd-lib.yaml' }] }))
-    await expect(readConfig(dir)).rejects.toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('프로젝트 안') })
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      stringifyYaml({
+        ...TEST_CONFIG,
+        dictionaries: [{ id: 'L1', name: 'x', file: 'erdd/std.erdd-lib.yaml' }],
+      }),
+    )
+    await expect(readConfig(dir)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      message: expect.stringContaining('erdd/'),
+    })
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      stringifyYaml({
+        ...TEST_CONFIG,
+        dictionaries: [{ id: 'L1', name: 'x', file: '../outside/std.erdd-lib.yaml' }],
+      }),
+    )
+    await expect(readConfig(dir)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      message: expect.stringContaining('프로젝트 안'),
+    })
+    await writeFile(
+      join(dir, 'erdd.config.yaml'),
+      stringifyYaml({
+        ...TEST_CONFIG,
+        dictionaries: [{ id: 'L1', name: 'x', file: '/tmp/std.erdd-lib.yaml' }],
+      }),
+    )
+    await expect(readConfig(dir)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      message: expect.stringContaining('프로젝트 안'),
+    })
   })
 })

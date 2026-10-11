@@ -6,8 +6,16 @@ import { CustomFieldsSection } from './custom-fields-section.js'
 
 function field(id: string, over: Partial<CustomField> = {}): CustomField {
   return {
-    id, name: id, target: 'column', type: 'text', options: [], required: false,
-    defaultValue: null, order: 0, origin: null, ...over,
+    id,
+    name: id,
+    target: 'column',
+    type: 'text',
+    options: [],
+    required: false,
+    defaultValue: null,
+    order: 0,
+    origin: null,
+    ...over,
   }
 }
 
@@ -16,7 +24,14 @@ afterEach(cleanup)
 describe('CustomFieldsSection', () => {
   it('정의가 없으면 아무것도 렌더하지 않는다', () => {
     const { container } = render(
-      <CustomFieldsSection fields={[]} values={{}} idPrefix="x" warnings={[]} canEdit={true} onChange={() => {}} />,
+      <CustomFieldsSection
+        fields={[]}
+        values={{}}
+        idPrefix="x"
+        warnings={[]}
+        canEdit={true}
+        onChange={() => {}}
+      />,
     )
     expect(container).toBeEmptyDOMElement()
   })
@@ -25,8 +40,12 @@ describe('CustomFieldsSection', () => {
     const onChange = vi.fn()
     render(
       <CustomFieldsSection
-        fields={[field('f1', { name: '비고' })]} values={{}} idPrefix="x"
-        warnings={[]} canEdit={true} onChange={onChange}
+        fields={[field('f1', { name: '비고' })]}
+        values={{}}
+        idPrefix="x"
+        warnings={[]}
+        canEdit={true}
+        onChange={onChange}
       />,
     )
     await userEvent.type(screen.getByLabelText('비고'), '메모')
@@ -38,8 +57,12 @@ describe('CustomFieldsSection', () => {
     const onChange = vi.fn()
     render(
       <CustomFieldsSection
-        fields={[field('f1', { name: '개인정보여부', type: 'boolean' })]} values={{}}
-        idPrefix="x" warnings={[]} canEdit={true} onChange={onChange}
+        fields={[field('f1', { name: '개인정보여부', type: 'boolean' })]}
+        values={{}}
+        idPrefix="x"
+        warnings={[]}
+        canEdit={true}
+        onChange={onChange}
       />,
     )
     await userEvent.click(screen.getByLabelText('개인정보여부'))
@@ -51,7 +74,11 @@ describe('CustomFieldsSection', () => {
     render(
       <CustomFieldsSection
         fields={[field('f1', { name: '암호화방식', type: 'select', options: ['없음', 'AES256'] })]}
-        values={{}} idPrefix="x" warnings={[]} canEdit={true} onChange={onChange}
+        values={{}}
+        idPrefix="x"
+        warnings={[]}
+        canEdit={true}
+        onChange={onChange}
       />,
     )
     await userEvent.selectOptions(screen.getByLabelText('암호화방식'), 'AES256')
@@ -61,8 +88,12 @@ describe('CustomFieldsSection', () => {
   it('미입력이면 정의 기본값을 표시한다', () => {
     render(
       <CustomFieldsSection
-        fields={[field('f1', { name: '비고', defaultValue: '해당없음' })]} values={{}}
-        idPrefix="x" warnings={[]} canEdit={true} onChange={() => {}}
+        fields={[field('f1', { name: '비고', defaultValue: '해당없음' })]}
+        values={{}}
+        idPrefix="x"
+        warnings={[]}
+        canEdit={true}
+        onChange={() => {}}
       />,
     )
     expect(screen.getByLabelText('비고')).toHaveValue('해당없음')
@@ -72,7 +103,11 @@ describe('CustomFieldsSection', () => {
     render(
       <CustomFieldsSection
         fields={[field('f1', { name: '암호화방식', type: 'select', options: ['없음', 'AES256'] })]}
-        values={{ f1: 'SHA256' }} idPrefix="x" warnings={[]} canEdit={true} onChange={() => {}}
+        values={{ f1: 'SHA256' }}
+        idPrefix="x"
+        warnings={[]}
+        canEdit={true}
+        onChange={() => {}}
       />,
     )
     expect(screen.getByLabelText('암호화방식')).toHaveValue('SHA256')
@@ -82,11 +117,17 @@ describe('CustomFieldsSection', () => {
   it('필수 미입력 경고가 있으면 항목 옆에 표시한다', () => {
     render(
       <CustomFieldsSection
-        fields={[field('f1', { name: '개인정보여부', required: true })]} values={{}} idPrefix="x"
-        warnings={[{
-          kind: 'custom-required', scope: 'column', entityId: 'c1',
-          message: '필수 항목 "개인정보여부"이(가) 비어 있습니다',
-        }]}
+        fields={[field('f1', { name: '개인정보여부', required: true })]}
+        values={{}}
+        idPrefix="x"
+        warnings={[
+          {
+            kind: 'custom-required',
+            scope: 'column',
+            entityId: 'c1',
+            message: '필수 항목 "개인정보여부"이(가) 비어 있습니다',
+          },
+        ]}
         canEdit={true}
         onChange={() => {}}
       />,
@@ -104,7 +145,10 @@ describe('CustomFieldsSection', () => {
           field('f3', { name: '암호화방식', type: 'select', options: ['없음', 'AES256'] }),
         ]}
         values={{ f1: '메모', f2: 'true', f3: 'AES256' }}
-        idPrefix="x" warnings={[]} canEdit={false} onChange={onChange}
+        idPrefix="x"
+        warnings={[]}
+        canEdit={false}
+        onChange={onChange}
       />,
     )
     const text = screen.getByLabelText('비고') as HTMLInputElement

@@ -1,16 +1,29 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { uuidv7 } from 'uuidv7'
-import { applyOps, COLLECTION_BY_KIND, type EntityKind, type Op, type ProjectModel } from '@erdd/core'
+import {
+  applyOps,
+  COLLECTION_BY_KIND,
+  type EntityKind,
+  type Op,
+  type ProjectModel,
+} from '@erdd/core'
 import { revisions } from '../db/schema.js'
 import { loadProjectModel, persistOps } from './model-store.js'
 
 type MutationTx = Parameters<typeof loadProjectModel>[0]
 
 const KIND_LABEL: Record<EntityKind, string> = {
-  table: '테이블', column: '컬럼', relationship: '관계',
-  index: '인덱스', note: '메모', tableGroup: '그룹', domain: '도메인',
-  word: '단어', term: '용어', customField: '커스텀 항목',
+  table: '테이블',
+  column: '컬럼',
+  relationship: '관계',
+  index: '인덱스',
+  note: '메모',
+  tableGroup: '그룹',
+  domain: '도메인',
+  word: '단어',
+  term: '용어',
+  customField: '커스텀 항목',
 }
 const ACTION_LABEL = { create: '생성', update: '수정', delete: '삭제' } as const
 
@@ -23,7 +36,10 @@ export function summarizeOps(ops: readonly Op[]): string {
 /** update.from / delete.before를 서버의 현재 값으로 재기록한다(Revision 로그의 정확성 보장). */
 function withAuthoritativeHistory(model: ProjectModel, ops: readonly Op[]): Op[] {
   return ops.map((op) => {
-    const collection = model[COLLECTION_BY_KIND[op.entity]] as Record<string, Record<string, unknown>>
+    const collection = model[COLLECTION_BY_KIND[op.entity]] as Record<
+      string,
+      Record<string, unknown>
+    >
     const current = Object.hasOwn(collection, op.entityId) ? collection[op.entityId] : undefined
     if (op.action === 'update' && current) {
       const changes: Record<string, { from: unknown; to: unknown }> = {}
@@ -38,8 +54,12 @@ function withAuthoritativeHistory(model: ProjectModel, ops: readonly Op[]): Op[]
 }
 
 export async function currentSeq(tx: MutationTx, projectId: string): Promise<number> {
-  const rows = await tx.select({ seq: revisions.seq }).from(revisions)
-    .where(eq(revisions.projectId, projectId)).orderBy(desc(revisions.seq)).limit(1)
+  const rows = await tx
+    .select({ seq: revisions.seq })
+    .from(revisions)
+    .where(eq(revisions.projectId, projectId))
+    .orderBy(desc(revisions.seq))
+    .limit(1)
   return rows[0]?.seq ?? 0
 }
 
@@ -65,7 +85,9 @@ export async function runMutation(
     summary?: string
   },
 ): Promise<{ seq: number; ops: Op[] }> {
-  const locked = await tx.execute(sql`SELECT id FROM projects WHERE id = ${args.projectId} FOR UPDATE`)
+  const locked = await tx.execute(
+    sql`SELECT id FROM projects WHERE id = ${args.projectId} FOR UPDATE`,
+  )
   if (locked.rows.length === 0) {
     throw new TRPCError({ code: 'NOT_FOUND', message: '프로젝트를 찾을 수 없습니다' })
   }
