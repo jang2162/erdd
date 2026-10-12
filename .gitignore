@@ -13,6 +13,9 @@ packages/cli/docs/
 # Playwright MCP 페이지 스냅샷과 스크린샷
 /.playwright-mcp/
 
+# Orca 개인용 이슈 명령
+/.orca/issue-command
+
 
 # START Ruler Generated Files
 /.agents/skills
