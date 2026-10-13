@@ -1,12 +1,10 @@
 {
   "mcpServers": {
     "playwright-neo": {
-      "command": "npx",
+      "command": "sh",
       "args": [
-        "-y",
-        "@playwright/mcp@latest",
-        "--cdp-endpoint",
-        "http://127.0.0.1:9110"
+        "-c",
+        "P=$(node -p \"try{require(require('os').homedir()+'/Library/Application Support/BrowserClaw/.browseros/config.json').ports.cdp||9110}catch(e){9110}\"); exec npx -y @playwright/mcp@latest --cdp-endpoint http://127.0.0.1:$P"
       ],
       "type": "stdio"
     },
