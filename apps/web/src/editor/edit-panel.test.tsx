@@ -697,7 +697,8 @@ describe('EditPanel 용어 등록', () => {
     return screen.getByLabelText('논리명', { selector: '#col-c3-logical' }).closest('li')!
   }
 
-  // ⚠️ M1. 이 사이클이 "닫았다"고 선언한 이월 결함이 같은 카드의 세 번째 버튼에 그대로 있었다.
+  // ⚠️ 카드의 버튼마다 「치고 blur 없이 누르기」에서 방금 친 값을 읽어야 한다 — 한 버튼만 고치면
+  // 같은 카드의 다른 버튼(여기서는 용어 등록)에 같은 결함이 남는다.
   it('치고 blur 없이 용어 등록을 누르면 방금 친 이름으로 등록된다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT)
@@ -831,8 +832,8 @@ describe('EditPanel 컬럼 도메인 자동 지정', () => {
     expect(useEditorStore.getState().model.columns['c1']!.domainId).toBeNull()
   })
 
-  // ⚠️ M3(b). 이 규칙은 **물리명 빈칸 가드 안**에 있는 것이 옛 동작이다. 가드를 없애 「항상」으로
-  // 넓히는 것은 제품 동작 변경이라 이 사이클 범위 밖이다(HANDOFF 6절 이월).
+  // ⚠️ 이 규칙은 **물리명 빈칸 가드 안**에 있다. 가드를 없애 「항상」으로 넓히는 것은 제품 동작
+  // 변경이라 사용자와 정해야 한다(naming.md 「알려진 한계」 의 「컬럼 도메인 자동 지정은 「물리명이 빌 때만」이다」).
   it('물리명이 이미 있으면 도메인을 채우지 않는다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     loadForDomainRule({ physicalName: 'KEEP_ME' })

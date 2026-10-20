@@ -172,7 +172,7 @@ describe('watchProject', () => {
   // 이 유도가 통하는 것은 macOS(FSEvents) 뿐이라, 조건에 플랫폼을 함께 둔다.
   //
   // 「Linux 에서 재귀 감시가 조용히 실패한다」는 것은 이 테스트만의 사정이 아니라 제품의 사실이다
-  // (권한을 되돌려도 그 감시는 이벤트를 내지 않는다). 이월로 `docs/superpowers/HANDOFF.md` 4.1b 에 있다.
+  // (권한을 되돌려도 그 감시는 이벤트를 내지 않는다). `docs/guides/release.md` 「알려진 한계」 의 「Linux 에서 `erdd serve` 의 파일 감시가 조용히 죽는다」.
   it.skipIf(process.getuid?.() === 0 || process.platform !== 'darwin')(
     '감시 등록이 그 밖의 이유로 실패해도 던지지 않는다',
     async () => {

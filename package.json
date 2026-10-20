@@ -13,7 +13,7 @@
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
     "lint": "oxlint .",
-    "prepare": "lefthook install || true"
+    "prepare": "lefthook install || true; if [ -d .ruler ]; then pnpm exec ruler apply; fi"
   },
   "devDependencies": {
     "@intellectronica/ruler": "^0.3.44",

@@ -152,7 +152,7 @@ describe('useModelMutation', () => {
     // 되감기를 setLoaded로 하면 **모델에 없는 t1이 선택에 남아** BulkPanel 헤더가 "2개 선택됨"인데
     // 목록은 1개가 되고, 존재하지 않는 테이블의 선택이 presence로 계속 나간다(설계 §4의 구멍).
     // 되감기는 "같은 프로젝트를 서버 상태로 되맞추는 것"이므로 seq 간극 경로와 같은 resync여야 한다 —
-    // 편집이 거절됐다고 그룹 뷰에서 튕기거나 남들의 하이라이트가 사라지면 안 된다(HANDOFF 3.6).
+    // 편집이 거절됐다고 그룹 뷰에서 튕기거나 남들의 하이라이트가 사라지면 안 된다(realtime.md 「그 밖의 계약」).
     const PID = '018f6b0e-0000-7000-8000-0000000000aa'
     useEditorStore.getState().setLoaded(buildSampleModel(), 5, PID)
     grantEditPermission()

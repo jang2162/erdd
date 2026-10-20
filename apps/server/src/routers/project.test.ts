@@ -150,7 +150,7 @@ describe.skipIf(!url)('project', () => {
   })
 
   it('project.get grants canEdit and canManage to the org owner (also auto-added as project admin)', async () => {
-    // project.create가 생성자를 projectMembers role='admin'으로 자동 삽입하므로(project.ts:36-40),
+    // project.create가 생성자를 projectMembers role='admin'으로 자동 삽입하므로(project.ts 의 `create` 트랜잭션),
     // 여기서 owner는 isOrgManager이면서 동시에 projectRole==='admin'이다 — 이 테스트는
     // canManage = isOrgManager || projectRole === 'admin'의 어느 가지가 true를 만드는지
     // 구분하지 못한다. 라우터 배선 회귀(전혀 허용 안 하는 경우)는 여전히 잡는다.
@@ -500,7 +500,7 @@ describe.skipIf(!url)('project', () => {
   })
 
   /**
-   * ⚠️ 급소(HANDOFF 3.16). 읽기 스키마의 `.default('')` 가 쓰기 입력에도 걸리면 한 키만 보낸
+   * ⚠️ 급소(naming.md 「논리명 구분자」 의 「읽기 스키마와 쓰기 스키마를 같은 것으로 쓰지 마라」). 읽기 스키마의 `.default('')` 가 쓰기 입력에도 걸리면 한 키만 보낸
    * 화면이 나머지 세 방언의 값을 조용히 지운다 — 키가 넷이라 `namingRules` 보다 함정이 크다.
    * **이 단언을 지우면 `TableOptionsStrictSchema` 를 읽기 스키마로 바꿔도 초록이 된다.**
    */

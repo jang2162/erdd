@@ -90,7 +90,7 @@ describe('export', () => {
     await seedPulled(dir, model())
     const code = await exportCommand({ cwd: dir, json: false, ...base, format: 'dbml' })
     expect(code).toBe(0)
-    // DBML 은 식별자를 따옴표로 감싼다 — 브리프 기대값('Table MBR')을 실제 출력으로 정정했다.
+    // DBML 은 식별자를 따옴표로 감싼다 — 'Table MBR' 로 단언하면 실제 출력과 맞지 않는다.
     expect(out.join('')).toContain('Table "MBR"')
     expect(out.join('')).not.toContain('CREATE TABLE')
   })

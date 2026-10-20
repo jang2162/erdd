@@ -20,8 +20,9 @@ export function procedureEntries(): Array<[string, ProcedureType]> {
 }
 
 /**
- * 세션 없이 부를 수 있는 프로시저 전부(설계 3.5). 앞의 넷은 이 사이클 이전부터 공개였고,
- * 뒤의 셋이 설계 3.5가 허용한 셋이다. **여기 없는 공개 프로시저는 규칙 위반이다.**
+ * 세션 없이 부를 수 있는 프로시저 전부 — docs/guides/auth-links.md 「공개(세션 없이 닿는)
+ * 프로시저는 열거된 목록과 정확히 같아야 한다」. 뒤의 셋이 일회용 링크 흐름이 여는 것이다.
+ * **여기 없는 공개 프로시저는 규칙 위반이다.**
  */
 export const PUBLIC_PATHS = [
   'health.ping',

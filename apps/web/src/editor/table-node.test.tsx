@@ -103,7 +103,7 @@ describe('peer 선택 하이라이트', () => {
 })
 
 // DATA 픽스처의 c1 = 회원번호/MBR_NO(order 0, isPk), c2 = 회원명/MBR_NM(order 1).
-// 브리프 원안은 이 텍스트가 c2에 있다고 가정했지만 실제로는 c1이다 — 아래 단언은 c1로 정정했다.
+// ⚠️ 아래 단언의 대상은 c1이다(c2가 아니다).
 describe('컬럼 클릭 → 선택', () => {
   it('컬럼을 클릭하면 replace 모드로 콜백이 불린다', async () => {
     const onColumnClick = vi.fn()
@@ -113,9 +113,9 @@ describe('컬럼 클릭 → 선택', () => {
   })
 
   it('Cmd/Ctrl+클릭은 toggle 모드다', async () => {
-    // held-key 상태는 userEvent 인스턴스에 귀속된다 — 브리프처럼 최상위 userEvent.keyboard/click을
-    // 따로 호출하면 각각 별도 세션이 생겨 Meta가 눌린 채로 넘어가지 않는다(실측: mode가 'replace'로
-    // 관찰됨). setup()으로 만든 단일 인스턴스를 재사용하도록 정정했다.
+    // ⚠️ held-key 상태는 userEvent 인스턴스에 귀속된다 — 최상위 userEvent.keyboard/click을
+    // 따로 호출하면 각각 별도 세션이 생겨 Meta가 눌린 채로 넘어가지 않는다(mode가 'replace'로
+    // 관찰된다). setup()으로 만든 단일 인스턴스를 재사용한다.
     const user = userEvent.setup()
     const onColumnClick = vi.fn()
     renderNode({ ...DATA, viewMode: 'physical', onColumnClick })

@@ -23,7 +23,7 @@ export type ErddConfig = {
    *
    * ⚠️ **연결된 프로젝트에서는 서버 값의 거울이다** — `sync-down`(=`pull`)이 서버 값으로 config
    * 를 통째로 덮어쓰고, `push` 는 모델만 보내므로 로컬에서 고쳐도 올라가지 않는다.
-   * `namingRules` 가 이미 갖고 있는 성질이라 이 사이클이 새로 만드는 문제가 아니다.
+   * `namingRules` 도 같은 성질이다.
    */
   tableOptions: TableOptions
   /**

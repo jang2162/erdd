@@ -60,7 +60,7 @@ function projectFixture(
 
 /**
  * 설정 화면의 미리보기가 쓰는 모델.
- * ⚠️ `model.get` 은 모델을 `{ model, seq }` 로 감싸 돌려준다(apps/server/src/routers/model.ts:22).
+ * ⚠️ `model.get` 은 모델을 `{ model, seq }` 로 감싸 돌려준다(apps/server/src/routers/model.ts 의 `get` 프로시저).
  * ⚠️ 값을 **폴백 예시(MBR/ORD)와 다르게** 둔다 — 같으면 「현재 모델을 쓴다」와 「고정 예시로
  * 떨어졌다」를 테스트가 구분하지 못한다.
  */
@@ -174,7 +174,7 @@ describe('ProjectSettingsPage — 논리명 구분자 토글', () => {
   })
 
   // ⚠️ 서버가 canManage 를 실어 보내는데 화면이 역할 조합식을 손으로 재현하면 perm.ts 가 바뀔 때
-  // 조용히 어긋난다(HANDOFF 이월 항목). 서버가 false 라고 했으면 역할과 무관하게 false 여야 한다.
+  // 조용히 어긋난다. 서버가 false 라고 했으면 역할과 무관하게 false 여야 한다.
   it('역할이 admin 이어도 서버가 canManage:false 라고 하면 토글이 없다', async () => {
     renderSettings({
       'project.get': () => ({

@@ -54,6 +54,12 @@ PORT=3001 ERDD_SERVER_PORT=3001 ERDD_WEB_PORT=5174 pnpm dev
 - ⚠️ **`.env` 에 포트를 적지 마라.** 스크립트는 `.env` 를 셸에 로드할 뿐 우선순위를 따지지 않으므로
   **`.env` 의 키가 인라인으로 준 값을 이긴다.** 위 셋은 기본 `.env` 에 없어서 인라인이 그대로 먹는다.
 - `DATABASE_URL` 은 그 워크트리의 `.env` 로 준다. 격리 DB 는 미리 만들고 마이그레이션을 적용해 둔다.
+- **세션 쿠키 이름은 서버 포트로 갈린다** — 기본 포트 3000 은 `erdd_session`, 그 밖은
+  `erdd_session_<포트>`(`apps/server/src/context.ts` 의 `sessionCookieName`). 쿠키는 포트를 구분하지
+  않으므로 이름이 같으면 한 트랙의 로그인이 다른 트랙의 세션을 끊는다. 이름은 서버가 `PORT` 로
+  정하므로 트랙마다 따로 할 일은 없다. ⚠️ `apps/server/src/main.ts` 가 `PORT` 를 `buildServer` 에
+  넘기는 것이 이 규칙의 유일한 배선이다 — 그 인자를 빠뜨리면 모든 서버가 `erdd_session` 으로
+  돌아가는데, 테스트는 `main.ts` 를 부르지 않으므로 잡지 못한다.
 - 워크트리 생성·정리 절차는 [worktree-workflow.md](worktree-workflow.md).
 
 ## 포맷·린트·훅
@@ -190,7 +196,8 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
   `project.members.add` 의 `memberId` 에는 그 `id` 를 넘긴다) → `project.create`(`dialects` 필요) →
   Viewer 용 `project.members.add`. 조직 라이브러리는 `resource.library.create({ scope: 'org', orgId, name })`
   다(단수 `library`).
-  **호출 사이에 `getSetCookie()` 의 `erdd_session` 쿠키를 이어서 넘겨야 한다.**
+  **호출 사이에 `getSetCookie()` 의 세션 쿠키(`erdd_session`, 기본이 아닌 포트면 `erdd_session_<포트>`)를
+  이어서 넘겨야 한다.**
 - **React 제어 인풋에 브라우저 도구로 타이핑하지 마라.** 느리고 한글에서 불안정하다.
   네이티브 setter 를 쓴다 —
   `Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, text)` 후
@@ -212,16 +219,13 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
 헤드리스 B 는 `ws` 를 pnpm 스토어 경로(`node_modules/.pnpm/ws@*/node_modules/ws`)에서 직접
 import 하면 된다.
 
-### ⚠️ 브라우저 확장으로 렌더 결함을 계측하려 들지 마라
+### ⚠️ 백그라운드 탭에서는 에디터 캔버스가 제대로 그려지지 않는다
 
-확장의 MCP 탭은 **활성 탭이 아니라서** `document.visibilityState === 'hidden'` 이고
-`document.hasFocus() === false` 다. 그러면 `requestAnimationFrame` 이 아예 돌지 않고
-(rAF 대기가 45초 CDP 타임아웃으로 끝난다 — 렌더러가 멈춘 것으로 오인하기 쉽다)
-**ResizeObserver 도 돌지 않는다.** 그 결과 캔버스 노드 대부분이 `visibility: hidden` 인 채로
-남는데, 이것은 **고치려는 렌더 버그의 증상과 구분되지 않는다.** 탭을 앞으로 가져오려는 우회는
-전부 막힌다. **워커 + Playwright MCP 가 답이다** — Playwright 브라우저는 headless 여도 `visible`
-이라 rAF·ResizeObserver 가 정상이다([worktree-workflow.md](worktree-workflow.md) 「스모크는
-누가 하나」 절).
+백그라운드 탭에서는 `requestAnimationFrame`·`ResizeObserver` 가 돌지 않는다 — 원리와 대안(로그인이
+필요 없으면 독립 브라우저)은 `browseros-neo` 스택 `01-limits.md` 「neo 의 한계에 걸리는 확인은 neo
+만으로 결론 내지 않는다」 와 `browser` 스택 `03-cdp.md` 의 예외가 갖는다. ERDD 에서 이것이 위험한
+이유는 증상이다 — **캔버스 노드 대부분이 `visibility: hidden` 인 채로 남는데, 고치려는 렌더 버그의
+증상과 구분되지 않는다.** rAF 대기는 45초 CDP 타임아웃으로 끝나 렌더러가 멈춘 것으로 오인하기 쉽다.
 
 ---
 

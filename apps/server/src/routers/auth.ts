@@ -9,7 +9,7 @@ import { hashPassword, verifyPassword } from '../auth/password.js'
 import { generateToken, hashToken } from '../auth/token.js'
 import { normalizeEmail } from '../services/accounts.js'
 import { LinkDeadError, assertLive } from '../services/one-time-token.js'
-import { SESSION_COOKIE, type SessionUser } from '../context.js'
+import type { SessionUser } from '../context.js'
 import { apiProcedure, authedProcedure, dbProcedure, router } from '../trpc.js'
 
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000
@@ -39,7 +39,7 @@ export const authRouter = router({
       const token = randomBytes(32).toString('base64url')
       const expiresAt = new Date(Date.now() + SESSION_TTL_MS)
       await ctx.db.insert(sessions).values({ id: token, userId: user.id, expiresAt })
-      ctx.res.setCookie(SESSION_COOKIE, token, {
+      ctx.res.setCookie(ctx.sessionCookie, token, {
         path: '/',
         httpOnly: true,
         sameSite: 'lax',
@@ -50,9 +50,9 @@ export const authRouter = router({
     }),
 
   logout: dbProcedure.mutation(async ({ ctx }) => {
-    const token = ctx.req.cookies[SESSION_COOKIE]
+    const token = ctx.req.cookies[ctx.sessionCookie]
     if (token) await ctx.db.delete(sessions).where(eq(sessions.id, token))
-    ctx.res.clearCookie(SESSION_COOKIE, { path: '/' })
+    ctx.res.clearCookie(ctx.sessionCookie, { path: '/' })
     return { ok: true as const }
   }),
 
@@ -77,7 +77,7 @@ export const authRouter = router({
         .update(users)
         .set({ passwordHash: await hashPassword(input.newPassword) })
         .where(eq(users.id, user.id))
-      const token = ctx.req.cookies[SESSION_COOKIE]
+      const token = ctx.req.cookies[ctx.sessionCookie]
       if (token) {
         await ctx.db
           .delete(sessions)

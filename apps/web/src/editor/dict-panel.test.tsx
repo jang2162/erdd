@@ -567,7 +567,7 @@ describe('DictPanel 다이얼로그 순서·역방향 등록', () => {
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT_ID)
     grantEditPermission()
     renderPanel()
-    // 실측: 탭 이름은 정확히 "용어"다(브리프의 role="tab" 조회는 이 파일 구조와 맞지 않는다).
+    // 탭 이름은 정확히 "용어"다 — 이름 없이 role="tab" 으로만 찾으면 이 파일 구조에서는 맞지 않는다.
     await userEvent.click(screen.getByRole('tab', { name: /^용어/ }))
     await userEvent.click(screen.getByRole('button', { name: /용어 추가/ }))
     const physical = screen.getByLabelText(/물리명/)

@@ -61,10 +61,10 @@ function Protected({
  * 처리해 서버에 닿지 않으므로, 이 라우트 분기가 없으면 로컬 모드에서 홈 화면이 뜬다.
  *
  * ⚠️ **대상을 클라이언트가 계산하지 않는다.** 로컬 서버가 실제로 여는 프로젝트는
- * `config.projectId ?? LOCAL_PROJECT_ID`(`server.ts:36`)인데, 연결형 설정(`erdd.config.yaml`에
+ * `config.projectId ?? LOCAL_PROJECT_ID`(`packages/cli/src/local/server.ts` 의 `startLocalServer`)인데, 연결형 설정(`erdd.config.yaml`에
  * `projectId`가 있는 디렉터리)에서는 그 값이 상수와 다르다. 웹은 그 값을 알 방법이 없다
  * (`auth.me`는 `mode`만 싣는다) — 그래서 `/p/<id>`를 직접 계산하는 대신 **전체 이동으로 `/`를
- * 다시 요청한다.** 서버의 `/` 302(`server.ts:121`)가 실제 값으로 보내 준다. 루프가 아니다 —
+ * 다시 요청한다.** 서버의 `/` 302(같은 함수의 `app.get('/')`)가 실제 값으로 보내 준다. 루프가 아니다 —
  * 이 이동은 새 HTTP 요청이라 다음에 로드되는 화면은 `/p/<id>`이지 `/`가 아니다.
  */
 function HomeOrEditor() {

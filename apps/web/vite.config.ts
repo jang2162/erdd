@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { erddVersion } from './erdd-version'
 
-// 워크트리를 병렬로 돌릴 때 서버 포트를 트랙마다 달리 잡는다(→ CLAUDE.md "워크트리").
+// 워크트리를 병렬로 돌릴 때 서버 포트를 트랙마다 달리 잡는다(→ docs/guides/setup.md 「워크트리에서는 포트·DB 를 트랙별로 가른다」).
 // 하드코딩이면 워크트리의 web dev가 조용히 최상위 서버(3000)에 붙는다.
 const serverPort = process.env.ERDD_SERVER_PORT ?? '3000'
 

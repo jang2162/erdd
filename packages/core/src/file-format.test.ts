@@ -111,7 +111,7 @@ describe('modelToFiles', () => {
 
   it('물리명이 대소문자만 다르면 두 파일 모두에 id 접미사를 붙이고 경고한다', () => {
     const m = fullModel()
-    // 컬렉션 키는 반드시 id와 같아야 한다(op.ts:90이 강제하는 리포 전역 불변식).
+    // 컬렉션 키는 반드시 id와 같아야 한다(op.ts 의 `applyOps` 가 create 에서 `data.id` 불일치로 거절하는 리포 전역 불변식).
     m.tables['tb3abcdef-0000'] = {
       id: 'tb3abcdef-0000',
       logicalName: '회원소문자',
@@ -545,7 +545,7 @@ function treeWithNewEverywhere(): FileTree {
   }
 }
 
-/** 모델이 쥔 모든 엔티티 id. 컬렉션 키가 곧 id다(op.ts:90). */
+/** 모델이 쥔 모든 엔티티 id. 컬렉션 키가 곧 id다(op.ts 의 `applyOps`). */
 function idsOf(m: ProjectModel): string[] {
   return [
     ...Object.keys(m.tableGroups),

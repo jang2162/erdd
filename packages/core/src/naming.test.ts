@@ -512,7 +512,7 @@ describe('suggestCompletions', () => {
 
 describe('NamingRulesSchema', () => {
   it('logicalSeparator 가 없는 옛 값에 기본값 _ 를 주입한다', () => {
-    // 기존 projects.naming_rules jsonb 의 실제 모양이다(2026-08-15 실측).
+    // 기존 projects.naming_rules jsonb 의 실제 모양이다(실측).
     const legacy = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
     expect(NamingRulesSchema.parse(legacy)).toEqual({
       case: 'UPPER_SNAKE',
@@ -868,7 +868,7 @@ describe('suggestCompletions 구분자', () => {
   // ⚠️ 「용어 등록」은 draft 논리명을 그대로 저장한다(edit-panel.tsx). D2 가 논리명 저장값에
   // 구분자를 넣으라고 하므로 이 프로젝트에서 만든 용어는 저장값에 구분자가 든다. 그 용어도
   // 매칭돼야 한다 — generatePhysicalName 은 매칭하는데 자동완성만 못 하면 같은 용어가 경로에
-  // 따라 나오거나 안 나온다(설계 D4 · HANDOFF 3.5b 의 네 자리).
+  // 따라 나오거나 안 나온다(설계 D4 · naming.md 「논리명 구분자」 의 완전일치 조회 규칙).
   it('구분자가 든 용어 저장값도 후보로 나온다', () => {
     const tSep = {
       t1: {

@@ -99,7 +99,7 @@ export function modelToFiles(model: ProjectModel): { tree: FileTree; issues: Fil
           id: c.id,
           name: c.physicalName,
           logicalName: c.logicalName,
-          // type과 domain을 둘 다 쓴다. setColumnDomain(apps/web/src/editor/column-edits.ts:36)이
+          // type과 domain을 둘 다 쓴다. setColumnDomain(apps/web/src/editor/column-edits.ts)이
           // 도메인 지정 시 기존 type 문자열을 지우지 않으므로, 하나만 쓰면 왕복에서 다른 하나가 소실된다.
           domain: domainName(c.domainId),
           type: c.type,
@@ -364,7 +364,7 @@ export function filesToModel(tree: FileTree, opts?: FilesToModelOptions): FilesT
   const model = createEmptyModel()
 
   /**
-   * 컬렉션별로 "그 id를 처음 쓴 파일"을 기억한다. 컬렉션 키가 곧 엔티티 id라(op.ts:90)
+   * 컬렉션별로 "그 id를 처음 쓴 파일"을 기억한다. 컬렉션 키가 곧 엔티티 id라(op.ts 의 `applyOps`)
    * 같은 id가 두 번 나오면 뒤엣것이 앞엣것을 조용히 덮어쓴다. 파일을 복사해 새 테이블을
    * 만들면서 id를 지우지 않는 것은 흔한 사고인데, push에서는 그것이 "새로 만들기"가 아니라
    * "원본을 복사본 내용으로 개명"이 되어 복구 불가능한 반영이 나간다 — 계획을 세우기 전에

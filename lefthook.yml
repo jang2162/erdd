@@ -20,9 +20,14 @@ pre-push:
       run: 'pnpm exec oxlint .'
 
 # 순차 실행이다 — 런타임이 맞은 뒤에 설치가 돌아야 한다. parallel 을 쓰지 않는다.
+# piped 가 없으면 runtime 이 실패해도 deps 가 돌아 지금 PATH 의 런타임으로 설치된다.
+# 새 워크트리의 mise.toml 은 아직 신뢰되지 않아 mise install 만 부르면 실패한다 — mise trust 를 먼저 부른다.
+# {3} 은 git 이 넘기는 체크아웃 종류다(브랜치·worktree add 는 1, `git checkout -- <파일>` 은 0).
+# 파일 체크아웃마다 pnpm install(→ prepare 의 ruler apply)이 돌지 않게 두 잡 모두 1 일 때만 돈다.
 post-checkout:
+  piped: true
   jobs:
     - name: runtime
-      run: "if command -v mise >/dev/null; then mise install; else echo 'mise 가 없어 런타임 버전을 맞추지 못했다'; fi"
+      run: "[ '{3}' = 1 ] || exit 0; if command -v mise >/dev/null; then mise trust && mise install; else echo 'mise 가 없어 런타임 버전을 맞추지 못했다'; fi"
     - name: deps
-      run: 'pnpm install'
+      run: "[ '{3}' = 1 ] || exit 0; pnpm install"

@@ -117,7 +117,7 @@ describe('composeTablePhysicalName', () => {
   })
 })
 
-// ⚠️ 이 사이클의 급소. 설계 3.2 의 표 그대로다.
+// ⚠️ 템플릿의 급소 — naming.md 「테이블 최종 이름」 의 「빈 구간 접기는 「밑줄만 지운다」」.
 describe('빈 구간 접기', () => {
   /** 그룹을 떼어 {그룹별칭}·{그룹명} 이 비게 만든다. */
   function noGroup(): ProjectModel {
@@ -229,7 +229,7 @@ describe('composeTableLogicalName', () => {
     expect(composeTableLogicalName(m.tables['t2']!, m, withLogical('{그룹명}_이력'))).toBe('이력')
   })
 
-  // ⚠️ 이 사이클의 계약. 변수는 **저장된 부분**을 돌려주지 조합 결과를 돌려주지 않는다 —
+  // ⚠️ 템플릿 변수의 계약. 변수는 **저장된 부분**을 돌려주지 조합 결과를 돌려주지 않는다 —
   // 그래서 재귀가 원리적으로 불가능하다(설계 D4).
   it('{물리명} 은 조합 물리명이 아니라 부분을 돌려준다', () => {
     const m = model()
