@@ -775,3 +775,8 @@ syntax and the variable substitution result. In addition:
 deployment through a real compose management tool (Komodo and others), and the build count and cache
 behavior under BuildKit (buildx) were written from reading the code and configuration. They still need
 verification in a real environment.
+
+---
+
+**Next** — After the first start, the [user guide](user-guide.md) covers the screens you and your users work in. To
+sync the schema with files in a repository, read the [CLI manual](cli-guide.md).

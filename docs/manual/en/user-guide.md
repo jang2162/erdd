@@ -903,3 +903,8 @@ There are three conditions in which they do not work. When the cursor is in an *
 - **Deleting a relationship line keeps the child table's FK columns.** Only the line disappears, and the columns remain as plain columns. To remove the columns too, delete them separately. This is exactly the same as the **관계 삭제** (Delete relationship) button in the right panel.
 - Notes and relationship lines can be selected only one at a time, so **they do not go through the delete confirmation dialog** (that confirmation appears only when two or more tables are selected). If you deleted one by mistake, revert it with `Cmd`/`Ctrl`+`Z`.
 - Pasting a note into another app (a notepad, an issue tracker, and so on) gives the JSON string this app uses, not human-readable text, because the format exists to duplicate notes within the app.
+
+---
+
+**Next** — To keep the schema as files in your repository and sync it from the command line, read the
+[CLI manual](cli-guide.md). To use the same editor without a server, read the [local mode manual](local-guide.md).

@@ -3,7 +3,7 @@
 This document covers, from start to finish, how to draw ERDs **without a server, account, or database**, using
 only YAML files in your repository. One `erdd serve` command opens **the same web editor as server mode** in your
 browser, and what you change on screen becomes the `erdd/` files. History is kept by **git commits**, not by a
-server.
+server. It is for people who design alone and keep the schema in their own repository.
 
 **This document is all you need.** You do not need to read about server installation and operations
 ([install.md](install.md)). Open the [user guide](user-guide.md) for the details of each screen, and the
@@ -78,10 +78,10 @@ npm install -D @erdd/cli tsx
 - **You do not need to build the web bundle.** The editor ships whole inside the package, so
   [2.3](#23-path-b-erdd-repository-checkout--build-the-web-bundle-once) does not apply to this path. An installed
   copy cannot have a repository layout, so the bundled copy is always used.
-- **This manual is inside the installed package too.** The four manuals are bundled in
-  `node_modules/@erdd/cli/docs/` together with the `README.md` at the package root. This document is
-  `local-guide.md` among them, and the relative links between documents still work. You can read it without
-  cloning the ERDD repository.
+- **This manual is inside the installed package too.** The four manuals are bundled per language, in
+  `node_modules/@erdd/cli/docs/en/` (English) and `node_modules/@erdd/cli/docs/ko/` (Korean), together with the
+  `README.md` at the package root. This document is `docs/en/local-guide.md` among them, and the relative links
+  between documents still work. You can read it without cloning the ERDD repository.
 
 ### 2.3 Path B: ERDD repository checkout — build the web bundle once
 
@@ -888,3 +888,9 @@ values in the tests.
 **Basis** — `packages/cli/src/{commands/{init,serve}.ts,local/*,config.ts}`,
 `packages/core/src/{layout,local}.ts`, and the local mode branches in `apps/web/src`.
 When features change, this document must change with them.
+
+---
+
+**Next** — For the details of each editor screen, read the [user guide](user-guide.md). For every command, the file
+formats, and CI, read the [CLI manual](cli-guide.md). When your team needs a shared server, read the
+[installation and operations manual](install.md).
