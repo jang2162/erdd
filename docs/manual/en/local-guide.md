@@ -107,7 +107,7 @@ JSON instead of the editor.
 
 If you updated the ERDD repository with `git pull`, rebuild the bundle too. Otherwise the old bundle is served as is.
 
-**In the repository, the `apps/web/dist` you just built always wins.** Even if you once made a copy in
+**In the repository, the `apps/web/dist` you built most recently always wins.** Even if you once made a copy in
 `packages/cli/web` (`bundle:web`) to prepare a release, `erdd serve` keeps looking at the latest build. If the screen
 does not change, you do not need to suspect that copy.
 
@@ -533,7 +533,7 @@ terminal.
 3. Enter **이름** (Name) (for example, 「회원 등급 추가」, "add member grade") and click **변경 기록 만들기** (Create change
    record). `erdd/changes/<time>_<name>.erddc` is created.
 4. Commit the record file, and write the migration from it. Putting the record file name in the migration file name or
-   a comment makes it easy to see how far you have carried things over.
+   a comment shows how far you have carried things over.
 
 From the terminal:
 
@@ -740,7 +740,7 @@ git add erdd erdd.config.yaml && git commit -m "스키마: 서버 이관 전 상
 
 erdd init --server https://erdd.example.com --token "$ERDD_TOKEN" --project <new-project-id> --yes
 erdd pull --yes                  # ⚠️ the empty server state overwrites erdd/ (the list it asks about is all your files)
-git checkout HEAD -- erdd        # put back the schema you just committed
+git checkout HEAD -- erdd        # put back the schema you committed a moment ago
 erdd diff                        # everything showing as additions is expected
 erdd push -m "로컬에서 설계한 스키마 이관"
 ```
@@ -820,7 +820,7 @@ lists the files it applied.
 | `--port abc` fails with a usage error (`2`) | It is not an integer | Pass a port number |
 | The browser shows the **파일을 읽을 수 없어 편집이 잠겼습니다** (Editing is locked because a file cannot be read) banner, and you cannot edit | YAML in `erdd/` is broken | Fix the file the banner points to. Fixing it unlocks automatically (→ [4.5](#45-a-broken-file-locks-editing)) |
 | Tables sit side by side in a grid | `erdd/layout.yaml` is missing, or has no entry for that table | This is normal. Moving the tables or running **자동 정렬** (Auto layout) saves coordinates |
-| Another tab does not follow the edit you just made | An edit shows only in the tab that made it | Reload (→ [4.6](#46-opening-several-tabs)) |
+| Another tab does not follow the edit you made | An edit shows only in the tab that made it | Reload (→ [4.6](#46-opening-several-tabs)) |
 | You edited on screen, but `git status` shows nothing | **You did not save.** The edits are only in `.erdd/draft.json` (gitignored) | **저장** (Save) in the header, or `Cmd+S`. From the terminal, `erdd status` tells you (→ [4.4](#44-edits-stay-in-a-draft-until-you-save)) |
 | The **파일이 밖에서 바뀌었습니다** (The files changed from outside) banner appears | You have unsaved edits, and `git pull`, an agent, or something else changed `erdd/` | **내 편집 유지** (Keep my edits; saving overwrites the files with the screen) or **파일 다시 읽기** (Reload files; discards your edits) (→ [4.4](#44-edits-stay-in-a-draft-until-you-save)) |
 | **저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 스냅샷을 만드세요** (There are unsaved edits. Save first, then create the snapshot) | A snapshot holds only the saved state | Save first (→ [section 6](#6-snapshots)) |

@@ -72,7 +72,7 @@ is**, not build output, and the binary's shebang is `#!/usr/bin/env -S npx tsx`.
 for you.** The consumer must declare it in their own project.
 
 **The symptom of leaving it out differs by package manager.** Because the shebang goes through `npx`, **`npx` fetches
-`tsx` on demand and it usually just runs** (but the first run is slower and depends on registry access). Without a
+`tsx` on demand and it usually runs** (but the first run is slower and depends on registry access). Without a
 network, the shell, not the CLI, ends it like this.
 
 ```text
@@ -726,7 +726,7 @@ notes:
 ```
 
 - **Moving a table changes only this file.** Not a single character of `erdd/tables/*.yaml` changes. The files were
-  split to keep the original reason for taking coordinates out of the schema files (a diff appearing just from moving
+  split to keep the original reason for taking coordinates out of the schema files (a diff appearing from merely moving
   things).
 - **Entries are identified by `id`.** `name` is for people to read and is not used for matching, so the layout follows
   even if you change the physical name. An `id` left over that is not in the model (from a deleted table) is discarded
@@ -734,7 +734,7 @@ notes:
 - **If an entry or the whole file is missing, tables fall into a grid sorted by physical name.** A project received
   with `erdd pull` also opens without a coordinates file. Refine it afterward with **자동 정렬** (Auto layout) in the
   editor.
-- ⚠️ **If the whole file does not parse, editing is locked, just as for any other `erdd/` file.** The file holds not
+- ⚠️ **If the whole file does not parse, editing is locked, the same as for any other `erdd/` file.** The file holds not
   only coordinates but also **the text of notes**, so leaving it open while broken would make the next save erase the
   notes with `notes: []`. A red banner (`파일을 읽을 수 없어 편집이 잠겼습니다 — erdd/layout.yaml: …`, "Editing is
   locked because a file cannot be read") appears, and fixing the file unlocks it
@@ -1209,7 +1209,7 @@ http://127.0.0.1:4399 에서 실행 중 (프로젝트: /path/to/my-project)
 - Passing a non-integer to `--port`, or leaving out its value, is a usage error (`2`):
   `--port 값이 올바르지 않습니다: abc` ("invalid --port value: abc").
 - **Stop it with `Ctrl+C` (SIGINT, SIGTERM).** Before exiting, it flushes pending **draft** writes, so coordinates you
-  just moved and notes you just created are kept.
+  moved a moment ago and notes you created a moment ago are kept.
 - If it cannot open the browser (no launcher, without `--no-open`), it prints only `브라우저를 열지 못했습니다. 직접 … 을
   여세요` ("Could not open the browser. Open … yourself") and the server keeps running.
 
@@ -1751,7 +1751,7 @@ library value) and the confirmation question go to stderr, and the one-line resu
 
 **If a term's domain is not in the library and is not pushed along with it, the library term's domain link is left
 empty.** A mark is added at the end of that term's line. The decision is based on **the final selection** after filters
-that make it easy to leave out the domain, such as `--kind term`, `--name`, and the exclusion of items where the source
+that tend to leave out the domain, such as `--kind term`, `--name`, and the exclusion of items where the source
 is ahead (below) (the same decision as the **도메인 연결 비움** (Domain link cleared) badge in **조직으로 승격** on the
 web).
 
@@ -2168,7 +2168,7 @@ again.
 
 ⚠️ **Do not use the resolution steps above (`erdd pull` first) for this conflict.** `pull` overwrites local changes with
 the server state, so the item to delete would disappear **together with your other local work**. Delete only the one
-line from the table and push again. Value lines have the form `name (id …) · source`. The two items easily share a name,
+line from the table and push again. Value lines have the form `name (id …) · source`. The two items often share a name,
 so the id tells you which one to delete. In the "added locally" case, the base is `(없음)` (none), not `(삭제됨)`
 (deleted).
 
@@ -2191,7 +2191,7 @@ and erase your local changes with the server state, and the property that pushin
 diff` only reads, so it is safe.
 
 **Why pushing again does not create copies** — `push` writes the new `id`s it issued this time into the local files
-**just before** sending to the server (including a disk sync). So even if the response is lost and the same content is
+**immediately before** sending to the server (including a disk sync). So even if the response is lost and the same content is
 sent again, the server sees the same `id`s as "already existing" and treats them as edits. `reservedFiles` in the
 `--json` response is the list of files it actually rewrote at that point.
 
