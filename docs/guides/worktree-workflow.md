@@ -24,23 +24,36 @@ IDE, 실행 중인 dev 서버(`tsx watch`·vite 는 세션을 넘어 살아남�
 
 ## 1. 워크트리 만들기
 
+**Orca 가 살아 있으면(`orca status --json` 이 running) Orca 로 만든다** — `.ruler/orca/05-switch.md`
+「Orca 가 살아 있으면 워크트리도 Orca 로 만든다」. 반환 JSON 에 워크트리 id 가 있고 `orca.yaml` 의
+셋업(`mise trust`·`mise install`·`pnpm install`·codegraph 인덱스)이 돈다.
+
+```bash
+orca worktree create --name <작업명> --base-branch main --json
+```
+
+Orca 가 없을 때만 git 으로 만든다.
+
 ```bash
 git worktree add -b feat/<작업명> .worktrees/feat-<작업명> main
 ```
 
-- **위치는 `.worktrees/<브랜치-슬러그>/`** — 저장소 루트 하위이고 gitignore 된다.
+- **위치는 `.worktrees/` 아래다** — 저장소 루트 하위이고 gitignore 된다. git 으로 만들 때는
+  `.worktrees/<브랜치-슬러그>/`, Orca 로 만들면 Orca 가 `.worktrees/` 아래 자리를 정한다.
   저장소 바깥이나 임의 경로에 만들지 마라. 다른 에이전트가 찾지 못한다.
 - **브랜치를 함께 만든다.** 이미 다른 워크트리가 체크아웃한 브랜치는 git 이 거부한다.
-- ⚠️ **기준 브랜치는 로컬 `main` 을 명시한다.** 생략하면 현재 `HEAD`(= 진행 중인 주 트랙)를 물고,
-  `origin/main` 을 쓰면 뒤처진 옛 커밋을 잡는다(수십 커밋 뒤처진 상태로 시작한 적이 있다).
+- ⚠️ **기준 브랜치는 로컬 `main` 을 명시한다**(Orca 는 `--base-branch main`). 생략하면 현재
+  `HEAD`(= 진행 중인 주 트랙)를 물고, `origin/main` 을 쓰면 수십 커밋 뒤처진 옛 커밋에서 시작한다.
 - **하나의 작업 = 하나의 워크트리.** 여러 작업을 한 워크트리에서 브랜치 갈아타며 처리하지 않는다.
 - **만들기 전에 `git worktree list` 로 같은 작업의 워크트리가 이미 있는지 본다.**
   있으면 새로 만들지 말고 그것을 쓴다.
 
 ### 생성 직후 세팅
 
-- **`pnpm install` 을 워크트리 안에서 직접 실행한다.** `post-checkout` 훅은 새 워크트리에서 자동으로
-  돌지 않을 수 있다. **새 런타임 의존성이 붙은 트랙은 설치 전에는 타입이 implicit any 로 깨진다.**
+- **런타임과 의존성이 맞았는지 워크트리 안에서 잰다**(`mise ls --current`, `which pnpm`). Orca 셋업이나
+  `post-checkout` 훅이 돌았다고 믿지 않는다 — 훅은 새 워크트리에서 자동으로 돌지 않을 수 있다.
+  안 맞았으면 `mise trust && mise install` 뒤에 `pnpm install` 을 직접 돌린다.
+  **새 런타임 의존성이 붙은 트랙은 설치 전에는 타입이 implicit any 로 깨진다.**
 - **포트·DB 를 트랙별로 가른다.** 같은 포트를 물면 먼저 뜬 워크트리만 살고 나머지는 조용히 죽거나
   남의 서버에 붙는다. 공유 `erdd_test` 를 두 트랙이 함께 쓰면 테스트가 서로의 데이터를 지운다.
   할당표와 환경 변수는 [setup.md](setup.md) 「워크트리에서는 포트·DB 를 트랙별로 가른다」 절.
