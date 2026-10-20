@@ -1,7 +1,7 @@
 # ERDD CLI manual
 
-This is the manual for `erdd`, a command-line tool that downloads the schema from an ERDD server as **YAML files in
-your codebase**, lets you version them with git, and pushes local edits back to the server. It is for developers who
+This is the manual for `erdd`, a command-line tool that downloads the schema from an ERDD server as YAML files in
+your codebase, lets you version them with git, and pushes local edits back to the server. It is for developers who
 handle the schema alongside their code, and for AI agents that read and edit those files. For using the editor, see the
 [user guide](user-guide.md). For installing and running the server, see the
 [installation and operations manual](install.md). **The way to use it with files only, without a server**, is covered
@@ -36,13 +36,13 @@ explanation next to it where it matters.
 | The files hold **only the semantic information of the schema** | Layout coordinates and notes are not in the **schema files** (`erdd/tables/*.yaml` and the top-level dictionary files) (→ [section 8](#8-what-the-files-do-not-hold)). Shared dictionary sources are kept separately in `erdd/origins.yaml` (→ [5.8](#58-erddoriginsyaml--shared-dictionary-sources)). |
 | Every command works **from the current directory** | Run them in the project root, where `erdd.config.yaml` is. |
 
-**There are two ways to run it, and the first two premises above assume "a project connected to a server".** **Local
-mode**, opened with `erdd serve`, has no server, account, or DB, and the `erdd/` files themselves are the source of
+**There are two ways to run it, and the first two premises above assume "a project connected to a server".** Local
+mode, opened with `erdd serve`, has no server, account, or DB, and the `erdd/` files themselves are the source of
 truth. The browser shows the same web editor (→ [3.4](#34-local-mode--using-it-without-a-server)). Layout coordinates
-and notes go into `erdd/layout.yaml`, and this is **independent of the mode**. Even if you open a server-connected
+and notes go into `erdd/layout.yaml`, and this is independent of the mode. Even if you open a server-connected
 project with `erdd serve` and edit it, they accumulate in the same file
 (→ [5.7](#57-erddlayoutyaml--layout-coordinates-and-notes)).
-**If you plan to use only local mode, the [local mode manual](local-guide.md) alone is enough instead of this document.**
+If you plan to use only local mode, the [local mode manual](local-guide.md) alone is enough instead of this document.
 
 **There is no MCP server.** Agent integration is this CLI plus the bundled skill document (→ [section 9](#9-using-it-with-ai-agents)).
 
@@ -64,15 +64,16 @@ project with `erdd serve` and edit it, they accumulate in the same file
 |---|---|---|
 | Node.js | **22 or later** | `mise.toml`, and **the packages enforce it**. Both packages have `engines.node: ">=22"`, so installing with a mismatched Node makes the package manager warn or refuse |
 | Packages | `@erdd/cli` (binary `erdd`) · dependency `@erdd/core` | `packages/cli/package.json` |
-| Runner | `tsx`. **The consumer installs it directly** | The package contains the original TypeScript as is, and the binary's shebang is `npx tsx` (⚠️ below) |
+| Runner | `tsx`. **The consumer installs it directly** | The package contains the original TypeScript as is, and the binary's shebang is `npx tsx` (see the warning below) |
 | ERDD repository checkout | **Only for methods B and C.** Method A does not need it | |
 
-⚠️ **Add `tsx` to your project, whatever your package manager.** The package contains **the original TypeScript as
-is**, not build output, and the binary's shebang is `#!/usr/bin/env -S npx tsx`. **`@erdd/cli` does not pull in `tsx`
-for you.** The consumer must declare it in their own project.
+> [!WARNING]
+> **Add `tsx` to your project, whatever your package manager.** The package contains the original TypeScript as
+> is, not build output, and the binary's shebang is `#!/usr/bin/env -S npx tsx`. `@erdd/cli` does not pull in `tsx`
+> for you. The consumer must declare it in their own project.
 
-**The symptom of leaving it out differs by package manager.** Because the shebang goes through `npx`, **`npx` fetches
-`tsx` on demand and it usually runs** (but the first run is slower and depends on registry access). Without a
+**The symptom of leaving it out differs by package manager.** Because the shebang goes through `npx`, `npx` fetches
+`tsx` on demand and it usually runs (but the first run is slower and depends on registry access). Without a
 network, the shell, not the CLI, ends it like this.
 
 ```text
@@ -83,7 +84,7 @@ sh: tsx: command not found
 The flat npm layout fails with `ENOTCACHED` when there is no cache. **Sometimes it works and sometimes it does not**,
 so diagnosing from this one symptom alone sends you in circles (→ [11. Troubleshooting](#11-troubleshooting)).
 
-**That is why every installation command in this document includes `tsx`.** It is **the only guaranteed path**.
+**That is why every installation command in this document includes `tsx`.** It is the only guaranteed path.
 
 ### 2.2 Method A: install from npm (recommended)
 
@@ -103,7 +104,7 @@ npx erdd --help
 This creates `node_modules/.bin/erdd`, which you call with `pnpm exec erdd …` (`npx erdd …` with npm). `@erdd/core`
 comes in as a dependency, so you do not install it separately.
 
-**The web bundle is inside the package.** The editor that `erdd serve` opens in the browser (the build output of
+The web bundle is inside the package. The editor that `erdd serve` opens in the browser (the build output of
 `apps/web`) ships whole in the tarball. **With an npm install, `erdd serve` starts as is without building the web app
 separately** (→ [local mode manual 2.2](local-guide.md#22-path-a-install-from-npm-recommended)). An installed copy
 cannot have the repository layout (`apps/web/dist`) in the first place, so this bundled copy is always used.
@@ -133,11 +134,13 @@ The path is long, so a shell alias helps.
 alias erdd='npx tsx /path/to/ERDD/packages/cli/src/main.ts'
 ```
 
-⚠️ **The current directory must be the target project.** The CLI looks for `erdd.config.yaml`, `erdd/`, and `.erdd/`
-all relative to `process.cwd()`. If you run it inside the ERDD repository, it looks in the wrong place.
+> [!WARNING]
+> **The current directory must be the target project.** The CLI looks for `erdd.config.yaml`, `erdd/`, and `.erdd/`
+> all relative to `process.cwd()`. If you run it inside the ERDD repository, it looks in the wrong place.
 
-⚠️ **With this method, you must build the web app once before using `erdd serve`.** The checkout has no bundle. Run
-`pnpm -C apps/web build` (→ [local mode manual 2.3](local-guide.md#23-path-b-erdd-repository-checkout--build-the-web-bundle-once)).
+> [!WARNING]
+> **With this method, you must build the web app once before using `erdd serve`.** The checkout has no bundle. Run
+> `pnpm -C apps/web build` (→ [local mode manual 2.3](local-guide.md#23-path-b-erdd-repository-checkout--build-the-web-bundle-once)).
 
 ### 2.4 Method C: link as a project dependency
 
@@ -152,14 +155,16 @@ pnpm add -D /path/to/ERDD/packages/cli tsx
 pnpm exec erdd --help
 ```
 
-⚠️ **Without `tsx`, running is not guaranteed.** Sometimes `npx` fetches it on the spot and it runs. Without a network
-or cache, it fails with `sh: tsx: command not found` (exit code 127) or `ENOTCACHED` (→ [2.1](#21-requirements)).
+> [!WARNING]
+> **Without `tsx`, running is not guaranteed.** Sometimes `npx` fetches it on the spot and it runs. Without a network
+> or cache, it fails with `sh: tsx: command not found` (exit code 127) or `ENOTCACHED` (→ [2.1](#21-requirements)).
 
-⚠️ **This installation changes the file permissions of the original file in the ERDD repository.** The package
-manager adds the execute bit to the bin entry point, so after installing, `git status` in the ERDD checkout shows
-`packages/cli/src/main.ts` as `old mode 100644 / new mode 100755`. Do not commit it. Revert it with
-`chmod 644 packages/cli/src/main.ts`. If you do not want this side effect, use
-[method B](#23-method-b-run-directly-from-the-repository-no-installation).
+> [!WARNING]
+> **This installation changes the file permissions of the original file in the ERDD repository.** The package
+> manager adds the execute bit to the bin entry point, so after installing, `git status` in the ERDD checkout shows
+> `packages/cli/src/main.ts` as `old mode 100644 / new mode 100755`. Do not commit it. Revert it with
+> `chmod 644 packages/cli/src/main.ts`. If you do not want this side effect, use
+> [method B](#23-method-b-run-directly-from-the-repository-no-installation).
 
 ### 2.5 Check that it runs
 
@@ -258,7 +263,7 @@ to the wordmark at the top of the web screen is the same value.
 
 **Limit — the plain text is shown only once, right after issue.** If you lose it, you reissue it rather than look it up.
 
-**Permissions are not a new axis.** A token's permissions **follow the issuing user's organization and project roles
+Permissions are not a new axis. A token's permissions **follow the issuing user's organization and project roles
 exactly.** A token created by a Viewer has only Viewer permissions, and if that user is removed from the project
 members, the token automatically loses access to that project. You do not need to revoke the token separately. Tokens
 do not expire; they can only be revoked.
@@ -270,11 +275,12 @@ do not expire; they can only be revoked.
 (export, snapshots, member management, approving promotion requests, and so on) are session-only and cannot be called
 with a token.
 
-⚠️ **A token can do every write its issuer can do on the web.** An organization Owner/Admin's token **creates
-projects** in the organization (`erdd init --create`) and **pushes to organization libraries directly, without
-approval** (`erdd dict push`). A service admin's token writes even to global libraries. Issue tokens for agents and CI
-from an **Editor account**. Then `dict push` becomes a promotion **request**, and an organization admin must approve
-it on the web before it takes effect.
+> [!WARNING]
+> **A token can do every write its issuer can do on the web.** An organization Owner/Admin's token creates
+> projects in the organization (`erdd init --create`) and pushes to organization libraries directly, without
+> approval (`erdd dict push`). A service admin's token writes even to global libraries. Issue tokens for agents and CI
+> from an Editor account. Then `dict push` becomes a promotion request, and an organization admin must approve
+> it on the web before it takes effect.
 
 ### 3.2 `erdd init`
 
@@ -343,8 +349,8 @@ again).
 ### 3.4 Local mode — using it without a server
 
 Opens the same web editor from the `erdd/` files alone, **with no server, account, or DB**. Use it when there is no
-server to connect to, or when you want to draw the schema alone inside your repository. **This section covers only what
-you need to know on the CLI side.** Preparation (building the web bundle), what works in the browser and what does not,
+server to connect to, or when you want to draw the schema alone inside your repository. This section covers only what
+you need to know on the CLI side. Preparation (building the web bundle), what works in the browser and what does not,
 files and git, and snapshots are in the [local mode manual](local-guide.md). Command option details are in
 [6.8](#68-erdd-serve).
 
@@ -374,31 +380,33 @@ namingRules:
   tableLogicalTemplate: ""
 ```
 
-⚠️ **`--local` does not overwrite, even with `--yes`.** If `erdd.config.yaml` already exists, it stops with
-`erdd.config.yaml이 이미 있습니다. 지우고 다시 실행하세요` ("erdd.config.yaml already exists. Delete it and run again")
-(exit code `1`). There is no server project to fall back on, so overwriting would silently lose the dialects and naming
-rules.
+> [!WARNING]
+> **`--local` does not overwrite, even with `--yes`.** If `erdd.config.yaml` already exists, it stops with
+> `erdd.config.yaml이 이미 있습니다. 지우고 다시 실행하세요` ("erdd.config.yaml already exists. Delete it and run again")
+> (exit code `1`). There is no server project to fall back on, so overwriting would silently lose the dialects and naming
+> rules.
 
-⚠️ **`erdd serve` serves a prebuilt web bundle as static files, and in the repository layout you must build that bundle
-once.** With an [npm install](#22-method-a-install-from-npm-recommended), the bundle is included in the package, so there
-is nothing to do. With a repository checkout (methods B and C), if `apps/web/dist` is missing, the server starts as usual
-but the browser shows a JSON 404 instead of the editor. Run `pnpm -C apps/web build` once in the ERDD checkout
-(→ [local mode manual 2.3](local-guide.md#23-path-b-erdd-repository-checkout--build-the-web-bundle-once)).
-**In the repository, the freshly built `apps/web/dist` always wins.** Even if you once made a copy in
-`packages/cli/web` to prepare a release, the screen keeps showing the latest build.
+> [!WARNING]
+> **`erdd serve` serves a prebuilt web bundle as static files, and in the repository layout you must build that bundle
+> once.** With an [npm install](#22-method-a-install-from-npm-recommended), the bundle is included in the package, so there
+> is nothing to do. With a repository checkout (methods B and C), if `apps/web/dist` is missing, the server starts as usual
+> but the browser shows a JSON 404 instead of the editor. Run `pnpm -C apps/web build` once in the ERDD checkout
+> (→ [local mode manual 2.3](local-guide.md#23-path-b-erdd-repository-checkout--build-the-web-bundle-once)).
+> In the repository, the freshly built `apps/web/dist` always wins. Even if you once made a copy in
+> `packages/cli/web` to prepare a release, the screen keeps showing the latest build.
 
 **Edits stay in a draft until you save.** What you change on screen is recorded automatically in `.erdd/draft.json`
-(gitignored), and is written to `erdd/` **only when you press `Cmd+S` (or 저장 (Save) in the header)**, so that
+(gitignored), and is written to `erdd/` only when you press `Cmd+S` (or **저장** (Save) in the header), so that
 discarded attempts do not clutter the git diff. Unsaved edits survive stopping and restarting `serve`. When a terminal,
-agent, or `git pull` edits the files, the screen follows **without a reload**. Moving tables or creating notes goes
+agent, or `git pull` edits the files, the screen follows without a reload. Moving tables or creating notes goes
 only into `erdd/layout.yaml`, so it does not clutter the schema files' diff
 (→ [5.7](#57-erddlayoutyaml--layout-coordinates-and-notes)).
-**A broken file locks editing.** A red banner appears at the top, the bottom bar changes to **읽기 전용** (Read-only),
+A broken file locks editing. A red banner appears at the top, the bottom bar changes to **읽기 전용** (Read-only),
 and fixing the file unlocks it automatically (→ [local mode manual 4.5](local-guide.md#45-a-broken-file-locks-editing)).
 
 **What the browser does not have** — Login, accounts, and access tokens; home, organizations, the project list, and
 admin; participants (presence) and real-time cursors; shared resources, promotion requests, and project members; and the
-**이력 (History) tab** of **버전** (Versions). Every other editor feature is there as is (chapter-by-chapter comparison
+**이력** (History) tab of **버전** (Versions). Every other editor feature is there as is (chapter-by-chapter comparison
 → [local mode manual 4.2](local-guide.md#42-which-chapters-of-the-user-guide-apply)).
 
 **Using it together with `pull` and `push` — the two forms are not mutually exclusive.**
@@ -411,11 +419,11 @@ admin; participants (presence) and real-time cursors; shared resources, promotio
   ```
 
 - **`erdd serve` also starts in a project with connection settings.** In that case it opens with the config's
-  `projectId`, and the local server looks **only at the files** either way. Exchanging with the server is still done by
+  `projectId`, and the local server looks only at the files either way. Exchanging with the server is still done by
   `pull` and `push`. The flow of opening a pulled project with `serve`, checking and editing it visually, and running
   `push` works as is. If you run `erdd pull` while the GUI is up, the watcher catches it and the screen follows.
-- **Moving a project started locally to a server takes one `erdd init --server … --create` command.** It creates an
-  empty project on the server and sets the baseline to **an empty model**, so `erdd/` stays as it is, `erdd diff` shows
+- Moving a project started locally to a server takes one `erdd init --server … --create` command. It creates an
+  empty project on the server and sets the baseline to an empty model, so `erdd/` stays as it is, `erdd diff` shows
   everything as additions, and `erdd push` uploads it (→ [6.1](#61-erdd-init)). ⚠️ **Writing the connection settings
   by hand is not enough.** `push` requires the last-pull baseline (`.erdd/base.json`), so it stops with
   `기준 시점이 없습니다. 먼저 erdd pull을 실행하세요` ("There is no baseline. Run erdd pull first"), and running `pull`
@@ -450,7 +458,7 @@ git add erdd erdd.config.yaml && git commit -m "스키마: 회원 등급 컬럼"
 - **Local mode has no such round trip.** Saving is the files, and committing is the history. Instead of `pull`, `diff`,
   and `push`, keep `erdd serve` running, edit, and run `git commit` (→ [3.4](#34-local-mode--using-it-without-a-server)).
 - **`export` and `import` do not call the server either.** They only read and write the `erdd/` files
-  (→ [6.9](#69-erdd-export) · [6.10](#610-erdd-import-file)). `import` changes **only the files**, so in server mode it
+  (→ [6.9](#69-erdd-export) · [6.10](#610-erdd-import-file)). `import` changes only the files, so in server mode it
   is followed by `diff` → `push`. To export the server's latest state, put `pull` before `export`.
 - **Exchange organization shared dictionaries (words, terms, domains, custom fields) with `erdd dict`.** Receive with
   `dict pull`, and push new words to the shared library with `dict push` after `push`
@@ -482,8 +490,9 @@ erdd/                                                             ← commit
 └─ draft.json               # local mode's **unsaved edits** (the whole model). Removed on save
 ```
 
-⚠️ **Do not edit anything under `.erdd/`.** It holds the merge baseline and credentials. If it gets damaged, get it
-again with `erdd pull`.
+> [!WARNING]
+> **Do not edit anything under `.erdd/`.** It holds the merge baseline and credentials. If it gets damaged, get it
+> again with `erdd pull`.
 
 ### 5.2 `erdd.config.yaml`
 
@@ -504,31 +513,36 @@ tableOptions:                               # optional; without it, all four dia
   mssql: ""
 ```
 
-**`serverUrl` and `projectId` are optional.** If both are missing (or `null`), it is a **local-only project**, which
+**`serverUrl` and `projectId` are optional.** If both are missing (or `null`), it is a local-only project, which
 you open with `erdd serve`. Only the commands that need a server, `pull`, `push`, and `diff`, stop with exit code `1`
-in that case (→ [3.4](#34-local-mode--using-it-without-a-server)). ⚠️ **If only one of the two is written, it is
-treated as a typo and rejected.** If it were swallowed, you would edit thinking you were connected to the server and
-only find out at `push` time that there is no connection. A malformed `dialects` or `namingRules` also exits with `1`.
+in that case (→ [3.4](#34-local-mode--using-it-without-a-server)).
+
+> [!WARNING]
+> **If only one of the two is written, it is treated as a typo and rejected.** If it were swallowed, you would edit
+> thinking you were connected to the server and only find out at `push` time that there is no connection. A malformed
+> `dialects` or `namingRules` also exits with `1`.
 
 **`pull` overwrites the dialects and naming rules with the server's values every time.** They live in the project
 settings, not the model, but `validate` needs a local copy to produce naming warnings without a server. If you change
-these settings on the web, **the local `validate` result may differ from the server until the next `pull`.**
+these settings on the web, the local `validate` result may differ from the server until the next `pull`.
 
 **`tableOptions` are free per-dialect strings appended as is after the closing parenthesis of `CREATE TABLE` when you
 export DDL.** Every table gets the same value, and the value is not validated. If you write it wrong, that dialect's
-DDL fails, and the failure is immediately visible. **An older config without the key opens with empty strings for all
-four dialects** (requiring it would break existing users' `pull`).
+DDL fails, and the failure is immediately visible. An older config without the key opens with empty strings for all
+four dialects (requiring it would break existing users' `pull`).
 
-⚠️ **`pull` also overwrites `tableOptions` with the server's value.** In a connected project, this field is **a mirror
-of the server**. If you edit it locally, the next `pull` erases it, and `push` sends only the model, so it does not go
-up to the server either. Change the server-side value on the project settings screen on the web. In a local-only
-project, this file is the only source of truth.
+> [!WARNING]
+> **`pull` also overwrites `tableOptions` with the server's value.** In a connected project, this field is a mirror
+> of the server. If you edit it locally, the next `pull` erases it, and `push` sends only the model, so it does not go
+> up to the server either. Change the server-side value on the project settings screen on the web. In a local-only
+> project, this file is the only source of truth.
 
-⚠️ **Do not write `COMMENT=`.** Options are written before the table comment, so when the DDL is read back, the parser
-reads it as the table comment.
+> [!WARNING]
+> **Do not write `COMMENT=`.** Options are written before the table comment, so when the DDL is read back, the parser
+> reads it as the table comment.
 
 **`dictionaries` are shared dictionary subscriptions.** `erdd dict pull --library …` writes an entry the first time it
-receives a library, and `erdd dict pull` without arguments processes this list **in the order written**
+receives a library, and `erdd dict pull` without arguments processes this list in the order written
 (→ [6.11](#611-erdd-dict--shared-dictionaries)).
 
 ```yaml
@@ -621,7 +635,7 @@ them explicitly works the same.
    effective type, and `type` is a reference value. If you keep only one, the other is lost in the round trip.
 
 **The file name is not the identity.** When the physical name changes, `pull` updates the file name. To rename a table,
-edit `name` inside the file, not the file name. If two or more tables have physical names that **differ only in case**
+edit `name` inside the file, not the file name. If two or more tables have physical names that differ only in case
 (their file names collide on macOS and Windows), only those tables get the last 8 characters of their id appended, as
 in `MBR.1a2b3c4d.yaml`.
 
@@ -682,13 +696,13 @@ not found), `관계의 부모 테이블 X을 찾지 못했습니다` (the relati
 
 - **The `id` (UUIDv7) is the identity.** Do not change or delete it. If the name changes but the `id` stays the same,
   it is recognized as an "edit", not as "delete + add".
-- **Do not write an `id` at all for objects you create.** **The CLI issues them, not the server.** In server mode,
+- **Do not write an `id` at all for objects you create.** The CLI issues them, not the server. In server mode,
   `push` does it (→ [7.4](#74-three-ways-push-does-not-end-normally)), and when you open the project with `erdd serve`,
   the local store generates a uuidv7 and fills it into the file.
 - ⚠️ **When you create a new table by copying a file, delete every `id`**: not only the table's, but also those of its
-  columns, indexes, and relationships. If you leave them, it becomes **"overwrite the original with the copy's
-  content"** instead of "create a new table". When the same `id` appears twice, **`erdd validate` blocks it with exit
-  code `1`** (it does not call the server, so this applies in both modes), and in server mode the planning step of
+  columns, indexes, and relationships. If you leave them, it becomes "overwrite the original with the copy's
+  content" instead of "create a new table". When the same `id` appears twice, `erdd validate` blocks it with exit
+  code `1` (it does not call the server, so this applies in both modes), and in server mode the planning step of
   `diff` and `push` blocks it too.
 
   ```text
@@ -703,7 +717,7 @@ not found), `관계의 부모 테이블 X을 찾지 못했습니다` (the relati
 
 ### 5.7 `erdd/layout.yaml` — layout coordinates and notes
 
-**`erdd serve` reads and writes it, regardless of the mode.** If you open a server-connected project with `serve` and
+`erdd serve` reads and writes it, regardless of the mode. If you open a server-connected project with `serve` and
 move tables or write notes, this file is created and updated too. However, **it does not travel to or from the server.**
 `pull` and `push` neither send nor receive this file (→ [section 8](#8-what-the-files-do-not-hold)).
 It is committed, because the layout is part of the diagram your team looks at together.
@@ -735,18 +749,18 @@ notes:
   with `erdd pull` also opens without a coordinates file. Refine it afterward with **자동 정렬** (Auto layout) in the
   editor.
 - ⚠️ **If the whole file does not parse, editing is locked, the same as for any other `erdd/` file.** The file holds not
-  only coordinates but also **the text of notes**, so leaving it open while broken would make the next save erase the
+  only coordinates but also the text of notes, so leaving it open while broken would make the next save erase the
   notes with `notes: []`. A red banner (`파일을 읽을 수 없어 편집이 잠겼습니다 — erdd/layout.yaml: …`, "Editing is
   locked because a file cannot be read") appears, and fixing the file unlocks it
   (→ [3.4](#34-local-mode--using-it-without-a-server)).
-- **A single broken entry is different.** Only **that entry**, whose coordinates are not numbers or whose fields are
+- **A single broken entry is different.** Only that entry, whose coordinates are not numbers or whose fields are
   missing, is filtered out (that table falls into the grid), and the rest open as is. A missing or empty file is not
   damage either.
 
 ### 5.8 `erdd/origins.yaml` — shared dictionary sources
 
-This file records **which library, which item, and which version each item received from a shared dictionary came
-from**. `erdd dict pull` and `dict push` write it, and `pull` and `push` exchange it with the server. **It is
+This file records which library, which item, and which version each item received from a shared dictionary came
+from. `erdd dict pull` and `dict push` write it, and `pull` and `push` exchange it with the server. **It is
 committed.**
 
 ```yaml
@@ -767,7 +781,7 @@ origins:
 
 - ⚠️ **Do not edit it by hand.** Editing values in the dictionary files (`words.yaml` and so on) is fine. They then
   differ from `base` and become "items the project changed", and when the source changes, `dict pull` reports a
-  conflict. A term's `base.domainId` is **this project's domain id**, not a name (it is a machine file, so it uses ids).
+  conflict. A term's `base.domainId` is this project's domain id, not a name (it is a machine file, so it uses ids).
 - **If you delete an item from a dictionary file, its source line is silently ignored and cleaned up on the next
   write.** It is not an error.
 - **With zero sources, there is no file.** A missing file also means zero sources.
@@ -816,7 +830,7 @@ Connects a server, token, and project. → [3.2](#32-erdd-init)
 | Server calls | `auth.me`, `org.list` and `project.list` (when choosing), `project.get`. `--create` calls `auth.me`, `org.list`, `project.create` |
 | Files written | `erdd.config.yaml` · `.erdd/credentials.json` · `.gitignore`. `--create` adds `.erdd/base.json` and `.erdd/sync.json` (an empty baseline) |
 
-**`--local` creates a local-only project without a server connection** → [3.4](#34-local-mode--using-it-without-a-server).
+`--local` creates a local-only project without a server connection → [3.4](#34-local-mode--using-it-without-a-server).
 It never calls the server and does not write `.erdd/credentials.json` either (only `erdd.config.yaml` and
 `.gitignore`). Unlike the other arguments, **it does not overwrite an existing config, even with `--yes`.**
 
@@ -848,11 +862,12 @@ namingRules:
   tableLogicalTemplate: ""
 ```
 
-⚠️ **Passing these two when connecting to an existing project (without `--local` or `--create`) is a usage error
-(`2`)**: `--dialect·--case는 init --local·--create 전용입니다 — 기존 프로젝트에 연결할 때는 서버 프로젝트 설정을 따릅니다`
-("--dialect and --case are only for init --local and --create. When connecting to an existing project, the server
-project's settings apply"). The server project's dialects and naming rules are the source of truth, so the first
-`pull` would overwrite anything given here at once.
+> [!WARNING]
+> **Passing these two when connecting to an existing project (without `--local` or `--create`) is a usage error
+> (`2`)**: `--dialect·--case는 init --local·--create 전용입니다 — 기존 프로젝트에 연결할 때는 서버 프로젝트 설정을 따릅니다`
+> ("--dialect and --case are only for init --local and --create. When connecting to an existing project, the server
+> project's settings apply"). The server project's dialects and naming rules are the source of truth, so the first
+> `pull` would overwrite anything given here at once.
 
 #### `--create` — create a project on the server and connect to it
 
@@ -866,12 +881,12 @@ three cases depending on the starting state.
 | Starting state | What it does |
 |---|---|
 | No `erdd.config.yaml` | Creates an empty project on the server (`--dialect` and `--case` are the creation values; defaults `postgresql` and `UPPER_SNAKE`) and connects to it. If `erdd/` is empty, it also writes the five empty dictionary files, the same state as pulling an empty server |
-| **A local-only config** (`serverUrl: null`): **migration** | After confirmation, creates the server project with the local config's dialects, naming rules, and table options, and rewrites the config with `serverUrl` and `projectId` filled in (subscriptions stay as they are). **It does not touch a single byte of `erdd/`** |
+| **A local-only config** (`serverUrl: null`): migration | After confirmation, creates the server project with the local config's dialects, naming rules, and table options, and rewrites the config with `serverUrl` and `projectId` filled in (subscriptions stay as they are). **It does not touch a single byte of `erdd/`** |
 | A config already connected to a server | Refused (`1`), so the existing server project is not orphaned |
 
 **The baseline is an empty model.** It sets up the baseline (`.erdd/base.json`) that `push` requires, without a `pull`,
-so if `erdd/` has files (a migration, or a directory that only lacked a config), **the next `erdd diff` shows
-everything as additions and `erdd push` uploads it.** The guidance message also differs in that case.
+so if `erdd/` has files (a migration, or a directory that only lacked a config), the next `erdd diff` shows
+everything as additions and `erdd push` uploads it. The guidance message also differs in that case.
 
 ```bash
 # empty directory
@@ -965,9 +980,10 @@ Non-interactively (`--json`) without `--yes`, it cannot ask, so it stops with `�
 --yes를 함께 주세요` ("Confirmation is required. In non-interactive mode (--json), pass --yes as well") (code
 `CANCELLED`, exit code `1`).
 
-⚠️ **Even without a baseline (`.erdd/base.json`), it asks if `erdd/` has files.** This happens right after cloning a
-repository or right after writing only the connection settings. There is nothing to compare against, so **every** file
-in `erdd/` shows as a change to be overwritten. It does not ask only when `erdd/` is empty (a true first `pull`).
+> [!WARNING]
+> **Even without a baseline (`.erdd/base.json`), it asks if `erdd/` has files.** This happens right after cloning a
+> repository or right after writing only the connection settings. There is nothing to compare against, so every file
+> in `erdd/` shows as a change to be overwritten. It does not ask only when `erdd/` is empty (a true first `pull`).
 
 ```text
 $ erdd pull
@@ -988,8 +1004,9 @@ reports 「로컬 변경 없음」, no local changes). **If you are attaching a 
 **Files of tables that disappeared from the server are deleted.** The deletion targets are the files in
 `erdd/tables/*.yaml` that are not on the server, and those of the five top-level files that the server did not send.
 
-⚠️ **If you interrupt `pull` partway (Ctrl+C and the like), the baseline is left older than the tree.** The next
-`status` may misreport untouched files as "local changes". Running `erdd pull --yes` once more makes it converge.
+> [!WARNING]
+> **If you interrupt `pull` partway (Ctrl+C and the like), the baseline is left older than the tree.** The next
+> `status` may misreport untouched files as "local changes". Running `erdd pull --yes` once more makes it converge.
 
 `--json` prints `{ revisionSeq, written, deleted, tables, warnings }`.
 
@@ -1024,10 +1041,11 @@ $ erdd status
 
 `--json` then prints `"serverUrl": null, "projectId": null`.
 
-⚠️ **In a local-only project, 「로컬 변경 없음」 (no local changes) stays that way forever.** The comparison baseline
-`.erdd/base.json` (the last pull point) is never created in the first place, so `status` skips computing changes
-altogether. Whatever you changed, it reports 「로컬 변경 없음」 with exit code `0`. **In local mode, you see changes with
-`git status` and `git diff`.**
+> [!WARNING]
+> **In a local-only project, 「로컬 변경 없음」 (no local changes) stays that way forever.** The comparison baseline
+> `.erdd/base.json` (the last pull point) is never created in the first place, so `status` skips computing changes
+> altogether. Whatever you changed, it reports 「로컬 변경 없음」 with exit code `0`. In local mode, you see changes with
+> `git status` and `git diff`.
 
 `+` added · `M` modified · `-` deleted. If you have not pulled yet, 「아직 pull하지 않았습니다」 (not pulled yet) appears,
 and changes are reported as 「로컬 변경 없음」. The comparison is **by value, independent of key order**, so a file whose
@@ -1065,7 +1083,7 @@ server, `pull` first so that the result matches the server.
 
 ### 6.5 `erdd diff`
 
-**Previews** the differences between local and server. **It writes nothing.**
+Previews the differences between local and server. **It writes nothing.**
 
 ```bash
 $ erdd diff
@@ -1127,9 +1145,10 @@ deleted, or the group was deleted so the reference was released).
   - 테이블 ORD (그룹이 삭제되어 참조를 해제함)
 ```
 
-⚠️ **Non-interactively (`--json`), if there are deletions, you must also pass `--yes`.** Otherwise it stops like this:
-`확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요` ("These changes need confirmation. In
-non-interactive mode (--json), pass --yes as well") (exit code `1`).
+> [!WARNING]
+> **Non-interactively (`--json`), if there are deletions, you must also pass `--yes`.** Otherwise it stops like this:
+> `확인이 필요한 변경입니다 — 비대화형(--json)에서는 --yes를 함께 주세요` ("These changes need confirmation. In
+> non-interactive mode (--json), pass --yes as well") (exit code `1`).
 
 **If there are changes that detach shared dictionary sources, it mentions them in one line before the confirmation**
 (stderr). If you `push` with lines missing from `erdd/origins.yaml`, the sources on the server are dropped too, because
@@ -1188,8 +1207,8 @@ http://127.0.0.1:4399 에서 실행 중 (프로젝트: /path/to/my-project)
 |---|---|
 | Specific options | `--port <number>` (default `4300`) · `--no-open` (does not open the browser automatically) |
 | Binding | **Fixed to `127.0.0.1`.** It is a server without authentication, so no option exposes it to the LAN |
-| Host check | If `Host` is not of the `127.0.0.1:<port>` or `localhost:<port>` kind, the response is **403**. Other names (private DNS, `/etc/hosts` aliases, reverse proxies) do not reach it. Binding alone cannot prevent **DNS rebinding** (an attacker's page reading and writing this server through the browser) |
-| Web bundle | **Serves a prebuilt bundle as static files.** There are two candidates, and **it looks at the repository's `apps/web/dist` first**. If it exists, it wins; otherwise it falls back to `web/` inside the package (the copy bundled in a registry install). An installed copy cannot have the repository candidate, so the bundled copy is always used. In the repository layout, if neither exists, the server starts but the browser shows only a JSON 404. Run `pnpm -C apps/web build` (→ [local mode manual 2.3](local-guide.md#23-path-b-erdd-repository-checkout--build-the-web-bundle-once)) |
+| Host check | If `Host` is not of the `127.0.0.1:<port>` or `localhost:<port>` kind, the response is **403**. Other names (private DNS, `/etc/hosts` aliases, reverse proxies) do not reach it. Binding alone cannot prevent DNS rebinding (an attacker's page reading and writing this server through the browser) |
+| Web bundle | **Serves a prebuilt bundle as static files.** There are two candidates, and it looks at the repository's `apps/web/dist` first. If it exists, it wins; otherwise it falls back to `web/` inside the package (the copy bundled in a registry install). An installed copy cannot have the repository candidate, so the bundled copy is always used. In the repository layout, if neither exists, the server starts but the browser shows only a JSON 404. Run `pnpm -C apps/web build` (→ [local mode manual 2.3](local-guide.md#23-path-b-erdd-repository-checkout--build-the-web-bundle-once)) |
 | Server calls | None. It reads and writes only `erdd.config.yaml` and the `erdd/` files |
 | Files written | `.erdd/draft.json` (on every edit) · `erdd/**` and `erdd/layout.yaml` (**only when you click 저장 (Save)**) · `erdd/snapshots/` (snapshots) · `erdd.config.yaml` (when settings are saved) |
 
@@ -1209,7 +1228,7 @@ http://127.0.0.1:4399 에서 실행 중 (프로젝트: /path/to/my-project)
 
 - Passing a non-integer to `--port`, or leaving out its value, is a usage error (`2`):
   `--port 값이 올바르지 않습니다: abc` ("invalid --port value: abc").
-- **Stop it with `Ctrl+C` (SIGINT, SIGTERM).** Before exiting, it flushes pending **draft** writes, so coordinates you
+- **Stop it with `Ctrl+C` (SIGINT, SIGTERM).** Before exiting, it flushes pending draft writes, so coordinates you
   moved a moment ago and notes you created a moment ago are kept.
 - If it cannot open the browser (no launcher, without `--no-open`), it prints only `브라우저를 열지 못했습니다. 직접 … 을
   여세요` ("Could not open the browser. Open … yourself") and the server keeps running.
@@ -1217,7 +1236,7 @@ http://127.0.0.1:4399 에서 실행 중 (프로젝트: /path/to/my-project)
 ### 6.9 `erdd export`
 
 Exports the local files as DDL or DBML. **It does not call the server.** Like `validate`, it is a pure file path
-(`erdd/` → model → DDL). Even in server mode, the **local files** are the source, so to export the server's latest
+(`erdd/` → model → DDL). Even in server mode, the local files are the source, so to export the server's latest
 state, run `erdd pull` first.
 
 | Option | Default | Meaning |
@@ -1276,8 +1295,9 @@ Ref: "ord"."mbr_no" > "mbr"."mbr_no"
 
 With `-o`, the CLI reports the path it wrote (`…에 ddl을 썼습니다`, "wrote ddl to …").
 
-⚠️ **Only the output body goes to stdout.** Export warnings and dialect notices all go to **stderr**, because
-`erdd export > schema.sql` is the main use of this command, and a single stray line would break the file.
+> [!WARNING]
+> **Only the output body goes to stdout.** Export warnings and dialect notices all go to stderr, because
+> `erdd export > schema.sql` is the main use of this command, and a single stray line would break the file.
 
 ```bash
 $ erdd export --dialect postgresql > schema.sql
@@ -1288,7 +1308,7 @@ $ erdd export --dialect postgresql > schema.sql
 The notice says postgresql is not in the config's dialects (mysql), and that it exports anyway.
 
 - ⚠️ **The DBML `Project` name is the working directory name** (`my-project` in the example above). The name itself is
-  for display, but **that block carries the dialect**. `database_type` is the dialect `erdd import` reads (the detection
+  for display, but that block carries the dialect. `database_type` is the dialect `erdd import` reads (the detection
   table in [6.10](#610-erdd-import-file)), so without this block, the dialect falls back to the receiving side's
   `config.dialects[0]` when it is read back. Exporting from the filesystem root leaves the name empty and drops the
   block.
@@ -1310,7 +1330,7 @@ the web editor**, so the behavior is the same.
 | `--dry-run` | — | Shows only the plan and **touches no files at all** |
 | `--yes` | — | Skips the confirmation before writing |
 
-**Format detection**: `--format` > extension > **otherwise a usage error (`2`)**. It does not guess from the content,
+**Format detection**: `--format` > extension > otherwise a usage error (`2`). It does not guess from the content,
 because reading with the wrong parser would catch no tables and end quietly with "imported 0".
 
 ```bash
@@ -1330,9 +1350,10 @@ The error says the format of `dump.txt` cannot be decided from its extension, an
 | DDL | `--dialect` > detecting characteristic tokens in the body (`detectDialect`) > `config.dialects[0]` |
 | DBML | `--dialect` > `Project { database_type }` > `config.dialects[0]` |
 
-⚠️ **Body token detection is not used for DBML.** DBML's attribute syntax (`[pk, increment, …]`) **always** hits the
-detector's mssql bracketed-identifier signature, so running it would read any DBML as mssql.
-What was chosen and why appears in the first line of the output and in `dialectSource` in `--json`.
+> [!WARNING]
+> **Body token detection is not used for DBML.** DBML's attribute syntax (`[pk, increment, …]`) always hits the
+> detector's mssql bracketed-identifier signature, so running it would read any DBML as mssql.
+> What was chosen and why appears in the first line of the output and in `dialectSource` in `--json`.
 
 ```bash
 $ erdd import ../a/schema.sql --dry-run
@@ -1352,17 +1373,18 @@ The first line gives the format, the dialect and where it came from (detected in
 `database_type`), and what will be added. `--dry-run` reports that it wrote no files. `--yes` reports how many files it
 wrote and suggests `erdd push`.
 
-⚠️ **It merges. It does not overwrite.**
+> [!WARNING]
+> **It merges. It does not overwrite.**
 
 - **Tables whose resulting name already exists are skipped.** The existing table's `id` and content stay as they are.
-  **It does not update them.** Skipped names appear in the `table-conflict` warning and in `skipped` in `--json`.
+  It does not update them. Skipped names appear in the `table-conflict` warning and in `skipped` in `--json`.
 - Existing tables that are not in the imported file are **not deleted.**
 - `id`s for new entities are issued as `uuidv7` on the spot and **written into the files right away** (the same
   convention as `push`).
 
 **It also looks at table options.** From the trailing clause, it extracts only `ENGINE`, `DEFAULT CHARSET`
-(`CHARACTER SET`), and `COLLATE` and normalizes them into one line. If tables differ, **the most frequently used value
-is adopted** (on a tie, the one that appears first in the DDL). The `AUTO_INCREMENT=` start value, `ROW_FORMAT`, and
+(`CHARACTER SET`), and `COLLATE` and normalizes them into one line. If tables differ, the most frequently used value
+is adopted (on a tie, the one that appears first in the DDL). The `AUTO_INCREMENT=` start value, `ROW_FORMAT`, and
 partitions are per-table or out of scope, so they are discarded. Tables without options do not vote, so that a dump in
 which half the tables omit them does not lose the value that is there.
 
@@ -1392,14 +1414,16 @@ The warnings report that unsigned was dropped from `DECIMAL(10,2)`, and that `OR
 adopted value, which is used instead. The next line reports that the adopted value is applied to the mysql field of
 `erdd.config.yaml`.
 
-⚠️ **In a connected project, it does not reach the server.** In that case the output mentions it in one line
-(`(서버 프로젝트 설정에는 반영되지 않습니다 — 다음 erdd pull 이 이 값을 덮어씁니다)`, "This is not applied to the server
-project settings. The next erdd pull overwrites this value"). Change the server value on the project settings screen on
-the web.
+> [!WARNING]
+> **In a connected project, it does not reach the server.** In that case the output mentions it in one line
+> (`(서버 프로젝트 설정에는 반영되지 않습니다 — 다음 erdd pull 이 이 값을 덮어씁니다)`, "This is not applied to the server
+> project settings. The next erdd pull overwrites this value"). Change the server value on the project settings screen on
+> the web.
 
-⚠️ **Unsigned attached to anything other than the three integer types is dropped with an `unsigned-dropped` warning.**
-Only `SMALLINT`, `INT`, and `BIGINT` can be unsigned (MySQL 8.0.17 deprecated `UNSIGNED` for `DECIMAL`, `FLOAT`, and
-`DOUBLE`, and its own documentation recommends `CHECK` instead).
+> [!WARNING]
+> **Unsigned attached to anything other than the three integer types is dropped with an `unsigned-dropped` warning.**
+> Only `SMALLINT`, `INT`, and `BIGINT` can be unsigned (MySQL 8.0.17 deprecated `UNSIGNED` for `DECIMAL`, `FLOAT`, and
+> `DOUBLE`, and its own documentation recommends `CHECK` instead).
 
 ```bash
 $ erdd import ../a/schema.sql --yes --json | jq '{added, skipped, warnings}'   # the same DDL a second time
@@ -1416,10 +1440,11 @@ $ erdd import ../a/schema.sql --yes --json | jq '{added, skipped, warnings}'   #
 ```
 
 **It sends nothing to the server.** It does not touch `.erdd/base.json` or `sync.json`, so the imported result appears
-as **local changes** in `erdd status`. Applying it is `erdd diff` → `erdd push`, as usual.
+as local changes in `erdd status`. Applying it is `erdd diff` → `erdd push`, as usual.
 
-⚠️ **Table file names are rewritten based on physical names.** This is the same behavior as `pull` (`writeTree`
-normalizes them to `<physical name>.yaml`). File names a person chose by hand are changed after this command.
+> [!WARNING]
+> **Table file names are rewritten based on physical names.** This is the same behavior as `pull` (`writeTree`
+> normalizes them to `<physical name>.yaml`). File names a person chose by hand are changed after this command.
 
 **Confirmation prompt.** Unless it is `--dry-run` or `--yes` is given, it asks before writing. Non-interactively
 (`--json`), it cannot ask, so it says what to do and stops ("Files will be overwritten. In non-interactive mode
@@ -1485,8 +1510,9 @@ CREATE TABLE ORD (
 );
 ```
 
-⚠️ **That `CHECK` is not read back.** The parser does not look at inline column `CHECK`s, so importing the PostgreSQL
-dump again gives a plain `INT`. Unsigned round-trips through the text **only in MySQL DDL**.
+> [!WARNING]
+> **That `CHECK` is not read back.** The parser does not look at inline column `CHECK`s, so importing the PostgreSQL
+> dump again gives a plain `INT`. Unsigned round-trips through the text only in MySQL DDL.
 
 ### 6.11 `erdd dict` — shared dictionaries
 
@@ -1536,7 +1562,7 @@ to it (쓰기 가능), and its id.
 
 #### `erdd dict pull`
 
-Receives library items into **local files**. The first time it copies everything, and from then on it is a **resync**
+Receives library items into local files. The first time it copies everything, and from then on it is a resync
 (3-way). It runs the same calculation as **가져오기** (Import) on the web, against the local files. **It does not touch
 the server project.** What you receive goes up to the storage at the next `erdd push`.
 
@@ -1630,13 +1656,13 @@ $ erdd dict pull --adopt
 The first run reports 1 duplicate name, skipped, that `--adopt` would link. The second run links it.
 
 - **Linking does not change content; it only attaches the source.** The link targets are local items of the same kind
-  and the same name (ignoring leading and trailing spaces) that **have no source yet**. Custom fields must also have the
+  and the same name (ignoring leading and trailing spaces) that have no source yet. Custom fields must also have the
   same target (`target`). Duplicate names that cannot be linked are counted separately: `이름 중복 N — 연결할 수 없음 (같은
   이름 항목을 다른 원본이 차지했거나 커스텀 항목의 적용 대상이 다릅니다)` ("N duplicate names cannot be linked; another
   source already holds the item with that name, or the custom field's target differs").
 - **Only items with the same content are linked.** If an item were linked with different content, it would become "a
-  linked item that differs from the library value", and the next `dict push` would **select it as a source update by
-  default**. That would overwrite a library value nobody ever looked at with this project's value. So duplicate names
+  linked item that differs from the library value", and the next `dict push` would select it as a source update by
+  default. That would overwrite a library value nobody ever looked at with this project's value. So duplicate names
   with different content are not linked even with `--adopt`, and are shown with the differing fields.
 
   ```bash
@@ -1698,7 +1724,7 @@ $ erdd dict pull
     …
   ```
 
-- **The first time you receive it, the library is recorded in the config as a file subscription**
+- The first time you receive it, the library is recorded in the config as a file subscription
   (`dictionaries[].file` in `erdd.config.yaml`, → [5.2](#52-erddconfigyaml)). `erdd dict pull` without arguments reads
   that path again. If you get a new version of the distribution file and overwrite it in place, the next `dict pull`
   sees the change. **Passing `--file` again with the same library id turns that subscription line into a file
@@ -1718,13 +1744,13 @@ $ erdd dict pull
 
 #### `erdd dict push`
 
-Pushes dictionary items created locally to a shared library. The decisions and writes are made by **the server's
-promotion engine**, using **the values in the server project (storage)**. It is the same calculation as **조직으로 승격**
+Pushes dictionary items created locally to a shared library. The decisions and writes are made by the server's
+promotion engine, using **the values in the server project (storage)**. It is the same calculation as **조직으로 승격**
 (Promote to organization) on the web.
 
 **Prerequisite: bring the storage up to date with `erdd push` before pushing.** What gets promoted is the value on the
-server, so if a value you changed locally is not on the server, **the storage's old value goes up, not the value you
-were looking at.** So it checks two things and stops (`1`).
+server, so if a value you changed locally is not on the server, the storage's old value goes up, not the value you
+were looking at. So it checks two things and stops (`1`).
 
 | Situation | Message | What to do |
 |---|---|---|
@@ -1751,7 +1777,7 @@ The plan list (`+` new, `~` source update, `=` same name found; the parentheses 
 library value) and the confirmation question go to stderr, and the one-line result (승격했습니다, promoted) goes to stdout.
 
 **If a term's domain is not in the library and is not pushed along with it, the library term's domain link is left
-empty.** A mark is added at the end of that term's line. The decision is based on **the final selection** after filters
+empty.** A mark is added at the end of that term's line. The decision is based on the final selection after filters
 that tend to leave out the domain, such as `--kind term`, `--name`, and the exclusion of items where the source
 is ahead (below) (the same decision as the **도메인 연결 비움** (Domain link cleared) badge in **조직으로 승격** on the
 web).
@@ -1772,7 +1798,7 @@ link, decline and push the domain along with it (`--kind domain,term`, or add th
 | 원본 갱신 (Source update) | Pushes this project's values to library items it is already linked to | Sent, **except items whose library source changed after the last `dict pull`** (below) |
 | 동명 발견 (Same name found) | The library has a different item with the same name | **Not sent**. Include them with `--include-name-match` (that item is updated with this project's value and linked) |
 
-- Narrow the items to push with **`--kind <kind,…>`** (`domain`, `word`, `term`, `customField`) and **`--name <name>`**
+- Narrow the items to push with `--kind <kind,…>` (`domain`, `word`, `term`, `customField`) and `--name <name>`
   (repeatable). `동명 발견 N` in the summary is counted after these filters.
 - If there is nothing to push, it prints `올릴 항목이 없습니다` ("Nothing to push") (`0`). If no item matched `--name`,
   or same-name items were excluded, stderr also shows `--name 에 맞는 항목이 없습니다: <이름, …>` ("No item matches
@@ -1784,9 +1810,9 @@ link, decline and push the domain along with it (`--kind domain,term`, or add th
 
 **Items whose library source changed after the last `dict pull` are not pushed.** If someone else edited that library
 item after you received it (the library version is greater than the `version` in `origins.yaml`), this project's value
-is **older than that person's new value**. Even if you did not touch it locally, the values differ, so it counts as a
+is older than that person's new value. Even if you did not touch it locally, the values differ, so it counts as a
 source update, and pushing it as is would revert the edited source to the old value. So such items are left out of the
-selection **even if you name them with `--name`**, and are reported separately after the plan list (before the
+selection even if you name them with `--name`, and are reported separately after the plan list (before the
 confirmation question).
 
 ```bash
@@ -1805,8 +1831,8 @@ The notice says 2 items whose library source changed after the last `dict pull` 
 **To push such items, receive them with `erdd dict pull` first.** Items not touched locally become the source value
 through auto update, so there is nothing left to push, and items also changed locally are deferred as conflicts. If
 pushing the local value to the shared library is what you intend, sort it out with `--conflicts ours` and then run
-`push` → `dict push`. It then goes up as a source update (because you overwrite the source's latest value **after seeing
-it**).
+`push` → `dict push`. It then goes up as a source update (because you overwrite the source's latest value after seeing
+it).
 
 ```bash
 $ erdd dict pull
@@ -1832,11 +1858,12 @@ $ erdd dict push --library "플랫폼팀 표준 사전" --yes
 If the exclusions leave nothing to push, it prints `올릴 항목이 없습니다` (`0`), and the two exclusion notice lines still
 appear on stderr.
 
-⚠️ **Exit code `0` does not mean "it went up".** If the CLI-side selection (excluding items where the source is ahead,
-excluding same-name items, `--name` not matching) leaves nothing to push, it ends with `0` without calling the server.
-"Everything skipped" ending with exit code `1` happens only when **the server** skipped everything after confirmation
-(below). For scripts and agents to decide whether anything went up, look at `selected: 0` (there was nothing to push)
-and `behind` (items excluded because the source was ahead) in `--json` (→ [10.1](#101---json-conventions)).
+> [!WARNING]
+> **Exit code `0` does not mean "it went up".** If the CLI-side selection (excluding items where the source is ahead,
+> excluding same-name items, `--name` not matching) leaves nothing to push, it ends with `0` without calling the server.
+> "Everything skipped" ending with exit code `1` happens only when the server skipped everything after confirmation
+> (below). For scripts and agents to decide whether anything went up, look at `selected: 0` (there was nothing to push)
+> and `behind` (items excluded because the source was ahead) in `--json` (→ [10.1](#101---json-conventions)).
 
 **The result depends on your permission**: 쓰기 가능 (writable) in `erdd dict list`.
 
@@ -2020,8 +2047,8 @@ deletes it and overwrites the stale item. Both are previews that apply nothing.
 - **`--include-stale`** — Overwrites stale file items with the file's values too. This reverts values the server moved
   ahead with, so it is off by default.
 - **A bad file is refused** (`1`). File checks finish inside the CLI, so the import itself
-  (`resource.library.import`) is not called. **However, `--library` checks the file after it has already fetched the
-  library list.** It does not mean "it never calls the server at all" (only `--create --scope global` checks right away
+  (`resource.library.import`) is not called. However, `--library` checks the file after it has already fetched the
+  library list. It does not mean "it never calls the server at all" (only `--create --scope global` checks right away
   without fetching). For a library file, the problem lines follow `라이브러리 파일 오류 N건 — 아무것도 반영하지 않았습니다`
   ("N library file errors. Nothing was applied"). For Excel, the sheet and row follow `Excel 오류 N건 — 아무것도 반영하지
   않았습니다` ("N Excel errors. Nothing was applied").
@@ -2098,8 +2125,8 @@ with `erdd changes new <name>`. `new` reports the file it recorded and its state
 
 **The comparison is per field.**
 
-- A field changed on **only one side** relative to the base → that value is adopted and **merged automatically**.
-- Only a field that both sides changed **to different values** is a **conflict**.
+- A field changed on only one side relative to the base → that value is adopted and **merged automatically**.
+- Only a field that both sides changed to different values is a **conflict**.
 - Fields that are arrays or objects (column mappings, index column lists, and so on) are treated as one value as a whole.
 
 So even if you and someone else edit the same table at the same time, there is no conflict as long as you edited
@@ -2143,8 +2170,8 @@ The last line asks you to receive the server changes with `erdd pull`, sort them
 **When the same shared dictionary item came in twice (`duplicate-origin`).** If the server side received a library item
 first (someone else's `dict pull` + `push`, or **가져오기** (Import) on the web), and this side also received it with
 `dict pull` and pushes it, the two items have different ids, so it is not caught as a field conflict. Pushing it as is
-would make later resyncs update only one of them and leave the other with the old value, so `push` is blocked. **Only
-duplicates created by this push are blocked.** Duplicates already on the server cannot be fixed by this push, so they
+would make later resyncs update only one of them and leave the other with the old value, so `push` is blocked. Only
+duplicates created by this push are blocked. Duplicates already on the server cannot be fixed by this push, so they
 are not blocked. What to delete splits into two cases.
 
 ```text
@@ -2167,11 +2194,12 @@ again.
 | A dictionary file (`erdd/words.yaml` and so on) · `… — 로컬에서 추가한 이 항목을 지우고 다시 push 하세요` ("delete the item you added locally and push again") | An item **newly added** locally points to the same source as a server item | Delete only that item from the dictionary file and `push` again. The server's item comes down with `pull` |
 | `erdd/origins.yaml` · `… — 이 항목의 출처 줄을 지워 연결을 풀고 다시 push 하세요` ("delete this item's source line to unlink it and push again") | Locally, a **source was attached to an existing item** (`--adopt` and the like), but the server has a separate item from the same source | Delete only that item's line in `erdd/origins.yaml` and `push` again. Deleting the item would delete the server's existing data |
 
-⚠️ **Do not use the resolution steps above (`erdd pull` first) for this conflict.** `pull` overwrites local changes with
-the server state, so the item to delete would disappear **together with your other local work**. Delete only the one
-line from the table and push again. Value lines have the form `name (id …) · source`. The two items often share a name,
-so the id tells you which one to delete. In the "added locally" case, the base is `(없음)` (none), not `(삭제됨)`
-(deleted).
+> [!WARNING]
+> **Do not use the resolution steps above (`erdd pull` first) for this conflict.** `pull` overwrites local changes with
+> the server state, so the item to delete would disappear together with your other local work. Delete only the one
+> line from the table and push again. Value lines have the form `name (id …) · source`. The two items often share a name,
+> so the id tells you which one to delete. In the "added locally" case, the base is `(없음)` (none), not `(삭제됨)`
+> (deleted).
 
 ### 7.3 Races — when the server has moved ahead
 
@@ -2184,15 +2212,16 @@ attempt is also refused, it ends with the error.
 | Outcome | What happened | What to do |
 |---|---|---|
 | **Conflict** (`ok:false`, `conflicts`) | The server is unchanged | The steps in 7.2 |
-| **Unknown whether applied** (`outcomeUnknown:true`) | The connection dropped, so it is unknown whether the request reached the server | **Run `push` again as is**, and it converges without duplicates. If you want to look first, use **`erdd diff`** |
+| **Unknown whether applied** (`outcomeUnknown:true`) | The connection dropped, so it is unknown whether the request reached the server | **Run `push` again as is**, and it converges without duplicates. If you want to look first, use `erdd diff` |
 | **Applied + file update failed** (`committed:true`, `syncError`) | The server apply finished, and the automatic pull afterward failed | `erdd pull` |
 
-⚠️ **For "unknown whether applied", do not use `erdd pull` first.** If the push was not applied, pull would overwrite
-and erase your local changes with the server state, and the property that pushing again converges would be lost. `erdd
-diff` only reads, so it is safe.
+> [!WARNING]
+> **For "unknown whether applied", do not use `erdd pull` first.** If the push was not applied, pull would overwrite
+> and erase your local changes with the server state, and the property that pushing again converges would be lost. `erdd
+> diff` only reads, so it is safe.
 
 **Why pushing again does not create copies** — `push` writes the new `id`s it issued this time into the local files
-**immediately before** sending to the server (including a disk sync). So even if the response is lost and the same content is
+immediately before sending to the server (including a disk sync). So even if the response is lost and the same content is
 sent again, the server sees the same `id`s as "already existing" and treats them as edits. `reservedFiles` in the
 `--json` response is the list of files it actually rewrote at that point.
 
@@ -2200,8 +2229,8 @@ sent again, the server sees the same `id`s as "already existing" and treats them
 
 ## 8. What the files do not hold
 
-**The files that travel to and from the server** (`erdd/tables/*.yaml` and the five top-level files) hold **only the
-semantic information** of the schema, to keep the diff clean. The following are not in those files, and `pull` and
+**The files that travel to and from the server** (`erdd/tables/*.yaml` and the five top-level files) hold only the
+semantic information of the schema, to keep the diff clean. The following are not in those files, and `pull` and
 `push` do not touch them either (values on the server are preserved as is).
 
 | Not in the schema files | Where it is handled |
@@ -2212,13 +2241,14 @@ semantic information** of the schema, to keep the diff clean. The following are 
 **Shared dictionary sources do not belong here.** They are in `erdd/origins.yaml` next to the dictionary files, and
 `pull` and `push` exchange them with the server (→ [5.8](#58-erddoriginsyaml--shared-dictionary-sources)).
 
-⚠️ **`erdd/layout.yaml` does not travel to or from the server either.** Coordinates moved with `erdd serve` are not
-applied to the server even if you `push`, and `pull` does not overwrite that file. **This is also true in server mode.**
-To adjust the server-side layout, use the web editor.
+> [!WARNING]
+> **`erdd/layout.yaml` does not travel to or from the server either.** Coordinates moved with `erdd serve` are not
+> applied to the server even if you `push`, and `pull` does not overwrite that file. This is also true in server mode.
+> To adjust the server-side layout, use the web editor.
 
-An agent must not try to handle requests such as "move the coordinates" or "leave a note" in the **schema files**
+An agent must not try to handle requests such as "move the coordinates" or "leave a note" in the schema files
 (`erdd/tables/*.yaml` and the five top-level files). That information is not in them. Its place is `erdd/layout.yaml`,
-**regardless of the mode**, and it accumulates there when a person moves things on the `erdd serve` screen. **Do not
+regardless of the mode, and it accumulates there when a person moves things on the `erdd serve` screen. **Do not
 delete that file as a leftover.** It also contains the text of notes.
 
 ---
@@ -2253,13 +2283,13 @@ The installed document instructs the agent as follows.
 - Set column types with `domain` where possible (the per-dialect types, defaults, and allowed values come with it).
 - If `custom-fields.yaml` has an item with `required: true`, fill a value into the target's `custom`.
 - **Do not (both modes)** — change or delete existing `id`s, leave `id`s in a copied file (`validate` blocks it with exit
-  code `1`), rename table files directly, edit `.erdd/`, or **edit coordinates by hand** (move them on the `erdd serve`
+  code `1`), rename table files directly, edit `.erdd/`, or edit coordinates by hand (move them on the `erdd serve`
   screen; coordinates are not in the schema files).
 - **`erdd/layout.yaml` is a committed file that appears, regardless of the mode, when you edit with `erdd serve`**, and
   it contains the text of notes. Do not delete it as a leftover. However, it does not travel to or from the server.
 - **In both modes, the CLI issues `id`s.** The server does not.
 - **What differs by mode** — Shared dictionary sources (`erdd/origins.yaml`) and `erdd dict` apply only to server mode.
-  It tells the agent **not to edit the source file by hand** (if you delete a dictionary item, its line is cleaned up at
+  It tells the agent not to edit the source file by hand (if you delete a dictionary item, its line is cleaned up at
   the next save).
 
 ### 9.2 Tips for handing it to an agent
@@ -2269,8 +2299,8 @@ The installed document instructs the agent as follows.
   confirmation prompt and stops.
 - **Have it always run `validate` before push.** It does not call the server, so it costs nothing, and it catches naming
   rule violations in advance.
-- Permissions follow the role of the token's issuer. To have an agent only read, give it **a token issued from a Viewer
-  account**. **Do not give an agent an organization admin's token.** With that token, `erdd dict push` changes
+- Permissions follow the role of the token's issuer. To have an agent only read, give it a token issued from a Viewer
+  account. **Do not give an agent an organization admin's token.** With that token, `erdd dict push` changes
   organization libraries without approval, and `erdd init --create` creates projects
   (→ [3.1](#31-issue-a-personal-access-token)).
 
@@ -2305,10 +2335,11 @@ $ echo $?
 | `CANCELLED` | The user cancelled, or confirmation is needed | `1` |
 | `NETWORK` | Connection or response parsing failure, and other errors | `1` |
 
-⚠️ **If an agent or script branches on `code` to decide whether to retry**, treat only `NETWORK` as retryable.
-`VALIDATION` and `FORBIDDEN` fail forever no matter how many times you run the same command.
+> [!WARNING]
+> **If an agent or script branches on `code` to decide whether to retry**, treat only `NETWORK` as retryable.
+> `VALIDATION` and `FORBIDDEN` fail forever no matter how many times you run the same command.
 
-**`export` JSON.** `content` and `path` are **mutually exclusive**. The same body is never put in both. With `-o`, the
+**`export` JSON.** `content` and `path` are mutually exclusive. The same body is never put in both. With `-o`, the
 body is in that file, so `content` is `null`; without it, `path` is `null`.
 
 ```bash
@@ -2396,8 +2427,8 @@ $ erdd dict push --library "플랫폼팀 표준 사전" --json --yes
 | Promotion request | `{ mode: "request", id, requested, dropped, behind, danglingDomain }` |
 | Nothing to push (exit `0`) | `{ libraryId, selected: 0, behind }` |
 
-Every envelope carries **`behind`**: `[{ kind, name, entityId }]` of items left out because the library source was ahead
-(`[]` if none). **`danglingDomain`** is `[{ name, domain }]` of terms whose domain link would be empty (term name and
+Every envelope carries `behind`: `[{ kind, name, entityId }]` of items left out because the library source was ahead
+(`[]` if none). `danglingDomain` is `[{ name, domain }]` of terms whose domain link would be empty (term name and
 domain name; `[]` if none). It is not in the nothing-to-push envelope, because with no selection there is no link to
 leave empty.
 
@@ -2412,9 +2443,10 @@ per-kind item counts `countsByKind`), and `dict requests --json` is an array of 
 `resolutionNote`, and `approvedEntityIds`). The JSON of `init --create` is in [6.1](#61-erdd-init), and `push`'s
 `detachedOrigins` is in [6.6](#66-erdd-push).
 
-⚠️ On file parse errors, both `export` and `import` print **the same envelope as `validate`**
-(`{ok:false, parseErrors, integrityIssues, warnings}`) with exit code `1`. It is not the error envelope
-(`{error:{code,…}}`).
+> [!WARNING]
+> On file parse errors, both `export` and `import` print **the same envelope as `validate`**
+> (`{ok:false, parseErrors, integrityIssues, warnings}`) with exit code `1`. It is not the error envelope
+> (`{error:{code,…}}`).
 
 ### 10.2 CI example
 
@@ -2442,9 +2474,10 @@ erdd diff --strict --json > diff.json || {
 erdd push --json --yes -m "CI: ${GIT_COMMIT:0:8}"
 ```
 
-⚠️ **Decide carefully before putting `push` in CI.** The server is the source of truth, so if it races with edits in
-progress on the web, CI can revert people's work. Usually, put only `validate` and `diff` in CI, and leave `push` to
-people.
+> [!WARNING]
+> **Decide carefully before putting `push` in CI.** The server is the source of truth, so if it races with edits in
+> progress on the web, CI can revert people's work. Usually, put only `validate` and `diff` in CI, and leave `push` to
+> people.
 
 ---
 
@@ -2452,7 +2485,7 @@ people.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `sh: tsx: command not found` (exit code 127) | The project has no `tsx`. **The symptom of leaving it out differs by package manager.** With pnpm, `npx` fetches it on demand, so **it usually runs**, but it fails without a network. The flat npm layout fails with `ENOTCACHED` when there is no cache | `pnpm add -D tsx` (→ [2.1](#21-requirements)) |
+| `sh: tsx: command not found` (exit code 127) | The project has no `tsx`. **The symptom of leaving it out differs by package manager.** With pnpm, `npx` fetches it on demand, so it usually runs, but it fails without a network. The flat npm layout fails with `ENOTCACHED` when there is no cache | `pnpm add -D tsx` (→ [2.1](#21-requirements)) |
 | `pnpm exec erdd …` fails with `ERR_PNPM_IGNORED_BUILDS` (`esbuild`) | **This is pnpm 11's behavior.** `pnpm exec` first checks the dependency state by running `pnpm install`, and that install fails when there is a package whose build script is not approved (`esbuild`, which `tsx` pulls in). It is unrelated to `@erdd/cli` and does not happen with pnpm 10 | Approve `esbuild` with `pnpm approve-builds`, as pnpm suggests. Even before that, **calling `./node_modules/.bin/erdd` directly works** (verified) |
 | In the ERDD repository, `packages/cli/src/main.ts` shows as `old mode 100644 / new mode 100755` | The method C installation added the execute bit to the bin entry point | `chmod 644 packages/cli/src/main.ts`. Do not commit it |
 | `erdd.config.yaml이 없습니다. erdd init을 먼저 실행하세요` ("erdd.config.yaml not found. Run erdd init first") | You ran it outside the project root, or have not connected yet | Move to the project root, or run `erdd init` |
@@ -2509,10 +2542,10 @@ dependency, and the commands were run.
 
 - That `pnpm add <path>/packages/cli` creates the `node_modules/.bin/erdd` link, and that **without `tsx` it fails with
   `sh: tsx: command not found` (exit code 127) and works after `pnpm add -D tsx`**.
-  ⚠️ **In a separate measurement, `npx` fetched `tsx` on demand and it worked** (exit code `0`). However, **the
-  installation form differed.** That measurement used a temporary directory where a packed tarball was installed with
-  `npm install <tarball>`, while the line above is `pnpm add <path>/packages/cli`. Neither is wrong. **It depends on the
-  network, cache, and package manager.** The accurate description of what to install is in [2.1](#21-requirements).
+  ⚠️ In a separate measurement, `npx` fetched `tsx` on demand and it worked (exit code `0`). However, the
+  installation form differed. That measurement used a temporary directory where a packed tarball was installed with
+  `npm install <tarball>`, while the line above is `pnpm add <path>/packages/cli`. Neither is wrong. It depends on the
+  network, cache, and package manager. The accurate description of what to install is in [2.1](#21-requirements).
 - That this installation **changes the mode of `packages/cli/src/main.ts` in the ERDD repository from 100644 to 100755**
   (it shows up in `git status`; it was reverted after the verification).
 - The full `--help` output (section 2.5 is the actual output as is).
@@ -2526,8 +2559,8 @@ dependency, and the commands were run.
   `skill` subcommand (`2`); and the missing-argument error of `init --json --yes` (`2`).
 
 **Not verified with a server attached.** Choosing an organization and project in `init`, the actual server round trips
-of `pull`, `push`, and `diff`, conflict output, race retries, and the three abnormal endings of push were **carried over
-from reading the source and unit tests**, and still need verification in a real environment. The quoted output was taken
+of `pull`, `push`, and `diff`, conflict output, race retries, and the three abnormal endings of push were carried over
+from reading the source and unit tests, and still need verification in a real environment. The quoted output was taken
 verbatim from the implementation and the expected values in the tests.
 
 ### Local mode
@@ -2546,11 +2579,11 @@ verbatim from the implementation and the expected values in the tests.
   (the caution about migration in section 3.4).
 
 **Verified in the browser** (the 11 smoke-test items of the local mode cycle) — that `/` goes to the editor and no login
-screen appears, that creating tables and columns creates `erdd/tables/*.yaml` and the 5 top-level files, **that dragging
-changes only `erdd/layout.yaml` and leaves the table YAML as is**, that notes go into `notes` in `layout.yaml`, that
+screen appears, that creating tables and columns creates `erdd/tables/*.yaml` and the 5 top-level files, that dragging
+changes only `erdd/layout.yaml` and leaves the table YAML as is, that notes go into `notes` in `layout.yaml`, that
 **공용 리소스** (Shared resources), participants, and the user menu are absent, that **버전** (Versions) has only
 **스냅샷** (Snapshots) and **비교** (Compare) and no **이력** (History), creating and restoring snapshots and
-`erdd/snapshots/`, that editing a file in the terminal changes the screen **without a reload**, that breaking a file
+`erdd/snapshots/`, that editing a file in the terminal changes the screen without a reload, that breaking a file
 switches to the banner + **읽기 전용** (Read-only) and reverting it unlocks, and that coordinates and notes remain after
 `Ctrl+C` and restarting `serve`.
 
@@ -2567,13 +2600,13 @@ When features change, this document must change with them.
   in `web/`, 0 `*.test.ts`), and 39 files in `@erdd/core`. That `workspace:^` is replaced with the actual version
   (`^0.1.0`), and that `engines.node` is included as `>=22`.
 - That `erdd --help`, `erdd init --local`, and `erdd validate` work normally from the installed copy (exit code `0`).
-- That `erdd serve` starts from the installed copy, and **`/p/<id>` returns 200 + HTML**, `/assets/index-*.js` returns
+- That `erdd serve` starts from the installed copy, and `/p/<id>` returns 200 + HTML, `/assets/index-*.js` returns
   200 + 1,162,100 bytes, and `/trpc/model.get` returns 200, **in a project that never built the web app separately.**
 - **That in the repository layout, the freshly built `apps/web/dist` wins.** Different marker files were placed in the
   two candidates to tell them apart. `/p/<id>` in the repository layout also returns 200.
 - **That consumers must declare `tsx` themselves** (2.1). The path this document describes (pnpm + declaring `tsx`)
   exits with `0` even with a clean cache and offline. An attempt to solve this by putting `tsx` in `@erdd/cli`'s
-  `dependencies` **made pnpm consumers regress instead** (what worked became `127`), so it was reverted.
+  `dependencies` made pnpm consumers regress instead (what worked became `127`), so it was reverted.
 - **That packing without the web bundle is blocked by the `prepack` guard with exit code `1`** (both `pnpm pack` and
   `npm pack`).
 
@@ -2585,7 +2618,7 @@ versions (`@erdd/cli@0.4.0`, `@erdd/core@0.3.0`) were installed into an empty di
 - `erdd init --local` prints `로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요` and exits with `0`.
 - `erdd validate` prints `정합성 문제 없음` and `명명 경고 없음` (no consistency problems, no naming warnings) and exits
   with `0`.
-- `erdd serve --port 4391 --no-open` prints the two lines below, `/` returns **302** to
+- `erdd serve --port 4391 --no-open` prints the two lines below, `/` returns 302 to
   `/p/00000000-0000-7000-8000-000000000000`, and that address returns **200 + HTML** (`<!doctype html>`,
   `<html lang="ko">`). The web bundle bundled in the installed copy is served in a project that never built the web app.
 
@@ -2636,7 +2669,7 @@ quoted in sections 3.2, 6.1, 6.2, 6.11, 6.12, and 10.1 is that real output.
 **Not verified.** 「서버가 이 기능을 지원하지 않습니다」 (the server does not support this feature) when attaching a new
 CLI to an old server (confirmed only by unit tests for both `dict` and `init --create`), editing dictionaries on the
 `erdd serve` screen (direct file edits were used instead), and choosing an organization interactively in
-`init --create`. The following quoted output was taken from **the expected values in unit tests**, not a real server:
+`init --create`. The following quoted output was taken from the expected values in unit tests, not a real server:
 the `내용이 달라 연결하지 않음` (not linked, content differs) line and `adoptDiffers` of `dict pull`, the
 `(도메인 연결 비움 — …)` (domain link cleared) line and `danglingDomain` of `dict push`, the source duplicate
 (`duplicate-origin`) conflict report of push and diff, and the unsaved edit notice of `dict pull` and `dict push`.
