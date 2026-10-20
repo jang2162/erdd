@@ -841,10 +841,10 @@ Troubleshooting for the CLI in general (server connection, tokens, conflicts) is
 
 ## Appendix: Verification status
 
-**Local mode behavior was verified by actually running it on 2026-08-20.** The command output, exit codes, and the list
-of 11 browser smoke-test items are in the [CLI manual appendix](cli-guide.md#local-mode-2026-08-20).
+**Local mode behavior was verified by actually running it.** The command output, exit codes, and the list of 11 browser
+smoke-test items are in the [CLI manual appendix](cli-guide.md#local-mode).
 
-**Additionally verified while writing this document (2026-08-21).**
+**Additionally verified while writing this document.**
 
 - **The symptom without the web bundle** — `apps/web/dist` was moved away and `erdd serve` was run. The terminal output
   was the same as usual, and `/` returned 302 to `/p/<id>`, but that address returned the JSON 404 quoted in
@@ -852,7 +852,7 @@ of 11 browser smoke-test items are in the [CLI manual appendix](cli-guide.md#loc
 - That `init --local` in a local-only project creates only `erdd.config.yaml` and `.gitignore` (one `.erdd/` line), the
   human-readable and `--json` output of `status`, and that `validate` works as is.
 
-**Verified with a package install (2026-08-29).**
+**Verified with a package install.**
 
 - **`erdd serve` starts as is from a registry install.** A tarball made with `pnpm pack` was installed into a separate
   consumer project (a project that **never built the web app**), and `erdd serve --no-open` was run. `/p/<id>` returned
@@ -873,7 +873,7 @@ the version published on npm. In an empty directory, installing exactly as in
 exited with `0`, and in `erdd serve --no-open`, `/` returned 302 to `/p/<id>` and that address returned
 **200 + HTML**. That is, the bundled web app is served in a project that never built the web app. The raw output and
 the combinations not verified (npm install, global install, `npx @erdd/cli`, Windows) are in the
-[CLI manual appendix](cli-guide.md#registry-publishing-2026-08-29).
+[CLI manual appendix](cli-guide.md#registry-publishing).
 
 **Verified against a real server** — The `init --create` move in [7.2](#72-move-a-project-started-locally-to-a-server)
 (`init --local` → add a word → `init --create` → `diff` shows everything as additions → `push`), `dict pull`,
