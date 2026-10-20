@@ -214,14 +214,11 @@ import 하면 된다.
 
 ### ⚠️ 브라우저 확장으로 렌더 결함을 계측하려 들지 마라
 
-확장의 MCP 탭은 **활성 탭이 아니라서** `document.visibilityState === 'hidden'` 이고
-`document.hasFocus() === false` 다. 그러면 `requestAnimationFrame` 이 아예 돌지 않고
-(rAF 대기가 45초 CDP 타임아웃으로 끝난다 — 렌더러가 멈춘 것으로 오인하기 쉽다)
-**ResizeObserver 도 돌지 않는다.** 그 결과 캔버스 노드 대부분이 `visibility: hidden` 인 채로
-남는데, 이것은 **고치려는 렌더 버그의 증상과 구분되지 않는다.** 탭을 앞으로 가져오려는 우회는
-전부 막힌다. **워커 + Playwright MCP 가 답이다** — Playwright 브라우저는 headless 여도 `visible`
-이라 rAF·ResizeObserver 가 정상이다([worktree-workflow.md](worktree-workflow.md) 「스모크는
-누가 하나」 절).
+백그라운드 탭에서는 `requestAnimationFrame`·`ResizeObserver` 가 돌지 않는다 — 원리와 대안(로그인이
+필요 없으면 독립 브라우저)은 `browseros-neo` 스택 `01-limits.md` 「neo 의 한계에 걸리는 확인은 neo
+만으로 결론 내지 않는다」 와 `browser` 스택 `03-cdp.md` 의 예외가 갖는다. ERDD 에서 이것이 위험한
+이유는 증상이다 — **캔버스 노드 대부분이 `visibility: hidden` 인 채로 남는데, 고치려는 렌더 버그의
+증상과 구분되지 않는다.** rAF 대기는 45초 CDP 타임아웃으로 끝나 렌더러가 멈춘 것으로 오인하기 쉽다.
 
 ---
 
