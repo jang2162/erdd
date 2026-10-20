@@ -1,3 +1,5 @@
+<!-- source: docs/manual/en/local-guide.md @ v0.6.0 -->
+
 # ERDD 로컬 모드 매뉴얼
 
 **서버도 계정도 데이터베이스도 없이**, 저장소 안의 YAML 파일만으로 ERD 를 그리는 방법을 처음부터
@@ -533,7 +535,7 @@ alter table MBR {                                               @01a0…
 }
 ```
 
-문법 전체와 규칙은 [변경 기록 문법](../guides/changeset-format.md) 에 있다.
+문법 전체와 규칙은 [변경 기록 문법](../../guides/changeset-format.md) 에 있다.
 
 **이미 운영 중인 DB 에 도입할 때** — 첫 기록은 스키마 전체의 `create` 가 된다. 터미널에서
 `erdd changes new "운영 DB" --baseline` 으로 만들면 「이미 DB 에 있다, 마이그레이션 불필요」 표시
@@ -546,10 +548,10 @@ alter table MBR {                                               @01a0…
 같은 ⚠️ 경고가 뜨고 기록은 멈추지 않는다 — 남은 차이는 역시 새 기록으로 정리한다.
 
 ⚠️ **기록 파일은 고치지 않는다.** 잘못 만들었고 아직 공유하지 않았다면 파일을 지우고 다시 만든다 — 이유는
-[변경 기록 문법](../guides/changeset-format.md) 「기록 파일은 고치지 않는다」.
+[변경 기록 문법](../../guides/changeset-format.md) 「기록 파일은 고치지 않는다」.
 
 **기록을 만들 수 없는 경우** — 미저장 편집이 있을 때, 기록할 변경이 없을 때가 가장 흔하다. 전체 목록은
-[변경 기록 문법](../guides/changeset-format.md) 「기록을 만들 수 없는 경우」.
+[변경 기록 문법](../../guides/changeset-format.md) 「기록을 만들 수 없는 경우」.
 
 ---
 
