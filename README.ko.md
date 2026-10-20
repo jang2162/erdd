@@ -3,7 +3,7 @@
 
 <h1 align="center">ERDD</h1>
 
-<p align="center">실시간 협업 ERD 설계 도구 — 한국 실무 명명 체계(단어·용어·도메인 사전)와 CLI 연동</p>
+<p align="center">실시간 협업 설계, 한국어 명명 사전, 코드와 AI 에이전트가 읽을 수 있는 스키마를 갖춘 오픈소스 ERD 도구</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@erdd/cli"><img src="https://img.shields.io/npm/v/@erdd/cli" alt="@erdd/cli 의 npm 버전"></a>
