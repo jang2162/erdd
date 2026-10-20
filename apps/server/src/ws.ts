@@ -6,7 +6,6 @@ import {
   WS_CLOSE_UNAUTHORIZED,
   type ServerMessage,
 } from '@erdd/core'
-import { SESSION_COOKIE } from './context.js'
 import type { Db } from './db/client.js'
 import { sessions, users } from './db/schema.js'
 import { currentSeq } from './services/mutation.js'
@@ -59,7 +58,7 @@ export async function authorizeSocket(
  * `/ws?projectId=<uuid>` 라우트. 편집 권한은 여기서 판정하지 않는다 —
  * Viewer도 수신·presence는 되고, 편집 차단은 model.mutate의 'edit' 게이트가 담당한다.
  */
-export function wsPlugin(hub: RealtimeHub, db: Db | null) {
+export function wsPlugin(hub: RealtimeHub, db: Db | null, sessionCookie: string) {
   return async function register(app: FastifyInstance): Promise<void> {
     app.get('/ws', { websocket: true }, async (socket, req) => {
       if (!db) {
@@ -73,7 +72,7 @@ export function wsPlugin(hub: RealtimeHub, db: Db | null) {
         socket.close(WS_CLOSE_FORBIDDEN)
         return
       }
-      const auth = await authorizeSocket(db, req.cookies[SESSION_COOKIE], projectId)
+      const auth = await authorizeSocket(db, req.cookies[sessionCookie], projectId)
       if (!auth.ok) {
         socket.close(auth.code)
         return

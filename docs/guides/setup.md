@@ -54,6 +54,10 @@ PORT=3001 ERDD_SERVER_PORT=3001 ERDD_WEB_PORT=5174 pnpm dev
 - ⚠️ **`.env` 에 포트를 적지 마라.** 스크립트는 `.env` 를 셸에 로드할 뿐 우선순위를 따지지 않으므로
   **`.env` 의 키가 인라인으로 준 값을 이긴다.** 위 셋은 기본 `.env` 에 없어서 인라인이 그대로 먹는다.
 - `DATABASE_URL` 은 그 워크트리의 `.env` 로 준다. 격리 DB 는 미리 만들고 마이그레이션을 적용해 둔다.
+- **세션 쿠키 이름은 서버 포트로 갈린다** — 기본 포트 3000 은 `erdd_session`, 그 밖은
+  `erdd_session_<포트>`(`apps/server/src/context.ts` 의 `sessionCookieName`). 쿠키는 포트를 구분하지
+  않으므로 이름이 같으면 한 트랙의 로그인이 다른 트랙의 세션을 끊는다. 이름은 서버가 `PORT` 로
+  정하므로 트랙마다 따로 할 일은 없다.
 - 워크트리 생성·정리 절차는 [worktree-workflow.md](worktree-workflow.md).
 
 ## 포맷·린트·훅
@@ -190,7 +194,8 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
   `project.members.add` 의 `memberId` 에는 그 `id` 를 넘긴다) → `project.create`(`dialects` 필요) →
   Viewer 용 `project.members.add`. 조직 라이브러리는 `resource.library.create({ scope: 'org', orgId, name })`
   다(단수 `library`).
-  **호출 사이에 `getSetCookie()` 의 `erdd_session` 쿠키를 이어서 넘겨야 한다.**
+  **호출 사이에 `getSetCookie()` 의 세션 쿠키(`erdd_session`, 기본이 아닌 포트면 `erdd_session_<포트>`)를
+  이어서 넘겨야 한다.**
 - **React 제어 인풋에 브라우저 도구로 타이핑하지 마라.** 느리고 한글에서 불안정하다.
   네이티브 setter 를 쓴다 —
   `Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, text)` 후

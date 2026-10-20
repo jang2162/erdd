@@ -7,7 +7,7 @@ import fastifyStatic from '@fastify/static'
 import fastifyWebsocket from '@fastify/websocket'
 import { fastifyTRPCPlugin, type CreateFastifyContextOptions } from '@trpc/server/adapters/fastify'
 import { appRouter } from './router.js'
-import { createContext } from './context.js'
+import { createContext, sessionCookieName } from './context.js'
 import { createDb, type Db } from './db/client.js'
 import { RealtimeHub } from './services/realtime.js'
 import { wsPlugin } from './ws.js'
@@ -23,7 +23,14 @@ declare module 'fastify' {
 
 const webDist = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../web/dist')
 
-export function buildServer({ databaseUrl }: { databaseUrl?: string } = {}): FastifyInstance {
+/**
+ * `port` 는 세션 쿠키 이름을 정하는 데만 쓴다(listen 은 부르는 쪽이 한다) — `sessionCookieName`.
+ * 주지 않으면 기본 이름이다. 테스트가 `PORT` 환경변수와 무관하게 같은 이름을 쓰는 것도 이 때문이다.
+ */
+export function buildServer({
+  databaseUrl,
+  port,
+}: { databaseUrl?: string; port?: number } = {}): FastifyInstance {
   // 기본 본문 한도 1 MiB로는 op 5000건(MAX_OPS_PER_MUTATION) 배치가 들어오지 못한다.
   // op 하나가 넉넉히 3 KB라고 봐도 16 MiB면 한도까지 꽉 채운 사전 일괄 등록이 통과한다.
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024 * 1024 })
@@ -42,17 +49,18 @@ export function buildServer({ databaseUrl }: { databaseUrl?: string } = {}): Fas
   app.decorate('pgPool', pool)
   const hub = new RealtimeHub()
   app.decorate('hub', hub)
+  const sessionCookie = sessionCookieName(port)
 
   app.register(fastifyCookie)
   app.register(fastifyWebsocket)
   // 별도 register로 감싸야 fastifyWebsocket이 먼저 로드된 뒤 websocket 라우트가 등록된다.
-  app.register(wsPlugin(hub, db))
+  app.register(wsPlugin(hub, db, sessionCookie))
   app.register(fastifyTRPCPlugin, {
     prefix: '/trpc',
     trpcOptions: {
       router: appRouter,
       createContext: ({ req, res }: CreateFastifyContextOptions) =>
-        createContext({ req, res, db, hub }),
+        createContext({ req, res, db, hub, sessionCookie }),
     },
   })
 

@@ -1,9 +1,10 @@
+import { DEFAULT_PORT } from './context.js'
 import { buildServer } from './server.js'
 import { ensureBootstrapAdmin } from './services/accounts.js'
 import { ensureStarterGlobalLibrary } from './services/resource-library.js'
 
-const app = buildServer({ databaseUrl: process.env.DATABASE_URL })
-const port = Number(process.env.PORT ?? 3000)
+const port = Number(process.env.PORT ?? DEFAULT_PORT)
+const app = buildServer({ databaseUrl: process.env.DATABASE_URL, port })
 
 async function start() {
   if (app.db) await ensureBootstrapAdmin(app.db)
