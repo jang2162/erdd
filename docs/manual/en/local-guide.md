@@ -1,8 +1,8 @@
 # ERDD local mode manual
 
 This document covers, from start to finish, how to draw ERDs **without a server, account, or database**, using
-only YAML files in your repository. One `erdd serve` command opens **the same web editor as server mode** in your
-browser, and what you change on screen becomes the `erdd/` files. History is kept by **git commits**, not by a
+only YAML files in your repository. One `erdd serve` command opens the same web editor as server mode in your
+browser, and what you change on screen becomes the `erdd/` files. History is kept by git commits, not by a
 server. It is for people who design alone and keep the schema in their own repository.
 
 **This document is all you need.** You do not need to read about server installation and operations
@@ -19,7 +19,7 @@ server. It is for people who design alone and keep the schema in their own repos
 up. You want to keep the schema inside your code repository and manage it with git. Sharing with your team through
 PRs is enough.
 
-**When you need server mode** — Several people edit the same project **at the same time**. You need accounts,
+**When you need server mode** — Several people edit the same project at the same time. You need accounts,
 permissions, and organizations. The server must record who changed what and when. Several projects share
 organization shared resources (standard domains and words). → [install.md](install.md)
 
@@ -47,7 +47,7 @@ visually, and you can move a project you started locally to a server later (one 
 ### 2.1 What you need — there are two paths
 
 **Either way, the result is the same.** The editor you open with `erdd serve` and the files it creates do not
-differ. The only difference is **what you must have in place beforehand**.
+differ. The only difference is what you must have in place beforehand.
 
 | | **[Path A: install from npm](#22-path-a-install-from-npm-recommended)** | [Path B: repository checkout](#23-path-b-erdd-repository-checkout--build-the-web-bundle-once) |
 |---|---|---|
@@ -62,7 +62,7 @@ You need no DB, no Docker, and no account. This is true for both.
 ### 2.2 Path A: install from npm (recommended)
 
 One command inside **your own project**, where the schema will live, is all it takes. The package is on the
-**public npm**, so you need no registry configuration and no token.
+public npm, so you need no registry configuration and no token.
 
 ```bash
 pnpm add -D @erdd/cli tsx
@@ -71,8 +71,8 @@ npm install -D @erdd/cli tsx
 ```
 
 - ⚠️ **Do not leave out `tsx`.** The package contains the original TypeScript, not build output, and
-  **`@erdd/cli` does not pull in `tsx` for you**. Whatever your package manager, you must declare it directly in
-  your project. If you leave it out, `npx` fetches it on demand and **it often runs**, but that depends on the
+  `@erdd/cli` does not pull in `tsx` for you. Whatever your package manager, you must declare it directly in
+  your project. If you leave it out, `npx` fetches it on demand and it often runs, but that depends on the
   network and cache, so the symptoms differ by package manager (the table in [section 8](#8-troubleshooting)).
   An explicit declaration is the only guaranteed path (→ [CLI manual 2.1](cli-guide.md#21-requirements)).
 - **You do not need to build the web bundle.** The editor ships whole inside the package, so
@@ -85,8 +85,9 @@ npm install -D @erdd/cli tsx
 
 ### 2.3 Path B: ERDD repository checkout — build the web bundle once
 
-⚠️ **This section applies only when you use a repository checkout.** If you installed from npm
-([2.2](#22-path-a-install-from-npm-recommended)), the bundle is already in the package, so skip this.
+> [!WARNING]
+> **This section applies only when you use a repository checkout.** If you installed from npm
+> ([2.2](#22-path-a-install-from-npm-recommended)), the bundle is already in the package, so skip this.
 
 `erdd serve` **serves a prebuilt web bundle as static files.** A freshly cloned repository does not have that
 bundle, so build it once.
@@ -97,9 +98,10 @@ pnpm install
 pnpm -C apps/web build      # creates apps/web/dist
 ```
 
-⚠️ **If you skip it, the symptom is not "the server does not start" but "only the screen does not appear", which
-makes the cause hard to find.** `erdd serve` starts as usual with the same terminal output, but the browser shows
-JSON instead of the editor.
+> [!WARNING]
+> **If you skip it, the symptom is not "the server does not start" but "only the screen does not appear", which
+> makes the cause hard to find.** `erdd serve` starts as usual with the same terminal output, but the browser shows
+> JSON instead of the editor.
 
 ```json
 {"message":"Route GET:/p/00000000-0000-7000-8000-000000000000 not found","error":"Not Found","statusCode":404}
@@ -114,7 +116,7 @@ does not change, you do not need to suspect that copy.
 ### 2.4 Make `erdd` callable
 
 **If you installed from npm** ([2.2](#22-path-a-install-from-npm-recommended)), this is already done. Call it with
-`pnpm exec erdd …` (`npx erdd …` with npm). The rest of this section is about using a **repository checkout**
+`pnpm exec erdd …` (`npx erdd …` with npm). The rest of this section is about using a repository checkout
 ([2.3](#23-path-b-erdd-repository-checkout--build-the-web-bundle-once)).
 
 **The simplest way** — Add a shell alias.
@@ -128,9 +130,10 @@ You can also link the checkout into your project as a file dependency (`pnpm exe
 approach (you must add `tsx` as well, and the file permissions of the ERDD checkout change) are in
 [CLI manual 2.4](cli-guide.md#24-method-c-link-as-a-project-dependency).
 
-⚠️ **Commands always treat "the current directory" as the project.** The CLI looks for `erdd.config.yaml`, `erdd/`,
-and `.erdd/` all in `process.cwd()`. If you run it inside the ERDD repository, it looks in the wrong place. Run it in
-**your own project directory**, where the schema will live.
+> [!WARNING]
+> **Commands always treat "the current directory" as the project.** The CLI looks for `erdd.config.yaml`, `erdd/`,
+> and `.erdd/` all in `process.cwd()`. If you run it inside the ERDD repository, it looks in the wrong place. Run it in
+> your own project directory, where the schema will live.
 
 **From here on, this document writes commands as `erdd …`.** If you installed from npm, read it as
 `pnpm exec erdd …` (`npx erdd …` with npm). The options and output are the same.
@@ -205,13 +208,15 @@ templates by editing `erdd.config.yaml` directly (the format is in [CLI manual 5
 An invalid value stops with a usage error (`2`):
 `--case 값이 올바르지 않습니다: Camel — UPPER_SNAKE | lower_snake` ("invalid --case value").
 
-⚠️ **These two are only for `--local`.** Passing them to an `erdd init` that connects to a server is a usage error
-(`2`), because the server project's settings are the source of truth and the first `pull` would overwrite them at once.
+> [!WARNING]
+> **These two are only for `--local`.** Passing them to an `erdd init` that connects to a server is a usage error
+> (`2`), because the server project's settings are the source of truth and the first `pull` would overwrite them at once.
 
-⚠️ **`--local` does not overwrite, even with `--yes`.** If `erdd.config.yaml` already exists, it stops with
-`erdd.config.yaml이 이미 있습니다. 지우고 다시 실행하세요` ("erdd.config.yaml already exists. Delete it and run again")
-(exit code `1`). There is no server project to fall back on, so overwriting would silently lose the dialects and
-naming rules you carefully set.
+> [!WARNING]
+> **`--local` does not overwrite, even with `--yes`.** If `erdd.config.yaml` already exists, it stops with
+> `erdd.config.yaml이 이미 있습니다. 지우고 다시 실행하세요` ("erdd.config.yaml already exists. Delete it and run again")
+> (exit code `1`). There is no server project to fall back on, so overwriting would silently lose the dialects and
+> naming rules you carefully set.
 
 ### 3.2 `erdd serve` — open the editor
 
@@ -245,10 +250,11 @@ cd ~/work/admin && erdd serve --port 4301
 (`00000000-0000-7000-8000-000000000000`), so you can bookmark it. Going to `/` takes you to that project's screen
 (when you open a server-connected project, that project's id is used → [7.1](#71-open-a-server-project-in-the-local-editor)).
 
-⚠️ **It binds only to `127.0.0.1`, and no option exposes it to the LAN**, because it is a server without
-authentication. If the `Host` header is not of the `127.0.0.1:<port>` or `localhost:<port>` kind, the response is
-**403**. A private DNS name or a reverse proxy in front does not reach it. This also blocks **DNS rebinding** (a
-malicious page reading and writing this server through your browser), which binding alone cannot prevent.
+> [!WARNING]
+> **It binds only to `127.0.0.1`, and no option exposes it to the LAN**, because it is a server without
+> authentication. If the `Host` header is not of the `127.0.0.1:<port>` or `localhost:<port>` kind, the response is
+> 403. A private DNS name or a reverse proxy in front does not reach it. This also blocks DNS rebinding (a
+> malicious page reading and writing this server through your browser), which binding alone cannot prevent.
 
 ### 3.3 The first **save** creates `erdd/`
 
@@ -311,7 +317,7 @@ of its 20 chapters do not apply to local mode at all, and 2 differ in content.
 | [8. Groups and group views](user-guide.md#8-groups-and-group-views) · [9. Domains](user-guide.md#9-domains) · [10. Naming system](user-guide.md#10-naming-system-word-and-term-dictionary) · [11. Custom fields](user-guide.md#11-custom-fields) | Unchanged (including the Excel dictionary upload) |
 | [12. Model check](user-guide.md#12-model-check) | Unchanged, with every warning |
 | [13. Shared resources](user-guide.md#13-shared-resources) | No screen. There are no library, promotion, or promotion request screens. If the project is connected to a server, exchange items with `erdd dict`. Even without a connection, receive them with `erdd dict pull --file` (→ [7.3](#73-use-shared-dictionaries--erdd-dict)) |
-| [14. Versions](user-guide.md#14-versions-history-snapshots-comparison) | **스냅샷** (Snapshots) and **비교** (Compare) are unchanged. **There is no 이력 (History) tab** → [section 6](#6-snapshots). The **변경 기록** (Change records) tab exists **only in local mode** → [5.6](#56-change-records--the-edit-history-for-writing-migrations) |
+| [14. Versions](user-guide.md#14-versions-history-snapshots-comparison) | **스냅샷** (Snapshots) and **비교** (Compare) are unchanged. There is no **이력** (History) tab → [section 6](#6-snapshots). The **변경 기록** (Change records) tab exists **only in local mode** → [5.6](#56-change-records--the-edit-history-for-writing-migrations) |
 | [15. Export](user-guide.md#15-export) · [16. Import](user-guide.md#16-import) | Unchanged (DDL, DBML, image, Excel specification) |
 | [17. Real-time co-editing](user-guide.md#17-real-time-co-editing) | **None.** There are no participant indicators or cursors |
 | [18. Access tokens](user-guide.md#18-access-tokens) | **None.** There is no server to call |
@@ -336,8 +342,8 @@ Click **설정** (Settings) in the editor header.
 ### 4.4 Edits stay in a draft until you save
 
 **Screen → files goes through 저장 (Save).** It works like a text editor. While you edit, the files stay as they are,
-and they are written to `erdd/` only when you press **`Cmd+S`** (or **저장** in the header). If the cursor is in an
-input field, **the value typed in that field is applied first**, then saved. You do not need to move focus away, and
+and they are written to `erdd/` only when you press `Cmd+S` (or **저장** in the header). If the cursor is in an
+input field, the value typed in that field is applied first, then saved. You do not need to move focus away, and
 the cursor stays in the field after saving. If the edit being applied is rejected (an error toast appears first),
 **반영되지 않은 편집이 있어 저장하지 않았습니다** ("Not saved because there is an edit that was not applied") appears
 and nothing is written to the files.
@@ -348,16 +354,16 @@ and nothing is written to the files.
 | **저장** (Save) | Writes to the files. Disabled when there is nothing to write. After a save, **it is still disabled while you type the first edit into an input field** (that value applies only when focus leaves), so use `Cmd+S` then |
 | **⌄ → 변경 버리기** (Discard changes) | Discards your edits and returns to the file contents (asks for confirmation once) |
 
-**You do not lose unsaved edits.** Anything not saved is recorded automatically in `.erdd/draft.json`, so even if you
-close the browser or stop with `Ctrl+C`, **it continues in the next `erdd serve`.** That is why no warning appears when
+You do not lose unsaved edits. Anything not saved is recorded automatically in `.erdd/draft.json`, so even if you
+close the browser or stop with `Ctrl+C`, it continues in the next `erdd serve`. That is why no warning appears when
 you close the tab: there is nothing to lose. **The only exception is the one field you were typing in.** That value
 becomes an edit only when focus leaves or you save, so if you close the tab as is, only that field is lost.
 
 **Why it works this way** — If every discarded attempt and intermediate state became files, `git diff` would get
-messy. The draft lives in `.erdd/` (gitignored), so **it never appears as a commit candidate.**
+messy. The draft lives in `.erdd/` (gitignored), so it never appears as a commit candidate.
 
 **Files → screen** — When a terminal, text editor, AI agent, or `git pull` changes `erdd/` or `erdd.config.yaml`, the
-screen follows **without a reload**. The same is true when you switch branches.
+screen follows without a reload. The same is true when you switch branches.
 
 ```bash
 # in another terminal
@@ -365,8 +371,9 @@ $EDITOR erdd/tables/MBR.yaml     # the browser changes the moment you save
 git checkout feature/orders      # the screen switches to the branch's schema
 ```
 
-⚠️ **If the files change from outside while you have unsaved edits**, the screen is not replaced automatically.
-A banner asks you instead.
+> [!WARNING]
+> **If the files change from outside while you have unsaved edits**, the screen is not replaced automatically.
+> A banner asks you instead.
 
 ```text
 파일이 밖에서 바뀌었습니다. 내 편집을 유지하면 저장할 때 화면의 내용이 파일을 덮어씁니다.
@@ -377,13 +384,14 @@ The banner says "The files changed from outside. If you keep your edits, saving 
 screen."
 
 - **내 편집 유지** (Keep my edits) — Closes the banner and lets you keep editing. From then on, **저장** writes the
-  files **exactly as the screen shows**. Files newly created from outside are **deleted.** Nothing is merged
+  files exactly as the screen shows. Files newly created from outside are **deleted.** Nothing is merged
   automatically.
 - **파일 다시 읽기** (Reload files) — Discards your unsaved edits and returns to the file contents (asks for
   confirmation once).
 
-⚠️ **Saving never overwrites changes you have not seen.** Even if the banner has not appeared yet, **저장** rereads
-the files the moment you click it, and if they differ, it writes nothing and shows the banner above.
+> [!WARNING]
+> **Saving never overwrites changes you have not seen.** Even if the banner has not appeared yet, **저장** rereads
+> the files the moment you click it, and if they differ, it writes nothing and shows the banner above.
 
 ### 4.5 A broken file locks editing
 
@@ -395,20 +403,22 @@ is locked.
 - The bottom bar changes to **읽기 전용** (Read-only), and the import items disappear from the **파일** (File) menu
 - **Fixing the file unlocks it automatically.** You do not need to restart the server
 
-⚠️ **This lock protects your data.** If edits kept being accepted, the healthy screen state would overwrite the broken
-file entirely, and what you were fixing by hand would be lost. **`layout.yaml` is no exception.** It holds not only
-coordinates but also **the text of notes**, so allowing edits while it is broken would make the next save erase the
-notes with `notes: []`. **저장 (Save) is also blocked while a file is broken.**
+> [!WARNING]
+> **This lock protects your data.** If edits kept being accepted, the healthy screen state would overwrite the broken
+> file entirely, and what you were fixing by hand would be lost. `layout.yaml` is no exception. It holds not only
+> coordinates but also the text of notes, so allowing edits while it is broken would make the next save erase the
+> notes with `notes: []`. **저장** (Save) is also blocked while a file is broken.
 
 Naming warnings and missing required custom fields are not errors. They do not lock anything and appear in
 **모델 검사** (Model check).
 
 ### 4.6 Opening several tabs
 
-⚠️ **An edit made in the browser shows only in the tab that made it.** All tabs receive changes made to the files
-**from outside**, but a tab's own edits are filtered out when they come back, because otherwise the tab you are
-dragging in would keep jumping. Other tabs catch up at the next external change. To catch up before that, reload.
-**Local mode assumes one person working on one screen.**
+> [!WARNING]
+> **An edit made in the browser shows only in the tab that made it.** All tabs receive changes made to the files
+> from outside, but a tab's own edits are filtered out when they come back, because otherwise the tab you are
+> dragging in would keep jumping. Other tabs catch up at the next external change. To catch up before that, reload.
+> Local mode assumes one person working on one screen.
 
 However, **all tabs share the 미저장 (Unsaved) indicator.** The server holds a single draft, so whichever tab you save
 from, the indicator in the other tabs clears as well.
@@ -479,7 +489,7 @@ notes:
 - **It is committed.** The layout is part of the diagram your team looks at together.
 - **Tables are identified by `id`.** The layout follows even if you change the physical name. Leftovers of deleted
   tables are discarded silently.
-- **Without it, tables fall into a grid sorted by physical name.** If one entry is broken, **only that entry** is
+- **Without it, tables fall into a grid sorted by physical name.** If one entry is broken, only that entry is
   filtered out and the rest open as is (a whole broken file is different → [4.5](#45-a-broken-file-locks-editing)).
 
 ### 5.4 Checking without a server — `erdd validate`
@@ -493,9 +503,10 @@ erdd validate --strict   # treats warnings as failures too (exit code 1), for co
 
 The `--json` output conventions and CI examples are in [CLI manual section 10](cli-guide.md#10-automation-and-ci).
 
-⚠️ **`pull`, `push`, and `diff` stop in a local-only project** (exit code `1`). There is no server, so this is expected.
-The message says that `erdd.config.yaml` has no connection settings and suggests connecting with `erdd init` or opening
-locally with `erdd serve`.
+> [!WARNING]
+> **`pull`, `push`, and `diff` stop in a local-only project** (exit code `1`). There is no server, so this is expected.
+> The message says that `erdd.config.yaml` has no connection settings and suggests connecting with `erdd init` or opening
+> locally with `erdd serve`.
 
 ```text
 오류: erdd.config.yaml에 연결 설정이 없습니다. erdd init으로 서버에 연결하거나 erdd serve로 로컬에서 여세요
@@ -520,7 +531,7 @@ Options, detection order, and the `--json` shape are in [CLI manual 6.9 and 6.10
 ### 5.6 Change records — the edit history for writing migrations
 
 **What** — Records the changes you made to tables, columns, relationships, and indexes in `erdd/changes/`, as text that
-is not tied to any DB or tool. **ERDD does not generate SQL.** Each project reads these records and writes migrations
+is not tied to any DB or tool. ERDD does not generate SQL. Each project reads these records and writes migrations
 with its own tool (Flyway, Liquibase, ORM migrations, and so on) in its own DB syntax. One record is one migration.
 
 **Where** — The **버전 (Versions) → 변경 기록 (Change records)** tab in the editor header, or `erdd changes` in the
@@ -570,9 +581,10 @@ migrations on each branch were written on different assumptions, so check them a
 a new record. If two branches deleted the same thing, or one branch references a name the other renamed, the same ⚠️
 warning appears and recording does not stop. Again, turn the remaining difference into a new record.
 
-⚠️ **Do not edit record files.** If you created one wrong and have not shared it yet, delete the file and create it
-again. The reason is in 「기록 파일은 고치지 않는다」 (Do not edit record files) in the
-[change record syntax](../../guides/changeset-format.md).
+> [!WARNING]
+> **Do not edit record files.** If you created one wrong and have not shared it yet, delete the file and create it
+> again. The reason is in 「기록 파일은 고치지 않는다」 (Do not edit record files) in the
+> [change record syntax](../../guides/changeset-format.md).
 
 **When a record cannot be created** — Most often when there are unsaved edits, or when there is no change to record.
 The full list is in 「기록을 만들 수 없는 경우」 (When a record cannot be created) in the
@@ -594,16 +606,18 @@ table count and the first 5 physical names. **복원** (Restore) returns to that
 and **비교** (Compare) to see the differences, and download them as an Excel **변경분 정의서** (Change specification).
 The details of the screen are the same as [user guide section 14](user-guide.md#14-versions-history-snapshots-comparison).
 
-⚠️ **You cannot create a snapshot while there are unsaved edits.** It is rejected with
-**저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 스냅샷을 만드세요** ("There are unsaved edits. Save first, then create the
-snapshot"). A snapshot names a **saved state**, so there must not be a version that points to a state that exists
-nowhere in the files.
+> [!WARNING]
+> **You cannot create a snapshot while there are unsaved edits.** It is rejected with
+> **저장하지 않은 편집이 있습니다. 먼저 저장한 뒤 스냅샷을 만드세요** ("There are unsaved edits. Save first, then create the
+> snapshot"). A snapshot names a saved state, so there must not be a version that points to a state that exists
+> nowhere in the files.
 
-⚠️ **복원 (Restore) does not change the files right away.** Restoring returns the screen to that point and marks it
-**미저장** (Unsaved). `erdd/` is rewritten with that content **only when you click 저장 (Save)**
-(→ [4.4](#44-edits-stay-in-a-draft-until-you-save)).
+> [!WARNING]
+> **복원 (Restore) does not change the files right away.** Restoring returns the screen to that point and marks it
+> **미저장** (Unsaved). `erdd/` is rewritten with that content only when you click **저장** (Save)
+> (→ [4.4](#44-edits-stay-in-a-draft-until-you-save)).
 
-**Where they are stored** — In `erdd/snapshots/`, **one file per snapshot** (gzip). The names, descriptions, and times
+**Where they are stored** — In `erdd/snapshots/`, one file per snapshot (gzip). The names, descriptions, and times
 in the list are in a plain-text `index.yaml` in the same directory.
 
 ```text
@@ -614,8 +628,8 @@ erdd/snapshots/
 ```
 
 ✅ **Snapshots are stored in git.** They are under `erdd/`, so they are committed and travel to your teammates and to
-your other computers. Because there is one file per snapshot, creating a new one **adds only that one file to the
-commit.** What was added can be read from the diff of `index.yaml`.
+your other computers. Because there is one file per snapshot, creating a new one adds only that one file to the
+commit. What was added can be read from the diff of `index.yaml`.
 
 ```bash
 git add erdd/snapshots
@@ -631,8 +645,8 @@ git commit -m "스냅샷: 회원 도메인 정리 전"
   **스냅샷이 손상됐습니다** ("The snapshot is corrupted"). Reporting that it is broken, rather than that it does not
   exist, is intentional.
 - **Even if `index.yaml` is broken, listing and restoring still work.** Only the names temporarily show as
-  `(이름 없음) …` ("(no name) …"). If you create or delete a snapshot in that state, the broken file is **not
-  overwritten** but moved to `index.corrupt-<time>.yaml`. The old names are still there, so you can restore them by
+  `(이름 없음) …` ("(no name) …"). If you create or delete a snapshot in that state, the broken file is not
+  overwritten but moved to `index.corrupt-<time>.yaml`. The old names are still there, so you can restore them by
   hand. (An `index.yaml` with leftover merge conflict markers is the most common cause of this state.)
 
 **Old snapshots are moved automatically.** If an older `.erdd/snapshots.json` exists, `erdd serve` moves it to the new
@@ -651,8 +665,8 @@ not moved**, and their names are reported, so that corruption is not promoted in
 ## 7. Working with a server
 
 Local mode and a server connection **are not mutually exclusive.** If `erdd.config.yaml` has `serverUrl` and
-`projectId`, the project is connected; otherwise it is local-only. Either way, `erdd serve` **starts and always looks
-only at the files.**
+`projectId`, the project is connected; otherwise it is local-only. Either way, `erdd serve` starts and always looks
+only at the files.
 
 ### 7.1 Open a server project in the local editor
 
@@ -672,7 +686,7 @@ erdd push -m "회원 등급 컬럼 추가"
   follows.
 - ⚠️ **`pull` overwrites local changes.** If you have touched files, it lists them and asks once with
   `계속할까요?` ("Continue?"). If you were editing in the browser, stop here and `push` first. Without a last-pull
-  baseline (right after cloning and the like), it shows **every** file in `erdd/` in the overwrite list and asks.
+  baseline (right after cloning and the like), it shows every file in `erdd/` in the overwrite list and asks.
 - ⚠️ **Coordinates and notes do not go to the server.** `push` does not send `erdd/layout.yaml`, and `pull` does not
   overwrite it. Server mode's coordinates and notes live separately in the server DB, and the two do not know about
   each other.
@@ -680,7 +694,7 @@ erdd push -m "회원 등급 컬럼 추가"
 ### 7.2 Move a project started locally to a server
 
 **It takes one `erdd init --create` command.** It creates an empty project on the server and connects this directory
-to it. It does not touch a single byte of `erdd/`, and it sets the "last pull point" to **an empty server**, so your
+to it. It does not touch a single byte of `erdd/`, and it sets the "last pull point" to an empty server, so your
 entire schema counts as changes to push (additions).
 
 ```bash
@@ -730,10 +744,12 @@ reports that it applied the changes as revision 1.
 
 #### Without create permission — the manual procedure
 
-Ask an admin to create an **empty project**, and connect to its id. ⚠️ **This connection has no "last pull point"**, so
-`push` stops with `기준 시점이 없습니다. 먼저 erdd pull을 실행하세요` ("There is no baseline. Run erdd pull first") (exit
-code `1`), and `pull` overwrites `erdd/` with the empty server state. That is why **committing first, so you can
-recover, is the key.**
+Ask an admin to create an empty project, and connect to its id.
+
+> [!WARNING]
+> This connection has no "last pull point", so `push` stops with `기준 시점이 없습니다. 먼저 erdd pull을 실행하세요`
+> ("There is no baseline. Run erdd pull first") (exit code `1`), and `pull` overwrites `erdd/` with the empty server
+> state. That is why **committing first, so you can recover, is the key.**
 
 ```bash
 git add erdd erdd.config.yaml && git commit -m "스키마: 서버 이관 전 상태"
@@ -767,8 +783,8 @@ erdd dict push --library "플랫폼팀 표준 사전"   # push to the shared lib
 ```
 
 - **This flow (receive by server subscription, push by promotion) exists only for connected projects.** Connect to a
-  server first with [7.2](#72-move-a-project-started-locally-to-a-server). **If you only receive, local-only projects
-  work too.** See "Local-only projects can also receive distribution files" below.
+  server first with [7.2](#72-move-a-project-started-locally-to-a-server). If you only receive, local-only projects
+  work too. See "Local-only projects can also receive distribution files" below.
   For a project that already has its own words, `erdd dict pull --adopt` links only the source of words whose name and
   content are the same (sort out words with different content as described in the `--adopt` part of
   [CLI manual 6.11](cli-guide.md#611-erdd-dict--shared-dictionaries)).
@@ -812,7 +828,7 @@ lists the files it applied.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `erdd serve` started, but the browser shows only `{"message":"Route GET:/p/… not found"…}` | The web bundle (`apps/web/dist`) is missing. **This happens only when you use a repository checkout.** Registry installs have the bundle included | In the ERDD checkout, run `pnpm -C apps/web build` (→ [2.3](#23-path-b-erdd-repository-checkout--build-the-web-bundle-once)) |
-| `sh: tsx: command not found` (exit code 127) | The project has no `tsx`. **The symptom of leaving it out differs by package manager.** With pnpm, `npx` fetches it on demand, so **it usually runs**, but it fails without a network. The flat npm layout fails with `ENOTCACHED` when there is no cache | `pnpm add -D tsx` (→ [2.1](#21-what-you-need--there-are-two-paths)) |
+| `sh: tsx: command not found` (exit code 127) | The project has no `tsx`. **The symptom of leaving it out differs by package manager.** With pnpm, `npx` fetches it on demand, so it usually runs, but it fails without a network. The flat npm layout fails with `ENOTCACHED` when there is no cache | `pnpm add -D tsx` (→ [2.1](#21-what-you-need--there-are-two-paths)) |
 | `pnpm exec erdd …` fails with `ERR_PNPM_IGNORED_BUILDS` (`esbuild`) | **This is pnpm 11's behavior.** `pnpm exec` first checks the dependency state by running `pnpm install`, and that install fails when there is a package whose build script is not approved (`esbuild`, which `tsx` pulls in). It is unrelated to `@erdd/cli` and does not happen with pnpm 10 | Approve `esbuild` with `pnpm approve-builds`, as pnpm suggests. Even before that, **calling `./node_modules/.bin/erdd` directly works** (verified) |
 | `erdd.config.yaml이 없습니다. erdd init을 먼저 실행하세요` ("erdd.config.yaml not found. Run erdd init first") | You ran it outside the project root | Move to the project root, or run `erdd init --local` |
 | `erdd.config.yaml이 이미 있습니다. 지우고 다시 실행하세요` ("erdd.config.yaml already exists. Delete it and run again") | You ran `init --local`, but a config already exists | Delete the existing file and run again. `--yes` does not overwrite it either |
@@ -855,23 +871,23 @@ smoke-test items are in the [CLI manual appendix](cli-guide.md#local-mode).
 **Verified with a package install.**
 
 - **`erdd serve` starts as is from a registry install.** A tarball made with `pnpm pack` was installed into a separate
-  consumer project (a project that **never built the web app**), and `erdd serve --no-open` was run. `/p/<id>` returned
-  **200 + HTML**, `/assets/index-*.js` returned 200 + 1,162,100 bytes, and `/trpc/model.get` returned 200. The installed
+  consumer project (a project that never built the web app), and `erdd serve --no-open` was run. `/p/<id>` returned
+  200 + HTML, `/assets/index-*.js` returned 200 + 1,162,100 bytes, and `/trpc/model.get` returned 200. The installed
   `node_modules/@erdd/cli/web` had 101 files, and `engines` was `{"node":">=22"}`. In that project, `erdd --help`,
   `init --local`, and `validate` also exited with `0`.
 - **In the repository layout, the freshly built `apps/web/dist` wins.** Different marker files were placed in the two
   candidates (`apps/web/dist` and `packages/cli/web`) to tell which one was served. `/p/<id>` in the repository layout
-  also returned 200. **A copy made to prepare a release does not hide the latest build.**
+  also returned 200. A copy made to prepare a release does not hide the latest build.
 - **Consumers must declare `tsx` themselves.** The `pnpm add -D @erdd/cli tsx` path in
   [2.2](#22-path-a-install-from-npm-recommended) exits with `0` even with a clean cache and offline. An attempt to solve
-  this by putting `tsx` in `@erdd/cli`'s `dependencies` **made pnpm consumers regress instead** (what worked became
+  this by putting `tsx` in `@erdd/cli`'s `dependencies` made pnpm consumers regress instead (what worked became
   `127`), so it was reverted.
 
 **Verified by installing from the public npm.** Unlike the item above (a tarball made with `pnpm pack`), this installed
 the version published on npm. In an empty directory, installing exactly as in
 [2.2](#22-path-a-install-from-npm-recommended) with `pnpm add -D @erdd/cli tsx`, `erdd init --local` and `validate`
 exited with `0`, and in `erdd serve --no-open`, `/` returned 302 to `/p/<id>` and that address returned
-**200 + HTML**. That is, the bundled web app is served in a project that never built the web app. The raw output and
+200 + HTML. That is, the bundled web app is served in a project that never built the web app. The raw output and
 the combinations not verified (npm install, global install, `npx @erdd/cli`, Windows) are in the
 [CLI manual appendix](cli-guide.md#registry-publishing).
 
