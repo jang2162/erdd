@@ -8,9 +8,9 @@
 
 > [!WARNING]
 > **혼자 쓸 것이라면 이 문서는 필요하지 않습니다.** ERDD 에는 서버도 계정도 데이터베이스도 없이
-> 저장소 안의 YAML 파일로 같은 웹 에디터를 여는 **로컬 모드**가 있습니다. 명령 하나면 됩니다:
-> `erdd serve`. 이 문서(Docker, PostgreSQL, 리버스 프록시, 계정 관리)가 필요한 것은 **여러 사람이
-> 한 프로젝트를 동시에 편집하고 계정·권한·조직을 나눠야 할 때**뿐입니다. 판단 기준과 사용법은
+> 저장소 안의 YAML 파일로 같은 웹 에디터를 여는 로컬 모드가 있습니다. 명령 하나면 됩니다:
+> `erdd serve`. 이 문서(Docker, PostgreSQL, 리버스 프록시, 계정 관리)가 필요한 것은 여러 사람이
+> 한 프로젝트를 동시에 편집하고 계정·권한·조직을 나눠야 할 때뿐입니다. 판단 기준과 사용법은
 > [로컬 모드 매뉴얼](local-guide.md)에 있습니다.
 
 ## 1. 개요
@@ -35,7 +35,7 @@
   백업할 것은 데이터베이스 하나뿐입니다(8.2).
 - **서버는 TLS 를 처리하지 않습니다.** HTTPS 가 필요하면 앞에 리버스 프록시를 두세요(7절).
 
-설치 방법은 **방법 A(Docker Compose)** 와 **방법 B(소스에서 직접 실행)** 두 가지입니다. 이미
+설치 방법은 방법 A(Docker Compose)와 방법 B(소스에서 직접 실행) 두 가지입니다. 이미
 Postgres 를 운영 중이거나 Docker 를 쓸 수 없는 환경이 아니면 방법 A 를 쓰세요.
 
 ## 2. 요구 사항
@@ -70,9 +70,9 @@ ADMIN_EMAIL=admin@your-domain.example
 ADMIN_PASSWORD=<a long temporary password>
 ```
 
-- **`POSTGRES_PASSWORD` 는 첫 기동 전인 지금 정하세요.** Postgres 는 이 값을 **데이터 디렉터리를
-  처음 초기화할 때만** 반영합니다. `pgdata` 볼륨이 이미 있는 설치에서 값을 바꾸면 compose 는 새
-  값으로 접속하는데 DB 는 옛 비밀번호를 그대로 갖고 있어 **인증 오류로 앱이 뜨지 않습니다**(실측
+- **`POSTGRES_PASSWORD` 는 첫 기동 전인 지금 정하세요.** Postgres 는 이 값을 데이터 디렉터리를
+  처음 초기화할 때만 반영합니다. `pgdata` 볼륨이 이미 있는 설치에서 값을 바꾸면 compose 는 새
+  값으로 접속하는데 DB 는 옛 비밀번호를 그대로 갖고 있어 인증 오류로 앱이 뜨지 않습니다(실측
   확인). 나중에 바꾸려면 DB 안에서 `ALTER USER postgres PASSWORD …` 를 실행하고 `.env` 도 함께
   고치세요. 생략하면 기본값 `erdd` 가 쓰입니다. 운영 환경에서는 반드시 바꾸세요.
 - 비밀번호에 `@ : / # ?` 가 들어 있으면 접속 URL 이 깨집니다. 퍼센트 인코딩하거나 그런 문자를
@@ -102,6 +102,7 @@ docker compose ps -a
    빌드는 같은 단계를 공유합니다. classic builder 에서는 두 번째 빌드가 첫 빌드의 캐시로 곧바로
    끝납니다(실측 확인. BuildKit 은 부록을 보세요). 첫 빌드는 의존성 설치와 웹 앱 빌드 때문에 오래
    걸립니다.
+
    ⚠️ **한쪽만 빌드하지 마세요**(`docker compose build app` 처럼 서비스를 지정해서). `migrate` 가 옛
    이미지로 남아 새 마이그레이션을 모른 채 0 으로 끝나고, 새 `app` 이 새 스키마 없이 떠서 9.3 의
    증상이 납니다. 빌드는 늘 서비스를 지정하지 않고 실행하세요(`up -d --build`, `docker compose build`).
@@ -110,7 +111,7 @@ docker compose ps -a
 3. **`migrate` 를 실행합니다.** `pnpm --filter @erdd/server db:migrate`(drizzle-kit)를 한 번 실행하고
    끝납니다. 적용할 것이 없으면 아무것도 하지 않고 0 으로 끝나므로 `up` 할 때마다 다시 실행돼도
    무해합니다.
-4. **`app` 을 기동합니다.** **`migrate` 가 0 으로 끝난 뒤에만** 뜹니다
+4. **`app` 을 기동합니다.** `migrate` 가 0 으로 끝난 뒤에만 뜹니다
    (`depends_on: {migrate: {condition: service_completed_successfully}}`).
 
 기대 결과(`docker compose ps -a`, 필요한 열만):
@@ -128,7 +129,7 @@ migrate   Exited (0) …
 
 **마이그레이션을 별도 서비스로 돌리는 것은 스키마 때문입니다.** 서버는 마이그레이션을 직접 적용하지
 않습니다. 서버는 기동할 때 DB 를 조회합니다(관리자 부트스트랩, 전역 공용 리소스 시드). 접속이
-되더라도 **테이블이 없으면** 그 지점에서 실패하고 프로세스가 끝납니다(9.3). `db` healthcheck 는 접속
+되더라도 테이블이 없으면 그 지점에서 실패하고 프로세스가 끝납니다(9.3). `db` healthcheck 는 접속
 가능 여부만 보고 스키마는 보지 않으므로, 스키마를 보장하는 것은 `migrate` 입니다.
 
 **`migrate` 가 실패하면 앱이 뜨지 않습니다.** `up` 은 다음 줄로 끝나고 종료 코드 1 을 돌려줍니다.
@@ -145,14 +146,15 @@ docker compose logs migrate
 docker compose logs db | grep FATAL
 ```
 
-⚠️ **`migrate` 로그에는 원인이 안 보일 수 있습니다.** DB 비밀번호가 맞지 않아 실패하면 `migrate`
-로그에는 `applying migrations...` 뒤에 `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL … Exit status 1` 만 보입니다.
-실제 원인인 `FATAL:  password authentication failed for user "postgres"` 는 **`db` 로그에만**
-나옵니다. 이 오류는 **기존 `pgdata` 볼륨이 있는 상태에서 `POSTGRES_PASSWORD` 를 바꿨을 때**
-나타납니다(9.8). 원인을 고친 뒤 같은 `docker compose up -d --build` 를 다시 실행하세요.
+> [!WARNING]
+> **`migrate` 로그에는 원인이 안 보일 수 있습니다.** DB 비밀번호가 맞지 않아 실패하면 `migrate`
+> 로그에는 `applying migrations...` 뒤에 `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL … Exit status 1` 만 보입니다.
+> 실제 원인인 `FATAL:  password authentication failed for user "postgres"` 는 `db` 로그에만
+> 나옵니다. 이 오류는 기존 `pgdata` 볼륨이 있는 상태에서 `POSTGRES_PASSWORD` 를 바꿨을 때
+> 나타납니다(9.8). 원인을 고친 뒤 같은 `docker compose up -d --build` 를 다시 실행하세요.
 
 > [!WARNING]
-> `db` 는 **호스트 루프백(`127.0.0.1`)에만** 붙습니다(포트 기본값은 `5432`, `ERDD_DB_PORT` 로
+> `db` 는 호스트 루프백(`127.0.0.1`)에만 붙습니다(포트 기본값은 `5432`, `ERDD_DB_PORT` 로
 > 옮깁니다). 그 서버에서는 `psql` 을 붙일 수 있지만 다른 머신에서는 닿지 않습니다. 앱과 `migrate` 는
 > compose 네트워크로 접속하므로 이 포트의 영향을 받지 않습니다. 외부에 열어야 하면
 > `docker-compose.yml` 의 `db.ports` 를 직접 고치세요. 그때는 **Docker 가 연 포트는 호스트
@@ -172,7 +174,7 @@ docker compose logs app
 ERDD server listening on :3000
 ```
 
-- 첫 줄은 **서버가 관리자 계정을 실제로 만들었을 때만** 나옵니다. 그 이메일의 계정이 이미 있으면
+- 첫 줄은 서버가 관리자 계정을 실제로 만들었을 때만 나옵니다. 그 이메일의 계정이 이미 있으면
   서버는 아무것도 하지 않습니다. **기존 비밀번호를 덮어쓰지 않습니다.** 그래서 `ADMIN_PASSWORD` 를
   바꾸고 재시작해도 비밀번호는 바뀌지 않습니다. 잊었다면 다른 관리자가 재설정 링크를 발급해야
   합니다.
@@ -210,8 +212,8 @@ curl -s http://127.0.0.1:3000/trpc/health.ping
   레지스트리에서 이미지를 받지 않고 소스에서 빌드합니다. 배포 한 번이 3.2 의
   `docker compose up -d --build` 와 같다면 빌드·마이그레이션·기동이 모두 그 안에서 일어납니다.
 - **마이그레이션용 배포 전 명령(훅)을 따로 넣지 마세요.** 그 일은 `migrate` 서비스가 합니다. 훅에서
-  실행하면 compose 프로젝트 이름(`-p`)을 도구와 정확히 맞춰야 합니다. 맞지 않으면 **마이그레이션이
-  비어 있는 별도 DB 에 적용되고 거기서 끝납니다.**
+  실행하면 compose 프로젝트 이름(`-p`)을 도구와 정확히 맞춰야 합니다. 맞지 않으면 마이그레이션이
+  비어 있는 별도 DB 에 적용되고 거기서 끝납니다.
 - **도구가 배포 전에 `docker compose pull` 을 실행해도 괜찮습니다.** `migrate` 와 `app` 에는 이미지
   이름이 없어 `Skipped No image to be pulled` 로 건너뛰고, `postgres:17` 만 받습니다.
 - **환경 변수는 도구에 넣으세요.** 도구가 compose 파일 옆 `.env` 에 써 준다면 치환은 3.1 과 똑같이
@@ -219,8 +221,8 @@ curl -s http://127.0.0.1:3000/trpc/health.ping
 - **`POSTGRES_PASSWORD` 는 첫 배포 전에 정하세요**(3.1). 첫 배포가 기본값 `erdd` 로 DB 를
   초기화하면, 나중에 도구에서 값을 바꿨을 때 `migrate` 가 인증 실패로 멈춥니다(9.8).
 - ⚠️ **스택 이름이 compose 프로젝트 이름이고, 볼륨 이름(`<stack name>_pgdata`)이 그 이름에 딸려
-  있습니다.** 스택 이름을 바꾸거나 같은 저장소로 새 스택을 만들면 **비어 있는 새 DB 가
-  만들어집니다.** 옛 볼륨은 남아 있지만 붙지 않습니다. 3.1 의 프로젝트 이름 항목과 같은 함정입니다.
+  있습니다.** 스택 이름을 바꾸거나 같은 저장소로 새 스택을 만들면 비어 있는 새 DB 가
+  만들어집니다. 옛 볼륨은 남아 있지만 붙지 않습니다. 3.1 의 프로젝트 이름 항목과 같은 함정입니다.
 - **HTTPS 와 `/ws`** 는 7절대로 앞에 프록시를 두세요. 프록시가 같은 서버에서 돈다면 `ERDD_PORT` 를
   `127.0.0.1:3000` 으로 정하세요(7절).
 - **도구가 `migrate` 를 종료된 서비스로 표시하는 것은 정상입니다.** 한 번 실행하고 끝나므로
@@ -359,7 +361,7 @@ journalctl -u erdd -f      # you should see: ERDD server listening on :3000
 
 ## 6. 최초 기동 후 할 일
 
-**스스로 가입하는 기능은 없습니다.** 계정은 초대로만 만듭니다. 관리자가 일회용 초대 링크를 발급해
+스스로 가입하는 기능은 없습니다. 계정은 초대로만 만듭니다. 관리자가 일회용 초대 링크를 발급해
 전달합니다. **ERDD 는 이메일을 보내지 않습니다.** 링크는 화면에 나타나고, 관리자가 전달합니다.
 
 1. 3.3 의 `ADMIN_EMAIL` / `ADMIN_PASSWORD` 로 **관리자로 로그인하세요.**
@@ -374,7 +376,7 @@ journalctl -u erdd -f      # you should see: ERDD server listening on :3000
 화면 자체는 [사용자 가이드](user-guide.md)를 보세요.
 
 > [!WARNING]
-> **초대·재설정 링크는 「관리자가 쓰고 있는 주소」로 만들어집니다.** 링크 URL 은 브라우저가 지금
+> 초대·재설정 링크는 「관리자가 쓰고 있는 주소」로 만들어집니다. 링크 URL 은 브라우저가 지금
 > 접속한 origin 뒤에 경로를 붙여 조립합니다. 관리자가 `http://10.0.0.5:3000` 으로 접속해 링크를
 > 만들면 그 주소가 링크에 박혀 사무실 밖에서는 열리지 않습니다. 링크를 발급할 때 **관리자는
 > 사용자와 같은 공개 주소로 접속해야 합니다.**
@@ -463,7 +465,7 @@ docker compose ps -a
 docker compose logs app | tail -3
 ```
 
-`up -d --build` 는 새 이미지를 빌드한 뒤 **옛 `app` 컨테이너를 멈추고 지우고**, `migrate` 를 실행하고,
+`up -d --build` 는 새 이미지를 빌드한 뒤 옛 `app` 컨테이너를 멈추고 지우고, `migrate` 를 실행하고,
 `migrate` 가 0 으로 끝나면 새 `app` 을 띄웁니다. **옛 `app` 은 `migrate` 가 시작하기 전에 이미 멈춰
 있으므로** 옛 코드가 새 스키마 위에서 도는 일은 없습니다. 먼저 `docker compose stop app` 을 실행할
 필요가 없습니다. 이 순서는 이미지를 바꾼 채 `up -d --build` 를 실행하면서
@@ -485,6 +487,8 @@ docker compose logs app | tail -3
 - **업그레이드 중에는 서비스가 내려갑니다.** 프로세스가 하나뿐이라 무중단 롤링 교체는 지원하지
   않습니다.
 - **업그레이드 전에 백업하세요**(8.2). 마이그레이션에는 롤백 스크립트가 없습니다.
+- **서버를 3000 이 아닌 `PORT` 로 띄운다면**, 늘 세션 쿠키 이름 `erdd_session` 을 쓰던 버전에서 올린 뒤
+  사용자가 한 번 다시 로그인해야 합니다(9.6).
 
 ### 8.2 백업과 복구
 
@@ -593,7 +597,7 @@ PORT=3100 ... pnpm --filter @erdd/server start   # Method B
 
 ### 9.3 마이그레이션을 적용하지 않았다
 
-**방법 A** 에서는 `migrate` 가 `app` 보다 먼저 돌고, `app` 은 `migrate` 가 0 으로 끝났을 때만 뜹니다.
+방법 A 에서는 `migrate` 가 `app` 보다 먼저 돌고, `app` 은 `migrate` 가 0 으로 끝났을 때만 뜹니다.
 두 서비스를 함께 빌드하는 한(3.2) 앱이 스키마 없이 뜨는 일은 없습니다. 예외는 `app` 만 빌드했을
 때입니다. `docker compose up -d --build` 로 둘 다 다시 빌드하세요. 반대로 **`migrate` 가 실패하면
 앱은 아예 뜨지 않습니다.** `up` 은 `service "migrate" didn't complete successfully: exit 1` 로
@@ -604,7 +608,7 @@ PORT=3100 ... pnpm --filter @erdd/server start   # Method B
 docker compose up -d --build
 ```
 
-**방법 B** 의 증상(또는 스키마가 없는 DB 를 서버에 가리킨 경우): 서버가 기동 중에 끝납니다. 로그에
+방법 B 의 증상(또는 스키마가 없는 DB 를 서버에 가리킨 경우): 서버가 기동 중에 끝납니다. 로그에
 `relation "users" does not exist` 같은 Postgres 오류와 스택 트레이스가 나오고 프로세스가 끝납니다.
 `ERDD server listening on` 은 **나오지 않습니다.** systemd 아래에서는 `Restart=on-failure` 가 재시작을
 반복합니다.
@@ -646,7 +650,7 @@ docker compose up -d --build
   발급합니다.
 - **「이미 사용된 링크입니다」** 가 뜨면 누군가 이미 쓴 것입니다.
   - **초대**는 다시 발급할 수 없습니다. 쓰였다는 것은 그 이메일의 계정이 이미 있다는 뜻입니다. 그
-    사람은 로그인하거나, 비밀번호를 모르면 관리자가 **재설정 링크**를 발급합니다.
+    사람은 로그인하거나, 비밀번호를 모르면 관리자가 재설정 링크를 발급합니다.
   - **재설정 링크**는 다시 발급할 수 있습니다.
 - **링크를 다시 발급하면 쓰지 않은 이전 링크가 죽습니다.** 두 링크가 동시에 살아 있을 수 없으므로,
   옛 링크를 가진 사람에게는 새 링크가 필요합니다.
@@ -657,13 +661,16 @@ docker compose up -d --build
 **원인:** 세션 쿠키에 `Secure` 가 붙었는데 접속이 평문 HTTP 입니다. 브라우저가 쿠키를 저장하지 않아
 다음 요청이 다시 미인증이 됩니다.
 
-`Secure` 를 정하는 곳은 **코드 전체에서 정확히 한 곳**입니다. `apps/server/src/routers/auth.ts` 의
+`Secure` 를 정하는 곳은 코드 전체에서 정확히 한 곳입니다. `apps/server/src/routers/auth.ts` 의
 `auth.login` 이 쿠키를 설정할 때 `secure: process.env.NODE_ENV === 'production'` 을 평가합니다.
 로그인 요청마다 읽으므로 프로세스의 지금 환경 변수가 그대로 반영됩니다. 쿠키 미들웨어
 (`@fastify/cookie`)는 옵션 없이 등록돼 있어 따로 전역 기본값이 없습니다. 프록시 헤더
 (`X-Forwarded-Proto`)와 요청 스킴은 판정에 **관여하지 않습니다.** Docker 이미지는
 `NODE_ENV=production` 을 박아 둡니다. 쿠키의 나머지 속성은 `httpOnly`, `SameSite=Lax`, `Path=/`,
-14일 만료이고, 이름은 `erdd_session` 입니다.
+14일 만료이고, 이름은 `erdd_session` 입니다. 서버를 `PORT` 로 3000 이 아닌 포트에 띄우면 이름이
+`erdd_session_<port>` 가 됩니다. 같은 호스트에서 포트만 다른 두 서버가 서로의 로그인을 끊지 않게
+하려는 것입니다. 늘 `erdd_session` 을 쓰던 버전에서 그런 설치를 올리면 사용자가 한 번 다시
+로그인해야 합니다. compose 배포는 컨테이너 안에서 서버가 늘 3000 으로 뜨므로 해당하지 않습니다.
 
 **해결:** 7절대로 HTTPS 를 붙이세요. TLS 없이 잠깐 시험만 하려면 `.env` 에 한 줄을 더하고 앱을 다시
 만드세요. **운영에서는 쓰지 마세요.**
