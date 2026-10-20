@@ -10,7 +10,7 @@ from start to finish in the [local mode manual](local-guide.md).
 The CLI's messages are in Korean. Output in this manual is quoted exactly as the CLI prints it, with an English
 explanation next to it where it matters.
 
-**Contents** — [1. Overview](#1-overview) · [2. Installation and running](#2-installation-and-running) · [3. Connecting — server connection and local mode](#3-connecting--server-connection-and-local-mode) · [4. Everyday workflow](#4-everyday-workflow) · [5. File structure and format](#5-file-structure-and-format) · [6. Command reference](#6-command-reference) · [7. Synchronization and conflicts](#7-synchronization-and-conflicts) · [8. What the files do not hold](#8-what-the-files-do-not-hold) · [9. Using it with AI agents](#9-using-it-with-ai-agents) · [10. Automation and CI](#10-automation-and-ci) · [11. Troubleshooting](#11-troubleshooting) · [Appendix: Verification status](#appendix-verification-status-2026-08-14)
+**Contents** — [1. Overview](#1-overview) · [2. Installation and running](#2-installation-and-running) · [3. Connecting — server connection and local mode](#3-connecting--server-connection-and-local-mode) · [4. Everyday workflow](#4-everyday-workflow) · [5. File structure and format](#5-file-structure-and-format) · [6. Command reference](#6-command-reference) · [7. Synchronization and conflicts](#7-synchronization-and-conflicts) · [8. What the files do not hold](#8-what-the-files-do-not-hold) · [9. Using it with AI agents](#9-using-it-with-ai-agents) · [10. Automation and CI](#10-automation-and-ci) · [11. Troubleshooting](#11-troubleshooting) · [Appendix: Verification status](#appendix-verification-status)
 
 ---
 
@@ -1052,12 +1052,13 @@ The output reports no consistency problems and 3 naming warnings (unregistered w
 |---|---|---|
 | Parsing | YAML structure, duplicate `id`, resolving name references | Exit code `1`, a message per file |
 | Consistency | References to tables, groups, or domains that do not exist, and the like | Exit code `1` |
-| Naming warnings | The 10 kinds below | `0` by default, `1` with `--strict` |
+| Naming warnings | The 11 kinds below | `0` by default, `1` with `--strict` |
 
 **Warning kinds** — unregistered word (`unknown-word`), term mismatch (`term-mismatch`), physical name too long
 (`too-long`), reserved word (`reserved`), duplicate physical name (`duplicate-physical`, `duplicate-physical-table`),
 incomplete relationship mapping (`incomplete-mapping`), relationship type mismatch (`type-mismatch`), required value
-empty (`required-empty`), required custom field missing (`custom-required`).
+empty (`required-empty`), required custom field missing (`custom-required`), missing logical name separator
+(`missing-logical-separator`).
 
 Naming warnings are computed from `namingRules` and `dialects` in `erdd.config.yaml`. If those settings changed on the
 server, `pull` first so that the result matches the server.
@@ -1330,7 +1331,7 @@ The error says the format of `dump.txt` cannot be decided from its extension, an
 | DBML | `--dialect` > `Project { database_type }` > `config.dialects[0]` |
 
 ⚠️ **Body token detection is not used for DBML.** DBML's attribute syntax (`[pk, increment, …]`) **always** hits the
-detector's mssql bracketed-identifier signature, so running it would read any DBML as mssql (measured on 2026-09-03).
+detector's mssql bracketed-identifier signature, so running it would read any DBML as mssql.
 What was chosen and why appears in the first line of the output and in `dialectSource` in `--json`.
 
 ```bash
@@ -2498,22 +2499,20 @@ people.
 
 ---
 
-## Appendix: Verification status (2026-08-14)
+## Appendix: Verification status
 
-**This contains verifications from several points in time.** The server connection workflow is from 2026-08-14, local
-mode from 2026-08-20, and the published package form from 2026-08-29, and the `tsx` item below has a re-measurement from
-2026-09-03 added.
+**The items below were verified separately, with different setups.** Each subsection says how it was verified. Where an
+item and the body of this manual disagree, the body is the current description.
 
 **Verified with real commands.** An isolated temporary project was created, `@erdd/cli` was installed as a file
 dependency, and the commands were run.
 
 - That `pnpm add <path>/packages/cli` creates the `node_modules/.bin/erdd` link, and that **without `tsx` it fails with
   `sh: tsx: command not found` (exit code 127) and works after `pnpm add -D tsx`**.
-  ⚠️ **In the 2026-09-03 re-measurement, `npx` fetched `tsx` on demand and it worked** (exit code `0`). However, **the
-  installation form differed.** The re-measurement used a temporary directory where a packed tarball was installed with
+  ⚠️ **In a separate measurement, `npx` fetched `tsx` on demand and it worked** (exit code `0`). However, **the
+  installation form differed.** That measurement used a temporary directory where a packed tarball was installed with
   `npm install <tarball>`, while the line above is `pnpm add <path>/packages/cli`. Neither is wrong. **It depends on the
-  network, cache, and package manager.** The line above is the 2026-08-14 environment as it was, and the current
-  accurate description is in [2.1](#21-requirements).
+  network, cache, and package manager.** The accurate description of what to install is in [2.1](#21-requirements).
 - That this installation **changes the mode of `packages/cli/src/main.ts` in the ERDD repository from 100644 to 100755**
   (it shows up in `git status`; it was reverted after the verification).
 - The full `--help` output (section 2.5 is the actual output as is).
@@ -2531,7 +2530,7 @@ of `pull`, `push`, and `diff`, conflict output, race retries, and the three abno
 from reading the source and unit tests**, and still need verification in a real environment. The quoted output was taken
 verbatim from the implementation and the expected values in the tests.
 
-### Local mode (2026-08-20)
+### Local mode
 
 **Verified with real commands.** A local-only project was created in a scratch directory and the commands were run.
 
@@ -2560,7 +2559,7 @@ switches to the banner + **읽기 전용** (Read-only) and reverting it unlocks,
 tokens), and the local mode branches in `apps/web`.
 When features change, this document must change with them.
 
-### Registry publishing (2026-08-29)
+### Registry publishing
 
 **Verified in package form.** A tarball made with `pnpm pack` was installed into a separate consumer project and run.
 
