@@ -198,9 +198,8 @@ export function EditPanel({ projectId }: { projectId: string }) {
           /**
            * 컬럼 이름 갱신 규칙. 대상별 규칙을 담는 자리이므로 「논리명이 용어와 완전일치하면
            * 도메인도 함께 채운다」가 여기에 있다.
-           * ⚠️ **물리명이 비어 있던 경우에만** 돈다 — main 의 옛 동작이 그 가드 안에 있었고,
-           * 가드를 없애 「항상」으로 넓히는 것은 설계·문서에 근거가 없는 제품 동작 변경이다
-           * (HANDOFF 6절 이월). `m` 은 producer 진입 시점 모델이라 "변경 전 물리명"을 그대로 읽는다.
+           * ⚠️ **물리명이 비어 있던 경우에만** 돈다 — 가드를 없애 「항상」으로 넓히는 것은 제품 동작
+           * 변경이라 사용자와 정해야 한다(naming.md 「알려진 한계」 의 「컬럼 도메인 자동 지정은 「물리명이 빌 때만」이다」). `m` 은 producer 진입 시점 모델이라 "변경 전 물리명"을 그대로 읽는다.
            */
           const applyNames = (m: ProjectModel, patch: NamePatch) => {
             const before = m.columns[c.id]

@@ -831,8 +831,8 @@ describe('EditPanel 컬럼 도메인 자동 지정', () => {
     expect(useEditorStore.getState().model.columns['c1']!.domainId).toBeNull()
   })
 
-  // ⚠️ M3(b). 이 규칙은 **물리명 빈칸 가드 안**에 있는 것이 옛 동작이다. 가드를 없애 「항상」으로
-  // 넓히는 것은 제품 동작 변경이라 이 사이클 범위 밖이다(HANDOFF 6절 이월).
+  // ⚠️ 이 규칙은 **물리명 빈칸 가드 안**에 있다. 가드를 없애 「항상」으로 넓히는 것은 제품 동작
+  // 변경이라 사용자와 정해야 한다(naming.md 「알려진 한계」 의 「컬럼 도메인 자동 지정은 「물리명이 빌 때만」이다」).
   it('물리명이 이미 있으면 도메인을 채우지 않는다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     loadForDomainRule({ physicalName: 'KEEP_ME' })

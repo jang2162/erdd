@@ -98,7 +98,7 @@ function planSummary(plan: DdlImportPlan): {
  * 만들어질 이름이 기존 테이블과 겹치면 **그 테이블은 건너뛰고**(`skippedTables`) 기존 파일은
  * 손대지 않으며, DDL 에 없는 기존 테이블도 지우지 않는다.
  *
- * ⚠️ **신규 엔티티의 id 는 `uuidv7()` 로 파일에 바로 박는다**(HANDOFF 3.9 의 push 관례와 같다).
+ * ⚠️ **신규 엔티티의 id 는 `uuidv7()` 로 파일에 바로 박는다**(cli.md 「push 의 신규 id 고정 (멱등성)」 의 push 관례와 같다).
  * `filesToModel` 에도 `newId` 를 준다 — 안 주면 id 없는 사용자 파일이 `new:` 임시 id 를 받고,
  * 그 모델을 그대로 `modelToFiles` 로 되쓰면 **임시 id 가 파일에 새어 나간다.**
  *

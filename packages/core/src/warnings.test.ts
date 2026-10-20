@@ -374,7 +374,7 @@ describe('required-empty', () => {
 
 describe('findMatchingTerm 구분자 정규화', () => {
   // ⚠️ 용어 매칭은 네 자리(generatePhysicalName · restoreLogicalName · suggestCompletions ·
-  // findMatchingTerm)가 같은 정규화를 써야 한다(HANDOFF 3.5b). 여기만 평문 비교로 되돌리면
+  // findMatchingTerm)가 같은 정규화를 써야 한다(naming.md 「논리명 구분자」). 여기만 평문 비교로 되돌리면
   // 구분자가 든 논리명에서 term-mismatch 가 통째로 사라지는데, 되돌려도 아무것도 빨개지지
   // 않았다(리뷰 실측).
   const modelWithPair = () => {

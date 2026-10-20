@@ -154,8 +154,8 @@ describe('diffModels', () => {
   })
 
   it('does not emit an update op when the target domain merely lacks origin a base has (legacy snapshot regression)', () => {
-    // origin은 이번 sub-project에서 domain/word/term/customField에 새로 추가된 필드다.
-    // HANDOFF 3.3: 새 필드를 추가할 때는 "구 스냅샷에 필드 없음" 케이스를 회귀 테스트로 남긴다.
+    // origin은 domain/word/term/customField 에 나중에 더한 필드라 옛 스냅샷에는 없다.
+    // data-layer.md 「하위호환 (스냅샷·옛 리비전)」: 새 필드를 추가할 때는 "구 스냅샷에 필드 없음" 케이스를 회귀 테스트로 남긴다.
     // 위 table.custom 테스트와 같은 패턴 — origin이 생기기 전 스냅샷의 jsonb에는 도메인에
     // origin 키가 아예 없고, 현재 모델(base)에는 있다. 이때도 값 없는 update op가 나가면
     // 옛 스냅샷 복원이 500으로 터진다.
@@ -181,8 +181,8 @@ describe('diffModels', () => {
   })
 
   it('does not emit an update op when the target group merely lacks alias (legacy snapshot regression)', () => {
-    // alias는 이번 sub-project에서 tableGroup에 새로 추가된 필드다.
-    // HANDOFF 3.3: 새 필드를 추가할 때는 "구 스냅샷에 필드 없음" 케이스를 회귀 테스트로 남긴다.
+    // alias는 tableGroup 에 나중에 더한 필드라 옛 스냅샷에는 없다.
+    // data-layer.md 「하위호환 (스냅샷·옛 리비전)」: 새 필드를 추가할 때는 "구 스냅샷에 필드 없음" 케이스를 회귀 테스트로 남긴다.
     // alias가 생기기 전 스냅샷의 jsonb에는 그룹에 alias 키가 아예 없고 현재 모델(base)에는 있다.
     // 이때 값 없는 update op가 나가면 옛 스냅샷 복원이 500으로 터진다.
     const base = buildSampleModel()

@@ -323,7 +323,7 @@ describe('diffModelsForDisplay', () => {
     })
 
     it('그룹 별칭을 한국어 라벨로 표시한다', () => {
-      // HANDOFF 3.2: FIELD_LABEL 은 등록처다 — 빠뜨리면 `?? field` 폴백이 영문 원문을 그대로 낸다.
+      // data-layer.md 「이미 등록된 엔티티에 필드를 추가할 때」: FIELD_LABEL 은 등록처다 — 빠뜨리면 `?? field` 폴백이 영문 원문을 그대로 낸다.
       // 라벨이 없어도 diff 자체는 잡히므로 이 단언이 없으면 아무것도 빨개지지 않는다.
       const base = buildSampleModel()
       const target = clone(base)

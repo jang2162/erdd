@@ -143,7 +143,7 @@ export function useEditorShortcuts({ projectId }: { projectId: string }) {
         // ⚠️ 아래 `selectNote(null)`/`selectRelationship(null)` 은 **테스트로 잠기지 않는다.**
         // 지워도 동작이 같기 때문이다 — 삭제가 반영되면 `pruneSelection`(→ `keptSelection`)이
         // 모델에서 사라진 id 를 어차피 걷어낸다. 패널 버튼과의 **대칭으로** 남긴다.
-        // 관측 불가능한 것을 행위 테스트로 잠그려 하지 마라(HANDOFF 6절에 이월로 적어 두었다).
+        // 관측 불가능한 것을 행위 테스트로 잠그려 하지 마라(editor-state.md 「알려진 한계」 의 「관측할 수 없는 것」).
         if (s.selectedNoteId) {
           if (!canEdit) return
           e.preventDefault()

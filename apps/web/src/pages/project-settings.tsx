@@ -243,7 +243,7 @@ function NamingRulesSection({
           checked={namingRules.logicalSeparator === '_'}
           disabled={update.isPending}
           onChange={(e) => {
-            // ⚠️ 이벤트 값은 producer 진입 전에 캡처한다(HANDOFF 3.4).
+            // ⚠️ 이벤트 값은 producer 진입 전에 캡처한다(editor-state.md 「이벤트 값은 producer 진입 전에 캡처한다」).
             const logicalSeparator = e.target.checked ? ('_' as const) : ('' as const)
             update.mutate({ projectId, namingRules: { ...namingRules, logicalSeparator } })
           }}
@@ -318,7 +318,7 @@ function NamingRulesSection({
  * **방언별 자유 문자열**이다 — 검증하지 않는다(`Domain.dialectTypes` 와 같은 방침).
  *
  * ⚠️ **언제나 네 키를 전부 실어 보낸다.** 쓰기 스키마가 strict 라 부분 페이로드는 400 이고,
- * 그 strict 가 「한 칸만 보낸 화면이 나머지 셋을 지우는」 사고를 막는 장치다(HANDOFF 3.16).
+ * 그 strict 가 「한 칸만 보낸 화면이 나머지 셋을 지우는」 사고를 막는 장치다(naming.md 「논리명 구분자」 의 「읽기 스키마와 쓰기 스키마를 같은 것으로 쓰지 마라」).
  *
  * **네 칸을 다 보인다**(§9 ⑦) — 도메인 편집의 「방언별 물리 타입 (선택)」과 같은 모양이어야
  * 사용자가 배운 것을 다시 쓴다. 방언은 나중에 추가되는데 숨겨 두면 추가한 순간 「전에 적어 둔
@@ -401,7 +401,7 @@ export function ProjectSettingsPage() {
 
   const p = project.data
   // 판정은 서버가 한다. 역할 조합식을 여기서 재현하면 perm.ts 가 바뀔 때 조용히 어긋난다
-  // (같은 응답에 canManage 가 실려 온다 — HANDOFF 이월 항목을 여기서 닫는다).
+  // (같은 응답에 canManage 가 실려 온다).
   const canManage = p.canManage
 
   return (

@@ -81,15 +81,13 @@ describe('DdlImportDialog', () => {
     grantEditPermission()
     renderDialog()
     await userEvent.click(screen.getByRole('textbox', { name: 'DDL' }))
-    // 브리프 원문은 'CREATE TABLE A (C1 CLOB);'을 썼는데, CLOB 하나만으로 detectDialect가
-    // 이미 'oracle'을 자동 감지한다(ddl-parse.ts의 SIGNATURES, 경쟁 시그니처 없음). 그 상태에서
-    // selectOptions로 'oracle'을 고르면 이미 활성인 값을 다시 고르는 것이라 manualDialect
-    // 오버라이드 기구를 통째로 지워도(dialect = detected ?? 'postgresql') 테스트가 통과해
-    // 회귀 방어력이 0이었다(task-8-report.md "브리프 코드에서 발견한 결함" 두 번째 항목 참고).
-    // 백틱·ENGINE= 때문에 mysql로 자동 감지되게(detectDialect로 직접 확인: 'mysql') 픽스처를
-    // 바꿔, 자동 감지값(mysql)과 수동 선택값(oracle)이 실제로 달라지게 했다. mysql에는 CLOB
-    // 규칙이 없어 '알지 못해' 경고가 나고, oracle로 바꿔야 비로소 CLOB → TEXT 모호성 경고로
-    // 바뀐다 — 이제 오버라이드가 실제로 동작해야만 통과하는 테스트다.
+    // ⚠️ 픽스처는 자동 감지값과 수동 선택값이 **달라야** 한다. 'CREATE TABLE A (C1 CLOB);' 만 쓰면
+    // CLOB 하나로 detectDialect가 이미 'oracle'을 감지해(ddl-parse.ts의 SIGNATURES, 경쟁 시그니처
+    // 없음), selectOptions로 'oracle'을 골라도 이미 활성인 값을 다시 고르는 것이 된다 — manualDialect
+    // 오버라이드 기구를 통째로 지워도(dialect = detected ?? 'postgresql') 통과한다.
+    // 그래서 백틱·ENGINE= 으로 mysql로 자동 감지되게(detectDialect로 직접 확인: 'mysql') 둔다.
+    // mysql에는 CLOB 규칙이 없어 '알지 못해' 경고가 나고, oracle로 바꿔야 비로소 CLOB → TEXT
+    // 모호성 경고로 바뀐다 — 오버라이드가 실제로 동작해야만 통과한다.
     await userEvent.paste('CREATE TABLE `A` (C1 CLOB) ENGINE=InnoDB;')
     expect(await screen.findByText(/알지 못해/)).toBeInTheDocument()
     expect(screen.queryByText(/TEXT로 읽었습니다/)).toBeNull()
@@ -113,11 +111,10 @@ describe('DdlImportDialog', () => {
   // I-1: 미리보기의 "건너뜀 N개"에 건너뛴 테이블 이름도 함께 보여야 어느 테이블이 겹쳤는지
   // 알 수 있다(설계 §7 목업: "건너뜀 2개 (이미 있는 이름: MBR, ORD)").
   //
-  // 브리프 원문은 `screen.findByText(/MBR/)`이었으나, 붙여넣은 DDL 텍스트 자체가
-  // <textarea>에 그대로 echo되어 그 안에 이미 'MBR'이 들어 있다 — 그래서 이 배너를
-  // 구현하지 않아도(수정 전 코드 그대로도) 항상 통과하는 가짜 양성 테스트였다(직접 확인:
-  // 수정 전 상태에서 이 assertion만 통과함). "건너뜀 N개"는 요약 문단에서만 나오는
-  // 문구이므로 그 문단 텍스트 안에 테이블 이름이 함께 있는지로 범위를 좁혔다.
+  // ⚠️ `screen.findByText(/MBR/)` 로 찾지 마라 — 붙여넣은 DDL 텍스트가 <textarea>에 그대로
+  // echo되어 그 안에 이미 'MBR'이 들어 있으므로, 이 배너를 구현하지 않아도 통과한다.
+  // "건너뜀 N개"는 요약 문단에서만 나오는 문구이므로 그 문단 텍스트 안에 테이블 이름이 함께
+  // 있는지로 범위를 좁힌다.
   it('건너뛴 테이블 이름을 미리보기에 보여준다', async () => {
     const model = createEmptyModel()
     model.tables['t1'] = {

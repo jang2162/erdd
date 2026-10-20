@@ -174,7 +174,7 @@ describe('ProjectSettingsPage — 논리명 구분자 토글', () => {
   })
 
   // ⚠️ 서버가 canManage 를 실어 보내는데 화면이 역할 조합식을 손으로 재현하면 perm.ts 가 바뀔 때
-  // 조용히 어긋난다(HANDOFF 이월 항목). 서버가 false 라고 했으면 역할과 무관하게 false 여야 한다.
+  // 조용히 어긋난다. 서버가 false 라고 했으면 역할과 무관하게 false 여야 한다.
   it('역할이 admin 이어도 서버가 canManage:false 라고 하면 토글이 없다', async () => {
     renderSettings({
       'project.get': () => ({
