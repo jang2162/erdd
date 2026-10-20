@@ -1,6 +1,6 @@
 {
   "name": "@erdd/core",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "ERDD core library for the ER model, naming rules, and DDL/DBML generation and parsing",
   "keywords": [
     "database",

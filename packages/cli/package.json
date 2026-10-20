@@ -1,6 +1,6 @@
 {
   "name": "@erdd/cli",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "ERDD command-line tool that keeps your ER model as YAML files in your repository and lets you edit them in a browser GUI",
   "keywords": [
     "cli",

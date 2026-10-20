@@ -9,6 +9,8 @@ release is tagged `cli-v<version>`. Releases before this file was started are li
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-20
+
 ### Added
 
 - English user manuals in `docs/manual/en/`. English is now the source language, and the Korean manuals
@@ -21,4 +23,5 @@ release is tagged `cli-v<version>`. Releases before this file was started are li
   manuals were previously at the top level of `docs/`.
 - The `@erdd/cli` and `@erdd/core` package READMEs and npm descriptions are now in English.
 
-[Unreleased]: https://github.com/jang2162/erdd/compare/cli-v0.6.0...HEAD
+[Unreleased]: https://github.com/jang2162/erdd/compare/cli-v0.7.0...HEAD
+[0.7.0]: https://github.com/jang2162/erdd/compare/cli-v0.6.0...cli-v0.7.0
