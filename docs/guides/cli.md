@@ -1,8 +1,8 @@
 # CLI — 토큰 인증·push 동시성·멱등성·로컬 모드
 
 `packages/cli`(`@erdd/cli`, 바이너리 `erdd`)와 그것이 기대는 서버 계약이다.
-사용자용 레퍼런스는 [../manual/cli-guide.md](../manual/cli-guide.md)·
-[../manual/local-guide.md](../manual/local-guide.md), 게시는 [release.md](release.md).
+사용자용 레퍼런스는 [../manual/ko/cli-guide.md](../manual/ko/cli-guide.md)·
+[../manual/ko/local-guide.md](../manual/ko/local-guide.md), 게시는 [release.md](release.md).
 
 ---
 

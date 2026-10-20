@@ -38,7 +38,7 @@
 **프로젝트 생성은 조직 Owner/Admin 만 된다.** 그 밖의 사람은 관리자가 만들어 준 빈 프로젝트에
 `--project` 로 붙어야 하는데, 그 연결에는 기준선이 없어 다음 `pull` 이 `erdd/` 를 덮는다 — 그래서
 「커밋 → pull → `git checkout` 으로 되얹기」 수동 절차가 남아 있다
-([../manual/local-guide.md](../manual/local-guide.md) 「로컬로 시작한 프로젝트를 서버로 옮기기」).
+([../manual/ko/local-guide.md](../manual/ko/local-guide.md) 「로컬로 시작한 프로젝트를 서버로 옮기기」).
 
 **후보:** `init --project <id>` 가 대상 서버 프로젝트가 비어 있으면(`model.get` 이 빈 모델·seq 0)
 `--create` 처럼 빈 기준선을 세우고 `erdd/` 를 보존한다. **선행 결정:** 「비어 있음」의 판정(seq 0 만인가,

@@ -1,33 +1,121 @@
-# ERDD
+<p align="center"><b>English</b> | <a href="README.ko.md">한국어</a></p>
 
-웹에서 ERD를 실시간 협업으로 설계하고, 한국 실무의 명명 체계(단어·용어·도메인 사전)와 산출물까지 관리하며, CLI로 코드베이스와 AI agent에 연결되는 오픈소스 ERD 도구.
+<h1 align="center">ERDD</h1>
 
-에디터·실시간 협업·명명 체계·CLI·가져오기/내보내기가 구현되어 동작한다. 서버를 직접 세워 여러 사람이
-함께 쓰는 **서버 모드**와, 서버 없이 저장소 안의 YAML 파일만으로 같은 에디터를 여는 **로컬 모드**가 있다.
+<p align="center">An open-source ERD tool for real-time collaborative design, Korean naming dictionaries, and schemas your code and AI agents can read.</p>
 
-## 시작하기
+<p align="center">
+  <a href="https://www.npmjs.com/package/@erdd/cli"><img src="https://img.shields.io/npm/v/@erdd/cli" alt="npm version of @erdd/cli"></a>
+  <a href="https://github.com/jang2162/erdd/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/jang2162/erdd/ci.yml?branch=main" alt="CI build status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/jang2162/erdd" alt="License"></a>
+</p>
 
-- **혼자 쓴다(로컬 모드)** — 스키마를 둘 프로젝트에서 `pnpm add -D @erdd/cli tsx` 후 `pnpm exec erdd init --local`,
-  `pnpm exec erdd serve`. 자세한 것은 [로컬 모드 매뉴얼](docs/manual/local-guide.md).
-- **여럿이 쓴다(서버 모드)** — 자체 서버에 올리는 절차는 [설치·운영 매뉴얼](docs/manual/install.md).
-- **CLI 레퍼런스** — [CLI 매뉴얼](docs/manual/cli-guide.md). 패키지는 공개 npm 의
-  [`@erdd/cli`](https://www.npmjs.com/package/@erdd/cli) · [`@erdd/core`](https://www.npmjs.com/package/@erdd/core) 다.
+<p align="center">
+  <img src="docs/manual/images/editor-overview.png" width="800" alt="The ERDD editor showing four related tables on the canvas, with the selected table's columns open for editing in the right panel">
+</p>
 
-## 문서
+## Overview
 
-`docs/` 는 갈래로 나뉜다. **어느 갈래에 무엇이 들어가는지와 「상황 → 문서」 목차는
-[CLAUDE.md](CLAUDE.md) 가 갖는다.**
+Korean teams usually design databases around naming standards: approved word, term, and domain
+dictionaries, plus table definition documents. Most ERD tools ignore those standards or keep the diagram
+far from the code. ERDD checks every name against your dictionaries while you design together in the
+browser, and its CLI keeps the schema as YAML files that pull requests and AI agents read. It runs as a
+shared server for your team (**server mode**) or on your repository files with no server (**local mode**).
+It is for teams and developers who design relational schemas and follow a naming standard.
 
-| 갈래                                               | 무엇이 있나                                                                                                                                                                                                                                                                                        |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [docs/manual/](docs/manual/)                       | **제품 사용자용 매뉴얼 네 편.** [설치·운영](docs/manual/install.md) · [사용자 가이드](docs/manual/user-guide.md) · [CLI](docs/manual/cli-guide.md) · [로컬 모드](docs/manual/local-guide.md)                                                                                                       |
-| [docs/guides/](docs/guides/)                       | **개발자·에이전트용 정본.** 「이럴 때는 이렇게 한다」와 「어기면 무엇이 조용히 깨지는가」. 자주 여는 것은 [개발 환경](docs/guides/setup.md) · [워크트리 작업 흐름](docs/guides/worktree-workflow.md) · [데이터 계층](docs/guides/data-layer.md) · [문서 작성 규약](docs/guides/doc-conventions.md) |
-| [docs/ops/](docs/ops/)                             | **끝나면 지우는 것.** 지금은 [열려 있는 제품 결정](docs/ops/known-issues.md) 하나다                                                                                                                                                                                                                |
-| [docs/superpowers/specs/](docs/superpowers/specs/) | **이력.** 기능별 설계 문서 — 각 기능을 왜 그렇게 만들었는지의 근거와 결정 기록                                                                                                                                                                                                                     |
+> [!NOTE]
+> The editor UI and CLI messages are currently in Korean.
 
-**처음 이 저장소를 여는 사람은 [CLAUDE.md](CLAUDE.md) 의 「필수 참조 문서」부터 본다** —
-「~할 때 → 어느 문서」 목차다.
+## Features
 
-## 라이선스
+- Edit the same ERD with your team in real time, with version history, snapshots, and comparison.
+- Check physical and logical names against word, term, and domain dictionaries as you type.
+- Keep the schema as one YAML file per table, so changes show up as readable PR diffs.
+- Import DDL, DBML, and Excel dictionaries, and export DDL, DBML, images, and Excel definition documents.
+- Give AI agents a skill document so they edit the schema through the `erdd` CLI.
+- Work alone in local mode with no account and no database, using git as the history.
 
-[MIT](LICENSE) © 2026 장병현
+## Installation
+
+Requirements: Node.js 22 or later, and pnpm or npm.
+
+Install the CLI in the project where you want to keep the schema. Declare `tsx` too, because the package
+ships its original TypeScript.
+
+```bash
+pnpm add -D @erdd/cli tsx
+```
+
+Verify the installation:
+
+```bash
+pnpm exec erdd --version
+```
+
+```text
+0.6.0
+```
+
+To host a server for your team, see the [installation and operations manual](docs/manual/en/install.md).
+The recommended path uses Docker Compose and PostgreSQL 17.
+
+## Quick Start
+
+This example uses local mode, so you need no server.
+
+1. Create a local-only project.
+
+   ```bash
+   pnpm exec erdd init --local
+   ```
+
+   ```text
+   로컬 전용 프로젝트를 만들었습니다. erdd serve로 여세요
+   ```
+
+2. Open the editor.
+
+   ```bash
+   pnpm exec erdd serve
+   ```
+
+   ```text
+   http://127.0.0.1:4300 에서 실행 중 (프로젝트: /path/to/your-project)
+   중지하려면 Ctrl+C
+   ```
+
+   The browser opens the editor. Edits become files under `erdd/` when you press **저장** (Save) or
+   Cmd+S.
+
+3. After you save, check the model and commit it.
+
+   ```bash
+   pnpm exec erdd validate
+   git add erdd erdd.config.yaml && git commit -m "Add schema"
+   ```
+
+   ```text
+   정합성 문제 없음
+   명명 경고 없음
+   ```
+
+## Documentation
+
+- [Local mode manual](docs/manual/en/local-guide.md): using ERDD alone without a server, from start to
+  finish
+- [User guide](docs/manual/en/user-guide.md): how to use the browser editor
+- [CLI manual](docs/manual/en/cli-guide.md): reference for every command and the file format
+- [Installation and operations manual](docs/manual/en/install.md): hosting and running an ERDD server
+
+The CLI packages are [`@erdd/cli`](https://www.npmjs.com/package/@erdd/cli) and
+[`@erdd/core`](https://www.npmjs.com/package/@erdd/core) on the public npm registry.
+
+## Contributing
+
+Issues and pull requests are welcome. Developer documentation is written in Korean. Start with
+[AGENTS.md](AGENTS.md), which maps each kind of change to the guide in [docs/guides/](docs/guides/) that
+covers it.
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.

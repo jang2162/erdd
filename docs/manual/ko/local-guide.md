@@ -1,3 +1,5 @@
+<!-- source: docs/manual/en/local-guide.md @ v0.6.0 -->
+
 # ERDD 로컬 모드 매뉴얼
 
 **서버도 계정도 데이터베이스도 없이**, 저장소 안의 YAML 파일만으로 ERD 를 그리는 방법을 처음부터
@@ -74,9 +76,10 @@ npm install -D @erdd/cli tsx
   보증된 경로다 (→ [CLI 매뉴얼 2.1](cli-guide.md#21-요구-사항)).
 - **웹 번들 빌드가 필요 없다.** 에디터 화면이 패키지 안에 통째로 동봉돼 나오므로 [2.3](#23-경로-b-erdd-저장소-체크아웃--웹-번들을-한-번-빌드한다)
   은 이 경로에 해당하지 않는다. 설치본에는 저장소 배치가 존재할 수 없어 언제나 이 동봉본이 쓰인다.
-- **이 매뉴얼도 설치본 안에 있다.** 패키지 루트의 `README.md` 와 함께 매뉴얼 네 편이
-  `node_modules/@erdd/cli/docs/` 에 동봉된다 — 이 문서는 그중 `local-guide.md` 이고, 문서끼리의
-  상대 링크도 그대로 살아 있다. ERDD 저장소를 클론하지 않아도 읽을 수 있다.
+- **이 매뉴얼도 설치본 안에 있다.** 패키지 루트의 `README.md` 와 함께 매뉴얼 네 편이 언어별로
+  `node_modules/@erdd/cli/docs/en/`(영어 원본)·`node_modules/@erdd/cli/docs/ko/`(한국어 번역본)에
+  동봉된다 — 이 문서는 `docs/ko/local-guide.md` 이고, 문서끼리의 상대 링크도 그대로 살아 있다.
+  ERDD 저장소를 클론하지 않아도 읽을 수 있다.
 
 ### 2.3 경로 B: ERDD 저장소 체크아웃 — 웹 번들을 한 번 빌드한다
 
@@ -533,7 +536,7 @@ alter table MBR {                                               @01a0…
 }
 ```
 
-문법 전체와 규칙은 [변경 기록 문법](../guides/changeset-format.md) 에 있다.
+문법 전체와 규칙은 [변경 기록 문법](../../guides/changeset-format.md) 에 있다.
 
 **이미 운영 중인 DB 에 도입할 때** — 첫 기록은 스키마 전체의 `create` 가 된다. 터미널에서
 `erdd changes new "운영 DB" --baseline` 으로 만들면 「이미 DB 에 있다, 마이그레이션 불필요」 표시
@@ -546,10 +549,10 @@ alter table MBR {                                               @01a0…
 같은 ⚠️ 경고가 뜨고 기록은 멈추지 않는다 — 남은 차이는 역시 새 기록으로 정리한다.
 
 ⚠️ **기록 파일은 고치지 않는다.** 잘못 만들었고 아직 공유하지 않았다면 파일을 지우고 다시 만든다 — 이유는
-[변경 기록 문법](../guides/changeset-format.md) 「기록 파일은 고치지 않는다」.
+[변경 기록 문법](../../guides/changeset-format.md) 「기록 파일은 고치지 않는다」.
 
 **기록을 만들 수 없는 경우** — 미저장 편집이 있을 때, 기록할 변경이 없을 때가 가장 흔하다. 전체 목록은
-[변경 기록 문법](../guides/changeset-format.md) 「기록을 만들 수 없는 경우」.
+[변경 기록 문법](../../guides/changeset-format.md) 「기록을 만들 수 없는 경우」.
 
 ---
 

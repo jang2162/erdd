@@ -1,3 +1,5 @@
+<!-- source: docs/manual/en/cli-guide.md @ v0.6.0 -->
+
 # ERDD CLI 매뉴얼
 
 ERDD 서버의 스키마를 **코드베이스 안의 YAML 파일**로 내려받아 git 으로 버전 관리하고, 로컬 수정을
@@ -107,8 +109,8 @@ npx erdd --help
 
 **문서도 함께 들어 있다.** 패키지 루트에 `README.md`(두 모드의 진입점)가 있고, 이 매뉴얼과
 [로컬 모드](local-guide.md)·[사용](user-guide.md)·[설치·운영](install.md) 매뉴얼 네 편이
-`node_modules/@erdd/cli/docs/` 에 그대로 동봉된다 — 저장소를 클론하지 않아도 읽을 수 있고 문서끼리의
-상대 링크도 살아 있다.
+언어별로 `node_modules/@erdd/cli/docs/en/`(영어 원본)·`node_modules/@erdd/cli/docs/ko/`(한국어 번역본)에
+그대로 동봉된다 — 저장소를 클론하지 않아도 읽을 수 있고 문서끼리의 상대 링크도 살아 있다.
 
 ### 2.3 방법 B: 저장소에서 직접 실행 (설치 없음)
 
@@ -1745,7 +1747,7 @@ $ erdd dict requests
 공용 라이브러리를 **파일로** 내보내고 가져온다(`.erdd-lib.yaml`, `format: erdd-library`). 라이브러리
 쓰기 권한이 있는 사람(조직 Owner/Admin, 전역은 서비스 관리자)만 가져올 수 있고, 내보내기는 읽을 수
 있으면 누구나 된다. 가져오기의 판정 규칙은
-[../guides/shared-resources.md](../guides/shared-resources.md) 「파일 내보내기·가져오기」에 있다.
+[../../guides/shared-resources.md](../../guides/shared-resources.md) 「파일 내보내기·가져오기」에 있다.
 
 **프로젝트 없이 돈다** — 관리자가 빈 디렉터리나 CI 에서 부르는 명령이다. 서버 주소는 `--server <url>`,
 없으면(서버에 연결된 프로젝트 안에서 실행할 때) `erdd.config.yaml` 의 `serverUrl`. 둘 다 없으면
@@ -1870,14 +1872,14 @@ $ erdd library import demo-edit.erdd-lib.yaml --library "데모 사전" --server
   이 판정도 라이브러리 목록을 조회한(서버를 부른) **뒤** 로컬에서 하고, 가져오기 반영은 부르지 않는다.
 
 **제약** — 반영은 한 트랜잭션이다(전부 아니면 전무). 갱신은 항목마다 `UPDATE` 한 번이라 대량 갱신은
-느릴 수 있다. 자세한 목록은 [../guides/shared-resources.md](../guides/shared-resources.md) 「알려진
+느릴 수 있다. 자세한 목록은 [../../guides/shared-resources.md](../../guides/shared-resources.md) 「알려진
 한계」의 「파일 내보내기·가져오기」.
 
 ### 6.13 `erdd changes`
 
 로컬 모드 전용. 스키마 수정 내역(변경 기록)을 `erdd/changes/` 에 남긴다. 무엇이고 어떻게 쓰는지는
 [로컬 모드 매뉴얼 5.6](local-guide.md#56-변경-기록--마이그레이션을-쓰기-위한-수정-내역), 문법은
-[변경 기록 문법](../guides/changeset-format.md).
+[변경 기록 문법](../../guides/changeset-format.md).
 
 ```
 erdd changes [--check] [--json]
