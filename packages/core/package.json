@@ -1,7 +1,7 @@
 {
   "name": "@erdd/core",
   "version": "0.5.0",
-  "description": "ERDD 의 ER 모델·명명 규칙·DDL 생성/파싱을 담은 코어 라이브러리",
+  "description": "ERDD core library for the ER model, naming rules, and DDL/DBML generation and parsing",
   "keywords": [
     "database",
     "ddl",
@@ -24,7 +24,8 @@
   "files": [
     "src",
     "!src/**/*.test.ts",
-    "README.md"
+    "README.md",
+    "README.ko.md"
   ],
   "type": "module",
   "main": "./src/index.ts",

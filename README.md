@@ -112,9 +112,8 @@ The CLI packages are [`@erdd/cli`](https://www.npmjs.com/package/@erdd/cli) and
 
 ## Contributing
 
-Issues and pull requests are welcome. Developer documentation is written in Korean. Start with
-[AGENTS.md](AGENTS.md), which maps each kind of change to the guide in [docs/guides/](docs/guides/) that
-covers it.
+Issues and pull requests are welcome. Developer guides are written in Korean. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the test commands, and where each rule lives.
 
 ## License
 

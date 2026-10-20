@@ -111,8 +111,8 @@ CLI 패키지는 공개 npm 의 [`@erdd/cli`](https://www.npmjs.com/package/@erd
 
 ## 기여하기
 
-이슈와 풀 리퀘스트를 환영합니다. 개발 문서는 한국어로 쓰여 있습니다. 변경 종류마다 어느 가이드를 봐야
-하는지는 [AGENTS.md](AGENTS.md) 가 [docs/guides/](docs/guides/) 의 문서로 안내하니, 거기서 시작하세요.
+이슈와 풀 리퀘스트를 환영합니다. 개발 가이드는 한국어로 쓰여 있습니다. 개발 환경 준비, 테스트 명령,
+규칙마다 어느 문서를 보면 되는지는 [CONTRIBUTING.md](CONTRIBUTING.md)(영어)를 확인하세요.
 
 ## 라이선스
 
