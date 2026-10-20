@@ -4,11 +4,12 @@ This document is for the person who installs and runs ERDD on their own server. 
 see the [user guide](user-guide.md). For the command-line tool, see the [CLI manual](cli-guide.md).
 For the contributor workflow, see the [development environment guide](../../guides/setup.md).
 
-> ⚠️ **If you work alone, you do not need this document.** ERDD has a **local mode** that opens the same
+> [!WARNING]
+> **If you work alone, you do not need this document.** ERDD has a local mode that opens the same
 > web editor from the YAML files in your repository, with no server, account, or database. It takes one
 > command: `erdd serve`. You need this document (Docker, PostgreSQL, a reverse proxy, account management)
-> only **when several people edit one project at the same time and you need separate accounts,
-> permissions, and organizations**. The [local mode manual](local-guide.md) explains how to decide and how
+> only when several people edit one project at the same time and you need separate accounts,
+> permissions, and organizations. The [local mode manual](local-guide.md) explains how to decide and how
 > to use it.
 
 ## 1. Overview
@@ -34,7 +35,7 @@ You install **two things**.
   The database is the only thing you back up (8.2).
 - **The server does not do TLS.** If you need HTTPS, put a reverse proxy in front of it (section 7).
 
-There are two ways to install: **Method A (Docker Compose)** and **Method B (run from source)**. Use
+There are two ways to install: Method A (Docker Compose) and Method B (run from source). Use
 Method A unless you already run Postgres or cannot use Docker.
 
 ## 2. Requirements
@@ -69,10 +70,10 @@ ADMIN_EMAIL=admin@your-domain.example
 ADMIN_PASSWORD=<a long temporary password>
 ```
 
-- **Set `POSTGRES_PASSWORD` now, before the first start.** Postgres applies this value **only when it
-  first initializes the data directory**. If you change it on an installation that already has a
-  `pgdata` volume, compose connects with the new value while the DB keeps the old password, so **the app
-  fails to start with an authentication error** (verified). To change it later, run
+- **Set `POSTGRES_PASSWORD` now, before the first start.** Postgres applies this value only when it
+  first initializes the data directory. If you change it on an installation that already has a
+  `pgdata` volume, compose connects with the new value while the DB keeps the old password, so the app
+  fails to start with an authentication error (verified). To change it later, run
   `ALTER USER postgres PASSWORD …` inside the DB and update `.env` at the same time. If you leave it out,
   the default `erdd` is used. Always change it in production.
 - A password that contains `@ : / # ?` breaks the connection URL. Percent-encode it or avoid those
@@ -102,6 +103,7 @@ This one command does the following, in order.
    builds share the same stages. With the classic builder, the second build finishes immediately from
    the first build's cache (verified; see the appendix for BuildKit). The first build takes a long time
    because it installs dependencies and builds the web app.
+
    ⚠️ **Do not build only one of them** (by naming a service, as in `docker compose build app`).
    `migrate` stays on the old image, exits with 0 without knowing about the new migration, and the new
    `app` starts without the new schema, which causes the symptom in 9.3. Always build without naming a
@@ -110,7 +112,7 @@ This one command does the following, in order.
 3. **Run `migrate`.** It runs `pnpm --filter @erdd/server db:migrate` (drizzle-kit) once and exits. If
    there is nothing to apply, it does nothing and exits with 0, so running it again on every `up` is
    harmless.
-4. **Start `app`.** It starts **only after `migrate` exits with 0**
+4. **Start `app`.** It starts only after `migrate` exits with 0
    (`depends_on: {migrate: {condition: service_completed_successfully}}`).
 
 Expected result (`docker compose ps -a`, relevant columns only):
@@ -128,7 +130,7 @@ migrate   Exited (0) …
 
 **Migrations run as a separate service because of the schema.** The server does not apply migrations
 itself. It queries the DB at startup (admin bootstrap, global shared resource seed). Even when the
-connection works, **if the tables are missing** it fails at that point and the process exits (9.3). The
+connection works, if the tables are missing it fails at that point and the process exits (9.3). The
 `db` healthcheck checks only whether a connection is possible, not the schema, so `migrate` is what
 guarantees the schema.
 
@@ -146,14 +148,16 @@ docker compose logs migrate
 docker compose logs db | grep FATAL
 ```
 
-⚠️ **The `migrate` log may not show the cause.** When it fails because the DB password does not match,
-the `migrate` log shows only `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL … Exit status 1` after
-`applying migrations...`. The actual cause, `FATAL:  password authentication failed for user "postgres"`,
-appears **only in the `db` log**. This error appears when you **change `POSTGRES_PASSWORD` while an
-existing `pgdata` volume is present** (9.8). After you fix the cause, run the same
-`docker compose up -d --build` again.
+> [!WARNING]
+> **The `migrate` log may not show the cause.** When it fails because the DB password does not match,
+> the `migrate` log shows only `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL … Exit status 1` after
+> `applying migrations...`. The actual cause, `FATAL:  password authentication failed for user "postgres"`,
+> appears only in the `db` log. This error appears when you change `POSTGRES_PASSWORD` while an
+> existing `pgdata` volume is present (9.8). After you fix the cause, run the same
+> `docker compose up -d --build` again.
 
-> ⚠️ `db` binds **only to the host loopback (`127.0.0.1`)** (the port defaults to `5432`; move it with
+> [!WARNING]
+> `db` binds only to the host loopback (`127.0.0.1`) (the port defaults to `5432`; move it with
 > `ERDD_DB_PORT`). You can attach `psql` from that server, but other machines cannot reach it. The app and
 > `migrate` connect over the compose network, so this port does not affect them. If you need to expose
 > it, edit `db.ports` in `docker-compose.yml` directly. When you do, keep in mind that **ports published
@@ -173,8 +177,8 @@ Expected output on the first start (the identifier on the second line differs ev
 ERDD server listening on :3000
 ```
 
-- The first line (bootstrap admin account created) appears **only when the server actually creates the
-  admin account**. If an account with that email already exists, the server does nothing. **It does not
+- The first line (bootstrap admin account created) appears only when the server actually creates the
+  admin account. If an account with that email already exists, the server does nothing. **It does not
   overwrite the existing password.** Changing `ADMIN_PASSWORD` and restarting therefore does not change
   the password. If you forgot it, another admin has to issue a reset link.
 - If either `ADMIN_EMAIL` or `ADMIN_PASSWORD` is empty, the server skips the bootstrap entirely.
@@ -214,7 +218,7 @@ because of the tool.
   `docker compose up -d --build` in 3.2, the build, migration, and start all happen there.
 - **Do not add a separate pre-deploy command (hook) for migrations.** The `migrate` service does that.
   If you run it from a hook, you must match the compose project name (`-p`) to the tool exactly. If it
-  does not match, **the migration runs against a separate, empty DB and stops there.**
+  does not match, the migration runs against a separate, empty DB and stops there.
 - **It is fine if the tool runs `docker compose pull` before deploying.** `migrate` and `app` have no
   image name, so they are skipped with `Skipped No image to be pulled`, and only `postgres:17` is pulled.
 - **Put environment variables into the tool.** If the tool writes them to a `.env` next to the compose
@@ -224,8 +228,8 @@ because of the tool.
   the default `erdd`, changing the value in the tool later makes `migrate` stop with an authentication
   failure (9.8).
 - ⚠️ **The stack name is the compose project name, and the volume name (`<stack name>_pgdata`) depends
-  on it.** If you rename the stack or create a new stack from the same repository, **a new, empty DB is
-  created**. The old volume remains but is not attached. This is the same trap as the project name item
+  on it.** If you rename the stack or create a new stack from the same repository, a new, empty DB is
+  created. The old volume remains but is not attached. This is the same trap as the project name item
   in 3.1.
 - **For HTTPS and `/ws`**, put a proxy in front as described in section 7. If the proxy runs on the same
   server, set `ERDD_PORT` to `127.0.0.1:3000` (section 7).
@@ -368,7 +372,7 @@ Other variables that do not affect operations:
 
 ## 6. After the first start
 
-**There is no self sign-up.** Accounts are invite-only: an admin issues a one-time invite link and
+There is no self sign-up. Accounts are invite-only: an admin issues a one-time invite link and
 hands it over. **ERDD does not send email.** The link appears on screen, and the admin delivers it.
 
 1. **Log in as the admin** with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from 3.3.
@@ -382,7 +386,8 @@ hands it over. **ERDD does not send email.** The link appears on screen, and the
 
 For the screens themselves, see the [user guide](user-guide.md).
 
-> ⚠️ **Invite and reset links are built from "the address the admin is using".** The link URL is
+> [!WARNING]
+> Invite and reset links are built from "the address the admin is using". The link URL is
 > assembled by appending a path to the origin the browser is currently connected to. If an admin
 > connects through `http://10.0.0.5:3000` and creates a link, that address is baked into the link and it
 > does not open from outside the office. **Admins must connect through the same public address as users**
@@ -471,7 +476,7 @@ docker compose ps -a
 docker compose logs app | tail -3
 ```
 
-`up -d --build` builds the new images, then **stops and removes the old `app` container**, runs
+`up -d --build` builds the new images, then stops and removes the old `app` container, runs
 `migrate`, and starts the new `app` when `migrate` exits with 0. **The old `app` is already stopped
 before `migrate` starts**, so the old code never runs on the new schema. You do not need to run
 `docker compose stop app` first. This order was verified by recording container events with
@@ -493,6 +498,8 @@ In Method B, keep the order by hand: `systemctl stop erdd` → `git pull` →
 - **The service is down during an upgrade.** There is only one process, so zero-downtime rolling
   replacement is not supported.
 - **Back up before you upgrade** (8.2). Migrations have no rollback scripts.
+- **If you run the server with a `PORT` other than 3000**, users must log in once more after you upgrade
+  from a version that always used the session cookie name `erdd_session` (9.6).
 
 ### 8.2 Back up and restore
 
@@ -603,7 +610,7 @@ they do not need a host port.
 
 ### 9.3 Migrations were not applied
 
-In **Method A**, `migrate` runs before `app`, and `app` starts only when `migrate` exits with 0. As long
+In Method A, `migrate` runs before `app`, and `app` starts only when `migrate` exits with 0. As long
 as you build both services together (3.2), the app never starts without the schema. Building only `app`
 is the exception. Rebuild both with `docker compose up -d --build`. On the other hand, **if `migrate`
 fails, the app does not start at all.** `up` ends with
@@ -615,7 +622,7 @@ After you fix the cause, run the same command again.
 docker compose up -d --build
 ```
 
-Symptom in **Method B** (or when you point the server at a DB without the schema): the server exits
+Symptom in Method B (or when you point the server at a DB without the schema): the server exits
 during startup. The log shows a Postgres error such as `relation "users" does not exist` and a stack
 trace, and the process ends. `ERDD server listening on` **does not appear.** Under systemd,
 `Restart=on-failure` keeps restarting it.
@@ -658,7 +665,7 @@ The expiry times are as follows.
   revoked → an admin issues a new one.
 - If it says **"이미 사용된 링크입니다"** (the link has already been used), someone already used it.
   - **An invite** cannot be reissued. Being used means an account for that email already exists. The
-    person logs in, or if they do not know the password, an admin issues a **reset link**.
+    person logs in, or if they do not know the password, an admin issues a reset link.
   - **A reset link** can be issued again.
 - **Reissuing a link kills the previous unused link.** Two links cannot be alive at once, so anyone
   holding an old link needs the new one.
@@ -670,14 +677,18 @@ The expiry times are as follows.
 **Cause:** The session cookie has `Secure`, but the connection is plain HTTP. The browser does not store
 the cookie, so the next request is unauthenticated again.
 
-There is **exactly one place in the whole codebase** that decides `Secure`. When `auth.login` in
+There is exactly one place in the whole codebase that decides `Secure`. When `auth.login` in
 `apps/server/src/routers/auth.ts` sets the cookie, it evaluates
 `secure: process.env.NODE_ENV === 'production'`. It reads this on every login request, so the process's
 current environment variable takes effect as is. The cookie middleware (`@fastify/cookie`) is registered
 without options, so there is no separate global default. Proxy headers (`X-Forwarded-Proto`) and the
 request scheme **play no part** in the decision. The Docker image hardcodes `NODE_ENV=production`. The
 cookie's other attributes are `httpOnly`, `SameSite=Lax`, `Path=/`, and a 14-day expiry, and its name is
-`erdd_session`.
+`erdd_session`. If you start the server with `PORT` set to a port other than 3000, the name becomes
+`erdd_session_<port>`. This keeps two servers on the same host that differ only by port from logging
+each other out. When you upgrade such an installation from a version that always used `erdd_session`,
+users must log in once more. Compose deployments are not affected, because the server always listens on
+3000 inside the container.
 
 **Fix:** Add HTTPS as described in section 7. If you only want a quick test without TLS, add one line to
 `.env` and recreate the app. **Do not use this in production.**
