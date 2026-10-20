@@ -109,8 +109,8 @@ npx erdd --help
 
 **문서도 함께 들어 있다.** 패키지 루트에 `README.md`(두 모드의 진입점)가 있고, 이 매뉴얼과
 [로컬 모드](local-guide.md)·[사용](user-guide.md)·[설치·운영](install.md) 매뉴얼 네 편이
-`node_modules/@erdd/cli/docs/` 에 그대로 동봉된다 — 저장소를 클론하지 않아도 읽을 수 있고 문서끼리의
-상대 링크도 살아 있다.
+언어별로 `node_modules/@erdd/cli/docs/en/`(영어 원본)·`node_modules/@erdd/cli/docs/ko/`(한국어 번역본)에
+그대로 동봉된다 — 저장소를 클론하지 않아도 읽을 수 있고 문서끼리의 상대 링크도 살아 있다.
 
 ### 2.3 방법 B: 저장소에서 직접 실행 (설치 없음)
 

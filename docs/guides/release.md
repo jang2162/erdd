@@ -8,7 +8,7 @@
 배포 형태는 **원본 TypeScript 그대로**다(빌드 산출물이 아니다 — 소비처에 `tsx` 가 필요하다).
 `apps/web` 의 빌드 산출물을 `packages/cli/web/` 로 복사해 **tarball 에 동봉**한다. 그래야 설치본에서도
 `erdd serve` 가 화면을 낸다. **문서도 함께 동봉된다** — 패키지 루트의 `README.md`·`LICENSE` 와
-`docs/manual/*.md` 네 편이다. 두 패키지 모두 `engines.node: ">=22"` 를 선언한다.
+`docs/manual/<lang>/*.md` 네 편(영어 원본 `en`·한국어 번역본 `ko`)이다. 두 패키지 모두 `engines.node: ">=22"` 를 선언한다.
 
 ---
 
@@ -26,7 +26,7 @@
 | `packages/cli` | tarball 그 자체다 — `src`(테스트 제외)·`skill`·`package.json`·`README.md`·`LICENSE` |
 | `packages/core` | tarball 그 자체이고, `apps/web` 이 의존하므로 웹 번들에도 든다 |
 | `apps/web` | 빌드 산출물이 `packages/cli/web/` 로 동봉된다(→ 「웹 번들 — `packages/cli/web/`」) |
-| `docs/manual/` | 네 편이 `prepack` 에서 `packages/cli/docs/` 로 복사돼 동봉된다(→ 「매뉴얼 — `packages/cli/docs/`」) |
+| `docs/manual/` | 언어 폴더마다 네 편이 `prepack` 에서 `packages/cli/docs/<lang>/` 로 복사돼 동봉된다(→ 「매뉴얼 — `packages/cli/docs/`」) |
 
 - **패키지 README 는 들고 루트 README 는 안 든다.** npm 은 패키지 디렉터리 밖을 팩하지 않는다 —
   `packages/cli/README.md`·`packages/core/README.md` 는 위 표의 경로에 이미 들어 있고, 저장소 루트의
@@ -477,23 +477,25 @@ npm 은 `files` 와 무관하게 **패키지 루트의** `LICENSE` 를 tarball �
 
 `packages/cli/README.md` 는 저장소에 커밋돼 있고 npm 이 `files` 와 무관하게 자동 동봉한다
 (npmjs.com 의 패키지 페이지도 그것을 렌더한다). 매뉴얼은 다르다 — **npm 은 패키지 디렉터리
-밖의 파일을 팩하지 않아서** `files` 에 `../../docs/manual/*.md` 를 적어도 들어가지 않는다.
-그래서 `packages/cli/scripts/bundle-docs.mjs` 가 `docs/manual/` 의 **네 편 전부**
-(`local-guide`·`cli-guide`·`user-guide`·`install`)를 `packages/cli/docs/` 로 복사하고
-`prepack` 이 `check-web-bundle.mjs` 다음에 그것을 돌린다. **매뉴얼 원본이 하나라도 없으면
-거기서 종료 코드 `1` 이다.**
+밖의 파일을 팩하지 않아서** `files` 에 `../../docs/manual/**/*.md` 를 적어도 들어가지 않는다.
+그래서 `packages/cli/scripts/bundle-docs.mjs` 가 `docs/manual/en/`·`docs/manual/ko/` 의 **네 편 전부**
+(`local-guide`·`cli-guide`·`user-guide`·`install`)를 `packages/cli/docs/en/`·`packages/cli/docs/ko/` 로
+복사하고 `prepack` 이 `check-web-bundle.mjs` 다음에 그것을 돌린다. **어느 언어 폴더에서든 매뉴얼
+원본이 하나라도 없으면 거기서 종료 코드 `1` 이다.** 언어를 더하면 스크립트의 `languages` 에도 더한다.
 
 - **`packages/cli/docs/` 는 커밋하지 않는다**(gitignore). 빌드 산출물이라 거기 있는 파일을 고쳐도
-  다음 팩에서 덮어써진다 — **원본인 `docs/manual/` 을 고친다.**
-- **넷을 다 넣는 것이 요점이다.** 문서끼리 상대 링크로 엮여 있어 일부만 넣으면 설치본에서 깨진
-  링크가 된다. 같은 디렉터리에 나란히 두면 원본 링크가 그대로 살아서 **링크를 고쳐 쓸 필요가 없다** —
+  다음 팩에서 덮어써진다 — **원본인 `docs/manual/<lang>/` 을 고친다.**
+- **언어마다 넷을 다 넣는 것이 요점이다.** 문서끼리 상대 링크로 엮여 있어 일부만 넣으면 설치본에서
+  깨진 링크가 된다. 언어 폴더 구조를 그대로 두고 같은 폴더에 나란히 두면 원본 링크가 그대로 살아서
+  **링크를 고쳐 쓸 필요가 없다** —
   `bundle-docs.mjs` 는 내용을 손대지 않고 복사만 한다.
 - **`web` 과 달리 CI artifact 로 넘기지 않는다.** 빌드가 필요 없는 단순 복사라 `prepack` 에서 하면
   CI 든 손으로 `pnpm pack` 하든 항상 최신 매뉴얼이 들어간다. 그래서 워크플로에는 문서 관련
   단계가 없다 — **넣지 마라.** prepack 이 어느 경로에서도 도는 것이 이 설계의 요점이다.
-- 동봉 문서를 가리키는 상대 링크(`./docs/local-guide.md`)가 `README.md` 에 있다. **저장소에서는
-  그 경로가 비어 있는 것이 정상이다**(팩할 때 생긴다).
-- ⚠️ **살아나는 것은 「매뉴얼 넷 사이」의 링크다.** `docs/manual/` **밖**을 가리키는 링크는
+- 동봉 문서를 가리키는 상대 링크가 패키지 README 에 있다 — `README.md` 는 `./docs/en/local-guide.md`,
+  `README.ko.md` 는 `./docs/ko/local-guide.md` 다. **저장소에서는 그 경로가 비어 있는 것이 정상이다**
+  (팩할 때 생긴다).
+- ⚠️ **살아나는 것은 「같은 언어 폴더의 매뉴얼 넷 사이」의 링크다.** `docs/manual/` **밖**을 가리키는 링크는
   동봉본에서 열리지 않는다 — 팩된 tarball 에서 그런 링크는 깨진다. **알고 그대로 두었다**:
   기여자용·저장소 내부 문서라 패키지를 설치한 사람이 볼 일이 없고, 절대 URL 로 바꾸면 저장소 안에서
   매일 쓰는 클릭 이동을 잃는 데다 저장소 주소나 기본 브랜치가 바뀌면 그때 깨진다.
