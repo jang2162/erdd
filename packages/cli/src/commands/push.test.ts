@@ -893,7 +893,7 @@ describe('push', () => {
     )!.entityId
 
   it('커밋 뒤 응답이 유실돼도 다시 push하면 사본이 생기지 않는다', async () => {
-    // 이 사이클의 핵심 회귀. 서버는 커밋을 마쳤는데 응답만 사라진 상황을 만든 뒤,
+    // 멱등성의 핵심 회귀. 서버는 커밋을 마쳤는데 응답만 사라진 상황을 만든 뒤,
     // 사용자가 아무것도 모르고 그냥 다시 push하는 것을 재현한다.
     const server = fullModel()
     await seed(server)

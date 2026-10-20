@@ -65,8 +65,8 @@ export function LocalSaveControls() {
       </Button>
 
       {/*
-        「버릴 시도가 diff 를 더럽힌다」가 이 사이클의 동기 중 하나다 — 버리는 수단이 없으면
-        드래프트가 재시작을 넘어 살아남아 없앨 방법이 아예 없다.
+        「버릴 시도가 diff 를 더럽힌다」를 막으려고 버리는 수단을 둔다 — 없으면 드래프트가
+        재시작을 넘어 살아남아 없앨 방법이 아예 없다.
       */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

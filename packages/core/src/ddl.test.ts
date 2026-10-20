@@ -257,12 +257,11 @@ describe('빈 물리명', () => {
     const sql = generateDdl(m, 'postgresql')
     expect(sql).not.toContain('CREATE TABLE ""')
     // t1의 유일한 컬럼은 GRD_CD인데, t2의 FK 컬럼(c4)도 물리명이 같은 GRD_CD라서
-    // 'GRD_CD' 부분 문자열 검사로는 t1이 빠졌는지 구분할 수 없다(정정: 원래 브리프는
-    // not.toContain('GRD_CD')였으나 buildSampleModel 픽스처와 충돌해 t2가 정상 포함돼도
-    // 항상 실패한다). GRD_CD는 t1에서만 PK이고 t2에서는 PK가 아니므로
-    // 'PRIMARY KEY (GRD_CD)'는 t1의 블록이 실제로 남아 있을 때만 나타나는 문자열이다
-    // (리뷰 라운드 2에서 실측: 이전 정정안 'CREATE TABLE MBR_GRD ('는 이 테스트가 t1.physicalName을
-    // 이미 ''로 바꾼 뒤라서 구현이 맞든 틀리든 절대 나타나지 않는 무의미한 단언이었다).
+    // 'GRD_CD' 부분 문자열 검사로는 t1이 빠졌는지 구분할 수 없다 — not.toContain('GRD_CD')는
+    // t2가 정상 포함돼도 항상 실패한다. GRD_CD는 t1에서만 PK이고 t2에서는 PK가 아니므로
+    // 'PRIMARY KEY (GRD_CD)'는 t1의 블록이 실제로 남아 있을 때만 나타나는 문자열이다.
+    // ⚠️ 'CREATE TABLE MBR_GRD ('로 단언하지 마라 — 이 테스트가 t1.physicalName을 이미 ''로
+    // 바꾼 뒤라 구현이 맞든 틀리든 절대 나타나지 않는다.
     expect(sql).not.toContain('PRIMARY KEY (GRD_CD)')
     expect(sql).toContain('MBR') // t2는 그대로 나온다
     const warns = ddlWarnings(m, 'postgresql')
@@ -539,7 +538,7 @@ describe('머릿말 메타', () => {
     expect(parseNameMeta(sql)).toBeNull()
   })
 
-  // ⚠️ 이번 사이클이 넓힌 자리 — 템플릿이 없어도 그룹이 있으면 머릿말이 나간다.
+  // ⚠️ 템플릿이 없어도 그룹이 있으면 머릿말이 나간다 — 머릿말은 템플릿만이 아니라 그룹도 싣는다.
   it('템플릿이 없어도 그룹이 있으면 머릿말이 나온다', () => {
     const sql = generateDdlRaw(m(), 'postgresql', { kind: 'all' }, DEFAULT_NAMING_RULES)
     expect(sql.split('\n')[0]!.startsWith('-- erdd:v2 ')).toBe(true)
@@ -653,9 +652,8 @@ describe('generateDdl — 부호 없음', () => {
    * 타입의 값 범위를 우리가 알 수 없으므로 **경고는 내지 않는다**(`resolveColumn` 의 기존 동작).
    * 반면 `CHECK` 는 낸다 — 저장 형태와 값 제약은 배타적이지 않다(위 케이스).
    *
-   * 이 사이클이 `ddlWarnings` 를 `resolveColumnType(c.type, …)` 에서 `resolveColumn(c, …)` 으로
-   * 옮기면서 **기존 `ORACLE_WARN` 의 빈도도 함께 바뀌었다**: 도메인 지정 컬럼에는 이제 뜨고
-   * (설계 §3.4 다 해소), **오버라이드가 있으면 안 뜬다.** 뒤쪽 갈래를 여기서 잠근다 — 위
+   * `ddlWarnings` 는 `resolveColumn(c, …)` 으로 판정하므로 `ORACLE_WARN` 은 도메인 지정 컬럼에도
+   * 뜨고, **오버라이드가 있으면 안 뜬다.** 뒤쪽 갈래를 여기서 잠근다 — 위
    * 케이스만 있으면 오버라이드에도 경고를 내도록 되돌려도 전건 초록이다(실증).
    */
   it('오버라이드가 있으면 경고는 내지 않는다 — CHECK 와 판정이 갈린다', () => {

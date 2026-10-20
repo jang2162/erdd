@@ -13,7 +13,7 @@ import { ResetPasswordPage } from './reset-password.js'
 const TOKEN = 'erdd_rst_TESTTOKEN'
 
 /**
- * zod 입력 검증 실패의 실제 응답 모양(실측 2026-08-08: `auth.resetPassword`에 7자 비밀번호를
+ * zod 입력 검증 실패의 실제 응답 모양(실측: `auth.resetPassword`에 7자 비밀번호를
  * 보내면 `BAD_REQUEST` + 이 JSON 배열 문자열이 오고, **같은 토큰으로 곧바로 다시 보내면
  * 200이다** — 토큰은 살아 있었다). `linkDead`는 붙지 않는다.
  */
@@ -112,7 +112,7 @@ describe('ResetPasswordPage', () => {
     expect(screen.getByText(/관리자에게/)).toBeDefined()
     expect(screen.queryByLabelText('새 비밀번호')).toBeNull()
     // **초대와 갈리는 경계다.** 소비된 재설정 링크는 다시 받을 수 있다 — 계정이 있으므로
-    // 관리자가 `admin.users.resetLink`로 새 링크를 낸다(실측 2026-08-09: 200). 그래서 여기는
+    // 관리자가 `admin.users.resetLink`로 새 링크를 낸다(실측: 200). 그래서 여기는
     // "관리자에게 문의"가 참이고, 로그인을 가리키면 안 된다(비밀번호를 모르는 사람이다).
     expect(screen.queryByRole('link', { name: '로그인' })).toBeNull()
   })

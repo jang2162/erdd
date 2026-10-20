@@ -225,8 +225,8 @@ function NamingRulesSection({
   // 매 글자마다 mutate 하지 않는다 — 로컬 draft 로 받고 blur 에 커밋한다.
   const [template, setTemplate] = useState(namingRules.tablePhysicalTemplate)
   const [logicalTemplate, setLogicalTemplate] = useState(namingRules.tableLogicalTemplate)
-  // 서버 값이 바뀌면 draft 를 맞춘다. ⚠️ projectId 를 deps 에 함께 넣는다 — 그룹 별칭 사이클에서
-  // 값만 넣었다가 「같은 값을 가진 다른 대상」으로 옮길 때 draft 가 남는 버그를 만들었다.
+  // 서버 값이 바뀌면 draft 를 맞춘다. ⚠️ projectId 를 deps 에 함께 넣는다 — 값만 넣으면
+  // 「같은 값을 가진 다른 대상」으로 옮길 때 draft 가 남는다.
   useEffect(() => {
     setTemplate(namingRules.tablePhysicalTemplate)
   }, [projectId, namingRules.tablePhysicalTemplate])
@@ -344,7 +344,7 @@ function TableOptionsSection({
   // 매 글자마다 mutate 하지 않는다 — 로컬 draft 로 받고 blur 에 커밋한다(템플릿 입력과 같은 관례).
   const [draft, setDraft] = useState(tableOptions)
   // ⚠️ projectId 를 deps 에 함께 넣는다 — 값만 넣으면 「같은 값을 가진 다른 프로젝트」로 옮길 때
-  // draft 가 남는다(그룹 별칭 사이클에서 실제로 겪은 버그).
+  // draft 가 남는다.
   useEffect(() => {
     setDraft(tableOptions)
   }, [projectId, tableOptions])

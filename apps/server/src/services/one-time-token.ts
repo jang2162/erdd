@@ -29,7 +29,7 @@ export function tokenExpiry(kind: TokenKind): Date {
  * 링크 화면이 폼을 지우는 판정의 유일한 근거다(설계 §6.1).
  *
  * **오류 코드만으로는 이것을 알 수 없다.** `BAD_REQUEST`는 zod 입력 검증 실패도 쓰는 코드이고,
- * 그것은 링크가 아니라 입력이 틀렸다는 뜻이다 — 실측(2026-08-08): `auth.resetPassword`에
+ * 그것은 링크가 아니라 입력이 틀렸다는 뜻이다 — 실측: `auth.resetPassword`에
  * 7자 비밀번호를 보내면 `BAD_REQUEST` + zod issue JSON 배열 문자열이 오는데, **같은 토큰으로
  * 곧바로 다시 보내면 200이다.** 토큰은 살아 있었다. `invitation.accept`도 같다.
  * 코드만 보고 종료성을 판정하면 살아 있는 링크가 죽은 것으로 표시되고 폼·입력이 통째로
@@ -53,7 +53,7 @@ export class LinkDeadError extends TRPCError {
    * 가능한 회복 경로를 포기한다. 오분류의 대가가 한쪽으로만 크다는 §6.1의 원칙 그대로다.
    *
    * 코드로는 갈릴 수 없다 — 소비된 초대(`BAD_REQUEST`)와 만료된 초대(`BAD_REQUEST`)가 같은
-   * 코드로 오고 message만 다르다(실측 2026-08-09). message 문자열로 갈래를 판정하는 것은
+   * 코드로 오고 message만 다르다(실측). message 문자열로 갈래를 판정하는 것은
    * `linkDead`에서 이미 버린 길이다(문구가 바뀌면 조용히 오분류된다).
    */
   readonly reissuable: boolean
@@ -78,9 +78,9 @@ export class LinkDeadError extends TRPCError {
  * **재발급 가능 여부는 종류에 따라 갈리므로 `kind`를 받는다.**
  * - **초대가 사용됨 ⇒ 재발급 불가.** `accept`는 계정 생성과 `usedAt` 설정이 한 트랜잭션이라,
  *   `usedAt`이 있으면 그 이메일의 계정이 **반드시 만들어졌다**. 그러면 새 초대는 존재할 수 없다 —
- *   `admin.users.invite`와 `invitation.create`가 둘 다 409로 거절한다(실측 2026-08-09).
+ *   `admin.users.invite`와 `invitation.create`가 둘 다 409로 거절한다(실측).
  * - **재설정이 사용됨 ⇒ 재발급 가능.** 계정이 있으니 관리자가 `admin.users.resetLink`로 새 링크를
- *   낼 수 있다(실측 2026-08-09: 200).
+ *   낼 수 있다(실측: 200).
  * - **기한이 지남 ⇒ 종류를 불문하고 재발급 가능.** 초대의 경우 계정이 아직 없을 수 있고, 없으면
  *   관리자가 새 초대를 만들 수 있다(실측: 취소된 초대의 이메일로 재발급 200). 취소도 이 갈래다 —
  *   서버가 `expiresAt`을 당기는 것이라 만료로 온다.

@@ -512,7 +512,7 @@ describe('suggestCompletions', () => {
 
 describe('NamingRulesSchema', () => {
   it('logicalSeparator 가 없는 옛 값에 기본값 _ 를 주입한다', () => {
-    // 기존 projects.naming_rules jsonb 의 실제 모양이다(2026-08-15 실측).
+    // 기존 projects.naming_rules jsonb 의 실제 모양이다(실측).
     const legacy = { case: 'UPPER_SNAKE', separator: '_', maxLengthBytes: 30 }
     expect(NamingRulesSchema.parse(legacy)).toEqual({
       case: 'UPPER_SNAKE',

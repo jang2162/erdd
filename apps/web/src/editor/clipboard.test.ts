@@ -57,7 +57,7 @@ describe('serializeTables', () => {
   })
 
   it('커스텀 항목 값은 필드 이름을 키로 실린다', () => {
-    // ⚠️ 브리프 정정: fullModel()의 c2.custom은 실제로는 { '개인정보여부': 'true' }로
+    // ⚠️ fullModel()의 c2.custom은 { '개인정보여부': 'true' }로
     // 필드의 *이름*을 키로 쓴다. 하지만 packages/core/src/custom-field.ts의
     // resolveCustomValue·customFieldUsageCount·customOptionUsageCount가 한결같이
     // `entity.custom[field.id]`로 읽는 데서 보듯, model.custom은 **customField의 id**를

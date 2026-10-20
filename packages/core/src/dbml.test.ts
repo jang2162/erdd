@@ -550,7 +550,7 @@ describe('머릿말 메타', () => {
     ).toBeNull()
   })
 
-  // ⚠️ 이번 사이클이 넓힌 자리 — 템플릿이 없어도 그룹이 있으면 머릿말이 나간다.
+  // ⚠️ 템플릿이 없어도 그룹이 있으면 머릿말이 나간다 — 머릿말은 템플릿만이 아니라 그룹도 싣는다.
   it('템플릿이 없어도 그룹이 있으면 // 머릿말이 나온다', () => {
     const out = generateDbmlRaw(m(), 'postgresql', { kind: 'all' }, {}, DEFAULT_NAMING_RULES)
     expect(out.split('\n')[0]!.startsWith('// erdd:v2 ')).toBe(true)

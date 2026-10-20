@@ -179,9 +179,9 @@ describe('editor store pruneSelection', () => {
 })
 
 /**
- * 이 사이클이 새로 만든 선택 액션들도 컬럼 불변식을 지켜야 한다
+ * 다중 선택 액션들도 컬럼 불변식을 지켜야 한다
  * (`selectedTableIds.length !== 1` → `selectedColumnIds`는 빈 배열).
- * main 트랙이 세운 불변식인데, 그 트랙은 이 액션들의 존재를 몰랐으므로 여기서 따로 잠근다.
+ * 불변식의 다른 테스트는 이 액션들을 거치지 않으므로 여기서 따로 잠근다.
  */
 describe('다중 선택 액션과 컬럼 불변식', () => {
   const s = () => useEditorStore.getState()

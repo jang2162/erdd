@@ -44,8 +44,8 @@ type SelectionSource = {
  * 스토어 선택 상태를 프로토콜의 selections 배열로 좁힌다. 테이블은 여러 건일 수 있다.
  *
  * **컬럼 선택은 싣지 않는다** — presence 프로토콜에 컬럼을 넣는 것은 canvas-clipboard 설계
- * D-C5가 명시적으로 범위 밖으로 뺀 결정이고(컬럼 선택은 로컬 전용), 이 사이클이 넓힌 것은
- * "테이블 선택을 **전부** 보낸다"뿐이다(설계 D4).
+ * D-C5가 명시적으로 범위 밖으로 뺀 결정이다(컬럼 선택은 로컬 전용). 테이블 선택은 **전부**
+ * 보낸다(설계 D4).
  */
 function selectionsOf(s: SelectionSource): PeerSelection[] {
   if (s.selectedTableIds.length > 0) {

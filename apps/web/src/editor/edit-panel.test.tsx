@@ -697,7 +697,8 @@ describe('EditPanel 용어 등록', () => {
     return screen.getByLabelText('논리명', { selector: '#col-c3-logical' }).closest('li')!
   }
 
-  // ⚠️ M1. 이 사이클이 "닫았다"고 선언한 이월 결함이 같은 카드의 세 번째 버튼에 그대로 있었다.
+  // ⚠️ 카드의 버튼마다 「치고 blur 없이 누르기」에서 방금 친 값을 읽어야 한다 — 한 버튼만 고치면
+  // 같은 카드의 다른 버튼(여기서는 용어 등록)에 같은 결함이 남는다.
   it('치고 blur 없이 용어 등록을 누르면 방금 친 이름으로 등록된다', async () => {
     mockTrpcFetch({ 'model.mutate': () => ({ data: { seq: 2 } }) })
     useEditorStore.getState().setLoaded(buildSampleModel(), 1, PROJECT)
