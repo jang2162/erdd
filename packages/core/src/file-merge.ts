@@ -545,7 +545,7 @@ export function gridPositions(server: ProjectModel, count: number): Position[] {
  * 필요한 이유: 3-way 병합은 엔티티 단위라 "담는 것"과 "담기는 것"의 관계를 모른다. 서버가
  * pull 이후 추가한 관계가 로컬에서 지운 테이블을 가리킬 수 있고, 로컬이 테이블을 옮겨 넣은
  * 그룹을 서버가 지웠을 수도 있다. 그대로 두면 FK가 NOT DEFERRABLE이라 반영이 500으로 터진다
- * (`tables.group_id`는 실제 FK다 — apps/server/src/db/schema.ts:92).
+ * (`tables.group_id`는 실제 FK다 — apps/server/src/db/schema.ts 의 `modelTables.groupId`).
  *
  * 처리 방식이 둘로 갈린다:
  * - **소속이 사라진 엔티티는 지운다**(컬럼·인덱스·관계) — 부모 없이 존재할 수 없다.
@@ -562,7 +562,7 @@ export function pruneDangling(model: ProjectModel): PrunedRef[] {
   const reason = '참조 대상이 삭제됨'
 
   // 존재 판정은 반드시 Object.hasOwn이다 — 이 함수의 존재 이유가 validateModelIntegrity를
-  // 만족시키는 것이고(integrity.ts:41 이하) 그쪽이 같은 판정을 쓴다. `col[id] !== undefined`는
+  // 만족시키는 것이고(integrity.ts 의 `validateModelIntegrity`) 그쪽이 같은 판정을 쓴다. `col[id] !== undefined`는
   // constructor·toString처럼 Object.prototype에 있는 이름에 대해 참이 되어, 무결성 검사는
   // "없는 참조"라 하는데 정리는 건너뛰는 어긋남이 생긴다.
   const has = (col: Record<string, unknown>, id: string): boolean => Object.hasOwn(col, id)

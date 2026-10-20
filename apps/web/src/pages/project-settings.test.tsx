@@ -60,7 +60,7 @@ function projectFixture(
 
 /**
  * 설정 화면의 미리보기가 쓰는 모델.
- * ⚠️ `model.get` 은 모델을 `{ model, seq }` 로 감싸 돌려준다(apps/server/src/routers/model.ts:22).
+ * ⚠️ `model.get` 은 모델을 `{ model, seq }` 로 감싸 돌려준다(apps/server/src/routers/model.ts 의 `get` 프로시저).
  * ⚠️ 값을 **폴백 예시(MBR/ORD)와 다르게** 둔다 — 같으면 「현재 모델을 쓴다」와 「고정 예시로
  * 떨어졌다」를 테스트가 구분하지 못한다.
  */

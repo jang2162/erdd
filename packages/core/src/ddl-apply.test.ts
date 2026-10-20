@@ -117,15 +117,12 @@ describe('applyDdlImport', () => {
     expect(applyDdlImport(model, plan, newId)).toEqual(model)
   })
 
-  // 브리프 원안은 `generateDdl(original)`(인자 1개)이었으나 실제 시그니처는
-  // `generateDdl(model: ProjectModel, dialect: Dialect, scope?: DdlScope)`로 dialect가
-  // 필수다(기본값 없음, packages/core/src/ddl.ts:193). 인자 1개로는 컴파일이 안 되므로
-  // 이 테스트에서 이미 쓰는 dialect인 'postgresql'을 명시했다. 자세한 내용은
-  // task-7-report.md 참고.
-  // 브리프의 회귀 방어 픽스처 — 부모·자식 테이블과 관계 1개, PK와 다른 컬럼의 인덱스 1개,
+  // `generateDdl(model, dialect, scope?)` 는 dialect 가 필수다(기본값 없음, ddl.ts 의 `generateDdl`).
+  // 이 테스트에서 이미 쓰는 'postgresql' 을 명시한다.
+  // 회귀 방어 픽스처 — 부모·자식 테이블과 관계 1개, PK와 다른 컬럼의 인덱스 1개,
   // 테이블 comment, autoIncrement 컬럼, defaultValue 컬럼을 포함한다(packages/core의
-  // ddl-import.test.ts roundTripModel과 같은 모양). shape()도 관계·인덱스까지 비교하도록
-  // 넓혔다 — 원래는 테이블·컬럼만 비교해 관계·인덱스 왕복 손상을 놓쳤다.
+  // ddl-import.test.ts roundTripModel과 같은 모양). ⚠️ shape()는 관계·인덱스까지 비교한다 —
+  // 테이블·컬럼만 비교하면 관계·인덱스 왕복 손상을 놓친다.
   it('왕복 — 내보낸 DDL을 다시 가져오면 같은 모델이 나온다(id·좌표 제외)', () => {
     seq = 0
     const original = createEmptyModel()

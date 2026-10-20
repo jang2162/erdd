@@ -146,7 +146,7 @@ describe('diff', () => {
     const server = fullModel()
     await seed(server)
     // 테이블 파일을 통째로 지운다 — added/removed 엔트리는 항상 fields: []이므로
-    // (model-diff.ts) diff.ts:34의 "fields가 없으면 헤드만 반환" 분기를 지나가게 한다.
+    // (model-diff.ts) diff.ts 의 `section` 이 가진 "fields가 없으면 헤드만 반환" 분기를 지나가게 한다.
     await rm(join(dir, 'erdd/tables/MBR_DTL.yaml'))
     const { client } = stub(server)
     expect(await diff({ cwd: dir, json: false, yes: false, strict: false, client })).toBe(0)

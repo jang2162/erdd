@@ -530,7 +530,7 @@ describe('resolveManyToMany', () => {
 
   it('교차 테이블의 좌표·그룹을 JunctionSpec 그대로 둔다', () => {
     const base = m2mBase()
-    // groupId 를 실제 그룹으로 두어야 무결성 검사를 통과한다(integrity.ts:41).
+    // groupId 를 실제 그룹으로 두어야 무결성 검사를 통과한다(integrity.ts 의 `validateModelIntegrity`).
     const m = {
       ...base,
       tableGroups: {

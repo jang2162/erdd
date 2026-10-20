@@ -273,11 +273,9 @@ describe('빈 물리명', () => {
     const m = buildSampleModel()
     m.columns['c3']!.physicalName = '' // c3는 t2의 컬럼
     const sql = generateDdl(m, 'postgresql')
-    // 정정: MBR은 예약어도 아니고 SAFE 패턴(영문자/숫자/밑줄)이라 quoteIdentifier가
-    // 인용하지 않는다(identifier.ts:34) — 원래 브리프의 'CREATE TABLE "MBR"'(따옴표 포함)는
-    // postgresql 출력에 결코 나타나지 않아 구현 여부와 무관하게 항상 통과하는 무의미한 단언이었다
-    // (되돌리기 실증으로 확인: 구현 삭제 상태에서도 이 단언은 통과했다). 실제 출력 형식(따옴표 없음)에
-    // 맞춰 구분력 있는 단언으로 정정한다.
+    // MBR은 예약어도 아니고 SAFE 패턴(영문자/숫자/밑줄)이라 quoteIdentifier(identifier.ts)가
+    // 인용하지 않는다. ⚠️ 그래서 단언은 따옴표 없는 형태여야 한다 — 'CREATE TABLE "MBR"' 로 쓰면
+    // postgresql 출력에 결코 나타나지 않아, 구현을 지워도 통과하는 구분력 없는 단언이 된다.
     expect(sql).not.toContain('CREATE TABLE MBR (')
     expect(sql).toContain('MBR_GRD') // t1은 그대로
     const warns = ddlWarnings(m, 'postgresql')

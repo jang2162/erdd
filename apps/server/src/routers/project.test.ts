@@ -150,7 +150,7 @@ describe.skipIf(!url)('project', () => {
   })
 
   it('project.get grants canEdit and canManage to the org owner (also auto-added as project admin)', async () => {
-    // project.create가 생성자를 projectMembers role='admin'으로 자동 삽입하므로(project.ts:36-40),
+    // project.create가 생성자를 projectMembers role='admin'으로 자동 삽입하므로(project.ts 의 `create` 트랜잭션),
     // 여기서 owner는 isOrgManager이면서 동시에 projectRole==='admin'이다 — 이 테스트는
     // canManage = isOrgManager || projectRole === 'admin'의 어느 가지가 true를 만드는지
     // 구분하지 못한다. 라우터 배선 회귀(전혀 허용 안 하는 경우)는 여전히 잡는다.

@@ -583,7 +583,7 @@ describe('pruneDangling', () => {
 
   it('매달린 스칼라 참조는 엔티티를 지우지 않고 null로 끊는다', () => {
     // 로컬이 테이블을 g1으로 옮겼는데 서버가 g1을 지운 상황. tables.group_id는 실제 FK라
-    // (apps/server/src/db/schema.ts:92) 그대로 두면 반영이 FK 위반으로 터진다.
+    // (apps/server/src/db/schema.ts 의 `modelTables.groupId`) 그대로 두면 반영이 FK 위반으로 터진다.
     const m = fullModel()
     delete m.tableGroups['g1'] // tb1·tb3이 g1을 가리킨다
     delete m.domains['d1'] // c2.domainId와 t1.domainId가 d1을 가리킨다

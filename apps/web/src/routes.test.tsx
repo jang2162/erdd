@@ -74,7 +74,7 @@ describe('routes', () => {
   // react-router가 클라이언트에서 처리해 서버에 닿지 않는다. 그렇다고 클라이언트가 project id 를
   // 계산해서는 안 된다 — 로컬 서버가 실제로 여는 프로젝트는 `config.projectId ?? LOCAL_PROJECT_ID`
   // 라 연결형 설정에서는 상수와 다를 수 있다(리뷰 I-3). 그래서 전체 이동으로 `/`를 다시 요청해
-  // 서버의 판정(server.ts:121)을 그대로 태운다.
+  // 서버의 판정(packages/cli/src/local/server.ts 의 `/` 302 라우트)을 그대로 태운다.
   it('로컬 모드에서 / 는 project id 를 계산하지 않고 서버로 전체 이동한다', async () => {
     renderAt('/', {
       'auth.me': () => ({
