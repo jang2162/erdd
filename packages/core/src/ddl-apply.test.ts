@@ -117,8 +117,7 @@ describe('applyDdlImport', () => {
     expect(applyDdlImport(model, plan, newId)).toEqual(model)
   })
 
-  // `generateDdl(model, dialect, scope?)` 는 dialect 가 필수다(기본값 없음, ddl.ts 의 `generateDdl`).
-  // 이 테스트에서 이미 쓰는 'postgresql' 을 명시한다.
+  // `generateDdl` 은 dialect 기본값이 없다 — 이 테스트가 쓰는 'postgresql' 을 명시한다.
   // 회귀 방어 픽스처 — 부모·자식 테이블과 관계 1개, PK와 다른 컬럼의 인덱스 1개,
   // 테이블 comment, autoIncrement 컬럼, defaultValue 컬럼을 포함한다(packages/core의
   // ddl-import.test.ts roundTripModel과 같은 모양). ⚠️ shape()는 관계·인덱스까지 비교한다 —

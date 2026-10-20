@@ -25,8 +25,9 @@ IDE, 실행 중인 dev 서버(`tsx watch`·vite 는 세션을 넘어 살아남�
 ## 1. 워크트리 만들기
 
 **Orca 가 살아 있으면(`orca status --json` 이 running) Orca 로 만든다** — `.ruler/orca/05-switch.md`
-「Orca 가 살아 있으면 워크트리도 Orca 로 만든다」. 반환 JSON 에 워크트리 id 가 있고 `orca.yaml` 의
-셋업(`mise trust`·`mise install`·`pnpm install`·codegraph 인덱스)이 돈다.
+「Orca 가 살아 있으면 워크트리도 Orca 로 만든다」. 반환 JSON 에 워크트리 id 가 있고, 저장소 셋업 정책에
+따라 `orca.yaml` 의 셋업(`mise trust`·`mise install`·`pnpm install`·codegraph 인덱스)이 돈다(강제하려면
+`--setup run`).
 
 ```bash
 orca worktree create --name <작업명> --base-branch main --json
@@ -325,8 +326,10 @@ heredoc 만의 문제가 아니다 — `task-create --spec "…"` · `send --bod
     재현성이 높다.
   - ⚠️ 브리프에 `.playwright-mcp/` 를 **저장소에 남기지 않게** 적는다. 스크린샷은 그 아래에 찍고
     끝에 저장소 밖으로 옮긴 뒤 지운다(경로 제한은 `browseros-neo` 스택 `02-playwright.md`).
-- **렌더 결함은 백그라운드 탭으로 계측되지 않는다**([setup.md](setup.md) 「브라우저 확장으로 렌더
-  결함을 계측하려 들지 마라」 절).
+- **에디터 캔버스가 보이는 스모크는 neo 백그라운드 탭에서 하지 않는다** — 노드 크기를
+  ResizeObserver 로 재므로 노드 대부분이 `visibility: hidden` 으로 남아 렌더 버그와 구분되지 않는다.
+  `browser` 스택 `03-cdp.md` 예외 ①대로 독립 브라우저로 본다([setup.md](setup.md) 「백그라운드 탭에서는
+  에디터 캔버스가 제대로 그려지지 않는다」 절).
 
 ### ⚠️ 브라우저 스모크는 「확인 절차」가 아니라 결함을 잡는 게이트다
 

@@ -57,7 +57,9 @@ PORT=3001 ERDD_SERVER_PORT=3001 ERDD_WEB_PORT=5174 pnpm dev
 - **세션 쿠키 이름은 서버 포트로 갈린다** — 기본 포트 3000 은 `erdd_session`, 그 밖은
   `erdd_session_<포트>`(`apps/server/src/context.ts` 의 `sessionCookieName`). 쿠키는 포트를 구분하지
   않으므로 이름이 같으면 한 트랙의 로그인이 다른 트랙의 세션을 끊는다. 이름은 서버가 `PORT` 로
-  정하므로 트랙마다 따로 할 일은 없다.
+  정하므로 트랙마다 따로 할 일은 없다. ⚠️ `apps/server/src/main.ts` 가 `PORT` 를 `buildServer` 에
+  넘기는 것이 이 규칙의 유일한 배선이다 — 그 인자를 빠뜨리면 모든 서버가 `erdd_session` 으로
+  돌아가는데, 테스트는 `main.ts` 를 부르지 않으므로 잡지 못한다.
 - 워크트리 생성·정리 절차는 [worktree-workflow.md](worktree-workflow.md).
 
 ## 포맷·린트·훅
@@ -217,7 +219,7 @@ pnpm -s -C apps/server typecheck        # 또는 패키지별 — 오류가 그�
 헤드리스 B 는 `ws` 를 pnpm 스토어 경로(`node_modules/.pnpm/ws@*/node_modules/ws`)에서 직접
 import 하면 된다.
 
-### ⚠️ 브라우저 확장으로 렌더 결함을 계측하려 들지 마라
+### ⚠️ 백그라운드 탭에서는 에디터 캔버스가 제대로 그려지지 않는다
 
 백그라운드 탭에서는 `requestAnimationFrame`·`ResizeObserver` 가 돌지 않는다 — 원리와 대안(로그인이
 필요 없으면 독립 브라우저)은 `browseros-neo` 스택 `01-limits.md` 「neo 의 한계에 걸리는 확인은 neo
