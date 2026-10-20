@@ -16,18 +16,15 @@
 
 ## Overview
 
-Database design in Korean teams usually depends on naming standards: approved word, term, and domain
+Korean teams usually design databases around naming standards: approved word, term, and domain
 dictionaries, plus table definition documents. Most ERD tools ignore those standards or keep the diagram
-far from the code. ERDD lets you design an ERD together in the browser while checking every name against
-your dictionaries. Its CLI stores the schema as YAML files in your repository, so pull requests and AI
-agents read the same model. ERDD is for teams and individual developers who design relational schemas
-and follow a naming standard.
+far from the code. ERDD checks every name against your dictionaries while you design together in the
+browser, and its CLI keeps the schema as YAML files that pull requests and AI agents read. It runs as a
+shared server for your team (**server mode**) or on your repository files with no server (**local mode**).
+It is for teams and developers who design relational schemas and follow a naming standard.
 
 > [!NOTE]
 > The editor UI and CLI messages are currently in Korean.
-
-ERDD runs in two modes. In **server mode**, you host a server and several people edit together. In
-**local mode**, you open the same editor on YAML files in your repository without any server.
 
 ## Features
 
