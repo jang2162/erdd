@@ -384,7 +384,7 @@ The same rules apply when you enter a logical name in the edit panel, when you c
 | `{커스텀:항목이름}` (custom:field name) | The value of the **table** custom field with that name (if none, the definition's default; if that is also missing, empty) |
 
 - **Underscores around an empty slot collapse.** A table without a group comes out as `TB_ORD`, not `TB__ORD`.
-- **⚠️ Only the underscore collapses, not the literal after the slot.** With a format such as `TB_{그룹별칭}_LOG`, a table with an empty alias comes out as `TB_LOG`. Separators other than underscores remain (`TB_{그룹별칭}-LOG` gives `TB_-LOG`).
+- ⚠️ **Only the underscore collapses, not the literal after the slot.** With a format such as `TB_{그룹별칭}_LOG`, a table with an empty alias comes out as `TB_LOG`. Separators other than underscores remain (`TB_{그룹별칭}-LOG` gives `TB_-LOG`).
 
   **DDL you exported with an older ERDD version may have different table names from DDL you export now.** If you use such a format and keep exported DDL, compare it once.
 - **A variable that does not exist leaves its slot empty.** A typo (`{그룹별칙}`) does not break the screen, and the preview shows that slot empty, so you notice it immediately.
@@ -405,9 +405,9 @@ The same rules apply when you enter a logical name in the edit panel, when you c
 - Even if the physical name is empty, the table is written to the DDL if there is a prefix (`TB_MBR`). The model check's **필수 값 누락** (Missing required value) still appears, as a reminder to fill it in.
 - **The round trip is closed.** The first line of exported DDL and DBML carries a single comment, `-- erdd:v2 {…}` (`// erdd:v2 …` in DBML), that records which final name came from which part. If you import that file again as is, `ORD` goes into the physical name field. You do not need to remove the prefix by hand.
 - **That line carries groups too.** It records which group each table belonged to, along with that group's alias, color, and comment. When it is read back, the groups are recreated and the tables go into them. If a group with the same name already exists, that group is used and its existing alias, color, and comment are not overwritten. If the header's alias differs from the existing one, ERDD reports **머릿말의 별칭 … 과 기존 그룹의 별칭 … 가 달라 기존 값을 유지합니다** ("The header's alias … differs from the existing group's alias …, so the existing value is kept"). Group screen coordinates are not restored (they are laid out again the first time you open the group view).
-- **⚠️ If you use groups, the comment appears on the first line of the DDL even without a format.** The line is written if even one of the exported tables belongs to a group. (Even if the project has groups, if you narrow the scope and export only tables without a group, the line is not written. The header looks only at the exported list.) In a project that uses neither groups nor formats, the line is not written. So DDL exported from the same project gains or loses that one line when the first table goes into a group or the last one leaves. If you keep outputs under version control and compare them as is, this shows up as a difference (it is a header, not a content difference).
+- ⚠️ **If you use groups, the comment appears on the first line of the DDL even without a format.** The line is written if even one of the exported tables belongs to a group. (Even if the project has groups, if you narrow the scope and export only tables without a group, the line is not written. The header looks only at the exported list.) In a project that uses neither groups nor formats, the line is not written. So DDL exported from the same project gains or loses that one line when the first table goes into a group or the last one leaves. If you keep outputs under version control and compare them as is, this shows up as a difference (it is a header, not a content difference).
 - An `erdd:v1` header is **also read**. However, v1 has no place for groups, so only the physical and logical names are restored, not the groups.
-- **⚠️ In two cases, however, the prefix gets baked into the physical name.**
+- ⚠️ **In two cases, however, the prefix gets baked into the physical name.**
   - You imported **after removing the `-- erdd:v2 …` comment on the first line** of the file
   - You **pasted a single `CREATE TABLE` statement cut out of the file**. The header does not come along, so there is no table of names
 
@@ -432,7 +432,7 @@ The same rules apply when you enter a logical name in the edit panel, when you c
 
 **Limits**
 
-- **⚠️ It is for outputs only.** Dictionary lookup, word checks, and physical name generation look at the logical name you entered as is. That way you only need to register `주문` in the dictionary, and changing the format does not put the dictionary out of step.
+- ⚠️ **It is for outputs only.** Dictionary lookup, word checks, and physical name generation look at the logical name you entered as is. That way you only need to register `주문` in the dictionary, and changing the format does not put the dictionary out of step.
 - If you use `{물리명}` in the logical name format, it gets **the value before the physical name format is applied** (the two formats do not feed into each other).
 - The check that omits the comment when the logical and physical names are equal uses **the composed names on both sides**.
 - **The round trip also closes for logical names.** The header records the logical name part too, so reading it back brings in `주문`. The header takes priority over the composed logical name in the comment (`회원관리_주문`) (the description is taken from the comment as is). Without a header, the whole composed logical name goes into the logical name field, the same as for physical names.
