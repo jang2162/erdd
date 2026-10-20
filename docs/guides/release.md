@@ -80,9 +80,17 @@ git log --oneline "$TAG"..origin/main -- packages/cli packages/core apps/web doc
 #    packages/cli/package.json  의 "version"  — 항상
 #    packages/core/package.json 의 "version"  — packages/core 를 고쳤으면 반드시(아래 가드가 죽인다)
 
-# 2) 커밋하고 태그를 GitHub 원격에 push 한다. 게시 파이프라인은 이 태그에서만 돈다
+# 2) CHANGELOG.md 의 "## [Unreleased]" 내용을 "## [<버전>] - <YYYY-MM-DD>" 절로 옮기고
+#    빈 "## [Unreleased]" 를 그 위에 다시 둔다. 맨 아래 비교 링크도 새 태그 기준으로 고친다
+
+# 3) 커밋하고 태그를 GitHub 원격에 push 한다. 게시 파이프라인은 이 태그에서만 돈다
 git tag cli-v0.1.0 && git push <GitHub 원격> cli-v0.1.0
 ```
+
+**`CHANGELOG.md` 는 태그 전에 옮긴다.** 태그 커밋에 그 버전의 절이 없으면 게시본에 대응하는 변경 기록이
+영영 `[Unreleased]` 아래에 섞여, 다음 릴리스 때 어느 항목이 어느 버전 것인지 가를 수 없다. 형식은 Keep a
+Changelog 이고 영어로 쓴다(`public-docs` 스택 「영어가 원본이고, 번역본은 원본과 파일 이름·구조·섹션
+순서가 같다」). 루트 파일이라 tarball 에는 들지 않는다.
 
 ⚠️ **태그는 GitHub 원격(`jang2162/erdd`)에 민다.** 게시는 GitHub Actions 가 하므로 다른 원격(옛 저장소
 미러 등)에 밀면 아무것도 돌지 않는다 — 오류도 없이 게시가 시작되지 않는다. 체크아웃마다 원격 이름이
