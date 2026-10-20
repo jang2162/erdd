@@ -149,7 +149,7 @@ followed by an English translation in parentheses where it matters.
 | connected project | 연결된 프로젝트 | |
 | source of truth | 진실 원천 | |
 | working copy | 작업 사본 | |
-| baseline | 기준선 | `.erdd/base.json` |
+| baseline | 기준 시점 | `.erdd/base.json`. The same word as the CLI message `기준 시점이 없습니다` |
 | 3-way merge | 3-way 병합 | |
 | draft | 드래프트 | `.erdd/draft.json` |
 | unsaved edits | 미저장 편집 | |
