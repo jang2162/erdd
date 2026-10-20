@@ -90,7 +90,7 @@ DDL 에 있다) 그것을 제약으로 오인한다. **정규식 가드로 막�
 
 - **파서는 `CREATE TABLE`·`ALTER TABLE ADD CONSTRAINT`·`CREATE INDEX`·`COMMENT ON` 만 안다.**
   뷰·프로시저·트리거·시퀀스는 건너뛴다.
-- **테이블 수준 절 9종이 유령 컬럼이 된다**(선재 결함). MySQL `KEY`/`INDEX`/`FULLTEXT KEY`/
+- **테이블 수준 절 9종이 유령 컬럼이 된다**. MySQL `KEY`/`INDEX`/`FULLTEXT KEY`/
   `SPATIAL INDEX`, PostgreSQL `EXCLUDE USING`/`LIKE … INCLUDING`, Oracle `SUPPLEMENTAL LOG DATA`,
   MSSQL `INDEX … NONCLUSTERED`/`PERIOD FOR SYSTEM_TIME` 이 `parseCreateTable` 의 항목 라우팅에
   걸리지 않아 `parseColumnDef` 로 떨어지고, 첫 토큰이 컬럼명·둘째 토큰이 타입으로 읽힌다.
@@ -100,8 +100,8 @@ DDL 에 있다) 그것을 제약으로 오인한다. **정규식 가드로 막�
 - **인용 없는 비식별자 문자로 된 컬럼명이 경고 없이 통과한다.** `IDENT_PART` 의 부정 문자 클래스가
   제외하는 것은 SQL 구분자·인용 문자뿐이라 그 밖의 문자로만 이뤄진 첫 토큰은 무엇이든 컬럼 이름이
   된다(`@x`·`a-b`·`a+b`·`#t`·`1A`). **의도한 대상(`회원번호`·이모지)과 같은 문턱을 공유한다.**
-  실질 영향은 **경고 신호의 상실**이다(전에는 `skipped-statement` 경고가 떠서 「이 줄을 못 읽었다」를
-  알 수 있었다). 정규식을 되돌리면 비ASCII 이름이 다시 죽으므로, 고친다면 **「컬럼은 만들되 이름이
+  실질 영향은 **경고 신호의 상실**이다 — 이런 이름은 `skipped-statement` 경고 없이 컬럼이 되어
+  「이 줄을 잘못 읽었다」를 알 길이 없다. 정규식을 되돌리면 비ASCII 이름이 다시 죽으므로, 고친다면 **「컬럼은 만들되 이름이
   비식별자 문자를 포함하면 경고를 남긴다」** 쪽이다.
 - **인용 없는 무효 제약명이 따옴표째 이름이 된다** — `CONSTRAINT 'x' UNIQUE (A)` → `uq('x')`.
   `unquoteIdentifier` 가 작은따옴표를 벗기지 않는다. **4개 방언 어디서도 무효인 SQL 이라 조치 불필요.**
@@ -118,11 +118,11 @@ DDL 에 있다) 그것을 제약으로 오인한다. **정규식 가드로 막�
 
 ### 가져오기가 잃는 것
 
-- ~~MySQL 의 `UNSIGNED` 와 테이블 옵션이 유실된다~~ → **2026-09-03 해소.** 부호 없음은 논리 타입의
+- **MySQL 의 `UNSIGNED` 와 테이블 옵션은 담을 수 있는 만큼만 보존된다.** 부호 없음은 논리 타입의
   **1급 속성**(정수 3종 `SMALLINT`·`INT`·`BIGINT` 에만 붙는다)이고, 테이블 옵션(`ENGINE`·
-  `DEFAULT CHARSET`·테이블 수준 `COLLATE`)은 **프로젝트 수준 방언별 설정**으로 들어갔다
-  (마이그레이션 0014). 왕복이 닫혔고 `roundtrip.test.ts` 의 단언도 **보존**으로 뒤집혔다
-  → [설계](../superpowers/specs/2026-09-03-unsigned-and-table-options-design.md)
+  `DEFAULT CHARSET`·테이블 수준 `COLLATE`)은 **프로젝트 수준 방언별 설정**이다(마이그레이션 0014).
+  그 범위의 왕복 보존은 `roundtrip.test.ts` 가 단언한다. 아래가 그 범위 밖에서 잃는 것이다
+  (설계 배경: [설계](../superpowers/specs/2026-09-03-unsigned-and-table-options-design.md)).
   - ⚠️ **`DECIMAL`·`FLOAT`·`DOUBLE` 의 부호 없음은 일부러 열지 않았다** — MySQL 8.0.17 부터
     deprecated 다. 들어오면 **떨어뜨리고 `unsigned-dropped` 경고**를 낸다.
   - ⚠️ **비 MySQL 방언으로 내보내면 기본 타입 + `CHECK (col >= 0)` 이 나간다.** 부호 없음을 표현할
@@ -130,7 +130,7 @@ DDL 에 있다) 그것을 제약으로 오인한다. **정규식 가드로 막�
   - ⚠️ **테이블마다 옵션이 다른 DDL 을 가져오면 다수결로 하나를 고르고 `table-option-conflict`
     경고를 낸다.** 프로젝트 설정은 테이블마다 다른 값을 담지 못한다.
 - **정수 표시폭(`int(11)`·`bigint(20)`)은 읽고 버린다.** MySQL 5.7 `mysqldump` 의 표준 모양이라
-  받아들이지 않으면 그 덤프 전체가 미지 타입이 됐다(2026-09-03 이전이 그랬다). 표시폭 자체는
+  받아들이지 않으면 그 덤프 전체가 미지 타입이 된다. 표시폭 자체는
   MySQL 8.0.17 부터 deprecated 라 모델에 담지 않는다 — `int(11)` 도 `int` 도 똑같이 `INT` 다.
 - **가져온 컬럼의 도메인이 비어 있다.** 내보내기가 도메인을 타입으로 풀어 쓰므로 DDL 에 도메인의
   흔적이 없다. 타입만 채우고 `domainId` 는 `null` 이다 — 도메인 자동 매칭은 후속이다.
@@ -148,7 +148,7 @@ DDL 에 있다) 그것을 제약으로 오인한다. **정규식 가드로 막�
 - **MSSQL 코멘트는 왕복하지 않는다.** 내보내기가 `EXEC sys.sp_addextendedproperty` 로 내는데 그 문장
   형태는 파싱 범위 밖이다. 구조는 왕복하고 논리명만 물리명으로 떨어지며 경고가 남는다.
   **이 동작은 테스트로 고정돼 있어 나중에 파싱을 구현하면 그 테스트가 깨져 재검토를 강제한다.**
-- **DDL 에 적힌 이름이 기존 인덱스 이름과 겹치면 동명 인덱스가 2개 만들어진다**(선재 결함).
+- **DDL 에 적힌 이름이 기존 인덱스 이름과 겹치면 동명 인덱스가 2개 만들어진다**.
   무명 UNIQUE 의 자동 이름은 충돌을 정확히 피하는데 **DDL 에 적힌 이름은 `used` 확인 없이 그대로 쓴다.**
   `alter table t add constraint ux1 unique (a)` + `create unique index ux1 on t (a)` 로 재현된다.
 - **기존 테이블과의 병합·재동기화가 없다** — 이름이 겹치면 건너뛴다. 운영 DB 가 바뀐 뒤 다시 가져오는
@@ -168,7 +168,7 @@ DDL 에 있다) 그것을 제약으로 오인한다. **정규식 가드로 막�
   왔는가」를 *다른 목적의 옵셔널 필드가 존재하는지*로 판정한다. **DDL 파서가 언젠가 `oneToOne` 을
   채우면(예: UNIQUE 동반 FK 를 1:1 로 읽는 개선) 조용히 뒤집힌다.** 명시 필드
   (`source: 'dbml' | 'ddl'`)나 `planDdlImport` 옵션이 안전하다. 코드 주석이 위험을 설명한다.
-- **dangling 인덱스 컬럼 처리가 DDL 과 DBML 에서 갈린다**(선재 결함). 같은 모델에서 DDL 은
+- **dangling 인덱스 컬럼 처리가 DDL 과 DBML 에서 갈린다**. 같은 모델에서 DDL 은
   columnId 를 이름처럼 출력하고 DBML 은 그 컬럼을 빼고 낸다. **DBML 쪽이 옳고 DDL 쪽이 결함이다.**
   모델 정합성상 dangling 은 없어야 하므로 실사용 영향은 없다고 본다.
 - **인라인 `[pk]` 와 `indexes { [pk] }` 가 공존하며 서로 다른 컬럼을 가리키면 뒤에 오는 쪽이 `isPk` 를
