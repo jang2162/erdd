@@ -23,7 +23,7 @@
 
 | 경로 | 게시물에 드는 까닭 |
 |---|---|
-| `packages/cli` | tarball 그 자체다 — `src`(테스트 제외)·`skill`·`package.json`·`README.md`·`LICENSE` |
+| `packages/cli` | tarball 그 자체다 — `src`(테스트 제외)·`skill`·`package.json`·`README.md`·`README.ko.md`·`LICENSE` |
 | `packages/core` | tarball 그 자체이고, `apps/web` 이 의존하므로 웹 번들에도 든다 |
 | `apps/web` | 빌드 산출물이 `packages/cli/web/` 로 동봉된다(→ 「웹 번들 — `packages/cli/web/`」) |
 | `docs/manual/` | 언어 폴더마다 네 편이 `prepack` 에서 `packages/cli/docs/<lang>/` 로 복사돼 동봉된다(→ 「매뉴얼 — `packages/cli/docs/`」) |

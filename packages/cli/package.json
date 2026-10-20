@@ -30,7 +30,8 @@
     "!src/**/*.test.ts",
     "skill",
     "web",
-    "docs"
+    "docs",
+    "README.ko.md"
   ],
   "type": "module",
   "main": "./src/main.ts",
