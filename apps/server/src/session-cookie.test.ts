@@ -100,6 +100,38 @@ describe.skipIf(!url)('기본이 아닌 포트의 서버는 포트 붙은 쿠키
     expect(cleared?.value).toBe('')
   })
 
+  function post(path: string, cookies: Record<string, string>, input: unknown) {
+    return app.inject({
+      method: 'POST',
+      url: `/trpc/${path}`,
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify(input),
+      cookies,
+    })
+  }
+  const me = (cookies: Record<string, string>) =>
+    app.inject({ method: 'GET', url: '/trpc/auth.me', cookies })
+
+  it('logout 은 포트 붙은 이름의 세션을 서버에서도 지운다', async () => {
+    // ⚠️ 응답의 Set-Cookie 만 보면 서버의 세션 행이 남아도 통과한다 — 같은 값으로 다시 불러 본다.
+    const { value } = await login()
+    expect((await post('auth.logout', { [NAME]: value }, {})).statusCode).toBe(200)
+    expect((await me({ [NAME]: value })).statusCode).toBe(401)
+  })
+
+  it('changePassword 는 포트 붙은 이름의 지금 세션만 남긴다', async () => {
+    const a = (await login()).value
+    const b = (await login()).value
+    const res = await post(
+      'auth.changePassword',
+      { [NAME]: a },
+      { currentPassword: 'password-1', newPassword: 'password-2' },
+    )
+    expect(res.statusCode).toBe(200)
+    expect((await me({ [NAME]: a })).statusCode).toBe(200)
+    expect((await me({ [NAME]: b })).statusCode).toBe(401)
+  })
+
   it('/ws 도 같은 이름을 읽는다 — 기본 이름이면 미인증으로 닫힌다', async () => {
     const { value } = await login()
     // 없는 프로젝트라 인증을 통과하면 FORBIDDEN, 쿠키를 못 읽으면 UNAUTHORIZED 로 닫힌다.
